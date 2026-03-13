@@ -255,8 +255,8 @@ const txAllowed = await hostApi.permission({
     description: 'Reads a value from the scoped key-value store.',
     productFunction: 'hostApi.localStorageRead(key)',
     hostHandler: 'container.handleLocalStorageRead(handler)',
-    request: 'StorageKey: str',
-    response: 'Result<Option(StorageValue: Bytes), StorageErr>',
+    request: 'StorageKey',
+    response: 'Result<Option<StorageValue>, StorageErr>',
     errorType: 'StorageErr',
     errorVariants: ['Full', 'Unknown({ reason: str })'],
     productExample: `// Read a stored preference
@@ -281,7 +281,7 @@ if (result.isOk && result.value !== null) {
     description: 'Writes a value to the scoped key-value store.',
     productFunction: 'hostApi.localStorageWrite([key, value])',
     hostHandler: 'container.handleLocalStorageWrite(handler)',
-    request: 'Tuple(StorageKey: str, StorageValue: Bytes)',
+    request: 'Tuple<StorageKey, StorageValue>',
     response: 'Result<void, StorageErr>',
     errorType: 'StorageErr',
     errorVariants: ['Full', 'Unknown({ reason: str })'],
@@ -314,7 +314,7 @@ if (result.isErr) {
     description: 'Clears a value from the scoped key-value store.',
     productFunction: 'hostApi.localStorageClear(key)',
     hostHandler: 'container.handleLocalStorageClear(handler)',
-    request: 'StorageKey: str',
+    request: 'StorageKey',
     response: 'Result<void, StorageErr>',
     errorType: 'StorageErr',
     errorVariants: ['Full', 'Unknown({ reason: str })'],
@@ -336,9 +336,9 @@ const result = await hostApi.localStorageClear("user-theme");`,
     description: 'Retrieves a product-specific derived account. The product provides a product identifier and derivation index; the host derives a unique public key for that combination.',
     productFunction: 'hostApi.accountGet(productAccountId)',
     hostHandler: 'container.handleAccountGet(handler)',
-    request: 'ProductAccountId = Tuple(DotNsIdentifier: str, DerivationIndex: u32)',
+    request: 'ProductAccountId',
     response: 'Result<Account, RequestCredentialsErr>',
-    responseDescription: 'Account { publicKey: Bytes, name: Option(str) }',
+    requestDescription: 'ProductAccountId is a Tuple<DotNsIdentifier, DerivationIndex>',
     errorType: 'RequestCredentialsErr',
     errorVariants: ['NotConnected', 'Rejected', 'DomainNotValid', 'Unknown({ reason: str })'],
     productExample: `// Get the product account for "my-product" with index 0
@@ -374,9 +374,9 @@ if (result.isOk) {
     description: 'Retrieves a contextual alias (ring VRF based) for a product account.',
     productFunction: 'hostApi.accountGetAlias(productAccountId)',
     hostHandler: 'container.handleAccountGetAlias(handler)',
-    request: 'ProductAccountId = Tuple(DotNsIdentifier: str, DerivationIndex: u32)',
+    request: 'ProductAccountId',
     response: 'Result<ContextualAlias, RequestCredentialsErr>',
-    responseDescription: 'ContextualAlias { context: Bytes(32), alias: Bytes }',
+    requestDescription: 'ProductAccountId is a Tuple<DotNsIdentifier, DerivationIndex>',
     errorType: 'RequestCredentialsErr',
     errorVariants: ['NotConnected', 'Rejected', 'DomainNotValid', 'Unknown({ reason: str })'],
     productExample: `// Get a contextual alias for privacy-preserving identity
@@ -408,9 +408,9 @@ if (result.isOk) {
     description: 'Creates a ring VRF proof for a product account against a specific ring.',
     productFunction: 'hostApi.accountCreateProof(params)',
     hostHandler: 'container.handleAccountCreateProof(handler)',
-    request: 'Tuple(ProductAccountId, RingLocation, Bytes)',
-    response: 'Result<RingVrfProof: Bytes, CreateProofErr>',
-    requestDescription: 'ProductAccountId + RingLocation { genesisHash: Hex, ringRootHash: Hex, hints: Option(RingLocationHint) } + context bytes',
+    request: 'Tuple<ProductAccountId, RingLocation, Bytes>',
+    response: 'Result<RingVrfProof, CreateProofErr>',
+    requestDescription: 'ProductAccountId, RingLocation, and context bytes',
     errorType: 'CreateProofErr',
     errorVariants: ['RingNotFound', 'Rejected', 'Unknown({ reason: str })'],
     productExample: `// Create a ring VRF proof
@@ -450,7 +450,6 @@ if (result.isOk) {
     hostHandler: 'container.handleGetNonProductAccounts(handler)',
     request: 'void',
     response: 'Result<Vector<Account>, RequestCredentialsErr>',
-    responseDescription: 'Vector<Account { publicKey: Bytes, name: Option(str) }>',
     errorType: 'RequestCredentialsErr',
     errorVariants: ['NotConnected', 'Rejected', 'DomainNotValid', 'Unknown({ reason: str })'],
     productExample: `// Get the user's wallet accounts
@@ -523,8 +522,7 @@ sub.unsubscribe();`,
     hostHandler: 'container.handleSignPayload(handler)',
     request: 'SigningPayload',
     response: 'Result<SigningResult, SigningErr>',
-    requestDescription: 'SigningPayload { address, blockHash, blockNumber, era, genesisHash, method, nonce, specVersion, tip, transactionVersion, signedExtensions, version, assetId?, metadataHash?, mode?, withSignedTransaction? }',
-    responseDescription: 'SigningResult { signature: Hex, signedTransaction: Option(Hex) }',
+    requestDescription: 'See SigningPayload type for all fields',
     errorType: 'SigningErr',
     errorVariants: ['FailedToDecode', 'Rejected', 'PermissionDenied', 'Unknown({ reason: str })'],
     productExample: `// Sign a Substrate extrinsic payload
@@ -571,7 +569,7 @@ if (result.isOk) {
     hostHandler: 'container.handleSignRaw(handler)',
     request: 'SigningRawPayload',
     response: 'Result<SigningResult, SigningErr>',
-    requestDescription: 'SigningRawPayload { address: str, data: RawPayload }',
+    requestDescription: 'See SigningRawPayload type for fields',
     errorType: 'SigningErr',
     errorVariants: ['FailedToDecode', 'Rejected', 'PermissionDenied', 'Unknown({ reason: str })'],
     productExample: `// Sign a raw message
@@ -605,9 +603,9 @@ const result2 = await hostApi.signRaw({
     description: 'Requests the host to create and sign a full transaction from a structured payload, using a product-derived account.',
     productFunction: 'hostApi.createTransaction(params)',
     hostHandler: 'container.handleCreateTransaction(handler)',
-    request: 'Tuple(ProductAccountId, VersionedTxPayload)',
+    request: 'Tuple<ProductAccountId, VersionedTxPayload>',
     response: 'Result<Bytes, CreateTransactionErr>',
-    requestDescription: 'ProductAccountId + VersionedTxPayload { v1: TxPayloadV1 { signer, callData, extensions, txExtVersion, context } }',
+    requestDescription: 'ProductAccountId and a VersionedTxPayload',
     responseDescription: 'The signed transaction bytes',
     errorType: 'CreateTransactionErr',
     errorVariants: ['FailedToDecode', 'Rejected', 'NotSupported(str)', 'PermissionDenied', 'Unknown({ reason: str })'],
@@ -698,8 +696,6 @@ const result = await hostApi.createTransactionWithNonProductAccount({
     hostHandler: 'container.handleChatCreateRoom(handler)',
     request: 'ChatRoomRequest',
     response: 'Result<ChatRoomRegistrationResult, ChatRoomRegistrationErr>',
-    requestDescription: 'ChatRoomRequest { roomId: str, name: str, icon: str }',
-    responseDescription: 'ChatRoomRegistrationResult { status: "New" | "Exists" }',
     errorType: 'ChatRoomRegistrationErr',
     errorVariants: ['PermissionDenied', 'Unknown({ reason: str })'],
     productExample: `// Create a chat room
@@ -736,8 +732,6 @@ if (result.isOk) {
     hostHandler: 'container.handleChatBotRegistration(handler)',
     request: 'ChatBotRequest',
     response: 'Result<ChatBotRegistrationResult, ChatBotRegistrationErr>',
-    requestDescription: 'ChatBotRequest { botId: str, name: str, icon: str }',
-    responseDescription: 'ChatBotRegistrationResult { status: "New" | "Exists" }',
     errorType: 'ChatBotRegistrationErr',
     errorVariants: ['PermissionDenied', 'Unknown({ reason: str })'],
     productExample: `// Register a bot for automated messages
@@ -769,8 +763,6 @@ const result = await hostApi.chatRegisterBot({
     hostHandler: 'container.handleChatPostMessage(handler)',
     request: 'Struct { roomId: str, payload: ChatMessageContent }',
     response: 'Result<ChatPostMessageResult, ChatMessagePostingErr>',
-    requestDescription: 'ChatMessageContent = Enum { Text, RichText, Actions, File, Reaction, ReactionRemoved, Custom }',
-    responseDescription: 'ChatPostMessageResult { messageId: str }',
     errorType: 'ChatMessagePostingErr',
     errorVariants: ['MessageTooLarge', 'Unknown({ reason: str })'],
     productExample: `// Post a text message
@@ -814,7 +806,6 @@ const result2 = await hostApi.chatPostMessage({
     hostHandler: 'container.handleChatListSubscribe(handler)',
     request: 'void',
     response: 'Vector<ChatRoom>',
-    responseDescription: 'Vector<ChatRoom { roomId: str, participatingAs: "RoomHost" | "Bot" }>',
     productExample: `// Watch the room list
 const sub = hostApi.chatListSubscribe(
   undefined,
@@ -847,7 +838,6 @@ const sub = hostApi.chatListSubscribe(
     hostHandler: 'container.handleChatActionSubscribe(handler)',
     request: 'void',
     response: 'ReceivedChatAction',
-    responseDescription: 'ReceivedChatAction { roomId: str, peer: str, payload: ChatActionPayload }',
     productExample: `// Listen for chat events
 const sub = hostApi.chatActionSubscribe(
   undefined,
@@ -944,9 +934,8 @@ const unsub = container.renderChatCustomMessage(
     description: 'Subscribes to statements matching a set of topics. The host pushes matching signed statements whenever the set changes.',
     productFunction: 'hostApi.statementStoreSubscribe(topics, callback)',
     hostHandler: 'container.handleStatementStoreSubscribe(handler)',
-    request: 'Vector<Topic: Bytes(32)>',
+    request: 'Vector<Topic>',
     response: 'Vector<SignedStatement>',
-    responseDescription: 'Vector<SignedStatement { proof, decryptionKey?, expiry?, channel?, topics, data? }>',
     productExample: `// Subscribe to statements for specific topics
 const topic = new Uint8Array(32);
 topic.set([1, 2, 3]); // topic identifier
@@ -982,7 +971,7 @@ const sub = hostApi.statementStoreSubscribe(
     description: 'Creates a cryptographic proof (signature) for a statement using a product account\'s key.',
     productFunction: 'hostApi.statementStoreCreateProof(params)',
     hostHandler: 'container.handleStatementStoreCreateProof(handler)',
-    request: 'Tuple(ProductAccountId, Statement)',
+    request: 'Tuple<ProductAccountId, Statement>',
     response: 'Result<StatementProof, StatementProofErr>',
     requestDescription: 'ProductAccountId + Statement { proof?, decryptionKey?, expiry?, channel?, topics, data? }',
     errorType: 'StatementProofErr',
@@ -1053,8 +1042,8 @@ const result = await hostApi.statementStoreSubmit({
     description: 'Subscribes to a preimage by its hash key. The host pushes the value when it becomes available.',
     productFunction: 'hostApi.preimageLookupSubscribe(key, callback)',
     hostHandler: 'container.handlePreimageLookupSubscribe(handler)',
-    request: 'PreimageKey: Hex',
-    response: 'Nullable<PreimageValue: Bytes>',
+    request: 'PreimageKey',
+    response: 'Nullable<PreimageValue>',
     productExample: `// Subscribe to a preimage
 const sub = hostApi.preimageLookupSubscribe(
   "0xabcdef1234...",  // hash of the preimage
@@ -1084,8 +1073,8 @@ const sub = hostApi.preimageLookupSubscribe(
     description: 'Submits a preimage value and receives its hash key back.',
     productFunction: 'hostApi.preimageSubmit(value)',
     hostHandler: 'container.handlePreimageSubmit(handler)',
-    request: 'PreimageValue: Bytes',
-    response: 'Result<PreimageKey: Hex, PreimageSubmitErr>',
+    request: 'PreimageValue',
+    response: 'Result<PreimageKey, PreimageSubmitErr>',
     errorType: 'PreimageSubmitErr',
     errorVariants: ['Unknown({ reason: str })'],
     productExample: `// Submit a preimage
@@ -1159,7 +1148,7 @@ container.handleChainConnection((genesisHash) => {
     productFunction: 'hostApi.chainHeadHeader(params)',
     hostHandler: 'Managed by chainConnectionManager',
     request: 'Struct { genesisHash: Hex, followSubscriptionId: str, hash: Hex }',
-    response: 'Result<Nullable(Hex), GenericError>',
+    response: 'Result<Nullable<Hex>, GenericError>',
     responseDescription: 'SCALE-encoded block header, or null',
     productExample: `const result = await hostApi.chainHeadHeader({
   genesisHash: polkadotGenesis,
@@ -1208,9 +1197,8 @@ if (result.isOk && result.value.tag === "Started") {
     description: 'Queries chain storage. Returns an operation ID; results arrive as OperationStorageItems/OperationStorageDone events.',
     productFunction: 'hostApi.chainHeadStorage(params)',
     hostHandler: 'Managed by chainConnectionManager',
-    request: 'Struct { genesisHash, followSubscriptionId, hash, items: Vector(StorageQueryItem), childTrie: Nullable(Hex) }',
+    request: 'Struct { genesisHash, followSubscriptionId, hash, items: Vector<StorageQueryItem>, childTrie: Nullable<Hex> }',
     response: 'Result<OperationStartedResult, GenericError>',
-    requestDescription: 'StorageQueryItem { key: Hex, type: Value|Hash|ClosestDescendantMerkleValue|DescendantsValues|DescendantsHashes }',
     productExample: `const result = await hostApi.chainHeadStorage({
   genesisHash: polkadotGenesis,
   followSubscriptionId: subId,
@@ -1253,7 +1241,7 @@ if (result.isOk && result.value.tag === "Started") {
     description: 'Unpins block hashes, allowing the node to discard them.',
     productFunction: 'hostApi.chainHeadUnpin(params)',
     hostHandler: 'Managed by chainConnectionManager',
-    request: 'Struct { genesisHash, followSubscriptionId, hashes: Vector(Hex) }',
+    request: 'Struct { genesisHash, followSubscriptionId, hashes: Vector<Hex> }',
     response: 'Result<void, GenericError>',
     productExample: `await hostApi.chainHeadUnpin({
   genesisHash: polkadotGenesis,
@@ -1311,7 +1299,7 @@ await hostApi.chainHeadContinue({
     description: 'Gets the genesis hash for a chain.',
     productFunction: 'hostApi.chainSpecGenesisHash(genesisHash)',
     hostHandler: 'Managed by chainConnectionManager',
-    request: 'GenesisHash: Hex',
+    request: 'GenesisHash',
     response: 'Result<Hex, GenericError>',
     productExample: `const result = await hostApi.chainSpecGenesisHash(
   polkadotGenesis
@@ -1328,7 +1316,7 @@ await hostApi.chainHeadContinue({
     description: 'Gets the chain name.',
     productFunction: 'hostApi.chainSpecChainName(genesisHash)',
     hostHandler: 'Managed by chainConnectionManager',
-    request: 'GenesisHash: Hex',
+    request: 'GenesisHash',
     response: 'Result<str, GenericError>',
     productExample: `const result = await hostApi.chainSpecChainName(
   polkadotGenesis
@@ -1348,7 +1336,7 @@ if (result.isOk) {
     description: 'Gets the chain properties as a JSON-encoded string.',
     productFunction: 'hostApi.chainSpecProperties(genesisHash)',
     hostHandler: 'Managed by chainConnectionManager',
-    request: 'GenesisHash: Hex',
+    request: 'GenesisHash',
     response: 'Result<str, GenericError>',
     responseDescription: 'JSON-encoded chain properties',
     productExample: `const result = await hostApi.chainSpecProperties(
@@ -1371,7 +1359,7 @@ if (result.isOk) {
     productFunction: 'hostApi.chainTransactionBroadcast(params)',
     hostHandler: 'Managed by chainConnectionManager',
     request: 'Struct { genesisHash: Hex, transaction: Hex }',
-    response: 'Result<Nullable(str), GenericError>',
+    response: 'Result<Nullable<str>, GenericError>',
     responseDescription: 'Operation ID if accepted, null if rejected',
     productExample: `const result = await hostApi.chainTransactionBroadcast({
   genesisHash: polkadotGenesis,
