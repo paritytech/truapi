@@ -1,5 +1,6 @@
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getTypeById } from '../data/types';
+import { getTypeById, dataTypes } from '../data/types';
 
 interface TypeLinkProps {
   typeId: string;
@@ -24,57 +25,45 @@ export default function TypeLink({ typeId, className = '' }: TypeLinkProps) {
   );
 }
 
+// All linkable type names, derived from the data — sorted longest-first to avoid partial matches
+const allTypeNames = dataTypes
+  .map(t => t.name)
+  .sort((a, b) => b.length - a.length);
+
 // Parse a type string and make type references clickable
 export function TypeString({ text, className = '' }: { text: string; className?: string }) {
   const navigate = useNavigate();
-  // Known type IDs to look for
-  const knownTypes = [
-    'SigningPayload', 'SigningResult', 'SigningErr', 'SigningRawPayload', 'RawPayload',
-    'ProductAccountId', 'Account', 'ContextualAlias', 'RingLocation', 'RingLocationHint',
-    'RingVrfProof', 'RequestCredentialsErr', 'CreateProofErr', 'AccountConnectionStatus',
-    'VersionedTxPayload', 'TxPayloadV1', 'TxPayloadContextV1', 'TxPayloadExtensionV1',
-    'CreateTransactionErr', 'Feature', 'NavigateToErr', 'PushNotification',
-    'DevicePermissionRequest', 'RemotePermissionRequest', 'GenericError', 'GenericErr',
-    'StorageKey', 'StorageValue', 'StorageErr', 'GenesisHash',
-    'ChatRoomRequest', 'ChatRoomRegistrationResult', 'ChatRoomRegistrationErr',
-    'ChatBotRequest', 'ChatBotRegistrationResult', 'ChatBotRegistrationErr',
-    'ChatMessageContent', 'ChatPostMessageResult', 'ChatMessagePostingErr',
-    'ChatRoom', 'ReceivedChatAction', 'ChatActionPayload', 'CustomRendererNode',
-    'ChainHeadEvent', 'OperationStartedResult', 'StorageQueryItem', 'StorageQueryType',
-    'SignedStatement', 'StatementProof', 'StatementProofErr', 'Statement',
-    'PreimageKey', 'PreimageValue', 'PreimageSubmitErr',
-    'BlockHash', 'OperationId', 'RuntimeSpec', 'RuntimeType',
-  ];
 
-  // Sort by length (longest first) to avoid partial matches
-  const sorted = [...knownTypes].sort((a, b) => b.length - a.length);
+  const parts = useMemo(() => {
+    const result: { text: string; isType: boolean; typeId: string }[] = [];
+    let remaining = text;
 
-  const parts: { text: string; isType: boolean; typeId: string }[] = [];
-  let remaining = text;
+    while (remaining.length > 0) {
+      let earliestIndex = Infinity;
+      let earliestType = '';
 
-  while (remaining.length > 0) {
-    let earliestIndex = Infinity;
-    let earliestType = '';
+      for (const typeName of allTypeNames) {
+        const idx = remaining.indexOf(typeName);
+        if (idx !== -1 && idx < earliestIndex) {
+          earliestIndex = idx;
+          earliestType = typeName;
+        }
+      }
 
-    for (const typeName of sorted) {
-      const idx = remaining.indexOf(typeName);
-      if (idx !== -1 && idx < earliestIndex) {
-        earliestIndex = idx;
-        earliestType = typeName;
+      if (earliestType && earliestIndex < Infinity) {
+        if (earliestIndex > 0) {
+          result.push({ text: remaining.slice(0, earliestIndex), isType: false, typeId: '' });
+        }
+        result.push({ text: earliestType, isType: true, typeId: earliestType });
+        remaining = remaining.slice(earliestIndex + earliestType.length);
+      } else {
+        result.push({ text: remaining, isType: false, typeId: '' });
+        break;
       }
     }
 
-    if (earliestType && earliestIndex < Infinity) {
-      if (earliestIndex > 0) {
-        parts.push({ text: remaining.slice(0, earliestIndex), isType: false, typeId: '' });
-      }
-      parts.push({ text: earliestType, isType: true, typeId: earliestType });
-      remaining = remaining.slice(earliestIndex + earliestType.length);
-    } else {
-      parts.push({ text: remaining, isType: false, typeId: '' });
-      break;
-    }
-  }
+    return result;
+  }, [text]);
 
   return (
     <span className={`font-mono text-sm ${className}`}>
