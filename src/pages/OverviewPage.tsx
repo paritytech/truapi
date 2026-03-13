@@ -63,7 +63,7 @@ export default function OverviewPage() {
         <p className="text-slate-300 text-lg leading-relaxed max-w-3xl">
           Complete reference for the protocol that mediates all communication between a
           <strong className="text-white"> host </strong> application and
-          <strong className="text-white"> products </strong> running inside iframes. All messages are SCALE-encoded binary
+          <strong className="text-white"> products </strong> running in sandboxes. All messages are SCALE-encoded binary
           sent via <C>postMessage</C>.
         </p>
       </div>
@@ -111,7 +111,7 @@ export default function OverviewPage() {
               <h3 className="text-sm font-semibold text-white">Host</h3>
             </div>
             <p className="text-sm text-slate-400 leading-relaxed mb-3">
-              The host is the parent application that embeds products in iframes. It acts as the
+              The host is the parent application that embeds products in sandboxes. It acts as the
               <strong className="text-slate-300"> gatekeeper and service provider</strong> &mdash; managing user accounts,
               signing transactions, mediating blockchain access, and enforcing permissions.
             </p>
@@ -140,7 +140,7 @@ export default function OverviewPage() {
               <h3 className="text-sm font-semibold text-white">Product</h3>
             </div>
             <p className="text-sm text-slate-400 leading-relaxed mb-3">
-              A product is a sandboxed application running inside an iframe. It uses the Host API to
+              A product is an application running inside a sandbox. It uses the Host API to
               <strong className="text-slate-300"> request services</strong> from the host &mdash; reading accounts,
               signing payloads, accessing chain data, and more.
             </p>
@@ -169,7 +169,7 @@ export default function OverviewPage() {
           </div>
           <div className="bg-slate-900/60 rounded-lg p-4 font-mono text-xs text-slate-400 leading-loose">
             <div className="flex items-center justify-between gap-4 mb-1">
-              <span className="text-emerald-400 w-32 text-right">Product (iframe)</span>
+              <span className="text-emerald-400 w-32 text-right">Product (sandbox)</span>
               <span className="text-slate-600 flex-1 text-center border-b border-dashed border-slate-700">&nbsp;</span>
               <span className="text-purple-400 w-32">Host (parent)</span>
             </div>

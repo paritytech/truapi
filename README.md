@@ -1,6 +1,6 @@
 # Host API Protocol Explorer
 
-Interactive reference documentation for the Host API Protocol — the protocol that mediates all communication between a host application and products running in iframes.
+Interactive reference documentation for the Host API Protocol — the protocol that mediates all communication between a host application and products running in sandboxes.
 
 Built with React, TypeScript, and Tailwind CSS.
 
