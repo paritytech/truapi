@@ -46,18 +46,18 @@ export default function OverviewPage() {
   return (
     <div className="max-w-5xl mx-auto">
       {/* Hero */}
-      <div className="mb-16 animate-slide-up">
-        <div className="flex items-start gap-5 mb-6">
-          <div className="w-16 h-16 rounded-2xl bg-pink-600 flex items-center justify-center shrink-0 shadow-[0_0_40px_rgba(219,39,119,0.2)]">
-            <span className="text-white text-2xl font-bold font-display">H</span>
+      <div className="mb-10 lg:mb-16 animate-slide-up">
+        <div className="flex items-start gap-4 lg:gap-5 mb-6">
+          <div className="w-12 h-12 lg:w-16 lg:h-16 rounded-xl lg:rounded-2xl bg-pink-600 flex items-center justify-center shrink-0 shadow-[0_0_40px_rgba(219,39,119,0.2)]">
+            <span className="text-white text-lg lg:text-2xl font-bold font-display">H</span>
           </div>
           <div>
-            <h1 className="text-4xl font-bold text-white font-display tracking-tight leading-tight">
+            <h1 className="text-2xl lg:text-4xl font-bold text-white font-display tracking-tight leading-tight">
               Host API Protocol
             </h1>
-            <div className="flex items-center gap-3 mt-2">
+            <div className="flex flex-wrap items-center gap-2 lg:gap-3 mt-2">
               <span className="text-sm text-slate-400">Protocol <span className="font-mono text-slate-300">v0.1</span></span>
-              <span className="text-slate-700">|</span>
+              <span className="text-slate-700 hidden sm:inline">|</span>
               <span className="text-sm text-slate-400 font-mono">npm: @novasamatech/host-api v0.6.6-1</span>
             </div>
           </div>
@@ -71,7 +71,7 @@ export default function OverviewPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 mb-16">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 mb-10 lg:mb-16">
         <div className="stat-card stat-card-pink bg-slate-800/40 border border-slate-700/40 rounded-xl p-5 card-hover animate-slide-up stagger-1">
           <div className="text-3xl font-bold text-white font-display">{totalMethods}</div>
           <div className="text-sm text-slate-400 mt-1.5 font-medium">Total Methods</div>
@@ -100,10 +100,10 @@ export default function OverviewPage() {
       </div>
 
       {/* Architecture: Roles */}
-      <div className="mb-16 animate-slide-up stagger-5">
+      <div className="mb-10 lg:mb-16 animate-slide-up stagger-5">
         <h2 className="text-xl font-semibold text-white mb-5 font-display tracking-tight">Architecture</h2>
 
-        <div className="grid grid-cols-2 gap-4 mb-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
           {/* Host role */}
           <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-5 card-hover">
             <div className="flex items-center gap-2.5 mb-3">
@@ -169,40 +169,40 @@ export default function OverviewPage() {
             <Layers size={16} className="text-slate-400" />
             <h3 className="text-sm font-semibold text-white font-display">Communication Flow</h3>
           </div>
-          <div className="bg-slate-900/60 rounded-lg p-4 font-mono text-sm text-slate-400 leading-loose">
-            <div className="flex items-center justify-between gap-4 mb-1">
+          <div className="bg-slate-900/60 rounded-lg p-4 font-mono text-xs sm:text-sm text-slate-400 leading-loose overflow-x-auto">
+            <div className="flex items-center justify-between gap-4 mb-1 min-w-[420px]">
               <span className="text-emerald-400 w-32 text-right">Product (sandbox)</span>
               <span className="text-slate-600 flex-1 text-center border-b border-dashed border-slate-700">&nbsp;</span>
               <span className="text-purple-400 w-32">Host (parent)</span>
             </div>
-            <div className="space-y-0.5 pl-4">
+            <div className="space-y-0.5 pl-4 min-w-[420px]">
               <div className="flex items-center gap-2">
-                <span className="text-slate-300 w-28 text-right">handshake</span>
+                <span className="text-slate-300 w-28 text-right shrink-0">handshake</span>
                 <span className="text-emerald-400">&rarr;</span>
                 <span className="text-slate-400">negotiate codec version (auto, every 50ms until ack)</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-slate-300 w-28 text-right">request</span>
+                <span className="text-slate-300 w-28 text-right shrink-0">request</span>
                 <span className="text-emerald-400">&rarr;</span>
                 <span className="text-slate-400">SCALE-encoded method call via postMessage</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-slate-300 w-28 text-right">response</span>
+                <span className="text-slate-300 w-28 text-right shrink-0">response</span>
                 <span className="text-purple-400">&larr;</span>
                 <span className="text-slate-400">Result&lt;Ok, Err&gt; back via postMessage</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-slate-300 w-28 text-right">_start</span>
+                <span className="text-slate-300 w-28 text-right shrink-0">_start</span>
                 <span className="text-emerald-400">&rarr;</span>
                 <span className="text-slate-400">open subscription (multiplexed if same params)</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-slate-300 w-28 text-right">_receive</span>
+                <span className="text-slate-300 w-28 text-right shrink-0">_receive</span>
                 <span className="text-purple-400">&larr;</span>
                 <span className="text-slate-400">host pushes values (0..N times)</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-slate-300 w-28 text-right">_stop / _interrupt</span>
+                <span className="text-slate-300 w-28 text-right shrink-0">_stop / _interrupt</span>
                 <span className="text-slate-500">&harr;</span>
                 <span className="text-slate-400">either side can close</span>
               </div>
@@ -212,7 +212,7 @@ export default function OverviewPage() {
       </div>
 
       {/* High-level Providers */}
-      <div className="mb-16 animate-slide-up stagger-6">
+      <div className="mb-10 lg:mb-16 animate-slide-up stagger-6">
         <h2 className="text-xl font-semibold text-white mb-5 font-display tracking-tight">SDK Providers</h2>
         <p className="text-sm text-slate-300 mb-4 leading-relaxed max-w-3xl">
           While products can call Host API methods directly, the SDK provides higher-level <strong className="text-white">providers</strong> that
@@ -222,16 +222,16 @@ export default function OverviewPage() {
         <div className="space-y-3">
           {/* PAPI Provider */}
           <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-5 card-hover">
-            <div className="flex items-start justify-between gap-4 mb-2">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4 mb-2">
               <div>
-                <h3 className="text-sm font-semibold text-white flex items-center gap-2 font-display">
+                <h3 className="text-sm font-semibold text-white flex flex-wrap items-center gap-2 font-display">
                   <Link size={14} className="text-sky-400" />
                   PAPI Provider
                   <C>createPapiProvider(genesisHash)</C>
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">from <C>@novasamatech/product-sdk</C></p>
               </div>
-              <span className="text-xs bg-sky-500/10 text-sky-400 px-2 py-0.5 rounded-full border border-sky-500/20 whitespace-nowrap">
+              <span className="text-xs bg-sky-500/10 text-sky-400 px-2 py-0.5 rounded-full border border-sky-500/20 whitespace-nowrap self-start">
                 13 low-level methods
               </span>
             </div>
@@ -252,16 +252,16 @@ export default function OverviewPage() {
 
           {/* Product Chat Manager */}
           <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-5 card-hover">
-            <div className="flex items-start justify-between gap-4 mb-2">
+            <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4 mb-2">
               <div>
-                <h3 className="text-sm font-semibold text-white flex items-center gap-2 font-display">
+                <h3 className="text-sm font-semibold text-white flex flex-wrap items-center gap-2 font-display">
                   <MessageSquare size={14} className="text-amber-400" />
                   Product Chat Manager
                   <C>createProductChatManager()</C>
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">from <C>@novasamatech/product-sdk</C></p>
               </div>
-              <span className="text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20 whitespace-nowrap">
+              <span className="text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20 whitespace-nowrap self-start">
                 reverse subscription
               </span>
             </div>
@@ -276,9 +276,9 @@ export default function OverviewPage() {
       </div>
 
       {/* Protocol Basics */}
-      <div className="mb-16 animate-slide-up stagger-7">
+      <div className="mb-10 lg:mb-16 animate-slide-up stagger-7">
         <h2 className="text-xl font-semibold text-white mb-5 font-display tracking-tight">Communication Patterns</h2>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-5 card-hover">
             <div className="flex items-center gap-2 mb-3">
               <ArrowLeftRight size={16} className="text-emerald-400" />

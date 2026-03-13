@@ -23,7 +23,7 @@ export default function TypesPage() {
 
   return (
     <div className="max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-8 animate-slide-up">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-8 animate-slide-up">
         <div>
           <h1 className="text-2xl font-bold text-white mb-1 font-display tracking-tight">Data Types</h1>
           <p className="text-sm text-slate-400">
@@ -67,7 +67,7 @@ export default function TypesPage() {
                     </span>
                     <p className="text-sm text-slate-400 mt-0.5 truncate">{t.description}</p>
                   </div>
-                  <code className="text-xs font-mono text-slate-400 shrink-0 bg-slate-800/50 px-2 py-0.5 rounded">
+                  <code className="text-xs font-mono text-slate-400 shrink-0 bg-slate-800/50 px-2 py-0.5 rounded hidden sm:block">
                     {t.definition.length > 40 ? t.definition.slice(0, 40) + '...' : t.definition}
                   </code>
                 </div>

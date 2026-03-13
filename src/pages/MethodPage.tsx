@@ -49,8 +49,8 @@ export default function MethodPage() {
 
       {/* Header */}
       <div className="mb-8 animate-slide-up">
-        <div className="flex items-start justify-between gap-4 mb-3">
-          <h1 className="text-2xl font-bold text-white font-mono break-all">{method.name}</h1>
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4 mb-3">
+          <h1 className="text-xl sm:text-2xl font-bold text-white font-mono break-all">{method.name}</h1>
           <PatternBadge pattern={method.pattern} />
         </div>
         <p className="text-slate-300 leading-relaxed">{method.description}</p>
@@ -68,16 +68,16 @@ export default function MethodPage() {
           <h2 className="text-sm font-semibold text-white font-display">API Surface</h2>
         </div>
         <div className="divide-y divide-slate-700/30">
-          <div className="px-5 py-3 flex items-start gap-4">
-            <span className="text-sm text-slate-400 w-32 shrink-0 pt-0.5">Product function</span>
+          <div className="px-5 py-3 flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4">
+            <span className="text-sm text-slate-400 sm:w-32 shrink-0 pt-0.5">Product function</span>
             <code className="text-sm font-mono text-emerald-400">{method.productFunction}</code>
           </div>
-          <div className="px-5 py-3 flex items-start gap-4">
-            <span className="text-sm text-slate-400 w-32 shrink-0 pt-0.5">Host handler</span>
+          <div className="px-5 py-3 flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4">
+            <span className="text-sm text-slate-400 sm:w-32 shrink-0 pt-0.5">Host handler</span>
             <code className="text-sm font-mono text-purple-400">{method.hostHandler}</code>
           </div>
-          <div className="px-5 py-3 flex items-start gap-4">
-            <span className="text-sm text-slate-400 w-32 shrink-0 pt-0.5">
+          <div className="px-5 py-3 flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4">
+            <span className="text-sm text-slate-400 sm:w-32 shrink-0 pt-0.5">
               {method.pattern === 'subscription' || method.pattern === 'reverse-subscription' ? 'Start payload' : 'Request'}
             </span>
             <div>
@@ -87,8 +87,8 @@ export default function MethodPage() {
               )}
             </div>
           </div>
-          <div className="px-5 py-3 flex items-start gap-4">
-            <span className="text-sm text-slate-400 w-32 shrink-0 pt-0.5">
+          <div className="px-5 py-3 flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4">
+            <span className="text-sm text-slate-400 sm:w-32 shrink-0 pt-0.5">
               {method.pattern === 'subscription' || method.pattern === 'reverse-subscription' ? 'Receive payload' : 'Response'}
             </span>
             <div>

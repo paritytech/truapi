@@ -4,7 +4,7 @@ import OverviewPage from './pages/OverviewPage';
 import MethodPage from './pages/MethodPage';
 import TypesPage from './pages/TypesPage';
 import TypeDetailPage from './pages/TypeDetailPage';
-import { Search } from 'lucide-react';
+import { Search, Menu } from 'lucide-react';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { methods, dataTypes } from './data/types';
@@ -187,6 +187,7 @@ function PageTransition({ children }: { children: React.ReactNode }) {
 
 function App() {
   const [searchOpen, setSearchOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -204,27 +205,35 @@ function App() {
 
   return (
     <div className="flex min-h-screen bg-slate-925">
-      <Sidebar />
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
 
       <main className="flex-1 min-w-0">
         {/* Top bar */}
         <div className="sticky top-0 z-10 bg-slate-925/80 backdrop-blur-md border-b border-slate-700/40">
-          <div className="flex items-center justify-between px-8 py-3">
-            <button
-              onClick={() => setSearchOpen(true)}
-              className="flex items-center gap-2 bg-slate-800/50 border border-slate-700/40 rounded-lg px-3 py-1.5 text-sm text-slate-400 hover:text-slate-200 hover:border-slate-600/50 transition-all duration-150 hover:shadow-[0_2px_8px_rgba(0,0,0,0.2)]"
-            >
-              <Search size={14} />
-              <span>Search...</span>
-              <kbd className="text-xs text-slate-400 bg-slate-700/50 px-1.5 py-0.5 rounded ml-4 font-mono">
-                {navigator.platform.includes('Mac') ? '\u2318' : 'Ctrl'}K
-              </kbd>
-            </button>
+          <div className="flex items-center justify-between px-4 lg:px-8 py-3">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setSidebarOpen(true)}
+                className="lg:hidden p-1.5 text-slate-400 hover:text-white transition-colors"
+              >
+                <Menu size={20} />
+              </button>
+              <button
+                onClick={() => setSearchOpen(true)}
+                className="flex items-center gap-2 bg-slate-800/50 border border-slate-700/40 rounded-lg px-3 py-1.5 text-sm text-slate-400 hover:text-slate-200 hover:border-slate-600/50 transition-all duration-150 hover:shadow-[0_2px_8px_rgba(0,0,0,0.2)]"
+              >
+                <Search size={14} />
+                <span>Search...</span>
+                <kbd className="text-xs text-slate-400 bg-slate-700/50 px-1.5 py-0.5 rounded ml-4 font-mono hidden sm:inline">
+                  {navigator.platform.includes('Mac') ? '\u2318' : 'Ctrl'}K
+                </kbd>
+              </button>
+            </div>
           </div>
         </div>
 
         {/* Content */}
-        <div className="px-8 py-8">
+        <div className="px-4 py-6 lg:px-8 lg:py-8">
           <PageTransition>
             <Routes>
               <Route path="/" element={<OverviewPage />} />

@@ -12,6 +12,7 @@ import {
   Image,
   Link,
   Database,
+  X,
 } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 
@@ -31,7 +32,7 @@ const PROTOCOL_VERSIONS = [
   { id: 'v0.1', label: 'v0.1', current: true },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
@@ -63,13 +64,32 @@ export default function Sidebar() {
 
   const currentPath = location.pathname;
 
+  const handleNav = (path: string) => {
+    navigate(path);
+    onClose();
+  };
+
   return (
-    <aside className="w-72 min-w-72 border-r border-slate-700/50 bg-slate-925 flex flex-col h-screen sticky top-0 overflow-hidden">
+    <>
+      {/* Mobile backdrop */}
+      {open && (
+        <div
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
+          onClick={onClose}
+        />
+      )}
+      <aside className={`
+        fixed inset-y-0 left-0 z-50 w-72 min-w-72 border-r border-slate-700/50 bg-slate-925 flex flex-col h-screen overflow-hidden
+        transform transition-transform duration-300 ease-in-out
+        ${open ? 'translate-x-0' : '-translate-x-full'}
+        lg:translate-x-0 lg:static lg:z-auto
+      `}>
       {/* Header */}
       <div className="p-4 border-b border-slate-700/50">
+        <div className="flex items-center justify-between">
         <div
           className="flex items-center gap-2.5 cursor-pointer group"
-          onClick={() => navigate('/')}
+          onClick={() => handleNav('/')}
         >
           <div className="w-8 h-8 rounded-lg bg-pink-600 flex items-center justify-center group-hover:shadow-[0_0_12px_rgba(219,39,119,0.4)] transition-shadow">
             <span className="text-white text-sm font-bold font-display">H</span>
@@ -77,6 +97,13 @@ export default function Sidebar() {
           <div>
             <h1 className="text-sm font-semibold text-white leading-tight font-display tracking-tight">Host API</h1>
           </div>
+        </div>
+        <button
+          onClick={onClose}
+          className="lg:hidden p-1 text-slate-400 hover:text-white transition-colors"
+        >
+          <X size={18} />
+        </button>
         </div>
 
         {/* Version selector */}
@@ -119,7 +146,7 @@ export default function Sidebar() {
       {/* Nav links */}
       <div className="px-3 pt-3 pb-1">
         <button
-          onClick={() => navigate('/')}
+          onClick={() => handleNav('/')}
           className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-all duration-150 ${
             currentPath === '/' ? 'bg-slate-800 text-white font-medium' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
           }`}
@@ -127,7 +154,7 @@ export default function Sidebar() {
           Overview
         </button>
         <button
-          onClick={() => navigate('/types')}
+          onClick={() => handleNav('/types')}
           className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-all duration-150 flex items-center gap-2 ${
             currentPath === '/types' || currentPath.startsWith('/type/') ? 'bg-slate-800 text-white font-medium' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
           }`}
@@ -173,7 +200,7 @@ export default function Sidebar() {
                     return (
                       <button
                         key={method.id}
-                        onClick={() => navigate(`/method/${method.id}`)}
+                        onClick={() => handleNav(`/method/${method.id}`)}
                         className={`w-full text-left px-2 py-1 rounded text-xs font-mono truncate transition-all duration-150 ${
                           isActive
                             ? 'bg-pink-500/15 text-pink-300 font-medium shadow-[inset_3px_0_0_0_theme(colors.pink.500)] -ml-[1px] pl-[9px]'
@@ -196,5 +223,6 @@ export default function Sidebar() {
         <span className="font-mono">@novasamatech/host-api</span>
       </div>
     </aside>
+    </>
   );
 }
