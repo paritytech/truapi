@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+  --color-slate-850: #172033;
+  --color-slate-925: #0c1220;
+  --color-accent: #e6007a;
+  --color-accent-light: #ff2d9b;
+  --color-accent-dim: #e6007a33;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 transparent;
+}
+
+::selection {
+  background: var(--color-accent-dim);
+  color: white;
+}
+
+body {
+  margin: 0;
+  background: #0c1220;
+  color: #cbd5e1;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* Syntax highlighting */
+pre code .comment { color: #546e7a; font-style: italic; }
+pre code .string { color: #c3e88d; }
+pre code .keyword { color: #c792ea; }
+pre code .number { color: #f78c6c; }
+pre code .function { color: #82aaff; }
+pre code .operator { color: #89ddff; }
+pre code .punctuation { color: #89ddff; }
