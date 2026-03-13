@@ -54,7 +54,7 @@ export default function TypeDetailPage() {
         </div>
         <p className="text-slate-300 leading-relaxed">{dt.description}</p>
         {dt.source && (
-          <p className="text-xs text-slate-500 mt-2 font-mono">
+          <p className="text-sm text-slate-400 mt-2 font-mono">
             Source: {dt.source}
           </p>
         )}
@@ -84,7 +84,7 @@ export default function TypeDetailPage() {
                 <code className="text-sm font-mono text-emerald-400 w-40 shrink-0">{field.name}</code>
                 <div className="flex-1 min-w-0">
                   <TypeString text={field.type} />
-                  <p className="text-xs text-slate-400 mt-0.5">{field.description}</p>
+                  <p className="text-sm text-slate-400 mt-0.5">{field.description}</p>
                 </div>
               </div>
             ))}
@@ -104,7 +104,7 @@ export default function TypeDetailPage() {
                 <code className="text-sm font-mono text-amber-400 w-40 shrink-0">{variant.name}</code>
                 <div className="flex-1 min-w-0">
                   <TypeString text={variant.type} />
-                  <p className="text-xs text-slate-400 mt-0.5">{variant.description}</p>
+                  <p className="text-sm text-slate-400 mt-0.5">{variant.description}</p>
                 </div>
               </div>
             ))}

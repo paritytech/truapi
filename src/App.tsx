@@ -96,14 +96,14 @@ function SearchModal({ open, onClose }: { open: boolean; onClose: () => void }) 
               }
             }}
           />
-          <kbd className="text-[10px] text-slate-500 bg-slate-800 border border-slate-700/50 px-1.5 py-0.5 rounded font-mono">ESC</kbd>
+          <kbd className="text-xs text-slate-400 bg-slate-800 border border-slate-700/50 px-1.5 py-0.5 rounded font-mono">ESC</kbd>
         </div>
 
         {query.length > 0 && (methodResults.length > 0 || typeResults.length > 0) && (
           <div className="max-h-80 overflow-y-auto py-1">
             {methodResults.length > 0 && (
               <>
-                <div className="px-4 pt-2 pb-1 text-[10px] uppercase tracking-wider text-slate-500 font-semibold font-display">
+                <div className="px-4 pt-2 pb-1 text-xs uppercase tracking-wider text-slate-400 font-semibold font-display">
                   Methods
                 </div>
                 {methodResults.slice(0, 10).map((m) => {
@@ -116,7 +116,7 @@ function SearchModal({ open, onClose }: { open: boolean; onClose: () => void }) 
                         globalIdx === selectedIdx ? 'bg-slate-800/80' : 'hover:bg-slate-800/60'
                       }`}
                     >
-                      <span className="text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded mt-0.5 bg-emerald-500/10 text-emerald-400 font-display">
+                      <span className="text-xs uppercase font-semibold px-1.5 py-0.5 rounded mt-0.5 bg-emerald-500/10 text-emerald-400 font-display">
                         FN
                       </span>
                       <div className="min-w-0">
@@ -130,7 +130,7 @@ function SearchModal({ open, onClose }: { open: boolean; onClose: () => void }) 
             )}
             {typeResults.length > 0 && (
               <>
-                <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-wider text-slate-500 font-semibold font-display">
+                <div className="px-4 pt-3 pb-1 text-xs uppercase tracking-wider text-slate-400 font-semibold font-display">
                   Types
                 </div>
                 {typeResults.slice(0, 10).map((t) => {
@@ -143,7 +143,7 @@ function SearchModal({ open, onClose }: { open: boolean; onClose: () => void }) 
                         globalIdx === selectedIdx ? 'bg-slate-800/80' : 'hover:bg-slate-800/60'
                       }`}
                     >
-                      <span className="text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded mt-0.5 bg-sky-500/10 text-sky-400 font-display">
+                      <span className="text-xs uppercase font-semibold px-1.5 py-0.5 rounded mt-0.5 bg-sky-500/10 text-sky-400 font-display">
                         T
                       </span>
                       <div className="min-w-0">
@@ -165,7 +165,7 @@ function SearchModal({ open, onClose }: { open: boolean; onClose: () => void }) 
         {query.length === 0 && (
           <div className="py-6 text-center text-sm text-slate-500">
             <p>Start typing to search {methods.length} methods and {dataTypes.length} types</p>
-            <div className="flex items-center justify-center gap-3 mt-2 text-[10px] text-slate-600">
+            <div className="flex items-center justify-center gap-3 mt-2 text-xs text-slate-500">
               <span><kbd className="bg-slate-800 border border-slate-700/50 px-1 py-0.5 rounded font-mono">↑↓</kbd> Navigate</span>
               <span><kbd className="bg-slate-800 border border-slate-700/50 px-1 py-0.5 rounded font-mono">↵</kbd> Open</span>
             </div>
@@ -216,7 +216,7 @@ function App() {
             >
               <Search size={14} />
               <span>Search...</span>
-              <kbd className="text-[10px] text-slate-500 bg-slate-700/50 px-1.5 py-0.5 rounded ml-4 font-mono">
+              <kbd className="text-xs text-slate-400 bg-slate-700/50 px-1.5 py-0.5 rounded ml-4 font-mono">
                 {navigator.platform.includes('Mac') ? '\u2318' : 'Ctrl'}K
               </kbd>
             </button>

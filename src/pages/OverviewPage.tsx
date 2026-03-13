@@ -32,7 +32,7 @@ const groupIcons: Record<string, React.ReactNode> = {
 };
 
 const C = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
-  <code className={`text-xs bg-slate-700/50 px-1 py-0.5 rounded font-mono ${className}`}>{children}</code>
+  <code className={`text-[13px] bg-slate-700/50 px-1 py-0.5 rounded font-mono ${className}`}>{children}</code>
 );
 
 export default function OverviewPage() {
@@ -58,7 +58,7 @@ export default function OverviewPage() {
             <div className="flex items-center gap-3 mt-2">
               <span className="text-sm text-slate-400">Protocol <span className="font-mono text-slate-300">v0.1</span></span>
               <span className="text-slate-700">|</span>
-              <span className="text-xs text-slate-500 font-mono">npm: @novasamatech/host-api v0.6.6-1</span>
+              <span className="text-sm text-slate-400 font-mono">npm: @novasamatech/host-api v0.6.6-1</span>
             </div>
           </div>
         </div>
@@ -74,28 +74,28 @@ export default function OverviewPage() {
       <div className="grid grid-cols-4 gap-4 mb-16">
         <div className="stat-card stat-card-pink bg-slate-800/40 border border-slate-700/40 rounded-xl p-5 card-hover animate-slide-up stagger-1">
           <div className="text-3xl font-bold text-white font-display">{totalMethods}</div>
-          <div className="text-xs text-slate-400 mt-1.5 font-medium">Total Methods</div>
+          <div className="text-sm text-slate-400 mt-1.5 font-medium">Total Methods</div>
         </div>
         <div className="stat-card stat-card-emerald bg-slate-800/40 border border-slate-700/40 rounded-xl p-5 card-hover animate-slide-up stagger-2">
           <div className="flex items-center gap-2.5">
             <ArrowLeftRight size={18} className="text-emerald-400" />
             <span className="text-3xl font-bold text-white font-display">{reqResMethods}</span>
           </div>
-          <div className="text-xs text-slate-400 mt-1.5 font-medium">Request/Response</div>
+          <div className="text-sm text-slate-400 mt-1.5 font-medium">Request/Response</div>
         </div>
         <div className="stat-card stat-card-amber bg-slate-800/40 border border-slate-700/40 rounded-xl p-5 card-hover animate-slide-up stagger-3">
           <div className="flex items-center gap-2.5">
             <Radio size={18} className="text-amber-400" />
             <span className="text-3xl font-bold text-white font-display">{subMethods}</span>
           </div>
-          <div className="text-xs text-slate-400 mt-1.5 font-medium">Subscriptions</div>
+          <div className="text-sm text-slate-400 mt-1.5 font-medium">Subscriptions</div>
         </div>
         <div className="stat-card stat-card-purple bg-slate-800/40 border border-slate-700/40 rounded-xl p-5 card-hover animate-slide-up stagger-4">
           <div className="flex items-center gap-2.5">
             <RotateCcw size={18} className="text-purple-400" />
             <span className="text-3xl font-bold text-white font-display">{revSubMethods}</span>
           </div>
-          <div className="text-xs text-slate-400 mt-1.5 font-medium">Reverse Sub</div>
+          <div className="text-sm text-slate-400 mt-1.5 font-medium">Reverse Sub</div>
         </div>
       </div>
 
@@ -112,12 +112,12 @@ export default function OverviewPage() {
               </div>
               <h3 className="text-sm font-semibold text-white font-display">Host</h3>
             </div>
-            <p className="text-sm text-slate-400 leading-relaxed mb-3">
+            <p className="text-sm text-slate-300 leading-relaxed mb-3">
               The host is the parent application that embeds products in sandboxes. It acts as the
-              <strong className="text-slate-300"> gatekeeper and service provider</strong> &mdash; managing user accounts,
+              <strong className="text-white"> gatekeeper and service provider</strong> &mdash; managing user accounts,
               signing transactions, mediating blockchain access, and enforcing permissions.
             </p>
-            <div className="text-xs text-slate-500 space-y-1.5">
+            <div className="text-sm text-slate-400 space-y-1.5">
               <div className="flex items-start gap-2">
                 <span className="text-purple-400 mt-0.5">&bull;</span>
                 <span>Registers handlers via <C>container.handleMethodName(handler)</C></span>
@@ -141,12 +141,12 @@ export default function OverviewPage() {
               </div>
               <h3 className="text-sm font-semibold text-white font-display">Product</h3>
             </div>
-            <p className="text-sm text-slate-400 leading-relaxed mb-3">
+            <p className="text-sm text-slate-300 leading-relaxed mb-3">
               A product is an application running inside a sandbox. It uses the Host API to
-              <strong className="text-slate-300"> request services</strong> from the host &mdash; reading accounts,
+              <strong className="text-white"> request services</strong> from the host &mdash; reading accounts,
               signing payloads, accessing chain data, and more.
             </p>
-            <div className="text-xs text-slate-500 space-y-1.5">
+            <div className="text-sm text-slate-400 space-y-1.5">
               <div className="flex items-start gap-2">
                 <span className="text-emerald-400 mt-0.5">&bull;</span>
                 <span>Calls methods via <C>hostApi.methodName(payload)</C></span>
@@ -169,7 +169,7 @@ export default function OverviewPage() {
             <Layers size={16} className="text-slate-400" />
             <h3 className="text-sm font-semibold text-white font-display">Communication Flow</h3>
           </div>
-          <div className="bg-slate-900/60 rounded-lg p-4 font-mono text-xs text-slate-400 leading-loose">
+          <div className="bg-slate-900/60 rounded-lg p-4 font-mono text-sm text-slate-400 leading-loose">
             <div className="flex items-center justify-between gap-4 mb-1">
               <span className="text-emerald-400 w-32 text-right">Product (sandbox)</span>
               <span className="text-slate-600 flex-1 text-center border-b border-dashed border-slate-700">&nbsp;</span>
@@ -177,34 +177,34 @@ export default function OverviewPage() {
             </div>
             <div className="space-y-0.5 pl-4">
               <div className="flex items-center gap-2">
-                <span className="text-slate-500 w-28 text-right">handshake</span>
+                <span className="text-slate-300 w-28 text-right">handshake</span>
                 <span className="text-emerald-400">&rarr;</span>
-                <span className="text-slate-500">negotiate codec version (auto, every 50ms until ack)</span>
+                <span className="text-slate-400">negotiate codec version (auto, every 50ms until ack)</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-slate-500 w-28 text-right">request</span>
+                <span className="text-slate-300 w-28 text-right">request</span>
                 <span className="text-emerald-400">&rarr;</span>
-                <span className="text-slate-500">SCALE-encoded method call via postMessage</span>
+                <span className="text-slate-400">SCALE-encoded method call via postMessage</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-slate-500 w-28 text-right">response</span>
+                <span className="text-slate-300 w-28 text-right">response</span>
                 <span className="text-purple-400">&larr;</span>
-                <span className="text-slate-500">Result&lt;Ok, Err&gt; back via postMessage</span>
+                <span className="text-slate-400">Result&lt;Ok, Err&gt; back via postMessage</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-slate-500 w-28 text-right">_start</span>
+                <span className="text-slate-300 w-28 text-right">_start</span>
                 <span className="text-emerald-400">&rarr;</span>
-                <span className="text-slate-500">open subscription (multiplexed if same params)</span>
+                <span className="text-slate-400">open subscription (multiplexed if same params)</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-slate-500 w-28 text-right">_receive</span>
+                <span className="text-slate-300 w-28 text-right">_receive</span>
                 <span className="text-purple-400">&larr;</span>
-                <span className="text-slate-500">host pushes values (0..N times)</span>
+                <span className="text-slate-400">host pushes values (0..N times)</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-slate-500 w-28 text-right">_stop / _interrupt</span>
-                <span className="text-slate-600">&harr;</span>
-                <span className="text-slate-500">either side can close</span>
+                <span className="text-slate-300 w-28 text-right">_stop / _interrupt</span>
+                <span className="text-slate-500">&harr;</span>
+                <span className="text-slate-400">either side can close</span>
               </div>
             </div>
           </div>
@@ -214,8 +214,8 @@ export default function OverviewPage() {
       {/* High-level Providers */}
       <div className="mb-16 animate-slide-up stagger-6">
         <h2 className="text-xl font-semibold text-white mb-5 font-display tracking-tight">SDK Providers</h2>
-        <p className="text-sm text-slate-400 mb-4 leading-relaxed max-w-3xl">
-          While products can call Host API methods directly, the SDK provides higher-level <strong className="text-slate-300">providers</strong> that
+        <p className="text-sm text-slate-300 mb-4 leading-relaxed max-w-3xl">
+          While products can call Host API methods directly, the SDK provides higher-level <strong className="text-white">providers</strong> that
           wrap groups of low-level protocol methods into ergonomic interfaces.
         </p>
 
@@ -229,20 +229,20 @@ export default function OverviewPage() {
                   PAPI Provider
                   <C>createPapiProvider(genesisHash)</C>
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5">from <C>@novasamatech/product-sdk</C></p>
+                <p className="text-xs text-slate-400 mt-0.5">from <C>@novasamatech/product-sdk</C></p>
               </div>
-              <span className="text-[10px] bg-sky-500/10 text-sky-400 px-2 py-0.5 rounded-full border border-sky-500/20 whitespace-nowrap">
+              <span className="text-xs bg-sky-500/10 text-sky-400 px-2 py-0.5 rounded-full border border-sky-500/20 whitespace-nowrap">
                 13 low-level methods
               </span>
             </div>
-            <p className="text-sm text-slate-400 leading-relaxed mb-3">
-              The <strong className="text-slate-300">PAPI provider</strong> wraps the entire
-              <strong className="text-slate-300"> Chain Interaction</strong> group (Group 9) &mdash; all 13{' '}
+            <p className="text-sm text-slate-300 leading-relaxed mb-3">
+              The <strong className="text-white">PAPI provider</strong> wraps the entire
+              <strong className="text-white"> Chain Interaction</strong> group (Group 9) &mdash; all 13{' '}
               <C>remote_chain_*</C> methods &mdash; behind a standard <C>polkadot-api</C> {' '}
               <C>JsonRpcProvider</C> interface. This means products never need to call chain methods directly;
               they interact with Substrate chains through the familiar polkadot-api abstractions.
             </p>
-            <div className="text-xs text-slate-500 leading-relaxed">
+            <div className="text-sm text-slate-400 leading-relaxed">
               On the host side, a single <C>container.handleChainConnection(factory)</C> call registers a {' '}
               <C>JsonRpcProvider</C> factory. The internal <C>chainConnectionManager</C> then handles all chain methods
               automatically &mdash; translating between the binary protocol and JSON-RPC, multiplexing follow
@@ -259,13 +259,13 @@ export default function OverviewPage() {
                   Product Chat Manager
                   <C>createProductChatManager()</C>
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5">from <C>@novasamatech/product-sdk</C></p>
+                <p className="text-xs text-slate-400 mt-0.5">from <C>@novasamatech/product-sdk</C></p>
               </div>
-              <span className="text-[10px] bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20 whitespace-nowrap">
+              <span className="text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20 whitespace-nowrap">
                 reverse subscription
               </span>
             </div>
-            <p className="text-sm text-slate-400 leading-relaxed">
+            <p className="text-sm text-slate-300 leading-relaxed">
               Manages the <strong className="text-slate-300">reverse-direction subscription</strong> for custom chat
               message rendering (<C>product_chat_custom_message_render_subscribe</C>). This is the only
               method where the host initiates and the product responds &mdash; providing a rendered
@@ -284,7 +284,7 @@ export default function OverviewPage() {
               <ArrowLeftRight size={16} className="text-emerald-400" />
               <h3 className="text-sm font-semibold text-white font-display">Request/Response</h3>
             </div>
-            <p className="text-sm text-slate-400 leading-relaxed">
+            <p className="text-sm text-slate-300 leading-relaxed">
               The initiator sends a request; the responder returns exactly one response.
               On the product side, calls return a <C>ResultAsync</C>.
               All responses are wrapped in <C>{'Result<Ok, Err>'}</C>.
@@ -295,7 +295,7 @@ export default function OverviewPage() {
               <Radio size={16} className="text-amber-400" />
               <h3 className="text-sm font-semibold text-white font-display">Subscription</h3>
             </div>
-            <p className="text-sm text-slate-400 leading-relaxed">
+            <p className="text-sm text-slate-300 leading-relaxed">
               A long-lived channel where the responder sends multiple values over time.
               Uses <C>_start</C>,{' '}
               <C>_receive</C>,{' '}
@@ -308,7 +308,7 @@ export default function OverviewPage() {
               <RotateCcw size={16} className="text-purple-400" />
               <h3 className="text-sm font-semibold text-white font-display">Reverse Subscription</h3>
             </div>
-            <p className="text-sm text-slate-400 leading-relaxed">
+            <p className="text-sm text-slate-300 leading-relaxed">
               A special subscription where the <strong className="text-slate-300">host initiates</strong> and
               the <strong className="text-slate-300">product responds</strong>. Used only for custom chat message
               rendering, where the host asks the product to provide a UI tree.
@@ -316,7 +316,7 @@ export default function OverviewPage() {
           </div>
           <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-5 card-hover">
             <h3 className="text-sm font-semibold text-white mb-2 font-display">Handshake</h3>
-            <p className="text-sm text-slate-400 leading-relaxed">
+            <p className="text-sm text-slate-300 leading-relaxed">
               Before any method calls, the transport automatically negotiates the codec version. The product sends{' '}
               <C>host_handshake</C> every 50ms until the host responds (10s timeout).
               Current codec version: <C>1</C> (JAM codec). Handled internally by the transport.
@@ -346,17 +346,17 @@ export default function OverviewPage() {
                     <div className="flex items-center justify-between mb-1">
                       <h3 className="font-semibold text-white text-sm font-display">{group.name}</h3>
                       <div className="flex items-center gap-1 text-slate-500 group-hover:text-pink-400 transition-colors">
-                        <span className="text-xs">{groupMethods.length} methods</span>
+                        <span className="text-sm">{groupMethods.length} methods</span>
                         <ArrowRight size={14} />
                       </div>
                     </div>
-                    <p className="text-xs text-slate-400 leading-relaxed">{group.description}</p>
+                    <p className="text-sm text-slate-400 leading-relaxed">{group.description}</p>
                     <div className="flex flex-wrap gap-1.5 mt-3">
                       {groupMethods.map(m => (
                         <button
                           key={m.id}
                           onClick={(e) => { e.stopPropagation(); navigate(`/method/${m.id}`); }}
-                          className="text-[10px] font-mono bg-slate-700/40 hover:bg-slate-700/70 text-slate-300 px-2 py-0.5 rounded transition-colors"
+                          className="text-xs font-mono bg-slate-700/40 hover:bg-slate-700/70 text-slate-300 px-2 py-0.5 rounded transition-colors"
                         >
                           {m.name}
                         </button>

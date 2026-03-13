@@ -30,7 +30,7 @@ export default function TypesPage() {
             All types use SCALE codec primitives from <code className="text-xs font-mono bg-slate-800 px-1 py-0.5 rounded">scale-ts</code> and <code className="text-xs font-mono bg-slate-800 px-1 py-0.5 rounded">@novasamatech/scale</code>.
           </p>
         </div>
-        <div className="text-sm text-slate-500 font-display">{dataTypes.length} types</div>
+        <div className="text-sm text-slate-400 font-display">{dataTypes.length} types</div>
       </div>
 
       {/* Search */}
@@ -51,7 +51,7 @@ export default function TypesPage() {
           <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-3 flex items-center gap-2 font-display">
             <span className="w-2 h-2 rounded-full bg-pink-500/60" />
             {category}
-            <span className="text-xs font-normal text-slate-500 lowercase">({types.length})</span>
+            <span className="text-xs font-normal text-slate-400 lowercase">({types.length})</span>
           </h2>
           <div className="grid grid-cols-1 gap-1.5">
             {types.map(t => (
@@ -65,9 +65,9 @@ export default function TypesPage() {
                     <span className="font-mono text-sm text-sky-400 group-hover:text-sky-300 transition-colors">
                       {t.name}
                     </span>
-                    <p className="text-xs text-slate-400 mt-0.5 truncate">{t.description}</p>
+                    <p className="text-sm text-slate-400 mt-0.5 truncate">{t.description}</p>
                   </div>
-                  <code className="text-[10px] font-mono text-slate-500 shrink-0 bg-slate-800/50 px-2 py-0.5 rounded">
+                  <code className="text-xs font-mono text-slate-400 shrink-0 bg-slate-800/50 px-2 py-0.5 rounded">
                     {t.definition.length > 40 ? t.definition.slice(0, 40) + '...' : t.definition}
                   </code>
                 </div>

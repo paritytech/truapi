@@ -139,7 +139,7 @@ export default function Sidebar() {
 
       {/* Groups */}
       <nav className="flex-1 overflow-y-auto px-3 pb-4 pt-1">
-        <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold px-3 mb-2 mt-2 font-display">
+        <div className="text-xs uppercase tracking-wider text-slate-400 font-semibold px-3 mb-2 mt-2 font-display">
           Methods
         </div>
         {groups.map(group => {

@@ -44,7 +44,7 @@ export default function MethodPage() {
           {group?.name}
         </button>
         <span>/</span>
-        <span className="text-white font-mono text-xs">{method.name}</span>
+        <span className="text-white font-mono text-sm">{method.name}</span>
       </div>
 
       {/* Header */}
@@ -69,32 +69,32 @@ export default function MethodPage() {
         </div>
         <div className="divide-y divide-slate-700/30">
           <div className="px-5 py-3 flex items-start gap-4">
-            <span className="text-xs text-slate-500 w-28 shrink-0 pt-0.5">Product function</span>
+            <span className="text-sm text-slate-400 w-32 shrink-0 pt-0.5">Product function</span>
             <code className="text-sm font-mono text-emerald-400">{method.productFunction}</code>
           </div>
           <div className="px-5 py-3 flex items-start gap-4">
-            <span className="text-xs text-slate-500 w-28 shrink-0 pt-0.5">Host handler</span>
+            <span className="text-sm text-slate-400 w-32 shrink-0 pt-0.5">Host handler</span>
             <code className="text-sm font-mono text-purple-400">{method.hostHandler}</code>
           </div>
           <div className="px-5 py-3 flex items-start gap-4">
-            <span className="text-xs text-slate-500 w-28 shrink-0 pt-0.5">
+            <span className="text-sm text-slate-400 w-32 shrink-0 pt-0.5">
               {method.pattern === 'subscription' || method.pattern === 'reverse-subscription' ? 'Start payload' : 'Request'}
             </span>
             <div>
               <TypeString text={method.request} />
               {method.requestDescription && (
-                <p className="text-xs text-slate-400 mt-1">{method.requestDescription}</p>
+                <p className="text-sm text-slate-400 mt-1">{method.requestDescription}</p>
               )}
             </div>
           </div>
           <div className="px-5 py-3 flex items-start gap-4">
-            <span className="text-xs text-slate-500 w-28 shrink-0 pt-0.5">
+            <span className="text-sm text-slate-400 w-32 shrink-0 pt-0.5">
               {method.pattern === 'subscription' || method.pattern === 'reverse-subscription' ? 'Receive payload' : 'Response'}
             </span>
             <div>
               <TypeString text={method.response} />
               {method.responseDescription && (
-                <p className="text-xs text-slate-400 mt-1">{method.responseDescription}</p>
+                <p className="text-sm text-slate-400 mt-1">{method.responseDescription}</p>
               )}
             </div>
           </div>
@@ -139,7 +139,7 @@ export default function MethodPage() {
           >
             <ChevronLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
             <div className="text-left">
-              <div className="text-[10px] text-slate-500">Previous</div>
+              <div className="text-xs text-slate-400">Previous</div>
               <div className="font-mono text-xs">{(prevMethod || globalPrev)!.name}</div>
             </div>
           </button>
@@ -150,7 +150,7 @@ export default function MethodPage() {
             className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors group"
           >
             <div className="text-right">
-              <div className="text-[10px] text-slate-500">Next</div>
+              <div className="text-xs text-slate-400">Next</div>
               <div className="font-mono text-xs">{(nextMethod || globalNext)!.name}</div>
             </div>
             <ChevronRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
