@@ -25,9 +25,12 @@ export default function TypeLink({ typeId, className = '' }: TypeLinkProps) {
   );
 }
 
-// All linkable type names, derived from the data — sorted longest-first to avoid partial matches
-const allTypeNames = dataTypes
-  .map(t => t.name)
+// All linkable type IDs, derived from the data — sorted longest-first to avoid partial matches.
+// We match on `id` (e.g. "Result") not `name` (e.g. "Result(Ok, Err)") because
+// method signatures use the clean id form.
+const allTypeIds = dataTypes
+  .map(t => t.id)
+  .filter(id => id.length > 1) // skip single-char or trivially short ids
   .sort((a, b) => b.length - a.length);
 
 // Parse a type string and make type references clickable
@@ -42,11 +45,19 @@ export function TypeString({ text, className = '' }: { text: string; className?:
       let earliestIndex = Infinity;
       let earliestType = '';
 
-      for (const typeName of allTypeNames) {
-        const idx = remaining.indexOf(typeName);
+      for (const typeId of allTypeIds) {
+        const idx = remaining.indexOf(typeId);
         if (idx !== -1 && idx < earliestIndex) {
+          // Ensure we match whole words — the character after the match
+          // should not be a letter/digit (to avoid matching "bool" inside "boolean")
+          const afterIdx = idx + typeId.length;
+          const charAfter = remaining[afterIdx];
+          const charBefore = idx > 0 ? remaining[idx - 1] : '';
+          if (charAfter && /[a-zA-Z0-9_]/.test(charAfter)) continue;
+          if (charBefore && /[a-zA-Z0-9_]/.test(charBefore)) continue;
+
           earliestIndex = idx;
-          earliestType = typeName;
+          earliestType = typeId;
         }
       }
 
