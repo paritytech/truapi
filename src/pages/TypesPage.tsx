@@ -1,11 +1,10 @@
 import { useNavigate } from 'react-router-dom';
-import { dataTypes, getTypeCategories } from '../data/types';
+import { dataTypes } from '../data/types';
 import { Search } from 'lucide-react';
 import { useState } from 'react';
 
 export default function TypesPage() {
   const navigate = useNavigate();
-  const categories = getTypeCategories();
   const [search, setSearch] = useState('');
 
   const filtered = search
