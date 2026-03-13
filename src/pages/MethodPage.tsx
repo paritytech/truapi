@@ -32,7 +32,7 @@ export default function MethodPage() {
   return (
     <div className="max-w-4xl mx-auto">
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm text-slate-400 mb-6">
+      <div className="flex items-center gap-2 text-sm text-slate-400 mb-6 animate-fade-in">
         <button onClick={() => navigate('/')} className="hover:text-white transition-colors">
           Host API
         </button>
@@ -48,7 +48,7 @@ export default function MethodPage() {
       </div>
 
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-8 animate-slide-up">
         <div className="flex items-start justify-between gap-4 mb-3">
           <h1 className="text-2xl font-bold text-white font-mono break-all">{method.name}</h1>
           <PatternBadge pattern={method.pattern} />
@@ -63,9 +63,9 @@ export default function MethodPage() {
       </div>
 
       {/* API Surface */}
-      <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl overflow-hidden mb-8">
+      <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl overflow-hidden mb-8 card-hover animate-slide-up stagger-1">
         <div className="border-b border-slate-700/40 px-5 py-3">
-          <h2 className="text-sm font-semibold text-white">API Surface</h2>
+          <h2 className="text-sm font-semibold text-white font-display">API Surface</h2>
         </div>
         <div className="divide-y divide-slate-700/30">
           <div className="px-5 py-3 flex items-start gap-4">
@@ -103,9 +103,9 @@ export default function MethodPage() {
 
       {/* Error types */}
       {method.errorType && method.errorVariants && (
-        <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl overflow-hidden mb-8">
+        <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl overflow-hidden mb-8 card-hover animate-slide-up stagger-2">
           <div className="border-b border-slate-700/40 px-5 py-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-white">Error Type</h2>
+            <h2 className="text-sm font-semibold text-white font-display">Error Type</h2>
             <TypeString text={method.errorType} />
           </div>
           <div className="px-5 py-3">
@@ -124,20 +124,20 @@ export default function MethodPage() {
       )}
 
       {/* Code Examples */}
-      <div className="space-y-4 mb-8">
-        <h2 className="text-lg font-semibold text-white">Usage Examples</h2>
+      <div className="space-y-4 mb-8 animate-slide-up stagger-3">
+        <h2 className="text-lg font-semibold text-white font-display">Usage Examples</h2>
         <CodeBlock code={method.productExample} title="Product Side" />
         <CodeBlock code={method.hostExample} title="Host Side" />
       </div>
 
       {/* Navigation */}
-      <div className="flex items-center justify-between pt-6 border-t border-slate-700/40">
+      <div className="flex items-center justify-between pt-6 border-t border-slate-700/40 animate-fade-in stagger-4">
         {(prevMethod || globalPrev) ? (
           <button
             onClick={() => navigate(`/method/${(prevMethod || globalPrev)!.id}`)}
-            className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors"
+            className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors group"
           >
-            <ChevronLeft size={16} />
+            <ChevronLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
             <div className="text-left">
               <div className="text-[10px] text-slate-500">Previous</div>
               <div className="font-mono text-xs">{(prevMethod || globalPrev)!.name}</div>
@@ -147,13 +147,13 @@ export default function MethodPage() {
         {(nextMethod || globalNext) ? (
           <button
             onClick={() => navigate(`/method/${(nextMethod || globalNext)!.id}`)}
-            className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors"
+            className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors group"
           >
             <div className="text-right">
               <div className="text-[10px] text-slate-500">Next</div>
               <div className="font-mono text-xs">{(nextMethod || globalNext)!.name}</div>
             </div>
-            <ChevronRight size={16} />
+            <ChevronRight size={16} className="group-hover:translate-x-0.5 transition-transform" />
           </button>
         ) : <div />}
       </div>

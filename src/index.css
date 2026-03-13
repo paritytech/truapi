@@ -1,7 +1,8 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+  --font-sans: 'DM Sans', system-ui, sans-serif;
+  --font-display: 'Outfit', 'DM Sans', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, monospace;
   --color-slate-850: #172033;
   --color-slate-925: #0c1220;
@@ -15,6 +16,10 @@
   scrollbar-color: #334155 transparent;
 }
 
+button {
+  cursor: pointer;
+}
+
 ::selection {
   background: var(--color-accent-dim);
   color: white;
@@ -24,13 +29,158 @@ body {
   margin: 0;
   background: #0c1220;
   color: #cbd5e1;
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: 'DM Sans', system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 #root {
   min-height: 100vh;
+  position: relative;
+}
+
+/* Subtle noise texture overlay */
+#root::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.025;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-repeat: repeat;
+  background-size: 256px 256px;
+}
+
+/* Headings use Outfit */
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Outfit', 'DM Sans', system-ui, sans-serif;
+}
+
+/* === Animations === */
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 800px;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulseGlow {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s ease-out both;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-slide-down {
+  animation: slideDown 0.25s ease-out both;
+  overflow: hidden;
+}
+
+/* Stagger delays */
+.stagger-1 { animation-delay: 0.05s; }
+.stagger-2 { animation-delay: 0.1s; }
+.stagger-3 { animation-delay: 0.15s; }
+.stagger-4 { animation-delay: 0.2s; }
+.stagger-5 { animation-delay: 0.25s; }
+.stagger-6 { animation-delay: 0.3s; }
+.stagger-7 { animation-delay: 0.35s; }
+.stagger-8 { animation-delay: 0.4s; }
+.stagger-9 { animation-delay: 0.45s; }
+.stagger-10 { animation-delay: 0.5s; }
+
+/* Card hover depth */
+.card-hover {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 0.2s ease;
+}
+
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px -8px rgba(0, 0, 0, 0.4),
+              0 0 0 1px rgba(148, 163, 184, 0.08);
+}
+
+/* Stat card glow variants */
+.stat-card {
+  position: relative;
+  overflow: hidden;
+}
+
+.stat-card::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  right: -50%;
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.stat-card:hover::after {
+  opacity: 1;
+}
+
+.stat-card-emerald::after {
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.08), transparent 70%);
+}
+
+.stat-card-amber::after {
+  background: radial-gradient(circle, rgba(245, 158, 11, 0.08), transparent 70%);
+}
+
+.stat-card-purple::after {
+  background: radial-gradient(circle, rgba(168, 85, 247, 0.08), transparent 70%);
+}
+
+.stat-card-pink::after {
+  background: radial-gradient(circle, rgba(236, 72, 153, 0.08), transparent 70%);
 }
 
 /* Syntax highlighting */

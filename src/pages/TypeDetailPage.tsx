@@ -32,7 +32,7 @@ export default function TypeDetailPage() {
   return (
     <div className="max-w-4xl mx-auto">
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 text-sm text-slate-400 mb-6">
+      <div className="flex items-center gap-2 text-sm text-slate-400 mb-6 animate-fade-in">
         <button onClick={() => navigate('/')} className="hover:text-white transition-colors">
           Host API
         </button>
@@ -45,7 +45,7 @@ export default function TypeDetailPage() {
       </div>
 
       {/* Header */}
-      <div className="mb-8">
+      <div className="mb-8 animate-slide-up">
         <div className="flex items-center gap-3 mb-2">
           <h1 className="text-2xl font-bold text-white font-mono">{dt.name}</h1>
           <span className="text-xs px-2 py-0.5 rounded-full bg-slate-700/50 text-slate-400 border border-slate-600/30">
@@ -61,9 +61,9 @@ export default function TypeDetailPage() {
       </div>
 
       {/* Definition */}
-      <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl overflow-hidden mb-8">
+      <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl overflow-hidden mb-8 card-hover animate-slide-up stagger-1">
         <div className="border-b border-slate-700/40 px-5 py-3">
-          <h2 className="text-sm font-semibold text-white">Definition</h2>
+          <h2 className="text-sm font-semibold text-white font-display">Definition</h2>
         </div>
         <div className="px-5 py-4">
           <div className="bg-slate-900/60 rounded-lg p-4 font-mono text-sm">
@@ -74,9 +74,9 @@ export default function TypeDetailPage() {
 
       {/* Fields */}
       {dt.fields && dt.fields.length > 0 && (
-        <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl overflow-hidden mb-8">
+        <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl overflow-hidden mb-8 card-hover animate-slide-up stagger-2">
           <div className="border-b border-slate-700/40 px-5 py-3">
-            <h2 className="text-sm font-semibold text-white">Fields</h2>
+            <h2 className="text-sm font-semibold text-white font-display">Fields</h2>
           </div>
           <div className="divide-y divide-slate-700/30">
             {dt.fields.map((field, i) => (
@@ -94,9 +94,9 @@ export default function TypeDetailPage() {
 
       {/* Variants */}
       {dt.variants && dt.variants.length > 0 && (
-        <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl overflow-hidden mb-8">
+        <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl overflow-hidden mb-8 card-hover animate-slide-up stagger-3">
           <div className="border-b border-slate-700/40 px-5 py-3">
-            <h2 className="text-sm font-semibold text-white">Variants</h2>
+            <h2 className="text-sm font-semibold text-white font-display">Variants</h2>
           </div>
           <div className="divide-y divide-slate-700/30">
             {dt.variants.map((variant, i) => (
@@ -114,16 +114,16 @@ export default function TypeDetailPage() {
 
       {/* Used by methods */}
       {referencingMethods.length > 0 && (
-        <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl overflow-hidden mb-8">
+        <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl overflow-hidden mb-8 card-hover animate-slide-up stagger-4">
           <div className="border-b border-slate-700/40 px-5 py-3">
-            <h2 className="text-sm font-semibold text-white">Used by Methods</h2>
+            <h2 className="text-sm font-semibold text-white font-display">Used by Methods</h2>
           </div>
           <div className="px-5 py-3 flex flex-wrap gap-2">
             {referencingMethods.map(m => (
               <button
                 key={m.id}
                 onClick={() => navigate(`/method/${m.id}`)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-mono bg-slate-700/30 text-slate-300 hover:bg-slate-700/50 hover:text-white border border-slate-600/30 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-mono bg-slate-700/30 text-slate-300 hover:bg-slate-700/50 hover:text-white border border-slate-600/30 transition-all duration-150 hover:shadow-[0_2px_8px_rgba(0,0,0,0.2)]"
               >
                 <ArrowRight size={10} />
                 {m.name}
@@ -135,16 +135,16 @@ export default function TypeDetailPage() {
 
       {/* Related types */}
       {relatedTypes.length > 0 && (
-        <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl overflow-hidden mb-8">
+        <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl overflow-hidden mb-8 card-hover animate-slide-up stagger-5">
           <div className="border-b border-slate-700/40 px-5 py-3">
-            <h2 className="text-sm font-semibold text-white">Related Types</h2>
+            <h2 className="text-sm font-semibold text-white font-display">Related Types</h2>
           </div>
           <div className="px-5 py-3 flex flex-wrap gap-2">
             {relatedTypes.map(t => (
               <button
                 key={t.id}
                 onClick={() => navigate(`/type/${t.id}`)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-mono bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 border border-sky-500/20 transition-colors"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-mono bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 border border-sky-500/20 transition-all duration-150"
               >
                 {t.name}
               </button>
@@ -156,9 +156,9 @@ export default function TypeDetailPage() {
       {/* Back */}
       <button
         onClick={() => navigate('/types')}
-        className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors mt-4"
+        className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors mt-4 group animate-fade-in"
       >
-        <ArrowLeft size={16} />
+        <ArrowLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
         Back to all types
       </button>
     </div>

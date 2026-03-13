@@ -23,32 +23,32 @@ export default function TypesPage() {
 
   return (
     <div className="max-w-5xl mx-auto">
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between mb-8 animate-slide-up">
         <div>
-          <h1 className="text-2xl font-bold text-white mb-1">Data Types</h1>
+          <h1 className="text-2xl font-bold text-white mb-1 font-display tracking-tight">Data Types</h1>
           <p className="text-sm text-slate-400">
             All types use SCALE codec primitives from <code className="text-xs font-mono bg-slate-800 px-1 py-0.5 rounded">scale-ts</code> and <code className="text-xs font-mono bg-slate-800 px-1 py-0.5 rounded">@novasamatech/scale</code>.
           </p>
         </div>
-        <div className="text-sm text-slate-500">{dataTypes.length} types</div>
+        <div className="text-sm text-slate-500 font-display">{dataTypes.length} types</div>
       </div>
 
       {/* Search */}
-      <div className="relative mb-8">
+      <div className="relative mb-8 animate-slide-up stagger-1">
         <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
         <input
           type="text"
           placeholder="Search types..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg pl-10 pr-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-pink-500/50 focus:ring-1 focus:ring-pink-500/20 transition-colors"
+          className="w-full bg-slate-800/50 border border-slate-700/50 rounded-lg pl-10 pr-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none focus:border-pink-500/50 focus:ring-1 focus:ring-pink-500/20 transition-all duration-200"
         />
       </div>
 
       {/* Categories */}
-      {Array.from(categoryMap.entries()).map(([category, types]) => (
-        <div key={category} className="mb-8">
-          <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-3 flex items-center gap-2">
+      {Array.from(categoryMap.entries()).map(([category, types], catIdx) => (
+        <div key={category} className="mb-8 animate-slide-up" style={{ animationDelay: `${0.1 + catIdx * 0.06}s` }}>
+          <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider mb-3 flex items-center gap-2 font-display">
             <span className="w-2 h-2 rounded-full bg-pink-500/60" />
             {category}
             <span className="text-xs font-normal text-slate-500 lowercase">({types.length})</span>
@@ -58,7 +58,7 @@ export default function TypesPage() {
               <button
                 key={t.id}
                 onClick={() => navigate(`/type/${t.id}`)}
-                className="bg-slate-800/30 border border-slate-700/30 rounded-lg px-4 py-3 text-left hover:border-slate-600/50 hover:bg-slate-800/50 transition-colors group"
+                className="bg-slate-800/30 border border-slate-700/30 rounded-lg px-4 py-3 text-left hover:border-slate-600/50 hover:bg-slate-800/50 transition-all duration-150 group hover:shadow-[0_4px_12px_rgba(0,0,0,0.2)]"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="min-w-0">

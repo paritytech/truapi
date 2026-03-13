@@ -2,7 +2,6 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { groups, methods } from '../data/types';
 import {
   ChevronDown,
-  ChevronRight,
   Zap,
   Shield,
   HardDrive,
@@ -69,14 +68,14 @@ export default function Sidebar() {
       {/* Header */}
       <div className="p-4 border-b border-slate-700/50">
         <div
-          className="flex items-center gap-2 cursor-pointer"
+          className="flex items-center gap-2.5 cursor-pointer group"
           onClick={() => navigate('/')}
         >
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
-            <span className="text-white text-sm font-bold">H</span>
+          <div className="w-8 h-8 rounded-lg bg-pink-600 flex items-center justify-center group-hover:shadow-[0_0_12px_rgba(219,39,119,0.4)] transition-shadow">
+            <span className="text-white text-sm font-bold font-display">H</span>
           </div>
           <div>
-            <h1 className="text-sm font-semibold text-white leading-tight">Host API</h1>
+            <h1 className="text-sm font-semibold text-white leading-tight font-display tracking-tight">Host API</h1>
           </div>
         </div>
 
@@ -90,10 +89,10 @@ export default function Sidebar() {
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
               Protocol {selectedVersion}
             </span>
-            <ChevronDown size={12} className={`text-slate-500 transition-transform ${versionOpen ? 'rotate-180' : ''}`} />
+            <ChevronDown size={12} className={`text-slate-500 transition-transform duration-200 ${versionOpen ? 'rotate-180' : ''}`} />
           </button>
           {versionOpen && (
-            <div className="absolute top-full left-0 right-0 mt-1 bg-slate-800 border border-slate-700/60 rounded-md shadow-xl z-20 overflow-hidden">
+            <div className="absolute top-full left-0 right-0 mt-1 bg-slate-800 border border-slate-700/60 rounded-md shadow-xl z-20 overflow-hidden animate-scale-in">
               {PROTOCOL_VERSIONS.map(v => (
                 <button
                   key={v.id}
@@ -121,16 +120,16 @@ export default function Sidebar() {
       <div className="px-3 pt-3 pb-1">
         <button
           onClick={() => navigate('/')}
-          className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors ${
-            currentPath === '/' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+          className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-all duration-150 ${
+            currentPath === '/' ? 'bg-slate-800 text-white font-medium' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
           }`}
         >
           Overview
         </button>
         <button
           onClick={() => navigate('/types')}
-          className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors flex items-center gap-2 ${
-            currentPath === '/types' ? 'bg-slate-800 text-white' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+          className={`w-full text-left px-3 py-1.5 rounded-md text-sm transition-all duration-150 flex items-center gap-2 ${
+            currentPath === '/types' || currentPath.startsWith('/type/') ? 'bg-slate-800 text-white font-medium' : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
           }`}
         >
           <Database size={14} />
@@ -140,41 +139,44 @@ export default function Sidebar() {
 
       {/* Groups */}
       <nav className="flex-1 overflow-y-auto px-3 pb-4 pt-1">
-        <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold px-3 mb-2 mt-2">
+        <div className="text-[10px] uppercase tracking-wider text-slate-500 font-semibold px-3 mb-2 mt-2 font-display">
           Methods
         </div>
         {groups.map(group => {
           const isExpanded = expandedGroups.has(group.id);
           const groupMethods = methods.filter(m => m.groupId === group.id);
+          const hasActive = groupMethods.some(m => currentPath === `/method/${m.id}`);
 
           return (
             <div key={group.id} className="mb-0.5">
               <button
                 onClick={() => toggleGroup(group.id)}
-                className="w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-sm text-slate-300 hover:text-white hover:bg-slate-800/50 transition-colors"
+                className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors ${
+                  hasActive
+                    ? 'text-white bg-slate-800/30'
+                    : 'text-slate-300 hover:text-white hover:bg-slate-800/50'
+                }`}
               >
-                <span className="text-slate-500">
+                <span className={`transition-colors ${hasActive ? 'text-pink-400' : 'text-slate-500'}`}>
                   {groupIcons[group.id]}
                 </span>
                 <span className="flex-1 text-left truncate">{group.name}</span>
-                {isExpanded ? (
+                <span className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''}`}>
                   <ChevronDown size={14} className="text-slate-500" />
-                ) : (
-                  <ChevronRight size={14} className="text-slate-500" />
-                )}
+                </span>
               </button>
 
               {isExpanded && (
-                <div className="ml-4 border-l border-slate-700/50 pl-2">
+                <div className="ml-4 border-l border-slate-700/50 pl-2 animate-slide-down">
                   {groupMethods.map(method => {
                     const isActive = currentPath === `/method/${method.id}`;
                     return (
                       <button
                         key={method.id}
                         onClick={() => navigate(`/method/${method.id}`)}
-                        className={`w-full text-left px-2 py-1 rounded text-xs font-mono truncate transition-colors ${
+                        className={`w-full text-left px-2 py-1 rounded text-xs font-mono truncate transition-all duration-150 ${
                           isActive
-                            ? 'bg-pink-500/10 text-pink-400 border-l-2 border-pink-500 -ml-[3px] pl-[11px]'
+                            ? 'bg-pink-500/15 text-pink-300 font-medium shadow-[inset_3px_0_0_0_theme(colors.pink.500)] -ml-[1px] pl-[9px]'
                             : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
                         }`}
                       >

@@ -46,16 +46,18 @@ export default function OverviewPage() {
   return (
     <div className="max-w-5xl mx-auto">
       {/* Hero */}
-      <div className="mb-12">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
-            <span className="text-white text-xl font-bold">H</span>
+      <div className="mb-16 animate-slide-up">
+        <div className="flex items-start gap-5 mb-6">
+          <div className="w-16 h-16 rounded-2xl bg-pink-600 flex items-center justify-center shrink-0 shadow-[0_0_40px_rgba(219,39,119,0.2)]">
+            <span className="text-white text-2xl font-bold font-display">H</span>
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-white">Host API Protocol</h1>
-            <div className="flex items-center gap-3 mt-0.5">
+            <h1 className="text-4xl font-bold text-white font-display tracking-tight leading-tight">
+              Host API Protocol
+            </h1>
+            <div className="flex items-center gap-3 mt-2">
               <span className="text-sm text-slate-400">Protocol <span className="font-mono text-slate-300">v0.1</span></span>
-              <span className="text-slate-600">|</span>
+              <span className="text-slate-700">|</span>
               <span className="text-xs text-slate-500 font-mono">npm: @novasamatech/host-api v0.6.6-1</span>
             </div>
           </div>
@@ -69,53 +71,53 @@ export default function OverviewPage() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 mb-12">
-        <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
-          <div className="text-2xl font-bold text-white">{totalMethods}</div>
-          <div className="text-xs text-slate-400 mt-1">Total Methods</div>
+      <div className="grid grid-cols-4 gap-4 mb-16">
+        <div className="stat-card stat-card-pink bg-slate-800/40 border border-slate-700/40 rounded-xl p-5 card-hover animate-slide-up stagger-1">
+          <div className="text-3xl font-bold text-white font-display">{totalMethods}</div>
+          <div className="text-xs text-slate-400 mt-1.5 font-medium">Total Methods</div>
         </div>
-        <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
-          <div className="flex items-center gap-2">
-            <ArrowLeftRight size={16} className="text-emerald-400" />
-            <span className="text-2xl font-bold text-white">{reqResMethods}</span>
+        <div className="stat-card stat-card-emerald bg-slate-800/40 border border-slate-700/40 rounded-xl p-5 card-hover animate-slide-up stagger-2">
+          <div className="flex items-center gap-2.5">
+            <ArrowLeftRight size={18} className="text-emerald-400" />
+            <span className="text-3xl font-bold text-white font-display">{reqResMethods}</span>
           </div>
-          <div className="text-xs text-slate-400 mt-1">Request/Response</div>
+          <div className="text-xs text-slate-400 mt-1.5 font-medium">Request/Response</div>
         </div>
-        <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
-          <div className="flex items-center gap-2">
-            <Radio size={16} className="text-amber-400" />
-            <span className="text-2xl font-bold text-white">{subMethods}</span>
+        <div className="stat-card stat-card-amber bg-slate-800/40 border border-slate-700/40 rounded-xl p-5 card-hover animate-slide-up stagger-3">
+          <div className="flex items-center gap-2.5">
+            <Radio size={18} className="text-amber-400" />
+            <span className="text-3xl font-bold text-white font-display">{subMethods}</span>
           </div>
-          <div className="text-xs text-slate-400 mt-1">Subscriptions</div>
+          <div className="text-xs text-slate-400 mt-1.5 font-medium">Subscriptions</div>
         </div>
-        <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4">
-          <div className="flex items-center gap-2">
-            <RotateCcw size={16} className="text-purple-400" />
-            <span className="text-2xl font-bold text-white">{revSubMethods}</span>
+        <div className="stat-card stat-card-purple bg-slate-800/40 border border-slate-700/40 rounded-xl p-5 card-hover animate-slide-up stagger-4">
+          <div className="flex items-center gap-2.5">
+            <RotateCcw size={18} className="text-purple-400" />
+            <span className="text-3xl font-bold text-white font-display">{revSubMethods}</span>
           </div>
-          <div className="text-xs text-slate-400 mt-1">Reverse Sub</div>
+          <div className="text-xs text-slate-400 mt-1.5 font-medium">Reverse Sub</div>
         </div>
       </div>
 
       {/* Architecture: Roles */}
-      <div className="mb-12">
-        <h2 className="text-xl font-semibold text-white mb-4">Architecture</h2>
+      <div className="mb-16 animate-slide-up stagger-5">
+        <h2 className="text-xl font-semibold text-white mb-5 font-display tracking-tight">Architecture</h2>
 
         <div className="grid grid-cols-2 gap-4 mb-4">
           {/* Host role */}
-          <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-5">
+          <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-5 card-hover">
             <div className="flex items-center gap-2.5 mb-3">
-              <div className="w-8 h-8 rounded-lg bg-purple-500/15 flex items-center justify-center">
-                <Monitor size={16} className="text-purple-400" />
+              <div className="w-9 h-9 rounded-lg bg-purple-500/15 flex items-center justify-center">
+                <Monitor size={17} className="text-purple-400" />
               </div>
-              <h3 className="text-sm font-semibold text-white">Host</h3>
+              <h3 className="text-sm font-semibold text-white font-display">Host</h3>
             </div>
             <p className="text-sm text-slate-400 leading-relaxed mb-3">
               The host is the parent application that embeds products in sandboxes. It acts as the
               <strong className="text-slate-300"> gatekeeper and service provider</strong> &mdash; managing user accounts,
               signing transactions, mediating blockchain access, and enforcing permissions.
             </p>
-            <div className="text-xs text-slate-500 space-y-1">
+            <div className="text-xs text-slate-500 space-y-1.5">
               <div className="flex items-start gap-2">
                 <span className="text-purple-400 mt-0.5">&bull;</span>
                 <span>Registers handlers via <C>container.handleMethodName(handler)</C></span>
@@ -132,19 +134,19 @@ export default function OverviewPage() {
           </div>
 
           {/* Product role */}
-          <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-5">
+          <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-5 card-hover">
             <div className="flex items-center gap-2.5 mb-3">
-              <div className="w-8 h-8 rounded-lg bg-emerald-500/15 flex items-center justify-center">
-                <Box size={16} className="text-emerald-400" />
+              <div className="w-9 h-9 rounded-lg bg-emerald-500/15 flex items-center justify-center">
+                <Box size={17} className="text-emerald-400" />
               </div>
-              <h3 className="text-sm font-semibold text-white">Product</h3>
+              <h3 className="text-sm font-semibold text-white font-display">Product</h3>
             </div>
             <p className="text-sm text-slate-400 leading-relaxed mb-3">
               A product is an application running inside a sandbox. It uses the Host API to
               <strong className="text-slate-300"> request services</strong> from the host &mdash; reading accounts,
               signing payloads, accessing chain data, and more.
             </p>
-            <div className="text-xs text-slate-500 space-y-1">
+            <div className="text-xs text-slate-500 space-y-1.5">
               <div className="flex items-start gap-2">
                 <span className="text-emerald-400 mt-0.5">&bull;</span>
                 <span>Calls methods via <C>hostApi.methodName(payload)</C></span>
@@ -162,10 +164,10 @@ export default function OverviewPage() {
         </div>
 
         {/* Communication flow diagram */}
-        <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-5">
+        <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-5 card-hover">
           <div className="flex items-center gap-2 mb-3">
             <Layers size={16} className="text-slate-400" />
-            <h3 className="text-sm font-semibold text-white">Communication Flow</h3>
+            <h3 className="text-sm font-semibold text-white font-display">Communication Flow</h3>
           </div>
           <div className="bg-slate-900/60 rounded-lg p-4 font-mono text-xs text-slate-400 leading-loose">
             <div className="flex items-center justify-between gap-4 mb-1">
@@ -210,8 +212,8 @@ export default function OverviewPage() {
       </div>
 
       {/* High-level Providers */}
-      <div className="mb-12">
-        <h2 className="text-xl font-semibold text-white mb-4">SDK Providers</h2>
+      <div className="mb-16 animate-slide-up stagger-6">
+        <h2 className="text-xl font-semibold text-white mb-5 font-display tracking-tight">SDK Providers</h2>
         <p className="text-sm text-slate-400 mb-4 leading-relaxed max-w-3xl">
           While products can call Host API methods directly, the SDK provides higher-level <strong className="text-slate-300">providers</strong> that
           wrap groups of low-level protocol methods into ergonomic interfaces.
@@ -219,10 +221,10 @@ export default function OverviewPage() {
 
         <div className="space-y-3">
           {/* PAPI Provider */}
-          <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-5">
+          <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-5 card-hover">
             <div className="flex items-start justify-between gap-4 mb-2">
               <div>
-                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-white flex items-center gap-2 font-display">
                   <Link size={14} className="text-sky-400" />
                   PAPI Provider
                   <C>createPapiProvider(genesisHash)</C>
@@ -249,10 +251,10 @@ export default function OverviewPage() {
           </div>
 
           {/* Product Chat Manager */}
-          <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-5">
+          <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-5 card-hover">
             <div className="flex items-start justify-between gap-4 mb-2">
               <div>
-                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-white flex items-center gap-2 font-display">
                   <MessageSquare size={14} className="text-amber-400" />
                   Product Chat Manager
                   <C>createProductChatManager()</C>
@@ -274,13 +276,13 @@ export default function OverviewPage() {
       </div>
 
       {/* Protocol Basics */}
-      <div className="mb-12">
-        <h2 className="text-xl font-semibold text-white mb-4">Communication Patterns</h2>
+      <div className="mb-16 animate-slide-up stagger-7">
+        <h2 className="text-xl font-semibold text-white mb-5 font-display tracking-tight">Communication Patterns</h2>
         <div className="grid grid-cols-2 gap-4">
-          <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-5">
+          <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-5 card-hover">
             <div className="flex items-center gap-2 mb-3">
               <ArrowLeftRight size={16} className="text-emerald-400" />
-              <h3 className="text-sm font-semibold text-white">Request/Response</h3>
+              <h3 className="text-sm font-semibold text-white font-display">Request/Response</h3>
             </div>
             <p className="text-sm text-slate-400 leading-relaxed">
               The initiator sends a request; the responder returns exactly one response.
@@ -288,10 +290,10 @@ export default function OverviewPage() {
               All responses are wrapped in <C>{'Result<Ok, Err>'}</C>.
             </p>
           </div>
-          <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-5">
+          <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-5 card-hover">
             <div className="flex items-center gap-2 mb-3">
               <Radio size={16} className="text-amber-400" />
-              <h3 className="text-sm font-semibold text-white">Subscription</h3>
+              <h3 className="text-sm font-semibold text-white font-display">Subscription</h3>
             </div>
             <p className="text-sm text-slate-400 leading-relaxed">
               A long-lived channel where the responder sends multiple values over time.
@@ -301,10 +303,10 @@ export default function OverviewPage() {
               <C>_interrupt</C> messages. The transport multiplexes: duplicate subscriptions with the same params share a single wire subscription.
             </p>
           </div>
-          <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-5">
+          <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-5 card-hover">
             <div className="flex items-center gap-2 mb-3">
               <RotateCcw size={16} className="text-purple-400" />
-              <h3 className="text-sm font-semibold text-white">Reverse Subscription</h3>
+              <h3 className="text-sm font-semibold text-white font-display">Reverse Subscription</h3>
             </div>
             <p className="text-sm text-slate-400 leading-relaxed">
               A special subscription where the <strong className="text-slate-300">host initiates</strong> and
@@ -312,8 +314,8 @@ export default function OverviewPage() {
               rendering, where the host asks the product to provide a UI tree.
             </p>
           </div>
-          <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-white mb-2">Handshake</h3>
+          <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-5 card-hover">
+            <h3 className="text-sm font-semibold text-white mb-2 font-display">Handshake</h3>
             <p className="text-sm text-slate-400 leading-relaxed">
               Before any method calls, the transport automatically negotiates the codec version. The product sends{' '}
               <C>host_handshake</C> every 50ms until the host responds (10s timeout).
@@ -324,45 +326,48 @@ export default function OverviewPage() {
       </div>
 
       {/* Groups */}
-      <h2 className="text-xl font-semibold text-white mb-4">Method Groups</h2>
-      <div className="grid grid-cols-1 gap-3 mb-12">
-        {groups.map(group => {
-          const groupMethods = methods.filter(m => m.groupId === group.id);
-          return (
-            <div
-              key={group.id}
-              className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-5 hover:border-slate-600/50 transition-colors cursor-pointer group"
-              onClick={() => navigate(`/method/${groupMethods[0]?.id}`)}
-            >
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 rounded-lg bg-slate-700/50 flex items-center justify-center text-slate-400 group-hover:text-pink-400 transition-colors shrink-0">
-                  {groupIcons[group.id]}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-1">
-                    <h3 className="font-semibold text-white text-sm">{group.name}</h3>
-                    <div className="flex items-center gap-1 text-slate-500 group-hover:text-pink-400 transition-colors">
-                      <span className="text-xs">{groupMethods.length} methods</span>
-                      <ArrowRight size={14} />
-                    </div>
+      <div className="animate-slide-up stagger-8">
+        <h2 className="text-xl font-semibold text-white mb-5 font-display tracking-tight">Method Groups</h2>
+        <div className="grid grid-cols-1 gap-3 mb-12">
+          {groups.map((group, idx) => {
+            const groupMethods = methods.filter(m => m.groupId === group.id);
+            return (
+              <div
+                key={group.id}
+                className={`bg-slate-800/30 border border-slate-700/40 rounded-xl p-5 card-hover cursor-pointer group animate-slide-up`}
+                style={{ animationDelay: `${0.4 + idx * 0.04}s` }}
+                onClick={() => navigate(`/method/${groupMethods[0]?.id}`)}
+              >
+                <div className="flex items-start gap-4">
+                  <div className="w-10 h-10 rounded-lg bg-slate-700/50 flex items-center justify-center text-slate-400 group-hover:text-pink-400 transition-colors shrink-0">
+                    {groupIcons[group.id]}
                   </div>
-                  <p className="text-xs text-slate-400 leading-relaxed">{group.description}</p>
-                  <div className="flex flex-wrap gap-1.5 mt-3">
-                    {groupMethods.map(m => (
-                      <button
-                        key={m.id}
-                        onClick={(e) => { e.stopPropagation(); navigate(`/method/${m.id}`); }}
-                        className="text-[10px] font-mono bg-slate-700/40 hover:bg-slate-700/70 text-slate-300 px-2 py-0.5 rounded transition-colors"
-                      >
-                        {m.name}
-                      </button>
-                    ))}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <h3 className="font-semibold text-white text-sm font-display">{group.name}</h3>
+                      <div className="flex items-center gap-1 text-slate-500 group-hover:text-pink-400 transition-colors">
+                        <span className="text-xs">{groupMethods.length} methods</span>
+                        <ArrowRight size={14} />
+                      </div>
+                    </div>
+                    <p className="text-xs text-slate-400 leading-relaxed">{group.description}</p>
+                    <div className="flex flex-wrap gap-1.5 mt-3">
+                      {groupMethods.map(m => (
+                        <button
+                          key={m.id}
+                          onClick={(e) => { e.stopPropagation(); navigate(`/method/${m.id}`); }}
+                          className="text-[10px] font-mono bg-slate-700/40 hover:bg-slate-700/70 text-slate-300 px-2 py-0.5 rounded transition-colors"
+                        >
+                          {m.name}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );

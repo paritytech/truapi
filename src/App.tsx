@@ -1,49 +1,75 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, useLocation } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import OverviewPage from './pages/OverviewPage';
 import MethodPage from './pages/MethodPage';
 import TypesPage from './pages/TypesPage';
 import TypeDetailPage from './pages/TypeDetailPage';
 import { Search } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { methods, dataTypes } from './data/types';
 
+function highlightMatch(text: string, query: string): React.ReactNode {
+  if (!query) return text;
+  const idx = text.toLowerCase().indexOf(query.toLowerCase());
+  if (idx === -1) return text;
+  return (
+    <>
+      {text.slice(0, idx)}
+      <span className="text-white bg-pink-500/20 rounded px-0.5">{text.slice(idx, idx + query.length)}</span>
+      {text.slice(idx + query.length)}
+    </>
+  );
+}
+
 function SearchModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [query, setQuery] = useState('');
+  const [selectedIdx, setSelectedIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     if (open) {
       setQuery('');
+      setSelectedIdx(0);
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }, [open]);
 
-  if (!open) return null;
-
-  const results: { type: 'method' | 'type'; id: string; name: string; description: string }[] = [];
-
-  if (query.length > 0) {
+  const { methodResults, typeResults, allResults } = useMemo(() => {
+    if (query.length === 0) return { methodResults: [], typeResults: [], allResults: [] };
     const q = query.toLowerCase();
+    const mr: typeof methods = [];
+    const tr: typeof dataTypes = [];
     for (const m of methods) {
       if (m.name.toLowerCase().includes(q) || m.description.toLowerCase().includes(q)) {
-        results.push({ type: 'method', id: m.id, name: m.name, description: m.description });
+        mr.push(m);
       }
     }
     for (const t of dataTypes) {
       if (t.name.toLowerCase().includes(q) || t.description.toLowerCase().includes(q)) {
-        results.push({ type: 'type', id: t.id, name: t.name, description: t.description });
+        tr.push(t);
       }
     }
-  }
+    const all: { type: 'method' | 'type'; id: string; name: string; description: string }[] = [
+      ...mr.map(m => ({ type: 'method' as const, id: m.id, name: m.name, description: m.description })),
+      ...tr.map(t => ({ type: 'type' as const, id: t.id, name: t.name, description: t.description })),
+    ];
+    return { methodResults: mr, typeResults: tr, allResults: all };
+  }, [query]);
+
+  const go = (r: { type: string; id: string }) => {
+    navigate(r.type === 'method' ? `/method/${r.id}` : `/type/${r.id}`);
+    onClose();
+  };
+
+  if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" />
       <div
-        className="relative bg-slate-850 border border-slate-700/60 rounded-xl w-full max-w-xl shadow-2xl overflow-hidden"
+        className="relative bg-slate-850 border border-slate-700/60 rounded-xl w-full max-w-xl shadow-2xl overflow-hidden animate-scale-in"
         onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center gap-3 px-4 py-3 border-b border-slate-700/40">
@@ -53,55 +79,108 @@ function SearchModal({ open, onClose }: { open: boolean; onClose: () => void }) 
             type="text"
             placeholder="Search methods and types..."
             value={query}
-            onChange={e => setQuery(e.target.value)}
+            onChange={e => { setQuery(e.target.value); setSelectedIdx(0); }}
             className="flex-1 bg-transparent text-white placeholder:text-slate-500 focus:outline-none text-sm"
             onKeyDown={e => {
               if (e.key === 'Escape') onClose();
-              if (e.key === 'Enter' && results.length > 0) {
-                const r = results[0];
-                navigate(r.type === 'method' ? `/method/${r.id}` : `/type/${r.id}`);
-                onClose();
+              if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setSelectedIdx(i => Math.min(i + 1, allResults.length - 1));
+              }
+              if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setSelectedIdx(i => Math.max(i - 1, 0));
+              }
+              if (e.key === 'Enter' && allResults.length > 0) {
+                go(allResults[selectedIdx]);
               }
             }}
           />
-          <kbd className="text-[10px] text-slate-500 bg-slate-800 border border-slate-700/50 px-1.5 py-0.5 rounded">ESC</kbd>
+          <kbd className="text-[10px] text-slate-500 bg-slate-800 border border-slate-700/50 px-1.5 py-0.5 rounded font-mono">ESC</kbd>
         </div>
 
-        {results.length > 0 && (
-          <div className="max-h-80 overflow-y-auto py-2">
-            {results.slice(0, 20).map((r, i) => (
-              <button
-                key={`${r.type}-${r.id}-${i}`}
-                onClick={() => {
-                  navigate(r.type === 'method' ? `/method/${r.id}` : `/type/${r.id}`);
-                  onClose();
-                }}
-                className="w-full text-left px-4 py-2 hover:bg-slate-800/60 transition-colors flex items-start gap-3"
-              >
-                <span className={`text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded mt-0.5 ${
-                  r.type === 'method' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-sky-500/10 text-sky-400'
-                }`}>
-                  {r.type === 'method' ? 'FN' : 'T'}
-                </span>
-                <div className="min-w-0">
-                  <div className="font-mono text-sm text-white truncate">{r.name}</div>
-                  <div className="text-xs text-slate-400 truncate">{r.description}</div>
+        {query.length > 0 && (methodResults.length > 0 || typeResults.length > 0) && (
+          <div className="max-h-80 overflow-y-auto py-1">
+            {methodResults.length > 0 && (
+              <>
+                <div className="px-4 pt-2 pb-1 text-[10px] uppercase tracking-wider text-slate-500 font-semibold font-display">
+                  Methods
                 </div>
-              </button>
-            ))}
+                {methodResults.slice(0, 10).map((m) => {
+                  const globalIdx = allResults.findIndex(r => r.type === 'method' && r.id === m.id);
+                  return (
+                    <button
+                      key={`method-${m.id}`}
+                      onClick={() => go({ type: 'method', id: m.id })}
+                      className={`w-full text-left px-4 py-2 transition-colors flex items-start gap-3 ${
+                        globalIdx === selectedIdx ? 'bg-slate-800/80' : 'hover:bg-slate-800/60'
+                      }`}
+                    >
+                      <span className="text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded mt-0.5 bg-emerald-500/10 text-emerald-400 font-display">
+                        FN
+                      </span>
+                      <div className="min-w-0">
+                        <div className="font-mono text-sm text-white truncate">{highlightMatch(m.name, query)}</div>
+                        <div className="text-xs text-slate-400 truncate">{highlightMatch(m.description, query)}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </>
+            )}
+            {typeResults.length > 0 && (
+              <>
+                <div className="px-4 pt-3 pb-1 text-[10px] uppercase tracking-wider text-slate-500 font-semibold font-display">
+                  Types
+                </div>
+                {typeResults.slice(0, 10).map((t) => {
+                  const globalIdx = allResults.findIndex(r => r.type === 'type' && r.id === t.id);
+                  return (
+                    <button
+                      key={`type-${t.id}`}
+                      onClick={() => go({ type: 'type', id: t.id })}
+                      className={`w-full text-left px-4 py-2 transition-colors flex items-start gap-3 ${
+                        globalIdx === selectedIdx ? 'bg-slate-800/80' : 'hover:bg-slate-800/60'
+                      }`}
+                    >
+                      <span className="text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded mt-0.5 bg-sky-500/10 text-sky-400 font-display">
+                        T
+                      </span>
+                      <div className="min-w-0">
+                        <div className="font-mono text-sm text-white truncate">{highlightMatch(t.name, query)}</div>
+                        <div className="text-xs text-slate-400 truncate">{highlightMatch(t.description, query)}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </>
+            )}
           </div>
         )}
 
-        {query.length > 0 && results.length === 0 && (
+        {query.length > 0 && allResults.length === 0 && (
           <div className="py-8 text-center text-sm text-slate-500">No results found</div>
         )}
 
         {query.length === 0 && (
           <div className="py-6 text-center text-sm text-slate-500">
-            Start typing to search {methods.length} methods and {dataTypes.length} types
+            <p>Start typing to search {methods.length} methods and {dataTypes.length} types</p>
+            <div className="flex items-center justify-center gap-3 mt-2 text-[10px] text-slate-600">
+              <span><kbd className="bg-slate-800 border border-slate-700/50 px-1 py-0.5 rounded font-mono">↑↓</kbd> Navigate</span>
+              <span><kbd className="bg-slate-800 border border-slate-700/50 px-1 py-0.5 rounded font-mono">↵</kbd> Open</span>
+            </div>
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function PageTransition({ children }: { children: React.ReactNode }) {
+  const location = useLocation();
+  return (
+    <div key={location.pathname} className="animate-fade-in" style={{ position: 'relative', zIndex: 1 }}>
+      {children}
     </div>
   );
 }
@@ -133,11 +212,11 @@ function App() {
           <div className="flex items-center justify-between px-8 py-3">
             <button
               onClick={() => setSearchOpen(true)}
-              className="flex items-center gap-2 bg-slate-800/50 border border-slate-700/40 rounded-lg px-3 py-1.5 text-sm text-slate-400 hover:text-slate-200 hover:border-slate-600/50 transition-colors"
+              className="flex items-center gap-2 bg-slate-800/50 border border-slate-700/40 rounded-lg px-3 py-1.5 text-sm text-slate-400 hover:text-slate-200 hover:border-slate-600/50 transition-all duration-150 hover:shadow-[0_2px_8px_rgba(0,0,0,0.2)]"
             >
               <Search size={14} />
               <span>Search...</span>
-              <kbd className="text-[10px] text-slate-500 bg-slate-700/50 px-1.5 py-0.5 rounded ml-4">
+              <kbd className="text-[10px] text-slate-500 bg-slate-700/50 px-1.5 py-0.5 rounded ml-4 font-mono">
                 {navigator.platform.includes('Mac') ? '\u2318' : 'Ctrl'}K
               </kbd>
             </button>
@@ -146,12 +225,14 @@ function App() {
 
         {/* Content */}
         <div className="px-8 py-8">
-          <Routes>
-            <Route path="/" element={<OverviewPage />} />
-            <Route path="/method/:id" element={<MethodPage />} />
-            <Route path="/types" element={<TypesPage />} />
-            <Route path="/type/:id" element={<TypeDetailPage />} />
-          </Routes>
+          <PageTransition>
+            <Routes>
+              <Route path="/" element={<OverviewPage />} />
+              <Route path="/method/:id" element={<MethodPage />} />
+              <Route path="/types" element={<TypesPage />} />
+              <Route path="/type/:id" element={<TypeDetailPage />} />
+            </Routes>
+          </PageTransition>
         </div>
       </main>
 
