@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Generated llms files
+public/llms.txt
+public/llms-full.txt

@@ -27,6 +27,8 @@ jobs:
 
       - run: npm ci
 
+      - run: npm run generate-llms
+
       - run: npm run build
 
       - uses: actions/upload-pages-artifact@v3
