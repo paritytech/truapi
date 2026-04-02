@@ -1,10 +1,11 @@
 import { useNavigate } from 'react-router-dom';
-import { dataTypes } from '../data/types';
+import { useVersion } from '../contexts/VersionContext';
 import { Search } from 'lucide-react';
 import { useState } from 'react';
 
 export default function TypesPage() {
   const navigate = useNavigate();
+  const { dataTypes, versionPrefix } = useVersion();
   const [search, setSearch] = useState('');
 
   const filtered = search
@@ -57,7 +58,7 @@ export default function TypesPage() {
             {types.map(t => (
               <button
                 key={t.id}
-                onClick={() => navigate(`/type/${t.id}`)}
+                onClick={() => navigate(`${versionPrefix}/type/${t.id}`)}
                 className="bg-slate-800/30 border border-slate-700/30 rounded-lg px-4 py-3 text-left hover:border-slate-600/50 hover:bg-slate-800/50 transition-all duration-150 group hover:shadow-[0_4px_12px_rgba(0,0,0,0.2)]"
               >
                 <div className="flex items-start justify-between gap-4">

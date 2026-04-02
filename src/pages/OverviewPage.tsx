@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { groups, methods } from '../data/types';
+import { useVersion } from '../contexts/VersionContext';
 import {
   Zap,
   Shield,
@@ -17,6 +17,8 @@ import {
   Monitor,
   Box,
   Layers,
+  Wallet,
+  Key,
 } from 'lucide-react';
 
 const groupIcons: Record<string, React.ReactNode> = {
@@ -29,6 +31,8 @@ const groupIcons: Record<string, React.ReactNode> = {
   'statement-store': <FileText size={20} />,
   'preimage': <Image size={20} />,
   'chain-interaction': <Link size={20} />,
+  'payment': <Wallet size={20} />,
+  'entropy': <Key size={20} />,
 };
 
 const C = ({ children, className = '' }: { children: React.ReactNode; className?: string }) => (
@@ -37,6 +41,7 @@ const C = ({ children, className = '' }: { children: React.ReactNode; className?
 
 export default function OverviewPage() {
   const navigate = useNavigate();
+  const { groups, methods, version, versionPrefix } = useVersion();
 
   const totalMethods = methods.length;
   const reqResMethods = methods.filter(m => m.pattern === 'request-response').length;
@@ -56,9 +61,12 @@ export default function OverviewPage() {
               TrUAPI Protocol
             </h1>
             <div className="flex flex-wrap items-center gap-2 lg:gap-3 mt-2">
-              <span className="text-sm text-slate-400">Protocol <span className="font-mono text-slate-300">v0.1</span></span>
-              <span className="text-slate-700 hidden sm:inline">|</span>
-              <span className="text-sm text-slate-400 font-mono">npm: @novasamatech/tru-api v0.6.6-1</span>
+              <span className="text-sm text-slate-400">Protocol <span className="font-mono text-slate-300">{version.label}</span></span>
+              {version.status === 'preview' && (
+                <span className="text-xs bg-amber-500/10 text-amber-400 px-2 py-0.5 rounded-full border border-amber-500/20">
+                  PREVIEW
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -237,7 +245,7 @@ export default function OverviewPage() {
             </div>
             <p className="text-sm text-slate-300 leading-relaxed mb-3">
               The <strong className="text-white">PAPI provider</strong> wraps the entire
-              <strong className="text-white"> Chain Interaction</strong> group (Group 9) &mdash; all 13{' '}
+              <strong className="text-white"> Chain Interaction</strong> group &mdash; all 13{' '}
               <C>remote_chain_*</C> methods &mdash; behind a standard <C>polkadot-api</C> {' '}
               <C>JsonRpcProvider</C> interface. This means products never need to call chain methods directly;
               they interact with Substrate chains through the familiar polkadot-api abstractions.
@@ -336,7 +344,7 @@ export default function OverviewPage() {
                 key={group.id}
                 className={`bg-slate-800/30 border border-slate-700/40 rounded-xl p-5 card-hover cursor-pointer group animate-slide-up`}
                 style={{ animationDelay: `${0.4 + idx * 0.04}s` }}
-                onClick={() => navigate(`/method/${groupMethods[0]?.id}`)}
+                onClick={() => navigate(`${versionPrefix}/method/${groupMethods[0]?.id}`)}
               >
                 <div className="flex items-start gap-4">
                   <div className="w-10 h-10 rounded-lg bg-slate-700/50 flex items-center justify-center text-slate-400 group-hover:text-pink-400 transition-colors shrink-0">
@@ -355,7 +363,7 @@ export default function OverviewPage() {
                       {groupMethods.map(m => (
                         <button
                           key={m.id}
-                          onClick={(e) => { e.stopPropagation(); navigate(`/method/${m.id}`); }}
+                          onClick={(e) => { e.stopPropagation(); navigate(`${versionPrefix}/method/${m.id}`); }}
                           className="text-xs font-mono bg-slate-700/40 hover:bg-slate-700/70 text-slate-300 px-2 py-0.5 rounded transition-colors"
                         >
                           {m.name}

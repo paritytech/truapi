@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getTypeById, dataTypes } from '../data/types';
+import { useVersion } from '../contexts/VersionContext';
 
 interface TypeLinkProps {
   typeId: string;
@@ -9,6 +9,7 @@ interface TypeLinkProps {
 
 export default function TypeLink({ typeId, className = '' }: TypeLinkProps) {
   const navigate = useNavigate();
+  const { getTypeById, versionPrefix } = useVersion();
   const dt = getTypeById(typeId);
 
   if (!dt) {
@@ -17,7 +18,7 @@ export default function TypeLink({ typeId, className = '' }: TypeLinkProps) {
 
   return (
     <button
-      onClick={() => navigate(`/type/${typeId}`)}
+      onClick={() => navigate(`${versionPrefix}/type/${typeId}`)}
       className={`font-mono text-sky-400 hover:text-sky-300 hover:underline underline-offset-2 transition-colors cursor-pointer ${className}`}
     >
       {dt.name}
@@ -25,17 +26,20 @@ export default function TypeLink({ typeId, className = '' }: TypeLinkProps) {
   );
 }
 
-// All linkable type IDs, derived from the data — sorted longest-first to avoid partial matches.
-// We match on `id` (e.g. "Result") not `name` (e.g. "Result(Ok, Err)") because
-// method signatures use the clean id form.
-const allTypeIds = dataTypes
-  .map(t => t.id)
-  .filter(id => id.length > 1) // skip single-char or trivially short ids
-  .sort((a, b) => b.length - a.length);
-
 // Parse a type string and make type references clickable
 export function TypeString({ text, className = '' }: { text: string; className?: string }) {
   const navigate = useNavigate();
+  const { dataTypes, versionPrefix } = useVersion();
+
+  // All linkable type IDs, sorted longest-first to avoid partial matches.
+  const allTypeIds = useMemo(
+    () =>
+      dataTypes
+        .map(t => t.id)
+        .filter(id => id.length > 1)
+        .sort((a, b) => b.length - a.length),
+    [dataTypes],
+  );
 
   const parts = useMemo(() => {
     const result: { text: string; isType: boolean; typeId: string }[] = [];
@@ -74,7 +78,7 @@ export function TypeString({ text, className = '' }: { text: string; className?:
     }
 
     return result;
-  }, [text]);
+  }, [text, allTypeIds]);
 
   return (
     <span className={`font-mono text-sm ${className}`}>
@@ -82,7 +86,7 @@ export function TypeString({ text, className = '' }: { text: string; className?:
         part.isType ? (
           <button
             key={i}
-            onClick={() => navigate(`/type/${part.typeId}`)}
+            onClick={() => navigate(`${versionPrefix}/type/${part.typeId}`)}
             className="text-sky-400 hover:text-sky-300 hover:underline underline-offset-2 transition-colors cursor-pointer"
           >
             {part.text}

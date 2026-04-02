@@ -1,11 +1,12 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { getTypeById, methods, dataTypes } from '../data/types';
+import { useVersion } from '../contexts/VersionContext';
 import { TypeString } from '../components/TypeLink';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 
 export default function TypeDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { getTypeById, methods, dataTypes, versionPrefix } = useVersion();
   const dt = getTypeById(id || '');
 
   if (!dt) {
@@ -33,11 +34,11 @@ export default function TypeDetailPage() {
     <div className="max-w-4xl mx-auto">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-slate-400 mb-6 animate-fade-in">
-        <button onClick={() => navigate('/')} className="hover:text-white transition-colors">
+        <button onClick={() => navigate(versionPrefix + '/')} className="hover:text-white transition-colors">
           TrUAPI
         </button>
         <span>/</span>
-        <button onClick={() => navigate('/types')} className="hover:text-white transition-colors">
+        <button onClick={() => navigate(versionPrefix + '/types')} className="hover:text-white transition-colors">
           Data Types
         </button>
         <span>/</span>
@@ -122,7 +123,7 @@ export default function TypeDetailPage() {
             {referencingMethods.map(m => (
               <button
                 key={m.id}
-                onClick={() => navigate(`/method/${m.id}`)}
+                onClick={() => navigate(`${versionPrefix}/method/${m.id}`)}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-mono bg-slate-700/30 text-slate-300 hover:bg-slate-700/50 hover:text-white border border-slate-600/30 transition-all duration-150 hover:shadow-[0_2px_8px_rgba(0,0,0,0.2)]"
               >
                 <ArrowRight size={10} />
@@ -143,7 +144,7 @@ export default function TypeDetailPage() {
             {relatedTypes.map(t => (
               <button
                 key={t.id}
-                onClick={() => navigate(`/type/${t.id}`)}
+                onClick={() => navigate(`${versionPrefix}/type/${t.id}`)}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-mono bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 border border-sky-500/20 transition-all duration-150"
               >
                 {t.name}
@@ -155,7 +156,7 @@ export default function TypeDetailPage() {
 
       {/* Back */}
       <button
-        onClick={() => navigate('/types')}
+        onClick={() => navigate(versionPrefix + '/types')}
         className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors mt-4 group animate-fade-in"
       >
         <ArrowLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />

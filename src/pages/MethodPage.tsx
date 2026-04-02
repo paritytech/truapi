@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { getMethodById, getGroupById, methods } from '../data/types';
+import { useVersion } from '../contexts/VersionContext';
 import PatternBadge from '../components/PatternBadge';
 import CodeBlock from '../components/CodeBlock';
 import { TypeString } from '../components/TypeLink';
@@ -8,6 +8,7 @@ import { ChevronLeft, ChevronRight, AlertTriangle } from 'lucide-react';
 export default function MethodPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { getMethodById, getGroupById, methods, versionPrefix } = useVersion();
   const method = getMethodById(id || '');
 
   if (!method) {
@@ -33,12 +34,12 @@ export default function MethodPage() {
     <div className="max-w-4xl mx-auto">
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-slate-400 mb-6 animate-fade-in">
-        <button onClick={() => navigate('/')} className="hover:text-white transition-colors">
+        <button onClick={() => navigate(versionPrefix + '/')} className="hover:text-white transition-colors">
           TrUAPI
         </button>
         <span>/</span>
         <button
-          onClick={() => navigate(`/method/${groupMethods[0]?.id}`)}
+          onClick={() => navigate(`${versionPrefix}/method/${groupMethods[0]?.id}`)}
           className="hover:text-white transition-colors"
         >
           {group?.name}
@@ -134,7 +135,7 @@ export default function MethodPage() {
       <div className="flex items-center justify-between pt-6 border-t border-slate-700/40 animate-fade-in stagger-4">
         {(prevMethod || globalPrev) ? (
           <button
-            onClick={() => navigate(`/method/${(prevMethod || globalPrev)!.id}`)}
+            onClick={() => navigate(`${versionPrefix}/method/${(prevMethod || globalPrev)!.id}`)}
             className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors group"
           >
             <ChevronLeft size={16} className="group-hover:-translate-x-0.5 transition-transform" />
@@ -146,7 +147,7 @@ export default function MethodPage() {
         ) : <div />}
         {(nextMethod || globalNext) ? (
           <button
-            onClick={() => navigate(`/method/${(nextMethod || globalNext)!.id}`)}
+            onClick={() => navigate(`${versionPrefix}/method/${(nextMethod || globalNext)!.id}`)}
             className="flex items-center gap-2 text-sm text-slate-400 hover:text-white transition-colors group"
           >
             <div className="text-right">
