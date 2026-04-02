@@ -70,21 +70,52 @@ pub struct PushNotification {
 // ─── Permission types ────────────────────────────────────────────────────────
 
 /// Device capability to request access to.
+///
+/// V0.2: extended with `Notifications`, `Nfc`, `Clipboard`, `OpenUrl`, and
+/// `Biometrics` per [RFC 0001] (JIT permissions).
+///
+/// [RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DevicePermissionRequest {
+pub enum DevicePermission {
+    /// Push notification delivery permission.
+    Notifications,
     Camera,
     Microphone,
     Bluetooth,
+    /// Near-field communication access.
+    Nfc,
     Location,
+    /// System clipboard access.
+    Clipboard,
+    /// Open a URL in an external browser.
+    OpenUrl,
+    /// Biometric authentication (fingerprint, face ID).
+    Biometrics,
 }
 
-/// Remote operation permission request.
+/// A single remote-operation permission entry.
+///
+/// V0.2: replaces `RemotePermissionRequest`. The [`TrUApi::permission`] method
+/// now accepts a `Vec<RemotePermission>` so products can batch multiple
+/// permission requests into a single prompt.
+///
+/// See [RFC 0001] and [issue #64].
+///
+/// [RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66
+/// [issue #64]: https://github.com/paritytech/triangle-js-sdks/issues/64
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RemotePermissionRequest {
-    /// URL the product wants to fetch.
-    ExternalRequest(String),
-    /// Product wants to submit a transaction.
-    TransactionSubmit,
+pub enum RemotePermission {
+    /// HTTP/HTTPS/WS/WSS access to specific domains. Each string is a domain
+    /// pattern: `"api.example.com"` (exact), `"*.example.com"` (wildcard
+    /// subdomain), or `"*"` (all hosts).
+    Remote(Vec<String>),
+    /// WebRTC access — can expose the user's IP address.
+    WebRtc,
+    /// Broadcast signed transactions via
+    /// [`TrUApi::chain_transaction_broadcast`].
+    ChainSubmit,
+    /// Submit statements via [`TrUApi::statement_store_submit`].
+    StatementSubmit,
 }
 
 // ─── Storage types ───────────────────────────────────────────────────────────
@@ -168,6 +199,30 @@ pub enum AccountConnectionStatus {
     Connected,
 }
 
+/// The user's primary DotNS account identity.
+///
+/// V0.2.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UserIdentity {
+    /// The user's primary DotNS identifier.
+    pub dot_ns_identifier: DotNsIdentifier,
+    /// The user's primary public key.
+    pub public_key: PublicKey,
+}
+
+/// Error from [`TrUApi::get_user_id`].
+///
+/// V0.2.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum UserIdentityError {
+    /// User denied the identity disclosure request.
+    Rejected,
+    /// User is not logged in.
+    NotConnected,
+    /// Catch-all.
+    Unknown { reason: String },
+}
+
 /// Error returned when credential/account requests fail.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RequestCredentialsError {
@@ -198,8 +253,13 @@ pub enum CreateProofError {
 /// generation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SigningPayload {
-    /// Signer address (SS58 or hex).
-    pub address: String,
+    /// Product account that will sign this payload.
+    ///
+    /// V0.2: replaces the previous `address: String` field per [RFC 0005],
+    /// aligning with all other TrUAPI account-related methods.
+    ///
+    /// [RFC 0005]: https://github.com/paritytech/triangle-js-sdks/pull/82
+    pub account: ProductAccountId,
     /// Reference block hash.
     pub block_hash: Hex,
     /// Reference block number.
@@ -241,11 +301,15 @@ pub enum RawPayload {
     Payload(String),
 }
 
-/// A raw signing request pairing an address with raw data.
+/// A raw signing request pairing an account with raw data.
+///
+/// V0.2: `address` replaced with `account: ProductAccountId` per [RFC 0005].
+///
+/// [RFC 0005]: https://github.com/paritytech/triangle-js-sdks/pull/82
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SigningRawPayload {
-    /// Signer address.
-    pub address: String,
+    /// Product account that will sign this data.
+    pub account: ProductAccountId,
     /// The data to sign.
     pub data: RawPayload,
 }
@@ -370,6 +434,32 @@ pub enum ChatRoomRegistrationError {
     PermissionDenied,
     /// Catch-all.
     Unknown { reason: String },
+}
+
+/// Request to create a simple group chat room.
+///
+/// V0.2: lightweight group chat that avoids the full Chat Extension v2
+/// complexity. Participants join via deep link; the host handles the UI
+/// with default rendering (no custom elements).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SimpleGroupChatRequest {
+    /// Unique room identifier source.
+    pub room_id: String,
+    /// Room display name.
+    pub name: String,
+    /// URL or base64 image for the room avatar.
+    pub icon: String,
+}
+
+/// Result of creating a simple group chat room.
+///
+/// V0.2.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SimpleGroupChatResult {
+    /// Whether the room was newly created or already existed.
+    pub status: ChatRoomRegistrationStatus,
+    /// Deep link that participants can use to join the room.
+    pub join_link: String,
 }
 
 /// Request to register a chat bot.
@@ -914,13 +1004,6 @@ pub type PreimageKey = Hex;
 /// The preimage data.
 pub type PreimageValue = Vec<u8>;
 
-/// Preimage submission error.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PreimageSubmitError {
-    /// Catch-all.
-    Unknown { reason: String },
-}
-
 // ─── Chain interaction types ─────────────────────────────────────────────────
 
 /// Block hash identifier.
@@ -1145,6 +1228,174 @@ pub struct ChainTransactionStopRequest {
     pub operation_id: OperationId,
 }
 
+// ─── SSS API types (v0.2) ────────────────────────────────────────────────────
+
+/// Filter for statement subscriptions, allowing richer topic matching than plain
+/// topic vectors. Each position in the filter can be `Some(topic)` to require an
+/// exact match or `None` to act as a wildcard.
+///
+/// Mirrors the `TopicFilter` type from `polkadot-sdk` statement store.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TopicFilter {
+    /// Positional topic matchers. `None` entries act as wildcards.
+    pub topics: Vec<Option<Topic>>,
+}
+
+// ─── Payment types (v0.2 — Coinage API, RFC 0006) ───────────────────────────
+//
+// See [RFC 0006](https://github.com/paritytech/triangle-js-sdks/pull/94).
+
+/// Balance amount for payment operations. Interpreted according to the host's
+/// single fixed payment asset (e.g. pUSD).
+pub type Balance = u128;
+
+/// Unique payment identifier, scoped to the product that created it.
+pub type PaymentId = String;
+
+/// Ed25519 private key bytes (32 bytes).
+pub type Ed25519PrivateKey = [u8; 32];
+
+/// Current payment balance state pushed to subscribers.
+///
+/// See [RFC 0006].
+///
+/// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaymentBalance {
+    /// Balance that can be spent right now.
+    pub available: Balance,
+    /// Balance the user possesses but cannot spend yet (e.g. in recycling
+    /// stage).
+    pub pending: Balance,
+}
+
+/// Source for a payment top-up operation.
+///
+/// See [RFC 0006].
+///
+/// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PaymentTopUpSource {
+    /// Fund from one of the calling product's scoped accounts.
+    ProductAccount(DerivationIndex),
+    /// Fund from a one-time account represented by its private key. This is a
+    /// standard account holding public funds — not a coin key.
+    PrivateKey(Ed25519PrivateKey),
+}
+
+/// Receipt returned after a successful payment request.
+///
+/// See [RFC 0006].
+///
+/// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PaymentReceipt {
+    /// The assigned payment identifier.
+    pub id: PaymentId,
+}
+
+/// Payment lifecycle status pushed to subscribers.
+///
+/// Once a terminal state (`Completed` or `Failed`) is reached, the host
+/// delivers it and may close the subscription.
+///
+/// See [RFC 0006].
+///
+/// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PaymentStatus {
+    /// Payment is being processed.
+    Processing,
+    /// Payment has been settled successfully.
+    Completed,
+    /// Payment has failed.
+    Failed(String),
+}
+
+/// Error from [`TrUApi::payment_balance_subscribe`].
+///
+/// See [RFC 0006].
+///
+/// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PaymentBalanceError {
+    /// User denied the balance disclosure request.
+    PermissionDenied,
+    /// Catch-all.
+    Unknown { reason: String },
+}
+
+/// Error from [`TrUApi::payment_top_up`].
+///
+/// See [RFC 0006].
+///
+/// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PaymentTopUpError {
+    /// The source account does not hold sufficient funds.
+    InsufficientFunds,
+    /// The source account was not found or is invalid.
+    InvalidSource,
+    /// Catch-all.
+    Unknown { reason: String },
+}
+
+/// Error from [`TrUApi::payment_request`].
+///
+/// See [RFC 0006].
+///
+/// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PaymentRequestError {
+    /// User denied the payment request.
+    Denied,
+    /// User's available balance is not sufficient for the requested amount.
+    InsufficientBalance,
+    /// Catch-all.
+    Unknown { reason: String },
+}
+
+/// Error from [`TrUApi::payment_status_subscribe`].
+///
+/// See [RFC 0006].
+///
+/// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PaymentStatusError {
+    /// Payment ID was not found or does not belong to the current product.
+    PaymentNotFound,
+    /// Catch-all.
+    Unknown { reason: String },
+}
+
+// ─── Entropy types (v0.2, RFC 0007) ──────────────────────────────────────────
+//
+// See [RFC 0007](https://github.com/paritytech/triangle-js-sdks/pull/95).
+
+/// 32 bytes of deterministic entropy derived from the user's root BIP-39
+/// entropy via a three-layer BLAKE2b-256 keyed hashing scheme. The same
+/// root account + product + key always yields the same output on any
+/// conforming host.
+///
+/// See [RFC 0007].
+///
+/// [RFC 0007]: https://github.com/paritytech/triangle-js-sdks/pull/95
+pub type Entropy = [u8; 32];
+
+/// Error from [`TrUApi::derive_entropy`].
+///
+/// Under normal operation the function always succeeds; `Unknown` indicates an
+/// unrecoverable internal host error.
+///
+/// See [RFC 0007].
+///
+/// [RFC 0007]: https://github.com/paritytech/triangle-js-sdks/pull/95
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeriveEntropyError {
+    /// An unexpected error occurred in the host.
+    Unknown,
+}
+
 // ─── TrUAPI trait ──────────────────────────────────────────────────────────
 
 /// The TrUAPI trait defining all communication between a product and its host.
@@ -1176,13 +1427,22 @@ pub trait TrUApi {
 
     // ── Permissions ──────────────────────────────────────────────────────
 
-    /// Requests access to a device capability (camera, microphone, bluetooth,
-    /// location).
-    fn device_permission(&self, permission: DevicePermissionRequest) -> Result<bool, GenericError>;
+    /// Requests access to a device capability.
+    ///
+    /// V0.2: extended set of capabilities per
+    /// [RFC 0001](https://github.com/paritytech/triangle-js-sdks/pull/66).
+    fn device_permission(&self, permission: DevicePermission) -> Result<bool, GenericError>;
 
-    /// Requests permission for a remote operation (external HTTP request or
-    /// transaction submission).
-    fn permission(&self, request: RemotePermissionRequest) -> Result<bool, GenericError>;
+    /// Requests permission for one or more remote operations. Batching multiple
+    /// entries into a single call lets the host present a single prompt.
+    ///
+    /// Returns `true` if **all** requested permissions were granted, `false` if
+    /// the user denied at least one. Products that need per-entry feedback
+    /// should issue individual calls.
+    ///
+    /// V0.2: accepts `Vec<RemotePermission>` per
+    /// [RFC 0001](https://github.com/paritytech/triangle-js-sdks/pull/66).
+    fn permission(&self, permissions: Vec<RemotePermission>) -> Result<bool, GenericError>;
 
     // ── Local Storage ────────────────────────────────────────────────────
 
@@ -1231,6 +1491,12 @@ pub trait TrUApi {
         callback: Box<dyn FnMut(AccountConnectionStatus) + Send>,
     ) -> Self::Subscription;
 
+    /// Returns the user's primary DotNS account identifier. Requires JIT
+    /// user approval on first call.
+    ///
+    /// V0.2.
+    fn get_user_id(&self) -> Result<UserIdentity, UserIdentityError>;
+
     // ── Signing ──────────────────────────────────────────────────────────
 
     /// Requests the host to sign a Substrate transaction payload. The host
@@ -1262,6 +1528,17 @@ pub trait TrUApi {
         &self,
         request: ChatRoomRequest,
     ) -> Result<ChatRoomRegistrationResult, ChatRoomRegistrationError>;
+
+    /// Creates a simple group chat room. Participants join via the returned
+    /// deep link. The host handles the group chat UI with default rendering
+    /// (no custom elements).
+    ///
+    /// V0.2: lightweight alternative to the full Chat Extension v2 (deferred
+    /// to v0.3).
+    fn chat_create_simple_group(
+        &self,
+        request: SimpleGroupChatRequest,
+    ) -> Result<SimpleGroupChatResult, ChatRoomRegistrationError>;
 
     /// Registers a bot identity for chat.
     fn chat_register_bot(
@@ -1302,11 +1579,14 @@ pub trait TrUApi {
 
     // ── Statement Store ──────────────────────────────────────────────────
 
-    /// Subscribes to statements matching a set of topics. The host pushes
+    /// Subscribes to statements matching a [`TopicFilter`]. The host pushes
     /// matching signed statements whenever the set changes.
+    ///
+    /// V0.2: replaces the v0.1 topic-vector signature with a richer
+    /// [`TopicFilter`] that supports wildcard positions.
     fn statement_store_subscribe(
         &self,
-        topics: Vec<Topic>,
+        filter: TopicFilter,
         callback: Box<dyn FnMut(Vec<SignedStatement>) + Send>,
     ) -> Self::Subscription;
 
@@ -1318,8 +1598,12 @@ pub trait TrUApi {
         statement: Statement,
     ) -> Result<StatementProof, StatementProofError>;
 
-    /// Submits a signed statement to the statement store.
-    fn statement_store_submit(&self, statement: SignedStatement) -> Result<(), GenericError>;
+    /// Submits a pre-encoded statement to the statement store and returns
+    /// the statement hash on success.
+    ///
+    /// V0.2: replaces the v0.1 signature that accepted a [`SignedStatement`]
+    /// struct with raw SCALE-encoded bytes.
+    fn statement_store_submit(&self, encoded: Bytes) -> Result<String, GenericError>;
 
     // ── Preimage ─────────────────────────────────────────────────────────
 
@@ -1330,9 +1614,6 @@ pub trait TrUApi {
         key: PreimageKey,
         callback: Box<dyn FnMut(Option<PreimageValue>) + Send>,
     ) -> Self::Subscription;
-
-    /// Submits a preimage value and receives its hash key back.
-    fn preimage_submit(&self, value: PreimageValue) -> Result<PreimageKey, PreimageSubmitError>;
 
     // ── Chain Interaction ────────────────────────────────────────────────
 
@@ -1408,4 +1689,70 @@ pub trait TrUApi {
         &self,
         request: ChainTransactionStopRequest,
     ) -> Result<(), GenericError>;
+
+    // ── Payment (v0.2 — Coinage API, RFC 0006) ────────────────────────────
+    //
+    // See [RFC 0006](https://github.com/paritytech/triangle-js-sdks/pull/94).
+
+    /// Subscribes to the user's payment balance. The host prompts the user
+    /// for permission to disclose their balance on the first call.
+    ///
+    /// See [RFC 0006](https://github.com/paritytech/triangle-js-sdks/pull/94).
+    fn payment_balance_subscribe(
+        &self,
+        callback: Box<dyn FnMut(PaymentBalance) + Send>,
+    ) -> Result<Self::Subscription, PaymentBalanceError>;
+
+    /// Tops up the user's payment balance from a product-controlled funding
+    /// source. This operation is always in the user's favour and does not
+    /// require user consent.
+    ///
+    /// See [RFC 0006](https://github.com/paritytech/triangle-js-sdks/pull/94).
+    fn payment_top_up(
+        &self,
+        amount: Balance,
+        source: PaymentTopUpSource,
+    ) -> Result<(), PaymentTopUpError>;
+
+    /// Requests a payment from the user's available balance to `destination`.
+    /// The host prompts the user to authorize. Returns a [`PaymentReceipt`]
+    /// whose [`PaymentId`] can be tracked via
+    /// [`payment_status_subscribe`](TrUApi::payment_status_subscribe).
+    ///
+    /// A successful response means the user authorized the payment and the
+    /// host accepted it for processing — **not** that it has settled.
+    ///
+    /// See [RFC 0006](https://github.com/paritytech/triangle-js-sdks/pull/94).
+    fn payment_request(
+        &self,
+        amount: Balance,
+        destination: AccountId,
+    ) -> Result<PaymentReceipt, PaymentRequestError>;
+
+    /// Subscribes to status updates for a previously requested payment.
+    /// Emits status changes until a terminal state (`Completed` or `Failed`).
+    ///
+    /// See [RFC 0006](https://github.com/paritytech/triangle-js-sdks/pull/94).
+    fn payment_status_subscribe(
+        &self,
+        payment_id: PaymentId,
+        callback: Box<dyn FnMut(PaymentStatus) + Send>,
+    ) -> Result<Self::Subscription, PaymentStatusError>;
+
+    // ── Deterministic Entropy (v0.2, RFC 0007) ─────────────────────────
+    //
+    // See [RFC 0007](https://github.com/paritytech/triangle-js-sdks/pull/95).
+
+    /// Derives 32 bytes of deterministic entropy scoped to the calling product
+    /// and the provided `key`. Uses a three-layer BLAKE2b-256 keyed hashing
+    /// scheme over the user's root BIP-39 entropy.
+    ///
+    /// `key` is an arbitrary value (up to 32 bytes) chosen by the caller; the
+    /// host does not assign any semantic meaning to it.
+    ///
+    /// The same root account + product + key always yields the same
+    /// [`Entropy`] on every conforming host.
+    ///
+    /// See [RFC 0007](https://github.com/paritytech/triangle-js-sdks/pull/95).
+    fn derive_entropy(&self, key: Vec<u8>) -> Result<Entropy, DeriveEntropyError>;
 }
