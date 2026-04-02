@@ -98,7 +98,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
           onClick={() => handleNav(versionPrefix + '/')}
         >
           <div className="w-8 h-8 rounded-lg bg-pink-600 flex items-center justify-center group-hover:shadow-[0_0_12px_rgba(219,39,119,0.4)] transition-shadow">
-            <span className="text-white text-sm font-bold font-display">H</span>
+            <span className="text-white text-sm font-bold font-display">T</span>
           </div>
           <div>
             <h1 className="text-sm font-semibold text-white leading-tight font-display tracking-tight">TrUAPI</h1>

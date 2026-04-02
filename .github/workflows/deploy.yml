@@ -20,6 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # ── Webapp ──────────────────────────────────────────────
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -29,6 +30,14 @@ jobs:
 
       - run: npm run build
 
+      # ── Rust docs ──────────────────────────────────────────
+      - uses: dtolnay/rust-toolchain@stable
+
+      - run: cargo doc --no-deps --manifest-path truapi-spec/Cargo.toml
+
+      - run: cp -r truapi-spec/target/doc dist/rustdoc
+
+      # ── Upload ─────────────────────────────────────────────
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

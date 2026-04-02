@@ -54,7 +54,7 @@ export default function OverviewPage() {
       <div className="mb-10 lg:mb-16 animate-slide-up">
         <div className="flex items-start gap-4 lg:gap-5 mb-6">
           <div className="w-12 h-12 lg:w-16 lg:h-16 rounded-xl lg:rounded-2xl bg-pink-600 flex items-center justify-center shrink-0 shadow-[0_0_40px_rgba(219,39,119,0.2)]">
-            <span className="text-white text-lg lg:text-2xl font-bold font-display">H</span>
+            <span className="text-white text-lg lg:text-2xl font-bold font-display">T</span>
           </div>
           <div>
             <h1 className="text-2xl lg:text-4xl font-bold text-white font-display tracking-tight leading-tight">
