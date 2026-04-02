@@ -6,7 +6,7 @@ import App from './App.tsx'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter basename="/tru-api-explorer">
+    <BrowserRouter basename="/truapi-explorer">
       <App />
     </BrowserRouter>
   </StrictMode>,
