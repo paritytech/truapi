@@ -1,6 +1,6 @@
-//! TruAPI trait and type definitions for the dotli product SDK.
+//! TrUAPI trait and type definitions for the dotli product SDK.
 //!
-//! This crate defines the [`TruApi`] trait containing all TruAPI methods, along with
+//! This crate defines the [`TrUApi`] trait containing all TrUAPI methods, along with
 //! every data type used in their signatures. The three communication patterns are:
 //!
 //! - **Request-response**: product calls host, host returns a result.
@@ -1040,7 +1040,7 @@ pub enum ChainHeadEvent {
     },
     /// Storage query completed.
     OperationStorageDone { operation_id: OperationId },
-    /// Operation paused, needs [`TruApi::chain_head_continue`].
+    /// Operation paused, needs [`TrUApi::chain_head_continue`].
     OperationWaitingForContinue { operation_id: OperationId },
     /// Block became inaccessible.
     OperationInaccessible { operation_id: OperationId },
@@ -1053,7 +1053,7 @@ pub enum ChainHeadEvent {
     Stop,
 }
 
-/// Parameters for [`TruApi::chain_head_follow`].
+/// Parameters for [`TrUApi::chain_head_follow`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChainHeadFollowRequest {
     /// Chain genesis hash.
@@ -1074,7 +1074,7 @@ pub struct ChainHeadBlockRequest {
     pub hash: BlockHash,
 }
 
-/// Parameters for [`TruApi::chain_head_storage`].
+/// Parameters for [`TrUApi::chain_head_storage`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChainHeadStorageRequest {
     /// Chain genesis hash.
@@ -1089,7 +1089,7 @@ pub struct ChainHeadStorageRequest {
     pub child_trie: Option<Hex>,
 }
 
-/// Parameters for [`TruApi::chain_head_call`].
+/// Parameters for [`TrUApi::chain_head_call`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChainHeadCallRequest {
     /// Chain genesis hash.
@@ -1104,7 +1104,7 @@ pub struct ChainHeadCallRequest {
     pub call_parameters: Hex,
 }
 
-/// Parameters for [`TruApi::chain_head_unpin`].
+/// Parameters for [`TrUApi::chain_head_unpin`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChainHeadUnpinRequest {
     /// Chain genesis hash.
@@ -1127,7 +1127,7 @@ pub struct ChainHeadOperationRequest {
     pub operation_id: OperationId,
 }
 
-/// Parameters for [`TruApi::chain_transaction_broadcast`].
+/// Parameters for [`TrUApi::chain_transaction_broadcast`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChainTransactionBroadcastRequest {
     /// Chain genesis hash.
@@ -1136,7 +1136,7 @@ pub struct ChainTransactionBroadcastRequest {
     pub transaction: Hex,
 }
 
-/// Parameters for [`TruApi::chain_transaction_stop`].
+/// Parameters for [`TrUApi::chain_transaction_stop`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChainTransactionStopRequest {
     /// Chain genesis hash.
@@ -1145,9 +1145,9 @@ pub struct ChainTransactionStopRequest {
     pub operation_id: OperationId,
 }
 
-// ─── TruAPI trait ──────────────────────────────────────────────────────────
+// ─── TrUAPI trait ──────────────────────────────────────────────────────────
 
-/// The TruAPI trait defining all communication between a product and its host.
+/// The TrUAPI trait defining all communication between a product and its host.
 ///
 /// Methods follow three patterns:
 ///
@@ -1155,13 +1155,13 @@ pub struct ChainTransactionStopRequest {
 /// - **Subscription** — product subscribes with a callback; host pushes values.
 ///   The returned [`Self::Subscription`] handle can be used to unsubscribe.
 /// - **Reverse-subscription** — host initiates, product responds. Only used for
-///   [`register_custom_message_renderer`](TruApi::register_custom_message_renderer).
-pub trait TruApi {
+///   [`register_custom_message_renderer`](TrUApi::register_custom_message_renderer).
+pub trait TrUApi {
     /// Handle to an active subscription. Drop or call an unsubscribe method to
     /// stop receiving updates.
     type Subscription;
 
-    // ── Host Calls ───────────────────────────────────────────────────────
+    // ── TrUAPI Calls ───────────────────────────────────────────────────────
 
     /// Queries whether the host supports a specific feature. Currently only the
     /// `Chain` variant exists, carrying a genesis hash to check whether a
@@ -1248,7 +1248,7 @@ pub trait TruApi {
         payload: VersionedTxPayload,
     ) -> Result<Bytes, CreateTransactionError>;
 
-    /// Same as [`create_transaction`](TruApi::create_transaction) but uses the
+    /// Same as [`create_transaction`](TrUApi::create_transaction) but uses the
     /// user's main account instead of a product-derived account.
     fn create_transaction_with_non_product_account(
         &self,

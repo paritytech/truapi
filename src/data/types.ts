@@ -38,9 +38,9 @@ export interface GroupDef {
 
 export const groups: GroupDef[] = [
   {
-    id: 'host-calls',
-    name: 'Host Calls',
-    description: 'General-purpose host methods for feature detection, navigation, notifications, and permissions.',
+    id: 'truapi-calls',
+    name: 'TrUAPI Calls',
+    description: 'General-purpose TrUAPI methods for feature detection, navigation, notifications, and permissions.',
     methods: ['host_feature_supported', 'host_navigate_to', 'host_push_notification'],
   },
   {
@@ -94,12 +94,12 @@ export const groups: GroupDef[] = [
 ];
 
 export const methods: MethodDef[] = [
-  // Group 1: Host Calls
+  // Group 1: TrUAPI Calls
   {
     id: 'host_feature_supported',
     name: 'host_feature_supported',
-    group: 'Host Calls',
-    groupId: 'host-calls',
+    group: 'TrUAPI Calls',
+    groupId: 'truapi-calls',
     pattern: 'request-response',
     description: 'Queries whether the host supports a specific feature. Currently only the Chain variant exists, carrying a genesis hash to check whether a specific blockchain is available.',
     productFunction: 'truApi.featureSupported(feature)',
@@ -127,8 +127,8 @@ if (result.isOk) {
   {
     id: 'host_navigate_to',
     name: 'host_navigate_to',
-    group: 'Host Calls',
-    groupId: 'host-calls',
+    group: 'TrUAPI Calls',
+    groupId: 'truapi-calls',
     pattern: 'request-response',
     description: 'Requests the host to open a URL, typically in a new browser tab.',
     productFunction: 'truApi.navigateTo(url)',
@@ -158,8 +158,8 @@ if (result.isErr) {
   {
     id: 'host_push_notification',
     name: 'host_push_notification',
-    group: 'Host Calls',
-    groupId: 'host-calls',
+    group: 'TrUAPI Calls',
+    groupId: 'truapi-calls',
     pattern: 'request-response',
     description: 'Sends a push notification to the user via the host.',
     productFunction: 'truApi.pushNotification(notification)',

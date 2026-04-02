@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 
 const groupIcons: Record<string, React.ReactNode> = {
-  'host-calls': <Zap size={20} />,
+  'truapi-calls': <Zap size={20} />,
   'permissions': <Shield size={20} />,
   'local-storage': <HardDrive size={20} />,
   'account-management': <User size={20} />,
@@ -53,7 +53,7 @@ export default function OverviewPage() {
           </div>
           <div>
             <h1 className="text-2xl lg:text-4xl font-bold text-white font-display tracking-tight leading-tight">
-              TruAPI Protocol
+              TrUAPI Protocol
             </h1>
             <div className="flex flex-wrap items-center gap-2 lg:gap-3 mt-2">
               <span className="text-sm text-slate-400">Protocol <span className="font-mono text-slate-300">v0.1</span></span>
@@ -142,7 +142,7 @@ export default function OverviewPage() {
               <h3 className="text-sm font-semibold text-white font-display">Product</h3>
             </div>
             <p className="text-sm text-slate-300 leading-relaxed mb-3">
-              A product is an application running inside a sandbox. It uses the Host API to
+              A product is an application running inside a sandbox. It uses the TrUAPI to
               <strong className="text-white"> request services</strong> from the host &mdash; reading accounts,
               signing payloads, accessing chain data, and more.
             </p>
@@ -215,7 +215,7 @@ export default function OverviewPage() {
       <div className="mb-10 lg:mb-16 animate-slide-up stagger-6">
         <h2 className="text-xl font-semibold text-white mb-5 font-display tracking-tight">SDK Providers</h2>
         <p className="text-sm text-slate-300 mb-4 leading-relaxed max-w-3xl">
-          While products can call Host API methods directly, the SDK provides higher-level <strong className="text-white">providers</strong> that
+          While products can call TrUAPI methods directly, the SDK provides higher-level <strong className="text-white">providers</strong> that
           wrap groups of low-level protocol methods into ergonomic interfaces.
         </p>
 

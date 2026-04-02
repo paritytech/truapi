@@ -1,6 +1,6 @@
-# Host API Protocol Explorer
+# TrUAPI Protocol Explorer
 
-Interactive reference documentation for the Host API Protocol — the protocol that mediates all communication between a host application and products running in sandboxes.
+Interactive reference documentation for the TrUAPI (Triangle User-Agent Programming Interface) Protocol — the protocol that mediates all communication between a host application and products running in sandboxes.
 
 Built with React, TypeScript, and Tailwind CSS.
 

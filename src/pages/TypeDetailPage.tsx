@@ -34,7 +34,7 @@ export default function TypeDetailPage() {
       {/* Breadcrumb */}
       <div className="flex items-center gap-2 text-sm text-slate-400 mb-6 animate-fade-in">
         <button onClick={() => navigate('/')} className="hover:text-white transition-colors">
-          Host API
+          TrUAPI
         </button>
         <span>/</span>
         <button onClick={() => navigate('/types')} className="hover:text-white transition-colors">

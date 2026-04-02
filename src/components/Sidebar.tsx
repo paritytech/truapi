@@ -17,7 +17,7 @@ import {
 import { useState, useEffect, useRef } from 'react';
 
 const groupIcons: Record<string, React.ReactNode> = {
-  'host-calls': <Zap size={15} />,
+  'truapi-calls': <Zap size={15} />,
   'permissions': <Shield size={15} />,
   'local-storage': <HardDrive size={15} />,
   'account-management': <User size={15} />,
@@ -95,7 +95,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
             <span className="text-white text-sm font-bold font-display">H</span>
           </div>
           <div>
-            <h1 className="text-sm font-semibold text-white leading-tight font-display tracking-tight">Host API</h1>
+            <h1 className="text-sm font-semibold text-white leading-tight font-display tracking-tight">TrUAPI</h1>
           </div>
         </div>
         <button
