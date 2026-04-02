@@ -1,4 +1,4 @@
-import { Routes, Route, useLocation } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation, useParams } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import OverviewPage from './pages/OverviewPage';
 import MethodPage from './pages/MethodPage';
@@ -7,7 +7,8 @@ import TypeDetailPage from './pages/TypeDetailPage';
 import { Search, Menu } from 'lucide-react';
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { methods, dataTypes } from './data/types';
+import { getVersion, defaultVersion } from './data/registry';
+import { VersionProvider, useVersion } from './contexts/VersionContext';
 
 function highlightMatch(text: string, query: string): React.ReactNode {
   if (!query) return text;
@@ -27,6 +28,7 @@ function SearchModal({ open, onClose }: { open: boolean; onClose: () => void }) 
   const [selectedIdx, setSelectedIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
+  const { methods, dataTypes, versionPrefix } = useVersion();
 
   useEffect(() => {
     if (open) {
@@ -56,10 +58,10 @@ function SearchModal({ open, onClose }: { open: boolean; onClose: () => void }) 
       ...tr.map(t => ({ type: 'type' as const, id: t.id, name: t.name, description: t.description })),
     ];
     return { methodResults: mr, typeResults: tr, allResults: all };
-  }, [query]);
+  }, [query, methods, dataTypes]);
 
   const go = (r: { type: string; id: string }) => {
-    navigate(r.type === 'method' ? `/method/${r.id}` : `/type/${r.id}`);
+    navigate(r.type === 'method' ? `${versionPrefix}/method/${r.id}` : `${versionPrefix}/type/${r.id}`);
     onClose();
   };
 
@@ -185,7 +187,22 @@ function PageTransition({ children }: { children: React.ReactNode }) {
   );
 }
 
-function App() {
+function VersionedApp() {
+  const { version: vSlug } = useParams<{ version: string }>();
+  const versionMeta = getVersion(vSlug || '');
+
+  if (!versionMeta) {
+    return <Navigate to={`/v/${defaultVersion.slug}/`} replace />;
+  }
+
+  return (
+    <VersionProvider version={versionMeta}>
+      <VersionedAppInner />
+    </VersionProvider>
+  );
+}
+
+function VersionedAppInner() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -248,6 +265,25 @@ function App() {
       <SearchModal open={searchOpen} onClose={() => setSearchOpen(false)} />
     </div>
   );
+}
+
+function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<Navigate to={`/v/${defaultVersion.slug}/`} replace />} />
+      <Route path="/v/:version/*" element={<VersionedApp />} />
+      {/* Legacy redirects */}
+      <Route path="/method/:id" element={<LegacyRedirect />} />
+      <Route path="/types" element={<Navigate to={`/v/${defaultVersion.slug}/types`} replace />} />
+      <Route path="/type/:id" element={<LegacyRedirect />} />
+      <Route path="*" element={<Navigate to={`/v/${defaultVersion.slug}/`} replace />} />
+    </Routes>
+  );
+}
+
+function LegacyRedirect() {
+  const location = useLocation();
+  return <Navigate to={`/v/${defaultVersion.slug}${location.pathname}`} replace />;
 }
 
 export default App;
