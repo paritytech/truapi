@@ -102,14 +102,14 @@ export const methods: MethodDef[] = [
     groupId: 'host-calls',
     pattern: 'request-response',
     description: 'Queries whether the host supports a specific feature. Currently only the Chain variant exists, carrying a genesis hash to check whether a specific blockchain is available.',
-    productFunction: 'hostApi.featureSupported(feature)',
+    productFunction: 'truApi.featureSupported(feature)',
     hostHandler: 'container.handleFeatureSupported(handler)',
     request: 'Feature',
     response: 'Result(bool, GenericError)',
     requestDescription: 'Feature enum — Chain(GenesisHash)',
     productExample: `// Check if Polkadot is supported
 const polkadotGenesis = "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3";
-const result = await hostApi.featureSupported({
+const result = await truApi.featureSupported({
   Chain: polkadotGenesis
 });
 
@@ -131,7 +131,7 @@ if (result.isOk) {
     groupId: 'host-calls',
     pattern: 'request-response',
     description: 'Requests the host to open a URL, typically in a new browser tab.',
-    productFunction: 'hostApi.navigateTo(url)',
+    productFunction: 'truApi.navigateTo(url)',
     hostHandler: 'container.handleNavigateTo(handler)',
     request: 'str',
     response: 'Result(void, NavigateToErr)',
@@ -139,7 +139,7 @@ if (result.isOk) {
     errorType: 'NavigateToErr',
     errorVariants: ['PermissionDenied', 'Unknown({ reason: str })'],
     productExample: `// Open an external link
-const result = await hostApi.navigateTo(
+const result = await truApi.navigateTo(
   "https://polkadot.network"
 );
 
@@ -162,13 +162,13 @@ if (result.isErr) {
     groupId: 'host-calls',
     pattern: 'request-response',
     description: 'Sends a push notification to the user via the host.',
-    productFunction: 'hostApi.pushNotification(notification)',
+    productFunction: 'truApi.pushNotification(notification)',
     hostHandler: 'container.handlePushNotification(handler)',
     request: 'PushNotification',
     response: 'Result(void, GenericError)',
     requestDescription: 'See PushNotification type for fields',
     productExample: `// Send a notification with a deeplink
-const result = await hostApi.pushNotification({
+const result = await truApi.pushNotification({
   text: "Your transaction was confirmed!",
   deeplink: "myapp://tx/0xabc123"
 });`,
@@ -191,13 +191,13 @@ const result = await hostApi.pushNotification({
     groupId: 'permissions',
     pattern: 'request-response',
     description: 'Requests access to a device capability (camera, microphone, bluetooth, location).',
-    productFunction: 'hostApi.devicePermission(permission)',
+    productFunction: 'truApi.devicePermission(permission)',
     hostHandler: 'container.handleDevicePermission(handler)',
     request: 'DevicePermissionRequest',
     response: 'Result(bool, GenericError)',
     requestDescription: 'Status enum: Camera | Microphone | Bluetooth | Location',
     productExample: `// Request camera access
-const granted = await hostApi.devicePermission("Camera");
+const granted = await truApi.devicePermission("Camera");
 
 if (granted.isOk && granted.value) {
   // Camera access granted, start video stream
@@ -216,13 +216,13 @@ if (granted.isOk && granted.value) {
     groupId: 'permissions',
     pattern: 'request-response',
     description: 'Requests permission for a remote operation (external HTTP request or transaction submission).',
-    productFunction: 'hostApi.permission(request)',
+    productFunction: 'truApi.permission(request)',
     hostHandler: 'container.handlePermission(handler)',
     request: 'RemotePermissionRequest',
     response: 'Result(bool, GenericError)',
     requestDescription: 'Enum: ExternalRequest(str) | TransactionSubmit',
     productExample: `// Request permission to fetch from an external API
-const allowed = await hostApi.permission({
+const allowed = await truApi.permission({
   ExternalRequest: "https://api.coingecko.com/api/v3/simple/price"
 });
 
@@ -231,7 +231,7 @@ if (allowed.isOk && allowed.value) {
 }
 
 // Request permission to submit transactions
-const txAllowed = await hostApi.permission({
+const txAllowed = await truApi.permission({
   TransactionSubmit: undefined
 });`,
     hostExample: `container.handlePermission((request, { ok, err }) => {
@@ -253,14 +253,14 @@ const txAllowed = await hostApi.permission({
     groupId: 'local-storage',
     pattern: 'request-response',
     description: 'Reads a value from the scoped key-value store.',
-    productFunction: 'hostApi.localStorageRead(key)',
+    productFunction: 'truApi.localStorageRead(key)',
     hostHandler: 'container.handleLocalStorageRead(handler)',
     request: 'StorageKey',
     response: 'Result(Option(StorageValue), StorageErr)',
     errorType: 'StorageErr',
     errorVariants: ['Full', 'Unknown({ reason: str })'],
     productExample: `// Read a stored preference
-const result = await hostApi.localStorageRead("user-theme");
+const result = await truApi.localStorageRead("user-theme");
 
 if (result.isOk && result.value !== null) {
   const theme = new TextDecoder().decode(result.value);
@@ -279,7 +279,7 @@ if (result.isOk && result.value !== null) {
     groupId: 'local-storage',
     pattern: 'request-response',
     description: 'Writes a value to the scoped key-value store.',
-    productFunction: 'hostApi.localStorageWrite([key, value])',
+    productFunction: 'truApi.localStorageWrite([key, value])',
     hostHandler: 'container.handleLocalStorageWrite(handler)',
     request: 'Tuple(StorageKey, StorageValue)',
     response: 'Result(void, StorageErr)',
@@ -287,7 +287,7 @@ if (result.isOk && result.value !== null) {
     errorVariants: ['Full', 'Unknown({ reason: str })'],
     productExample: `// Store a user preference
 const theme = new TextEncoder().encode("dark");
-const result = await hostApi.localStorageWrite([
+const result = await truApi.localStorageWrite([
   "user-theme",
   theme
 ]);
@@ -312,14 +312,14 @@ if (result.isErr) {
     groupId: 'local-storage',
     pattern: 'request-response',
     description: 'Clears a value from the scoped key-value store.',
-    productFunction: 'hostApi.localStorageClear(key)',
+    productFunction: 'truApi.localStorageClear(key)',
     hostHandler: 'container.handleLocalStorageClear(handler)',
     request: 'StorageKey',
     response: 'Result(void, StorageErr)',
     errorType: 'StorageErr',
     errorVariants: ['Full', 'Unknown({ reason: str })'],
     productExample: `// Clear stored data
-const result = await hostApi.localStorageClear("user-theme");`,
+const result = await truApi.localStorageClear("user-theme");`,
     hostExample: `container.handleLocalStorageClear((key, { ok, err }) => {
   const namespacedKey = \`\${productId}:\${key}\`;
   localStorage.removeItem(namespacedKey);
@@ -334,7 +334,7 @@ const result = await hostApi.localStorageClear("user-theme");`,
     groupId: 'account-management',
     pattern: 'request-response',
     description: 'Retrieves a product-specific derived account. The product provides a product identifier and derivation index; the host derives a unique public key for that combination.',
-    productFunction: 'hostApi.accountGet(productAccountId)',
+    productFunction: 'truApi.accountGet(productAccountId)',
     hostHandler: 'container.handleAccountGet(handler)',
     request: 'ProductAccountId',
     response: 'Result(Account, RequestCredentialsErr)',
@@ -342,7 +342,7 @@ const result = await hostApi.localStorageClear("user-theme");`,
     errorType: 'RequestCredentialsErr',
     errorVariants: ['NotConnected', 'Rejected', 'DomainNotValid', 'Unknown({ reason: str })'],
     productExample: `// Get the product account for "my-product" with index 0
-const result = await hostApi.accountGet([
+const result = await truApi.accountGet([
   "my-product.dot",  // DotNS identifier
   0               // derivation index
 ]);
@@ -372,7 +372,7 @@ if (result.isOk) {
     groupId: 'account-management',
     pattern: 'request-response',
     description: 'Retrieves a contextual alias (ring VRF based) for a product account.',
-    productFunction: 'hostApi.accountGetAlias(productAccountId)',
+    productFunction: 'truApi.accountGetAlias(productAccountId)',
     hostHandler: 'container.handleAccountGetAlias(handler)',
     request: 'ProductAccountId',
     response: 'Result(ContextualAlias, RequestCredentialsErr)',
@@ -380,7 +380,7 @@ if (result.isOk) {
     errorType: 'RequestCredentialsErr',
     errorVariants: ['NotConnected', 'Rejected', 'DomainNotValid', 'Unknown({ reason: str })'],
     productExample: `// Get a contextual alias for privacy-preserving identity
-const result = await hostApi.accountGetAlias([
+const result = await truApi.accountGetAlias([
   "my-product.dot",
   0
 ]);
@@ -406,7 +406,7 @@ if (result.isOk) {
     groupId: 'account-management',
     pattern: 'request-response',
     description: 'Creates a ring VRF proof for a product account against a specific ring.',
-    productFunction: 'hostApi.accountCreateProof(params)',
+    productFunction: 'truApi.accountCreateProof(params)',
     hostHandler: 'container.handleAccountCreateProof(handler)',
     request: 'Tuple(ProductAccountId, RingLocation, Bytes)',
     response: 'Result(RingVrfProof, CreateProofErr)',
@@ -414,7 +414,7 @@ if (result.isOk) {
     errorType: 'CreateProofErr',
     errorVariants: ['RingNotFound', 'Rejected', 'Unknown({ reason: str })'],
     productExample: `// Create a ring VRF proof
-const result = await hostApi.accountCreateProof([
+const result = await truApi.accountCreateProof([
   ["my-product.dot", 0],          // ProductAccountId
   {                              // RingLocation
     genesisHash: polkadotGenesis,
@@ -446,14 +446,14 @@ if (result.isOk) {
     groupId: 'account-management',
     pattern: 'request-response',
     description: 'Retrieves the user\'s non-product accounts (e.g., their main wallet account, not derived per-product).',
-    productFunction: 'hostApi.getNonProductAccounts()',
+    productFunction: 'truApi.getNonProductAccounts()',
     hostHandler: 'container.handleGetNonProductAccounts(handler)',
     request: 'void',
     response: 'Result(Vector(Account), RequestCredentialsErr)',
     errorType: 'RequestCredentialsErr',
     errorVariants: ['NotConnected', 'Rejected', 'DomainNotValid', 'Unknown({ reason: str })'],
     productExample: `// Get the user's wallet accounts
-const result = await hostApi.getNonProductAccounts();
+const result = await truApi.getNonProductAccounts();
 
 if (result.isOk) {
   for (const account of result.value) {
@@ -477,13 +477,13 @@ if (result.isOk) {
     groupId: 'account-management',
     pattern: 'subscription',
     description: 'Subscribes to changes in the user\'s authentication state. The host pushes "connected" or "disconnected" whenever the auth state changes.',
-    productFunction: 'hostApi.accountConnectionStatusSubscribe(void, callback)',
+    productFunction: 'truApi.accountConnectionStatusSubscribe(void, callback)',
     hostHandler: 'container.handleAccountConnectionStatusSubscribe(handler)',
     request: 'void',
     response: 'AccountConnectionStatus',
     responseDescription: 'Status enum: "disconnected" | "connected"',
     productExample: `// Watch for authentication changes
-const sub = hostApi.accountConnectionStatusSubscribe(
+const sub = truApi.accountConnectionStatusSubscribe(
   undefined,
   (status) => {
     if (status === "connected") {
@@ -518,7 +518,7 @@ sub.unsubscribe();`,
     groupId: 'signing',
     pattern: 'request-response',
     description: 'Requests the host to sign a Substrate transaction payload. The host typically shows a confirmation modal to the user.',
-    productFunction: 'hostApi.signPayload(payload)',
+    productFunction: 'truApi.signPayload(payload)',
     hostHandler: 'container.handleSignPayload(handler)',
     request: 'SigningPayload',
     response: 'Result(SigningResult, SigningErr)',
@@ -526,7 +526,7 @@ sub.unsubscribe();`,
     errorType: 'SigningErr',
     errorVariants: ['FailedToDecode', 'Rejected', 'PermissionDenied', 'Unknown({ reason: str })'],
     productExample: `// Sign a Substrate extrinsic payload
-const result = await hostApi.signPayload({
+const result = await truApi.signPayload({
   address: "5GrwvaEF5...",
   blockHash: "0xabc...",
   blockNumber: "0x01",
@@ -565,7 +565,7 @@ if (result.isOk) {
     groupId: 'signing',
     pattern: 'request-response',
     description: 'Requests the host to sign a raw message (not a transaction).',
-    productFunction: 'hostApi.signRaw(payload)',
+    productFunction: 'truApi.signRaw(payload)',
     hostHandler: 'container.handleSignRaw(handler)',
     request: 'SigningRawPayload',
     response: 'Result(SigningResult, SigningErr)',
@@ -573,13 +573,13 @@ if (result.isOk) {
     errorType: 'SigningErr',
     errorVariants: ['FailedToDecode', 'Rejected', 'PermissionDenied', 'Unknown({ reason: str })'],
     productExample: `// Sign a raw message
-const result = await hostApi.signRaw({
+const result = await truApi.signRaw({
   address: "5GrwvaEF5...",
   data: { Payload: "Please sign this message to verify ownership" }
 });
 
 // Or sign raw bytes
-const result2 = await hostApi.signRaw({
+const result2 = await truApi.signRaw({
   address: "5GrwvaEF5...",
   data: { Bytes: new Uint8Array([1, 2, 3]) }
 });`,
@@ -601,7 +601,7 @@ const result2 = await hostApi.signRaw({
     groupId: 'signing',
     pattern: 'request-response',
     description: 'Requests the host to create and sign a full transaction from a structured payload, using a product-derived account.',
-    productFunction: 'hostApi.createTransaction(params)',
+    productFunction: 'truApi.createTransaction(params)',
     hostHandler: 'container.handleCreateTransaction(handler)',
     request: 'Tuple(ProductAccountId, VersionedTxPayload)',
     response: 'Result(Bytes, CreateTransactionErr)',
@@ -610,7 +610,7 @@ const result2 = await hostApi.signRaw({
     errorType: 'CreateTransactionErr',
     errorVariants: ['FailedToDecode', 'Rejected', 'NotSupported(str)', 'PermissionDenied', 'Unknown({ reason: str })'],
     productExample: `// Create a signed transaction using product account
-const result = await hostApi.createTransaction([
+const result = await truApi.createTransaction([
   ["my-product.dot", 0],  // ProductAccountId
   {
     v1: {
@@ -653,7 +653,7 @@ if (result.isOk) {
     groupId: 'signing',
     pattern: 'request-response',
     description: 'Same as host_create_transaction but uses the user\'s main account instead of a product-derived account.',
-    productFunction: 'hostApi.createTransactionWithNonProductAccount(payload)',
+    productFunction: 'truApi.createTransactionWithNonProductAccount(payload)',
     hostHandler: 'container.handleCreateTransactionWithNonProductAccount(handler)',
     request: 'VersionedTxPayload',
     response: 'Result(Bytes, CreateTransactionErr)',
@@ -661,7 +661,7 @@ if (result.isOk) {
     errorType: 'CreateTransactionErr',
     errorVariants: ['FailedToDecode', 'Rejected', 'NotSupported(str)', 'PermissionDenied', 'Unknown({ reason: str })'],
     productExample: `// Create transaction with user's main wallet account
-const result = await hostApi.createTransactionWithNonProductAccount({
+const result = await truApi.createTransactionWithNonProductAccount({
   v1: {
     signer: "5GrwvaEF5...",
     callData: "0x0500...",
@@ -692,14 +692,14 @@ const result = await hostApi.createTransactionWithNonProductAccount({
     groupId: 'chat',
     pattern: 'request-response',
     description: 'Registers a chat room with the host.',
-    productFunction: 'hostApi.chatCreateRoom(params)',
+    productFunction: 'truApi.chatCreateRoom(params)',
     hostHandler: 'container.handleChatCreateRoom(handler)',
     request: 'ChatRoomRequest',
     response: 'Result(ChatRoomRegistrationResult, ChatRoomRegistrationErr)',
     errorType: 'ChatRoomRegistrationErr',
     errorVariants: ['PermissionDenied', 'Unknown({ reason: str })'],
     productExample: `// Create a chat room
-const result = await hostApi.chatCreateRoom({
+const result = await truApi.chatCreateRoom({
   roomId: "general-chat",
   name: "General Discussion",
   icon: "https://example.com/chat-icon.png"
@@ -728,14 +728,14 @@ if (result.isOk) {
     groupId: 'chat',
     pattern: 'request-response',
     description: 'Registers a bot identity for chat.',
-    productFunction: 'hostApi.chatRegisterBot(params)',
+    productFunction: 'truApi.chatRegisterBot(params)',
     hostHandler: 'container.handleChatBotRegistration(handler)',
     request: 'ChatBotRequest',
     response: 'Result(ChatBotRegistrationResult, ChatBotRegistrationErr)',
     errorType: 'ChatBotRegistrationErr',
     errorVariants: ['PermissionDenied', 'Unknown({ reason: str })'],
     productExample: `// Register a bot for automated messages
-const result = await hostApi.chatRegisterBot({
+const result = await truApi.chatRegisterBot({
   botId: "price-bot",
   name: "Price Alert Bot",
   icon: "https://example.com/bot-icon.png"
@@ -759,20 +759,20 @@ const result = await hostApi.chatRegisterBot({
     groupId: 'chat',
     pattern: 'request-response',
     description: 'Posts a message to a chat room. Supports text, rich text, actions, files, reactions, and custom messages.',
-    productFunction: 'hostApi.chatPostMessage(params)',
+    productFunction: 'truApi.chatPostMessage(params)',
     hostHandler: 'container.handleChatPostMessage(handler)',
     request: 'Struct { roomId: str, payload: ChatMessageContent }',
     response: 'Result(ChatPostMessageResult, ChatMessagePostingErr)',
     errorType: 'ChatMessagePostingErr',
     errorVariants: ['MessageTooLarge', 'Unknown({ reason: str })'],
     productExample: `// Post a text message
-const result = await hostApi.chatPostMessage({
+const result = await truApi.chatPostMessage({
   roomId: "general-chat",
   payload: { Text: "Hello everyone!" }
 });
 
 // Post an action menu
-const result2 = await hostApi.chatPostMessage({
+const result2 = await truApi.chatPostMessage({
   roomId: "general-chat",
   payload: {
     Actions: {
@@ -802,12 +802,12 @@ const result2 = await hostApi.chatPostMessage({
     groupId: 'chat',
     pattern: 'subscription',
     description: 'Subscribes to the list of chat rooms the product participates in. The host pushes the full room list whenever it changes.',
-    productFunction: 'hostApi.chatListSubscribe(void, callback)',
+    productFunction: 'truApi.chatListSubscribe(void, callback)',
     hostHandler: 'container.handleChatListSubscribe(handler)',
     request: 'void',
     response: 'Vector(ChatRoom)',
     productExample: `// Watch the room list
-const sub = hostApi.chatListSubscribe(
+const sub = truApi.chatListSubscribe(
   undefined,
   (rooms) => {
     console.log("Current rooms:", rooms);
@@ -834,12 +834,12 @@ const sub = hostApi.chatListSubscribe(
     groupId: 'chat',
     pattern: 'subscription',
     description: 'Subscribes to chat actions (messages posted by peers, button clicks, commands).',
-    productFunction: 'hostApi.chatActionSubscribe(void, callback)',
+    productFunction: 'truApi.chatActionSubscribe(void, callback)',
     hostHandler: 'container.handleChatActionSubscribe(handler)',
     request: 'void',
     response: 'ReceivedChatAction',
     productExample: `// Listen for chat events
-const sub = hostApi.chatActionSubscribe(
+const sub = truApi.chatActionSubscribe(
   undefined,
   (action) => {
     const { roomId, peer, payload } = action;
@@ -932,7 +932,7 @@ const unsub = container.renderChatCustomMessage(
     groupId: 'statement-store',
     pattern: 'subscription',
     description: 'Subscribes to statements matching a set of topics. The host pushes matching signed statements whenever the set changes.',
-    productFunction: 'hostApi.statementStoreSubscribe(topics, callback)',
+    productFunction: 'truApi.statementStoreSubscribe(topics, callback)',
     hostHandler: 'container.handleStatementStoreSubscribe(handler)',
     request: 'Vector(Topic)',
     response: 'Vector(SignedStatement)',
@@ -940,7 +940,7 @@ const unsub = container.renderChatCustomMessage(
 const topic = new Uint8Array(32);
 topic.set([1, 2, 3]); // topic identifier
 
-const sub = hostApi.statementStoreSubscribe(
+const sub = truApi.statementStoreSubscribe(
   [topic],
   (statements) => {
     for (const stmt of statements) {
@@ -969,7 +969,7 @@ const sub = hostApi.statementStoreSubscribe(
     groupId: 'statement-store',
     pattern: 'request-response',
     description: 'Creates a cryptographic proof (signature) for a statement using a product account\'s key.',
-    productFunction: 'hostApi.statementStoreCreateProof(params)',
+    productFunction: 'truApi.statementStoreCreateProof(params)',
     hostHandler: 'container.handleStatementStoreCreateProof(handler)',
     request: 'Tuple(ProductAccountId, Statement)',
     response: 'Result(StatementProof, StatementProofErr)',
@@ -977,7 +977,7 @@ const sub = hostApi.statementStoreSubscribe(
     errorType: 'StatementProofErr',
     errorVariants: ['UnableToSign', 'UnknownAccount', 'Unknown({ reason: str })'],
     productExample: `// Create a proof for a statement
-const result = await hostApi.statementStoreCreateProof([
+const result = await truApi.statementStoreCreateProof([
   ["my-product.dot", 0],  // ProductAccountId
   {
     proof: null,
@@ -1010,13 +1010,13 @@ if (result.isOk) {
     groupId: 'statement-store',
     pattern: 'request-response',
     description: 'Submits a signed statement to the statement store.',
-    productFunction: 'hostApi.statementStoreSubmit(statement)',
+    productFunction: 'truApi.statementStoreSubmit(statement)',
     hostHandler: 'container.handleStatementStoreSubmit(handler)',
     request: 'SignedStatement',
     response: 'Result(void, GenericError)',
     requestDescription: 'See SignedStatement type for fields',
     productExample: `// Submit a signed statement
-const result = await hostApi.statementStoreSubmit({
+const result = await truApi.statementStoreSubmit({
   proof: { Sr25519: { signature: sig, signer: pubKey } },
   decryptionKey: null,
   expiry: BigInt(Date.now() + 86400000),
@@ -1040,12 +1040,12 @@ const result = await hostApi.statementStoreSubmit({
     groupId: 'preimage',
     pattern: 'subscription',
     description: 'Subscribes to a preimage by its hash key. The host pushes the value when it becomes available.',
-    productFunction: 'hostApi.preimageLookupSubscribe(key, callback)',
+    productFunction: 'truApi.preimageLookupSubscribe(key, callback)',
     hostHandler: 'container.handlePreimageLookupSubscribe(handler)',
     request: 'PreimageKey',
     response: 'Nullable(PreimageValue)',
     productExample: `// Subscribe to a preimage
-const sub = hostApi.preimageLookupSubscribe(
+const sub = truApi.preimageLookupSubscribe(
   "0xabcdef1234...",  // hash of the preimage
   (value) => {
     if (value !== null) {
@@ -1071,7 +1071,7 @@ const sub = hostApi.preimageLookupSubscribe(
     groupId: 'preimage',
     pattern: 'request-response',
     description: 'Submits a preimage value and receives its hash key back.',
-    productFunction: 'hostApi.preimageSubmit(value)',
+    productFunction: 'truApi.preimageSubmit(value)',
     hostHandler: 'container.handlePreimageSubmit(handler)',
     request: 'PreimageValue',
     response: 'Result(PreimageKey, PreimageSubmitErr)',
@@ -1079,7 +1079,7 @@ const sub = hostApi.preimageLookupSubscribe(
     errorVariants: ['Unknown({ reason: str })'],
     productExample: `// Submit a preimage
 const data = new TextEncoder().encode("my preimage data");
-const result = await hostApi.preimageSubmit(data);
+const result = await truApi.preimageSubmit(data);
 
 if (result.isOk) {
   console.log("Preimage key:", result.value); // hash
@@ -1098,14 +1098,14 @@ if (result.isOk) {
     groupId: 'chain-interaction',
     pattern: 'subscription',
     description: 'Follows the chain head, receiving events about new blocks, finalization, and operation results. Implements the chainHead_v1_follow JSON-RPC method.',
-    productFunction: 'hostApi.chainHeadFollow(params, callback)',
+    productFunction: 'truApi.chainHeadFollow(params, callback)',
     hostHandler: 'container.handleChainConnection(factory)',
     request: 'Struct { genesisHash: GenesisHash, withRuntime: bool }',
     response: 'ChainHeadEvent',
     responseDescription: 'Enum with 12 variants: Initialized, NewBlock, BestBlockChanged, Finalized, OperationBodyDone, OperationCallDone, OperationStorageItems, OperationStorageDone, OperationWaitingForContinue, OperationInaccessible, OperationError, Stop',
     notes: 'On the Product Side, typically used via createPapiProvider(genesisHash) from @novasamatech/product-sdk. On the host side, handled via container.handleChainConnection(factory) which manages all chain methods internally.',
     productExample: `// Follow chain head events (low-level)
-const sub = hostApi.chainHeadFollow(
+const sub = truApi.chainHeadFollow(
   { genesisHash: polkadotGenesis, withRuntime: true },
   (event) => {
     switch (event.tag) {
@@ -1145,12 +1145,12 @@ container.handleChainConnection((genesisHash) => {
     groupId: 'chain-interaction',
     pattern: 'request-response',
     description: 'Retrieves a block header by hash within a follow subscription.',
-    productFunction: 'hostApi.chainHeadHeader(params)',
+    productFunction: 'truApi.chainHeadHeader(params)',
     hostHandler: 'Managed by chainConnectionManager',
     request: 'Struct { genesisHash: GenesisHash, followSubscriptionId: str, hash: BlockHash }',
     response: 'Result(Nullable(Hex), GenericError)',
     responseDescription: 'SCALE-encoded block header, or null',
-    productExample: `const result = await hostApi.chainHeadHeader({
+    productExample: `const result = await truApi.chainHeadHeader({
   genesisHash: polkadotGenesis,
   followSubscriptionId: subId,
   hash: blockHash,
@@ -1170,12 +1170,12 @@ if (result.isOk && result.value) {
     groupId: 'chain-interaction',
     pattern: 'request-response',
     description: 'Retrieves a block body. Returns an operation ID; results arrive as OperationBodyDone events on the follow subscription.',
-    productFunction: 'hostApi.chainHeadBody(params)',
+    productFunction: 'truApi.chainHeadBody(params)',
     hostHandler: 'Managed by chainConnectionManager',
     request: 'Struct { genesisHash: GenesisHash, followSubscriptionId: str, hash: BlockHash }',
     response: 'Result(OperationStartedResult, GenericError)',
     responseDescription: 'Started { operationId: OperationId } or LimitReached',
-    productExample: `const result = await hostApi.chainHeadBody({
+    productExample: `const result = await truApi.chainHeadBody({
   genesisHash: polkadotGenesis,
   followSubscriptionId: subId,
   hash: blockHash,
@@ -1195,11 +1195,11 @@ if (result.isOk && result.value.tag === "Started") {
     groupId: 'chain-interaction',
     pattern: 'request-response',
     description: 'Queries chain storage. Returns an operation ID; results arrive as OperationStorageItems/OperationStorageDone events.',
-    productFunction: 'hostApi.chainHeadStorage(params)',
+    productFunction: 'truApi.chainHeadStorage(params)',
     hostHandler: 'Managed by chainConnectionManager',
     request: 'Struct { genesisHash: GenesisHash, followSubscriptionId: str, hash: BlockHash, items: Vector(StorageQueryItem), childTrie: Nullable(Hex) }',
     response: 'Result(OperationStartedResult, GenericError)',
-    productExample: `const result = await hostApi.chainHeadStorage({
+    productExample: `const result = await truApi.chainHeadStorage({
   genesisHash: polkadotGenesis,
   followSubscriptionId: subId,
   hash: blockHash,
@@ -1218,11 +1218,11 @@ if (result.isOk && result.value.tag === "Started") {
     groupId: 'chain-interaction',
     pattern: 'request-response',
     description: 'Executes a runtime API call. Returns an operation ID; result arrives as OperationCallDone event.',
-    productFunction: 'hostApi.chainHeadCall(params)',
+    productFunction: 'truApi.chainHeadCall(params)',
     hostHandler: 'Managed by chainConnectionManager',
     request: 'Struct { genesisHash: GenesisHash, followSubscriptionId: str, hash: BlockHash, function: str, callParameters: Hex }',
     response: 'Result(OperationStartedResult, GenericError)',
-    productExample: `const result = await hostApi.chainHeadCall({
+    productExample: `const result = await truApi.chainHeadCall({
   genesisHash: polkadotGenesis,
   followSubscriptionId: subId,
   hash: blockHash,
@@ -1239,11 +1239,11 @@ if (result.isOk && result.value.tag === "Started") {
     groupId: 'chain-interaction',
     pattern: 'request-response',
     description: 'Unpins block hashes, allowing the node to discard them.',
-    productFunction: 'hostApi.chainHeadUnpin(params)',
+    productFunction: 'truApi.chainHeadUnpin(params)',
     hostHandler: 'Managed by chainConnectionManager',
     request: 'Struct { genesisHash: GenesisHash, followSubscriptionId: str, hashes: Vector(BlockHash) }',
     response: 'Result(void, GenericError)',
-    productExample: `await hostApi.chainHeadUnpin({
+    productExample: `await truApi.chainHeadUnpin({
   genesisHash: polkadotGenesis,
   followSubscriptionId: subId,
   hashes: [oldBlockHash1, oldBlockHash2],
@@ -1258,12 +1258,12 @@ if (result.isOk && result.value.tag === "Started") {
     groupId: 'chain-interaction',
     pattern: 'request-response',
     description: 'Continues a paused operation (when OperationWaitingForContinue is received).',
-    productFunction: 'hostApi.chainHeadContinue(params)',
+    productFunction: 'truApi.chainHeadContinue(params)',
     hostHandler: 'Managed by chainConnectionManager',
     request: 'Struct { genesisHash: GenesisHash, followSubscriptionId: str, operationId: OperationId }',
     response: 'Result(void, GenericError)',
     productExample: `// When OperationWaitingForContinue is received:
-await hostApi.chainHeadContinue({
+await truApi.chainHeadContinue({
   genesisHash: polkadotGenesis,
   followSubscriptionId: subId,
   operationId: opId,
@@ -1278,11 +1278,11 @@ await hostApi.chainHeadContinue({
     groupId: 'chain-interaction',
     pattern: 'request-response',
     description: 'Stops an in-progress operation.',
-    productFunction: 'hostApi.chainHeadStopOperation(params)',
+    productFunction: 'truApi.chainHeadStopOperation(params)',
     hostHandler: 'Managed by chainConnectionManager',
     request: 'Struct { genesisHash: GenesisHash, followSubscriptionId: str, operationId: OperationId }',
     response: 'Result(void, GenericError)',
-    productExample: `await hostApi.chainHeadStopOperation({
+    productExample: `await truApi.chainHeadStopOperation({
   genesisHash: polkadotGenesis,
   followSubscriptionId: subId,
   operationId: opId,
@@ -1297,11 +1297,11 @@ await hostApi.chainHeadContinue({
     groupId: 'chain-interaction',
     pattern: 'request-response',
     description: 'Gets the genesis hash for a chain.',
-    productFunction: 'hostApi.chainSpecGenesisHash(genesisHash)',
+    productFunction: 'truApi.chainSpecGenesisHash(genesisHash)',
     hostHandler: 'Managed by chainConnectionManager',
     request: 'GenesisHash',
     response: 'Result(Hex, GenericError)',
-    productExample: `const result = await hostApi.chainSpecGenesisHash(
+    productExample: `const result = await truApi.chainSpecGenesisHash(
   polkadotGenesis
 );`,
     hostExample: `// Handled automatically by chainConnectionManager
@@ -1314,11 +1314,11 @@ await hostApi.chainHeadContinue({
     groupId: 'chain-interaction',
     pattern: 'request-response',
     description: 'Gets the chain name.',
-    productFunction: 'hostApi.chainSpecChainName(genesisHash)',
+    productFunction: 'truApi.chainSpecChainName(genesisHash)',
     hostHandler: 'Managed by chainConnectionManager',
     request: 'GenesisHash',
     response: 'Result(str, GenericError)',
-    productExample: `const result = await hostApi.chainSpecChainName(
+    productExample: `const result = await truApi.chainSpecChainName(
   polkadotGenesis
 );
 if (result.isOk) {
@@ -1334,12 +1334,12 @@ if (result.isOk) {
     groupId: 'chain-interaction',
     pattern: 'request-response',
     description: 'Gets the chain properties as a JSON-encoded string.',
-    productFunction: 'hostApi.chainSpecProperties(genesisHash)',
+    productFunction: 'truApi.chainSpecProperties(genesisHash)',
     hostHandler: 'Managed by chainConnectionManager',
     request: 'GenesisHash',
     response: 'Result(str, GenericError)',
     responseDescription: 'JSON-encoded chain properties',
-    productExample: `const result = await hostApi.chainSpecProperties(
+    productExample: `const result = await truApi.chainSpecProperties(
   polkadotGenesis
 );
 if (result.isOk) {
@@ -1356,12 +1356,12 @@ if (result.isOk) {
     groupId: 'chain-interaction',
     pattern: 'request-response',
     description: 'Broadcasts a signed transaction to the network.',
-    productFunction: 'hostApi.chainTransactionBroadcast(params)',
+    productFunction: 'truApi.chainTransactionBroadcast(params)',
     hostHandler: 'Managed by chainConnectionManager',
     request: 'Struct { genesisHash: GenesisHash, transaction: Hex }',
     response: 'Result(Nullable(str), GenericError)',
     responseDescription: 'Operation ID if accepted, null if rejected',
-    productExample: `const result = await hostApi.chainTransactionBroadcast({
+    productExample: `const result = await truApi.chainTransactionBroadcast({
   genesisHash: polkadotGenesis,
   transaction: signedTxHex,
 });
@@ -1379,11 +1379,11 @@ if (result.isOk && result.value) {
     groupId: 'chain-interaction',
     pattern: 'request-response',
     description: 'Stops broadcasting a transaction.',
-    productFunction: 'hostApi.chainTransactionStop(params)',
+    productFunction: 'truApi.chainTransactionStop(params)',
     hostHandler: 'Managed by chainConnectionManager',
     request: 'Struct { genesisHash: GenesisHash, operationId: OperationId }',
     response: 'Result(void, GenericError)',
-    productExample: `await hostApi.chainTransactionStop({
+    productExample: `await truApi.chainTransactionStop({
   genesisHash: polkadotGenesis,
   operationId: broadcastOpId,
 });`,

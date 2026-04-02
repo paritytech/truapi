@@ -53,12 +53,12 @@ export default function OverviewPage() {
           </div>
           <div>
             <h1 className="text-2xl lg:text-4xl font-bold text-white font-display tracking-tight leading-tight">
-              Host API Protocol
+              TruAPI Protocol
             </h1>
             <div className="flex flex-wrap items-center gap-2 lg:gap-3 mt-2">
               <span className="text-sm text-slate-400">Protocol <span className="font-mono text-slate-300">v0.1</span></span>
               <span className="text-slate-700 hidden sm:inline">|</span>
-              <span className="text-sm text-slate-400 font-mono">npm: @novasamatech/host-api v0.6.6-1</span>
+              <span className="text-sm text-slate-400 font-mono">npm: @novasamatech/tru-api v0.6.6-1</span>
             </div>
           </div>
         </div>
@@ -149,7 +149,7 @@ export default function OverviewPage() {
             <div className="text-sm text-slate-400 space-y-1.5">
               <div className="flex items-start gap-2">
                 <span className="text-emerald-400 mt-0.5">&bull;</span>
-                <span>Calls methods via <C>hostApi.methodName(payload)</C></span>
+                <span>Calls methods via <C>truApi.methodName(payload)</C></span>
               </div>
               <div className="flex items-start gap-2">
                 <span className="text-emerald-400 mt-0.5">&bull;</span>

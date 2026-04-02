@@ -220,7 +220,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
 
       {/* Footer */}
       <div className="p-3 border-t border-slate-700/50 text-[10px] text-slate-500">
-        <span className="font-mono">@novasamatech/host-api</span>
+        <span className="font-mono">@novasamatech/tru-api</span>
       </div>
     </aside>
     </>
