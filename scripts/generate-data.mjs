@@ -163,62 +163,6 @@ function isSubscriptionType(type) {
   return type?.resolved_path?.path === 'Subscription';
 }
 
-// ── Category inference ─────────────────────────────────────────────────────
-
-const categoryPatterns = [
-  [/^Generic/, 'Common'],
-  [/^Feature$/, 'Feature'],
-  [/^NavigateTo/, 'Navigation'],
-  [/^PushNotification$/, 'Notification'],
-  [/^DevicePermission/, 'Permission'],
-  [/^RemotePermission/, 'Permission'],
-  [/^Storage/, 'Storage'],
-  [/^Account/, 'Account'],
-  [/^ContextualAlias/, 'Account'],
-  [/^RingLocation/, 'Account'],
-  [/^RingVrf/, 'Account'],
-  [/^RequestCredentials/, 'Account'],
-  [/^CreateProof/, 'Account'],
-  [/^ProductAccountId/, 'Account'],
-  [/^DotNs/, 'Account'],
-  [/^DerivationIndex/, 'Account'],
-  [/^PublicKey/, 'Account'],
-  [/^AccountId/, 'Account'],
-  [/^UserIdentity/, 'Account'],
-  [/^Signing/, 'Signing'],
-  [/^RawPayload/, 'Signing'],
-  [/^TxPayload/, 'Transaction'],
-  [/^VersionedTxPayload/, 'Transaction'],
-  [/^CreateTransaction/, 'Transaction'],
-  [/^Chat/, 'Chat'],
-  [/^ActionTrigger/, 'Chat'],
-  [/^ReceivedChatAction/, 'Chat'],
-  [/^SimpleGroup/, 'Chat'],
-  [/^CustomRenderer/, 'Custom Renderer'],
-  [/^CustomMessage/, 'Custom Renderer'],
-  [/^Component/, 'Custom Renderer'],
-  [/^(Box|Column|Row|Text|Button|TextField)Props/, 'Custom Renderer'],
-  [/^(Typography|ButtonVariant|ColorToken|ContentAlignment|HorizontalAlignment|VerticalAlignment|Arrangement|Shape|BorderStyle|Background|Modifier|Size|Dimensions)/, 'Custom Renderer'],
-  [/^Statement/, 'Statement Store'],
-  [/^SignedStatement/, 'Statement Store'],
-  [/^Topic$/, 'Statement Store'],
-  [/^TopicFilter/, 'Statement Store'],
-  [/^Channel$/, 'Statement Store'],
-  [/^DecryptionKey/, 'Statement Store'],
-  [/^Preimage/, 'Preimage'],
-  [/^(BlockHash|OperationId|RuntimeApi|RuntimeSpec|RuntimeType|StorageQuery|StorageResult|OperationStarted|ChainHead|ChainTransaction)/, 'Chain Interaction'],
-  [/^(Balance|PaymentId|Ed25519|Payment)/, 'Payment'],
-  [/^(Entropy|DeriveEntropy)/, 'Entropy'],
-  [/^(Hex|Bytes|GenesisHash)$/, 'Common'],
-];
-
-function inferCategory(name) {
-  for (const [pattern, category] of categoryPatterns) {
-    if (pattern.test(name)) return category;
-  }
-  return 'Common';
-}
-
 // ── Primitives / combinators ───────────────────────────────────────────────
 
 const basePrimitives = [
@@ -381,7 +325,7 @@ function generateModule(moduleName) {
     if (!path || path.length !== 3) continue;
 
     const docs = parseDocs(item.docs);
-    const category = docs.sections['Category']?.trim() || inferCategory(item.name);
+    const category = docs.sections['Category']?.trim() || 'Common';
 
     if (item.inner?.struct) {
       const fields = [];

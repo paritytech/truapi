@@ -13,17 +13,33 @@ use crate::Subscription;
 // ─── Primitive type aliases ──────────────────────────────────────────────────
 
 /// Hex-encoded arbitrary bytes (SCALE length-prefixed on the wire).
+///
+/// # Category
+///
+/// Common
 pub type Hex = Vec<u8>;
 
 /// Arbitrary binary data (SCALE length-prefixed on the wire).
+///
+/// # Category
+///
+/// Common
 pub type Bytes = Vec<u8>;
 
 // ─── Common types ────────────────────────────────────────────────────────────
 
 /// Blockchain genesis hash, used to identify a specific chain.
+///
+/// # Category
+///
+/// Common
 pub type GenesisHash = Hex;
 
 /// Generic error payload carrying a human-readable reason string.
+///
+/// # Category
+///
+/// Common
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GenericErr {
     pub reason: String,
@@ -31,6 +47,10 @@ pub struct GenericErr {
 
 /// Single-variant error enum wrapping [`GenericErr`]. Used by many methods as a
 /// catch-all error type.
+///
+/// # Category
+///
+/// Common
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GenericError {
     GenericError(GenericErr),
@@ -39,6 +59,10 @@ pub enum GenericError {
 // ─── Feature types ───────────────────────────────────────────────────────────
 
 /// Feature to check for host support.
+///
+/// # Category
+///
+/// Feature
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Feature {
     /// Is this blockchain supported?
@@ -48,6 +72,10 @@ pub enum Feature {
 // ─── Navigation types ────────────────────────────────────────────────────────
 
 /// Navigation error.
+///
+/// # Category
+///
+/// Navigation
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum NavigateToError {
     /// Navigation not allowed.
@@ -59,6 +87,10 @@ pub enum NavigateToError {
 // ─── Notification types ──────────────────────────────────────────────────────
 
 /// Push notification payload.
+///
+/// # Category
+///
+/// Notification
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PushNotification {
     /// Notification text.
@@ -75,6 +107,10 @@ pub struct PushNotification {
 /// `Biometrics` per [RFC 0001] (JIT permissions).
 ///
 /// [RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66
+///
+/// # Category
+///
+/// Permission
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DevicePermission {
     /// Push notification delivery permission.
@@ -103,6 +139,10 @@ pub enum DevicePermission {
 ///
 /// [RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66
 /// [issue #64]: https://github.com/paritytech/triangle-js-sdks/issues/64
+///
+/// # Category
+///
+/// Permission
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RemotePermission {
     /// HTTP/HTTPS/WS/WSS access to specific domains. Each string is a domain
@@ -121,12 +161,24 @@ pub enum RemotePermission {
 // ─── Storage types ───────────────────────────────────────────────────────────
 
 /// Key name for local storage operations.
+///
+/// # Category
+///
+/// Storage
 pub type StorageKey = String;
 
 /// Binary value stored in local storage.
+///
+/// # Category
+///
+/// Storage
 pub type StorageValue = Vec<u8>;
 
 /// Local storage operation error.
+///
+/// # Category
+///
+/// Storage
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StorageError {
     /// Storage quota exceeded.
@@ -138,22 +190,46 @@ pub enum StorageError {
 // ─── Account types ───────────────────────────────────────────────────────────
 
 /// 32-byte account identifier (typically an SS58 public key).
+///
+/// # Category
+///
+/// Account
 pub type AccountId = [u8; 32];
 
 /// Variable-length public key.
+///
+/// # Category
+///
+/// Account
 pub type PublicKey = Vec<u8>;
 
 /// A dotNS domain name identifier (e.g., `"my-product.dot"`).
+///
+/// # Category
+///
+/// Account
 pub type DotNsIdentifier = String;
 
 /// Key derivation index for generating product-specific accounts.
+///
+/// # Category
+///
+/// Account
 pub type DerivationIndex = u32;
 
 /// Identifies a product-specific account by combining a dotNS domain name with a
 /// derivation index.
+///
+/// # Category
+///
+/// Account
 pub type ProductAccountId = (DotNsIdentifier, DerivationIndex);
 
 /// An account with its public key and optional display name.
+///
+/// # Category
+///
+/// Account
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Account {
     /// The account public key (variable-length bytes).
@@ -163,6 +239,10 @@ pub struct Account {
 }
 
 /// A privacy-preserving alias derived via ring VRF, bound to a specific context.
+///
+/// # Category
+///
+/// Account
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContextualAlias {
     /// 32-byte context identifier.
@@ -172,6 +252,10 @@ pub struct ContextualAlias {
 }
 
 /// Hints for locating a ring on-chain.
+///
+/// # Category
+///
+/// Account
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RingLocationHint {
     /// Optional pallet instance index.
@@ -179,6 +263,10 @@ pub struct RingLocationHint {
 }
 
 /// Locates a specific ring on a specific chain for ring VRF operations.
+///
+/// # Category
+///
+/// Account
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RingLocation {
     /// Chain genesis hash.
@@ -190,9 +278,17 @@ pub struct RingLocation {
 }
 
 /// Variable-length ring VRF proof bytes.
+///
+/// # Category
+///
+/// Account
 pub type RingVrfProof = Vec<u8>;
 
 /// User's authentication state.
+///
+/// # Category
+///
+/// Account
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AccountConnectionStatus {
     Disconnected,
@@ -202,6 +298,10 @@ pub enum AccountConnectionStatus {
 /// The user's primary DotNS account identity.
 ///
 /// V0.2.
+///
+/// # Category
+///
+/// Account
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UserIdentity {
     /// The user's primary DotNS identifier.
@@ -213,6 +313,10 @@ pub struct UserIdentity {
 /// Error from [`AccountManagement::host_get_user_id`].
 ///
 /// V0.2.
+///
+/// # Category
+///
+/// Account
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UserIdentityError {
     /// User denied the identity disclosure request.
@@ -224,6 +328,10 @@ pub enum UserIdentityError {
 }
 
 /// Error returned when credential/account requests fail.
+///
+/// # Category
+///
+/// Account
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RequestCredentialsError {
     /// User is not logged in.
@@ -237,6 +345,10 @@ pub enum RequestCredentialsError {
 }
 
 /// Error returned when ring VRF proof creation fails.
+///
+/// # Category
+///
+/// Account
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CreateProofError {
     /// Ring not available at the specified location.
@@ -251,6 +363,10 @@ pub enum CreateProofError {
 
 /// Full Substrate extrinsic signing payload with all fields needed for signature
 /// generation.
+///
+/// # Category
+///
+/// Signing
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SigningPayload {
     /// Product account that will sign this payload.
@@ -293,6 +409,10 @@ pub struct SigningPayload {
 }
 
 /// Raw data to sign — either binary bytes or a string message.
+///
+/// # Category
+///
+/// Signing
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RawPayload {
     /// Raw binary data to sign.
@@ -306,6 +426,10 @@ pub enum RawPayload {
 /// V0.2: `address` replaced with `account: ProductAccountId` per [RFC 0005].
 ///
 /// [RFC 0005]: https://github.com/paritytech/triangle-js-sdks/pull/82
+///
+/// # Category
+///
+/// Signing
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SigningRawPayload {
     /// Product account that will sign this data.
@@ -315,6 +439,10 @@ pub struct SigningRawPayload {
 }
 
 /// Result of a signing operation.
+///
+/// # Category
+///
+/// Signing
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SigningResult {
     /// The cryptographic signature.
@@ -324,6 +452,10 @@ pub struct SigningResult {
 }
 
 /// Signing operation error.
+///
+/// # Category
+///
+/// Signing
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SigningError {
     /// Payload could not be deserialized.
@@ -339,6 +471,10 @@ pub enum SigningError {
 // ─── Transaction creation types ──────────────────────────────────────────────
 
 /// A signed extension for a transaction payload.
+///
+/// # Category
+///
+/// Transaction
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TxPayloadExtensionV1 {
     /// Extension name (e.g., `"CheckSpecVersion"`).
@@ -350,6 +486,10 @@ pub struct TxPayloadExtensionV1 {
 }
 
 /// Context information for transaction construction.
+///
+/// # Category
+///
+/// Transaction
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TxPayloadContextV1 {
     /// `RuntimeMetadataPrefixed` blob (SCALE).
@@ -364,6 +504,10 @@ pub struct TxPayloadContextV1 {
 
 /// Version 1 transaction payload with all data needed to construct a signed
 /// extrinsic.
+///
+/// # Category
+///
+/// Transaction
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TxPayloadV1 {
     /// Signer hint (address/name), `None` = host picks.
@@ -379,6 +523,10 @@ pub struct TxPayloadV1 {
 }
 
 /// Versioned transaction payload envelope.
+///
+/// # Category
+///
+/// Transaction
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VersionedTxPayload {
     /// Version 1 payload.
@@ -386,6 +534,10 @@ pub enum VersionedTxPayload {
 }
 
 /// Transaction creation error.
+///
+/// # Category
+///
+/// Transaction
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CreateTransactionError {
     /// Payload could not be deserialized.
@@ -403,6 +555,10 @@ pub enum CreateTransactionError {
 // ─── Chat types ──────────────────────────────────────────────────────────────
 
 /// Request to create a chat room.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatRoomRequest {
     /// Unique room identifier.
@@ -414,6 +570,10 @@ pub struct ChatRoomRequest {
 }
 
 /// Whether the room was newly created or already existed.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChatRoomRegistrationStatus {
     New,
@@ -421,6 +581,10 @@ pub enum ChatRoomRegistrationStatus {
 }
 
 /// Result of a room registration.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChatRoomRegistrationResult {
     /// `New` or `Exists`.
@@ -428,6 +592,10 @@ pub struct ChatRoomRegistrationResult {
 }
 
 /// Chat room registration error.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChatRoomRegistrationError {
     /// Not allowed.
@@ -441,6 +609,10 @@ pub enum ChatRoomRegistrationError {
 /// V0.2: lightweight group chat that avoids the full Chat Extension v2
 /// complexity. Participants join via deep link; the host handles the UI
 /// with default rendering (no custom elements).
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SimpleGroupChatRequest {
     /// Unique room identifier source.
@@ -454,6 +626,10 @@ pub struct SimpleGroupChatRequest {
 /// Result of creating a simple group chat room.
 ///
 /// V0.2.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SimpleGroupChatResult {
     /// Whether the room was newly created or already existed.
@@ -463,6 +639,10 @@ pub struct SimpleGroupChatResult {
 }
 
 /// Request to register a chat bot.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatBotRequest {
     /// Unique bot identifier.
@@ -474,6 +654,10 @@ pub struct ChatBotRequest {
 }
 
 /// Whether the bot was newly registered or already existed.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChatBotRegistrationStatus {
     New,
@@ -481,6 +665,10 @@ pub enum ChatBotRegistrationStatus {
 }
 
 /// Result of a bot registration.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChatBotRegistrationResult {
     /// `New` or `Exists`.
@@ -488,6 +676,10 @@ pub struct ChatBotRegistrationResult {
 }
 
 /// Chat bot registration error.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChatBotRegistrationError {
     /// Not allowed.
@@ -497,6 +689,10 @@ pub enum ChatBotRegistrationError {
 }
 
 /// How the product participates in a chat room.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChatRoomParticipation {
     RoomHost,
@@ -504,6 +700,10 @@ pub enum ChatRoomParticipation {
 }
 
 /// A chat room the product participates in.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatRoom {
     /// Room identifier.
@@ -513,6 +713,10 @@ pub struct ChatRoom {
 }
 
 /// A clickable action button in a chat message.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatAction {
     /// Action identifier.
@@ -522,6 +726,10 @@ pub struct ChatAction {
 }
 
 /// Layout for action buttons.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ChatActionLayout {
     Column,
@@ -529,6 +737,10 @@ pub enum ChatActionLayout {
 }
 
 /// A set of action buttons with optional text.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatActions {
     /// Optional message text.
@@ -540,6 +752,10 @@ pub struct ChatActions {
 }
 
 /// A media attachment.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatMedia {
     /// Media URL.
@@ -547,6 +763,10 @@ pub struct ChatMedia {
 }
 
 /// Rich text message with optional media.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatRichText {
     /// Optional text content.
@@ -556,6 +776,10 @@ pub struct ChatRichText {
 }
 
 /// A file attachment in a chat message.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatFile {
     /// File download URL.
@@ -571,6 +795,10 @@ pub struct ChatFile {
 }
 
 /// A reaction to a chat message.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatReaction {
     /// Message being reacted to.
@@ -580,6 +808,10 @@ pub struct ChatReaction {
 }
 
 /// A custom message with application-defined type and binary payload.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatCustomMessage {
     /// Application-defined type key.
@@ -589,6 +821,10 @@ pub struct ChatCustomMessage {
 }
 
 /// Content of a chat message — one of several types.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChatMessageContent {
     /// Plain text message.
@@ -608,6 +844,10 @@ pub enum ChatMessageContent {
 }
 
 /// Request to post a message to a chat room.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatPostMessageRequest {
     /// Room to post to.
@@ -617,6 +857,10 @@ pub struct ChatPostMessageRequest {
 }
 
 /// Result of posting a message.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatPostMessageResult {
     /// Assigned message ID.
@@ -624,6 +868,10 @@ pub struct ChatPostMessageResult {
 }
 
 /// Chat message posting error.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChatMessagePostingError {
     /// Message exceeded size limit.
@@ -633,6 +881,10 @@ pub enum ChatMessagePostingError {
 }
 
 /// Payload when a user clicks an action button.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActionTrigger {
     /// Message containing the action.
@@ -644,6 +896,10 @@ pub struct ActionTrigger {
 }
 
 /// A slash command from a chat user.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChatCommand {
     /// Command name.
@@ -653,6 +909,10 @@ pub struct ChatCommand {
 }
 
 /// Payload of a received chat action.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChatActionPayload {
     /// A peer posted a message.
@@ -664,6 +924,10 @@ pub enum ChatActionPayload {
 }
 
 /// A chat action received from the host.
+///
+/// # Category
+///
+/// Chat
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReceivedChatAction {
     /// Room where the action occurred.
@@ -678,13 +942,25 @@ pub struct ReceivedChatAction {
 
 /// Variable-length unsigned integer used for dimensions (SCALE compact-encoded
 /// on the wire).
+///
+/// # Category
+///
+/// Custom Renderer
 pub type Size = u64;
 
 /// CSS-like dimensions: (top, end, bottom, start).
 /// Bottom defaults to top, start defaults to end when `None`.
+///
+/// # Category
+///
+/// Custom Renderer
 pub type Dimensions = (Size, Size, Option<Size>, Option<Size>);
 
 /// Text typography presets.
+///
+/// # Category
+///
+/// Custom Renderer
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TypographyStyle {
     TitleXL,
@@ -695,6 +971,10 @@ pub enum TypographyStyle {
 }
 
 /// Button style variants.
+///
+/// # Category
+///
+/// Custom Renderer
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ButtonVariant {
     Primary,
@@ -703,6 +983,10 @@ pub enum ButtonVariant {
 }
 
 /// Semantic color tokens for theming.
+///
+/// # Category
+///
+/// Custom Renderer
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ColorToken {
     TextPrimary,
@@ -717,6 +1001,10 @@ pub enum ColorToken {
 }
 
 /// 2D content alignment.
+///
+/// # Category
+///
+/// Custom Renderer
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ContentAlignment {
     TopStart,
@@ -731,6 +1019,10 @@ pub enum ContentAlignment {
 }
 
 /// Horizontal alignment options.
+///
+/// # Category
+///
+/// Custom Renderer
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HorizontalAlignment {
     Start,
@@ -739,6 +1031,10 @@ pub enum HorizontalAlignment {
 }
 
 /// Vertical alignment options.
+///
+/// # Category
+///
+/// Custom Renderer
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VerticalAlignment {
     Top,
@@ -747,6 +1043,10 @@ pub enum VerticalAlignment {
 }
 
 /// Layout arrangement (like CSS flexbox `justify-content`).
+///
+/// # Category
+///
+/// Custom Renderer
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Arrangement {
     Start,
@@ -758,6 +1058,10 @@ pub enum Arrangement {
 }
 
 /// Shape for borders and backgrounds.
+///
+/// # Category
+///
+/// Custom Renderer
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Shape {
     /// Border radius value.
@@ -767,6 +1071,10 @@ pub enum Shape {
 }
 
 /// Border styling.
+///
+/// # Category
+///
+/// Custom Renderer
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BorderStyle {
     /// Border width.
@@ -778,6 +1086,10 @@ pub struct BorderStyle {
 }
 
 /// Background styling.
+///
+/// # Category
+///
+/// Custom Renderer
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Background {
     /// Background color.
@@ -787,6 +1099,10 @@ pub struct Background {
 }
 
 /// Layout and styling modifiers applied to custom renderer components.
+///
+/// # Category
+///
+/// Custom Renderer
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Modifier {
     /// Outer spacing.
@@ -812,6 +1128,10 @@ pub enum Modifier {
 }
 
 /// Properties for a [`CustomRendererNode::Box`] container.
+///
+/// # Category
+///
+/// Custom Renderer
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct BoxProps {
     /// Content alignment within the box.
@@ -819,6 +1139,10 @@ pub struct BoxProps {
 }
 
 /// Properties for a [`CustomRendererNode::Column`] layout.
+///
+/// # Category
+///
+/// Custom Renderer
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ColumnProps {
     /// Horizontal alignment of children.
@@ -828,6 +1152,10 @@ pub struct ColumnProps {
 }
 
 /// Properties for a [`CustomRendererNode::Row`] layout.
+///
+/// # Category
+///
+/// Custom Renderer
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RowProps {
     /// Vertical alignment of children.
@@ -837,6 +1165,10 @@ pub struct RowProps {
 }
 
 /// Properties for a [`CustomRendererNode::Text`] display.
+///
+/// # Category
+///
+/// Custom Renderer
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TextProps {
     /// Typography preset.
@@ -846,6 +1178,10 @@ pub struct TextProps {
 }
 
 /// Properties for a [`CustomRendererNode::Button`].
+///
+/// # Category
+///
+/// Custom Renderer
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ButtonProps {
     /// Button label text.
@@ -857,6 +1193,10 @@ pub struct ButtonProps {
 }
 
 /// Properties for a [`CustomRendererNode::TextField`].
+///
+/// # Category
+///
+/// Custom Renderer
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TextFieldProps {
     /// Placeholder text.
@@ -869,6 +1209,10 @@ pub struct TextFieldProps {
 
 /// A component in the custom renderer UI tree, combining modifiers, typed props,
 /// and recursive children.
+///
+/// # Category
+///
+/// Custom Renderer
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Component<P> {
     /// Layout and styling modifiers.
@@ -881,6 +1225,10 @@ pub struct Component<P> {
 
 /// A node in the custom renderer UI tree. Can be nested recursively via the
 /// `children` field of each [`Component`].
+///
+/// # Category
+///
+/// Custom Renderer
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CustomRendererNode {
     /// Empty node.
@@ -904,6 +1252,10 @@ pub enum CustomRendererNode {
 }
 
 /// Request from the host asking the product to render a custom chat message.
+///
+/// # Category
+///
+/// Custom Renderer
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CustomMessageRenderRequest {
     /// Message identifier.
@@ -917,15 +1269,31 @@ pub struct CustomMessageRenderRequest {
 // ─── Statement store types ───────────────────────────────────────────────────
 
 /// 32-byte topic identifier.
+///
+/// # Category
+///
+/// Statement Store
 pub type Topic = [u8; 32];
 
 /// 32-byte channel identifier.
+///
+/// # Category
+///
+/// Statement Store
 pub type Channel = [u8; 32];
 
 /// 32-byte decryption key.
+///
+/// # Category
+///
+/// Statement Store
 pub type DecryptionKey = [u8; 32];
 
 /// Cryptographic proof for a statement.
+///
+/// # Category
+///
+/// Statement Store
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StatementProof {
     /// Sr25519 signature proof.
@@ -952,6 +1320,10 @@ pub enum StatementProof {
 }
 
 /// A statement with optional proof and metadata.
+///
+/// # Category
+///
+/// Statement Store
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Statement {
     /// Optional cryptographic proof.
@@ -969,6 +1341,10 @@ pub struct Statement {
 }
 
 /// A statement with a required (not optional) proof.
+///
+/// # Category
+///
+/// Statement Store
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SignedStatement {
     /// Required cryptographic proof.
@@ -986,6 +1362,10 @@ pub struct SignedStatement {
 }
 
 /// Statement proof creation error.
+///
+/// # Category
+///
+/// Statement Store
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StatementProofError {
     /// Signing operation failed.
@@ -999,23 +1379,47 @@ pub enum StatementProofError {
 // ─── Preimage types ──────────────────────────────────────────────────────────
 
 /// Hash of the preimage.
+///
+/// # Category
+///
+/// Preimage
 pub type PreimageKey = Hex;
 
 /// The preimage data.
+///
+/// # Category
+///
+/// Preimage
 pub type PreimageValue = Vec<u8>;
 
 // ─── Chain interaction types ─────────────────────────────────────────────────
 
 /// Block hash identifier.
+///
+/// # Category
+///
+/// Chain Interaction
 pub type BlockHash = Hex;
 
 /// Operation identifier for async chain operations.
+///
+/// # Category
+///
+/// Chain Interaction
 pub type OperationId = String;
 
 /// A runtime API identified by name and version.
+///
+/// # Category
+///
+/// Chain Interaction
 pub type RuntimeApi = (String, u32);
 
 /// Runtime specification metadata.
+///
+/// # Category
+///
+/// Chain Interaction
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeSpec {
     /// Specification name.
@@ -1033,6 +1437,10 @@ pub struct RuntimeSpec {
 }
 
 /// Runtime validity check result.
+///
+/// # Category
+///
+/// Chain Interaction
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeType {
     /// Valid runtime with spec.
@@ -1042,6 +1450,10 @@ pub enum RuntimeType {
 }
 
 /// Type of storage query to perform.
+///
+/// # Category
+///
+/// Chain Interaction
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StorageQueryType {
     Value,
@@ -1052,6 +1464,10 @@ pub enum StorageQueryType {
 }
 
 /// A single storage query.
+///
+/// # Category
+///
+/// Chain Interaction
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StorageQueryItem {
     /// Storage key to query.
@@ -1061,6 +1477,10 @@ pub struct StorageQueryItem {
 }
 
 /// Result of a storage query.
+///
+/// # Category
+///
+/// Chain Interaction
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StorageResultItem {
     /// The queried key.
@@ -1074,6 +1494,10 @@ pub struct StorageResultItem {
 }
 
 /// Result of starting a chain operation.
+///
+/// # Category
+///
+/// Chain Interaction
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum OperationStartedResult {
     /// Operation started successfully.
@@ -1086,6 +1510,10 @@ pub enum OperationStartedResult {
 }
 
 /// Events received when following the chain head.
+///
+/// # Category
+///
+/// Chain Interaction
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChainHeadEvent {
     /// Initial state with finalized blocks.
@@ -1137,6 +1565,10 @@ pub enum ChainHeadEvent {
 }
 
 /// Parameters for [`ChainInteraction::remote_chain_head_follow`].
+///
+/// # Category
+///
+/// Chain Interaction
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChainHeadFollowRequest {
     /// Chain genesis hash.
@@ -1147,6 +1579,10 @@ pub struct ChainHeadFollowRequest {
 
 /// Parameters for chain head methods that operate within a follow subscription
 /// on a specific block.
+///
+/// # Category
+///
+/// Chain Interaction
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChainHeadBlockRequest {
     /// Chain genesis hash.
@@ -1158,6 +1594,10 @@ pub struct ChainHeadBlockRequest {
 }
 
 /// Parameters for [`ChainInteraction::remote_chain_head_storage`].
+///
+/// # Category
+///
+/// Chain Interaction
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChainHeadStorageRequest {
     /// Chain genesis hash.
@@ -1173,6 +1613,10 @@ pub struct ChainHeadStorageRequest {
 }
 
 /// Parameters for [`ChainInteraction::remote_chain_head_call`].
+///
+/// # Category
+///
+/// Chain Interaction
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChainHeadCallRequest {
     /// Chain genesis hash.
@@ -1188,6 +1632,10 @@ pub struct ChainHeadCallRequest {
 }
 
 /// Parameters for [`ChainInteraction::remote_chain_head_unpin`].
+///
+/// # Category
+///
+/// Chain Interaction
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChainHeadUnpinRequest {
     /// Chain genesis hash.
@@ -1200,6 +1648,10 @@ pub struct ChainHeadUnpinRequest {
 
 /// Parameters for chain head operations that reference a specific operation within
 /// a follow subscription.
+///
+/// # Category
+///
+/// Chain Interaction
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChainHeadOperationRequest {
     /// Chain genesis hash.
@@ -1211,6 +1663,10 @@ pub struct ChainHeadOperationRequest {
 }
 
 /// Parameters for [`ChainInteraction::remote_chain_transaction_broadcast`].
+///
+/// # Category
+///
+/// Chain Interaction
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChainTransactionBroadcastRequest {
     /// Chain genesis hash.
@@ -1220,6 +1676,10 @@ pub struct ChainTransactionBroadcastRequest {
 }
 
 /// Parameters for [`ChainInteraction::remote_chain_transaction_stop`].
+///
+/// # Category
+///
+/// Chain Interaction
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ChainTransactionStopRequest {
     /// Chain genesis hash.
@@ -1235,6 +1695,10 @@ pub struct ChainTransactionStopRequest {
 /// exact match or `None` to act as a wildcard.
 ///
 /// Mirrors the `TopicFilter` type from `polkadot-sdk` statement store.
+///
+/// # Category
+///
+/// Statement Store
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TopicFilter {
     /// Positional topic matchers. `None` entries act as wildcards.
@@ -1247,12 +1711,24 @@ pub struct TopicFilter {
 
 /// Balance amount for payment operations. Interpreted according to the host's
 /// single fixed payment asset (e.g. pUSD).
+///
+/// # Category
+///
+/// Payment
 pub type Balance = u128;
 
 /// Unique payment identifier, scoped to the product that created it.
+///
+/// # Category
+///
+/// Payment
 pub type PaymentId = String;
 
 /// Ed25519 private key bytes (32 bytes).
+///
+/// # Category
+///
+/// Payment
 pub type Ed25519PrivateKey = [u8; 32];
 
 /// Current payment balance state pushed to subscribers.
@@ -1260,6 +1736,10 @@ pub type Ed25519PrivateKey = [u8; 32];
 /// See [RFC 0006].
 ///
 /// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+///
+/// # Category
+///
+/// Payment
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PaymentBalance {
     /// Balance that can be spent right now.
@@ -1274,6 +1754,10 @@ pub struct PaymentBalance {
 /// See [RFC 0006].
 ///
 /// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+///
+/// # Category
+///
+/// Payment
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PaymentTopUpSource {
     /// Fund from one of the calling product's scoped accounts.
@@ -1288,6 +1772,10 @@ pub enum PaymentTopUpSource {
 /// See [RFC 0006].
 ///
 /// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+///
+/// # Category
+///
+/// Payment
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PaymentReceipt {
     /// The assigned payment identifier.
@@ -1302,6 +1790,10 @@ pub struct PaymentReceipt {
 /// See [RFC 0006].
 ///
 /// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+///
+/// # Category
+///
+/// Payment
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PaymentStatus {
     /// Payment is being processed.
@@ -1317,6 +1809,10 @@ pub enum PaymentStatus {
 /// See [RFC 0006].
 ///
 /// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+///
+/// # Category
+///
+/// Payment
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PaymentBalanceError {
     /// User denied the balance disclosure request.
@@ -1330,6 +1826,10 @@ pub enum PaymentBalanceError {
 /// See [RFC 0006].
 ///
 /// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+///
+/// # Category
+///
+/// Payment
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PaymentTopUpError {
     /// The source account does not hold sufficient funds.
@@ -1345,6 +1845,10 @@ pub enum PaymentTopUpError {
 /// See [RFC 0006].
 ///
 /// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+///
+/// # Category
+///
+/// Payment
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PaymentRequestError {
     /// User denied the payment request.
@@ -1360,6 +1864,10 @@ pub enum PaymentRequestError {
 /// See [RFC 0006].
 ///
 /// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+///
+/// # Category
+///
+/// Payment
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PaymentStatusError {
     /// Payment ID was not found or does not belong to the current product.
@@ -1380,6 +1888,10 @@ pub enum PaymentStatusError {
 /// See [RFC 0007].
 ///
 /// [RFC 0007]: https://github.com/paritytech/triangle-js-sdks/pull/95
+///
+/// # Category
+///
+/// Entropy
 pub type Entropy = [u8; 32];
 
 /// Error from [`EntropyDerivation::host_derive_entropy`].
@@ -1390,6 +1902,10 @@ pub type Entropy = [u8; 32];
 /// See [RFC 0007].
 ///
 /// [RFC 0007]: https://github.com/paritytech/triangle-js-sdks/pull/95
+///
+/// # Category
+///
+/// Entropy
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeriveEntropyError {
     /// An unexpected error occurred in the host.
