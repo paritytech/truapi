@@ -39,13 +39,17 @@ function toCamelCase(snake) {
   return snake.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
 }
 
+function toTitleCase(snake) {
+  return snake.split('_').map(w => w[0].toUpperCase() + w.slice(1)).join(' ');
+}
+
 // ── Type resolution ────────────────────────────────────────────────────────
 
 function resolveType(type) {
   if (!type) return '_void';
   if (type.primitive) return type.primitive === 'bool' ? 'bool' : type.primitive;
   if (type.resolved_path) {
-    const name = type.resolved_path.path;
+    const name = type.resolved_path.path.replace(/^super::/, '');
     const args = type.resolved_path.args;
 
     if (name === 'String') return 'str';
@@ -129,7 +133,7 @@ function parseDocs(docs) {
     sections[currentSection] = currentContent.join('\n').trim();
   }
 
-  return { description: description.trim(), sections };
+  return { description: description.trim().replace(/super::/g, ''), sections };
 }
 
 function extractCodeBlock(text) {
@@ -196,9 +200,9 @@ function generateModule(moduleName) {
     return paths[id]?.path?.includes(moduleName);
   }
 
-  function rustdocUrl(kind, name) {
+  function rustdocUrl(kind, name, submod) {
     const kindPrefix = kind === 'type_alias' ? 'type' : kind;
-    return `rustdoc/truapi_spec/${moduleName}/${kindPrefix}.${name}.html`;
+    return `rustdoc/truapi_spec/${moduleName}/${submod}/${kindPrefix}.${name}.html`;
   }
 
   function getEnumVariantNames(enumId) {
@@ -322,10 +326,12 @@ function generateModule(moduleName) {
     if (!isInModule(id)) continue;
     if (item.inner?.trait) continue;
     const path = paths[id]?.path;
-    if (!path || path.length !== 3) continue;
+    // Types live at depth 4: [crate, version, category_module, TypeName]
+    if (!path || path.length !== 4) continue;
 
     const docs = parseDocs(item.docs);
-    const category = docs.sections['Category']?.trim() || 'Common';
+    const submod = path[2];
+    const category = toTitleCase(submod);
 
     if (item.inner?.struct) {
       const fields = [];
@@ -337,7 +343,7 @@ function generateModule(moduleName) {
           fields.push({
             name: toCamelCase(f.name),
             type: resolveType(f.inner.struct_field),
-            description: f.docs?.trim() || '',
+            description: f.docs?.trim().replace(/super::/g, '') || '',
           });
         }
       }
@@ -346,7 +352,7 @@ function generateModule(moduleName) {
         id: item.name,
         name: item.name,
         category,
-        source: rustdocUrl('struct', item.name),
+        source: rustdocUrl('struct', item.name, submod),
         definition: fields.length > 0
           ? `Struct({ ${fields.map(f => `${f.name}: ${f.type}`).join(', ')} })`
           : `Struct({})`,
@@ -373,7 +379,7 @@ function generateModule(moduleName) {
           }).filter(Boolean);
           type_ = `{ ${fields.join(', ')} }`;
         }
-        variants.push({ name: v.name, type: type_, description: v.docs?.trim() || '' });
+        variants.push({ name: v.name, type: type_, description: v.docs?.trim().replace(/super::/g, '') || '' });
       }
 
       const isError = item.name.endsWith('Error') || item.name.endsWith('Err');
@@ -386,7 +392,7 @@ function generateModule(moduleName) {
         id: item.name,
         name: item.name,
         category,
-        source: rustdocUrl('enum', item.name),
+        source: rustdocUrl('enum', item.name, submod),
         definition,
         description: docs.description,
         variants: variants.length > 0 ? variants : undefined,
@@ -396,7 +402,7 @@ function generateModule(moduleName) {
         id: item.name,
         name: item.name,
         category,
-        source: rustdocUrl('type_alias', item.name),
+        source: rustdocUrl('type_alias', item.name, submod),
         definition: resolveType(item.inner.type_alias.type),
         description: docs.description,
       });

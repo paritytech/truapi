@@ -10,1907 +10,31 @@
 
 use crate::Subscription;
 
-// ─── Primitive type aliases ──────────────────────────────────────────────────
-
-/// Hex-encoded arbitrary bytes (SCALE length-prefixed on the wire).
-///
-/// # Category
-///
-/// Common
-pub type Hex = Vec<u8>;
-
-/// Arbitrary binary data (SCALE length-prefixed on the wire).
-///
-/// # Category
-///
-/// Common
-pub type Bytes = Vec<u8>;
-
-// ─── Common types ────────────────────────────────────────────────────────────
-
-/// Blockchain genesis hash, used to identify a specific chain.
-///
-/// # Category
-///
-/// Common
-pub type GenesisHash = Hex;
-
-/// Generic error payload carrying a human-readable reason string.
-///
-/// # Category
-///
-/// Common
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GenericErr {
-    pub reason: String,
-}
-
-/// Single-variant error enum wrapping [`GenericErr`]. Used by many methods as a
-/// catch-all error type.
-///
-/// # Category
-///
-/// Common
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum GenericError {
-    GenericError(GenericErr),
-}
-
-// ─── Feature types ───────────────────────────────────────────────────────────
-
-/// Feature to check for host support.
-///
-/// # Category
-///
-/// Feature
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Feature {
-    /// Is this blockchain supported?
-    Chain(GenesisHash),
-}
-
-// ─── Navigation types ────────────────────────────────────────────────────────
-
-/// Navigation error.
-///
-/// # Category
-///
-/// Navigation
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum NavigateToError {
-    /// Navigation not allowed.
-    PermissionDenied,
-    /// Catch-all.
-    Unknown { reason: String },
-}
-
-// ─── Notification types ──────────────────────────────────────────────────────
-
-/// Push notification payload.
-///
-/// # Category
-///
-/// Notification
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PushNotification {
-    /// Notification text.
-    pub text: String,
-    /// Optional URL to open on tap.
-    pub deeplink: Option<String>,
-}
-
-// ─── Permission types ────────────────────────────────────────────────────────
-
-/// Device capability to request access to.
-///
-/// V0.2: extended with `Notifications`, `Nfc`, `Clipboard`, `OpenUrl`, and
-/// `Biometrics` per [RFC 0001] (JIT permissions).
-///
-/// [RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66
-///
-/// # Category
-///
-/// Permission
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DevicePermission {
-    /// Push notification delivery permission.
-    Notifications,
-    Camera,
-    Microphone,
-    Bluetooth,
-    /// Near-field communication access.
-    Nfc,
-    Location,
-    /// System clipboard access.
-    Clipboard,
-    /// Open a URL in an external browser.
-    OpenUrl,
-    /// Biometric authentication (fingerprint, face ID).
-    Biometrics,
-}
-
-/// A single remote-operation permission entry.
-///
-/// V0.2: replaces `RemotePermissionRequest`. The [`Permissions::remote_permission`] method
-/// now accepts a `Vec<RemotePermission>` so products can batch multiple
-/// permission requests into a single prompt.
-///
-/// See [RFC 0001] and [issue #64].
-///
-/// [RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66
-/// [issue #64]: https://github.com/paritytech/triangle-js-sdks/issues/64
-///
-/// # Category
-///
-/// Permission
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RemotePermission {
-    /// HTTP/HTTPS/WS/WSS access to specific domains. Each string is a domain
-    /// pattern: `"api.example.com"` (exact), `"*.example.com"` (wildcard
-    /// subdomain), or `"*"` (all hosts).
-    Remote(Vec<String>),
-    /// WebRTC access — can expose the user's IP address.
-    WebRtc,
-    /// Broadcast signed transactions via
-    /// [`ChainInteraction::remote_chain_transaction_broadcast`].
-    ChainSubmit,
-    /// Submit statements via [`StatementStore::remote_statement_store_submit`].
-    StatementSubmit,
-}
-
-// ─── Storage types ───────────────────────────────────────────────────────────
-
-/// Key name for local storage operations.
-///
-/// # Category
-///
-/// Storage
-pub type StorageKey = String;
-
-/// Binary value stored in local storage.
-///
-/// # Category
-///
-/// Storage
-pub type StorageValue = Vec<u8>;
-
-/// Local storage operation error.
-///
-/// # Category
-///
-/// Storage
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StorageError {
-    /// Storage quota exceeded.
-    Full,
-    /// Catch-all.
-    Unknown { reason: String },
-}
-
-// ─── Account types ───────────────────────────────────────────────────────────
-
-/// 32-byte account identifier (typically an SS58 public key).
-///
-/// # Category
-///
-/// Account
-pub type AccountId = [u8; 32];
-
-/// Variable-length public key.
-///
-/// # Category
-///
-/// Account
-pub type PublicKey = Vec<u8>;
-
-/// A dotNS domain name identifier (e.g., `"my-product.dot"`).
-///
-/// # Category
-///
-/// Account
-pub type DotNsIdentifier = String;
-
-/// Key derivation index for generating product-specific accounts.
-///
-/// # Category
-///
-/// Account
-pub type DerivationIndex = u32;
-
-/// Identifies a product-specific account by combining a dotNS domain name with a
-/// derivation index.
-///
-/// # Category
-///
-/// Account
-pub type ProductAccountId = (DotNsIdentifier, DerivationIndex);
-
-/// An account with its public key and optional display name.
-///
-/// # Category
-///
-/// Account
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Account {
-    /// The account public key (variable-length bytes).
-    pub public_key: PublicKey,
-    /// Optional human-readable display name.
-    pub name: Option<String>,
-}
-
-/// A privacy-preserving alias derived via ring VRF, bound to a specific context.
-///
-/// # Category
-///
-/// Account
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ContextualAlias {
-    /// 32-byte context identifier.
-    pub context: [u8; 32],
-    /// Ring VRF alias (variable length).
-    pub alias: Vec<u8>,
-}
-
-/// Hints for locating a ring on-chain.
-///
-/// # Category
-///
-/// Account
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RingLocationHint {
-    /// Optional pallet instance index.
-    pub pallet_instance: Option<u32>,
-}
-
-/// Locates a specific ring on a specific chain for ring VRF operations.
-///
-/// # Category
-///
-/// Account
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RingLocation {
-    /// Chain genesis hash.
-    pub genesis_hash: GenesisHash,
-    /// Root hash of the ring.
-    pub ring_root_hash: Hex,
-    /// Optional location hints.
-    pub hints: Option<RingLocationHint>,
-}
-
-/// Variable-length ring VRF proof bytes.
-///
-/// # Category
-///
-/// Account
-pub type RingVrfProof = Vec<u8>;
-
-/// User's authentication state.
-///
-/// # Category
-///
-/// Account
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AccountConnectionStatus {
-    Disconnected,
-    Connected,
-}
-
-/// The user's primary DotNS account identity.
-///
-/// V0.2.
-///
-/// # Category
-///
-/// Account
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct UserIdentity {
-    /// The user's primary DotNS identifier.
-    pub dot_ns_identifier: DotNsIdentifier,
-    /// The user's primary public key.
-    pub public_key: PublicKey,
-}
-
-/// Error from [`AccountManagement::host_get_user_id`].
-///
-/// V0.2.
-///
-/// # Category
-///
-/// Account
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum UserIdentityError {
-    /// User denied the identity disclosure request.
-    Rejected,
-    /// User is not logged in.
-    NotConnected,
-    /// Catch-all.
-    Unknown { reason: String },
-}
-
-/// Error returned when credential/account requests fail.
-///
-/// # Category
-///
-/// Account
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RequestCredentialsError {
-    /// User is not logged in.
-    NotConnected,
-    /// User or host rejected the request.
-    Rejected,
-    /// Domain identifier is invalid.
-    DomainNotValid,
-    /// Catch-all error with reason.
-    Unknown { reason: String },
-}
-
-/// Error returned when ring VRF proof creation fails.
-///
-/// # Category
-///
-/// Account
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CreateProofError {
-    /// Ring not available at the specified location.
-    RingNotFound,
-    /// User or host rejected.
-    Rejected,
-    /// Catch-all.
-    Unknown { reason: String },
-}
-
-// ─── Signing types ───────────────────────────────────────────────────────────
-
-/// Full Substrate extrinsic signing payload with all fields needed for signature
-/// generation.
-///
-/// # Category
-///
-/// Signing
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SigningPayload {
-    /// Product account that will sign this payload.
-    ///
-    /// V0.2: replaces the previous `address: String` field per [RFC 0005],
-    /// aligning with all other TrUAPI account-related methods.
-    ///
-    /// [RFC 0005]: https://github.com/paritytech/triangle-js-sdks/pull/82
-    pub account: ProductAccountId,
-    /// Reference block hash.
-    pub block_hash: Hex,
-    /// Reference block number.
-    pub block_number: Hex,
-    /// Mortality era encoding.
-    pub era: Hex,
-    /// Chain genesis hash.
-    pub genesis_hash: GenesisHash,
-    /// SCALE-encoded call data.
-    pub method: Hex,
-    /// Account nonce.
-    pub nonce: Hex,
-    /// Runtime spec version.
-    pub spec_version: Hex,
-    /// Transaction tip.
-    pub tip: Hex,
-    /// Transaction format version.
-    pub transaction_version: Hex,
-    /// Extension identifiers.
-    pub signed_extensions: Vec<String>,
-    /// Extrinsic version.
-    pub version: u32,
-    /// For multi-asset tips.
-    pub asset_id: Option<Hex>,
-    /// CheckMetadataHash extension.
-    pub metadata_hash: Option<Hex>,
-    /// Metadata mode.
-    pub mode: Option<u32>,
-    /// Request signed transaction back.
-    pub with_signed_transaction: Option<bool>,
-}
-
-/// Raw data to sign — either binary bytes or a string message.
-///
-/// # Category
-///
-/// Signing
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RawPayload {
-    /// Raw binary data to sign.
-    Bytes(Vec<u8>),
-    /// String message to sign.
-    Payload(String),
-}
-
-/// A raw signing request pairing an account with raw data.
-///
-/// V0.2: `address` replaced with `account: ProductAccountId` per [RFC 0005].
-///
-/// [RFC 0005]: https://github.com/paritytech/triangle-js-sdks/pull/82
-///
-/// # Category
-///
-/// Signing
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SigningRawPayload {
-    /// Product account that will sign this data.
-    pub account: ProductAccountId,
-    /// The data to sign.
-    pub data: RawPayload,
-}
-
-/// Result of a signing operation.
-///
-/// # Category
-///
-/// Signing
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SigningResult {
-    /// The cryptographic signature.
-    pub signature: Hex,
-    /// Full signed transaction, if requested.
-    pub signed_transaction: Option<Hex>,
-}
-
-/// Signing operation error.
-///
-/// # Category
-///
-/// Signing
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SigningError {
-    /// Payload could not be deserialized.
-    FailedToDecode,
-    /// User rejected signing.
-    Rejected,
-    /// Not authenticated.
-    PermissionDenied,
-    /// Catch-all.
-    Unknown { reason: String },
-}
-
-// ─── Transaction creation types ──────────────────────────────────────────────
-
-/// A signed extension for a transaction payload.
-///
-/// # Category
-///
-/// Transaction
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TxPayloadExtensionV1 {
-    /// Extension name (e.g., `"CheckSpecVersion"`).
-    pub id: String,
-    /// SCALE-encoded extra data (in extrinsic body).
-    pub extra: Hex,
-    /// SCALE-encoded implicit data (signed, not in body).
-    pub additional_signed: Hex,
-}
-
-/// Context information for transaction construction.
-///
-/// # Category
-///
-/// Transaction
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TxPayloadContextV1 {
-    /// `RuntimeMetadataPrefixed` blob (SCALE).
-    pub metadata: Hex,
-    /// Native token symbol.
-    pub token_symbol: String,
-    /// Native token decimals.
-    pub token_decimals: u32,
-    /// Highest known block number.
-    pub best_block_height: u32,
-}
-
-/// Version 1 transaction payload with all data needed to construct a signed
-/// extrinsic.
-///
-/// # Category
-///
-/// Transaction
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TxPayloadV1 {
-    /// Signer hint (address/name), `None` = host picks.
-    pub signer: Option<String>,
-    /// SCALE-encoded Call data.
-    pub call_data: Hex,
-    /// Signed extensions.
-    pub extensions: Vec<TxPayloadExtensionV1>,
-    /// 0 for Extrinsic V4, any for V5.
-    pub tx_ext_version: u8,
-    /// Transaction context.
-    pub context: TxPayloadContextV1,
-}
-
-/// Versioned transaction payload envelope.
-///
-/// # Category
-///
-/// Transaction
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum VersionedTxPayload {
-    /// Version 1 payload.
-    V1(TxPayloadV1),
-}
-
-/// Transaction creation error.
-///
-/// # Category
-///
-/// Transaction
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CreateTransactionError {
-    /// Payload could not be deserialized.
-    FailedToDecode,
-    /// User rejected.
-    Rejected,
-    /// Unsupported payload version or extension.
-    NotSupported(String),
-    /// Not authenticated.
-    PermissionDenied,
-    /// Catch-all.
-    Unknown { reason: String },
-}
-
-// ─── Chat types ──────────────────────────────────────────────────────────────
-
-/// Request to create a chat room.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChatRoomRequest {
-    /// Unique room identifier.
-    pub room_id: String,
-    /// Room display name.
-    pub name: String,
-    /// URL or base64 image.
-    pub icon: String,
-}
-
-/// Whether the room was newly created or already existed.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ChatRoomRegistrationStatus {
-    New,
-    Exists,
-}
-
-/// Result of a room registration.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ChatRoomRegistrationResult {
-    /// `New` or `Exists`.
-    pub status: ChatRoomRegistrationStatus,
-}
-
-/// Chat room registration error.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ChatRoomRegistrationError {
-    /// Not allowed.
-    PermissionDenied,
-    /// Catch-all.
-    Unknown { reason: String },
-}
-
-/// Request to create a simple group chat room.
-///
-/// V0.2: lightweight group chat that avoids the full Chat Extension v2
-/// complexity. Participants join via deep link; the host handles the UI
-/// with default rendering (no custom elements).
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SimpleGroupChatRequest {
-    /// Unique room identifier source.
-    pub room_id: String,
-    /// Room display name.
-    pub name: String,
-    /// URL or base64 image for the room avatar.
-    pub icon: String,
-}
-
-/// Result of creating a simple group chat room.
-///
-/// V0.2.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SimpleGroupChatResult {
-    /// Whether the room was newly created or already existed.
-    pub status: ChatRoomRegistrationStatus,
-    /// Deep link that participants can use to join the room.
-    pub join_link: String,
-}
-
-/// Request to register a chat bot.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChatBotRequest {
-    /// Unique bot identifier.
-    pub bot_id: String,
-    /// Bot display name.
-    pub name: String,
-    /// URL or base64 image.
-    pub icon: String,
-}
-
-/// Whether the bot was newly registered or already existed.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ChatBotRegistrationStatus {
-    New,
-    Exists,
-}
-
-/// Result of a bot registration.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ChatBotRegistrationResult {
-    /// `New` or `Exists`.
-    pub status: ChatBotRegistrationStatus,
-}
-
-/// Chat bot registration error.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ChatBotRegistrationError {
-    /// Not allowed.
-    PermissionDenied,
-    /// Catch-all.
-    Unknown { reason: String },
-}
-
-/// How the product participates in a chat room.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ChatRoomParticipation {
-    RoomHost,
-    Bot,
-}
-
-/// A chat room the product participates in.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChatRoom {
-    /// Room identifier.
-    pub room_id: String,
-    /// `RoomHost` or `Bot`.
-    pub participating_as: ChatRoomParticipation,
-}
-
-/// A clickable action button in a chat message.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChatAction {
-    /// Action identifier.
-    pub action_id: String,
-    /// Button label.
-    pub title: String,
-}
-
-/// Layout for action buttons.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ChatActionLayout {
-    Column,
-    Grid,
-}
-
-/// A set of action buttons with optional text.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChatActions {
-    /// Optional message text.
-    pub text: Option<String>,
-    /// List of action buttons.
-    pub actions: Vec<ChatAction>,
-    /// `Column` or `Grid` layout.
-    pub layout: ChatActionLayout,
-}
-
-/// A media attachment.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChatMedia {
-    /// Media URL.
-    pub url: String,
-}
-
-/// Rich text message with optional media.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChatRichText {
-    /// Optional text content.
-    pub text: Option<String>,
-    /// Attached media items.
-    pub media: Vec<ChatMedia>,
-}
-
-/// A file attachment in a chat message.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChatFile {
-    /// File download URL.
-    pub url: String,
-    /// File name.
-    pub file_name: String,
-    /// MIME type.
-    pub mime_type: String,
-    /// File size in bytes.
-    pub size_bytes: u64,
-    /// Optional caption text.
-    pub text: Option<String>,
-}
-
-/// A reaction to a chat message.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChatReaction {
-    /// Message being reacted to.
-    pub message_id: String,
-    /// Emoji reaction.
-    pub emoji: String,
-}
-
-/// A custom message with application-defined type and binary payload.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChatCustomMessage {
-    /// Application-defined type key.
-    pub message_type: String,
-    /// Binary payload.
-    pub payload: Bytes,
-}
-
-/// Content of a chat message — one of several types.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ChatMessageContent {
-    /// Plain text message.
-    Text(String),
-    /// Rich text with media.
-    RichText(ChatRichText),
-    /// Action button set.
-    Actions(ChatActions),
-    /// File attachment.
-    File(ChatFile),
-    /// Emoji reaction.
-    Reaction(ChatReaction),
-    /// Reaction removal.
-    ReactionRemoved(ChatReaction),
-    /// Custom message.
-    Custom(ChatCustomMessage),
-}
-
-/// Request to post a message to a chat room.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChatPostMessageRequest {
-    /// Room to post to.
-    pub room_id: String,
-    /// Message content.
-    pub payload: ChatMessageContent,
-}
-
-/// Result of posting a message.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChatPostMessageResult {
-    /// Assigned message ID.
-    pub message_id: String,
-}
-
-/// Chat message posting error.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ChatMessagePostingError {
-    /// Message exceeded size limit.
-    MessageTooLarge,
-    /// Catch-all.
-    Unknown { reason: String },
-}
-
-/// Payload when a user clicks an action button.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ActionTrigger {
-    /// Message containing the action.
-    pub message_id: String,
-    /// Which action was triggered.
-    pub action_id: String,
-    /// Optional additional data.
-    pub payload: Option<Bytes>,
-}
-
-/// A slash command from a chat user.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChatCommand {
-    /// Command name.
-    pub command: String,
-    /// Command arguments.
-    pub payload: String,
-}
-
-/// Payload of a received chat action.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ChatActionPayload {
-    /// A peer posted a message.
-    MessagePosted(ChatMessageContent),
-    /// A user triggered an action button.
-    ActionTriggered(ActionTrigger),
-    /// A user issued a command.
-    Command(ChatCommand),
-}
-
-/// A chat action received from the host.
-///
-/// # Category
-///
-/// Chat
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ReceivedChatAction {
-    /// Room where the action occurred.
-    pub room_id: String,
-    /// Peer who initiated the action.
-    pub peer: String,
-    /// The action payload.
-    pub payload: ChatActionPayload,
-}
-
-// ─── Custom renderer types ───────────────────────────────────────────────────
-
-/// Variable-length unsigned integer used for dimensions (SCALE compact-encoded
-/// on the wire).
-///
-/// # Category
-///
-/// Custom Renderer
-pub type Size = u64;
-
-/// CSS-like dimensions: (top, end, bottom, start).
-/// Bottom defaults to top, start defaults to end when `None`.
-///
-/// # Category
-///
-/// Custom Renderer
-pub type Dimensions = (Size, Size, Option<Size>, Option<Size>);
-
-/// Text typography presets.
-///
-/// # Category
-///
-/// Custom Renderer
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum TypographyStyle {
-    TitleXL,
-    Headline,
-    BodyM,
-    BodyS,
-    Caption,
-}
-
-/// Button style variants.
-///
-/// # Category
-///
-/// Custom Renderer
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ButtonVariant {
-    Primary,
-    Secondary,
-    Text,
-}
-
-/// Semantic color tokens for theming.
-///
-/// # Category
-///
-/// Custom Renderer
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ColorToken {
-    TextPrimary,
-    TextSecondary,
-    TextTertiary,
-    BackgroundPrimary,
-    BackgroundSecondary,
-    BackgroundTertiary,
-    Success,
-    Error,
-    Warning,
-}
-
-/// 2D content alignment.
-///
-/// # Category
-///
-/// Custom Renderer
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ContentAlignment {
-    TopStart,
-    TopCenter,
-    TopEnd,
-    CenterStart,
-    Center,
-    CenterEnd,
-    BottomStart,
-    BottomCenter,
-    BottomEnd,
-}
-
-/// Horizontal alignment options.
-///
-/// # Category
-///
-/// Custom Renderer
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum HorizontalAlignment {
-    Start,
-    Center,
-    End,
-}
-
-/// Vertical alignment options.
-///
-/// # Category
-///
-/// Custom Renderer
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VerticalAlignment {
-    Top,
-    Center,
-    Bottom,
-}
-
-/// Layout arrangement (like CSS flexbox `justify-content`).
-///
-/// # Category
-///
-/// Custom Renderer
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Arrangement {
-    Start,
-    End,
-    Center,
-    SpaceBetween,
-    SpaceAround,
-    SpaceEvenly,
-}
-
-/// Shape for borders and backgrounds.
-///
-/// # Category
-///
-/// Custom Renderer
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Shape {
-    /// Border radius value.
-    Rounded(Size),
-    /// Circular shape.
-    Circle,
-}
-
-/// Border styling.
-///
-/// # Category
-///
-/// Custom Renderer
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BorderStyle {
-    /// Border width.
-    pub width: Size,
-    /// Border color.
-    pub color: ColorToken,
-    /// Border shape.
-    pub shape: Option<Shape>,
-}
-
-/// Background styling.
-///
-/// # Category
-///
-/// Custom Renderer
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Background {
-    /// Background color.
-    pub color: ColorToken,
-    /// Background shape.
-    pub shape: Option<Shape>,
-}
-
-/// Layout and styling modifiers applied to custom renderer components.
-///
-/// # Category
-///
-/// Custom Renderer
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Modifier {
-    /// Outer spacing.
-    Margin(Dimensions),
-    /// Inner spacing.
-    Padding(Dimensions),
-    /// Background fill.
-    Background(Background),
-    /// Border style.
-    Border(BorderStyle),
-    /// Fixed height.
-    Height(Size),
-    /// Fixed width.
-    Width(Size),
-    /// Minimum width.
-    MinWidth(Size),
-    /// Minimum height.
-    MinHeight(Size),
-    /// Fill available width.
-    FillWidth(bool),
-    /// Fill available height.
-    FillHeight(bool),
-}
-
-/// Properties for a [`CustomRendererNode::Box`] container.
-///
-/// # Category
-///
-/// Custom Renderer
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct BoxProps {
-    /// Content alignment within the box.
-    pub content_alignment: Option<ContentAlignment>,
-}
-
-/// Properties for a [`CustomRendererNode::Column`] layout.
-///
-/// # Category
-///
-/// Custom Renderer
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ColumnProps {
-    /// Horizontal alignment of children.
-    pub horizontal_alignment: Option<HorizontalAlignment>,
-    /// Vertical arrangement of children.
-    pub vertical_arrangement: Option<Arrangement>,
-}
-
-/// Properties for a [`CustomRendererNode::Row`] layout.
-///
-/// # Category
-///
-/// Custom Renderer
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct RowProps {
-    /// Vertical alignment of children.
-    pub vertical_alignment: Option<VerticalAlignment>,
-    /// Horizontal arrangement of children.
-    pub horizontal_arrangement: Option<Arrangement>,
-}
-
-/// Properties for a [`CustomRendererNode::Text`] display.
-///
-/// # Category
-///
-/// Custom Renderer
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct TextProps {
-    /// Typography preset.
-    pub style: Option<TypographyStyle>,
-    /// Text color.
-    pub color: Option<ColorToken>,
-}
-
-/// Properties for a [`CustomRendererNode::Button`].
-///
-/// # Category
-///
-/// Custom Renderer
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ButtonProps {
-    /// Button label text.
-    pub text: String,
-    /// Button style variant.
-    pub variant: Option<ButtonVariant>,
-    /// Action identifier triggered on click.
-    pub click_action: String,
-}
-
-/// Properties for a [`CustomRendererNode::TextField`].
-///
-/// # Category
-///
-/// Custom Renderer
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TextFieldProps {
-    /// Placeholder text.
-    pub placeholder: Option<String>,
-    /// Initial value.
-    pub initial_value: Option<String>,
-    /// Action identifier triggered on submit.
-    pub submit_action: String,
-}
-
-/// A component in the custom renderer UI tree, combining modifiers, typed props,
-/// and recursive children.
-///
-/// # Category
-///
-/// Custom Renderer
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Component<P> {
-    /// Layout and styling modifiers.
-    pub modifiers: Vec<Modifier>,
-    /// Component-specific properties.
-    pub props: P,
-    /// Child nodes.
-    pub children: Vec<CustomRendererNode>,
-}
-
-/// A node in the custom renderer UI tree. Can be nested recursively via the
-/// `children` field of each [`Component`].
-///
-/// # Category
-///
-/// Custom Renderer
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum CustomRendererNode {
-    /// Empty node.
-    Nil,
-    /// Raw text string.
-    String(String),
-    /// Generic container.
-    Box(Component<BoxProps>),
-    /// Vertical layout.
-    Column(Component<ColumnProps>),
-    /// Horizontal layout.
-    Row(Component<RowProps>),
-    /// Flexible space.
-    Spacer(Component<()>),
-    /// Text display.
-    Text(Component<TextProps>),
-    /// Interactive button.
-    Button(Component<ButtonProps>),
-    /// Text input.
-    TextField(Component<TextFieldProps>),
-}
-
-/// Request from the host asking the product to render a custom chat message.
-///
-/// # Category
-///
-/// Custom Renderer
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CustomMessageRenderRequest {
-    /// Message identifier.
-    pub message_id: String,
-    /// Application-defined message type.
-    pub message_type: String,
-    /// Binary payload.
-    pub payload: Bytes,
-}
-
-// ─── Statement store types ───────────────────────────────────────────────────
-
-/// 32-byte topic identifier.
-///
-/// # Category
-///
-/// Statement Store
-pub type Topic = [u8; 32];
-
-/// 32-byte channel identifier.
-///
-/// # Category
-///
-/// Statement Store
-pub type Channel = [u8; 32];
-
-/// 32-byte decryption key.
-///
-/// # Category
-///
-/// Statement Store
-pub type DecryptionKey = [u8; 32];
-
-/// Cryptographic proof for a statement.
-///
-/// # Category
-///
-/// Statement Store
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StatementProof {
-    /// Sr25519 signature proof.
-    Sr25519 {
-        signature: [u8; 64],
-        signer: [u8; 32],
-    },
-    /// Ed25519 signature proof.
-    Ed25519 {
-        signature: [u8; 64],
-        signer: [u8; 32],
-    },
-    /// ECDSA signature proof.
-    Ecdsa {
-        signature: [u8; 65],
-        signer: [u8; 33],
-    },
-    /// On-chain event proof.
-    OnChain {
-        who: [u8; 32],
-        block_hash: [u8; 32],
-        event: u64,
-    },
-}
-
-/// A statement with optional proof and metadata.
-///
-/// # Category
-///
-/// Statement Store
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Statement {
-    /// Optional cryptographic proof.
-    pub proof: Option<StatementProof>,
-    /// Optional decryption key.
-    pub decryption_key: Option<DecryptionKey>,
-    /// Optional Unix timestamp expiry.
-    pub expiry: Option<u64>,
-    /// Optional channel.
-    pub channel: Option<Channel>,
-    /// Topic tags.
-    pub topics: Vec<Topic>,
-    /// Optional data payload.
-    pub data: Option<Bytes>,
-}
-
-/// A statement with a required (not optional) proof.
-///
-/// # Category
-///
-/// Statement Store
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SignedStatement {
-    /// Required cryptographic proof.
-    pub proof: StatementProof,
-    /// Optional decryption key.
-    pub decryption_key: Option<DecryptionKey>,
-    /// Optional Unix timestamp expiry.
-    pub expiry: Option<u64>,
-    /// Optional channel.
-    pub channel: Option<Channel>,
-    /// Topic tags.
-    pub topics: Vec<Topic>,
-    /// Optional data payload.
-    pub data: Option<Bytes>,
-}
-
-/// Statement proof creation error.
-///
-/// # Category
-///
-/// Statement Store
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum StatementProofError {
-    /// Signing operation failed.
-    UnableToSign,
-    /// Account not recognized.
-    UnknownAccount,
-    /// Catch-all.
-    Unknown { reason: String },
-}
-
-// ─── Preimage types ──────────────────────────────────────────────────────────
-
-/// Hash of the preimage.
-///
-/// # Category
-///
-/// Preimage
-pub type PreimageKey = Hex;
-
-/// The preimage data.
-///
-/// # Category
-///
-/// Preimage
-pub type PreimageValue = Vec<u8>;
-
-// ─── Chain interaction types ─────────────────────────────────────────────────
-
-/// Block hash identifier.
-///
-/// # Category
-///
-/// Chain Interaction
-pub type BlockHash = Hex;
-
-/// Operation identifier for async chain operations.
-///
-/// # Category
-///
-/// Chain Interaction
-pub type OperationId = String;
-
-/// A runtime API identified by name and version.
-///
-/// # Category
-///
-/// Chain Interaction
-pub type RuntimeApi = (String, u32);
-
-/// Runtime specification metadata.
-///
-/// # Category
-///
-/// Chain Interaction
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RuntimeSpec {
-    /// Specification name.
-    pub spec_name: String,
-    /// Implementation name.
-    pub impl_name: String,
-    /// Spec version number.
-    pub spec_version: u32,
-    /// Implementation version.
-    pub impl_version: u32,
-    /// Transaction format version.
-    pub transaction_version: Option<u32>,
-    /// Supported runtime APIs.
-    pub apis: Vec<RuntimeApi>,
-}
-
-/// Runtime validity check result.
-///
-/// # Category
-///
-/// Chain Interaction
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RuntimeType {
-    /// Valid runtime with spec.
-    Valid(RuntimeSpec),
-    /// Invalid runtime with error.
-    Invalid { error: String },
-}
-
-/// Type of storage query to perform.
-///
-/// # Category
-///
-/// Chain Interaction
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StorageQueryType {
-    Value,
-    Hash,
-    ClosestDescendantMerkleValue,
-    DescendantsValues,
-    DescendantsHashes,
-}
-
-/// A single storage query.
-///
-/// # Category
-///
-/// Chain Interaction
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StorageQueryItem {
-    /// Storage key to query.
-    pub key: Hex,
-    /// What to return.
-    pub query_type: StorageQueryType,
-}
-
-/// Result of a storage query.
-///
-/// # Category
-///
-/// Chain Interaction
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StorageResultItem {
-    /// The queried key.
-    pub key: Hex,
-    /// Value, if requested.
-    pub value: Option<Hex>,
-    /// Hash, if requested.
-    pub hash: Option<Hex>,
-    /// Merkle value, if requested.
-    pub closest_descendant_merkle_value: Option<Hex>,
-}
-
-/// Result of starting a chain operation.
-///
-/// # Category
-///
-/// Chain Interaction
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum OperationStartedResult {
-    /// Operation started successfully.
-    Started {
-        /// The assigned operation identifier.
-        operation_id: OperationId,
-    },
-    /// Too many concurrent operations.
-    LimitReached,
-}
-
-/// Events received when following the chain head.
-///
-/// # Category
-///
-/// Chain Interaction
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ChainHeadEvent {
-    /// Initial state with finalized blocks.
-    Initialized {
-        finalized_block_hashes: Vec<BlockHash>,
-        finalized_block_runtime: Option<RuntimeType>,
-    },
-    /// A new block was produced.
-    NewBlock {
-        block_hash: BlockHash,
-        parent_block_hash: BlockHash,
-        new_runtime: Option<RuntimeType>,
-    },
-    /// Best block changed.
-    BestBlockChanged { best_block_hash: BlockHash },
-    /// Blocks were finalized.
-    Finalized {
-        finalized_block_hashes: Vec<BlockHash>,
-        pruned_block_hashes: Vec<BlockHash>,
-    },
-    /// Body fetch completed.
-    OperationBodyDone {
-        operation_id: OperationId,
-        value: Vec<Hex>,
-    },
-    /// Runtime call completed.
-    OperationCallDone {
-        operation_id: OperationId,
-        output: Hex,
-    },
-    /// Storage results batch.
-    OperationStorageItems {
-        operation_id: OperationId,
-        items: Vec<StorageResultItem>,
-    },
-    /// Storage query completed.
-    OperationStorageDone { operation_id: OperationId },
-    /// Operation paused, needs [`ChainInteraction::remote_chain_head_continue`].
-    OperationWaitingForContinue { operation_id: OperationId },
-    /// Block became inaccessible.
-    OperationInaccessible { operation_id: OperationId },
-    /// Operation failed.
-    OperationError {
-        operation_id: OperationId,
-        error: String,
-    },
-    /// Subscription terminated by server.
-    Stop,
-}
-
-/// Parameters for [`ChainInteraction::remote_chain_head_follow`].
-///
-/// # Category
-///
-/// Chain Interaction
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChainHeadFollowRequest {
-    /// Chain genesis hash.
-    pub genesis_hash: GenesisHash,
-    /// Whether to include runtime information in events.
-    pub with_runtime: bool,
-}
-
-/// Parameters for chain head methods that operate within a follow subscription
-/// on a specific block.
-///
-/// # Category
-///
-/// Chain Interaction
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChainHeadBlockRequest {
-    /// Chain genesis hash.
-    pub genesis_hash: GenesisHash,
-    /// Follow subscription identifier.
-    pub follow_subscription_id: String,
-    /// Block hash.
-    pub hash: BlockHash,
-}
-
-/// Parameters for [`ChainInteraction::remote_chain_head_storage`].
-///
-/// # Category
-///
-/// Chain Interaction
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChainHeadStorageRequest {
-    /// Chain genesis hash.
-    pub genesis_hash: GenesisHash,
-    /// Follow subscription identifier.
-    pub follow_subscription_id: String,
-    /// Block hash.
-    pub hash: BlockHash,
-    /// Storage items to query.
-    pub items: Vec<StorageQueryItem>,
-    /// Optional child trie.
-    pub child_trie: Option<Hex>,
-}
-
-/// Parameters for [`ChainInteraction::remote_chain_head_call`].
-///
-/// # Category
-///
-/// Chain Interaction
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChainHeadCallRequest {
-    /// Chain genesis hash.
-    pub genesis_hash: GenesisHash,
-    /// Follow subscription identifier.
-    pub follow_subscription_id: String,
-    /// Block hash.
-    pub hash: BlockHash,
-    /// Runtime API function name.
-    pub function: String,
-    /// SCALE-encoded call parameters.
-    pub call_parameters: Hex,
-}
-
-/// Parameters for [`ChainInteraction::remote_chain_head_unpin`].
-///
-/// # Category
-///
-/// Chain Interaction
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChainHeadUnpinRequest {
-    /// Chain genesis hash.
-    pub genesis_hash: GenesisHash,
-    /// Follow subscription identifier.
-    pub follow_subscription_id: String,
-    /// Block hashes to unpin.
-    pub hashes: Vec<BlockHash>,
-}
-
-/// Parameters for chain head operations that reference a specific operation within
-/// a follow subscription.
-///
-/// # Category
-///
-/// Chain Interaction
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChainHeadOperationRequest {
-    /// Chain genesis hash.
-    pub genesis_hash: GenesisHash,
-    /// Follow subscription identifier.
-    pub follow_subscription_id: String,
-    /// Operation identifier.
-    pub operation_id: OperationId,
-}
-
-/// Parameters for [`ChainInteraction::remote_chain_transaction_broadcast`].
-///
-/// # Category
-///
-/// Chain Interaction
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChainTransactionBroadcastRequest {
-    /// Chain genesis hash.
-    pub genesis_hash: GenesisHash,
-    /// Signed transaction bytes.
-    pub transaction: Hex,
-}
-
-/// Parameters for [`ChainInteraction::remote_chain_transaction_stop`].
-///
-/// # Category
-///
-/// Chain Interaction
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ChainTransactionStopRequest {
-    /// Chain genesis hash.
-    pub genesis_hash: GenesisHash,
-    /// Operation identifier of the broadcast to stop.
-    pub operation_id: OperationId,
-}
-
-// ─── SSS API types (v0.2) ────────────────────────────────────────────────────
-
-/// Filter for statement subscriptions, allowing richer topic matching than plain
-/// topic vectors. Each position in the filter can be `Some(topic)` to require an
-/// exact match or `None` to act as a wildcard.
-///
-/// Mirrors the `TopicFilter` type from `polkadot-sdk` statement store.
-///
-/// # Category
-///
-/// Statement Store
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct TopicFilter {
-    /// Positional topic matchers. `None` entries act as wildcards.
-    pub topics: Vec<Option<Topic>>,
-}
-
-// ─── Payment types (v0.2 — Coinage API, RFC 0006) ───────────────────────────
-//
-// See [RFC 0006](https://github.com/paritytech/triangle-js-sdks/pull/94).
-
-/// Balance amount for payment operations. Interpreted according to the host's
-/// single fixed payment asset (e.g. pUSD).
-///
-/// # Category
-///
-/// Payment
-pub type Balance = u128;
-
-/// Unique payment identifier, scoped to the product that created it.
-///
-/// # Category
-///
-/// Payment
-pub type PaymentId = String;
-
-/// Ed25519 private key bytes (32 bytes).
-///
-/// # Category
-///
-/// Payment
-pub type Ed25519PrivateKey = [u8; 32];
-
-/// Current payment balance state pushed to subscribers.
-///
-/// See [RFC 0006].
-///
-/// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
-///
-/// # Category
-///
-/// Payment
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PaymentBalance {
-    /// Balance that can be spent right now.
-    pub available: Balance,
-    /// Balance the user possesses but cannot spend yet (e.g. in recycling
-    /// stage).
-    pub pending: Balance,
-}
-
-/// Source for a payment top-up operation.
-///
-/// See [RFC 0006].
-///
-/// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
-///
-/// # Category
-///
-/// Payment
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PaymentTopUpSource {
-    /// Fund from one of the calling product's scoped accounts.
-    ProductAccount(DerivationIndex),
-    /// Fund from a one-time account represented by its private key. This is a
-    /// standard account holding public funds — not a coin key.
-    PrivateKey(Ed25519PrivateKey),
-}
-
-/// Receipt returned after a successful payment request.
-///
-/// See [RFC 0006].
-///
-/// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
-///
-/// # Category
-///
-/// Payment
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PaymentReceipt {
-    /// The assigned payment identifier.
-    pub id: PaymentId,
-}
-
-/// Payment lifecycle status pushed to subscribers.
-///
-/// Once a terminal state (`Completed` or `Failed`) is reached, the host
-/// delivers it and may close the subscription.
-///
-/// See [RFC 0006].
-///
-/// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
-///
-/// # Category
-///
-/// Payment
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PaymentStatus {
-    /// Payment is being processed.
-    Processing,
-    /// Payment has been settled successfully.
-    Completed,
-    /// Payment has failed.
-    Failed(String),
-}
-
-/// Error from [`Payment::host_payment_balance_subscribe`].
-///
-/// See [RFC 0006].
-///
-/// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
-///
-/// # Category
-///
-/// Payment
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PaymentBalanceError {
-    /// User denied the balance disclosure request.
-    PermissionDenied,
-    /// Catch-all.
-    Unknown { reason: String },
-}
-
-/// Error from [`Payment::host_payment_top_up`].
-///
-/// See [RFC 0006].
-///
-/// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
-///
-/// # Category
-///
-/// Payment
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PaymentTopUpError {
-    /// The source account does not hold sufficient funds.
-    InsufficientFunds,
-    /// The source account was not found or is invalid.
-    InvalidSource,
-    /// Catch-all.
-    Unknown { reason: String },
-}
-
-/// Error from [`Payment::host_payment_request`].
-///
-/// See [RFC 0006].
-///
-/// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
-///
-/// # Category
-///
-/// Payment
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PaymentRequestError {
-    /// User denied the payment request.
-    Denied,
-    /// User's available balance is not sufficient for the requested amount.
-    InsufficientBalance,
-    /// Catch-all.
-    Unknown { reason: String },
-}
-
-/// Error from [`Payment::host_payment_status_subscribe`].
-///
-/// See [RFC 0006].
-///
-/// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
-///
-/// # Category
-///
-/// Payment
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PaymentStatusError {
-    /// Payment ID was not found or does not belong to the current product.
-    PaymentNotFound,
-    /// Catch-all.
-    Unknown { reason: String },
-}
-
-// ─── Entropy types (v0.2, RFC 0007) ──────────────────────────────────────────
-//
-// See [RFC 0007](https://github.com/paritytech/triangle-js-sdks/pull/95).
-
-/// 32 bytes of deterministic entropy derived from the user's root BIP-39
-/// entropy via a three-layer BLAKE2b-256 keyed hashing scheme. The same
-/// root account + product + key always yields the same output on any
-/// conforming host.
-///
-/// See [RFC 0007].
-///
-/// [RFC 0007]: https://github.com/paritytech/triangle-js-sdks/pull/95
-///
-/// # Category
-///
-/// Entropy
-pub type Entropy = [u8; 32];
-
-/// Error from [`EntropyDerivation::host_derive_entropy`].
-///
-/// Under normal operation the function always succeeds; `Unknown` indicates an
-/// unrecoverable internal host error.
-///
-/// See [RFC 0007].
-///
-/// [RFC 0007]: https://github.com/paritytech/triangle-js-sdks/pull/95
-///
-/// # Category
-///
-/// Entropy
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DeriveEntropyError {
-    /// An unexpected error occurred in the host.
-    Unknown,
-}
+mod account;
+mod chain_interaction;
+mod chat;
+mod common;
+mod custom_renderer;
+mod entropy;
+mod payment;
+mod preimage;
+mod signing;
+mod statement_store;
+mod storage;
+mod transaction;
+
+pub use account::*;
+pub use chain_interaction::*;
+pub use chat::*;
+pub use common::*;
+pub use custom_renderer::*;
+pub use entropy::*;
+pub use payment::*;
+pub use preimage::*;
+pub use signing::*;
+pub use statement_store::*;
+pub use storage::*;
+pub use transaction::*;
 
 // ─── TrUAPI traits ─────────────────────────────────────────────────────────
 
@@ -1940,7 +64,7 @@ pub trait TrUApiCalls {
     /// const result = await truApi.featureSupported({
     ///   Chain: polkadotGenesis
     /// });
-    /// 
+    ///
     /// if (result.isOk) {
     ///   console.log("Polkadot supported:", result.value);
     /// }
@@ -1980,7 +104,7 @@ pub trait TrUApiCalls {
     /// const result = await truApi.navigateTo(
     ///   "https://polkadot.network"
     /// );
-    /// 
+    ///
     /// if (result.isErr) {
     ///   console.error("Navigation failed:", result.error);
     /// }
@@ -2067,14 +191,14 @@ pub trait Permissions {
     /// ```typescript
     /// // Request camera access
     /// const granted = await truApi.devicePermission("Camera");
-    /// 
+    ///
     /// if (granted.isOk && granted.value) {
     ///   startCamera();
     /// }
-    /// 
+    ///
     /// // Request push notification permission
     /// const notifGranted = await truApi.devicePermission("Notifications");
-    /// 
+    ///
     /// // Request biometric authentication
     /// const bioGranted = await truApi.devicePermission("Biometrics");
     /// if (bioGranted.isOk && bioGranted.value) {
@@ -2126,12 +250,12 @@ pub trait Permissions {
     ///   { ChainSubmit: undefined },
     ///   { StatementSubmit: undefined },
     /// ]);
-    /// 
+    ///
     /// if (allowed.isOk && allowed.value) {
     ///   // All permissions granted, proceed
     ///   const price = await fetch("https://api.coingecko.com/...");
     /// }
-    /// 
+    ///
     /// // Request WebRTC permission
     /// const webrtcAllowed = await truApi.permission([
     ///   { WebRtc: undefined },
@@ -2181,7 +305,7 @@ pub trait LocalStorage {
     /// ```typescript
     /// // Read a stored preference
     /// const result = await truApi.localStorageRead("user-theme");
-    /// 
+    ///
     /// if (result.isOk && result.value !== null) {
     ///   const theme = new TextDecoder().decode(result.value);
     ///   applyTheme(theme);
@@ -2221,7 +345,7 @@ pub trait LocalStorage {
     ///   "user-theme",
     ///   theme
     /// ]);
-    /// 
+    ///
     /// if (result.isErr) {
     ///   console.error("Storage write failed:", result.error);
     /// }
@@ -2303,7 +427,7 @@ pub trait AccountManagement {
     ///   "my-product.dot",  // DotNS identifier
     ///   0               // derivation index
     /// ]);
-    /// 
+    ///
     /// if (result.isOk) {
     ///   const { publicKey, name } = result.value;
     ///   console.log("Account:", name ?? "unnamed");
@@ -2354,7 +478,7 @@ pub trait AccountManagement {
     ///   "my-product.dot",
     ///   0
     /// ]);
-    /// 
+    ///
     /// if (result.isOk) {
     ///   const { context, alias } = result.value;
     ///   // Use alias for anonymous interactions
@@ -2406,7 +530,7 @@ pub trait AccountManagement {
     ///   },
     ///   contextBytes                   // Bytes - context data
     /// ]);
-    /// 
+    ///
     /// if (result.isOk) {
     ///   const proof = result.value; // RingVrfProof
     /// }
@@ -2450,7 +574,7 @@ pub trait AccountManagement {
     /// ```typescript
     /// // Get the user's wallet accounts
     /// const result = await truApi.getNonProductAccounts();
-    /// 
+    ///
     /// if (result.isOk) {
     ///   for (const account of result.value) {
     ///     console.log(account.name, toHex(account.publicKey));
@@ -2502,7 +626,7 @@ pub trait AccountManagement {
     ///     }
     ///   }
     /// );
-    /// 
+    ///
     /// // Later: clean up
     /// sub.unsubscribe();
     /// ```
@@ -2514,12 +638,12 @@ pub trait AccountManagement {
     ///   (params, send, interrupt) => {
     ///     // Send initial status
     ///     send(currentUser ? "connected" : "disconnected");
-    /// 
+    ///
     ///     // Watch for changes
     ///     const unsub = authStore.onChange((user) => {
     ///       send(user ? "connected" : "disconnected");
     ///     });
-    /// 
+    ///
     ///     return () => unsub(); // cleanup
     ///   }
     /// );
@@ -2544,7 +668,7 @@ pub trait AccountManagement {
     /// ```typescript
     /// // Get the user's primary identity
     /// const result = await truApi.getUserId();
-    /// 
+    ///
     /// if (result.isOk) {
     ///   const { dotNsIdentifier, publicKey } = result.value;
     ///   console.log("User:", dotNsIdentifier);
@@ -2615,7 +739,7 @@ pub trait Signing {
     ///   version: 4,
     ///   withSignedTransaction: true,
     /// });
-    /// 
+    ///
     /// if (result.isOk) {
     ///   const { signature, signedTransaction } = result.value;
     /// }
@@ -2663,7 +787,7 @@ pub trait Signing {
     ///   account: ["my-product.dot", 0],  // ProductAccountId
     ///   data: { Payload: "Please sign this message to verify ownership" }
     /// });
-    /// 
+    ///
     /// // Or sign raw bytes
     /// const result2 = await truApi.signRaw({
     ///   account: ["my-product.dot", 0],
@@ -2729,7 +853,7 @@ pub trait Signing {
     ///     }
     ///   }
     /// ]);
-    /// 
+    ///
     /// if (result.isOk) {
     ///   // Submit the signed transaction
     ///   const signedTx = result.value;
@@ -2833,7 +957,7 @@ pub trait Chat {
     ///   name: "General Discussion",
     ///   icon: "https://example.com/chat-icon.png"
     /// });
-    /// 
+    ///
     /// if (result.isOk) {
     ///   console.log("Room status:", result.value.status);
     ///   // "New" or "Exists"
@@ -2884,7 +1008,7 @@ pub trait Chat {
     ///   name: "Team Alpha Chat",
     ///   icon: "https://example.com/team-icon.png"
     /// });
-    /// 
+    ///
     /// if (result.isOk) {
     ///   const { status, joinLink } = result.value;
     ///   console.log("Room status:", status); // "New" or "Exists"
@@ -2978,7 +1102,7 @@ pub trait Chat {
     ///   roomId: "general-chat",
     ///   payload: { Text: "Hello everyone!" }
     /// });
-    /// 
+    ///
     /// // Post an action menu
     /// const result2 = await truApi.chatPostMessage({
     ///   roomId: "general-chat",
@@ -3045,11 +1169,11 @@ pub trait Chat {
     /// container.handleChatListSubscribe((_, send, interrupt) => {
     ///   // Send initial room list
     ///   send(getRoomsForProduct(productId));
-    /// 
+    ///
     ///   const unsub = roomStore.onChange(() => {
     ///     send(getRoomsForProduct(productId));
     ///   });
-    /// 
+    ///
     ///   return () => unsub();
     /// });
     /// ```
@@ -3074,7 +1198,7 @@ pub trait Chat {
     ///   undefined,
     ///   (action) => {
     ///     const { roomId, peer, payload } = action;
-    /// 
+    ///
     ///     if (payload.tag === "MessagePosted") {
     ///       handleNewMessage(roomId, peer, payload.value);
     ///     } else if (payload.tag === "ActionTriggered") {
@@ -3128,7 +1252,7 @@ pub trait Chat {
     /// ```typescript
     /// // Register a custom message renderer
     /// const chatManager = createProductChatManager();
-    /// 
+    ///
     /// chatManager.onCustomMessageRenderingRequest(
     ///   ({ messageId, messageType, payload }, render, subscribeActions) => {
     ///     // Render a custom UI
@@ -3154,7 +1278,7 @@ pub trait Chat {
     ///         ]
     ///       }
     ///     });
-    /// 
+    ///
     ///     // Listen for interactions
     ///     subscribeActions((action) => {
     ///       if (action.actionId === "vote-action") {
@@ -3215,7 +1339,7 @@ pub trait StatementStore {
     /// // Subscribe to statements with a topic filter
     /// const topic = new Uint8Array(32);
     /// topic.set([1, 2, 3]); // topic identifier
-    /// 
+    ///
     /// // Use null entries as wildcards
     /// const sub = truApi.statementStoreSubscribe(
     ///   { topics: [topic, null] },  // match first topic exactly, any second
@@ -3236,11 +1360,11 @@ pub trait StatementStore {
     /// container.handleStatementStoreSubscribe((filter, send, interrupt) => {
     ///   // filter.topics is an array where null = wildcard
     ///   send(statementStore.queryByFilter(filter));
-    /// 
+    ///
     ///   const unsub = statementStore.onChange(filter, (statements) => {
     ///     send(statements);
     ///   });
-    /// 
+    ///
     ///   return () => unsub();
     /// });
     /// ```
@@ -3279,7 +1403,7 @@ pub trait StatementStore {
     ///     data: new TextEncoder().encode("my statement"),
     ///   }
     /// ]);
-    /// 
+    ///
     /// if (result.isOk) {
     ///   const proof = result.value; // StatementProof
     /// }
@@ -3333,7 +1457,7 @@ pub trait StatementStore {
     /// // Submit a pre-encoded statement (raw SCALE bytes)
     /// const encodedStatement = encodeStatementToScale(signedStatement);
     /// const result = await truApi.statementStoreSubmit(encodedStatement);
-    /// 
+    ///
     /// if (result.isOk) {
     ///   console.log("Statement hash:", result.value);
     /// }
@@ -3390,11 +1514,11 @@ pub trait Preimage {
     /// container.handlePreimageLookupSubscribe((key, send, interrupt) => {
     ///   const existing = preimageStore.get(key);
     ///   send(existing ?? null);
-    /// 
+    ///
     ///   const unsub = preimageStore.onAvailable(key, (value) => {
     ///     send(value);
     ///   });
-    /// 
+    ///
     ///   return () => unsub();
     /// });
     /// ```
@@ -3447,7 +1571,7 @@ pub trait ChainInteraction {
     ///     }
     ///   }
     /// );
-    /// 
+    ///
     /// // Typically used via higher-level abstraction:
     /// // const provider = createPapiProvider(polkadotGenesis);
     /// ```
@@ -3460,7 +1584,7 @@ pub trait ChainInteraction {
     ///   // Return a JsonRpcProvider for the requested chain
     ///   const chain = chains.get(genesisHash);
     ///   if (!chain) return null;
-    /// 
+    ///
     ///   return chain.jsonRpcProvider;
     ///   // The chainConnectionManager handles all chain_head_*
     ///   // methods internally via this provider
@@ -3498,7 +1622,7 @@ pub trait ChainInteraction {
     ///   followSubscriptionId: subId,
     ///   hash: blockHash,
     /// });
-    /// 
+    ///
     /// if (result.isOk && result.value) {
     ///   const headerBytes = result.value;
     ///   const header = decodeHeader(headerBytes);
@@ -3539,7 +1663,7 @@ pub trait ChainInteraction {
     ///   followSubscriptionId: subId,
     ///   hash: blockHash,
     /// });
-    /// 
+    ///
     /// if (result.isOk && result.value.tag === "Started") {
     ///   const opId = result.value.value.operationId;
     ///   // Wait for OperationBodyDone event on follow subscription
@@ -3840,7 +1964,7 @@ pub trait ChainInteraction {
     ///   genesisHash: polkadotGenesis,
     ///   transaction: signedTxHex,
     /// });
-    /// 
+    ///
     /// if (result.isOk && result.value) {
     ///   console.log("Broadcasting, op:", result.value);
     /// }
@@ -3917,7 +2041,7 @@ pub trait Payment {
     ///     updateBalanceUI(balance);
     ///   }
     /// );
-    /// 
+    ///
     /// // Later: clean up
     /// sub.unsubscribe();
     /// ```
@@ -3931,14 +2055,14 @@ pub trait Payment {
     ///   if (!allowed) {
     ///     throw new PaymentBalanceError("PermissionDenied");
     ///   }
-    /// 
+    ///
     ///   // Send initial balance
     ///   send(getUserBalance());
-    /// 
+    ///
     ///   const unsub = balanceStore.onChange((balance) => {
     ///     send(balance);
     ///   });
-    /// 
+    ///
     ///   return () => unsub();
     /// });
     /// ```
@@ -3972,13 +2096,13 @@ pub trait Payment {
     ///   1000000n,  // amount in smallest unit
     ///   { ProductAccount: 0 }  // derivation index
     /// );
-    /// 
+    ///
     /// if (result.isErr) {
     ///   if (result.error.tag === "InsufficientFunds") {
     ///     console.error("Source account has insufficient funds");
     ///   }
     /// }
-    /// 
+    ///
     /// // Top up from a one-time private key
     /// const result2 = await truApi.paymentTopUp(
     ///   5000000n,
@@ -4042,7 +2166,7 @@ pub trait Payment {
     ///   500000n,  // amount
     ///   destinationAccountId  // 32-byte AccountId
     /// );
-    /// 
+    ///
     /// if (result.isOk) {
     ///   const { id } = result.value;
     ///   console.log("Payment accepted, tracking ID:", id);
@@ -4062,12 +2186,12 @@ pub trait Payment {
     ///   if (getUserBalance().available < amount) {
     ///     return err({ InsufficientBalance: undefined });
     ///   }
-    /// 
+    ///
     ///   const approved = await showPaymentDialog(amount, destination);
     ///   if (!approved) {
     ///     return err({ Denied: undefined });
     ///   }
-    /// 
+    ///
     ///   const paymentId = initiatePayment(amount, destination);
     ///   return ok({ id: paymentId });
     /// });
@@ -4123,14 +2247,14 @@ pub trait Payment {
     ///   if (!payment) {
     ///     throw new PaymentStatusError("PaymentNotFound");
     ///   }
-    /// 
+    ///
     ///   // Send current status
     ///   send(payment.status);
-    /// 
+    ///
     ///   const unsub = paymentStore.onStatusChange(paymentId, (status) => {
     ///     send(status);
     ///   });
-    /// 
+    ///
     ///   return () => unsub();
     /// });
     /// ```
@@ -4174,7 +2298,7 @@ pub trait EntropyDerivation {
     /// // Derive deterministic entropy for a specific purpose
     /// const key = new TextEncoder().encode("my-secret-seed");
     /// const result = await truApi.deriveEntropy(key);
-    /// 
+    ///
     /// if (result.isOk) {
     ///   const entropy = result.value; // 32 bytes, deterministic
     ///   // Use entropy to seed a PRNG, derive keys, etc.
@@ -4182,7 +2306,7 @@ pub trait EntropyDerivation {
     ///     "raw", entropy, "HKDF", false, ["deriveBits"]
     ///   );
     /// }
-    /// 
+    ///
     /// // Same key always produces the same entropy for the same user+product
     /// const result2 = await truApi.deriveEntropy(key);
     /// // result2.value === result.value (byte-for-byte identical)
