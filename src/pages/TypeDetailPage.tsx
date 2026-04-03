@@ -23,9 +23,14 @@ export default function TypeDetailPage() {
     return searchIn.includes(dt.name) || searchIn.includes(dt.id);
   });
 
-  // Find related types (types that reference this type, or that this type references)
+  // Find related types: combinators referenced in the definition, plus non-primitive custom types
   const relatedTypes = dataTypes.filter(t => {
     if (t.id === dt.id) return false;
+    if (t.category === 'Primitives') return false;
+    if (t.category === 'Combinators') {
+      return dt.definition.includes(t.name + '(') || dt.definition.includes(t.name + ' {');
+    }
+    // Show non-primitive types referenced by or referencing this type
     return t.definition.includes(dt.id) || t.definition.includes(dt.name) ||
       dt.definition.includes(t.id) || dt.definition.includes(t.name);
   });
@@ -56,7 +61,7 @@ export default function TypeDetailPage() {
         <p className="text-slate-300 leading-relaxed">{dt.description}</p>
         {dt.source && (
           <p className="text-sm text-slate-400 mt-2 font-mono">
-            Source: {dt.source}
+            Source: <a href={`${import.meta.env.BASE_URL}${dt.source}`} target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:text-sky-300 underline">{dt.name}</a>
           </p>
         )}
       </div>
@@ -147,7 +152,7 @@ export default function TypeDetailPage() {
                 onClick={() => navigate(`${versionPrefix}/type/${t.id}`)}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-mono bg-sky-500/10 text-sky-400 hover:bg-sky-500/20 border border-sky-500/20 transition-all duration-150"
               >
-                {t.name}
+                {t.category === 'Combinators' ? t.definition : t.name}
               </button>
             ))}
           </div>

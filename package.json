@@ -4,8 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "rustdoc-json": "cargo +nightly rustdoc --manifest-path truapi-spec/Cargo.toml -- -Z unstable-options --output-format json",
+    "generate": "npm run rustdoc-json && node scripts/generate-data.mjs",
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npm run generate && tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },

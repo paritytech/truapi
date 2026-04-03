@@ -20,20 +20,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ── Webapp ──────────────────────────────────────────────
+      # ── Toolchains ──────────────────────────────────────────
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
 
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: dtolnay/rust-toolchain@stable
+
+      # ── Build webapp (generates data from Rust, then builds) ─
       - run: npm ci
 
       - run: npm run build
 
-      # ── Rust docs ──────────────────────────────────────────
-      - uses: dtolnay/rust-toolchain@stable
-
-      - run: cargo doc --no-deps --manifest-path truapi-spec/Cargo.toml
+      # ── Rust HTML docs (for deep-linking from explorer) ────
+      - run: cargo +stable doc --no-deps --manifest-path truapi-spec/Cargo.toml
 
       - run: cp -r truapi-spec/target/doc dist/rustdoc
 

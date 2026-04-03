@@ -24,3 +24,8 @@ dist-ssr
 *.sw?
 target
 .claude
+
+# Generated from rustdoc JSON (build artifacts)
+src/data/v01/types.ts
+src/data/v02/types.ts
+.playwright-mcp
