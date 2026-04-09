@@ -3,7 +3,7 @@
 //! This crate provides two protocol versions as separate modules:
 //!
 //! - [`v01`] — Protocol v0.1 (stable).
-//! - [`v02`] — Protocol v0.2-preview (draft, subject to change).
+//! - [`v02`] — Protocol v0.2.
 
 #![forbid(unsafe_code)]
 

@@ -1,6 +1,6 @@
 import type { GroupDef, MethodDef, DataType } from './v01/types';
 import * as v01 from './v01/types';
-import * as v02 from './v02-preview/types';
+import * as v02 from './v02/types';
 
 export type { GroupDef, MethodDef, DataType };
 
@@ -30,15 +30,15 @@ export const versions: VersionMeta[] = [
     data: v01,
   },
   {
-    id: '0.2-preview',
-    label: 'v0.2-preview',
-    slug: '0.2-preview',
-    status: 'preview',
+    id: '0.2',
+    label: 'v0.2',
+    slug: '0.2',
+    status: 'stable',
     data: v02,
   },
 ];
 
-export const defaultVersion = versions[0];
+export const defaultVersion = versions[1];
 
 export function getVersion(slug: string): VersionMeta | undefined {
   return versions.find(v => v.slug === slug);

@@ -4,8 +4,8 @@ Interactive reference documentation for the TrUAPI (Triangle User-Agent Programm
 
 The explorer covers two protocol versions:
 
-- *v0.1* (stable) -- the current production protocol.
-- *v0.2-preview* -- a draft version with new capabilities for Web3 Summit. See [v02-changes.md](v02-changes.md) for a detailed description of all changes and their rationale.
+- *v0.1* -- the initial protocol version.
+- *v0.2* -- the current protocol version with new capabilities. See [v02-changes.md](v02-changes.md) for a detailed description of all changes and their rationale.
 
 A version switcher in the sidebar lets you browse each version independently.
 
@@ -66,11 +66,11 @@ truapi-spec/              # Rust crate with trait and type definitions
   src/
     lib.rs                # Re-exports v01 and v02 modules
     v01/mod.rs            # Protocol v0.1 trait and types
-    v02/mod.rs            # Protocol v0.2-preview trait and types
+    v02/mod.rs            # Protocol v0.2 trait and types
 src/
   data/
     v01/types.ts          # Webapp data for protocol v0.1
-    v02-preview/types.ts  # Webapp data for protocol v0.2-preview
+    v02/types.ts          # Webapp data for protocol v0.2
     registry.ts           # Version registry mapping slug to data
   contexts/
     VersionContext.tsx     # React context providing versioned data

@@ -1,4 +1,4 @@
-//! TrUAPI Protocol v0.2-preview — trait and type definitions.
+//! TrUAPI Protocol v0.2 — trait and type definitions.
 //!
 //! This module defines the [`TrUApi`] trait containing all TrUAPI v0.2 methods, along with
 //! every data type used in their signatures. The three communication patterns are:

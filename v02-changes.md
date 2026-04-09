@@ -1,8 +1,6 @@
-# TrUAPI v0.2-preview: Changes from v0.1
+# TrUAPI v0.2: Changes from v0.1
 
-This document describes all changes between Protocol v0.1 and v0.2-preview, the reasoning behind each change, and links to the RFCs and issues that provide further context.
-
-> *v0.2-preview is a draft. It has not yet been formally approved by all stakeholders.*
+This document describes all changes between Protocol v0.1 and v0.2, the reasoning behind each change, and links to the RFCs and issues that provide further context.
 
 
 ## 1. JIT Permission Model
