@@ -2,6 +2,12 @@
 
 This document describes all changes between Protocol v0.1 and v0.2, the reasoning behind each change, and links to the RFCs and issues that provide further context.
 
+This document is based on the following meeting minutes and documents:
+- [Host API v0.2: Feature Input Summary](https://docs.google.com/document/d/19WAfrjBAFeoz76c5mBxp-QUqNFbaPZhivC0qhvaXfXo/edit?tab=t.0#heading=h.xrf9ovdhv9qx)
+- [TrUAPI V0.2 Features](https://docs.google.com/document/d/1rdNbH2rbNwWJfutGQVCCgFvtOsbDB0Xk3KVJ8uLvu7M/edit?tab=t.0)
+- [TruAPI Working Group](https://docs.google.com/document/d/1_23zlst_kzYhb176rlzonFS1VDhS2AkbV8FWvyd-OoI/edit?tab=t.0#heading=h.f90u7hm8fbsv)
+
+
 
 ## 1. JIT Permission Model
 
