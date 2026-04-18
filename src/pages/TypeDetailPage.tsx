@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useVersion } from '../contexts/VersionContext';
 import { TypeString } from '../components/TypeLink';
@@ -79,16 +80,21 @@ export default function TypeDetailPage() {
           <div className="border-b border-slate-700/40 px-5 py-3">
             <h2 className="text-sm font-semibold text-white font-display">Fields</h2>
           </div>
-          <div className="divide-y divide-slate-700/30">
-            {dt.fields.map((field, i) => (
-              <div key={i} className="px-5 py-3 flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4">
-                <code className="text-sm font-mono text-emerald-400 sm:min-w-40 shrink-0 break-all">{field.name}</code>
-                <div className="flex-1 min-w-0">
-                  <TypeString text={field.type} />
-                  <p className="text-sm text-slate-400 mt-0.5">{field.description}</p>
-                </div>
-              </div>
-            ))}
+          <div className="grid sm:grid-cols-[auto_1fr] sm:gap-x-4">
+            {dt.fields.map((field, i) => {
+              const isLast = i === dt.fields.length - 1;
+              return (
+                <Fragment key={i}>
+                  <code className={`text-sm font-mono text-emerald-400 break-all px-5 pt-3 pb-1 sm:py-3 ${!isLast ? 'sm:border-b sm:border-slate-700/30' : ''}`}>
+                    {field.name}
+                  </code>
+                  <div className={`px-5 pb-3 sm:py-3 min-w-0 ${!isLast ? 'border-b border-slate-700/30' : ''}`}>
+                    <TypeString text={field.type} />
+                    <p className="text-sm text-slate-400 mt-0.5">{field.description}</p>
+                  </div>
+                </Fragment>
+              );
+            })}
           </div>
         </div>
       )}
@@ -99,16 +105,21 @@ export default function TypeDetailPage() {
           <div className="border-b border-slate-700/40 px-5 py-3">
             <h2 className="text-sm font-semibold text-white font-display">Variants</h2>
           </div>
-          <div className="divide-y divide-slate-700/30">
-            {dt.variants.map((variant, i) => (
-              <div key={i} className="px-5 py-3 flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4">
-                <code className="text-sm font-mono text-amber-400 sm:min-w-40 shrink-0 break-all">{variant.name}</code>
-                <div className="flex-1 min-w-0">
-                  <TypeString text={variant.type} />
-                  <p className="text-sm text-slate-400 mt-0.5">{variant.description}</p>
-                </div>
-              </div>
-            ))}
+          <div className="grid sm:grid-cols-[auto_1fr] sm:gap-x-4">
+            {dt.variants.map((variant, i) => {
+              const isLast = i === dt.variants.length - 1;
+              return (
+                <Fragment key={i}>
+                  <code className={`text-sm font-mono text-amber-400 break-all px-5 pt-3 pb-1 sm:py-3 ${!isLast ? 'sm:border-b sm:border-slate-700/30' : ''}`}>
+                    {variant.name}
+                  </code>
+                  <div className={`px-5 pb-3 sm:py-3 min-w-0 ${!isLast ? 'border-b border-slate-700/30' : ''}`}>
+                    <TypeString text={variant.type} />
+                    <p className="text-sm text-slate-400 mt-0.5">{variant.description}</p>
+                  </div>
+                </Fragment>
+              );
+            })}
           </div>
         </div>
       )}
