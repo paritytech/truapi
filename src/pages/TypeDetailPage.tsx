@@ -81,8 +81,8 @@ export default function TypeDetailPage() {
             <h2 className="text-sm font-semibold text-white font-display">Fields</h2>
           </div>
           <div className="grid sm:grid-cols-[auto_1fr] sm:gap-x-4">
-            {dt.fields.map((field, i) => {
-              const isLast = i === dt.fields.length - 1;
+            {dt.fields.map((field, i, arr) => {
+              const isLast = i === arr.length - 1;
               return (
                 <Fragment key={i}>
                   <code className={`text-sm font-mono text-emerald-400 break-all px-5 pt-3 pb-1 sm:py-3 ${!isLast ? 'sm:border-b sm:border-slate-700/30' : ''}`}>
@@ -106,8 +106,8 @@ export default function TypeDetailPage() {
             <h2 className="text-sm font-semibold text-white font-display">Variants</h2>
           </div>
           <div className="grid sm:grid-cols-[auto_1fr] sm:gap-x-4">
-            {dt.variants.map((variant, i) => {
-              const isLast = i === dt.variants.length - 1;
+            {dt.variants.map((variant, i, arr) => {
+              const isLast = i === arr.length - 1;
               return (
                 <Fragment key={i}>
                   <code className={`text-sm font-mono text-amber-400 break-all px-5 pt-3 pb-1 sm:py-3 ${!isLast ? 'sm:border-b sm:border-slate-700/30' : ''}`}>
