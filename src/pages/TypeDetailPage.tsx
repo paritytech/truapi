@@ -82,7 +82,7 @@ export default function TypeDetailPage() {
           <div className="divide-y divide-slate-700/30">
             {dt.fields.map((field, i) => (
               <div key={i} className="px-5 py-3 flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4">
-                <code className="text-sm font-mono text-emerald-400 sm:w-40 shrink-0">{field.name}</code>
+                <code className="text-sm font-mono text-emerald-400 sm:min-w-40 shrink-0 break-all">{field.name}</code>
                 <div className="flex-1 min-w-0">
                   <TypeString text={field.type} />
                   <p className="text-sm text-slate-400 mt-0.5">{field.description}</p>
@@ -102,7 +102,7 @@ export default function TypeDetailPage() {
           <div className="divide-y divide-slate-700/30">
             {dt.variants.map((variant, i) => (
               <div key={i} className="px-5 py-3 flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4">
-                <code className="text-sm font-mono text-amber-400 sm:w-40 shrink-0">{variant.name}</code>
+                <code className="text-sm font-mono text-amber-400 sm:min-w-40 shrink-0 break-all">{variant.name}</code>
                 <div className="flex-1 min-w-0">
                   <TypeString text={variant.type} />
                   <p className="text-sm text-slate-400 mt-0.5">{variant.description}</p>
