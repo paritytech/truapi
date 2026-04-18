@@ -202,9 +202,25 @@ function VersionedApp() {
   );
 }
 
+const SIDEBAR_MIN_WIDTH = 200;
+const SIDEBAR_MAX_WIDTH = 500;
+const SIDEBAR_DEFAULT_WIDTH = 288;
+const SIDEBAR_WIDTH_KEY = 'sidebarWidth';
+
 function VersionedAppInner() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
+    if (typeof window === 'undefined') return SIDEBAR_DEFAULT_WIDTH;
+    const stored = Number(window.localStorage.getItem(SIDEBAR_WIDTH_KEY));
+    if (!Number.isFinite(stored) || stored <= 0) return SIDEBAR_DEFAULT_WIDTH;
+    return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, stored));
+  });
+  const resizeStateRef = useRef<{ startX: number; startWidth: number } | null>(null);
+
+  useEffect(() => {
+    try { window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth)); } catch { /* ignore */ }
+  }, [sidebarWidth]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -220,9 +236,41 @@ function VersionedAppInner() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  const handleResizePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    resizeStateRef.current = { startX: e.clientX, startWidth: sidebarWidth };
+    document.body.style.userSelect = 'none';
+  };
+
+  const handleResizePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!resizeStateRef.current) return;
+    const { startX, startWidth } = resizeStateRef.current;
+    const next = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, startWidth + (e.clientX - startX)));
+    setSidebarWidth(next);
+  };
+
+  const endResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!resizeStateRef.current) return;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+    resizeStateRef.current = null;
+    document.body.style.userSelect = '';
+  };
+
   return (
     <div className="flex min-h-screen bg-slate-925">
-      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} width={sidebarWidth} />
+
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        className="hidden lg:block sticky top-0 h-screen w-1 shrink-0 cursor-col-resize bg-transparent hover:bg-pink-500/60 active:bg-pink-500/80 transition-colors z-10"
+        onPointerDown={handleResizePointerDown}
+        onPointerMove={handleResizePointerMove}
+        onPointerUp={endResize}
+        onPointerCancel={endResize}
+        onDoubleClick={() => setSidebarWidth(SIDEBAR_DEFAULT_WIDTH)}
+      />
 
       <main className="flex-1 min-w-0">
         {/* Top bar */}

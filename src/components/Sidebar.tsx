@@ -33,7 +33,7 @@ const groupIcons: Record<string, React.ReactNode> = {
   'entropy': <Key size={15} />,
 };
 
-export default function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
+export default function Sidebar({ open, onClose, width = 288 }: { open: boolean; onClose: () => void; width?: number }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { groups, methods, version, versionPrefix } = useVersion();
@@ -84,11 +84,13 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
           onClick={onClose}
         />
       )}
-      <aside className={`
-        fixed inset-y-0 left-0 z-50 w-72 min-w-72 border-r border-slate-700/50 bg-slate-925 flex flex-col h-screen overflow-hidden
+      <aside
+        style={{ width, minWidth: width }}
+        className={`
+        fixed inset-y-0 left-0 z-50 border-r border-slate-700/50 bg-slate-925 flex flex-col h-screen overflow-hidden
         transform transition-transform duration-300 ease-in-out
         ${open ? 'translate-x-0' : '-translate-x-full'}
-        lg:translate-x-0 lg:static lg:z-auto
+        lg:translate-x-0 lg:sticky lg:top-0 lg:z-auto
       `}>
       {/* Header */}
       <div className="p-4 border-b border-slate-700/50">
