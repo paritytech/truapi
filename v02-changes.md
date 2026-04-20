@@ -239,7 +239,7 @@ Basti proposed removing `remote_preimage_submit` because products should have mo
 |---------|-----------|--------|
 | Chat Extension v2 (full) | [#54](https://github.com/paritytech/triangle-js-sdks/issues/54) | Too large for W3S timeline; simple group chat covers the immediate need. |
 | RingLocation redesign | [#56](https://github.com/paritytech/triangle-js-sdks/issues/56) | Not needed for W3S; no products currently require ring proofs. |
-| Contacts API | | Deferred post-W3S per William. |
+| Contacts API | | Deferred post-W3S per William. (Note from William - this was referring to the privacy preserving friends list; however it seems there is a different 'Contacts API' functionality that should be there |
 | Honour API | | Not due for W3S; implementation still in progress. |
 | HOP API | | Limited solution; bulletin chain is quicker for W3S use cases. |
 | Legacy account support | | Pending decision from Gav. |
