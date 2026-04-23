@@ -17,3 +17,4 @@ created: 2026-03-13
 | 0008   | [Statement Store Host API v0.2](0008-statement-store.md)                 | accepted | @johnthecat   | [#118](https://github.com/paritytech/triangle-js-sdks/pull/118) |
 | 0009   | [Unauthenticated Product Access](0009-unauthenticated-product-access.md) | accepted | @filvecchiato | [#128](https://github.com/paritytech/triangle-js-sdks/pull/128) |
 | 0010   | [Root account access Host API](0010-get-root-account.md)                 | accepted | @johnthecat   | [#126](https://github.com/paritytech/triangle-js-sdks/pull/126) |
+| 0011   | [Simple Group Chat](0011-simple-group-chat.md)                           | draft    | @filvecchiato | [#131](https://github.com/paritytech/triangle-js-sdks/pull/131) |
