@@ -30,6 +30,11 @@ jobs:
 
       - run: npm run build
 
+      # ── StaticMCP files ────────────────────────────────────
+      # Generated only at deploy time so the static JSON is shipped
+      # alongside the webapp at /truapi-explorer/mcp/.
+      - run: npm run mcp:build -- dist/mcp
+
       # ── Rust docs ──────────────────────────────────────────
       - uses: dtolnay/rust-toolchain@stable
 

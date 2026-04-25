@@ -59,6 +59,52 @@ After deployment:
 
 The workflow is defined in `.github/workflows/deploy.yml`.
 
+## MCP server
+
+The site also publishes a [StaticMCP](https://staticmcp.com/) endpoint so AI assistants can query the protocol reference directly. The static JSON files are generated during the GitHub Pages deploy and served from `https://paritytech.github.io/truapi-explorer/mcp/`.
+
+### Add to Claude Code
+
+```bash
+claude mcp add truapi-explorer -- npx -y staticmcp-bridge https://paritytech.github.io/truapi-explorer/mcp
+```
+
+To run against a local build instead:
+
+```bash
+npm run mcp:build
+claude mcp add truapi-explorer-local -- npx -y staticmcp-bridge "$(pwd)/dist/mcp"
+```
+
+Restart your Claude Code session and `/mcp` will list the server.
+
+### Available tools
+
+| Tool | Args | Returns |
+|------|------|---------|
+| `list_versions` | `scope: "all"` | Available protocol versions |
+| `list_groups` | `version` | Method groups for a version |
+| `list_methods` | `version` | All methods for a version |
+| `list_types` | `version` | All data types for a version |
+| `get_group` | `version`, `id` | Group details with expanded methods |
+| `get_method` | `version`, `name` | Method definition with examples |
+| `get_type` | `version`, `name` | Data type definition |
+| `list_docs` | `kind: "rfcs" \| "features" \| "changelog"` | Documents of that kind |
+| `get_doc` | `kind`, `slug` | Full markdown body |
+
+`version` is `v01` or `v02`.
+
+### Example queries
+
+Ask Claude things like:
+
+- *"What v0.2 methods are in the payment group?"* → calls `list_methods` then filters, or `get_group({version:"v02", id:"payment"})`.
+- *"Show me the host_navigate_to spec."* → `get_method({version:"v02", name:"host_navigate_to"})`.
+- *"What changed between v0.1 and v0.2?"* → `get_doc({kind:"changelog", slug:"v02-changes"})`.
+- *"List the accepted RFCs."* → `list_docs({kind:"rfcs"})`.
+
+Resources are also addressable directly by URI, e.g. `truapi://v02/methods/host_navigate_to` or `docs://rfcs/0006-payments`.
+
 ## Project structure
 
 ```
