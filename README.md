@@ -69,15 +69,6 @@ The site also publishes a [StaticMCP](https://staticmcp.com/) endpoint so AI ass
 claude mcp add truapi-explorer -- npx -y staticmcp-bridge https://paritytech.github.io/truapi-explorer/mcp
 ```
 
-To run against a local build instead:
-
-```bash
-npm run mcp:build
-claude mcp add truapi-explorer-local -- npx -y staticmcp-bridge "$(pwd)/dist/mcp"
-```
-
-Restart your Claude Code session and `/mcp` will list the server.
-
 ### Available tools
 
 | Tool | Args | Returns |
