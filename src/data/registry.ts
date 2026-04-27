@@ -1,6 +1,7 @@
 import type { GroupDef, MethodDef, DataType } from './v01/types';
 import * as v01 from './v01/types';
 import * as v02 from './v02/types';
+import * as v02_5 from './v02_5/types';
 
 export type { GroupDef, MethodDef, DataType };
 
@@ -35,6 +36,13 @@ export const versions: VersionMeta[] = [
     slug: '0.2',
     status: 'stable',
     data: v02,
+  },
+  {
+    id: '0.2.5',
+    label: 'v0.2.5',
+    slug: '0.2.5',
+    status: 'preview',
+    data: v02_5,
   },
 ];
 
