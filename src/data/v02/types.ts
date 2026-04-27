@@ -1048,18 +1048,19 @@ if (result.isOk) {
     group: 'Statement Store',
     groupId: 'statement-store',
     pattern: 'subscription',
-    description: 'Subscribes to statements matching a topic filter. V0.2 replaces the plain topic vector with a TopicFilter that supports wildcard positions (null entries match any topic).',
+    description: 'Subscribes to statements matching a topic filter. V0.2 replaces the plain topic vector with a TopicFilter enum supporting MatchAll (AND) and MatchAny (OR) semantics.',
     productFunction: 'truApi.statementStoreSubscribe(filter, callback)',
     hostHandler: 'container.handleStatementStoreSubscribe(handler)',
     request: 'TopicFilter',
     response: 'Vector(SignedStatement)',
-    productExample: `// Subscribe to statements with a topic filter
-const topic = new Uint8Array(32);
-topic.set([1, 2, 3]); // topic identifier
+    productExample: `// Subscribe to statements matching ALL listed topics (AND)
+const topicA = new Uint8Array(32);
+topicA.set([1, 2, 3]);
+const topicB = new Uint8Array(32);
+topicB.set([4, 5, 6]);
 
-// Use null entries as wildcards
 const sub = truApi.statementStoreSubscribe(
-  { topics: [topic, null] },  // match first topic exactly, any second
+  { MatchAll: [topicA, topicB] },  // statement must contain both topics
   (statements) => {
     for (const stmt of statements) {
       console.log("Statement from:", stmt.proof);
@@ -1070,7 +1071,7 @@ const sub = truApi.statementStoreSubscribe(
   }
 );`,
     hostExample: `container.handleStatementStoreSubscribe((filter, send, interrupt) => {
-  // filter.topics is an array where null = wildcard
+  // filter is { MatchAll: Topic[] } or { MatchAny: Topic[] }
   send(statementStore.queryByFilter(filter));
 
   const unsub = statementStore.onChange(filter, (statements) => {
@@ -2382,10 +2383,11 @@ export const dataTypes: DataType[] = [
   { id: 'DecryptionKey', name: 'DecryptionKey', category: 'Statement Store', source: 'statementStore.ts', definition: 'Bytes(32)', description: '32-byte decryption key.' },
   {
     id: 'TopicFilter', name: 'TopicFilter', category: 'Statement Store', source: 'statementStore.ts',
-    definition: 'Struct({ topics: Vector(Nullable(Topic)) })',
-    description: 'Filter for statement subscriptions. Each position can be a specific Topic (exact match) or null (wildcard). V0.2 addition replacing plain topic vectors.',
-    fields: [
-      { name: 'topics', type: 'Vector(Nullable(Topic))', description: 'Positional topic matchers. Null entries act as wildcards.' },
+    definition: 'Enum({ MatchAll: Vector(Topic), MatchAny: Vector(Topic) })',
+    description: 'Filter for statement subscriptions. MatchAll requires every listed topic (AND). MatchAny requires at least one listed topic (OR). V0.2 addition replacing plain topic vectors.',
+    variants: [
+      { name: 'MatchAll', type: 'Vector(Topic)', description: 'AND: statement must contain every listed topic.' },
+      { name: 'MatchAny', type: 'Vector(Topic)', description: 'OR: statement must contain at least one listed topic.' },
     ],
   },
   {
