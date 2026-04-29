@@ -8,17 +8,19 @@
 
 ## Summary
 
-Products can query, add and remove bookmarked apps from the host's local product catalogue. The host exposes a subscription for the installed-product list and two mutations for adding/removing entries. Browse (the on-chain discovery product) receives privileged access without an explicit permission prompt.
+Products can query, add and remove bookmarked apps from the host's local product catalogue. The host exposes a subscription for the installed-product list and two mutations for adding/removing entries. Browse (the on-chain discovery product) receives privileged access without an explicit permission prompt, because it is the default discovery surface for users to find and manage products.
 
 ## Motivation
 
-The host maintains a local catalogue of products the user has bookmarked (starred). Today this data lives in the host's IndexedDB and is inaccessible to products. Browse — the primary discovery surface — cannot show which apps are already installed or let the user bookmark new ones without direct database access.
+Hosts store data that products don't have access to but would benefit from. Bookmarked apps are one such example — some hosts maintain a local catalogue of products the user has bookmarked (starred), but this data is inaccessible to products. Browse — the primary discovery surface — cannot show which apps are already installed or let the user bookmark new ones without direct database access.
+
+Since DotNS is permissionless and anyone can publish a product, discovery is essential. Browse and other products should be able to help users find and keep track of apps that solve their problems.
 
 Exposing this catalogue:
 
-1. **Enables discovery UIs** — Browse can render install/uninstall affordances inline.
+1. **Enables discovery UIs** — Browse can render install/uninstall affordances inline, showing which apps are already bookmarked and letting users add or remove them directly from the discovery surface.
 2. **Keeps the host authoritative** — mutations go through the host, which owns the storage schema and can enforce invariants.
-3. **Supports other products** — any product with permission can read the installed list (e.g. a dashboard, launcher, or analytics tool).
+3. **Supports other products** — any product with permission can read the installed list (e.g. a dashboard, launcher, or analytics tool). Because DotNS is permissionless and anyone can publish a product, discovery tools beyond Browse may emerge and benefit from the same API.
 
 ## Detailed Design
 
@@ -39,7 +41,7 @@ enum ProductSource {
 }
 ```
 
-This mirrors the existing `ProductRecord` in the host's `products` table, exposing only the fields relevant to products.
+Exposing only the fields relevant to products, this mirrors the existing `ProductRecord` in the host's `products` table (see e.g. [polkadot-desktop products table](https://github.com/nickvdao/polkadot-desktop)).
 
 ### API
 
@@ -47,6 +49,7 @@ This mirrors the existing `ProductRecord` in the host's `products` table, exposi
 enum FavouritesErr {
   NotConnected,
   Rejected,
+  NotSupported,       // host does not implement a favourites catalogue
   Unknown(GenericErr)
 }
 
@@ -105,10 +108,6 @@ Favourites are local to the host instance. Cross-host sync is out of scope for t
 
 - **Full-list delivery.** No pagination or filtered subscriptions. Acceptable for typical catalogue sizes (tens to low hundreds).
 - **Browse coupling.** Implicit privilege for Browse assumes a well-known product identity. If Browse's DotNS identifier changes, the host must update its allowlist.
-
-## Alternatives
-
--
 
 ## Unresolved Questions
 
