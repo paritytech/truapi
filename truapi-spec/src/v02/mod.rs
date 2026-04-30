@@ -1320,10 +1320,14 @@ pub struct ChainTransactionStopRequest {
 
 // ─── SSS API types (v0.2) ────────────────────────────────────────────────────
 
-/// Filter for statement subscriptions.
+/// Filter for statement subscriptions, supporting AND/OR topic matching.
+///
+/// Mirrors the `TopicFilter` type from `polkadot-sdk` statement store.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TopicFilter {
+    /// AND: statement must contain every listed topic.
     MatchAll(Vec<Topic>),
+    /// OR: statement must contain at least one listed topic.
     MatchAny(Vec<Topic>),
 }
 
@@ -1690,7 +1694,7 @@ pub trait TrUApi {
     /// matching signed statements whenever the set changes.
     ///
     /// V0.2: replaces the v0.1 topic-vector signature with a richer
-    /// [`TopicFilter`] that supports wildcard positions.
+    /// [`TopicFilter`] that supports MatchAll (AND) and MatchAny (OR) semantics.
     fn remote_statement_store_subscribe(
         &self,
         filter: TopicFilter,

@@ -168,19 +168,19 @@ The host handles the group chat UI with default rendering (no custom elements). 
 
 ### What changed
 
-- `remote_statement_store_subscribe`: The `topics: Vec<Topic>` parameter is replaced by `filter: TopicFilter` (enum with `MatchAll`/`MatchAny` variants). The callback now receives `SignedStatementsPage` (with paging support) instead of `Vec<SignedStatement>`.
-- `remote_statement_store_submit`: Now takes a `SignedStatement` and returns `Result<(), GenericError>`.
+- `remote_statement_store_subscribe`: The `topics: Vec<Topic>` parameter is replaced by `filter: TopicFilter`, an enum with `MatchAll(Vec<Topic>)` (AND) and `MatchAny(Vec<Topic>)` (OR) variants.
+- `remote_statement_store_submit`: Now takes raw SCALE-encoded `Bytes` instead of a `SignedStatement` struct, and returns the statement hash (`String`) on success instead of `()`.
 
 ### New types
 
-`TopicFilter` (enum with `MatchAll(Vec<Topic>)` and `MatchAny(Vec<Topic>)` variants), `SignedStatementsPage` (struct with `statements` and `is_complete`).
+`TopicFilter` (enum with `MatchAll(Vec<Topic>)` and `MatchAny(Vec<Topic>)` variants).
 
 ### Rationale
 
 The v0.1 statement store API had gaps and possibly bugs in its implementation. The v0.2 changes align with the `polkadot-sdk` statement store specification:
 
-- `TopicFilter` provides `MatchAll` and `MatchAny` variants for flexible topic matching.
-- `SignedStatementsPage` enables paged delivery of initial historical data before switching to live updates.
+- `TopicFilter` mirrors the [`TopicFilter`](https://github.com/paritytech/polkadot-sdk/blob/89aa25d825603d0f34764ff02ae3ab6b8d8826c9/substrate/primitives/statement-store/src/store_api.rs#L45) type from `polkadot-sdk`, enabling MatchAll (AND) and MatchAny (OR) topic matching.
+- Switching `statement_store_submit` to raw bytes gives products more control over encoding and aligns with the SSS node's RPC interface.
 
 William noted in the working group that all SSS APIs must be available since use cases for Web3 Summit cannot be predicted upfront.
 
@@ -291,6 +291,9 @@ Product-derived accounts are protocol-generated and have no user-chosen label, w
 | `host_device_permission` | Request type: `DevicePermissionRequest` (4 variants) to `DevicePermission` (9 variants) | [RFC 0001](https://github.com/paritytech/triangle-js-sdks/pull/66) |
 | `remote_permission` | Request type: single `RemotePermissionRequest` to batched `Vec<RemotePermission>` (5 variants incl. `PreimageSubmit`) | [RFC 0001](https://github.com/paritytech/triangle-js-sdks/pull/66) |
 | `host_sign_payload` | `SigningPayload.address` replaced by `SigningPayload.account: ProductAccountId` | [RFC 0005](https://github.com/paritytech/triangle-js-sdks/pull/82) |
+| `host_sign_raw` | `SigningRawPayload.address` replaced by `SigningRawPayload.account: ProductAccountId` | [RFC 0005](https://github.com/paritytech/triangle-js-sdks/pull/82) |
+| `remote_statement_store_subscribe` | Parameter: `Vec<Topic>` to `TopicFilter` (MatchAll/MatchAny enum) | |
+| `remote_statement_store_submit` | Parameter: `SignedStatement` to `Bytes`; return: `()` to `String` (hash) | |
 | `host_sign_raw` | `SigningRawPayload.address` replaced by `SigningRawPayload.account: ProductAccountId`; `data` field renamed to `payload` | [RFC 0005](https://github.com/paritytech/triangle-js-sdks/pull/82) |
 | `host_account_get` | Return type: `Account` to `ProductAccount` (no `name` field) | |
 | `remote_statement_store_subscribe` | Parameter: `Vec<Topic>` to `TopicFilter` (MatchAll/MatchAny enum); callback: `Vec<SignedStatement>` to `SignedStatementsPage` | |

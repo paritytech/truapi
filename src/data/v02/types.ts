@@ -1157,7 +1157,7 @@ if (result.isOk) {
     group: 'Statement Store',
     groupId: 'statement-store',
     pattern: 'subscription',
-    description: 'Subscribes to statements matching a topic filter. V0.2 replaces the plain topic vector with a TopicFilter that supports wildcard positions (null entries match any topic).',
+    description: 'Subscribes to statements matching a topic filter. V0.2 replaces the plain topic vector with a TopicFilter enum supporting MatchAll (AND) and MatchAny (OR) semantics.',
     productFunction: 'truApi.statementStoreSubscribe(filter, callback)',
     hostHandler: 'container.handleStatementStoreSubscribe(handler)',
     request: 'TopicFilter',
@@ -1181,7 +1181,7 @@ const sub = truApi.statementStoreSubscribe(
   }
 );`,
     hostExample: `container.handleStatementStoreSubscribe((filter, send, interrupt) => {
-  // filter.topics is an array where null = wildcard
+  // filter is { MatchAll: Topic[] } or { MatchAny: Topic[] }
   send(statementStore.queryByFilter(filter));
 
   const unsub = statementStore.onChange(filter, (statements) => {
@@ -2584,10 +2584,10 @@ export const dataTypes: DataType[] = [
   {
     id: 'TopicFilter', name: 'TopicFilter', category: 'Statement Store', source: 'statementStore.ts',
     definition: 'Enum({ MatchAll: Vector(Topic), MatchAny: Vector(Topic) })',
-    description: 'Filter for statement subscriptions. MatchAll requires all topics to match; MatchAny requires at least one. V0.2 addition replacing plain topic vectors.',
+    description: 'Filter for statement subscriptions. MatchAll requires every listed topic (AND). MatchAny requires at least one listed topic (OR). V0.2 addition replacing plain topic vectors.',
     variants: [
-      { name: 'MatchAll', type: 'Vector(Topic)', description: 'All listed topics must match' },
-      { name: 'MatchAny', type: 'Vector(Topic)', description: 'At least one listed topic must match' },
+      { name: 'MatchAll', type: 'Vector(Topic)', description: 'AND: statement must contain every listed topic.' },
+      { name: 'MatchAny', type: 'Vector(Topic)', description: 'OR: statement must contain at least one listed topic.' },
     ],
   },
   {
