@@ -39,6 +39,7 @@ The v0.1 `RemotePermissionRequest` had two variants (`ExternalRequest`, `Transac
 | `WebRtc` | WebRTC access, which can expose the user's IP address. |
 | `ChainSubmit` | Permission to broadcast signed transactions via `remote_chain_transaction_broadcast`. |
 | `StatementSubmit` | Permission to submit statements via `remote_statement_store_submit`. |
+| `PreimageSubmit` | Permission to submit preimages via `remote_preimage_submit`. |
 
 ### Rationale
 
@@ -135,7 +136,7 @@ The working group agreed (Mar 17 meeting) to ship all breaking changes together 
 
 ### New types
 
-`UserIdentity` (struct with `dot_ns_identifier` and `public_key`), `UserIdentityError`.
+`UserIdentity` (struct with `primary_username` and `public_key`), `UserIdentityError`.
 
 ### Rationale
 
@@ -195,30 +196,116 @@ The `remote_preimage_submit` method is removed from v0.2. The `remote_preimage_l
 Basti proposed removing `remote_preimage_submit` because products should have more fine-grained control over where data is stored. Bulletin chain storage should go through regular transactions (via the PAPI provider and chain interaction methods), not through a dedicated preimage submission function. The preimage lookup function is kept as a generic retrieval mechanism where the host decides how to resolve a hash to bytes (could be bulletin chain, IPFS, smoldot, etc.).
 
 
+## 9. Account Type Split
+
+### What changed
+
+- `Account` is replaced by two types: `ProductAccount` (no `name` field) and `LegacyAccount` (with optional `name`).
+- `host_account_get` now returns `ProductAccount` instead of `Account`.
+- `host_get_non_product_accounts` is renamed to `host_get_legacy_accounts` and returns `Vec<LegacyAccount>`.
+
+### Rationale
+
+Product-derived accounts are protocol-generated and have no user-chosen label, while legacy (imported) accounts may carry a display name. Splitting the types makes this distinction explicit.
+
+
+## 10. Login Flow and Legacy Account Signing
+
+### New methods
+
+| Method | Pattern | Purpose |
+|--------|---------|---------|
+| `host_request_login` | Request/Response | Initiate a login flow; returns `LoginResult` (Success, AlreadyConnected, Rejected). |
+| `host_sign_raw_with_legacy_account` | Request/Response | Sign raw data using a legacy account. |
+| `host_sign_payload_with_legacy_account` | Request/Response | Sign a transaction payload using a legacy account. |
+
+### Renamed methods
+
+| Old name | New name |
+|----------|----------|
+| `host_create_transaction_with_non_product_account` | `host_create_transaction_with_legacy_account` |
+
+### New types
+
+`LoginResult`, `LoginError`, `SigningPayloadPayload`, `SigningRawPayloadWithoutAccount`, `SigningPayloadWithoutAccount`.
+
+
+## 11. Theme Subscription
+
+### New group: Theme (1 method)
+
+| Method | Pattern | Purpose |
+|--------|---------|---------|
+| `host_theme_subscribe` | Subscription | Subscribes to the host's visual theme (Light/Dark). |
+
+### New types
+
+`Theme` (enum: Light, Dark).
+
+
+## 12. SigningRawPayload Field Rename
+
+### What changed
+
+`SigningRawPayload.data` is renamed to `SigningRawPayload.payload`.
+
+
+## 13. PaymentBalance Simplification
+
+### What changed
+
+`PaymentBalance.pending` field is removed. The type now only carries `available: Balance`.
+
+
+## 14. UserIdentity Field Alignment
+
+### What changed
+
+- `UserIdentity.dot_ns_identifier` is renamed to `UserIdentity.primary_username`.
+- `UserIdentityError::Rejected` is renamed to `UserIdentityError::PermissionDenied`.
+- `PaymentRequestError::Denied` is renamed to `PaymentRequestError::Rejected`.
+
+
 ## Summary of All Changes
 
-### New methods (7)
+### New methods (11)
 
 | Method | Group | RFC |
 |--------|-------|-----|
 | `host_get_user_id` | Account Management | |
+| `host_request_login` | Account Management | |
+| `host_sign_raw_with_legacy_account` | Signing | |
+| `host_sign_payload_with_legacy_account` | Signing | |
 | `host_chat_create_simple_group` | Chat | |
 | `host_payment_balance_subscribe` | Payment (new) | [RFC 0006](https://github.com/paritytech/triangle-js-sdks/pull/94) |
 | `host_payment_top_up` | Payment (new) | [RFC 0006](https://github.com/paritytech/triangle-js-sdks/pull/94) |
 | `host_payment_request` | Payment (new) | [RFC 0006](https://github.com/paritytech/triangle-js-sdks/pull/94) |
 | `host_payment_status_subscribe` | Payment (new) | [RFC 0006](https://github.com/paritytech/triangle-js-sdks/pull/94) |
 | `host_derive_entropy` | Entropy (new) | [RFC 0007](https://github.com/paritytech/triangle-js-sdks/pull/95) |
+| `host_theme_subscribe` | Theme (new) | |
 
-### Changed methods (6)
+### Changed methods (8)
 
 | Method | What changed | RFC |
 |--------|-------------|-----|
 | `host_device_permission` | Request type: `DevicePermissionRequest` (4 variants) to `DevicePermission` (9 variants) | [RFC 0001](https://github.com/paritytech/triangle-js-sdks/pull/66) |
-| `remote_permission` | Request type: single `RemotePermissionRequest` to batched `Vec<RemotePermission>` | [RFC 0001](https://github.com/paritytech/triangle-js-sdks/pull/66) |
+| `remote_permission` | Request type: single `RemotePermissionRequest` to batched `Vec<RemotePermission>` (5 variants incl. `PreimageSubmit`) | [RFC 0001](https://github.com/paritytech/triangle-js-sdks/pull/66) |
 | `host_sign_payload` | `SigningPayload.address` replaced by `SigningPayload.account: ProductAccountId` | [RFC 0005](https://github.com/paritytech/triangle-js-sdks/pull/82) |
 | `host_sign_raw` | `SigningRawPayload.address` replaced by `SigningRawPayload.account: ProductAccountId` | [RFC 0005](https://github.com/paritytech/triangle-js-sdks/pull/82) |
 | `remote_statement_store_subscribe` | Parameter: `Vec<Topic>` to `TopicFilter` (MatchAll/MatchAny enum) | |
 | `remote_statement_store_submit` | Parameter: `SignedStatement` to `Bytes`; return: `()` to `String` (hash) | |
+| `host_sign_raw` | `SigningRawPayload.address` replaced by `SigningRawPayload.account: ProductAccountId`; `data` field renamed to `payload` | [RFC 0005](https://github.com/paritytech/triangle-js-sdks/pull/82) |
+| `host_account_get` | Return type: `Account` to `ProductAccount` (no `name` field) | |
+| `remote_statement_store_subscribe` | Parameter: `Vec<Topic>` to `TopicFilter` (MatchAll/MatchAny enum); callback: `Vec<SignedStatement>` to `SignedStatementsPage` | |
+| `remote_statement_store_submit` | Parameter: `Bytes` to `SignedStatement`; return: `String` to `()` | |
+| `host_get_user_id` | `UserIdentity.dot_ns_identifier` → `primary_username`; error variant `Rejected` → `PermissionDenied` | |
+
+### Renamed methods (2)
+
+| Old name | New name |
+|----------|----------|
+| `host_get_non_product_accounts` | `host_get_legacy_accounts` |
+| `host_create_transaction_with_non_product_account` | `host_create_transaction_with_legacy_account` |
 
 ### Removed methods (1)
 
@@ -226,12 +313,13 @@ Basti proposed removing `remote_preimage_submit` because products should have mo
 |--------|--------|
 | `remote_preimage_submit` | Products should use chain transactions for storage; preimage lookup remains for retrieval. |
 
-### New groups (2)
+### New groups (3)
 
 | Group | Methods |
 |-------|---------|
 | Payment | `host_payment_balance_subscribe`, `host_payment_top_up`, `host_payment_request`, `host_payment_status_subscribe` |
 | Entropy | `host_derive_entropy` |
+| Theme | `host_theme_subscribe` |
 
 ### Features deferred to v0.3+
 
@@ -242,4 +330,3 @@ Basti proposed removing `remote_preimage_submit` because products should have mo
 | Contacts API | | Deferred post-W3S per William. (Note from William - this was referring to the privacy preserving friends list; however it seems there is a different 'Contacts API' functionality that should be there |
 | Honour API | | Not due for W3S; implementation still in progress. |
 | HOP API | | Limited solution; bulletin chain is quicker for W3S use cases. |
-| Legacy account support | | Pending decision from Gav. |

@@ -116,6 +116,8 @@ pub enum RemotePermission {
     ChainSubmit,
     /// Submit statements via [`TrUApi::remote_statement_store_submit`].
     StatementSubmit,
+    /// Submit preimages via [`TrUApi::remote_preimage_submit`].
+    PreimageSubmit,
 }
 
 // ─── Storage types ───────────────────────────────────────────────────────────
@@ -153,13 +155,38 @@ pub type DerivationIndex = u32;
 /// derivation index.
 pub type ProductAccountId = (DotNsIdentifier, DerivationIndex);
 
-/// An account with its public key and optional display name.
+/// Protocol-derived, product-scoped account. No user-chosen label.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Account {
+pub struct ProductAccount {
+    /// The account public key (variable-length bytes).
+    pub public_key: PublicKey,
+}
+
+/// User-imported account. May carry a user-chosen label.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LegacyAccount {
     /// The account public key (variable-length bytes).
     pub public_key: PublicKey,
     /// Optional human-readable display name.
     pub name: Option<String>,
+}
+
+/// Outcome of a login request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LoginResult {
+    /// Login succeeded.
+    Success,
+    /// User was already connected.
+    AlreadyConnected,
+    /// User rejected the login request.
+    Rejected,
+}
+
+/// Error from [`TrUApi::host_request_login`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LoginError {
+    /// Catch-all.
+    Unknown { reason: String },
 }
 
 /// A privacy-preserving alias derived via ring VRF, bound to a specific context.
@@ -204,8 +231,8 @@ pub enum AccountConnectionStatus {
 /// V0.2.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UserIdentity {
-    /// The user's primary DotNS identifier.
-    pub dot_ns_identifier: DotNsIdentifier,
+    /// The user's primary DotNS username scoped to the calling product.
+    pub primary_username: DotNsIdentifier,
     /// The user's primary public key.
     pub public_key: PublicKey,
 }
@@ -216,7 +243,7 @@ pub struct UserIdentity {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UserIdentityError {
     /// User denied the identity disclosure request.
-    Rejected,
+    PermissionDenied,
     /// User is not logged in.
     NotConnected,
     /// Catch-all.
@@ -292,6 +319,50 @@ pub struct SigningPayload {
     pub with_signed_transaction: Option<bool>,
 }
 
+/// The structured payload fields of a [`SigningPayload`], without the account.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SigningPayloadPayload {
+    /// Reference block hash.
+    pub block_hash: Hex,
+    /// Reference block number.
+    pub block_number: Hex,
+    /// Mortality era encoding.
+    pub era: Hex,
+    /// Chain genesis hash.
+    pub genesis_hash: GenesisHash,
+    /// SCALE-encoded call data.
+    pub method: Hex,
+    /// Account nonce.
+    pub nonce: Hex,
+    /// Runtime spec version.
+    pub spec_version: Hex,
+    /// Transaction tip.
+    pub tip: Hex,
+    /// Transaction format version.
+    pub transaction_version: Hex,
+    /// Extension identifiers.
+    pub signed_extensions: Vec<String>,
+    /// Extrinsic version.
+    pub version: u32,
+    /// For multi-asset tips.
+    pub asset_id: Option<Hex>,
+    /// CheckMetadataHash extension.
+    pub metadata_hash: Option<Hex>,
+    /// Metadata mode.
+    pub mode: Option<u32>,
+    /// Request signed transaction back.
+    pub with_signed_transaction: Option<bool>,
+}
+
+/// A signing request using a legacy (non-product) account.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SigningPayloadWithoutAccount {
+    /// Signer identifier (e.g. SS58 address).
+    pub signer: String,
+    /// The structured payload to sign.
+    pub payload: SigningPayloadPayload,
+}
+
 /// Raw data to sign — either binary bytes or a string message.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RawPayload {
@@ -311,7 +382,16 @@ pub struct SigningRawPayload {
     /// Product account that will sign this data.
     pub account: ProductAccountId,
     /// The data to sign.
-    pub data: RawPayload,
+    pub payload: RawPayload,
+}
+
+/// A raw signing request using a legacy (non-product) account.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SigningRawPayloadWithoutAccount {
+    /// Signer identifier (e.g. SS58 address).
+    pub signer: String,
+    /// The data to sign.
+    pub payload: RawPayload,
 }
 
 /// Result of a signing operation.
@@ -985,6 +1065,16 @@ pub struct SignedStatement {
     pub data: Option<Bytes>,
 }
 
+/// A page of signed statements delivered to subscribers.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SignedStatementsPage {
+    /// Statements in this page.
+    pub statements: Vec<SignedStatement>,
+    /// `false` — intermediate page of the initial historical dump; more pages follow.
+    /// `true` — initial dump is complete; all subsequent pages are also `true`.
+    pub is_complete: bool,
+}
+
 /// Statement proof creation error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StatementProofError {
@@ -1264,9 +1354,6 @@ pub type Ed25519PrivateKey = [u8; 32];
 pub struct PaymentBalance {
     /// Balance that can be spent right now.
     pub available: Balance,
-    /// Balance the user possesses but cannot spend yet (e.g. in recycling
-    /// stage).
-    pub pending: Balance,
 }
 
 /// Source for a payment top-up operation.
@@ -1348,7 +1435,7 @@ pub enum PaymentTopUpError {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PaymentRequestError {
     /// User denied the payment request.
-    Denied,
+    Rejected,
     /// User's available balance is not sufficient for the requested amount.
     InsufficientBalance,
     /// Catch-all.
@@ -1394,6 +1481,15 @@ pub type Entropy = [u8; 32];
 pub enum DeriveEntropyError {
     /// An unexpected error occurred in the host.
     Unknown,
+}
+
+// ─── Theme types ────────────────────────────────────────────────────────────
+
+/// Visual theme preference.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Theme {
+    Light,
+    Dark,
 }
 
 // ─── TrUAPI trait ──────────────────────────────────────────────────────────
@@ -1464,7 +1560,7 @@ pub trait TrUApi {
     fn host_account_get(
         &self,
         product_account_id: ProductAccountId,
-    ) -> Result<Account, RequestCredentialsError>;
+    ) -> Result<ProductAccount, RequestCredentialsError>;
 
     /// Retrieves a contextual alias (ring VRF based) for a product account.
     fn host_account_get_alias(
@@ -1480,9 +1576,8 @@ pub trait TrUApi {
         context: Bytes,
     ) -> Result<RingVrfProof, CreateProofError>;
 
-    /// Retrieves the user's non-product accounts (e.g., their main wallet
-    /// account, not derived per-product).
-    fn host_get_non_product_accounts(&self) -> Result<Vec<Account>, RequestCredentialsError>;
+    /// Retrieves the user's legacy (imported, non-product) accounts.
+    fn host_get_legacy_accounts(&self) -> Result<Vec<LegacyAccount>, RequestCredentialsError>;
 
     /// Subscribes to changes in the user's authentication state. The host pushes
     /// `Connected` or `Disconnected` whenever the auth state changes.
@@ -1497,6 +1592,10 @@ pub trait TrUApi {
     /// V0.2.
     fn host_get_user_id(&self) -> Result<UserIdentity, UserIdentityError>;
 
+    /// Requests the host to initiate a login flow. The optional parameter
+    /// is a deep-link or hint for the login UI.
+    fn host_request_login(&self, hint: Option<String>) -> Result<LoginResult, LoginError>;
+
     // ── Signing ──────────────────────────────────────────────────────────
 
     /// Requests the host to sign a Substrate transaction payload. The host
@@ -1505,6 +1604,18 @@ pub trait TrUApi {
 
     /// Requests the host to sign a raw message (not a transaction).
     fn host_sign_raw(&self, payload: SigningRawPayload) -> Result<SigningResult, SigningError>;
+
+    /// Signs a raw message using a legacy (non-product) account.
+    fn host_sign_raw_with_legacy_account(
+        &self,
+        payload: SigningRawPayloadWithoutAccount,
+    ) -> Result<SigningResult, SigningError>;
+
+    /// Signs a transaction payload using a legacy (non-product) account.
+    fn host_sign_payload_with_legacy_account(
+        &self,
+        payload: SigningPayloadWithoutAccount,
+    ) -> Result<SigningResult, SigningError>;
 
     /// Requests the host to create and sign a full transaction from a structured
     /// payload, using a product-derived account.
@@ -1516,7 +1627,7 @@ pub trait TrUApi {
 
     /// Same as [`host_create_transaction`](TrUApi::host_create_transaction) but uses the
     /// user's main account instead of a product-derived account.
-    fn host_create_transaction_with_non_product_account(
+    fn host_create_transaction_with_legacy_account(
         &self,
         payload: VersionedTxPayload,
     ) -> Result<Bytes, CreateTransactionError>;
@@ -1587,7 +1698,7 @@ pub trait TrUApi {
     fn remote_statement_store_subscribe(
         &self,
         filter: TopicFilter,
-        callback: Box<dyn FnMut(Vec<SignedStatement>) + Send>,
+        callback: Box<dyn FnMut(SignedStatementsPage) + Send>,
     ) -> Self::Subscription;
 
     /// Creates a cryptographic proof (signature) for a statement using a product
@@ -1598,12 +1709,8 @@ pub trait TrUApi {
         statement: Statement,
     ) -> Result<StatementProof, StatementProofError>;
 
-    /// Submits a pre-encoded statement to the statement store and returns
-    /// the statement hash on success.
-    ///
-    /// V0.2: replaces the v0.1 signature that accepted a [`SignedStatement`]
-    /// struct with raw SCALE-encoded bytes.
-    fn remote_statement_store_submit(&self, encoded: Bytes) -> Result<String, GenericError>;
+    /// Submits a signed statement to the statement store.
+    fn remote_statement_store_submit(&self, statement: SignedStatement) -> Result<(), GenericError>;
 
     // ── Preimage ─────────────────────────────────────────────────────────
 
@@ -1755,4 +1862,13 @@ pub trait TrUApi {
     ///
     /// See [RFC 0007](https://github.com/paritytech/triangle-js-sdks/pull/95).
     fn host_derive_entropy(&self, key: Vec<u8>) -> Result<Entropy, DeriveEntropyError>;
+
+    // ── Theme ────────────────────────────────────────────────────────────
+
+    /// Subscribes to the host's visual theme. The host pushes the current
+    /// theme whenever it changes.
+    fn host_theme_subscribe(
+        &self,
+        callback: Box<dyn FnMut(Theme) + Send>,
+    ) -> Self::Subscription;
 }
