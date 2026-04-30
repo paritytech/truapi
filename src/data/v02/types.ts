@@ -59,13 +59,13 @@ export const groups: GroupDef[] = [
     id: 'account-management',
     name: 'Account Management',
     description: 'Product-specific account derivation, alias retrieval, ring VRF proofs, connection status, and user identity.',
-    methods: ['host_account_get', 'host_account_get_alias', 'host_account_create_proof', 'host_get_non_product_accounts', 'host_account_connection_status_subscribe', 'host_get_user_id'],
+    methods: ['host_account_get', 'host_account_get_alias', 'host_account_create_proof', 'host_get_legacy_accounts', 'host_account_connection_status_subscribe', 'host_get_user_id', 'host_request_login'],
   },
   {
     id: 'signing',
     name: 'Signing',
     description: 'Transaction payload signing, raw message signing, and full transaction creation.',
-    methods: ['host_sign_payload', 'host_sign_raw', 'host_create_transaction', 'host_create_transaction_with_non_product_account'],
+    methods: ['host_sign_payload', 'host_sign_raw', 'host_create_transaction', 'host_sign_raw_with_legacy_account', 'host_sign_payload_with_legacy_account', 'host_create_transaction_with_legacy_account'],
   },
   {
     id: 'chat',
@@ -102,6 +102,12 @@ export const groups: GroupDef[] = [
     name: 'Entropy',
     description: 'Deterministic entropy derivation scoped to product and user via BLAKE2b-256 keyed hashing.',
     methods: ['host_derive_entropy'],
+  },
+  {
+    id: 'theme',
+    name: 'Theme',
+    description: 'Host visual theme subscription.',
+    methods: ['host_theme_subscribe'],
   },
 ];
 
@@ -369,7 +375,7 @@ const result = await truApi.localStorageClear("user-theme");`,
     productFunction: 'truApi.accountGet(productAccountId)',
     hostHandler: 'container.handleAccountGet(handler)',
     request: 'ProductAccountId',
-    response: 'Result(Account, RequestCredentialsErr)',
+    response: 'Result(ProductAccount, RequestCredentialsErr)',
     requestDescription: 'ProductAccountId is a Tuple(DotNsIdentifier, DerivationIndex)',
     errorType: 'RequestCredentialsErr',
     errorVariants: ['NotConnected', 'Rejected', 'DomainNotValid', 'Unknown({ reason: str })'],
@@ -380,9 +386,8 @@ const result = await truApi.accountGet([
 ]);
 
 if (result.isOk) {
-  const { publicKey, name } = result.value;
-  console.log("Account:", name ?? "unnamed");
-  console.log("Key:", toHex(publicKey));
+  const { publicKey } = result.value;
+  console.log("Account:", toHex(publicKey));
 }`,
     hostExample: `container.handleAccountGet(([dotNsId, derivationIndex], { ok, err }) => {
   if (!currentUser) {
@@ -393,7 +398,6 @@ if (result.isOk) {
   );
   return ok({
     publicKey: account.publicKey,
-    name: account.displayName ?? null,
   });
 });`,
   },
@@ -472,27 +476,27 @@ if (result.isOk) {
 );`,
   },
   {
-    id: 'host_get_non_product_accounts',
-    name: 'host_get_non_product_accounts',
+    id: 'host_get_legacy_accounts',
+    name: 'host_get_legacy_accounts',
     group: 'Account Management',
     groupId: 'account-management',
     pattern: 'request-response',
-    description: 'Retrieves the user\'s non-product accounts (e.g., their main wallet account, not derived per-product).',
-    productFunction: 'truApi.getNonProductAccounts()',
-    hostHandler: 'container.handleGetNonProductAccounts(handler)',
+    description: 'Retrieves the user\'s legacy (imported, non-product) accounts.',
+    productFunction: 'truApi.getLegacyAccounts()',
+    hostHandler: 'container.handleGetLegacyAccounts(handler)',
     request: 'void',
-    response: 'Result(Vector(Account), RequestCredentialsErr)',
+    response: 'Result(Vector(LegacyAccount), RequestCredentialsErr)',
     errorType: 'RequestCredentialsErr',
     errorVariants: ['NotConnected', 'Rejected', 'DomainNotValid', 'Unknown({ reason: str })'],
-    productExample: `// Get the user's wallet accounts
-const result = await truApi.getNonProductAccounts();
+    productExample: `// Get the user's legacy accounts
+const result = await truApi.getLegacyAccounts();
 
 if (result.isOk) {
   for (const account of result.value) {
     console.log(account.name, toHex(account.publicKey));
   }
 }`,
-    hostExample: `container.handleGetNonProductAccounts((_, { ok, err }) => {
+    hostExample: `container.handleGetLegacyAccounts((_, { ok, err }) => {
   if (!currentUser) {
     return err({ NotConnected: undefined });
   }
@@ -548,22 +552,21 @@ sub.unsubscribe();`,
     group: 'Account Management',
     groupId: 'account-management',
     pattern: 'request-response',
-    description: 'Returns the user\'s primary DotNS account identifier and public key. Requires JIT user approval on first call. V0.2 addition.',
+    description: 'Returns the user\'s primary DotNS account identifier. Requires JIT user approval on first call. V0.2 addition.',
     productFunction: 'truApi.getUserId()',
     hostHandler: 'container.handleGetUserId(handler)',
     request: 'void',
     response: 'Result(UserIdentity, UserIdentityErr)',
     errorType: 'UserIdentityErr',
-    errorVariants: ['Rejected', 'NotConnected', 'Unknown({ reason: str })'],
+    errorVariants: ['PermissionDenied', 'NotConnected', 'Unknown({ reason: str })'],
     productExample: `// Get the user's primary identity
 const result = await truApi.getUserId();
 
 if (result.isOk) {
-  const { dotNsIdentifier, publicKey } = result.value;
-  console.log("User:", dotNsIdentifier);
-  console.log("Public key:", toHex(publicKey));
-} else if (result.error.tag === "Rejected") {
-  console.log("User declined identity disclosure");
+  const { primaryUsername } = result.value;
+  console.log("User:", primaryUsername);
+} else if (result.error.tag === "PermissionDenied") {
+  console.log("User denied");
 } else if (result.error.tag === "NotConnected") {
   console.log("User is not logged in");
 }`,
@@ -574,12 +577,52 @@ if (result.isOk) {
   // Prompt user for permission to disclose identity
   const approved = await showIdentityDisclosureDialog();
   if (!approved) {
-    return err({ Rejected: undefined });
+    return err({ PermissionDenied: undefined });
   }
   return ok({
-    dotNsIdentifier: currentUser.dotNsId,
-    publicKey: currentUser.primaryPublicKey,
+    primaryUsername: currentUser.dotNsId,
   });
+});`,
+  },
+  {
+    id: 'host_request_login',
+    name: 'host_request_login',
+    group: 'Account Management',
+    groupId: 'account-management',
+    pattern: 'request-response',
+    description: 'Requests the host to initiate a login flow. The optional parameter is a deep-link or hint for the login UI.',
+    productFunction: 'truApi.requestLogin(hint)',
+    hostHandler: 'container.handleRequestLogin(handler)',
+    request: 'Option(str)',
+    response: 'Result(LoginResult, LoginError)',
+    errorType: 'LoginError',
+    errorVariants: ['Unknown({ reason: str })'],
+    productExample: `// Request login
+const result = await truApi.requestLogin(null);
+
+if (result.isOk) {
+  switch (result.value) {
+    case "Success":
+      console.log("Login succeeded");
+      break;
+    case "AlreadyConnected":
+      console.log("Already logged in");
+      break;
+    case "Rejected":
+      console.log("User rejected login");
+      break;
+  }
+}`,
+    hostExample: `container.handleRequestLogin((hint, { ok, err }) => {
+  if (currentUser) {
+    return ok("AlreadyConnected");
+  }
+  const accepted = await showLoginDialog(hint);
+  if (!accepted) {
+    return ok("Rejected");
+  }
+  await performLogin();
+  return ok("Success");
 });`,
   },
   // Group 5: Signing
@@ -649,13 +692,13 @@ if (result.isOk) {
     productExample: `// Sign a raw message
 const result = await truApi.signRaw({
   account: ["my-product.dot", 0],  // ProductAccountId
-  data: { Payload: "Please sign this message to verify ownership" }
+  payload: { Payload: "Please sign this message to verify ownership" }
 });
 
 // Or sign raw bytes
 const result2 = await truApi.signRaw({
   account: ["my-product.dot", 0],
-  data: { Bytes: new Uint8Array([1, 2, 3]) }
+  payload: { Bytes: new Uint8Array([1, 2, 3]) }
 });`,
     hostExample: `container.handleSignRaw((payload, { ok, err }) => {
   const [dotNsId, derivationIndex] = payload.account;
@@ -664,7 +707,7 @@ const result2 = await truApi.signRaw({
     return err({ Rejected: undefined });
   }
   const key = deriveProductKey(currentUser, dotNsId, derivationIndex);
-  const signature = await key.signRaw(payload.data);
+  const signature = await key.signRaw(payload.payload);
   return ok({ signature, signedTransaction: null });
 });`,
   },
@@ -721,21 +764,87 @@ if (result.isOk) {
 );`,
   },
   {
-    id: 'host_create_transaction_with_non_product_account',
-    name: 'host_create_transaction_with_non_product_account',
+    id: 'host_sign_raw_with_legacy_account',
+    name: 'host_sign_raw_with_legacy_account',
     group: 'Signing',
     groupId: 'signing',
     pattern: 'request-response',
-    description: 'Same as host_create_transaction but uses the user\'s main account instead of a product-derived account.',
-    productFunction: 'truApi.createTransactionWithNonProductAccount(payload)',
-    hostHandler: 'container.handleCreateTransactionWithNonProductAccount(handler)',
+    description: 'Signs a raw message using a legacy (non-product) account.',
+    productFunction: 'truApi.signRawWithLegacyAccount(payload)',
+    hostHandler: 'container.handleSignRawWithLegacyAccount(handler)',
+    request: 'SigningRawPayloadWithoutAccount',
+    response: 'Result(SigningResult, SigningErr)',
+    errorType: 'SigningErr',
+    errorVariants: ['FailedToDecode', 'Rejected', 'PermissionDenied', 'Unknown({ reason: str })'],
+    productExample: `// Sign raw data with a legacy account
+const result = await truApi.signRawWithLegacyAccount({
+  signer: "5GrwvaEF5...",
+  payload: { Payload: "Please sign this message" }
+});`,
+    hostExample: `container.handleSignRawWithLegacyAccount((payload, { ok, err }) => {
+  const account = findLegacyAccount(payload.signer);
+  if (!account) {
+    return err({ PermissionDenied: undefined });
+  }
+  const signature = await account.signRaw(payload.payload);
+  return ok({ signature, signedTransaction: null });
+});`,
+  },
+  {
+    id: 'host_sign_payload_with_legacy_account',
+    name: 'host_sign_payload_with_legacy_account',
+    group: 'Signing',
+    groupId: 'signing',
+    pattern: 'request-response',
+    description: 'Signs a transaction payload using a legacy (non-product) account.',
+    productFunction: 'truApi.signPayloadWithLegacyAccount(payload)',
+    hostHandler: 'container.handleSignPayloadWithLegacyAccount(handler)',
+    request: 'SigningPayloadWithoutAccount',
+    response: 'Result(SigningResult, SigningErr)',
+    errorType: 'SigningErr',
+    errorVariants: ['FailedToDecode', 'Rejected', 'PermissionDenied', 'Unknown({ reason: str })'],
+    productExample: `// Sign a transaction payload with a legacy account
+const result = await truApi.signPayloadWithLegacyAccount({
+  signer: "5GrwvaEF5...",
+  payload: {
+    blockHash: "0xabc...",
+    blockNumber: "0x01",
+    era: "0x6502",
+    genesisHash: polkadotGenesis,
+    method: "0x0500...",
+    nonce: "0x00",
+    specVersion: "0x01",
+    tip: "0x00",
+    transactionVersion: "0x01",
+    signedExtensions: ["CheckSpecVersion"],
+    version: 4,
+  }
+});`,
+    hostExample: `container.handleSignPayloadWithLegacyAccount((payload, { ok, err }) => {
+  const account = findLegacyAccount(payload.signer);
+  if (!account) {
+    return err({ PermissionDenied: undefined });
+  }
+  const signature = await account.sign(payload.payload);
+  return ok({ signature, signedTransaction: null });
+});`,
+  },
+  {
+    id: 'host_create_transaction_with_legacy_account',
+    name: 'host_create_transaction_with_legacy_account',
+    group: 'Signing',
+    groupId: 'signing',
+    pattern: 'request-response',
+    description: 'Same as host_create_transaction but uses a legacy (non-product) account.',
+    productFunction: 'truApi.createTransactionWithLegacyAccount(payload)',
+    hostHandler: 'container.handleCreateTransactionWithLegacyAccount(handler)',
     request: 'VersionedTxPayload',
     response: 'Result(Bytes, CreateTransactionErr)',
     requestDescription: 'Same VersionedTxPayload structure, without ProductAccountId',
     errorType: 'CreateTransactionErr',
     errorVariants: ['FailedToDecode', 'Rejected', 'NotSupported(str)', 'PermissionDenied', 'Unknown({ reason: str })'],
     productExample: `// Create transaction with user's main wallet account
-const result = await truApi.createTransactionWithNonProductAccount({
+const result = await truApi.createTransactionWithLegacyAccount({
   v1: {
     signer: "5GrwvaEF5...",
     callData: "0x0500...",
@@ -749,7 +858,7 @@ const result = await truApi.createTransactionWithNonProductAccount({
     },
   }
 });`,
-    hostExample: `container.handleCreateTransactionWithNonProductAccount(
+    hostExample: `container.handleCreateTransactionWithLegacyAccount(
   (versionedPayload, { ok, err }) => {
     const tx = buildAndSignTransaction(
       currentUser.mainAccount, versionedPayload.value
@@ -1052,20 +1161,22 @@ if (result.isOk) {
     productFunction: 'truApi.statementStoreSubscribe(filter, callback)',
     hostHandler: 'container.handleStatementStoreSubscribe(handler)',
     request: 'TopicFilter',
-    response: 'Vector(SignedStatement)',
+    response: 'SignedStatementsPage',
     productExample: `// Subscribe to statements with a topic filter
 const topic = new Uint8Array(32);
 topic.set([1, 2, 3]); // topic identifier
 
-// Use null entries as wildcards
 const sub = truApi.statementStoreSubscribe(
-  { topics: [topic, null] },  // match first topic exactly, any second
-  (statements) => {
-    for (const stmt of statements) {
+  { MatchAll: [topic] },
+  (page) => {
+    for (const stmt of page.statements) {
       console.log("Statement from:", stmt.proof);
       if (stmt.data) {
         processStatement(stmt.data);
       }
+    }
+    if (page.isComplete) {
+      console.log("Initial dump complete");
     }
   }
 );`,
@@ -1127,28 +1238,24 @@ if (result.isOk) {
     group: 'Statement Store',
     groupId: 'statement-store',
     pattern: 'request-response',
-    description: 'Submits a pre-encoded statement to the statement store and returns the statement hash on success. V0.2 replaces the SignedStatement struct with raw SCALE-encoded bytes.',
-    productFunction: 'truApi.statementStoreSubmit(encoded)',
+    description: 'Submits a signed statement to the statement store.',
+    productFunction: 'truApi.statementStoreSubmit(statement)',
     hostHandler: 'container.handleStatementStoreSubmit(handler)',
-    request: 'Bytes',
-    response: 'Result(str, GenericError)',
-    requestDescription: 'Raw SCALE-encoded statement bytes',
-    responseDescription: 'Statement hash on success',
-    productExample: `// Submit a pre-encoded statement (raw SCALE bytes)
-const encodedStatement = encodeStatementToScale(signedStatement);
-const result = await truApi.statementStoreSubmit(encodedStatement);
+    request: 'SignedStatement',
+    response: 'Result(void, GenericError)',
+    requestDescription: 'A SignedStatement to submit',
+    productExample: `// Submit a signed statement
+const result = await truApi.statementStoreSubmit(signedStatement);
 
 if (result.isOk) {
-  console.log("Statement hash:", result.value);
+  console.log("Statement submitted successfully");
 }`,
-    hostExample: `container.handleStatementStoreSubmit((encoded, { ok, err }) => {
-  const decoded = decodeStatement(encoded);
-  if (!decoded || !verifyProof(decoded)) {
-    return err({ GenericError: { reason: "Invalid statement encoding" } });
+    hostExample: `container.handleStatementStoreSubmit((statement, { ok, err }) => {
+  if (!verifyProof(statement)) {
+    return err({ GenericError: { reason: "Invalid statement" } });
   }
-  const hash = blake2Hash(encoded);
-  statementStore.insert(hash, decoded);
-  return ok(hash);
+  statementStore.insert(statement);
+  return ok(undefined);
 });`,
   },
   // Group 8: Preimage
@@ -1709,6 +1816,38 @@ const result2 = await truApi.deriveEntropy(key);
   return ok(entropy);
 });`,
   },
+  {
+    id: 'host_theme_subscribe',
+    name: 'host_theme_subscribe',
+    group: 'Theme',
+    groupId: 'theme',
+    pattern: 'subscription',
+    description: 'Subscribes to the host\'s visual theme. The host pushes the current theme whenever it changes.',
+    productFunction: 'truApi.themeSubscribe(void, callback)',
+    hostHandler: 'container.handleThemeSubscribe(handler)',
+    request: 'void',
+    response: 'Theme',
+    productExample: `// Watch for theme changes
+const sub = truApi.themeSubscribe(
+  undefined,
+  (theme) => {
+    if (theme === "Light") {
+      applyLightTheme();
+    } else {
+      applyDarkTheme();
+    }
+  }
+);`,
+    hostExample: `container.handleThemeSubscribe((_, send, interrupt) => {
+  send(getCurrentTheme());
+
+  const unsub = themeStore.onChange((theme) => {
+    send(theme);
+  });
+
+  return () => unsub();
+});`,
+  },
 ];
 
 export const dataTypes: DataType[] = [
@@ -1761,9 +1900,17 @@ export const dataTypes: DataType[] = [
     description: 'Identifies a product-specific account by combining a dotNS domain name with a derivation index.',
   },
   {
-    id: 'Account', name: 'Account', category: 'Account', source: 'accounts.ts',
+    id: 'ProductAccount', name: 'ProductAccount', category: 'Account', source: 'accounts.ts',
+    definition: 'Struct({ publicKey: PublicKey })',
+    description: 'A protocol-derived, product-scoped account. No user-chosen label.',
+    fields: [
+      { name: 'publicKey', type: 'PublicKey', description: 'The account public key (variable-length Bytes)' },
+    ],
+  },
+  {
+    id: 'LegacyAccount', name: 'LegacyAccount', category: 'Account', source: 'accounts.ts',
     definition: 'Struct({ publicKey: PublicKey, name: Option(str) })',
-    description: 'An account with its public key and optional display name.',
+    description: 'A user-imported account. May carry a user-chosen label.',
     fields: [
       { name: 'publicKey', type: 'PublicKey', description: 'The account public key (variable-length Bytes)' },
       { name: 'name', type: 'Option(str)', description: 'Optional human-readable display name' },
@@ -1801,20 +1948,33 @@ export const dataTypes: DataType[] = [
     description: 'Status enum representing the user\'s authentication state.',
   },
   {
+    id: 'LoginResult', name: 'LoginResult', category: 'Account', source: 'accounts.ts',
+    definition: "Status('Success', 'AlreadyConnected', 'Rejected')",
+    description: 'Outcome of a login request.',
+  },
+  {
+    id: 'LoginError', name: 'LoginError', category: 'Account', source: 'accounts.ts',
+    definition: 'ErrEnum { Unknown({ reason: str }) }',
+    description: 'Error from host_request_login.',
+    variants: [
+      { name: 'Unknown', type: 'Struct({ reason: str })', description: 'Catch-all' },
+    ],
+  },
+  {
     id: 'UserIdentity', name: 'UserIdentity', category: 'Account', source: 'accounts.ts',
-    definition: 'Struct({ dotNsIdentifier: DotNsIdentifier, publicKey: PublicKey })',
+    definition: 'Struct({ primaryUsername: DotNsIdentifier, publicKey: PublicKey })',
     description: 'The user\'s primary DotNS account identity. V0.2 addition.',
     fields: [
-      { name: 'dotNsIdentifier', type: 'DotNsIdentifier', description: 'The user\'s primary DotNS identifier' },
+      { name: 'primaryUsername', type: 'DotNsIdentifier', description: 'The user\'s primary DotNS username' },
       { name: 'publicKey', type: 'PublicKey', description: 'The user\'s primary public key' },
     ],
   },
   {
     id: 'UserIdentityErr', name: 'UserIdentityErr', category: 'Account', source: 'accounts.ts',
-    definition: 'ErrEnum { Rejected, NotConnected, Unknown({ reason: str }) }',
+    definition: 'ErrEnum { PermissionDenied, NotConnected, Unknown({ reason: str }) }',
     description: 'Error from host_get_user_id. V0.2 addition.',
     variants: [
-      { name: 'Rejected', type: '_void', description: 'User denied the identity disclosure request' },
+      { name: 'PermissionDenied', type: '_void', description: 'User denied the identity disclosure request' },
       { name: 'NotConnected', type: '_void', description: 'User is not logged in' },
       { name: 'Unknown', type: 'Struct({ reason: str })', description: 'Catch-all' },
     ],
@@ -1876,11 +2036,51 @@ export const dataTypes: DataType[] = [
   },
   {
     id: 'SigningRawPayload', name: 'SigningRawPayload', category: 'Signing', source: 'sign.ts',
-    definition: 'Struct({ account: ProductAccountId, data: RawPayload })',
+    definition: 'Struct({ account: ProductAccountId, payload: RawPayload })',
     description: 'A raw signing request pairing a product account with raw data. V0.2: uses ProductAccountId instead of address string.',
     fields: [
       { name: 'account', type: 'ProductAccountId', description: 'Product account that will sign this data' },
-      { name: 'data', type: 'RawPayload', description: 'The data to sign' },
+      { name: 'payload', type: 'RawPayload', description: 'The data to sign' },
+    ],
+  },
+  {
+    id: 'SigningPayloadPayload', name: 'SigningPayloadPayload', category: 'Signing', source: 'sign.ts',
+    definition: 'Struct({ blockHash, blockNumber, era, genesisHash, method, nonce, specVersion, tip, transactionVersion, signedExtensions, version, assetId?, metadataHash?, mode?, withSignedTransaction? })',
+    description: 'The structured payload fields of a SigningPayload, without the account.',
+    fields: [
+      { name: 'blockHash', type: 'Hex()', description: 'Reference block hash' },
+      { name: 'blockNumber', type: 'Hex()', description: 'Reference block number' },
+      { name: 'era', type: 'Hex()', description: 'Mortality era encoding' },
+      { name: 'genesisHash', type: 'GenesisHash', description: 'Chain genesis hash' },
+      { name: 'method', type: 'Hex()', description: 'SCALE-encoded call data' },
+      { name: 'nonce', type: 'Hex()', description: 'Account nonce' },
+      { name: 'specVersion', type: 'Hex()', description: 'Runtime spec version' },
+      { name: 'tip', type: 'Hex()', description: 'Transaction tip' },
+      { name: 'transactionVersion', type: 'Hex()', description: 'Transaction format version' },
+      { name: 'signedExtensions', type: 'Vector(str)', description: 'Extension identifiers' },
+      { name: 'version', type: 'u32', description: 'Extrinsic version' },
+      { name: 'assetId', type: 'Option(Hex())', description: 'For multi-asset tips' },
+      { name: 'metadataHash', type: 'Option(Hex())', description: 'CheckMetadataHash extension' },
+      { name: 'mode', type: 'Option(u32)', description: 'Metadata mode' },
+      { name: 'withSignedTransaction', type: 'Option(bool)', description: 'Request signed tx back' },
+    ],
+  },
+  {
+    id: 'SigningRawPayloadWithoutAccount', name: 'SigningRawPayloadWithoutAccount', category: 'Signing', source: 'sign.ts',
+    definition: 'Struct({ signer: str, payload: RawPayload })',
+    description: 'A raw signing request using a legacy (non-product) account.',
+    fields: [
+      { name: 'signer', type: 'str', description: 'Signer identifier (e.g. SS58 address)' },
+      { name: 'payload', type: 'RawPayload', description: 'The data to sign' },
+    ],
+  },
+  {
+    id: 'SigningPayloadWithoutAccount', name: 'SigningPayloadWithoutAccount', category: 'Signing', source: 'sign.ts',
+    definition: 'Struct({ signer: str, payload: SigningPayloadPayload })',
+    description: 'A signing request using a legacy (non-product) account.',
+    fields: [
+      { name: 'signer', type: 'str', description: 'Signer identifier (e.g. SS58 address)' },
+      { name: 'payload', type: 'SigningPayloadPayload', description: 'The structured payload to sign' },
     ],
   },
   {
@@ -1995,13 +2195,14 @@ export const dataTypes: DataType[] = [
   },
   {
     id: 'RemotePermission', name: 'RemotePermission', category: 'Permission', source: 'remotePermission.ts',
-    definition: 'Enum({ Remote: Vector(str), WebRtc: _void, ChainSubmit: _void, StatementSubmit: _void })',
+    definition: 'Enum({ Remote: Vector(str), WebRtc: _void, ChainSubmit: _void, StatementSubmit: _void, PreimageSubmit: _void })',
     description: 'A single remote-operation permission entry. V0.2: replaces RemotePermissionRequest with batching support via Vector(RemotePermission).',
     variants: [
       { name: 'Remote', type: 'Vector(str)', description: 'HTTP/HTTPS/WS/WSS access to specific domain patterns' },
       { name: 'WebRtc', type: '_void', description: 'WebRTC access (can expose user IP)' },
       { name: 'ChainSubmit', type: '_void', description: 'Broadcast signed transactions via remote_chain_transaction_broadcast' },
       { name: 'StatementSubmit', type: '_void', description: 'Submit statements via remote_statement_store_submit' },
+      { name: 'PreimageSubmit', type: '_void', description: 'Submit preimages via remote_preimage_submit' },
     ],
   },
   // Feature Types
@@ -2382,10 +2583,11 @@ export const dataTypes: DataType[] = [
   { id: 'DecryptionKey', name: 'DecryptionKey', category: 'Statement Store', source: 'statementStore.ts', definition: 'Bytes(32)', description: '32-byte decryption key.' },
   {
     id: 'TopicFilter', name: 'TopicFilter', category: 'Statement Store', source: 'statementStore.ts',
-    definition: 'Struct({ topics: Vector(Nullable(Topic)) })',
-    description: 'Filter for statement subscriptions. Each position can be a specific Topic (exact match) or null (wildcard). V0.2 addition replacing plain topic vectors.',
-    fields: [
-      { name: 'topics', type: 'Vector(Nullable(Topic))', description: 'Positional topic matchers. Null entries act as wildcards.' },
+    definition: 'Enum({ MatchAll: Vector(Topic), MatchAny: Vector(Topic) })',
+    description: 'Filter for statement subscriptions. MatchAll requires all topics to match; MatchAny requires at least one. V0.2 addition replacing plain topic vectors.',
+    variants: [
+      { name: 'MatchAll', type: 'Vector(Topic)', description: 'All listed topics must match' },
+      { name: 'MatchAny', type: 'Vector(Topic)', description: 'At least one listed topic must match' },
     ],
   },
   {
@@ -2426,6 +2628,15 @@ export const dataTypes: DataType[] = [
     ],
   },
   {
+    id: 'SignedStatementsPage', name: 'SignedStatementsPage', category: 'Statement Store', source: 'statementStore.ts',
+    definition: 'Struct({ statements: Vector(SignedStatement), isComplete: bool })',
+    description: 'A page of signed statements delivered to subscribers.',
+    fields: [
+      { name: 'statements', type: 'Vector(SignedStatement)', description: 'Statements in this page' },
+      { name: 'isComplete', type: 'bool', description: 'false = intermediate page of initial dump; true = initial dump complete' },
+    ],
+  },
+  {
     id: 'StatementProofErr', name: 'StatementProofErr', category: 'Statement Store', source: 'statementStore.ts',
     definition: 'ErrEnum { UnableToSign, UnknownAccount, Unknown({ reason: str }) }',
     description: 'Statement proof creation error.',
@@ -2453,11 +2664,10 @@ export const dataTypes: DataType[] = [
   },
   {
     id: 'PaymentBalance', name: 'PaymentBalance', category: 'Payment', source: 'payment.ts',
-    definition: 'Struct({ available: Balance, pending: Balance })',
+    definition: 'Struct({ available: Balance })',
     description: 'Current payment balance state pushed to subscribers.',
     fields: [
       { name: 'available', type: 'Balance', description: 'Balance that can be spent right now' },
-      { name: 'pending', type: 'Balance', description: 'Balance the user possesses but cannot spend yet (e.g. in recycling stage)' },
     ],
   },
   {
@@ -2508,10 +2718,10 @@ export const dataTypes: DataType[] = [
   },
   {
     id: 'PaymentRequestErr', name: 'PaymentRequestErr', category: 'Payment', source: 'payment.ts',
-    definition: 'ErrEnum { Denied, InsufficientBalance, Unknown({ reason: str }) }',
+    definition: 'ErrEnum { Rejected, InsufficientBalance, Unknown({ reason: str }) }',
     description: 'Error from host_payment_request.',
     variants: [
-      { name: 'Denied', type: '_void', description: 'User denied the payment request' },
+      { name: 'Rejected', type: '_void', description: 'User denied the payment request' },
       { name: 'InsufficientBalance', type: '_void', description: 'User\'s available balance is not sufficient' },
       { name: 'Unknown', type: 'Struct({ reason: str })', description: 'Catch-all' },
     ],
@@ -2537,6 +2747,12 @@ export const dataTypes: DataType[] = [
     variants: [
       { name: 'Unknown', type: '_void', description: 'An unexpected error occurred in the host' },
     ],
+  },
+  // Theme Types
+  {
+    id: 'Theme', name: 'Theme', category: 'Theme', source: 'theme.ts',
+    definition: "Status('Light', 'Dark')",
+    description: 'Visual theme preference.',
   },
 ];
 
