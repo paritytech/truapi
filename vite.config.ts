@@ -20,4 +20,18 @@ function spa404Plugin(): Plugin {
 export default defineConfig({
   base: '/truapi/',
   plugins: [react(), tailwindcss(), spa404Plugin()],
+  server: {
+    // Redirect legacy base paths to /truapi/ during development.
+    // In production, the 404.html SPA fallback handles this instead.
+    proxy: {
+      '/truapi-explorer': {
+        target: 'http://localhost:5173',
+        rewrite: (path) => path.replace(/^\/truapi-explorer/, '/truapi'),
+      },
+      '/host-api-explorer': {
+        target: 'http://localhost:5173',
+        rewrite: (path) => path.replace(/^\/host-api-explorer/, '/truapi'),
+      },
+    },
+  },
 })
