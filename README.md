@@ -1,6 +1,8 @@
-# TrUAPI Protocol Explorer
+# TrUAPI
 
-Interactive reference documentation for the TrUAPI (Triangle User-Agent Programming Interface) Protocol, the protocol that mediates all communication between a host application and products running in sandboxes.
+TrUAPI (Triangle User-Agent Programming Interface) Protocol — the protocol that mediates all communication between a host application and products running in sandboxes.
+
+This repository is the single source of truth for the TrUAPI protocol, containing Rust trait definitions, an interactive protocol explorer, and documentation.
 
 The explorer covers two protocol versions:
 
@@ -54,8 +56,8 @@ Setup:
 
 After deployment:
 
-- Webapp: `https://paritytech.github.io/truapi-explorer/`
-- Rust docs: `https://paritytech.github.io/truapi-explorer/rustdoc/truapi_spec/`
+- Webapp: `https://paritytech.github.io/truapi/`
+- Rust docs: `https://paritytech.github.io/truapi/rustdoc/truapi_spec/`
 
 The workflow is defined in `.github/workflows/deploy.yml`.
 

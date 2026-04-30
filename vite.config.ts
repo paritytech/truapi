@@ -18,6 +18,6 @@ function spa404Plugin(): Plugin {
 }
 
 export default defineConfig({
-  base: '/truapi-explorer/',
+  base: '/truapi/',
   plugins: [react(), tailwindcss(), spa404Plugin()],
 })
