@@ -18,3 +18,4 @@ created: 2026-03-13
 | 0009   | [Unauthenticated Product Access](0009-unauthenticated-product-access.md) | accepted | @filvecchiato | [#128](https://github.com/paritytech/triangle-js-sdks/pull/128) |
 | 0010   | [Root account access Host API](0010-get-root-account.md)                 | accepted | @johnthecat   | [#126](https://github.com/paritytech/triangle-js-sdks/pull/126) |
 | 0010   | [W3S Allowance Management](0010-allowance.md)                            | draft    | @valentunn    | [#12](https://github.com/paritytech/truapi-explorer/pull/12)    |
+| 0011   | [Simple Group Chat](0011-simple-group-chat.md)                           | draft    | @filvecchiato | [#131](https://github.com/paritytech/triangle-js-sdks/pull/131) |
