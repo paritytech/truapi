@@ -215,29 +215,88 @@ window.ua.on("chatDeliveryStatus", callback)
 window.ua.on("chatRequest", callback)
 ```
 
-### Behavioral Requirements
+### Call Semantics
 
-1. `host_private_chat_identity_get` returns the local peer-facing chat identity.
-   Hosted products SHOULD use the user's main wallet identity when the host can
-   safely represent it.
+All calls MUST enforce the private-chat permission described above. If the
+calling product has not been granted access, the host returns
+`PermissionDenied`. If the host does not support private chat, it returns
+`Unsupported`.
 
-2. `host_private_chat_username_resolve` supports username search without making
-   the product own identity indexing.
+#### `host_private_chat_identity_get`
 
-3. `host_private_chat_peer_resolve` validates that the host can route to the
-   peer. If the host cannot find a routable peer identity, it returns
-   `PeerUnavailable` or `PeerNotFound`.
+Returns the local peer-facing chat identity for this product session. The host
+MUST NOT expose private key material. The returned `account_id` is the identity
+peers will see when this product sends chat messages. Hosted products SHOULD use
+the user's main wallet identity when the host can safely represent it; otherwise
+the host may return a bounded device/session identity. If no usable local chat
+identity is available, the host returns `NotConnected` or `InvalidRequest`.
 
-4. `host_private_chat_request_send`, `host_private_chat_accept_send`, and
-   `host_private_chat_message_send` create, encrypt, sign, and submit the
-   relevant chat statement. Products receive only stable IDs, never keys or
-   submit-capable statement payloads.
+#### `host_private_chat_username_resolve`
 
-5. Subscriptions are live event streams for the approved product session. Hosts
-   MAY replay recent events, but replay semantics are out of scope for this RFC.
+Resolves a user-visible username to an account ID using the host's configured
+identity source. The call has no side effects. A successful `None` result means
+the username is syntactically acceptable but not currently known by the host.
+Transport or index failures return `TransportFailed`.
 
-6. Hosts SHOULD update conversation state before emitting events so
-   `host_private_chat_conversation_state_get` reflects pushed events.
+#### `host_private_chat_peer_resolve`
+
+Resolves an account ID into a peer the host can attempt to message. The host
+SHOULD validate that the peer has a usable chat identifier or route before
+returning success. The host MAY also refresh local conversation metadata as a
+side effect. If the account exists but no currently routable chat identity is
+known, the host returns `PeerUnavailable`; if the account or username cannot be
+found, it returns `PeerNotFound`.
+
+#### `host_private_chat_request_send`
+
+Sends a first-contact request to a peer. The host MUST resolve the peer, create
+or reuse the required local chat state, encrypt the request, sign and submit the
+transport statement, persist outbound conversation state as `RequestSent`, and
+return a stable `request_id`. The host SHOULD emit a delivery-status event for
+the request. The product does not receive a submit-capable statement payload.
+
+#### `host_private_chat_accept_send`
+
+Accepts an incoming first-contact request. The host MUST verify that the
+`request_id` refers to a pending request from the given peer, create or refresh
+the conversation session, encrypt and submit the acceptance, persist the
+conversation as `Active`, and return the accepted `request_id`. If the request
+is unknown, already rejected, or not associated with the peer, the host returns
+`InvalidRequest`.
+
+#### `host_private_chat_message_send`
+
+Sends a text message to a peer. The host MUST resolve the peer, ensure the
+conversation is active, encrypt the message, sign and submit the transport
+statement, persist local delivery state, and return a stable `message_id`. If
+there is no active conversation, the host returns `InvalidRequest` rather than
+silently creating a first-contact request.
+
+#### `host_private_chat_conversation_state_get`
+
+Returns the host's current conversation state for the peer. This call should be
+cheap and SHOULD NOT perform network work beyond refreshing already-open local
+state. Hosts SHOULD update this state before emitting related chat events.
+
+#### `host_private_chat_message_subscribe`
+
+Subscribes the approved product session to inbound private-chat messages. The
+host MUST deliver only messages that belong to this product's authorized chat
+identity and MUST NOT broadcast message contents to other products or frames.
+Replay of recent messages is allowed, but replay semantics are host-defined.
+
+#### `host_private_chat_delivery_status_subscribe`
+
+Subscribes to status updates for outbound private-chat requests and messages.
+At minimum, hosts SHOULD emit `Sent` when a statement has been accepted for
+submission and `Failed` when submission fails. `Acknowledged` is emitted only
+when the underlying chat protocol can verify peer acknowledgement.
+
+#### `host_private_chat_request_subscribe`
+
+Subscribes to incoming first-contact requests. The host MUST decrypt and verify
+requests before delivering them to the product. Delivery of a request event does
+not accept the request; the product must call `host_private_chat_accept_send`.
 
 ### Multi-Device Routing
 
