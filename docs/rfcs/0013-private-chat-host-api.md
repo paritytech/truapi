@@ -1,5 +1,5 @@
 ---
-title: "Private Chat Host API"
+title: "RFC 0013: Private Chat Host API"
 owner: "@replghost"
 ---
 
