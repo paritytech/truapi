@@ -219,6 +219,42 @@ Product-derived accounts are protocol-generated and have no user-chosen label, w
 | `host_sign_raw_with_legacy_account` | Request/Response | Sign raw data using a legacy account. |
 | `host_sign_payload_with_legacy_account` | Request/Response | Sign a transaction payload using a legacy account. |
 
+
+## 11. Private Chat Host API
+
+RFC: [RFC 0013](docs/rfcs/0013-private-chat-host-api.md)
+
+### New group: Private Chat (10 methods)
+
+| Method | Pattern | Purpose |
+|--------|---------|---------|
+| `host_private_chat_identity_get` | Request/Response | Return the local peer-facing private chat identity. |
+| `host_private_chat_username_resolve` | Request/Response | Resolve a username to an account ID. |
+| `host_private_chat_peer_resolve` | Request/Response | Resolve a peer and validate that the host can attempt to route chat. |
+| `host_private_chat_request_send` | Request/Response | Send a first-contact request. |
+| `host_private_chat_accept_send` | Request/Response | Accept an incoming first-contact request. |
+| `host_private_chat_message_send` | Request/Response | Send a text message to an active conversation. |
+| `host_private_chat_conversation_state_get` | Request/Response | Return host-local conversation state for a peer. |
+| `host_private_chat_message_subscribe` | Subscription | Subscribe to inbound private chat messages. |
+| `host_private_chat_delivery_status_subscribe` | Subscription | Subscribe to outbound request/message delivery status. |
+| `host_private_chat_request_subscribe` | Subscription | Subscribe to incoming first-contact requests. |
+
+### New types
+
+`PrivateChatConversationState`, `PrivateChatIdentity`, `PrivateChatPeer`,
+`PrivateChatRequestReceipt`, `PrivateChatMessageReceipt`,
+`PrivateChatContentType`, `PrivateChatMessageEvent`,
+`PrivateChatDeliveryStatus`, `PrivateChatDeliveryStatusEvent`,
+`PrivateChatRequestEvent`, `PrivateChatErr`.
+
+### Rationale
+
+Private wallet-to-wallet chat should keep key material, identity lookup,
+encryption, signing, statement-store submission, and event delivery inside the
+host. Product SPAs such as chat.dot get a narrow UI-oriented API for resolving
+peers, sending requests/messages, and receiving events without direct access to
+private keys or submit-capable statement payloads.
+
 ### Renamed methods
 
 | Old name | New name |

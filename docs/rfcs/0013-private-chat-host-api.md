@@ -184,17 +184,17 @@ trait TrUApi {
 
     fn host_private_chat_message_subscribe(
         &self,
-        callback: fn(PrivateChatMessageEvent),
+        callback: Box<dyn FnMut(PrivateChatMessageEvent) + Send>,
     ) -> Result<Self::Subscription, PrivateChatErr>;
 
     fn host_private_chat_delivery_status_subscribe(
         &self,
-        callback: fn(PrivateChatDeliveryStatusEvent),
+        callback: Box<dyn FnMut(PrivateChatDeliveryStatusEvent) + Send>,
     ) -> Result<Self::Subscription, PrivateChatErr>;
 
     fn host_private_chat_request_subscribe(
         &self,
-        callback: fn(PrivateChatRequestEvent),
+        callback: Box<dyn FnMut(PrivateChatRequestEvent) + Send>,
     ) -> Result<Self::Subscription, PrivateChatErr>;
 }
 ```

@@ -712,6 +712,151 @@ pub enum ChatMessagePostingError {
     Unknown { reason: String },
 }
 
+// ─── Private Chat types (v0.2, RFC 0013) ────────────────────────────────────
+//
+// See [RFC 0013](../../docs/rfcs/0013-private-chat-host-api.md).
+
+/// Host-owned private chat conversation state for a peer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PrivateChatConversationState {
+    /// No known conversation exists.
+    None,
+    /// A first-contact request has been sent and is awaiting acceptance.
+    RequestSent,
+    /// A first-contact request has been received and is awaiting acceptance.
+    RequestReceived,
+    /// The conversation is active and can exchange messages.
+    Active,
+}
+
+/// Local peer-facing private chat identity for the calling product session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrivateChatIdentity {
+    /// Account ID peers see for this chat identity.
+    pub account_id: AccountId,
+    /// Resolved username, when available.
+    pub username: Option<String>,
+    /// Public peer identifier used by the host chat protocol.
+    pub identifier_key: PublicKey,
+}
+
+/// Resolved peer identity and host-local conversation state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrivateChatPeer {
+    /// Peer account ID.
+    pub account_id: AccountId,
+    /// Resolved peer username, when available.
+    pub username: Option<String>,
+    /// Public peer identifier, when the host has a routable chat identity.
+    pub identifier_key: Option<PublicKey>,
+    /// Current host-local conversation state.
+    pub state: PrivateChatConversationState,
+    /// Pending first-contact request ID, when applicable.
+    pub request_id: Option<String>,
+}
+
+/// Receipt returned after sending or accepting a first-contact request.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrivateChatRequestReceipt {
+    /// Stable request identifier.
+    pub request_id: String,
+}
+
+/// Receipt returned after sending a private chat message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrivateChatMessageReceipt {
+    /// Stable message identifier.
+    pub message_id: String,
+}
+
+/// Private chat message content kind delivered to products.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PrivateChatContentType {
+    /// Plain text message.
+    Text,
+    /// Protocol message indicating that a first-contact request was accepted.
+    ChatAccepted,
+    /// Content kind is not known by this API version.
+    Unknown,
+}
+
+/// Inbound private chat message event.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrivateChatMessageEvent {
+    /// Peer account ID.
+    pub peer_account_id: AccountId,
+    /// Stable message identifier.
+    pub message_id: String,
+    /// Message timestamp in milliseconds since Unix epoch.
+    pub timestamp_ms: u64,
+    /// Message content kind.
+    pub content_type: PrivateChatContentType,
+    /// Plain text body, when applicable.
+    pub text: Option<String>,
+    /// Associated first-contact request ID, when applicable.
+    pub request_id: Option<String>,
+}
+
+/// Delivery status for outbound private chat requests and messages.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PrivateChatDeliveryStatus {
+    /// Host accepted the statement for submission.
+    Sent,
+    /// Peer acknowledgement was observed.
+    Acknowledged,
+    /// Submission or delivery failed.
+    Failed,
+}
+
+/// Delivery-status event for an outbound private chat request or message.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrivateChatDeliveryStatusEvent {
+    /// Peer account ID, when known.
+    pub peer_account_id: Option<AccountId>,
+    /// Request or message identifier.
+    pub message_id: String,
+    /// Delivery status.
+    pub status: PrivateChatDeliveryStatus,
+    /// Optional failure reason.
+    pub reason: Option<String>,
+}
+
+/// Incoming first-contact request event.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PrivateChatRequestEvent {
+    /// Sender account ID.
+    pub peer_account_id: AccountId,
+    /// Stable request identifier.
+    pub request_id: String,
+    /// Optional welcome message.
+    pub welcome_message: Option<String>,
+}
+
+/// Error returned by private chat host API methods.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PrivateChatErr {
+    /// Product has not been granted private chat permission.
+    PermissionDenied,
+    /// The user/session is not connected or unlocked.
+    NotConnected,
+    /// Host does not support private chat.
+    Unsupported,
+    /// Peer account or username was not found.
+    PeerNotFound,
+    /// Peer exists but no currently routable chat identity is known.
+    PeerUnavailable,
+    /// Request is malformed or invalid for the current conversation state.
+    InvalidRequest,
+    /// User or host rejected the operation.
+    Rejected,
+    /// Host rate limit was exceeded.
+    RateLimited,
+    /// Transport submission or lookup failed.
+    TransportFailed(String),
+    /// Catch-all error.
+    Unknown(GenericErr),
+}
+
 /// Payload when a user clicks an action button.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActionTrigger {
@@ -1688,6 +1833,76 @@ pub trait TrUApi {
         renderer: Box<dyn FnMut(CustomMessageRenderRequest) -> CustomRendererNode + Send>,
     ) -> Self::Subscription;
 
+    // ── Private Chat (v0.2, RFC 0013) ────────────────────────────────────
+
+    /// Returns the local peer-facing private chat identity for this product
+    /// session. The host must not expose private key material.
+    fn host_private_chat_identity_get(&self) -> Result<PrivateChatIdentity, PrivateChatErr>;
+
+    /// Resolves a user-visible username to an account ID using the host's
+    /// configured identity source.
+    fn host_private_chat_username_resolve(
+        &self,
+        username: String,
+    ) -> Result<Option<AccountId>, PrivateChatErr>;
+
+    /// Resolves an account ID into a peer the host can attempt to message.
+    /// The host should validate that a usable chat identifier or route exists.
+    fn host_private_chat_peer_resolve(
+        &self,
+        peer_account_id: AccountId,
+    ) -> Result<PrivateChatPeer, PrivateChatErr>;
+
+    /// Sends a first-contact request to a peer. The host resolves the peer,
+    /// encrypts, signs, submits, and persists outbound request state.
+    fn host_private_chat_request_send(
+        &self,
+        peer_account_id: AccountId,
+        welcome_text: Option<String>,
+    ) -> Result<PrivateChatRequestReceipt, PrivateChatErr>;
+
+    /// Accepts an incoming first-contact request and marks the conversation
+    /// active if submission succeeds.
+    fn host_private_chat_accept_send(
+        &self,
+        peer_account_id: AccountId,
+        request_id: String,
+        accepted_text: Option<String>,
+    ) -> Result<PrivateChatRequestReceipt, PrivateChatErr>;
+
+    /// Sends a text message to an active private chat conversation.
+    fn host_private_chat_message_send(
+        &self,
+        peer_account_id: AccountId,
+        text: String,
+    ) -> Result<PrivateChatMessageReceipt, PrivateChatErr>;
+
+    /// Returns the host's current conversation state for the peer.
+    fn host_private_chat_conversation_state_get(
+        &self,
+        peer_account_id: AccountId,
+    ) -> Result<PrivateChatConversationState, PrivateChatErr>;
+
+    /// Subscribes to inbound private chat messages for the approved product
+    /// session.
+    fn host_private_chat_message_subscribe(
+        &self,
+        callback: Box<dyn FnMut(PrivateChatMessageEvent) + Send>,
+    ) -> Result<Self::Subscription, PrivateChatErr>;
+
+    /// Subscribes to delivery-status updates for outbound private chat
+    /// requests and messages.
+    fn host_private_chat_delivery_status_subscribe(
+        &self,
+        callback: Box<dyn FnMut(PrivateChatDeliveryStatusEvent) + Send>,
+    ) -> Result<Self::Subscription, PrivateChatErr>;
+
+    /// Subscribes to incoming first-contact requests.
+    fn host_private_chat_request_subscribe(
+        &self,
+        callback: Box<dyn FnMut(PrivateChatRequestEvent) + Send>,
+    ) -> Result<Self::Subscription, PrivateChatErr>;
+
     // ── Statement Store ──────────────────────────────────────────────────
 
     /// Subscribes to statements matching a [`TopicFilter`]. The host pushes
@@ -1767,7 +1982,10 @@ pub trait TrUApi {
 
     /// Continues a paused operation (when
     /// [`ChainHeadEvent::OperationWaitingForContinue`] is received).
-    fn remote_chain_head_continue(&self, request: ChainHeadOperationRequest) -> Result<(), GenericError>;
+    fn remote_chain_head_continue(
+        &self,
+        request: ChainHeadOperationRequest,
+    ) -> Result<(), GenericError>;
 
     /// Stops an in-progress operation.
     fn remote_chain_head_stop_operation(
@@ -1776,13 +1994,22 @@ pub trait TrUApi {
     ) -> Result<(), GenericError>;
 
     /// Gets the genesis hash for a chain.
-    fn remote_chain_spec_genesis_hash(&self, genesis_hash: GenesisHash) -> Result<Hex, GenericError>;
+    fn remote_chain_spec_genesis_hash(
+        &self,
+        genesis_hash: GenesisHash,
+    ) -> Result<Hex, GenericError>;
 
     /// Gets the chain name.
-    fn remote_chain_spec_chain_name(&self, genesis_hash: GenesisHash) -> Result<String, GenericError>;
+    fn remote_chain_spec_chain_name(
+        &self,
+        genesis_hash: GenesisHash,
+    ) -> Result<String, GenericError>;
 
     /// Gets the chain properties as a JSON-encoded string.
-    fn remote_chain_spec_properties(&self, genesis_hash: GenesisHash) -> Result<String, GenericError>;
+    fn remote_chain_spec_properties(
+        &self,
+        genesis_hash: GenesisHash,
+    ) -> Result<String, GenericError>;
 
     /// Broadcasts a signed transaction to the network.
     /// Returns an operation ID if accepted, `None` if rejected.
@@ -1867,8 +2094,5 @@ pub trait TrUApi {
 
     /// Subscribes to the host's visual theme. The host pushes the current
     /// theme whenever it changes.
-    fn host_theme_subscribe(
-        &self,
-        callback: Box<dyn FnMut(Theme) + Send>,
-    ) -> Self::Subscription;
+    fn host_theme_subscribe(&self, callback: Box<dyn FnMut(Theme) + Send>) -> Self::Subscription;
 }

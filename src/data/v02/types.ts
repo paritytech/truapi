@@ -74,6 +74,12 @@ export const groups: GroupDef[] = [
     methods: ['host_chat_create_room', 'host_chat_register_bot', 'host_chat_post_message', 'host_chat_list_subscribe', 'host_chat_action_subscribe', 'product_chat_custom_message_render_subscribe', 'host_chat_create_simple_group'],
   },
   {
+    id: 'private-chat',
+    name: 'Private Chat',
+    description: 'Host-owned private wallet-to-wallet chat. The host keeps identity resolution, routing, encryption, signing, submission, and event delivery.',
+    methods: ['host_private_chat_identity_get', 'host_private_chat_username_resolve', 'host_private_chat_peer_resolve', 'host_private_chat_request_send', 'host_private_chat_accept_send', 'host_private_chat_message_send', 'host_private_chat_conversation_state_get', 'host_private_chat_message_subscribe', 'host_private_chat_delivery_status_subscribe', 'host_private_chat_request_subscribe'],
+  },
+  {
     id: 'statement-store',
     name: 'Statement Store',
     description: 'Subscribe to, create proofs for, and submit cryptographic statements.',
@@ -1150,7 +1156,207 @@ if (result.isOk) {
   return ok({ status: "New", joinLink });
 });`,
   },
-  // Group 7: Statement Store
+  // Group 7: Private Chat
+  {
+    id: 'host_private_chat_identity_get',
+    name: 'host_private_chat_identity_get',
+    group: 'Private Chat',
+    groupId: 'private-chat',
+    pattern: 'request-response',
+    description: 'Returns the local peer-facing private chat identity for this product session. The host must not expose private key material.',
+    productFunction: 'truApi.privateChatIdentityGet()',
+    hostHandler: 'container.handlePrivateChatIdentityGet(handler)',
+    request: 'void',
+    response: 'Result(PrivateChatIdentity, PrivateChatErr)',
+    errorType: 'PrivateChatErr',
+    productExample: `const identity = await truApi.privateChatIdentityGet();
+
+if (identity.isOk) {
+  console.log("Chat account:", identity.value.accountId);
+}`,
+    hostExample: `container.handlePrivateChatIdentityGet(({ ok, err }) => {
+  const identity = privateChat.getLocalIdentity();
+  if (!identity) {
+    return err({ NotConnected: undefined });
+  }
+  return ok(identity);
+});`,
+  },
+  {
+    id: 'host_private_chat_username_resolve',
+    name: 'host_private_chat_username_resolve',
+    group: 'Private Chat',
+    groupId: 'private-chat',
+    pattern: 'request-response',
+    description: 'Resolves a username to an account ID using the host identity source. A successful null/None result means the username is currently unknown.',
+    productFunction: 'truApi.privateChatUsernameResolve(username)',
+    hostHandler: 'container.handlePrivateChatUsernameResolve(handler)',
+    request: 'str',
+    response: 'Result(Option(AccountId), PrivateChatErr)',
+    errorType: 'PrivateChatErr',
+    productExample: `const resolved = await truApi.privateChatUsernameResolve("alice.1234");`,
+    hostExample: `container.handlePrivateChatUsernameResolve(async (username, { ok, err }) => {
+  const accountId = await identityIndex.resolveUsername(username);
+  return ok(accountId);
+});`,
+  },
+  {
+    id: 'host_private_chat_peer_resolve',
+    name: 'host_private_chat_peer_resolve',
+    group: 'Private Chat',
+    groupId: 'private-chat',
+    pattern: 'request-response',
+    description: 'Resolves an account ID into a peer the host can attempt to message. The host should validate that a usable chat route exists.',
+    productFunction: 'truApi.privateChatPeerResolve(peerAccountId)',
+    hostHandler: 'container.handlePrivateChatPeerResolve(handler)',
+    request: 'AccountId',
+    response: 'Result(PrivateChatPeer, PrivateChatErr)',
+    errorType: 'PrivateChatErr',
+    productExample: `const peer = await truApi.privateChatPeerResolve(peerAccountId);`,
+    hostExample: `container.handlePrivateChatPeerResolve(async (peerAccountId, { ok, err }) => {
+  const peer = await privateChat.resolvePeer(peerAccountId);
+  return peer ? ok(peer) : err({ PeerUnavailable: undefined });
+});`,
+  },
+  {
+    id: 'host_private_chat_request_send',
+    name: 'host_private_chat_request_send',
+    group: 'Private Chat',
+    groupId: 'private-chat',
+    pattern: 'request-response',
+    description: 'Sends a first-contact request. The host resolves the peer, encrypts, signs, submits, and persists outbound request state.',
+    productFunction: 'truApi.privateChatRequestSend(peerAccountId, welcomeText)',
+    hostHandler: 'container.handlePrivateChatRequestSend(handler)',
+    request: 'Tuple(AccountId, Option(str))',
+    response: 'Result(PrivateChatRequestReceipt, PrivateChatErr)',
+    errorType: 'PrivateChatErr',
+    productExample: `const receipt = await truApi.privateChatRequestSend(
+  peerAccountId,
+  "Hello"
+);`,
+    hostExample: `container.handlePrivateChatRequestSend(async ([peerAccountId, text], { ok, err }) => {
+  const receipt = await privateChat.sendRequest(peerAccountId, text);
+  return ok(receipt);
+});`,
+  },
+  {
+    id: 'host_private_chat_accept_send',
+    name: 'host_private_chat_accept_send',
+    group: 'Private Chat',
+    groupId: 'private-chat',
+    pattern: 'request-response',
+    description: 'Accepts an incoming first-contact request and marks the conversation active if submission succeeds.',
+    productFunction: 'truApi.privateChatAcceptSend(peerAccountId, requestId, acceptedText)',
+    hostHandler: 'container.handlePrivateChatAcceptSend(handler)',
+    request: 'Tuple(AccountId, str, Option(str))',
+    response: 'Result(PrivateChatRequestReceipt, PrivateChatErr)',
+    errorType: 'PrivateChatErr',
+    productExample: `await truApi.privateChatAcceptSend(
+  peerAccountId,
+  requestId,
+  "Accepted"
+);`,
+    hostExample: `container.handlePrivateChatAcceptSend(async ([peerAccountId, requestId, text], { ok, err }) => {
+  const receipt = await privateChat.acceptRequest(peerAccountId, requestId, text);
+  return ok(receipt);
+});`,
+  },
+  {
+    id: 'host_private_chat_message_send',
+    name: 'host_private_chat_message_send',
+    group: 'Private Chat',
+    groupId: 'private-chat',
+    pattern: 'request-response',
+    description: 'Sends a text message to an active private chat conversation. The host encrypts, signs, submits, and stores delivery state.',
+    productFunction: 'truApi.privateChatMessageSend(peerAccountId, text)',
+    hostHandler: 'container.handlePrivateChatMessageSend(handler)',
+    request: 'Tuple(AccountId, str)',
+    response: 'Result(PrivateChatMessageReceipt, PrivateChatErr)',
+    errorType: 'PrivateChatErr',
+    productExample: `const sent = await truApi.privateChatMessageSend(
+  peerAccountId,
+  "gm"
+);`,
+    hostExample: `container.handlePrivateChatMessageSend(async ([peerAccountId, text], { ok, err }) => {
+  const receipt = await privateChat.sendMessage(peerAccountId, text);
+  return ok(receipt);
+});`,
+  },
+  {
+    id: 'host_private_chat_conversation_state_get',
+    name: 'host_private_chat_conversation_state_get',
+    group: 'Private Chat',
+    groupId: 'private-chat',
+    pattern: 'request-response',
+    description: 'Returns the host-local conversation state for a peer. This should be cheap and should not require fresh network work.',
+    productFunction: 'truApi.privateChatConversationStateGet(peerAccountId)',
+    hostHandler: 'container.handlePrivateChatConversationStateGet(handler)',
+    request: 'AccountId',
+    response: 'Result(PrivateChatConversationState, PrivateChatErr)',
+    errorType: 'PrivateChatErr',
+    productExample: `const state = await truApi.privateChatConversationStateGet(peerAccountId);`,
+    hostExample: `container.handlePrivateChatConversationStateGet((peerAccountId, { ok }) => {
+  return ok(privateChat.getConversationState(peerAccountId));
+});`,
+  },
+  {
+    id: 'host_private_chat_message_subscribe',
+    name: 'host_private_chat_message_subscribe',
+    group: 'Private Chat',
+    groupId: 'private-chat',
+    pattern: 'subscription',
+    description: 'Subscribes the approved product session to inbound private chat messages.',
+    productFunction: 'truApi.privateChatMessageSubscribe(callback)',
+    hostHandler: 'container.handlePrivateChatMessageSubscribe(handler)',
+    request: 'void',
+    response: 'PrivateChatMessageEvent',
+    errorType: 'PrivateChatErr',
+    productExample: `const sub = truApi.privateChatMessageSubscribe((event) => {
+  renderMessage(event);
+});`,
+    hostExample: `container.handlePrivateChatMessageSubscribe((_, send) => {
+  return privateChat.onMessage(send);
+});`,
+  },
+  {
+    id: 'host_private_chat_delivery_status_subscribe',
+    name: 'host_private_chat_delivery_status_subscribe',
+    group: 'Private Chat',
+    groupId: 'private-chat',
+    pattern: 'subscription',
+    description: 'Subscribes to status updates for outbound private chat requests and messages.',
+    productFunction: 'truApi.privateChatDeliveryStatusSubscribe(callback)',
+    hostHandler: 'container.handlePrivateChatDeliveryStatusSubscribe(handler)',
+    request: 'void',
+    response: 'PrivateChatDeliveryStatusEvent',
+    errorType: 'PrivateChatErr',
+    productExample: `const sub = truApi.privateChatDeliveryStatusSubscribe((event) => {
+  updateDeliveryStatus(event.messageId, event.status);
+});`,
+    hostExample: `container.handlePrivateChatDeliveryStatusSubscribe((_, send) => {
+  return privateChat.onDeliveryStatus(send);
+});`,
+  },
+  {
+    id: 'host_private_chat_request_subscribe',
+    name: 'host_private_chat_request_subscribe',
+    group: 'Private Chat',
+    groupId: 'private-chat',
+    pattern: 'subscription',
+    description: 'Subscribes to incoming first-contact requests. Delivering an event does not accept the request.',
+    productFunction: 'truApi.privateChatRequestSubscribe(callback)',
+    hostHandler: 'container.handlePrivateChatRequestSubscribe(handler)',
+    request: 'void',
+    response: 'PrivateChatRequestEvent',
+    errorType: 'PrivateChatErr',
+    productExample: `const sub = truApi.privateChatRequestSubscribe((request) => {
+  showRequest(request);
+});`,
+    hostExample: `container.handlePrivateChatRequestSubscribe((_, send) => {
+  return privateChat.onRequest(send);
+});`,
+  },
+  // Group 8: Statement Store
   {
     id: 'remote_statement_store_subscribe',
     name: 'remote_statement_store_subscribe',
@@ -2426,6 +2632,123 @@ export const dataTypes: DataType[] = [
     variants: [
       { name: 'MessageTooLarge', type: '_void', description: 'Message exceeded size limit' },
       { name: 'Unknown', type: 'Struct({ reason: str })', description: 'Catch-all' },
+    ],
+  },
+  // Private Chat Types
+  {
+    id: 'PrivateChatConversationState', name: 'PrivateChatConversationState', category: 'Private Chat', source: 'privateChat.ts',
+    definition: "Status('None', 'RequestSent', 'RequestReceived', 'Active')",
+    description: 'Host-owned private chat conversation state for a peer.',
+    variants: [
+      { name: 'None', type: '_void', description: 'No known conversation exists' },
+      { name: 'RequestSent', type: '_void', description: 'A first-contact request has been sent and is awaiting acceptance' },
+      { name: 'RequestReceived', type: '_void', description: 'A first-contact request has been received and is awaiting acceptance' },
+      { name: 'Active', type: '_void', description: 'The conversation is active and can exchange messages' },
+    ],
+  },
+  {
+    id: 'PrivateChatIdentity', name: 'PrivateChatIdentity', category: 'Private Chat', source: 'privateChat.ts',
+    definition: 'Struct({ accountId: AccountId, username: Option(str), identifierKey: PublicKey })',
+    description: 'Local peer-facing private chat identity for the calling product session.',
+    fields: [
+      { name: 'accountId', type: 'AccountId', description: 'Account ID peers see for this chat identity' },
+      { name: 'username', type: 'Option(str)', description: 'Resolved username, when available' },
+      { name: 'identifierKey', type: 'PublicKey', description: 'Public peer identifier used by the host chat protocol' },
+    ],
+  },
+  {
+    id: 'PrivateChatPeer', name: 'PrivateChatPeer', category: 'Private Chat', source: 'privateChat.ts',
+    definition: 'Struct({ accountId: AccountId, username: Option(str), identifierKey: Option(PublicKey), state: PrivateChatConversationState, requestId: Option(str) })',
+    description: 'Resolved peer identity and host-local conversation state.',
+    fields: [
+      { name: 'accountId', type: 'AccountId', description: 'Peer account ID' },
+      { name: 'username', type: 'Option(str)', description: 'Resolved peer username, when available' },
+      { name: 'identifierKey', type: 'Option(PublicKey)', description: 'Public peer identifier, when the host has a routable chat identity' },
+      { name: 'state', type: 'PrivateChatConversationState', description: 'Current host-local conversation state' },
+      { name: 'requestId', type: 'Option(str)', description: 'Pending first-contact request ID, when applicable' },
+    ],
+  },
+  {
+    id: 'PrivateChatRequestReceipt', name: 'PrivateChatRequestReceipt', category: 'Private Chat', source: 'privateChat.ts',
+    definition: 'Struct({ requestId: str })',
+    description: 'Receipt returned after sending or accepting a first-contact request.',
+    fields: [{ name: 'requestId', type: 'str', description: 'Stable request identifier' }],
+  },
+  {
+    id: 'PrivateChatMessageReceipt', name: 'PrivateChatMessageReceipt', category: 'Private Chat', source: 'privateChat.ts',
+    definition: 'Struct({ messageId: str })',
+    description: 'Receipt returned after sending a private chat message.',
+    fields: [{ name: 'messageId', type: 'str', description: 'Stable message identifier' }],
+  },
+  {
+    id: 'PrivateChatContentType', name: 'PrivateChatContentType', category: 'Private Chat', source: 'privateChat.ts',
+    definition: "Status('Text', 'ChatAccepted', 'Unknown')",
+    description: 'Private chat message content kind delivered to products.',
+    variants: [
+      { name: 'Text', type: '_void', description: 'Plain text message' },
+      { name: 'ChatAccepted', type: '_void', description: 'Protocol message indicating that a first-contact request was accepted' },
+      { name: 'Unknown', type: '_void', description: 'Content kind is not known by this API version' },
+    ],
+  },
+  {
+    id: 'PrivateChatMessageEvent', name: 'PrivateChatMessageEvent', category: 'Private Chat', source: 'privateChat.ts',
+    definition: 'Struct({ peerAccountId: AccountId, messageId: str, timestampMs: u64, contentType: PrivateChatContentType, text: Option(str), requestId: Option(str) })',
+    description: 'Inbound private chat message event.',
+    fields: [
+      { name: 'peerAccountId', type: 'AccountId', description: 'Peer account ID' },
+      { name: 'messageId', type: 'str', description: 'Stable message identifier' },
+      { name: 'timestampMs', type: 'u64', description: 'Message timestamp in milliseconds since Unix epoch' },
+      { name: 'contentType', type: 'PrivateChatContentType', description: 'Message content kind' },
+      { name: 'text', type: 'Option(str)', description: 'Plain text body, when applicable' },
+      { name: 'requestId', type: 'Option(str)', description: 'Associated first-contact request ID, when applicable' },
+    ],
+  },
+  {
+    id: 'PrivateChatDeliveryStatus', name: 'PrivateChatDeliveryStatus', category: 'Private Chat', source: 'privateChat.ts',
+    definition: "Status('Sent', 'Acknowledged', 'Failed')",
+    description: 'Delivery status for outbound private chat requests and messages.',
+    variants: [
+      { name: 'Sent', type: '_void', description: 'Host accepted the statement for submission' },
+      { name: 'Acknowledged', type: '_void', description: 'Peer acknowledgement was observed' },
+      { name: 'Failed', type: '_void', description: 'Submission or delivery failed' },
+    ],
+  },
+  {
+    id: 'PrivateChatDeliveryStatusEvent', name: 'PrivateChatDeliveryStatusEvent', category: 'Private Chat', source: 'privateChat.ts',
+    definition: 'Struct({ peerAccountId: Option(AccountId), messageId: str, status: PrivateChatDeliveryStatus, reason: Option(str) })',
+    description: 'Delivery-status event for an outbound private chat request or message.',
+    fields: [
+      { name: 'peerAccountId', type: 'Option(AccountId)', description: 'Peer account ID, when known' },
+      { name: 'messageId', type: 'str', description: 'Request or message identifier' },
+      { name: 'status', type: 'PrivateChatDeliveryStatus', description: 'Delivery status' },
+      { name: 'reason', type: 'Option(str)', description: 'Optional failure reason' },
+    ],
+  },
+  {
+    id: 'PrivateChatRequestEvent', name: 'PrivateChatRequestEvent', category: 'Private Chat', source: 'privateChat.ts',
+    definition: 'Struct({ peerAccountId: AccountId, requestId: str, welcomeMessage: Option(str) })',
+    description: 'Incoming first-contact request event.',
+    fields: [
+      { name: 'peerAccountId', type: 'AccountId', description: 'Sender account ID' },
+      { name: 'requestId', type: 'str', description: 'Stable request identifier' },
+      { name: 'welcomeMessage', type: 'Option(str)', description: 'Optional welcome message' },
+    ],
+  },
+  {
+    id: 'PrivateChatErr', name: 'PrivateChatErr', category: 'Private Chat', source: 'privateChat.ts',
+    definition: 'ErrEnum { PermissionDenied, NotConnected, Unsupported, PeerNotFound, PeerUnavailable, InvalidRequest, Rejected, RateLimited, TransportFailed(str), Unknown(GenericErr) }',
+    description: 'Error returned by private chat host API methods.',
+    variants: [
+      { name: 'PermissionDenied', type: '_void', description: 'Product has not been granted private chat permission' },
+      { name: 'NotConnected', type: '_void', description: 'The user/session is not connected or unlocked' },
+      { name: 'Unsupported', type: '_void', description: 'Host does not support private chat' },
+      { name: 'PeerNotFound', type: '_void', description: 'Peer account or username was not found' },
+      { name: 'PeerUnavailable', type: '_void', description: 'Peer exists but no currently routable chat identity is known' },
+      { name: 'InvalidRequest', type: '_void', description: 'Request is malformed or invalid for the current conversation state' },
+      { name: 'Rejected', type: '_void', description: 'User or host rejected the operation' },
+      { name: 'RateLimited', type: '_void', description: 'Host rate limit was exceeded' },
+      { name: 'TransportFailed', type: 'str', description: 'Transport submission or lookup failed' },
+      { name: 'Unknown', type: 'GenericErr', description: 'Catch-all error' },
     ],
   },
   // Custom Renderer Types
