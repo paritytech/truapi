@@ -4,25 +4,27 @@ import { BrowserRouter } from 'react-router-dom'
 import './index.css'
 import App from './App.tsx'
 
-// The repo was renamed from `host-api-explorer` to `truapi-explorer`.
-// Rewrite any incoming legacy path so bookmarks to the old URL keep working.
-const LEGACY_BASE = '/host-api-explorer'
-const NEW_BASE = '/truapi-explorer'
-if (
-  window.location.pathname === LEGACY_BASE ||
-  window.location.pathname.startsWith(`${LEGACY_BASE}/`)
-) {
-  const rewritten =
-    NEW_BASE +
-    window.location.pathname.slice(LEGACY_BASE.length) +
-    window.location.search +
-    window.location.hash
-  window.location.replace(rewritten)
+// Rewrite legacy paths so bookmarks keep working after renames.
+const CURRENT_BASE = '/truapi'
+const LEGACY_BASES = ['/host-api-explorer', '/truapi-explorer']
+for (const legacy of LEGACY_BASES) {
+  if (
+    window.location.pathname === legacy ||
+    window.location.pathname.startsWith(`${legacy}/`)
+  ) {
+    const rewritten =
+      CURRENT_BASE +
+      window.location.pathname.slice(legacy.length) +
+      window.location.search +
+      window.location.hash
+    window.location.replace(rewritten)
+    break
+  }
 }
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter basename={NEW_BASE}>
+    <BrowserRouter basename={CURRENT_BASE}>
       <App />
     </BrowserRouter>
   </StrictMode>,
