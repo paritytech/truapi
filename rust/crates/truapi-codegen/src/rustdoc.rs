@@ -40,6 +40,8 @@ pub struct ApiDefinition {
 pub struct TraitDef {
     pub name: String,
     pub methods: Vec<MethodDef>,
+    /// Rustdoc comment on the trait, with the `@wire_id=` marker stripped.
+    pub docs: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -51,6 +53,8 @@ pub struct MethodDef {
     /// Base wire-protocol discriminant id for this method (from `#[wire(id = N)]`).
     /// `None` for trait methods that have not been annotated yet (legacy / opt-in).
     pub wire_id: Option<u8>,
+    /// Rustdoc comment on the method, with the `@wire_id=` marker stripped.
+    pub docs: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -90,6 +94,8 @@ pub struct TypeDef {
     pub name: String,
     pub generic_params: Vec<String>,
     pub kind: TypeDefKind,
+    /// Rustdoc comment on the type itself.
+    pub docs: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -103,12 +109,16 @@ pub enum TypeDefKind {
 pub struct FieldDef {
     pub name: String,
     pub type_ref: TypeRef,
+    /// Rustdoc comment on the field.
+    pub docs: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct VariantDef {
     pub name: String,
     pub fields: VariantFields,
+    /// Rustdoc comment on the variant.
+    pub docs: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -309,7 +319,11 @@ fn extract_trait(item_id: &str, item: &Item, krate: &Crate) -> Result<TraitDef> 
         }
     }
 
-    Ok(TraitDef { name, methods })
+    Ok(TraitDef {
+        name,
+        methods,
+        docs: clean_docs(item.docs.as_deref()),
+    })
 }
 
 fn extract_method(item_id: &str, item: &Item) -> Result<Option<MethodDef>> {
@@ -420,7 +434,26 @@ fn extract_method(item_id: &str, item: &Item) -> Result<Option<MethodDef>> {
         params,
         return_type,
         wire_id,
+        docs: clean_docs(item.docs.as_deref()),
     }))
+}
+
+/// Strips the `@wire_id=N` marker line from a rustdoc comment so it can be
+/// emitted as user-facing JSDoc. Returns `None` when the remaining text is
+/// empty.
+pub fn clean_docs(docs: Option<&str>) -> Option<String> {
+    let raw = docs?;
+    let cleaned = raw
+        .lines()
+        .filter(|line| !line.trim_start().starts_with("@wire_id="))
+        .collect::<Vec<_>>()
+        .join("\n");
+    let trimmed = cleaned.trim_end_matches('\n').to_string();
+    if trimmed.trim().is_empty() {
+        None
+    } else {
+        Some(trimmed)
+    }
 }
 
 /// Extracts `@wire_id=N` from a doc comment block. Annotated methods carry
@@ -748,6 +781,7 @@ fn extract_struct(item_id: &str, item: &Item, krate: &Crate) -> Result<TypeDef> 
                     name, field_id
                 )
             })?,
+            docs: clean_docs(field_item.docs.as_deref()),
         });
     }
 
@@ -755,6 +789,7 @@ fn extract_struct(item_id: &str, item: &Item, krate: &Crate) -> Result<TypeDef> 
         name,
         generic_params,
         kind: TypeDefKind::Struct(fields),
+        docs: clean_docs(item.docs.as_deref()),
     })
 }
 
@@ -800,6 +835,7 @@ fn extract_enum(item_id: &str, item: &Item, krate: &Crate) -> Result<TypeDef> {
         variants.push(VariantDef {
             name: variant_name,
             fields,
+            docs: clean_docs(variant_item.docs.as_deref()),
         });
     }
 
@@ -807,6 +843,7 @@ fn extract_enum(item_id: &str, item: &Item, krate: &Crate) -> Result<TypeDef> {
         name,
         generic_params,
         kind: TypeDefKind::Enum(variants),
+        docs: clean_docs(item.docs.as_deref()),
     })
 }
 
@@ -881,6 +918,7 @@ fn extract_variant_fields(
             fields.push(FieldDef {
                 name,
                 type_ref: resolve_type(ty)?,
+                docs: clean_docs(item.docs.as_deref()),
             });
         }
         return Ok(VariantFields::Named(fields));
@@ -911,6 +949,7 @@ fn extract_type_alias(item_id: &str, item: &Item) -> Result<TypeDef> {
         name,
         generic_params,
         kind: TypeDefKind::Alias(target),
+        docs: clean_docs(item.docs.as_deref()),
     })
 }
 

@@ -722,6 +722,7 @@ mod tests {
                 },
             },
             wire_id: Some(wire_id),
+            docs: None,
         }
     }
 
@@ -761,6 +762,7 @@ mod tests {
                     make_request_method("a_method", 10),
                     make_request_method("m_method", 30),
                 ],
+                docs: None,
             }],
             types: vec![],
         };
@@ -802,6 +804,7 @@ mod tests {
                     make_request_method("alpha", 10),
                     make_request_method("beta", 10), // collide on id 10
                 ],
+                docs: None,
             }],
             types: vec![],
         };
@@ -823,6 +826,7 @@ mod tests {
             traits: vec![TraitDef {
                 name: "Synthetic".to_string(),
                 methods: vec![method],
+                docs: None,
             }],
             types: vec![],
         };
@@ -844,6 +848,7 @@ mod tests {
                 args: vec![],
             }),
             wire_id: Some(wire_id),
+            docs: None,
         }
     }
 
@@ -863,6 +868,7 @@ mod tests {
                 traits: vec![TraitDef {
                     name: "Empty".to_string(),
                     methods: vec![],
+                    docs: None,
                 }],
                 types: vec![],
             },
@@ -895,6 +901,7 @@ mod tests {
             traits: vec![TraitDef {
                 name: "Synthetic".to_string(),
                 methods: vec![make_subscription_method("only_sub", 42)],
+                docs: None,
             }],
             types: vec![],
         };
@@ -920,6 +927,7 @@ mod tests {
             traits: vec![TraitDef {
                 name: "Synthetic".to_string(),
                 methods: vec![make_subscription_method("topples_off_end", 253)],
+                docs: None,
             }],
             types: vec![],
         };

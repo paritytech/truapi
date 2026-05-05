@@ -21,33 +21,48 @@ export interface TrUApiTransport {
   subscribe<Start, Item, Interrupt = never>(method: string, value: Start, startCodec: S.Codec<Start>, itemCodec: S.Codec<Item>, callback: (data: Item) => void, interruptCodec?: S.Codec<Interrupt>, onInterrupt?: (data: Interrupt) => void): Subscription;
 }
 
+/**
+ * Account lookup, aliasing, and proof generation. Unified counterpart of
+ * [`crate::v02::AccountManagement`].
+ *
+ * Every method has a default body that flags the call as unavailable through
+ * [`CallContext::fail_unavailable`] and returns a placeholder value. Hosts
+ * override only the methods they actually support; unimplemented methods
+ * surface as Interrupt frames at the wire level.
+ */
 export class AccountManagementClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
+  /** Retrieve a product-scoped account. */
   async accountGet(request: T.ProductAccountId): Promise<Result<T.Account, T.RequestCredentialsError>> {
     const result = await this.transport.request("host_account_get", ({ tag: "V1", value: request } as T.HostAccountGetRequest), T.HostAccountGetRequest, S.result(T.HostAccountGetResponse, T.RequestCredentialsError)) as Result<T.HostAccountGetResponse, T.RequestCredentialsError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Retrieve a contextual alias for a product account. */
   async accountGetAlias(request: T.ProductAccountId): Promise<Result<T.ContextualAlias, T.RequestCredentialsError>> {
     const result = await this.transport.request("host_account_get_alias", ({ tag: "V1", value: request } as T.HostAccountGetAliasRequest), T.HostAccountGetAliasRequest, S.result(T.HostAccountGetAliasResponse, T.RequestCredentialsError)) as Result<T.HostAccountGetAliasResponse, T.RequestCredentialsError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Generate a ring VRF proof for a product account. */
   async accountCreateProof(productAccountId: T.ProductAccountId, ringLocation: T.RingLocation, context: T.Bytes): Promise<Result<T.RingVrfProof, T.CreateProofError>> {
     const result = await this.transport.request("host_account_create_proof", ({ tag: "V1", value: { productAccountId, ringLocation, context } } as T.HostAccountCreateProofRequest), T.HostAccountCreateProofRequest, S.result(T.HostAccountCreateProofResponse, T.CreateProofError)) as Result<T.HostAccountCreateProofResponse, T.CreateProofError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** List non-product accounts the user owns. */
   async getNonProductAccounts(): Promise<Result<Array<T.Account>, T.RequestCredentialsError>> {
     const result = await this.transport.request("host_get_non_product_accounts", ({ tag: "V1", value: undefined } as T.HostGetNonProductAccountsRequest), T.HostGetNonProductAccountsRequest, S.result(T.HostGetNonProductAccountsResponse, T.RequestCredentialsError)) as Result<T.HostGetNonProductAccountsResponse, T.RequestCredentialsError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Subscribe to account connection status changes. */
   accountConnectionStatusSubscribe(callback: (value: T.AccountConnectionStatus) => void): Subscription {
     return this.transport.subscribe("host_account_connection_status_subscribe", undefined, S.unit, T.HostAccountConnectionStatusItem, (value) => callback(((value) => value.value)(value)));
   }
 
+  /** Fetch the user's primary identity (V0.2+). */
   async getUserId(): Promise<Result<T.UserIdentity, T.UserIdentityError>> {
     const result = await this.transport.request("host_get_user_id", ({ tag: "V1", value: undefined } as T.HostGetUserIdRequest), T.HostGetUserIdRequest, S.result(T.HostGetUserIdResponse, T.UserIdentityError)) as Result<T.HostGetUserIdResponse, T.UserIdentityError>;
     return mapResult(result, (value) => value.value);
@@ -55,68 +70,90 @@ export class AccountManagementClient {
 
 }
 
+/**
+ * Chain head and transaction interactions. Unified counterpart of
+ * [`crate::v02::ChainInteraction`].
+ *
+ * Every method has a default body that flags the call as unavailable through
+ * [`CallContext::fail_unavailable`] and returns a placeholder value. Hosts
+ * override only the methods they can actually service against a chain
+ * provider.
+ */
 export class ChainInteractionClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
+  /** Follow the chain head and receive block events. */
   chainHeadFollow(request: T.ChainHeadFollowRequest, callback: (value: T.ChainHeadEvent) => void): Subscription {
     return this.transport.subscribe("remote_chain_head_follow", ({ tag: "V1", value: request } as T.RemoteChainHeadFollowRequest), T.RemoteChainHeadFollowRequest, T.RemoteChainHeadFollowItem, (value) => callback(((value) => value.value)(value)));
   }
 
+  /** Fetch a block header. */
   async chainHeadHeader(request: T.ChainHeadBlockRequest): Promise<Result<T.Hex | undefined, T.GenericError>> {
     const result = await this.transport.request("remote_chain_head_header", ({ tag: "V1", value: request } as T.RemoteChainHeadHeaderRequest), T.RemoteChainHeadHeaderRequest, S.result(T.RemoteChainHeadHeaderResponse, T.GenericError)) as Result<T.RemoteChainHeadHeaderResponse, T.GenericError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Fetch a block body. */
   async chainHeadBody(request: T.ChainHeadBlockRequest): Promise<Result<T.OperationStartedResult, T.GenericError>> {
     const result = await this.transport.request("remote_chain_head_body", ({ tag: "V1", value: request } as T.RemoteChainHeadBodyRequest), T.RemoteChainHeadBodyRequest, S.result(T.RemoteChainHeadBodyResponse, T.GenericError)) as Result<T.RemoteChainHeadBodyResponse, T.GenericError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Query runtime storage at a specific block. */
   async chainHeadStorage(request: T.ChainHeadStorageRequest): Promise<Result<T.OperationStartedResult, T.GenericError>> {
     const result = await this.transport.request("remote_chain_head_storage", ({ tag: "V1", value: request } as T.RemoteChainHeadStorageRequest), T.RemoteChainHeadStorageRequest, S.result(T.RemoteChainHeadStorageResponse, T.GenericError)) as Result<T.RemoteChainHeadStorageResponse, T.GenericError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Invoke a runtime call at a specific block. */
   async chainHeadCall(request: T.ChainHeadCallRequest): Promise<Result<T.OperationStartedResult, T.GenericError>> {
     const result = await this.transport.request("remote_chain_head_call", ({ tag: "V1", value: request } as T.RemoteChainHeadCallRequest), T.RemoteChainHeadCallRequest, S.result(T.RemoteChainHeadCallResponse, T.GenericError)) as Result<T.RemoteChainHeadCallResponse, T.GenericError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Release pinned blocks. */
   async chainHeadUnpin(request: T.ChainHeadUnpinRequest): Promise<Result<undefined, T.GenericError>> {
     const result = await this.transport.request("remote_chain_head_unpin", ({ tag: "V1", value: request } as T.RemoteChainHeadUnpinRequest), T.RemoteChainHeadUnpinRequest, S.result(T.RemoteChainHeadUnpinResponse, T.GenericError)) as Result<T.RemoteChainHeadUnpinResponse, T.GenericError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Continue a paused chain-head operation. */
   async chainHeadContinue(request: T.ChainHeadOperationRequest): Promise<Result<undefined, T.GenericError>> {
     const result = await this.transport.request("remote_chain_head_continue", ({ tag: "V1", value: request } as T.RemoteChainHeadContinueRequest), T.RemoteChainHeadContinueRequest, S.result(T.RemoteChainHeadContinueResponse, T.GenericError)) as Result<T.RemoteChainHeadContinueResponse, T.GenericError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Stop a chain-head operation. */
   async chainHeadStopOperation(request: T.ChainHeadOperationRequest): Promise<Result<undefined, T.GenericError>> {
     const result = await this.transport.request("remote_chain_head_stop_operation", ({ tag: "V1", value: request } as T.RemoteChainHeadStopOperationRequest), T.RemoteChainHeadStopOperationRequest, S.result(T.RemoteChainHeadStopOperationResponse, T.GenericError)) as Result<T.RemoteChainHeadStopOperationResponse, T.GenericError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Fetch the canonical genesis hash for a chain. */
   async chainSpecGenesisHash(request: T.GenesisHash): Promise<Result<T.Hex, T.GenericError>> {
     const result = await this.transport.request("remote_chain_spec_genesis_hash", ({ tag: "V1", value: request } as T.RemoteChainSpecGenesisHashRequest), T.RemoteChainSpecGenesisHashRequest, S.result(T.RemoteChainSpecGenesisHashResponse, T.GenericError)) as Result<T.RemoteChainSpecGenesisHashResponse, T.GenericError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Fetch the display name of a chain. */
   async chainSpecChainName(request: T.GenesisHash): Promise<Result<string, T.GenericError>> {
     const result = await this.transport.request("remote_chain_spec_chain_name", ({ tag: "V1", value: request } as T.RemoteChainSpecChainNameRequest), T.RemoteChainSpecChainNameRequest, S.result(T.RemoteChainSpecChainNameResponse, T.GenericError)) as Result<T.RemoteChainSpecChainNameResponse, T.GenericError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Fetch the JSON-encoded properties of a chain. */
   async chainSpecProperties(request: T.GenesisHash): Promise<Result<string, T.GenericError>> {
     const result = await this.transport.request("remote_chain_spec_properties", ({ tag: "V1", value: request } as T.RemoteChainSpecPropertiesRequest), T.RemoteChainSpecPropertiesRequest, S.result(T.RemoteChainSpecPropertiesResponse, T.GenericError)) as Result<T.RemoteChainSpecPropertiesResponse, T.GenericError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Broadcast a signed transaction. */
   async chainTransactionBroadcast(request: T.ChainTransactionBroadcastRequest): Promise<Result<string | undefined, T.GenericError>> {
     const result = await this.transport.request("remote_chain_transaction_broadcast", ({ tag: "V1", value: request } as T.RemoteChainTransactionBroadcastRequest), T.RemoteChainTransactionBroadcastRequest, S.result(T.RemoteChainTransactionBroadcastResponse, T.GenericError)) as Result<T.RemoteChainTransactionBroadcastResponse, T.GenericError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Stop a transaction broadcast. */
   async chainTransactionStop(request: T.ChainTransactionStopRequest): Promise<Result<undefined, T.GenericError>> {
     const result = await this.transport.request("remote_chain_transaction_stop", ({ tag: "V1", value: request } as T.RemoteChainTransactionStopRequest), T.RemoteChainTransactionStopRequest, S.result(T.RemoteChainTransactionStopResponse, T.GenericError)) as Result<T.RemoteChainTransactionStopResponse, T.GenericError>;
     return mapResult(result, (value) => value.value);
@@ -124,46 +161,73 @@ export class ChainInteractionClient {
 
 }
 
+/**
+ * Chat room, bot, and message APIs. Unified counterpart of
+ * [`crate::v02::Chat`].
+ *
+ * Every method has a default body that flags the call as unavailable through
+ * [`CallContext::fail_unavailable`] and returns a placeholder value. Hosts
+ * override only the methods they actually support.
+ */
 export class ChatClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
+  /** Create a chat room. */
   async chatCreateRoom(request: T.ChatRoomRequest): Promise<Result<T.ChatRoomRegistrationResult, T.ChatRoomRegistrationError>> {
     const result = await this.transport.request("host_chat_create_room", ({ tag: "V1", value: request } as T.HostChatCreateRoomRequest), T.HostChatCreateRoomRequest, S.result(T.HostChatCreateRoomResponse, T.ChatRoomRegistrationError)) as Result<T.HostChatCreateRoomResponse, T.ChatRoomRegistrationError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Create a simple group chat room (V0.2+). */
   async chatCreateSimpleGroup(request: T.SimpleGroupChatRequest): Promise<Result<T.SimpleGroupChatResult, T.ChatRoomRegistrationError>> {
     const result = await this.transport.request("host_chat_create_simple_group", ({ tag: "V1", value: request } as T.HostChatCreateSimpleGroupRequest), T.HostChatCreateSimpleGroupRequest, S.result(T.HostChatCreateSimpleGroupResponse, T.ChatRoomRegistrationError)) as Result<T.HostChatCreateSimpleGroupResponse, T.ChatRoomRegistrationError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Register a chat bot. */
   async chatRegisterBot(request: T.ChatBotRequest): Promise<Result<T.ChatBotRegistrationResult, T.ChatBotRegistrationError>> {
     const result = await this.transport.request("host_chat_register_bot", ({ tag: "V1", value: request } as T.HostChatRegisterBotRequest), T.HostChatRegisterBotRequest, S.result(T.HostChatRegisterBotResponse, T.ChatBotRegistrationError)) as Result<T.HostChatRegisterBotResponse, T.ChatBotRegistrationError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Post a message to a chat room. */
   async chatPostMessage(request: T.ChatPostMessageRequest): Promise<Result<T.ChatPostMessageResult, T.ChatMessagePostingError>> {
     const result = await this.transport.request("host_chat_post_message", ({ tag: "V1", value: request } as T.HostChatPostMessageRequest), T.HostChatPostMessageRequest, S.result(T.HostChatPostMessageResponse, T.ChatMessagePostingError)) as Result<T.HostChatPostMessageResponse, T.ChatMessagePostingError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Subscribe to the list of chat rooms. */
   chatListSubscribe(callback: (value: Array<T.ChatRoom>) => void): Subscription {
     return this.transport.subscribe("host_chat_list_subscribe", undefined, S.unit, T.HostChatListItem, (value) => callback(((value) => value.value)(value)));
   }
 
+  /** Subscribe to received chat actions. */
   chatActionSubscribe(callback: (value: T.ReceivedChatAction) => void): Subscription {
     return this.transport.subscribe("host_chat_action_subscribe", undefined, S.unit, T.HostChatActionItem, (value) => callback(((value) => value.value)(value)));
   }
 
+  /** Subscribe to custom message render requests from the host. */
   chatCustomMessageRenderSubscribe(callback: (value: T.CustomMessageRenderRequest) => void): Subscription {
     return this.transport.subscribe("product_chat_custom_message_render_subscribe", undefined, S.unit, T.ProductChatCustomMessageRenderItem, (value) => callback(((value) => value.value)(value)));
   }
 
 }
 
+/**
+ * Deterministic entropy derivation. Unified counterpart of
+ * [`crate::v02::EntropyDerivation`].
+ *
+ * The default body flags the call as unavailable through
+ * [`CallContext::fail_unavailable`]; hosts override only if they can derive
+ * entropy.
+ */
 export class EntropyDerivationClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
+  /**
+   * Derive 32 bytes of entropy from the user's root BIP-39 entropy for the
+   * given key.
+   */
   async deriveEntropy(request: Uint8Array): Promise<Result<T.Entropy, T.DeriveEntropyError>> {
     const result = await this.transport.request("host_derive_entropy", ({ tag: "V1", value: request } as T.HostDeriveEntropyRequest), T.HostDeriveEntropyRequest, S.result(T.HostDeriveEntropyResponse, T.DeriveEntropyError)) as Result<T.HostDeriveEntropyResponse, T.DeriveEntropyError>;
     return mapResult(result, (value) => value.value);
@@ -171,19 +235,26 @@ export class EntropyDerivationClient {
 
 }
 
+/**
+ * Local key/value storage scoped to the calling product. Unified counterpart
+ * of [`crate::v02::LocalStorage`].
+ */
 export class LocalStorageClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
+  /** Read a value by key. */
   async localStorageRead(request: T.StorageKey): Promise<Result<T.StorageValue | undefined, T.StorageError>> {
     const result = await this.transport.request("host_local_storage_read", ({ tag: "V1", value: request } as T.HostLocalStorageReadRequest), T.HostLocalStorageReadRequest, S.result(T.HostLocalStorageReadResponse, T.StorageError)) as Result<T.HostLocalStorageReadResponse, T.StorageError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Write a value to a key. */
   async localStorageWrite(key: T.StorageKey, value: T.StorageValue): Promise<Result<undefined, T.StorageError>> {
     const result = await this.transport.request("host_local_storage_write", ({ tag: "V1", value: { key, value } } as T.HostLocalStorageWriteRequest), T.HostLocalStorageWriteRequest, S.result(T.HostLocalStorageWriteResponse, T.StorageError)) as Result<T.HostLocalStorageWriteResponse, T.StorageError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Clear a value by key. */
   async localStorageClear(request: T.StorageKey): Promise<Result<undefined, T.StorageError>> {
     const result = await this.transport.request("host_local_storage_clear", ({ tag: "V1", value: request } as T.HostLocalStorageClearRequest), T.HostLocalStorageClearRequest, S.result(T.HostLocalStorageClearResponse, T.StorageError)) as Result<T.HostLocalStorageClearResponse, T.StorageError>;
     return mapResult(result, (value) => value.value);
@@ -191,37 +262,54 @@ export class LocalStorageClient {
 
 }
 
+/**
+ * Payment operations. Unified counterpart of [`crate::v02::Payment`].
+ *
+ * Every method has a default body that flags the call as unavailable through
+ * [`CallContext::fail_unavailable`] and returns a placeholder value. Hosts
+ * override only the methods they actually support.
+ */
 export class PaymentClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
+  /** Subscribe to payment balance updates. */
   paymentBalanceSubscribe(callback: (value: T.PaymentBalance) => void, onError?: (error: T.PaymentBalanceError) => void): Subscription {
     return this.transport.subscribe("host_payment_balance_subscribe", ({ tag: "V1", value: undefined } as T.HostPaymentBalanceSubscribeRequest), T.HostPaymentBalanceSubscribeRequest, T.HostPaymentBalanceItem, (value) => callback(((value) => value.value)(value)), T.PaymentBalanceError, onError);
   }
 
+  /** Top up the user's payment balance. */
   async paymentTopUp(amount: T.Balance, source: T.PaymentTopUpSource): Promise<Result<undefined, T.PaymentTopUpError>> {
     const result = await this.transport.request("host_payment_top_up", ({ tag: "V1", value: { amount, source } } as T.HostPaymentTopUpRequest), T.HostPaymentTopUpRequest, S.result(T.HostPaymentTopUpResponse, T.PaymentTopUpError)) as Result<T.HostPaymentTopUpResponse, T.PaymentTopUpError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Request a payment from the user. */
   async paymentRequest(amount: T.Balance, destination: T.AccountId): Promise<Result<T.PaymentReceipt, T.PaymentRequestError>> {
     const result = await this.transport.request("host_payment_request", ({ tag: "V1", value: { amount, destination } } as T.HostPaymentRequestRequest), T.HostPaymentRequestRequest, S.result(T.HostPaymentRequestResponse, T.PaymentRequestError)) as Result<T.HostPaymentRequestResponse, T.PaymentRequestError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Subscribe to payment lifecycle updates for a specific payment. */
   paymentStatusSubscribe(request: T.PaymentId, callback: (value: T.PaymentStatus) => void, onError?: (error: T.PaymentStatusError) => void): Subscription {
     return this.transport.subscribe("host_payment_status_subscribe", ({ tag: "V1", value: request } as T.HostPaymentStatusSubscribeRequest), T.HostPaymentStatusSubscribeRequest, T.HostPaymentStatusItem, (value) => callback(((value) => value.value)(value)), T.PaymentStatusError, onError);
   }
 
 }
 
+/**
+ * Device and remote permission prompts. Unified counterpart of
+ * [`crate::v02::Permissions`].
+ */
 export class PermissionsClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
+  /** Request a device-capability permission from the user. */
   async devicePermission(request: T.DevicePermissionRequest): Promise<Result<boolean, T.GenericError>> {
     const result = await this.transport.request("host_device_permission", ({ tag: "V1", value: request } as T.HostDevicePermissionRequest), T.HostDevicePermissionRequest, S.result(T.HostDevicePermissionResponse, T.GenericError)) as Result<T.HostDevicePermissionResponse, T.GenericError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Request one or more remote-operation permissions. */
   async permission(request: T.RemotePermissionRequestV1): Promise<Result<boolean, T.GenericError>> {
     const result = await this.transport.request("remote_permission", ({ tag: "V1", value: request } as T.RemotePermissionRequest), T.RemotePermissionRequest, S.result(T.RemotePermissionResponse, T.GenericError)) as Result<T.RemotePermissionResponse, T.GenericError>;
     return mapResult(result, (value) => value.value);
@@ -229,33 +317,56 @@ export class PermissionsClient {
 
 }
 
+/**
+ * Preimage lookup. Unified counterpart of [`crate::v02::Preimage`].
+ *
+ * The v01 `remote_preimage_submit` method is intentionally not carried into
+ * the unified contract because v02 removed it.
+ *
+ * The default body flags the call as unavailable through
+ * [`CallContext::fail_unavailable`]; hosts override only if they actually
+ * support preimage lookup.
+ */
 export class PreimageClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
+  /** Subscribe to preimage lookups for a given key. */
   preimageLookupSubscribe(request: T.PreimageKey, callback: (value: T.PreimageValue | undefined) => void): Subscription {
     return this.transport.subscribe("remote_preimage_lookup_subscribe", ({ tag: "V1", value: request } as T.RemotePreimageLookupSubscribeRequest), T.RemotePreimageLookupSubscribeRequest, T.RemotePreimageLookupSubscribeItem, (value) => callback(((value) => value.value)(value)));
   }
 
 }
 
+/**
+ * Signing and transaction construction. Unified counterpart of
+ * [`crate::v02::Signing`].
+ *
+ * Every method has a default body that flags the call as unavailable through
+ * [`CallContext::fail_unavailable`] and returns a placeholder value. Hosts
+ * override only the methods they actually support.
+ */
 export class SigningClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
+  /** Sign a Substrate extrinsic payload. */
   async signPayload(request: T.SigningPayload): Promise<Result<T.SigningResult, T.SigningError>> {
     const result = await this.transport.request("host_sign_payload", ({ tag: "V1", value: request } as T.HostSignPayloadRequest), T.HostSignPayloadRequest, S.result(T.HostSignPayloadResponse, T.SigningError)) as Result<T.HostSignPayloadResponse, T.SigningError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Sign raw bytes or a message. */
   async signRaw(request: T.SigningRawPayload): Promise<Result<T.SigningResult, T.SigningError>> {
     const result = await this.transport.request("host_sign_raw", ({ tag: "V1", value: request } as T.HostSignRawRequest), T.HostSignRawRequest, S.result(T.HostSignRawResponse, T.SigningError)) as Result<T.HostSignRawResponse, T.SigningError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Construct a signed extrinsic for a product account. */
   async createTransaction(productAccountId: T.ProductAccountId, payloadArg: T.VersionedTxPayload): Promise<Result<T.Bytes, T.CreateTransactionError>> {
     const result = await this.transport.request("host_create_transaction", ({ tag: "V1", value: { productAccountId, payload: payloadArg } } as T.HostCreateTransactionRequest), T.HostCreateTransactionRequest, S.result(T.HostCreateTransactionResponse, T.CreateTransactionError)) as Result<T.HostCreateTransactionResponse, T.CreateTransactionError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Construct a signed extrinsic for a non-product account. */
   async createTransactionWithNonProductAccount(request: T.VersionedTxPayload): Promise<Result<T.Bytes, T.CreateTransactionError>> {
     const result = await this.transport.request("host_create_transaction_with_non_product_account", ({ tag: "V1", value: request } as T.HostCreateTransactionWithNonProductAccountRequest), T.HostCreateTransactionWithNonProductAccountRequest, S.result(T.HostCreateTransactionWithNonProductAccountResponse, T.CreateTransactionError)) as Result<T.HostCreateTransactionWithNonProductAccountResponse, T.CreateTransactionError>;
     return mapResult(result, (value) => value.value);
@@ -263,18 +374,29 @@ export class SigningClient {
 
 }
 
+/**
+ * Statement store operations. Unified counterpart of
+ * [`crate::v02::StatementStore`].
+ *
+ * Every method has a default body that flags the call as unavailable through
+ * [`CallContext::fail_unavailable`] and returns a placeholder value. Hosts
+ * override only the methods they actually support.
+ */
 export class StatementStoreClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
+  /** Subscribe to statements matching a topic filter. */
   statementStoreSubscribe(request: T.TopicFilter, callback: (value: Array<T.SignedStatement>) => void): Subscription {
     return this.transport.subscribe("remote_statement_store_subscribe", ({ tag: "V1", value: request } as T.RemoteStatementStoreSubscribeRequest), T.RemoteStatementStoreSubscribeRequest, T.RemoteStatementStoreSubscribeItem, (value) => callback(((value) => value.value)(value)));
   }
 
+  /** Create a proof for a statement. */
   async statementStoreCreateProof(productAccountId: T.ProductAccountId, statement: T.Statement): Promise<Result<T.StatementProof, T.StatementProofError>> {
     const result = await this.transport.request("remote_statement_store_create_proof", ({ tag: "V1", value: { productAccountId, statement } } as T.RemoteStatementStoreCreateProofRequest), T.RemoteStatementStoreCreateProofRequest, S.result(T.RemoteStatementStoreCreateProofResponse, T.StatementProofError)) as Result<T.RemoteStatementStoreCreateProofResponse, T.StatementProofError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Submit an encoded signed statement to the network. */
   async statementStoreSubmit(request: T.Bytes): Promise<Result<string, T.GenericError>> {
     const result = await this.transport.request("remote_statement_store_submit", ({ tag: "V1", value: request } as T.RemoteStatementStoreSubmitRequest), T.RemoteStatementStoreSubmitRequest, S.result(T.RemoteStatementStoreSubmitResponse, T.GenericError)) as Result<T.RemoteStatementStoreSubmitResponse, T.GenericError>;
     return mapResult(result, (value) => value.value);
@@ -282,24 +404,50 @@ export class StatementStoreClient {
 
 }
 
+/**
+ * General-purpose TrUAPI methods for feature detection, navigation, and
+ * notifications.
+ *
+ * # Wire id reservations
+ *
+ * Slots 68-75 are reserved for legacy Novasama methods TrUAPI does not
+ * implement; if we ever need them, annotate the trait method with
+ * `#[wire(id = …)]` matching the slot below.
+ *
+ * - 68-69: `remote_preimage_submit` (request, response)
+ * - 70-71: `host_jsonrpc_message_send` (request, response)
+ * - 72-75: `host_jsonrpc_message_subscribe` (start, stop, interrupt, receive)
+ */
 export class TrUApiCallsClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
+  /**
+   * Negotiates the wire codec version with the product. Required for
+   * compatibility with `@novasamatech/host-api`-built products that gate
+   * "connected" state on a successful handshake response.
+   *
+   * Default impl accepts codec version `1` (Novasama's `JAM_CODEC_PROTOCOL_ID`)
+   * and rejects everything else with `UnsupportedProtocolVersion`. Hosts that
+   * want to gate handshake on additional preconditions can override.
+   */
   async handshake(request: number): Promise<Result<undefined, T.HandshakeError>> {
     const result = await this.transport.request("host_handshake", ({ tag: "V1", value: request } as T.HostHandshakeRequest), T.HostHandshakeRequest, S.result(T.HostHandshakeResponse, T.HandshakeError)) as Result<T.HostHandshakeResponse, T.HandshakeError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Queries whether the host supports a specific feature. */
   async featureSupported(request: T.Feature): Promise<Result<boolean, T.GenericError>> {
     const result = await this.transport.request("host_feature_supported", ({ tag: "V1", value: request } as T.HostFeatureSupportedRequest), T.HostFeatureSupportedRequest, S.result(T.HostFeatureSupportedResponse, T.GenericError)) as Result<T.HostFeatureSupportedResponse, T.GenericError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Sends a push notification to the user. */
   async pushNotification(request: T.PushNotification): Promise<Result<undefined, T.GenericError>> {
     const result = await this.transport.request("host_push_notification", ({ tag: "V1", value: request } as T.HostPushNotificationRequest), T.HostPushNotificationRequest, S.result(T.HostPushNotificationResponse, T.GenericError)) as Result<T.HostPushNotificationResponse, T.GenericError>;
     return mapResult(result, (value) => value.value);
   }
 
+  /** Requests the host to open a URL. */
   async navigateTo(request: string): Promise<Result<undefined, T.NavigateToError>> {
     const result = await this.transport.request("host_navigate_to", ({ tag: "V1", value: request } as T.HostNavigateToRequest), T.HostNavigateToRequest, S.result(T.HostNavigateToResponse, T.NavigateToError)) as Result<T.HostNavigateToResponse, T.NavigateToError>;
     return mapResult(result, (value) => value.value);

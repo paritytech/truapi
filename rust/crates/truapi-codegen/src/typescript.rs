@@ -100,6 +100,42 @@ fn versioned_wrapper_for<'a>(
     None
 }
 
+/// Emits a JSDoc block for `docs` at the given indent. No-op when `docs` is
+/// `None` so callers can pipe rust doc strings through unconditionally.
+///
+/// Strips the conventional single space rustdoc preserves after `///` so the
+/// emitted JSDoc reads `/** Foo */` rather than `/**  Foo */`. Deeper
+/// indentation inside doc blocks is kept verbatim.
+fn write_jsdoc(out: &mut String, indent: &str, docs: Option<&str>) {
+    let Some(text) = docs else {
+        return;
+    };
+    let safe = text.replace("*/", "*\\/");
+    let lines: Vec<String> = safe
+        .lines()
+        .map(|line| {
+            let trimmed = line.strip_prefix(' ').unwrap_or(line);
+            trimmed.trim_end().to_string()
+        })
+        .collect();
+    if lines.is_empty() {
+        return;
+    }
+    if lines.len() == 1 {
+        writeln!(out, "{}/** {} */", indent, lines[0]).unwrap();
+        return;
+    }
+    writeln!(out, "{}/**", indent).unwrap();
+    for line in &lines {
+        if line.is_empty() {
+            writeln!(out, "{} *", indent).unwrap();
+        } else {
+            writeln!(out, "{} * {}", indent, line).unwrap();
+        }
+    }
+    writeln!(out, "{} */", indent).unwrap();
+}
+
 /// Generates the TypeScript client, types, and barrel files for an extracted
 /// API definition into `output_dir`.
 pub fn generate(api: &ApiDefinition, output_dir: &str) -> Result<()> {
@@ -180,6 +216,7 @@ fn generate_client(api: &ApiDefinition) -> Result<String> {
             continue;
         }
 
+        write_jsdoc(&mut out, "", trait_def.docs.as_deref());
         writeln!(out, "export class {}Client {{", trait_def.name).unwrap();
         writeln!(
             out,
@@ -379,6 +416,7 @@ fn emit_method(
 ) -> Result<()> {
     let ts_method_name = to_camel_case(&strip_prefix(&method.name));
     let payload = emit_payload(&method.params, wrappers, ctx)?;
+    write_jsdoc(out, "  ", method.docs.as_deref());
 
     match (&method.kind, &method.return_type) {
         (MethodKind::Request, ReturnType::Result { ok, err }) => {
@@ -492,6 +530,7 @@ fn emit_method(
 fn write_type_definition(out: &mut String, ty: &TypeDef) -> Result<()> {
     let generic_decl = generic_param_declaration(&ty.generic_params);
 
+    write_jsdoc(out, "", ty.docs.as_deref());
     match &ty.kind {
         TypeDefKind::Alias(type_ref) => {
             writeln!(
@@ -507,6 +546,7 @@ fn write_type_definition(out: &mut String, ty: &TypeDef) -> Result<()> {
             writeln!(out, "export interface {}{} {{", ty.name, generic_decl).unwrap();
             for field in fields {
                 let (ts_name, optional) = ts_field_name(&field.name, &field.type_ref);
+                write_jsdoc(out, "  ", field.docs.as_deref());
                 if optional {
                     writeln!(
                         out,
@@ -524,6 +564,7 @@ fn write_type_definition(out: &mut String, ty: &TypeDef) -> Result<()> {
         TypeDefKind::Enum(variants) => {
             writeln!(out, "export type {}{} =", ty.name, generic_decl).unwrap();
             for variant in variants {
+                write_jsdoc(out, "  ", variant.docs.as_deref());
                 writeln!(
                     out,
                     "  | {{ tag: \"{}\"; value: {} }}",
