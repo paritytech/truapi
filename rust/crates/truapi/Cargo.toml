@@ -1,0 +1,22 @@
+[package]
+name = "truapi"
+version = "0.1.0"
+edition = "2021"
+description = "TrUAPI trait and type definitions"
+
+[dependencies]
+async-trait = "0.1"
+futures = "0.3"
+hex = "0.4"
+parity-scale-codec = { version = "3", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+sp-statement-store = { version = "25", optional = true }
+truapi-macros = { path = "../truapi-macros" }
+
+[features]
+default = []
+# Enables `From<sp_statement_store::Statement>` / `TryFrom<Statement>` impls for
+# native hosts bridging the TrUAPI wire format to the polkadot-sdk statement
+# store types. Off by default to keep WASM builds slim (sp-statement-store
+# pulls in sp-runtime, sp-core, frame-support, etc.).
+sp-compat = ["dep:sp-statement-store"]

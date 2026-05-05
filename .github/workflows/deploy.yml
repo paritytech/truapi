@@ -1,53 +1,35 @@
-name: Deploy to GitHub Pages
+name: Deploy
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
-concurrency:
-  group: pages
-  cancel-in-progress: false
-
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: playground
     steps:
       - uses: actions/checkout@v4
 
-      # ── Webapp ──────────────────────────────────────────────
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
-      - run: npm ci
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
 
-      - run: npm run build
+      - name: Build
+        run: yarn build
 
-      # ── Rust docs ──────────────────────────────────────────
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Install bulletin-deploy
+        run: npm install -g bulletin-deploy
 
-      - run: cargo doc --no-deps --manifest-path truapi-spec/Cargo.toml
-
-      - run: cp -r truapi-spec/target/doc dist/rustdoc
-
-      # ── Upload ─────────────────────────────────────────────
-      - uses: actions/upload-pages-artifact@v3
+      - name: Deploy to DotNS
+        uses: nick-fields/retry@v3
         with:
-          path: dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          timeout_minutes: 10
+          max_attempts: 3
+          command: cd playground && bulletin-deploy ./out truapi-playground.dot --js-merkle

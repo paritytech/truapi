@@ -1,0 +1,163 @@
+import {
+  byteProtocolCodecAdapter,
+  createClient,
+  createMessagePortProvider,
+  createTransport,
+  type Provider,
+  type TrUApiClient,
+  type TrUApiTransport,
+  type WireMessage,
+} from '@truapi/client';
+
+export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected';
+
+declare global {
+  interface Window {
+    __HOST_WEBVIEW_MARK__?: boolean;
+    __HOST_API_PORT__?: MessagePort;
+  }
+}
+
+function isIframe(): boolean {
+  try {
+    return window !== window.top;
+  } catch {
+    return false;
+  }
+}
+
+function isWebview(): boolean {
+  return window.__HOST_WEBVIEW_MARK__ === true;
+}
+
+function isCorrectEnvironment(): boolean {
+  return isIframe() || isWebview();
+}
+
+async function waitForWebviewPort(timeoutMs = 20_000): Promise<MessagePort> {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    if (window.__HOST_API_PORT__) return window.__HOST_API_PORT__;
+    await new Promise(r => setTimeout(r, 50));
+  }
+  throw new Error(`Timed out waiting for window.__HOST_API_PORT__ (${timeoutMs}ms)`);
+}
+
+function createIframeProvider(): Provider {
+  type MessageListener = (msg: WireMessage) => void;
+  type CloseListener = (error: Error) => void;
+  const listeners = new Set<MessageListener>();
+  const closeListeners = new Set<CloseListener>();
+  let disposed = false;
+
+  const parent = window.parent;
+  if (!parent) {
+    throw new Error('Iframe provider requires a parent window');
+  }
+
+  const onMessage = (event: MessageEvent) => {
+    if (disposed) return;
+    if (event.source !== parent) return;
+    if (!(event.data instanceof Uint8Array)) return;
+    for (const listener of listeners) listener(event.data);
+  };
+
+  window.addEventListener('message', onMessage);
+
+  return {
+    postMessage(message: WireMessage) {
+      if (disposed) throw new Error('iframe provider disposed');
+      if (!(message instanceof Uint8Array)) {
+        throw new Error('Iframe provider requires a binary codec adapter');
+      }
+      // Transfer the underlying buffer for zero-copy where possible.
+      parent.postMessage(message, '*', [message.buffer]);
+    },
+    subscribe(callback: MessageListener) {
+      listeners.add(callback);
+      return () => {
+        listeners.delete(callback);
+      };
+    },
+    subscribeClose(callback: CloseListener) {
+      closeListeners.add(callback);
+      return () => {
+        closeListeners.delete(callback);
+      };
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      window.removeEventListener('message', onMessage);
+      const error = new Error('iframe provider disposed');
+      for (const listener of closeListeners) listener(error);
+      listeners.clear();
+      closeListeners.clear();
+    },
+  };
+}
+
+function createSandboxProvider(): Provider {
+  if (isIframe()) return createIframeProvider();
+  if (isWebview()) {
+    return createMessagePortProvider(waitForWebviewPort());
+  }
+  throw new Error(
+    'Playground must be opened inside a TrUAPI host (iframe or webview); detected neither.',
+  );
+}
+
+let _provider: Provider | null = null;
+let _transport: TrUApiTransport | null = null;
+let _client: TrUApiClient | null = null;
+let _status: ConnectionStatus = 'disconnected';
+const _statusListeners = new Set<(status: ConnectionStatus) => void>();
+
+function setStatus(next: ConnectionStatus) {
+  if (_status === next) return;
+  _status = next;
+  for (const listener of _statusListeners) listener(next);
+}
+
+function ensureClient(): TrUApiClient {
+  if (_client) return _client;
+  if (!isCorrectEnvironment()) {
+    throw new Error('Playground must be opened inside a TrUAPI host');
+  }
+  _provider = createSandboxProvider();
+  _provider.subscribeClose?.(() => setStatus('disconnected'));
+  _transport = createTransport(_provider, byteProtocolCodecAdapter);
+  _client = createClient(_transport);
+  return _client;
+}
+
+export function getClient(): TrUApiClient {
+  return ensureClient();
+}
+
+export function getTransport(): TrUApiTransport {
+  ensureClient();
+  return _transport!;
+}
+
+/** Subscribe to connection status changes; kicks off a handshake the first time. */
+export function subscribeConnectionStatus(callback: (status: ConnectionStatus) => void): () => void {
+  _statusListeners.add(callback);
+  callback(_status);
+
+  if (_status === 'disconnected') {
+    setStatus('connecting');
+    void ensureClient()
+      .trUApiCalls.handshake(1)
+      .then((result: { success: boolean }) => {
+        setStatus(result.success ? 'connected' : 'disconnected');
+      })
+      .catch(() => setStatus('disconnected'));
+  }
+
+  return () => {
+    _statusListeners.delete(callback);
+  };
+}
+
+export { isCorrectEnvironment };
