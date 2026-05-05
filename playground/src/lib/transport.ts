@@ -138,11 +138,14 @@ function ensureClient(): TrUApiClient {
   return _client;
 }
 
-// V1 wrapper of `HostHandshakeResponse` is unit, so the SCALE-encoded payload
-// is just the variant discriminant byte (0x00). The host pings every 50ms
-// until it sees a matching `host_handshake_response` for its own request id;
-// answering immediately stops the flood.
-const HANDSHAKE_RESPONSE_V1: Uint8Array = new Uint8Array([0x00]);
+// SCALE-encoded `Ok(HostHandshakeResponse::V1)`:
+//   byte 0 = 0x00 (V1 variant of the versioned wrapper)
+//   byte 1 = 0x00 (Result::Ok)
+// The legacy host-api decodes the response as `Enum({v1: Result(_void, _)})`,
+// which expects exactly these two bytes. Sending only the V1 byte (which is
+// what `HostHandshakeResponse::V1` is on its own) makes `Message.dec` throw
+// on the host side and the host keeps retrying every 50ms.
+const HANDSHAKE_RESPONSE_V1_OK: Uint8Array = new Uint8Array([0x00, 0x00]);
 
 function startHandshakeResponder(provider: Provider): void {
   provider.subscribe((message: WireMessage) => {
@@ -160,7 +163,7 @@ function startHandshakeResponder(provider: Provider): void {
       provider.postMessage(
         byteProtocolCodecAdapter.encode({
           requestId: decoded.requestId,
-          payload: { tag: 'host_handshake_response', value: HANDSHAKE_RESPONSE_V1 },
+          payload: { tag: 'host_handshake_response', value: HANDSHAKE_RESPONSE_V1_OK },
         }),
       );
     } catch {
