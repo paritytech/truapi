@@ -30,10 +30,11 @@ fn main() -> Result<()> {
     let krate = rustdoc::parse(&json)?;
     let api = rustdoc::extract_api(&krate)?;
     typescript::generate(&api, &cli.output)?;
-    println!("Generated TypeScript client in {}", cli.output);
+    let output = &cli.output;
+    println!("Generated TypeScript client in {output}");
     if let Some(path) = &cli.rust_output {
         rust_dispatcher::generate(&api, path)?;
-        println!("Generated Rust dispatcher in {}", path);
+        println!("Generated Rust dispatcher in {path}");
     }
     Ok(())
 }

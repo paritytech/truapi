@@ -327,7 +327,7 @@ function normalizeForScale(value: unknown): unknown {
   if (value === null) return undefined;
   if (value instanceof Uint8Array) return value;
   if (typeof value === 'string') {
-    if (/^\d+n$/.test(value)) return BigInt(value.slice(0, -1));
+    if (/^-?\d+n$/.test(value)) return BigInt(value.slice(0, -1));
     if (/^0x[0-9a-fA-F]*$/.test(value) && value.length % 2 === 0) return hexToBytes(value);
     return value;
   }
