@@ -18,14 +18,15 @@ struct CodecContext {
 /// `enum HostCreateTransactionRequest { V2 { product_account_id, payload } }`,
 /// or a multi-version enum `enum HostDevicePermissionRequest { V1(_), V2(_) }`.
 ///
-/// The client generator unwraps the **latest** version at the method boundary
-/// so callers keep working with inner types. Older versions are kept for
-/// compatibility with pre-codegen products and only land on the server side;
-/// the trait impl converts them through `From` (or matches explicitly).
+/// The client generator unwraps the **earliest** version at the method
+/// boundary so the wire payload is decodable by legacy hosts that only
+/// register the `v1` variant of each method (e.g. dotli, which ships
+/// `@novasamatech/host-api@0.6.x`). Newer hosts that know multiple variants
+/// still accept V1 because every wrapper keeps `V1` as `#[codec(index = 0)]`.
 #[derive(Debug, Clone)]
 struct VersionedWrapper {
-    /// Latest `V<N>` variant on the enum — what the client emits on outbound
-    /// requests and expects on inbound responses.
+    /// `V<N>` variant the client emits on outbound requests and expects on
+    /// inbound responses.
     variant: String,
     kind: VersionedKind,
 }
@@ -47,18 +48,21 @@ fn detect_versioned_wrapper(ty: &TypeDef) -> Option<VersionedWrapper> {
     if variants.is_empty() || !variants.iter().all(|v| is_versioned_variant_name(&v.name)) {
         return None;
     }
-    // Pick the highest V<N> as the client-facing variant.
-    let latest = variants
+    // Pick the lowest V<N> as the client-facing variant (V1 if present,
+    // otherwise the lowest declared). This keeps the wire decodable by
+    // legacy hosts that only know V1; newer hosts still accept V1 because
+    // it remains at `#[codec(index = 0)]` in every wrapper.
+    let chosen = variants
         .iter()
-        .max_by_key(|v| version_number(&v.name).unwrap_or(0))?;
-    let kind = match &latest.fields {
+        .min_by_key(|v| version_number(&v.name).unwrap_or(u32::MAX))?;
+    let kind = match &chosen.fields {
         VariantFields::Unit => VersionedKind::Unit,
         VariantFields::Unnamed(types) if types.len() == 1 => VersionedKind::Tuple(types[0].clone()),
         VariantFields::Named(fields) => VersionedKind::Struct(fields.clone()),
         _ => return None,
     };
     Some(VersionedWrapper {
-        variant: latest.name.clone(),
+        variant: chosen.name.clone(),
         kind,
     })
 }

@@ -3,10 +3,6 @@ import {
   createClient,
   createMessagePortProvider,
   createTransport,
-  HandshakeError,
-  HostHandshakeRequest,
-  HostHandshakeResponse,
-  scale,
   type ChainHeadEvent,
   type Hex,
   type Provider,
@@ -165,8 +161,9 @@ export function subscribeConnectionStatus(callback: (status: ConnectionStatus) =
     }
     setStatus('connecting');
     try {
-      ensureClient();
-      const handshake = handshakeV1(1);
+      const handshake = ensureClient()
+        .trUApiCalls.handshake(1)
+        .then((result: { success: boolean }) => result.success);
       const timeout = new Promise<boolean>((resolve) =>
         setTimeout(() => resolve(false), HANDSHAKE_TIMEOUT_MS),
       );
@@ -184,27 +181,6 @@ export function subscribeConnectionStatus(callback: (status: ConnectionStatus) =
 }
 
 export { isCorrectEnvironment };
-
-// The generated client wraps every request in the latest versioned variant
-// (currently V2). Legacy hosts that ship with `@novasamatech/host-api@0.6.x`
-// only know the V1 variant of `HostHandshakeRequest`, so the auto-generated
-// `handshake` stub never gets a response from them. This shim reproduces the
-// same call but pins the wrapper to V1, which both legacy and current hosts
-// understand.
-async function handshakeV1(version: number): Promise<boolean> {
-  const transport = getTransport();
-  try {
-    const result = await transport.request(
-      'host_handshake',
-      { tag: 'V1', value: version } as HostHandshakeRequest,
-      HostHandshakeRequest,
-      scale.result(HostHandshakeResponse, HandshakeError),
-    );
-    return (result as { success: boolean }).success;
-  } catch {
-    return false;
-  }
-}
 
 // ---------------------------------------------------------------------------
 // chain_head_follow helpers
