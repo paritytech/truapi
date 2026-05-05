@@ -39,6 +39,13 @@ export interface TrUApiTransport {
   ): Subscription;
 }
 
+// SCALE-encoded `Ok(_void)` wrapped in the `v1` versioned variant. Two bytes:
+//   [0x00] — V1 enum discriminant
+//   [0x00] — `Result::Ok` discriminant (no body for `_void`)
+// The host-api decoder (legacy and current) reads these as a successful
+// handshake regardless of how the trait happens to be spelled.
+const HANDSHAKE_RESPONSE_V1_OK_BYTES: Uint8Array = new Uint8Array([0x00, 0x00]);
+
 /** Build a TrUApiTransport on top of a Provider (request/response correlation,
  * subscription start/receive/stop lifecycle). */
 export function createTransport(
@@ -141,6 +148,27 @@ export function createTransport(
         subscription.onInterrupt(
           decodePayload(payload.value, interruptCodec),
         );
+      }
+    } else if (payload.tag === 'host_handshake_request') {
+      // Auto-respond to inbound `host_handshake_request` frames.
+      //
+      // Legacy hosts shipping `@novasamatech/host-api@0.6.x` (e.g. dotli)
+      // initiate their own handshake from the host side at startup and ping
+      // the iframe with `host_handshake_request` every 50ms until they see a
+      // matching response. The legacy host-api `createTransport` registered
+      // an internal handler for this message; preserving that behaviour
+      // keeps `@truapi/client` a drop-in replacement for legacy bridges.
+      //
+      // Wire bytes match `Enum({v1: Result(_void, HandshakeErr)})::Ok` for
+      // legacy decoders and `Result::Ok(HostHandshakeResponse::V1)` for
+      // current decoders — both encode to `[0x00, 0x00]`.
+      try {
+        send({
+          requestId,
+          payload: { tag: 'host_handshake_response', value: HANDSHAKE_RESPONSE_V1_OK_BYTES },
+        });
+      } catch {
+        // provider already closed
       }
     }
   });

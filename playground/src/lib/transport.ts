@@ -132,44 +132,12 @@ function ensureClient(): TrUApiClient {
   }
   _provider = createSandboxProvider();
   _provider.subscribeClose?.(() => setStatus('disconnected'));
-  startHandshakeResponder(_provider);
+  // `createTransport` auto-responds to inbound `host_handshake_request`
+  // frames so legacy hosts can complete their startup handshake — see the
+  // matching comment in @truapi/client/client.ts.
   _transport = createTransport(_provider, byteProtocolCodecAdapter);
   _client = createClient(_transport);
   return _client;
-}
-
-// SCALE-encoded `Ok(HostHandshakeResponse::V1)`:
-//   byte 0 = 0x00 (V1 variant of the versioned wrapper)
-//   byte 1 = 0x00 (Result::Ok)
-// The legacy host-api decodes the response as `Enum({v1: Result(_void, _)})`,
-// which expects exactly these two bytes. Sending only the V1 byte (which is
-// what `HostHandshakeResponse::V1` is on its own) makes `Message.dec` throw
-// on the host side and the host keeps retrying every 50ms.
-const HANDSHAKE_RESPONSE_V1_OK: Uint8Array = new Uint8Array([0x00, 0x00]);
-
-function startHandshakeResponder(provider: Provider): void {
-  provider.subscribe((message: WireMessage) => {
-    if (!(message instanceof Uint8Array)) return;
-    let decoded;
-    try {
-      decoded = byteProtocolCodecAdapter.decode(message);
-    } catch {
-      // Other subscribers (e.g. the transport itself) will surface decode
-      // errors; the responder ignores anything it can't recognise.
-      return;
-    }
-    if (decoded.payload.tag !== 'host_handshake_request') return;
-    try {
-      provider.postMessage(
-        byteProtocolCodecAdapter.encode({
-          requestId: decoded.requestId,
-          payload: { tag: 'host_handshake_response', value: HANDSHAKE_RESPONSE_V1_OK },
-        }),
-      );
-    } catch {
-      // provider already closed
-    }
-  });
 }
 
 export function getClient(): TrUApiClient {
