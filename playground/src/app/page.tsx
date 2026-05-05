@@ -177,7 +177,7 @@ export default function PlaygroundPage() {
     }, requestOverride);
   }, [isTestRunning]);
 
-  if (status !== 'connected') {
+  if (status === null || status === 'connecting') {
     return <Splash status={status} />;
   }
 

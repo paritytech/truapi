@@ -142,19 +142,34 @@ export function getTransport(): TrUApiTransport {
   return _transport!;
 }
 
+const HANDSHAKE_TIMEOUT_MS = 5_000;
+
 /** Subscribe to connection status changes; kicks off a handshake the first time. */
 export function subscribeConnectionStatus(callback: (status: ConnectionStatus) => void): () => void {
   _statusListeners.add(callback);
   callback(_status);
 
   if (_status === 'disconnected') {
+    if (!isCorrectEnvironment()) {
+      // Standalone (not iframed, not webview): no host to talk to. Stay
+      // disconnected so the UI surfaces the OFFLINE chip and method bindings
+      // gracefully refuse to bind.
+      return () => { _statusListeners.delete(callback); };
+    }
     setStatus('connecting');
-    void ensureClient()
-      .trUApiCalls.handshake(1)
-      .then((result: { success: boolean }) => {
-        setStatus(result.success ? 'connected' : 'disconnected');
-      })
-      .catch(() => setStatus('disconnected'));
+    try {
+      const handshake = ensureClient().trUApiCalls.handshake(1);
+      const timeout = new Promise<{ success: false }>((resolve) =>
+        setTimeout(() => resolve({ success: false }), HANDSHAKE_TIMEOUT_MS),
+      );
+      void Promise.race([handshake, timeout])
+        .then((result: { success: boolean }) => {
+          setStatus(result.success ? 'connected' : 'disconnected');
+        })
+        .catch(() => setStatus('disconnected'));
+    } catch {
+      setStatus('disconnected');
+    }
   }
 
   return () => {

@@ -2,7 +2,7 @@
 
 Guidance for Claude Code when working in this repository.
 
-This repo is the single source of truth for the TrUAPI protocol. It vendors `dotli` as a git submodule at `hosts/dotli/` (URL: `git@github.com:paritytech/dotli`, branch: `main`).
+This repo is the single source of truth for the TrUAPI protocol. It vendors `dotli` as a git submodule at `hosts/dotli/`.
 
 ## Layout
 
@@ -14,14 +14,15 @@ rust/crates/
 js/packages/
   truapi-client/         @truapi/client TS package; src/generated/ produced by truapi-codegen
 playground/              Next.js interactive explorer; deploys to truapi-playground.dot
-hosts/dotli/             dotli submodule (paritytech/dotli@main)
+hosts/dotli/             dotli submodule 
 docs/                    design docs, RFCs, feature proposals
 scripts/codegen.sh       regenerate the TS client from the Rust crate
 ```
 
 ## Code style
 
-- Every `pub` Rust item (functions, methods, types, traits, modules, constants) carries a doc comment (`///` or `//!`). Keep it short and focused on intent or invariants, not on what the signature already says.
+- Every `pub` Rust item (functions, methods, types, traits, modules, constants) carries a doc comment (`///` or `//!`). 
+Keep it short and focused on intent or invariants, not on what the signature already says.
 - In Rust format strings, prefer inlined variables: `"log value: {value:?}"` over `"log value: {:?}", value`.
 
 ## First-time setup
@@ -45,8 +46,7 @@ When the Rust trait surface changes, rerun:
 ./scripts/codegen.sh
 ```
 
-That runs `cargo +nightly rustdoc -p truapi --output-format json` followed by `cargo run -p truapi-codegen` to repopulate `js/packages/truapi-client/src/generated/`. Commit the regenerated files alongside the Rust changes.
-
+That will repopulate `js/packages/truapi-client/src/generated/`. Commit the regenerated files alongside the Rust changes.
 After regenerating, rebuild the client and refresh the playground's link copy:
 
 ```bash
@@ -85,18 +85,6 @@ yarn lint
 ```
 
 The playground must be opened from inside a TrUAPI host. Locally, navigate to `https://dot.li/localhost:3000` inside the Polkadot Desktop Host.
-
-## Working inside the dotli submodule
-
-`hosts/dotli/` is a standalone repo on branch `main`. Commits there are pushed to `git@github.com:paritytech/dotli` independently; the parent repo then bumps the pinned submodule SHA:
-
-```bash
-git -C hosts/dotli add -A && git -C hosts/dotli commit -m "…"
-git -C hosts/dotli push origin main
-git add hosts/dotli && git commit -m "Bump dotli submodule"
-```
-
-Do not open PRs against either repo without explicit instruction.
 
 ## Deployment
 

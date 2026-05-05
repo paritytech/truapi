@@ -197,7 +197,14 @@ export function getMethodBinding(
   if (!entry) return null;
 
   const [serviceField, methodName, isStream] = entry;
-  const client = getClient();
+  let client: TrUApiClient;
+  try {
+    client = getClient();
+  } catch {
+    // Not running inside a TrUAPI host: surface as "Not supported" so the
+    // method browser stays usable for inspection.
+    return null;
+  }
   const resolved = resolveClientMethod(client, serviceField, methodName);
   if (!resolved) return null;
   const { fn, thisArg } = resolved;
