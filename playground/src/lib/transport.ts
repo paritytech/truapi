@@ -132,9 +132,41 @@ function ensureClient(): TrUApiClient {
   }
   _provider = createSandboxProvider();
   _provider.subscribeClose?.(() => setStatus('disconnected'));
+  startHandshakeResponder(_provider);
   _transport = createTransport(_provider, byteProtocolCodecAdapter);
   _client = createClient(_transport);
   return _client;
+}
+
+// V1 wrapper of `HostHandshakeResponse` is unit, so the SCALE-encoded payload
+// is just the variant discriminant byte (0x00). The host pings every 50ms
+// until it sees a matching `host_handshake_response` for its own request id;
+// answering immediately stops the flood.
+const HANDSHAKE_RESPONSE_V1: Uint8Array = new Uint8Array([0x00]);
+
+function startHandshakeResponder(provider: Provider): void {
+  provider.subscribe((message: WireMessage) => {
+    if (!(message instanceof Uint8Array)) return;
+    let decoded;
+    try {
+      decoded = byteProtocolCodecAdapter.decode(message);
+    } catch {
+      // Other subscribers (e.g. the transport itself) will surface decode
+      // errors; the responder ignores anything it can't recognise.
+      return;
+    }
+    if (decoded.payload.tag !== 'host_handshake_request') return;
+    try {
+      provider.postMessage(
+        byteProtocolCodecAdapter.encode({
+          requestId: decoded.requestId,
+          payload: { tag: 'host_handshake_response', value: HANDSHAKE_RESPONSE_V1 },
+        }),
+      );
+    } catch {
+      // provider already closed
+    }
+  });
 }
 
 export function getClient(): TrUApiClient {
