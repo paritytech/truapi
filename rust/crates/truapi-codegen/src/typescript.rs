@@ -157,11 +157,14 @@ fn generate_client(api: &ApiDefinition) -> Result<String> {
     .unwrap();
     writeln!(out, "}}").unwrap();
     writeln!(out).unwrap();
-    writeln!(out, "export type Unsubscribe = () => void;").unwrap();
+    writeln!(out, "export interface Subscription {{").unwrap();
+    writeln!(out, "  unsubscribe: () => void;").unwrap();
+    writeln!(out, "  subscriptionId: string;").unwrap();
+    writeln!(out, "}}").unwrap();
     writeln!(out).unwrap();
     writeln!(out, "export interface TrUApiTransport {{").unwrap();
     writeln!(out, "  request<Request, Response>(method: string, value: Request, requestCodec: S.Codec<Request>, responseCodec: S.Codec<Response>): Promise<Response>;").unwrap();
-    writeln!(out, "  subscribe<Start, Item, Interrupt = never>(method: string, value: Start, startCodec: S.Codec<Start>, itemCodec: S.Codec<Item>, callback: (data: Item) => void, interruptCodec?: S.Codec<Interrupt>, onInterrupt?: (data: Interrupt) => void): Unsubscribe;").unwrap();
+    writeln!(out, "  subscribe<Start, Item, Interrupt = never>(method: string, value: Start, startCodec: S.Codec<Start>, itemCodec: S.Codec<Item>, callback: (data: Item) => void, interruptCodec?: S.Codec<Interrupt>, onInterrupt?: (data: Interrupt) => void): Subscription;").unwrap();
     writeln!(out, "}}").unwrap();
     writeln!(out).unwrap();
 
@@ -418,7 +421,7 @@ fn emit_method(
 
             writeln!(
                 out,
-                "  {}({}): Unsubscribe {{",
+                "  {}({}): Subscription {{",
                 ts_method_name, callback_param
             )
             .unwrap();
@@ -452,7 +455,7 @@ fn emit_method(
 
             writeln!(
                 out,
-                "  {}({}): Unsubscribe {{",
+                "  {}({}): Subscription {{",
                 ts_method_name, callback_param
             )
             .unwrap();

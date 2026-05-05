@@ -1,7 +1,16 @@
-import type { TrUApiClient } from '@truapi/client';
-import { getClient } from './transport';
+import type { Subscription, TrUApiClient } from '@truapi/client';
+import {
+  awaitChainHeadOperation,
+  awaitChainHeadStorage,
+  getClient,
+  hexToBytes,
+  openEphemeralFollow,
+  type EphemeralFollow,
+} from './transport';
 
 export type CallResult = { ok: boolean; data: unknown };
+
+export type SubscriptionHandle = { unsubscribe: () => void; subscriptionId: string };
 
 export type MethodBinding =
   | { isStream: false; call: (req: unknown) => Promise<CallResult> }
@@ -11,15 +20,15 @@ export type MethodBinding =
         req: unknown,
         onEvent: (data: unknown) => void,
         onEnd: () => void,
-      ) => { unsubscribe: () => void };
+      ) => SubscriptionHandle;
     };
 
 // Maps `${ServiceName}/${MethodName}` (UI label) ->
 // [serviceField on TrUApiClient, methodName on the service class, isStream].
 //
 // The new generated client wraps requests in V2 internally. Callers pass the
-// inner request value directly; subscriptions take a callback and return
-// Unsubscribe.
+// inner request value directly; subscriptions take a callback and return a
+// `Subscription` object that exposes the transport-assigned subscription id.
 const methodMap: Record<
   string,
   [keyof TrUApiClient, string, boolean]
@@ -95,6 +104,69 @@ const methodMap: Record<
   'Entropy Derivation/host_derive_entropy': ['entropyDerivation', 'deriveEntropy', false],
 };
 
+// Dependent chain-head methods that require an active follow subscription.
+// When the caller leaves `followSubscriptionId` empty, the binding opens an
+// ephemeral one for the request's `genesisHash`, fills the subscription id in
+// (and a finalized block hash if the caller used the zero sentinel), and
+// unsubscribes once the dependent call (and any matching operation events)
+// settle.
+const CHAIN_HEAD_DEPENDENT = new Set<string>([
+  'Chain Interaction/remote_chain_head_header',
+  'Chain Interaction/remote_chain_head_body',
+  'Chain Interaction/remote_chain_head_storage',
+  'Chain Interaction/remote_chain_head_call',
+  'Chain Interaction/remote_chain_head_unpin',
+  'Chain Interaction/remote_chain_head_continue',
+  'Chain Interaction/remote_chain_head_stop_operation',
+]);
+
+const ZERO_HASH = '0x0000000000000000000000000000000000000000000000000000000000000000';
+
+// Methods whose unary response is `Started { operationId }`, with the real
+// result delivered later as event(s) on the parent follow stream. Each
+// awaiter listens for events matching the operationId and returns the fields
+// to merge into the response (alongside the original `start` status).
+type OperationAwaiterCtx = {
+  follow: EphemeralFollow;
+  operationId: string;
+};
+
+const OPERATION_AWAITERS: Record<
+  string,
+  (ctx: OperationAwaiterCtx) => Promise<Record<string, unknown>>
+> = {
+  'Chain Interaction/remote_chain_head_body': async ({ follow, operationId }) => {
+    const result = await awaitChainHeadOperation(follow, operationId, [
+      'OperationBodyDone',
+      'OperationError',
+      'OperationInaccessible',
+    ]);
+    return { result };
+  },
+  'Chain Interaction/remote_chain_head_call': async ({ follow, operationId }) => {
+    const result = await awaitChainHeadOperation(follow, operationId, [
+      'OperationCallDone',
+      'OperationError',
+      'OperationInaccessible',
+    ]);
+    return { result };
+  },
+  'Chain Interaction/remote_chain_head_storage': async ({ follow, operationId }) => {
+    const client = getClient();
+    const result = await awaitChainHeadStorage(follow, operationId, {
+      onWaitingForContinue: () => {
+        Promise.resolve(
+          client.chainInteraction.chainHeadContinue({
+            followSubscriptionId: follow.subscriptionId,
+            operationId,
+          } as Parameters<typeof client.chainInteraction.chainHeadContinue>[0]),
+        ).catch(() => { /* benign: the await will time out and surface the error */ });
+      },
+    });
+    return { items: result.items, result: result.done };
+  },
+};
+
 export function isMethodSupported(service: string, method: string): boolean {
   return `${service}/${method}` in methodMap;
 }
@@ -111,6 +183,10 @@ function resolveClientMethod(
   const fn = serviceObj[methodName];
   if (typeof fn !== 'function') return null;
   return { fn: fn as ClientMethod, thisArg: serviceObj };
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 export function getMethodBinding(
@@ -130,22 +206,12 @@ export function getMethodBinding(
     return {
       isStream: true,
       subscribe(req, onEvent, onEnd) {
-        const args = subscriptionArgs(req, onEvent);
-        const unsubscribe = fn.apply(thisArg, args) as () => void;
-        // The new client does not surface subscription end events. Wire onEnd
-        // to the close callback by also subscribing to the transport's close
-        // signal? The provider already handles that at the connection level.
-        // For per-subscription end notification, the host emits an Interrupt
-        // frame; the new client passes that to the optional `onInterrupt`
-        // callback for some subscriptions. Where it is unavailable we treat
-        // unsubscribe as the only end signal.
+        const args = subscriptionArgs(normalizeForScale(req), onEvent);
+        const sub = fn.apply(thisArg, args) as Subscription;
         return {
+          subscriptionId: sub.subscriptionId,
           unsubscribe: () => {
-            try {
-              unsubscribe();
-            } catch {
-              // Transport cleanup errors are benign.
-            }
+            try { sub.unsubscribe(); } catch { /* benign */ }
             onEnd();
           },
         };
@@ -153,20 +219,78 @@ export function getMethodBinding(
     };
   }
 
+  const key = `${service}/${method}`;
+  const needsEphemeralFollow = CHAIN_HEAD_DEPENDENT.has(key);
+  const operationAwaiter = OPERATION_AWAITERS[key];
+
   return {
     isStream: false,
     async call(req) {
-      const args = unaryArgs(req);
+      let enriched = req;
+      let ephemeralFollow: EphemeralFollow | null = null;
+      let activeSubId = '';
+
+      if (isPlainObject(req) && typeof req.followSubscriptionId === 'string') {
+        activeSubId = req.followSubscriptionId;
+      }
+
+      if (needsEphemeralFollow && isPlainObject(req)) {
+        const hasSubId = activeSubId.length > 0;
+        const genesisHash = typeof req.genesisHash === 'string' ? req.genesisHash : '';
+        if (!hasSubId && genesisHash) {
+          ephemeralFollow = await openEphemeralFollow(genesisHash as `0x${string}`);
+          activeSubId = ephemeralFollow.subscriptionId;
+          const next: Record<string, unknown> = {
+            ...req,
+            followSubscriptionId: ephemeralFollow.subscriptionId,
+          };
+          if (typeof req.hash === 'string' && (req.hash === '' || req.hash === ZERO_HASH)) {
+            next.hash = ephemeralFollow.finalizedBlockHash;
+          }
+          if (Array.isArray(req.hashes)) {
+            next.hashes = req.hashes.map((h) =>
+              typeof h === 'string' && (h === '' || h === ZERO_HASH)
+                ? ephemeralFollow!.finalizedBlockHash
+                : h,
+            );
+          }
+          enriched = next;
+        }
+      }
+
       try {
+        const args = unaryArgs(normalizeForScale(enriched));
         const result = (await fn.apply(thisArg, args)) as
           | { success: true; value: unknown }
           | { success: false; value: unknown };
-        return { ok: result.success, data: result.value };
+        const matched: CallResult = { ok: result.success, data: result.value };
+
+        // body/storage/call return `Started { operationId }` synchronously, but
+        // the actual result arrives async on the follow stream. Wait for the
+        // matching event(s) so the playground can show them alongside the
+        // original Started status.
+        if (matched.ok && operationAwaiter && ephemeralFollow && activeSubId) {
+          const status = matched.data as { tag?: string; value?: unknown };
+          if (status?.tag === 'Started') {
+            const operationId = (status.value as { operationId?: string } | undefined)?.operationId;
+            if (operationId) {
+              const extra = await operationAwaiter({
+                follow: ephemeralFollow,
+                operationId,
+              });
+              return { ok: true, data: { start: matched.data, ...extra } };
+            }
+          }
+        }
+
+        return matched;
       } catch (error) {
         return {
           ok: false,
           data: { message: error instanceof Error ? error.message : String(error) },
         };
+      } finally {
+        ephemeralFollow?.unsubscribe();
       }
     },
   };
@@ -184,6 +308,37 @@ function unaryArgs(req: unknown): unknown[] {
 
 function subscriptionArgs(req: unknown, callback: (data: unknown) => void): unknown[] {
   return [...unaryArgs(req), callback];
+}
+
+// Recursively prepares a JSON-parsed value for the typed client codecs:
+//   - null              -> undefined         (JSON has no undefined; SCALE optionals need it)
+//   - "123n"            -> BigInt(123)       (JSON has no BigInt; use the JS literal suffix convention)
+//   - "0x.."            -> Uint8Array        (any 0x-prefixed even-length hex string is treated as bytes)
+//   - { bytes: "0x.." } -> Uint8Array        (explicit envelope, kept for symmetry with stringify())
+//   - Uint8Array        -> Uint8Array        (pass-through, do not recurse)
+function normalizeForScale(value: unknown): unknown {
+  if (value === null) return undefined;
+  if (value instanceof Uint8Array) return value;
+  if (typeof value === 'string') {
+    if (/^\d+n$/.test(value)) return BigInt(value.slice(0, -1));
+    if (/^0x[0-9a-fA-F]*$/.test(value) && value.length % 2 === 0) return hexToBytes(value);
+    return value;
+  }
+  if (Array.isArray(value)) return value.map(normalizeForScale);
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    if (
+      Object.keys(obj).length === 1 &&
+      typeof obj['bytes'] === 'string' &&
+      /^0x[0-9a-fA-F]*$/.test(obj['bytes'] as string)
+    ) {
+      return hexToBytes(obj['bytes'] as string);
+    }
+    return Object.fromEntries(
+      Object.entries(obj).map(([k, v]) => [k, normalizeForScale(v)]),
+    );
+  }
+  return value;
 }
 
 // Stringify helper retained from the previous bridge so the response panel

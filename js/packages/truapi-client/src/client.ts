@@ -6,7 +6,14 @@ import {
 } from './transport.js';
 import { unit, type Codec } from './scale.js';
 
-export type Unsubscribe = () => void;
+/** Handle returned by `subscribe`. `unsubscribe` is idempotent;
+ * `subscriptionId` is the transport-assigned id for the subscribe frame, which
+ * methods that take a `followSubscriptionId` need to scope their request to
+ * this subscription. */
+export interface Subscription {
+  unsubscribe: () => void;
+  subscriptionId: string;
+}
 
 /**
  * Transport used by generated client stubs. Typed values exist only at the
@@ -29,7 +36,7 @@ export interface TrUApiTransport {
     callback: (data: Item) => void,
     interruptCodec?: Codec<Interrupt>,
     onInterrupt?: (data: Interrupt) => void,
-  ): Unsubscribe;
+  ): Subscription;
 }
 
 /** Build a TrUApiTransport on top of a Provider (request/response correlation,
@@ -194,7 +201,7 @@ export function createTransport(
     ) {
       if (closedError) {
         onInterrupt?.(closedError as Interrupt);
-        return () => {};
+        return { unsubscribe: () => {}, subscriptionId: '' };
       }
 
       const requestId = `p:${++idCounter}`;
@@ -215,21 +222,24 @@ export function createTransport(
       } catch (error) {
         subscriptions.delete(requestId);
         onInterrupt?.(toError(error) as Interrupt);
-        return () => {};
+        return { unsubscribe: () => {}, subscriptionId: requestId };
       }
-      return () => {
-        subscriptions.delete(requestId);
-        try {
-          send({
-            requestId,
-            payload: {
-              tag: `${method}_stop`,
-              value: encodePayload(undefined, unit),
-            },
-          });
-        } catch {
-          // provider already closed
-        }
+      return {
+        subscriptionId: requestId,
+        unsubscribe: () => {
+          subscriptions.delete(requestId);
+          try {
+            send({
+              requestId,
+              payload: {
+                tag: `${method}_stop`,
+                value: encodePayload(undefined, unit),
+              },
+            });
+          } catch {
+            // provider already closed
+          }
+        },
       };
     },
   };

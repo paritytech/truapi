@@ -11,11 +11,14 @@ function mapResult<V, U, E>(result: Result<V, E>, map: (value: V) => U): Result<
   return result.success ? { success: true, value: map(result.value) } : result;
 }
 
-export type Unsubscribe = () => void;
+export interface Subscription {
+  unsubscribe: () => void;
+  subscriptionId: string;
+}
 
 export interface TrUApiTransport {
   request<Request, Response>(method: string, value: Request, requestCodec: S.Codec<Request>, responseCodec: S.Codec<Response>): Promise<Response>;
-  subscribe<Start, Item, Interrupt = never>(method: string, value: Start, startCodec: S.Codec<Start>, itemCodec: S.Codec<Item>, callback: (data: Item) => void, interruptCodec?: S.Codec<Interrupt>, onInterrupt?: (data: Interrupt) => void): Unsubscribe;
+  subscribe<Start, Item, Interrupt = never>(method: string, value: Start, startCodec: S.Codec<Start>, itemCodec: S.Codec<Item>, callback: (data: Item) => void, interruptCodec?: S.Codec<Interrupt>, onInterrupt?: (data: Interrupt) => void): Subscription;
 }
 
 export class AccountManagementClient {
@@ -41,7 +44,7 @@ export class AccountManagementClient {
     return mapResult(result, (value) => value.value);
   }
 
-  accountConnectionStatusSubscribe(callback: (value: T.AccountConnectionStatus) => void): Unsubscribe {
+  accountConnectionStatusSubscribe(callback: (value: T.AccountConnectionStatus) => void): Subscription {
     return this.transport.subscribe("host_account_connection_status_subscribe", undefined, S.unit, T.HostAccountConnectionStatusItem, (value) => callback(((value) => value.value)(value)));
   }
 
@@ -55,7 +58,7 @@ export class AccountManagementClient {
 export class ChainInteractionClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
-  chainHeadFollow(request: T.ChainHeadFollowRequest, callback: (value: T.ChainHeadEvent) => void): Unsubscribe {
+  chainHeadFollow(request: T.ChainHeadFollowRequest, callback: (value: T.ChainHeadEvent) => void): Subscription {
     return this.transport.subscribe("remote_chain_head_follow", ({ tag: "V2", value: request } as T.RemoteChainHeadFollowRequest), T.RemoteChainHeadFollowRequest, T.RemoteChainHeadFollowItem, (value) => callback(((value) => value.value)(value)));
   }
 
@@ -144,15 +147,15 @@ export class ChatClient {
     return mapResult(result, (value) => value.value);
   }
 
-  chatListSubscribe(callback: (value: Array<T.ChatRoom>) => void): Unsubscribe {
+  chatListSubscribe(callback: (value: Array<T.ChatRoom>) => void): Subscription {
     return this.transport.subscribe("host_chat_list_subscribe", undefined, S.unit, T.HostChatListItem, (value) => callback(((value) => value.value)(value)));
   }
 
-  chatActionSubscribe(callback: (value: T.ReceivedChatAction) => void): Unsubscribe {
+  chatActionSubscribe(callback: (value: T.ReceivedChatAction) => void): Subscription {
     return this.transport.subscribe("host_chat_action_subscribe", undefined, S.unit, T.HostChatActionItem, (value) => callback(((value) => value.value)(value)));
   }
 
-  chatCustomMessageRenderSubscribe(callback: (value: T.CustomMessageRenderRequest) => void): Unsubscribe {
+  chatCustomMessageRenderSubscribe(callback: (value: T.CustomMessageRenderRequest) => void): Subscription {
     return this.transport.subscribe("product_chat_custom_message_render_subscribe", undefined, S.unit, T.ProductChatCustomMessageRenderItem, (value) => callback(((value) => value.value)(value)));
   }
 
@@ -191,7 +194,7 @@ export class LocalStorageClient {
 export class PaymentClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
-  paymentBalanceSubscribe(callback: (value: T.PaymentBalance) => void, onError?: (error: T.PaymentBalanceError) => void): Unsubscribe {
+  paymentBalanceSubscribe(callback: (value: T.PaymentBalance) => void, onError?: (error: T.PaymentBalanceError) => void): Subscription {
     return this.transport.subscribe("host_payment_balance_subscribe", ({ tag: "V2", value: undefined } as T.HostPaymentBalanceSubscribeRequest), T.HostPaymentBalanceSubscribeRequest, T.HostPaymentBalanceItem, (value) => callback(((value) => value.value)(value)), T.PaymentBalanceError, onError);
   }
 
@@ -205,7 +208,7 @@ export class PaymentClient {
     return mapResult(result, (value) => value.value);
   }
 
-  paymentStatusSubscribe(request: T.PaymentId, callback: (value: T.PaymentStatus) => void, onError?: (error: T.PaymentStatusError) => void): Unsubscribe {
+  paymentStatusSubscribe(request: T.PaymentId, callback: (value: T.PaymentStatus) => void, onError?: (error: T.PaymentStatusError) => void): Subscription {
     return this.transport.subscribe("host_payment_status_subscribe", ({ tag: "V2", value: request } as T.HostPaymentStatusSubscribeRequest), T.HostPaymentStatusSubscribeRequest, T.HostPaymentStatusItem, (value) => callback(((value) => value.value)(value)), T.PaymentStatusError, onError);
   }
 
@@ -229,7 +232,7 @@ export class PermissionsClient {
 export class PreimageClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
-  preimageLookupSubscribe(request: T.PreimageKey, callback: (value: T.PreimageValue | undefined) => void): Unsubscribe {
+  preimageLookupSubscribe(request: T.PreimageKey, callback: (value: T.PreimageValue | undefined) => void): Subscription {
     return this.transport.subscribe("remote_preimage_lookup_subscribe", ({ tag: "V2", value: request } as T.RemotePreimageLookupSubscribeRequest), T.RemotePreimageLookupSubscribeRequest, T.RemotePreimageLookupSubscribeItem, (value) => callback(((value) => value.value)(value)));
   }
 
@@ -263,7 +266,7 @@ export class SigningClient {
 export class StatementStoreClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
-  statementStoreSubscribe(request: T.TopicFilter, callback: (value: Array<T.SignedStatement>) => void): Unsubscribe {
+  statementStoreSubscribe(request: T.TopicFilter, callback: (value: Array<T.SignedStatement>) => void): Subscription {
     return this.transport.subscribe("remote_statement_store_subscribe", ({ tag: "V2", value: request } as T.RemoteStatementStoreSubscribeRequest), T.RemoteStatementStoreSubscribeRequest, T.RemoteStatementStoreSubscribeItem, (value) => callback(((value) => value.value)(value)));
   }
 

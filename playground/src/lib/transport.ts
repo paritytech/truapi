@@ -3,6 +3,8 @@ import {
   createClient,
   createMessagePortProvider,
   createTransport,
+  type ChainHeadEvent,
+  type Hex,
   type Provider,
   type TrUApiClient,
   type TrUApiTransport,
@@ -161,3 +163,173 @@ export function subscribeConnectionStatus(callback: (status: ConnectionStatus) =
 }
 
 export { isCorrectEnvironment };
+
+// ---------------------------------------------------------------------------
+// chain_head_follow helpers
+//
+// `remote_chain_head_*` dependent calls (header, body, storage, call, unpin,
+// continue, stop_operation) are scoped to a live `chain_head_follow`
+// subscription. The bridge auto-opens an ephemeral follow when the caller
+// leaves `followSubscriptionId` empty, fills in the subscription id from
+// `Subscription.subscriptionId`, and unsubscribes once the dependent call
+// (and any matching operation events) settle.
+// ---------------------------------------------------------------------------
+
+type ChainHeadEventListener = (event: ChainHeadEvent) => void;
+
+export interface EphemeralFollow {
+  subscriptionId: string;
+  finalizedBlockHash: Hex;
+  /** Subscribe to subsequent ChainHeadEvents on this follow. */
+  onEvent: (listener: ChainHeadEventListener) => () => void;
+  /** Send the stop frame and clear listeners. Idempotent. */
+  unsubscribe: () => void;
+}
+
+export function hexToBytes(hex: string): Uint8Array {
+  if (!/^0x[0-9a-fA-F]*$/.test(hex)) {
+    throw new Error(`hexToBytes: not a hex-prefixed string: ${hex}`);
+  }
+  const body = hex.slice(2);
+  const out = new Uint8Array(body.length / 2);
+  for (let i = 0; i < body.length; i += 2) {
+    out[i / 2] = parseInt(body.slice(i, i + 2), 16);
+  }
+  return out;
+}
+
+/** Opens a one-shot `chain_head_follow`, waits for the first `Initialized`
+ * event, and resolves with the transport-assigned subscription id plus the
+ * first finalized block hash. The follow stays alive until `unsubscribe()` is
+ * called; the caller is expected to do so after the dependent call settles. */
+export function openEphemeralFollow(
+  genesisHash: Hex | string,
+  withRuntime = false,
+  timeoutMs = 15_000,
+): Promise<EphemeralFollow> {
+  const client = getClient();
+  const listeners = new Set<ChainHeadEventListener>();
+  const genesisHashBytes =
+    typeof genesisHash === 'string' ? hexToBytes(genesisHash) : genesisHash;
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+    const sub = client.chainInteraction.chainHeadFollow(
+      { genesisHash: genesisHashBytes, withRuntime },
+      (event) => {
+        if (!settled) {
+          if (event.tag !== 'Initialized') return;
+          const finalizedBlockHash = event.value.finalizedBlockHashes[0];
+          if (!finalizedBlockHash) {
+            settled = true;
+            if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+            try { sub.unsubscribe(); } catch { /* benign */ }
+            reject(new Error('Initialized event had no finalized block hash'));
+            return;
+          }
+          settled = true;
+          if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+          resolve({
+            subscriptionId: sub.subscriptionId,
+            finalizedBlockHash,
+            onEvent: (listener) => {
+              listeners.add(listener);
+              return () => listeners.delete(listener);
+            },
+            unsubscribe: () => {
+              try { sub.unsubscribe(); } catch { /* benign */ }
+              listeners.clear();
+            },
+          });
+          return;
+        }
+        for (const listener of listeners) listener(event);
+      },
+    );
+    timeoutHandle = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try { sub.unsubscribe(); } catch { /* benign */ }
+      reject(new Error(`openEphemeralFollow: no Initialized event within ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+}
+
+/** Wait for a chain-head operation event matching `operationId` whose tag is
+ * one of `terminalTags`. Resolves with the matching event or rejects on
+ * timeout. */
+export function awaitChainHeadOperation(
+  follow: EphemeralFollow,
+  operationId: string,
+  terminalTags: readonly string[],
+  timeoutMs = 30_000,
+): Promise<ChainHeadEvent> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+    const cleanup = follow.onEvent((event) => {
+      if (settled) return;
+      if (!terminalTags.includes(event.tag)) return;
+      const eventOpId = (event.value as { operationId?: string } | undefined)?.operationId;
+      if (eventOpId !== operationId) return;
+      settled = true;
+      if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+      cleanup();
+      resolve(event);
+    });
+    timeoutHandle = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error(`awaitChainHeadOperation: no terminal event for ${operationId} within ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+}
+
+/** Storage variant: accumulates `OperationStorageItems` until a terminal
+ * `OperationStorageDone` / `OperationError` / `OperationInaccessible` event.
+ * `onWaitingForContinue` is fired when the host pauses delivery. */
+export function awaitChainHeadStorage(
+  follow: EphemeralFollow,
+  operationId: string,
+  options: {
+    onWaitingForContinue?: () => void;
+    timeoutMs?: number;
+  } = {},
+): Promise<{ items: unknown[]; done: ChainHeadEvent }> {
+  const timeoutMs = options.timeoutMs ?? 30_000;
+  const TERMINAL = ['OperationStorageDone', 'OperationError', 'OperationInaccessible'];
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const items: unknown[] = [];
+    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+    const cleanup = follow.onEvent((event) => {
+      if (settled) return;
+      const eventOpId = (event.value as { operationId?: string } | undefined)?.operationId;
+      if (eventOpId !== operationId) return;
+      if (event.tag === 'OperationStorageItems') {
+        const evValue = event.value as { items?: unknown[] };
+        if (Array.isArray(evValue.items)) items.push(...evValue.items);
+        return;
+      }
+      if (event.tag === 'OperationWaitingForContinue') {
+        options.onWaitingForContinue?.();
+        return;
+      }
+      if (TERMINAL.includes(event.tag)) {
+        settled = true;
+        if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+        cleanup();
+        resolve({ items, done: event });
+      }
+    });
+    timeoutHandle = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error(`awaitChainHeadStorage: no terminal event for ${operationId} within ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+}

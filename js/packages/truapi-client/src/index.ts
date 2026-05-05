@@ -12,7 +12,7 @@ export {
   createWebSocketProvider,
   structuredCloneCodecAdapter,
 } from './transport.js';
-export type { TrUApiTransport, Unsubscribe } from './client.js';
+export type { Subscription, TrUApiTransport } from './client.js';
 export { createTransport } from './client.js';
 export * as scale from './scale.js';
 export type { Codec } from './scale.js';
