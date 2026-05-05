@@ -3,7 +3,7 @@ title: "Private Chat Host API"
 owner: "@replghost"
 ---
 
-# RFC 0013 — Private Chat Host API
+# RFC 0017 — Private Chat Host API
 
 ## Summary
 

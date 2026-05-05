@@ -712,9 +712,9 @@ pub enum ChatMessagePostingError {
     Unknown { reason: String },
 }
 
-// ─── Private Chat types (v0.2, RFC 0013) ────────────────────────────────────
+// ─── Private Chat types (v0.2, RFC 0017) ────────────────────────────────────
 //
-// See [RFC 0013](../../docs/rfcs/0013-private-chat-host-api.md).
+// See [RFC 0017](../../docs/rfcs/0017-private-chat-host-api.md).
 
 /// Host-owned private chat conversation state for a peer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1833,7 +1833,7 @@ pub trait TrUApi {
         renderer: Box<dyn FnMut(CustomMessageRenderRequest) -> CustomRendererNode + Send>,
     ) -> Self::Subscription;
 
-    // ── Private Chat (v0.2, RFC 0013) ────────────────────────────────────
+    // ── Private Chat (v0.2, RFC 0017) ────────────────────────────────────
 
     /// Returns the local peer-facing private chat identity for this product
     /// session. The host must not expose private key material.

@@ -222,7 +222,7 @@ Product-derived accounts are protocol-generated and have no user-chosen label, w
 
 ## 11. Private Chat Host API
 
-RFC: [RFC 0013](docs/rfcs/0013-private-chat-host-api.md)
+RFC: [RFC 0017](docs/rfcs/0017-private-chat-host-api.md)
 
 ### New group: Private Chat (10 methods)
 
