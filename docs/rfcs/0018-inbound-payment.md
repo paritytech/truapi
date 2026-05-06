@@ -327,3 +327,136 @@ Have the host post the rendezvous to the statement store automatically. Rejected
 - **`needs_attention` semantics.** The exact threshold under which funds are flagged is left to host implementation. A future revision may standardize the hint.
 - **Holdings disclosure granularity.** Whether scope-narrowed holdings disclosure carries the same consent weight as full disclosure.
 - **Multi-asset support.** Tracked in RFC 0006; the same extension needs to apply here.
+
+## Appendix A — Non-normative Host Implementation Notes for Coinage
+
+This appendix is informational. It sketches the shape of the host-side bookkeeping required to make the methods in this RFC work over the current private payment system (Coinage). None of this surfaces to products and none of it constrains conforming hosts beyond what the normative sections require — it exists so that host implementors have a concrete starting point and so that reviewers can judge whether the proposed surface is in fact implementable.
+
+The mechanics below assume familiarity with Coinage as specified in `paritytech/individuality::pallet-coinage`: fixed denominations `2^k × $0.01`, one coin per fresh Bandersnatch public key, per-coin age incremented by `transfer`/`split`, ring-based recycler with denomination-segregated rings, free vs paid unload tokens.
+
+### A.1 Coin store
+
+The host maintains a durable, locally-encrypted store. Suggested tables:
+
+- `COINS` — one row per coin currently under host control: `(coin_pk, value_exponent, age, status, derivation_path, last_seen_block, owner_product, owner_scope, denomination_role)`. Status ranges over `pending_inbound | available | reserved | in_split | in_transfer_out | in_recycle_load | recycled_out | dust_destroyed | locked`.
+- `INBOUND_TARGETS` — one row per outstanding `host_payment_inbound_create`: `(id, owner_product, owner_scope, nominal_amount, expires_at_ms, status, received_amount, attached_bytes, chain_anchor)`.
+- `INBOUND_SLOTS` — one row per receiving key allocated under a target: `(id, slot, dest_pk, expected_value_exponent, state)`.
+- `SPENDS` — one row per in-flight outbound: `(spend_id, owner_product, owner_scope, dest_rendezvous, amount, status, reserved_coins, finalized_block)`.
+- `RECYCLER_RECORDS` — one row per coin currently inside a recycler ring on behalf of the host: `(coin_pk_pre, value_exponent, ring_index, member_pk, state, voucher_alias, fresh_coin_pk_post)`.
+- `TOKEN_ALLOWANCE` — period-keyed counters for free-unload-token consumption (`people` / `lite-people`) and paid-token ring memberships.
+- `ANCHORS` — most recent finalized block hash and number, used for restart reconciliation.
+
+The store is encrypted at rest with a key derived from the user's seed. Field-level encryption MAY be applied to derivation paths.
+
+### A.2 Receiving-key derivation
+
+For each inbound target, the host derives fresh Bandersnatch keypairs under a scoped namespace such as:
+
+```
+seed → "coinage/recv" → productId → scope → target_id → slot
+```
+
+All hard derivation. Public keys are computed eagerly and stored in `INBOUND_SLOTS`; secret keys can be regenerated on demand from the path. The four-level namespace ensures keys never collide across products, scopes, or targets.
+
+### A.3 Denomination planning (receive side)
+
+Given a target `amount` in $0.01 minor units:
+
+1. Greedy binary decomposition: pick the largest valid `2^k` denomination ≤ remaining amount, subtract, repeat. This always succeeds for amounts representable as sums of available denominations and within a per-target slot cap (suggested: 32 slots).
+2. If the amount cannot be decomposed within the cap, return `AmountUnsupported`.
+3. Allocate one slot per planned coin and write the rows.
+
+Greedy decomposition minimizes coin count. A future variant could distribute denominations differently for additional payer-side privacy (Coinage Extension 3 touches on this), at the cost of more slots per receipt.
+
+### A.4 Chain watching
+
+A single light-client connection to the People chain underpins all observation. A "deposit watcher" subsystem maintains a watch set of every receiving public key in `INBOUND_SLOTS` and tracks two layers:
+
+- **Liveness layer**: subscribe to `pallet-coinage` `Coin::Transferred` events; filter `to ∈ watch_set`; mark the matching slot as `funded(value, age, block)` immediately for product-visible "pending" balance.
+- **Finality layer**: at each finalized block, read `CoinsByOwner` for slots seen funded; promote `funded` slots to `final` once their containing block is finalized.
+
+Reorg handling falls out of the two-layer split: pre-final receipts only contribute to `PaymentHoldings.pending`, never to `available`, and never trigger `Received` events.
+
+### A.5 Inbound target progression
+
+Per target, the host transitions:
+
+```
+open
+  → still open while sum(final slots) < nominal_amount and now ≤ expires_at_ms
+  → Received       when sum(final slots) == nominal_amount and now ≤ expires_at_ms
+  → LateReceived   when finalisation occurs after expires_at_ms (carry actual sum)
+  → Expired        when expires_at_ms passes with no finalised slots
+```
+
+The host MAY tolerate small finalisation latency past `expires_at_ms` before declaring `Expired` (suggested: 30 s). Per the normative requirements, partial progress is not surfaced to the product.
+
+### A.6 Holdings projection
+
+`PaymentHoldings.available` is the sum of `COINS.value` where `status='available'` and `(owner_product, owner_scope)` matches the subscription. `pending` covers `status='pending_inbound'`. `reserved` covers `status='reserved'`. `needs_attention` is the host's heuristic estimate of funds approaching `MaximumAge` or sitting in dust (e.g. value < $0.04 across many keys); the exact policy is host-defined.
+
+Emit on every commit that touches `COINS` for the relevant `(product, scope)`, debounced ~250 ms.
+
+### A.7 Spending: coin selection and operation planning
+
+When `host_payment_to_rendezvous_request` (user balance) or `host_payment_holdings_spend` (product scope) runs:
+
+1. Decode the rendezvous → list of `(value_exponent_i, dest_pk_i)`.
+2. From `COINS where status='available'` for the relevant ownership, plan a sequence of Coinage operations producing the required denominations at the destinations:
+   - For each target denomination, prefer an exact-match coin.
+   - Otherwise, plan a `split` of a larger coin into the needed sub-denominations.
+   - If only smaller coins exist, plan a `recycle-and-consolidate` (load N coins into a recycler, unload one combined coin). This is slow (rings need to fill, ~10 minutes); return `InsufficientBalance` rather than blocking, unless the host has a pre-warmed combined coin available.
+3. Prefer the **oldest acceptable coins** so that spending implicitly recycles. Exclude any coin at `MaximumAge` (must recycle before spending).
+4. Reserve the chosen coins (`status='reserved'`); reflect in `PaymentHoldings.reserved`.
+5. Construct the extrinsic batch (sequence of `split`, `transfer`).
+6. Prompt the user as required by the API; sign each extrinsic; broadcast.
+7. Watch for finality of each transfer. On success, drop the coins from `COINS`. On failure, revert `status` to `available`.
+8. Emit `PaymentStatus::Completed` (RFC 0006) when all transfers finalise.
+
+### A.8 Automatic recycling and consolidation
+
+A background task runs periodically (every block or every few blocks). It owns the entire age/dust hygiene cycle without product involvement:
+
+1. **Age scan**: enqueue any `available` coin with `age ≥ MaximumAge - 1`.
+2. **Dust scan**: enqueue groups of small-value coins (e.g. ≥ 4 coins of `2^k`) for consolidation.
+3. **Load**: per coin, generate a fresh Bandersnatch member key, sign and submit `load_recycler_with_coin(coin_pk, member_key)`, mark `RECYCLER_RECORDS.state='loaded'`.
+4. **Wait for ring revision change** so that the recycler's anonymity set has grown since load. Suggested floor: wait until at least one recycler revision after load, or 10 minutes — whichever is shorter.
+5. **Acquire an unload token**:
+   - Free token first if the user has remaining allowance for the current period: produce a Ring VRF proof against the personhood ring with `context = "pop:polkadot.net/coinftk" || period || counter`, record the alias in `TOKEN_ALLOWANCE`.
+   - Otherwise paid token: ensure the host has a member key in the current paid-token ring (joining if necessary; cost in DOT/stable/coin per host preference policy), then produce a ring proof against `context = "pop:polkadot.net/coinpaidtok" || period`.
+6. **Unload**: derive a fresh `coin_pk_post`, submit `unload_recycler_into_coin(token, [voucher], value, ring_index, dest=coin_pk_post)`. Insert a fresh `COINS` row with `age=0`, drop the pre-key.
+
+Consolidation uses the same flow but provides multiple vouchers to produce a single output of doubled value.
+
+### A.9 Unload-token economics
+
+- Free-token allowance per period is `min(allowance_in_asset / current_fee, MaxFreeUnloadTokensPerTimePeriod)`. Reconcile `TOKEN_ALLOWANCE.used` against `pallet-coinage::ConsumedFreeUnloadTokens` storage at period boundaries.
+- Paid-token preference is a host-level user preference (e.g. "prefer free; fall back to paid in DOT; never use paid in coin"). Surface in host UI; products do not see it.
+- The host SHOULD pre-warm paid tokens during low-activity periods so spend or recycle requests don't block on ring formation.
+
+### A.10 Failure modes and reconciliation
+
+**On boot:**
+
+1. For each open `INBOUND_TARGETS` row, recompute state from chain: do any `INBOUND_SLOTS.dest_pk` already hold coins? Update accordingly.
+2. For each in-flight `SPENDS` row, query inclusion of the planned extrinsics; either complete the spend or revert reservations.
+3. For each `RECYCLER_RECORDS` row in `loaded` state, attempt the unload if the ring is now eligible and a token is available; otherwise leave for the next sweep.
+4. Reconcile `COINS` against on-chain `CoinsByOwner` for all keys the host believes it owns. Drift should be logged and surfaced — it indicates either a bug or a security issue.
+
+**During operation:**
+
+- Network drop: pending observations queue locally; sweep replays once chain access is restored.
+- Pre-finality reorg: `pending` adjusts; `available` is unaffected because it follows finality.
+- User declines a spend prompt: revert reservation, return `Rejected`.
+- Submission failure (insufficient fee, bad nonce, etc.): retry with backoff; never silently lose a coin.
+- Coinage's per-coin lock periods (`2^retries × CoinFailureLockPeriod` after failed dispatch): mark `COINS.status='locked'` with a `lock_until` timestamp; exclude locked coins from selection until expiry.
+
+### A.11 `attached` delivery transport
+
+The transport is host-implementation-defined per the normative section. A workable default:
+
+1. Just before broadcasting the on-chain transfer extrinsics, compute `delivery_topic = blake2_256("inbound-attached" || rendezvous_id)`.
+2. Submit a statement to the statement store under `delivery_topic` whose payload is the `attached` bytes (ideally encrypted to a deposit-bound key carried in the rendezvous; see Unresolved Questions).
+3. The receiver's host has a matching subscription on `delivery_topic` for every open inbound target. On receipt, store the bytes against the target and surface them in `InboundPaymentEvidence::attached`.
+
+Statement-store allowance is consumed from the host's own consumer registration on the People chain (resources pallet), not the product's. If the side-channel post fails for any reason, the inbound target still completes — `attached` is best-effort by contract.
