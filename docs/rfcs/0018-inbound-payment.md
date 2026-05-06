@@ -247,9 +247,7 @@ The host SHOULD coalesce frequent updates; suggested debounce is ~250 ms.
 
 9. **Inbound target scoping.** An `InboundPaymentId` is scoped to the product that created it. A product MUST NOT be able to query or subscribe to another product's inbound targets.
 
-10. **Payment authorization.** `host_payment_outbound_request` MUST trigger a user-facing confirmation prompt showing amount, source, and any host-renderable identification of the destination. Hosts MUST NOT auto-approve, except where a host policy explicitly suppresses prompts for `ProductHoldings` sources within configured refund-shaped operation thresholds (see method documentation).
-
-11. **Holdings disclosure consent.** `host_payment_holdings_subscribe` consent semantics mirror `host_payment_balance_subscribe`. Granularity of consent (per-session, persistent) is left to host implementation.
+10. **Holdings disclosure consent.** `host_payment_holdings_subscribe` consent semantics mirror `host_payment_balance_subscribe`. Granularity of consent (per-session, persistent) is left to host implementation.
 
 ### Asset Assumption
 
