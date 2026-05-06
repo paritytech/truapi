@@ -109,8 +109,6 @@ enum InboundPaymentStatus {
     LateReceived(InboundPaymentEvidence),
     /// Window expired with no funds received.
     Expired,
-    /// Cancelled by the product.
-    Cancelled,
 }
 
 struct InboundPaymentEvidence {
@@ -138,24 +136,9 @@ enum InboundPaymentStatusErr {
 
 A payer's host is permitted (but not required) to deliver a small opaque blob alongside an inbound payment. This blob arrives in `evidence.attached`. Its meaning is entirely product-defined; common uses include refund channels, order references, or encrypted memos. Delivery is best-effort: if the side-channel fails, the inbound target still completes with `attached: None`.
 
-#### 3. Cancel a pending inbound target
+A product that wants to stop tracking a target before it terminates simply ends the active subscription via the standard `Subscriber` cancellation mechanism. Active cancellation of the target itself is not exposed: targets terminate naturally on `Received` / `LateReceived` / expiry. Funds that arrive at a target after the product has stopped subscribing are still retained by the host and surface in `host_payment_holdings_subscribe` aggregate balances.
 
-Stops watching an inbound target. The subscription emits `Cancelled` and closes. Funds that arrive after cancellation are still retained by the host and will surface in `host_payment_holdings_subscribe` aggregate balances; they no longer trigger per-target events.
-
-```rust
-fn host_payment_inbound_cancel(
-    id: InboundPaymentId
-) -> Result<(), InboundPaymentActionErr>
-
-enum InboundPaymentActionErr {
-    NotFound,
-    /// Target is already in a terminal state.
-    AlreadyClosed,
-    Unknown(GenericErr)
-}
-```
-
-#### 4. Pay a rendezvous
+#### 3. Pay a rendezvous
 
 Make a payment to a rendezvous published by another product (or the same one on another device). This is the receiver-symmetric counterpart to `host_payment_request` and triggers a user authorization prompt. Returns a `PaymentReceipt` whose `PaymentId` can be tracked via `host_payment_status_subscribe` (defined in RFC 0006).
 
@@ -195,7 +178,7 @@ The host MUST validate the rendezvous expiry against its local clock with a smal
 
 A successful response means the user authorized the payment and the host accepted it for processing. It does not mean the payment has settled — use `host_payment_status_subscribe`.
 
-#### 5. Spend product-held funds
+#### 4. Spend product-held funds
 
 Spend funds the host holds for the calling product to a rendezvous. Used wherever a product needs to send funds onward (for example, returning funds to a payer who attached a refund rendezvous, or transferring between products that share a host).
 
@@ -223,7 +206,7 @@ enum PaymentHoldingsSpendErr {
 
 The host MAY apply a different prompt policy than `host_payment_to_rendezvous_request` (for example, suppressing the prompt for small refund-shaped operations). Prompt policy is a host implementation choice, not part of the API contract.
 
-#### 6. Subscribe to product holdings
+#### 5. Subscribe to product holdings
 
 Aggregate balance of funds the host holds on the calling product's behalf, optionally narrowed to one scope. On the first call, the host MUST prompt the user for permission to disclose, mirroring `host_payment_balance_subscribe`.
 
@@ -271,9 +254,9 @@ The host SHOULD coalesce frequent updates; suggested debounce is ~250 ms.
 
 7. **Attached delivery.** The host MUST attempt to transmit `attached` bytes from payer to receiver out-of-band of the on-chain transfer. Delivery is best-effort: if it fails, the inbound target completes with `attached: None`. The transport is host-implementation-defined.
 
-8. **Cancellation does not retract on-chain receipts.** Funds arriving after `Cancelled` remain under host control and surface only in `PaymentHoldings`. Products that need to actively reject funds must implement that policy themselves via `host_payment_holdings_spend`.
+8. **Subscription cancellation does not retract on-chain receipts.** Ending the active subscription on a target is a hint to the host that the product is no longer tracking it; the host MAY use this to free internal resources. Funds arriving at the target afterwards are still retained by the host and surface in `PaymentHoldings`. Products that need to actively reject funds must implement that policy themselves via `host_payment_holdings_spend`.
 
-9. **Inbound target scoping.** An `InboundPaymentId` is scoped to the product that created it. A product MUST NOT be able to query, subscribe to, or cancel another product's inbound targets.
+9. **Inbound target scoping.** An `InboundPaymentId` is scoped to the product that created it. A product MUST NOT be able to query or subscribe to another product's inbound targets.
 
 10. **Payment authorization.** `host_payment_to_rendezvous_request` MUST trigger a user-facing confirmation prompt showing amount and any host-renderable identification of the destination. Hosts MUST NOT auto-approve.
 
