@@ -1,9 +1,9 @@
 ---
-title: "Inbound Payment Host API"
+title: "Inbound Payment TrUAPI"
 owner: "@TorstenStueber"
 ---
 
-# RFC 0018 — Inbound Payment Host API
+# RFC 0018 — Inbound Payment TrUAPI
 
 ## Summary
 
@@ -24,7 +24,7 @@ A neutral receiver-side surface lets all of these be built directly on TrUAPI wi
 
 ### Stakeholders
 
-- **Product developers** — consumers of the host API building any product that needs to receive private payments.
+- **Product developers** — consumers of TrUAPI building any product that needs to receive private payments.
 - **Host implementors** — responsible for receiving-key derivation, denomination planning, chain observation, allowance management, and recycling.
 - **End users** — whose privacy and key material must not leak through the receiver-side surface.
 
@@ -299,7 +299,7 @@ This RFC is purely additive. Existing RFC 0006 methods are unchanged. `host_paym
 
 ### Ergonomics
 
-The API is intentionally low-level and aligned with the rest of the Host API. Higher-level abstractions (idempotent target creation, intent-style state machines, refund flows, currency conversion, signed receipts) are expected to live in product or SDK layers above.
+The API is intentionally low-level and aligned with the rest of TrUAPI. Higher-level abstractions (idempotent target creation, intent-style state machines, refund flows, currency conversion, signed receipts) are expected to live in product or SDK layers above.
 
 ## Alternatives
 
@@ -309,11 +309,11 @@ We could redefine RFC 0006's `host_payment_request` to take a richer destination
 
 ### Expose payment-system internals (denominations, key handles, ring memberships)
 
-Lets products do their own splitting and routing. Rejected because it forces every product to learn the underlying private payment system and tracks its evolution. Wrong layer for the host API.
+Lets products do their own splitting and routing. Rejected because it forces every product to learn the underlying private payment system and tracks its evolution. Wrong layer for TrUAPI.
 
 ### A higher-level "intent" or "session" surface
 
-Bundle target creation, distribution, observation, receipt, and refund into a single host-managed object. Rejected because each product has different opinions about lifecycle, idempotency, status semantics, distribution channel, and metadata. Baking any one set of opinions into the host API permanently couples it to that product. The primitives in this RFC support such a higher-level surface as a product or SDK library, without forcing the choice on every product.
+Bundle target creation, distribution, observation, receipt, and refund into a single host-managed object. Rejected because each product has different opinions about lifecycle, idempotency, status semantics, distribution channel, and metadata. Baking any one set of opinions into TrUAPI permanently couples it to that product. The primitives in this RFC support such a higher-level surface as a product or SDK library, without forcing the choice on every product.
 
 ### Host-driven rendezvous distribution
 
