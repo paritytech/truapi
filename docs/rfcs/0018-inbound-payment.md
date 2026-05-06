@@ -7,7 +7,7 @@ owner: "@TorstenStueber"
 
 ## Summary
 
-This RFC extends the payment surface introduced in [RFC 0006](0006-payments.md) with a receiver-side complement: methods that let products allocate receiving targets, observe inbound payments, manage funds the host has accumulated on the product's behalf, and spend those funds onward. The new methods reuse RFC 0006's `Balance`, `PaymentId`, `PaymentReceipt`, and `PaymentStatus` types, and follow the same "abstraction over implementation" principle — the underlying private payment system (denominations, ages, recyclers, ring proofs, key derivation) stays inside the host.
+This RFC extends the payment surface introduced in [RFC 0006](0006-payments.md) with a receiver-side complement: methods that let products allocate receiving targets, observe inbound payments, manage funds the host has accumulated on the product's behalf, spend those funds onward, place logical reserves on portions of those funds, and retrieve durable host-signed records of completed operations. The new methods reuse RFC 0006's `Balance`, `PaymentId`, `PaymentReceipt`, and `PaymentStatus` types, and follow the same "abstraction over implementation" principle — the underlying private payment system (denominations, ages, recyclers, ring proofs, key derivation) stays inside the host.
 
 ## Motivation
 
@@ -16,7 +16,9 @@ RFC 0006 defines an outbound payment surface. A product can read the user's bala
 - generate a way to be paid from another user;
 - be notified when an inbound payment has settled;
 - enumerate or use funds that have accumulated under the product's control;
-- send those funds onward (for refunds, withdrawals, or product-to-product transfers).
+- send those funds onward (for refunds, withdrawals, or product-to-product transfers);
+- place logical reservations on portions of those funds (refund obligations, planned offloads, escrow);
+- fetch a durable, audit-quality record of completed operations.
 
 This is a blocker for any product that needs to receive payments rather than dispatch them, including (but not specific to) donation flows, peer-to-peer settlement, bill splitting, content paywalls, micropayment streams, subscription billing, marketplace escrow, and similar use cases.
 
@@ -125,6 +127,11 @@ struct InboundPaymentEvidence {
     /// product-defined. Size is capped by the host (recommended floor:
     /// 4096 bytes).
     attached: Option<Vec<u8>>,
+    /// Identifier of the durable record the host persisted for this
+    /// receipt. Always equal to the `InboundPaymentId` of the
+    /// originating target. Use `host_payment_record_get` to retrieve
+    /// the full record at any later time.
+    record_id: PaymentRecordId,
 }
 
 enum InboundPaymentStatusErr {
@@ -166,6 +173,13 @@ struct OutboundPaymentOptions {
     /// See InboundPaymentEvidence::attached. Size is capped by the host
     /// (recommended floor: 4096 bytes).
     attached: Option<Vec<u8>>,
+    /// If set, atomically draw the spend from this Active reserve.
+    /// The reserve must belong to the same `ProductHoldings(scope)`
+    /// source, and `amount` must be ≤ the reserve's amount. The
+    /// reserve transitions to Consumed on successful settlement; if
+    /// `amount` is strictly less, the residual returns to `available`.
+    /// Required to be `None` when `source = UserBalance`.
+    consume_reserve: Option<PaymentReserveId>,
 }
 
 enum PaymentOutboundErr {
@@ -184,6 +198,11 @@ enum PaymentOutboundErr {
     CodeMismatch,
     /// attached exceeds the host's maximum size.
     AttachedTooLarge,
+    /// `consume_reserve` does not exist, is not Active, is in a
+    /// different scope, or its amount is less than `amount`.
+    ReserveInvalid,
+    /// Scope is not currently in `Active` status.
+    ScopeUnavailable,
     Unknown(GenericErr)
 }
 ```
@@ -205,17 +224,31 @@ fn host_payment_holdings_subscribe(
 ) -> Result<Subscriber, PaymentHoldingsErr>
 
 struct PaymentHoldings {
+    /// Operational state of this scope.
+    status: PaymentScopeStatus,
     /// Spendable now.
     available: Balance,
     /// Received but not yet final.
     pending: Balance,
-    /// Provisionally reserved by an in-flight outbound payment from
-    /// product holdings.
+    /// Sum of all Active reserves under this scope plus any in-flight
+    /// outbound payment draws.
     reserved: Balance,
     /// Advisory hint: this much of `available` is in funds approaching
     /// internal age limits or sitting in dust. Host will internally
     /// recycle regardless; this is a UI hint.
     needs_attention: Balance,
+}
+
+enum PaymentScopeStatus {
+    /// Normal operation.
+    Active,
+    /// Operations are temporarily blocked by host policy (recovery,
+    /// compliance hold, user-initiated freeze, etc.). Existing reserves
+    /// remain visible; new operations return `ScopeUnavailable`.
+    Locked,
+    /// Host is rebuilding scope state from chain. Transient. Holdings
+    /// values may be incomplete until the host emits an Active update.
+    Recovering,
 }
 
 enum PaymentHoldingsErr {
@@ -226,6 +259,133 @@ enum PaymentHoldingsErr {
 ```
 
 The host SHOULD coalesce frequent updates; suggested debounce is ~250 ms.
+
+#### 5. Reserve funds against future spending
+
+Place a logical hold on a portion of a scope's available balance. Reserves do not move funds; they reduce `available` and increase `reserved` in `PaymentHoldings`. Reserves are useful when a product needs to commit to honouring a future spend (a refund window, a planned offload, a marketplace escrow) without racing other outbound activity in the same scope. A scope MAY hold many reserves at once.
+
+```rust
+fn host_payment_reserve_create(
+    scope: ScopeTag,
+    amount: Balance,
+    reason: PaymentReserveReason,
+    expires_at_ms: Option<u64>,
+) -> Result<PaymentReserve, PaymentReserveCreateErr>
+
+type PaymentReserveId = str;
+
+enum PaymentReserveReason {
+    /// Held against an outstanding refund obligation.
+    Refund,
+    /// Held against a planned future spend within the scope.
+    FutureSpend,
+    /// Held against a planned withdrawal to a regular AccountId.
+    Offload,
+}
+
+struct PaymentReserve {
+    id: PaymentReserveId,
+    scope: ScopeTag,
+    amount: Balance,
+    reason: PaymentReserveReason,
+    expires_at_ms: Option<u64>,
+    status: PaymentReserveStatus,
+}
+
+enum PaymentReserveStatus {
+    /// Holding funds.
+    Active,
+    /// Released by the product before consumption.
+    Released,
+    /// Drawn against by an outbound payment.
+    Consumed,
+    /// Hit `expires_at_ms` without being consumed or released.
+    Expired,
+}
+
+enum PaymentReserveCreateErr {
+    /// Caller has no holdings under this scope.
+    ScopeEmpty,
+    /// Available balance under the scope cannot cover `amount`.
+    InsufficientBalance,
+    /// `expires_at_ms` is in the past.
+    ExpiryInPast,
+    /// Scope is not currently in `Active` status.
+    ScopeUnavailable,
+    Unknown(GenericErr)
+}
+```
+
+A reserve is consumed by passing its `id` in `OutboundPaymentOptions.consume_reserve` on a subsequent `host_payment_outbound_request`. Released and Expired reserves return their amount to `available`.
+
+#### 6. Release a reserve
+
+Cancels an Active reserve and returns its amount to `available`.
+
+```rust
+fn host_payment_reserve_release(
+    id: PaymentReserveId,
+) -> Result<(), PaymentReserveReleaseErr>
+
+enum PaymentReserveReleaseErr {
+    /// Reserve does not exist or does not belong to the calling product.
+    NotFound,
+    /// Reserve is already in a terminal state (Released, Consumed, Expired).
+    AlreadyClosed,
+    Unknown(GenericErr)
+}
+```
+
+#### 7. Get a durable record
+
+Fetch the host-persisted record for a completed receive, outbound payment, reserve creation, or reserve release. Records are the audit trail products use to reconcile activity in a scope across host restarts and across devices.
+
+```rust
+fn host_payment_record_get(
+    id: PaymentRecordId,
+) -> Result<PaymentRecord, PaymentRecordGetErr>
+
+type PaymentRecordId = str;
+
+struct PaymentRecord {
+    id: PaymentRecordId,
+    /// Scope this record belongs to. None for records of operations
+    /// that drew from `UserBalance` (e.g. an outbound payment from
+    /// the user's general balance).
+    scope: Option<ScopeTag>,
+    kind: PaymentRecordKind,
+    amount: Balance,
+    /// Opaque host blob committing to chain-anchor data sufficient for
+    /// independent verification by an auditor with chain access.
+    chain_anchor: Vec<u8>,
+    /// Wall-clock time the host considers the operation final.
+    occurred_at_ms: u64,
+}
+
+enum PaymentRecordKind {
+    /// An inbound payment was received at a target.
+    Inbound,
+    /// An outbound payment settled.
+    Outbound,
+    /// A reserve was created.
+    Reserve,
+    /// A reserve transitioned out of Active (Released, Consumed, or Expired).
+    ReserveRelease,
+}
+
+enum PaymentRecordGetErr {
+    /// No record with this id exists, or it does not belong to the
+    /// calling product.
+    NotFound,
+    /// Operation exists but has not reached a terminal state yet.
+    NotFinalized,
+    Unknown(GenericErr)
+}
+```
+
+The record id of a finalized operation is **always equal to the originating operation's id**: an `InboundPaymentId` becomes a `PaymentRecordId` once the inbound completes; a `PaymentId` (RFC 0006) becomes a `PaymentRecordId` once the outbound payment reaches `PaymentStatus::Completed`; a `PaymentReserveId` is its own `PaymentRecordId`. Products do not need to track a separate set of identifiers.
+
+`chain_anchor` SHOULD be sufficient for an external auditor with chain access to independently verify that the recorded operation actually happened — for example a tuple of finalized block hash and storage proof references, or a signed commitment over the on-chain evidence.
 
 ### Behavioural Requirements
 
@@ -248,6 +408,12 @@ The host SHOULD coalesce frequent updates; suggested debounce is ~250 ms.
 9. **Inbound target scoping.** An `InboundPaymentId` is scoped to the product that created it. A product MUST NOT be able to query or subscribe to another product's inbound targets.
 
 10. **Holdings disclosure consent.** `host_payment_holdings_subscribe` consent semantics mirror `host_payment_balance_subscribe`. Granularity of consent (per-session, persistent) is left to host implementation.
+
+11. **Reserve accounting.** A scope's `available` MUST NOT include funds covered by Active reserves. The sum of all Active reserves under a scope MUST NOT exceed the scope's pre-reserve `available + reserved`. The host MUST atomically transition a reserve to `Consumed` when an `outbound_request` with `consume_reserve` settles successfully.
+
+12. **Record durability and stability.** Records of finalized operations (Inbound, Outbound, Reserve, ReserveRelease) MUST persist across host restart. A record's `id`, `kind`, `amount`, `scope`, and `occurred_at_ms` MUST NOT change after first emission. The `chain_anchor` SHOULD be sufficient for an external auditor with chain access to independently verify the record.
+
+13. **Record scoping.** A `PaymentRecordId` is scoped to the product that produced the originating operation. A product MUST NOT be able to fetch records belonging to another product.
 
 ### Asset Assumption
 
@@ -289,6 +455,17 @@ Bundle target creation, distribution, observation, receipt, and refund into a si
 
 Have the host post the inbound code to the statement store automatically. Rejected because distribution channel choice is product policy (some products want a QR, some want NFC, some want a deep link, some want a custom transport, some want all of them). The host should not silently consume statement-store allowance for distribution.
 
+### Larger Coinage-named surface (RFC 0017)
+
+A parallel proposal (RFC 0017) defines a `host_coinage_*` namespace API with an explicit `CoinageNamespace` object, separate `receive_claim_create` / `spend_request_create` lifecycles, a fuller spend status enum, channel selection (`StatementStore | EmbeddedQr | DeepLink`), per-request `idempotency_key`, capability bits (`can_receive`, `can_spend`, `can_reserve`), and a `PrivacyLevel` summary. This RFC absorbs the durable parts (reserves, durable records, scope status) and rejects the rest:
+
+- **Asset-named types** (`CoinageNamespace`, `CoinageAsset`, etc.) are declined in favour of layering on RFC 0006's existing asset-agnostic types, so a future shift in the underlying private payment system does not fork the API.
+- **Channel selection in the host** is declined: distribution stays with the product (see preceding section).
+- **`idempotency_key` as an API parameter** is declined: products handle idempotency in their own state via `host_local_storage_*`.
+- **Capability bits and privacy levels** are declined in favour of the simpler `PaymentScopeStatus` enum.
+- **A namespace object with `get_or_create` and `display_name`** is declined: an opaque `ScopeTag` plus the status field on `PaymentHoldings` carries the same useful information without making scopes a managed object.
+- **A separate spend lifecycle** is declined: RFC 0006's `PaymentStatus` already covers the externally-observable transitions; intermediate host phases are not product-actionable.
+
 ## Unresolved Questions
 
 - **Inbound-code wire format and version negotiation.** The exact byte layout and the rules for cross-version interoperability between payer and receiver hosts.
@@ -313,9 +490,12 @@ The host maintains a durable, locally-encrypted store. Suggested tables:
 - `COINS` — one row per coin currently under host control: `(coin_pk, value_exponent, age, status, derivation_path, last_seen_block, owner_product, owner_scope, denomination_role)`. Status ranges over `pending_inbound | available | reserved | in_split | in_transfer_out | in_recycle_load | recycled_out | dust_destroyed | locked`.
 - `INBOUND_TARGETS` — one row per outstanding `host_payment_inbound_create`: `(id, owner_product, owner_scope, nominal_amount, expires_at_ms, status, received_amount, attached_bytes, chain_anchor)`.
 - `INBOUND_SLOTS` — one row per receiving key allocated under a target: `(id, slot, dest_pk, expected_value_exponent, state)`.
-- `SPENDS` — one row per in-flight outbound: `(spend_id, source, owner_product, owner_scope, dest_code, amount, status, reserved_coins, finalized_block)`. `source` records whether the spend is drawing from `UserBalance` or a specific `ProductHoldings(scope)`.
+- `SPENDS` — one row per in-flight outbound: `(spend_id, source, owner_product, owner_scope, dest_code, amount, status, reserved_coins, consumed_reserve_id, finalized_block)`. `source` records whether the spend is drawing from `UserBalance` or a specific `ProductHoldings(scope)`. `consumed_reserve_id` is non-NULL when the spend is consuming a specific reserve.
+- `RESERVES` — one row per reserve created via `host_payment_reserve_create`: `(id, owner_product, owner_scope, amount, reason, status, expires_at_ms, created_at_ms, terminated_at_ms)`.
+- `RECORDS` — durable, append-only audit table: `(id, owner_product, owner_scope, kind, amount, chain_anchor, occurred_at_ms)`. Each finalized inbound, outbound, reserve creation, and reserve termination produces exactly one row; the row's `id` is the originating operation's id.
 - `RECYCLER_RECORDS` — one row per coin currently inside a recycler ring on behalf of the host: `(coin_pk_pre, value_exponent, ring_index, member_pk, state, voucher_alias, fresh_coin_pk_post)`.
 - `TOKEN_ALLOWANCE` — period-keyed counters for free-unload-token consumption (`people` / `lite-people`) and paid-token ring memberships.
+- `SCOPE_STATUS` — one row per `(owner_product, owner_scope)` carrying the current `PaymentScopeStatus` and the reason metadata behind any non-Active state. Defaults to Active.
 - `ANCHORS` — most recent finalized block hash and number, used for restart reconciliation.
 
 The store is encrypted at rest with a key derived from the user's seed. Field-level encryption MAY be applied to derivation paths.
@@ -365,25 +545,26 @@ The host MAY tolerate small finalisation latency past `expires_at_ms` before dec
 
 ### A.6 Holdings projection
 
-`PaymentHoldings.available` is the sum of `COINS.value` where `status='available'` and `(owner_product, owner_scope)` matches the subscription. `pending` covers `status='pending_inbound'`. `reserved` covers `status='reserved'`. `needs_attention` is the host's heuristic estimate of funds approaching `MaximumAge` or sitting in dust (e.g. value < $0.04 across many keys); the exact policy is host-defined.
+`PaymentHoldings.status` comes from `SCOPE_STATUS` for the `(product, scope)` tuple, defaulting to `Active`. `available` is the sum of `COINS.value` where `status='available'` and `(owner_product, owner_scope)` matches the subscription, **minus** the sum of Active reserves under that scope. `pending` covers `COINS.status='pending_inbound'`. `reserved` is the sum of Active reserves plus any in-flight `SPENDS.reserved_coins` value not already attributable to a reserve. `needs_attention` is the host's heuristic estimate of funds approaching `MaximumAge` or sitting in dust (e.g. value < $0.04 across many keys); the exact policy is host-defined.
 
-Emit on every commit that touches `COINS` for the relevant `(product, scope)`, debounced ~250 ms.
+Emit on every commit that touches `COINS`, `RESERVES`, or `SCOPE_STATUS` for the relevant `(product, scope)`, debounced ~250 ms.
 
 ### A.7 Spending: coin selection and operation planning
 
 When `host_payment_outbound_request` runs:
 
 1. Decode the inbound code → list of `(value_exponent_i, dest_pk_i)`.
-2. From `COINS where status='available'` for the ownership selected by `source` (the user's general namespace for `UserBalance`, or `(product, scope)` for `ProductHoldings`), plan a sequence of Coinage operations producing the required denominations at the destinations:
+2. If `consume_reserve` is set, validate the reserve exists, is `Active`, belongs to the same `(product, scope)` as `source`, and `reserve.amount ≥ amount`. The selection in step 3 may use those reserved coins specifically.
+3. From `COINS where status='available'` for the ownership selected by `source` (the user's general namespace for `UserBalance`, or `(product, scope)` for `ProductHoldings`), plan a sequence of Coinage operations producing the required denominations at the destinations:
    - For each target denomination, prefer an exact-match coin.
    - Otherwise, plan a `split` of a larger coin into the needed sub-denominations.
    - If only smaller coins exist, plan a `recycle-and-consolidate` (load N coins into a recycler, unload one combined coin). This is slow (rings need to fill, ~10 minutes); return `InsufficientBalance` rather than blocking, unless the host has a pre-warmed combined coin available.
-3. Prefer the **oldest acceptable coins** so that spending implicitly recycles. Exclude any coin at `MaximumAge` (must recycle before spending).
-4. Reserve the chosen coins (`status='reserved'`); reflect in `PaymentHoldings.reserved`.
-5. Construct the extrinsic batch (sequence of `split`, `transfer`).
-6. Prompt the user as required by the API; sign each extrinsic; broadcast.
-7. Watch for finality of each transfer. On success, drop the coins from `COINS`. On failure, revert `status` to `available`.
-8. Emit `PaymentStatus::Completed` (RFC 0006) when all transfers finalise.
+4. Prefer the **oldest acceptable coins** so that spending implicitly recycles. Exclude any coin at `MaximumAge` (must recycle before spending).
+5. Reserve the chosen coins (`status='reserved'`); reflect in `PaymentHoldings.reserved`.
+6. Construct the extrinsic batch (sequence of `split`, `transfer`).
+7. Prompt the user as required by the API; sign each extrinsic; broadcast.
+8. Watch for finality of each transfer. On success, drop the coins from `COINS`, write a `RECORDS` row of kind `Outbound` with the spend's id, and (if `consume_reserve` was set) transition the reserve to `Consumed`, write a `RECORDS` row of kind `ReserveRelease` for it, and return any residual reserved amount to `available`. On failure, revert `status` to `available` and leave the reserve `Active`.
+9. Emit `PaymentStatus::Completed` (RFC 0006) when all transfers finalise.
 
 ### A.8 Automatic recycling and consolidation
 
@@ -432,3 +613,18 @@ The transport is host-implementation-defined per the normative section. A workab
 3. The receiver's host has a matching subscription on `delivery_topic` for every open inbound target. On receipt, store the bytes against the target and surface them in `InboundPaymentEvidence::attached`.
 
 Statement-store allowance is consumed from the host's own consumer registration on the People chain (resources pallet), not the product's. If the side-channel post fails for any reason, the inbound target still completes — `attached` is best-effort by contract.
+
+### A.12 Reserves and records
+
+Reserves are bookkeeping rows. They never move coins. The host treats `RESERVES` as a logical overlay on holdings: the holdings projection in A.6 deducts Active reserves from `available` and adds them to `reserved`. There is no per-coin pinning; the host is free to move coins around (split, recycle, consolidate) underneath an Active reserve as long as the scope's free balance never falls below the sum of Active reserves.
+
+Reserve transitions write to `RECORDS`:
+
+- `host_payment_reserve_create` writes one row of kind `Reserve` with the reserve's id.
+- A reserve becoming `Released`, `Consumed`, or `Expired` writes one row of kind `ReserveRelease` with the same id (a record id is reused across the create/terminate pair, so a product can fetch the latest state via `host_payment_record_get(id)` and observe both events distinctly only by tracking events at subscription time, while the durable record reflects the latest state).
+
+Records are written exactly once per terminal-operation, are append-only, and survive restart. The host MAY garbage-collect records older than a host-policy retention window; until then `host_payment_record_get` returns them. `chain_anchor` SHOULD be a self-contained commitment (e.g. a finalized block hash plus a Merkle proof reference, or a host-signed commitment over the same) so a third-party auditor can independently verify the record without trusting the host's database.
+
+Records intentionally do not include reserve `reason` or scope-status metadata — those are queryable via the live operation tables (`RESERVES`, `SCOPE_STATUS`) and would not be useful as an immutable audit trail entry.
+
+On boot, the host re-emits no events automatically; products that need to catch up call `host_payment_record_get` for any operation ids they were tracking but had not yet observed terminal status for.
