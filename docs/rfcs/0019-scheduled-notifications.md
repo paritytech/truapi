@@ -3,7 +3,7 @@ title: "Scheduled Push Notifications"
 owner: "@johnthecat"
 ---
 
-# RFC 0012 — Scheduled Push Notifications
+# RFC 0019 — Scheduled Push Notifications
 
 ## Summary
 
@@ -94,7 +94,7 @@ enum PushNotificationError {
 
 6. **Permission gating.** Both `host_push_notification` and `host_push_notification_cancel` are gated by `DevicePermission::Notifications`. No new permission is introduced. Rationale: scheduling is a strict superset of immediate delivery from the user's perspective ("the app may show me notifications"); requiring a second prompt would be friction without a corresponding security gain.
 
-7. **Limits.** A product MAY have up to **64** pending scheduled notifications outstanding at any time. This matches the iOS local-notification quota and is the binding constraint across platforms. Calls that would exceed the limit return `Err(PushNotificationError::ScheduleLimitReached)`. Immediate notifications (with `scheduled_at = None`) do not count against this limit. Cancelling a pending notification frees a slot.
+7. **Limits.** The host maintains a **single shared queue** of pending scheduled notifications across all products installed on the device, with a capacity of **64** entries. This matches the iOS local-notification quota — which is per-app from the OS's perspective, and the host is that single app — and is the binding constraint across platforms. A call to `host_push_notification` with `scheduled_at = Some(_)` that would push the queue past capacity MUST return `Err(PushNotificationError::ScheduleLimitReached)`, regardless of which product currently holds the existing entries; the host MUST NOT evict another product's entry to make room. Immediate notifications (with `scheduled_at = None`) do not occupy the queue and do not count against this limit. Cancelling a pending notification frees a slot.
 
    No maximum schedule horizon is defined. Hosts MAY warn or clamp at the platform level if necessary, but the protocol does not specify a ceiling.
 
@@ -122,7 +122,7 @@ The change to `PushNotification` and the change to the response type are introdu
 
 1. **Wire-format break.** Existing v0.2 clients/hosts that already shipped against the current `host_push_notification` signature need to migrate to the new payload. The `Versioned::V2` envelope keeps the break gated, but real-world deployments will need a coordinated rollout.
 
-2. **64-notification cap is platform-driven, not product-driven.** Products that legitimately need more (e.g., dense calendar apps) cannot exceed it. The cap is a hard lower bound across platforms, so this is unavoidable without per-host negotiation, which is out of scope.
+2. **64-notification cap is host-wide and platform-driven.** Because the OS-level quota is per-app and the host is a single app, the 64-slot queue is shared across all installed products. A noisy product can crowd out a quieter one, and a product that legitimately needs many reminders (e.g., a dense calendar app) cannot exceed the cap. Per-product fair-share or quota negotiation is out of scope; products are expected to be conservative and to cancel obsolete reminders promptly.
 
 ## Alternatives
 
