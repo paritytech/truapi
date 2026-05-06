@@ -12,9 +12,9 @@ use std::task::{Context, Poll};
 
 use futures::Stream;
 
+pub mod api;
 pub mod failure;
 pub mod serde_helpers;
-pub mod traits;
 pub mod v01;
 pub mod v02;
 pub mod versioned;

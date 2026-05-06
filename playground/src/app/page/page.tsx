@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { Suspense, useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
-import Link from 'next/link';
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 
 function PageContent() {
   const searchParams = useSearchParams();
-  const [fragment, setFragment] = useState('');
-  const [fullUrl, setFullUrl] = useState('');
+  const [fragment, setFragment] = useState("");
+  const [fullUrl, setFullUrl] = useState("");
 
   useEffect(() => {
     setFullUrl(window.location.href);
@@ -15,7 +15,7 @@ function PageContent() {
   }, []);
 
   const params = Array.from(searchParams.entries());
-  const fragmentParts = fragment.replace('#', '').split('&').filter(Boolean);
+  const fragmentParts = fragment.replace("#", "").split("&").filter(Boolean);
 
   return (
     <div className="navtest">
@@ -30,18 +30,34 @@ function PageContent() {
         </p>
       </div>
 
-      <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
+      <div className="panel" style={{ padding: 0, overflow: "hidden" }}>
         <div className="navtest__row">
-          <div className="panel__label" style={{ marginBottom: 6 }}>Full URL</div>
+          <div className="panel__label" style={{ marginBottom: 6 }}>
+            Full URL
+          </div>
           <div className="navtest__val">
-            {fullUrl || <span style={{ color: 'var(--ink-4)', fontStyle: 'italic' }}>—</span>}
+            {fullUrl || (
+              <span style={{ color: "var(--ink-4)", fontStyle: "italic" }}>
+                —
+              </span>
+            )}
           </div>
         </div>
 
         <div className="navtest__row">
-          <div className="panel__label" style={{ marginBottom: 6 }}>Query Params</div>
+          <div className="panel__label" style={{ marginBottom: 6 }}>
+            Query Params
+          </div>
           {params.length === 0 ? (
-            <span style={{ color: 'var(--ink-4)', fontStyle: 'italic', fontSize: 13 }}>none</span>
+            <span
+              style={{
+                color: "var(--ink-4)",
+                fontStyle: "italic",
+                fontSize: 13,
+              }}
+            >
+              none
+            </span>
           ) : (
             params.map(([k, v]) => (
               <div key={k} className="navtest__kv">
@@ -54,21 +70,31 @@ function PageContent() {
         </div>
 
         <div className="navtest__row">
-          <div className="panel__label" style={{ marginBottom: 6 }}>Fragment</div>
+          <div className="panel__label" style={{ marginBottom: 6 }}>
+            Fragment
+          </div>
           {!fragment ? (
-            <span style={{ color: 'var(--ink-4)', fontStyle: 'italic', fontSize: 13 }}>none</span>
-          ) : fragmentParts.length === 1 && !fragmentParts[0].includes('=') ? (
+            <span
+              style={{
+                color: "var(--ink-4)",
+                fontStyle: "italic",
+                fontSize: 13,
+              }}
+            >
+              none
+            </span>
+          ) : fragmentParts.length === 1 && !fragmentParts[0].includes("=") ? (
             <span className="navtest__val">{fragment}</span>
           ) : (
             fragmentParts.map((part, i) => {
-              const [k, ...rest] = part.split('=');
+              const [k, ...rest] = part.split("=");
               return (
                 <div key={i} className="navtest__kv">
                   <span className="navtest__key">{k}</span>
                   {rest.length > 0 && (
                     <>
                       <span className="navtest__eq">=</span>
-                      <span className="navtest__val">{rest.join('=')}</span>
+                      <span className="navtest__val">{rest.join("=")}</span>
                     </>
                   )}
                 </div>
@@ -79,7 +105,7 @@ function PageContent() {
       </div>
 
       <div style={{ marginTop: 24 }}>
-        <Link href="/" className="back" style={{ display: 'inline-flex' }}>
+        <Link href="/" className="back" style={{ display: "inline-flex" }}>
           ← Back to playground
         </Link>
       </div>

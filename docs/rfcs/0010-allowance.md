@@ -1,11 +1,11 @@
 # RFC-0010: W3S Allowance Management in TrUAPI
 
-|                 |                                                                                           |
-| --------------- | ----------------------------------------------------------------------------------------- |
-| **RFC Number**  | 10                                                                                        |
-| **Start Date**  | 2026-04-14                                                                                |
+|                 |                                                                                                                                       |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| **RFC Number**  | 10                                                                                                                                    |
+| **Start Date**  | 2026-04-14                                                                                                                            |
 | **Description** | TrUAPI calls and Accounts Protocol companion for granting products access to Bulletin, Statement Store, and Smart Contract allowances |
-| **Authors**     | Valentin Sergeev                                                                          |
+| **Authors**     | Valentin Sergeev                                                                                                                      |
 
 ## Summary
 
@@ -15,11 +15,11 @@ Products running on a Polkadot Host need to submit data to three allowance-gated
 
 Three systems in the Polkadot ecosystem grant sponsored access via per-user quotas:
 
-| System | Mechanism | Persistence |
-|---|---|---|
-| Bulletin | Slot table, N slots assigned via ring-VRF proof, 2-week expiry + 2-week grace | Data deletable after grace |
-| Statement Store (SSS) | Slot table, same mechanism as Bulletin | Non-persistent; expiry irrelevant |
-| Smart Contract (SC) | PGAS token claimed anonymously via ZK proof of (lite-)personhood ring; burned on AH fee payment | Daily per-user claim budget; balance accumulates per claim, drained per tx |
+| System                | Mechanism                                                                                       | Persistence                                                                |
+| --------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| Bulletin              | Slot table, N slots assigned via ring-VRF proof, 2-week expiry + 2-week grace                   | Data deletable after grace                                                 |
+| Statement Store (SSS) | Slot table, same mechanism as Bulletin                                                          | Non-persistent; expiry irrelevant                                          |
+| Smart Contract (SC)   | PGAS token claimed anonymously via ZK proof of (lite-)personhood ring; burned on AH fee payment | Daily per-user claim budget; balance accumulates per claim, drained per tx |
 
 The common thread: users hold the entitlement, but the signing origin on the wire must hold the allowance. Products — running in a sandbox and never entrusted with private-key material — cannot manage ring-VRF proofs, slot assignment, or per-product ring membership themselves. Without a standardized path:
 
@@ -51,10 +51,10 @@ This RFC is based on the direction and decisions reached by the Host ↔ Product
 - **ProductId** — opaque identifier for a product (e.g. its dotNS identifier). The Host always knows the calling product's id and forwards it to the Account Holder on Accounts Protocol calls that require authorization to be scoped to a specific product.
 - **Product account** — account derived under a product's hierarchy `/{productId ++ perProductDerivationSecret}/{index ++ indexDerivationSecret}`. Uses soft derivation with secret components per layer, rooted at the user's root key.
 - **Allowance account** — dedicated hard-derived account `//allowance//{system}//{productId}` used solely to hold slot-table allowance for a given product and system (Bulletin or SSS). Hard-derived from the **user's root key**, not from the product subtree.
-- **Account Holder** — component that exclusively holds the user's root **private** key and authorizes resource grants. Typically the Mobile App. During the Accounts Protocol handshake it shares the user's root **public** key with the Host; the Host then derives product account public keys locally via soft derivation (with caveats around secret derivation components). Product account *private* keys are never on the Host unless AutoSigning is explicitly granted; in that case the Account Holder transfers the product subtree private key so the Host can sign locally. Allowance account private keys are similarly transferred only for explicitly granted Bulletin / SSS allowance.
+- **Account Holder** — component that exclusively holds the user's root **private** key and authorizes resource grants. Typically the Mobile App. During the Accounts Protocol handshake it shares the user's root **public** key with the Host; the Host then derives product account public keys locally via soft derivation (with caveats around secret derivation components). Product account _private_ keys are never on the Host unless AutoSigning is explicitly granted; in that case the Account Holder transfers the product subtree private key so the Host can sign locally. Allowance account private keys are similarly transferred only for explicitly granted Bulletin / SSS allowance.
 - **AutoSigning** — a capability a product can request that transfers the product's subtree private key (`/{productId ++ productDerivationSecret}`) from the Account Holder to the Host. Once granted, the Host can sign from any account in that product's subtree without round-tripping to the Account Holder. Orthogonal to slot-table allowances (see §Design decisions for why the two are nonetheless linked in the account-partitioning decision).
 - **Host** — component running products and exposing TrUAPI. Communicates with the Account Holder via the Accounts Protocol.
-- **Accounts Protocol** — Host ↔ Account Holder channel used to request user-authorized operations (including private-key sharing for allowance accounts and AutoSigning). Runs over Statement Store today; larger-payload transports (Web3RTC DataChannels, HOP) are future improvements and out of scope for this RFC. Relevant message shapes are defined inline below. Note: *SSO* in this project refers specifically to the handshake portion of the Accounts Protocol (QR-code pairing), not to the protocol as a whole.
+- **Accounts Protocol** — Host ↔ Account Holder channel used to request user-authorized operations (including private-key sharing for allowance accounts and AutoSigning). Runs over Statement Store today; larger-payload transports (Web3RTC DataChannels, HOP) are future improvements and out of scope for this RFC. Relevant message shapes are defined inline below. Note: _SSO_ in this project refers specifically to the handshake portion of the Accounts Protocol (QR-code pairing), not to the protocol as a whole.
 
 ### Bulletin allowance
 
@@ -73,7 +73,7 @@ This RFC is based on the direction and decisions reached by the Host ↔ Product
 
 ### Smart contract allowance
 
-- SC allowance is provided via **PGAS** (People Gas), a sufficient asset on Asset Hub that can pay AH execution fees and `pallet-revive` storage deposits. PGAS is claimed anonymously via a ZK proof of (lite-)personhood from the same ring used for PoP — no separate sponsorship ring is introduced — into an account of the claimant's choice. Each (lite-)person has a daily claim budget (placeholder: 100 claims/day for full personhood, 10/day for lite). See *Free transactions for PoP users* (Prior Art) for the chain-side mechanism and the trade-offs.
+- SC allowance is provided via **PGAS** (People Gas), a sufficient asset on Asset Hub that can pay AH execution fees and `pallet-revive` storage deposits. PGAS is claimed anonymously via a ZK proof of (lite-)personhood from the same ring used for PoP — no separate sponsorship ring is introduced — into an account of the claimant's choice. Each (lite-)person has a daily claim budget (placeholder: 100 claims/day for full personhood, 10/day for lite). See _Free transactions for PoP users_ (Prior Art) for the chain-side mechanism and the trade-offs.
 - No new TrUAPI call is required. SC allowance does **not** use a separate allowance account — Asset Hub transactions originate from the product account directly. During `host_sign_payload` / `host_create_transaction` for **any** Asset Hub transaction signed with a product account, the Account Holder implicitly claims one slot's worth of PGAS into that product account when it is about to pay fees and does not hold enough PGAS. This is not SC-specific — it applies to every AH tx from a product account, since PGAS is the universal fee-payment asset.
 - Products that want to eliminate the implicit-claim latency from the signing hot path can **optionally** pre-warm a specific product account by requesting `SmartContractAllowance { dest }` via `host_request_resource_allocation` — this triggers the PGAS claim up-front so later signing requires no top-up round-trip. Pre-warming is the only reason SC appears in `AllocatableResource`; the steady-state signing flow works without it.
 - The previously proposed `account_get_sponsorship_member_key` is **not** added. The PGAS claim uses the same (lite-)person ring that PoP uses, so no per-product sponsorship-ring member key is needed.
@@ -362,7 +362,7 @@ sequenceDiagram
 - Allowance keys are scoped: the `//allowance//bulletin//{productId}` path ensures a compromised product cannot impersonate another product's allowance even if the Host mishandles storage.
 - AutoSigning is the one grant that widens the Host's trust surface. The Account Holder must surface this distinctly in the authorization UI so users can differentiate "let this product submit statements" from "let this product sign arbitrary transactions as me."
 
-**Threat model.** The Host is **trusted** in this design — it caches user-authorized private keys and signs on the product's behalf. The Accounts Protocol channel between Host and Account Holder is **encrypted end-to-end**; an adversary on the wire between those two components sees neither `calling_product` nor the allocated key material. The threat boundary this RFC defends against is an **on-chain / off-chain data-plane observer** (anyone indexing Bulletin, SSS, or Asset Hub) plus a compromised product. It does *not* defend against a compromised Host or Account Holder.
+**Threat model.** The Host is **trusted** in this design — it caches user-authorized private keys and signs on the product's behalf. The Accounts Protocol channel between Host and Account Holder is **encrypted end-to-end**; an adversary on the wire between those two components sees neither `calling_product` nor the allocated key material. The threat boundary this RFC defends against is an **on-chain / off-chain data-plane observer** (anyone indexing Bulletin, SSS, or Asset Hub) plus a compromised product. It does _not_ defend against a compromised Host or Account Holder.
 
 **Privacy.** Cross-product unlinkability within the stated threat model is a primary design requirement and is upheld by the dedicated per-product allowance accounts. Each product's Bulletin / SSS submissions originate from `//allowance//{system}//{productId}`, a path hard-derived from the user's root and containing no material shared across products. An observer who obtains one product's allowance account — or even its full traffic history — cannot correlate it to any other product used by the same user: the allowance accounts are independent hard derivations, and SC fee payments land in distinct per-product accounts. Pooled or host-session-wide allowance schemes were rejected for this reason.
 
@@ -391,9 +391,9 @@ No migration is required for existing products; they continue to work without al
 
 ## Prior Art and References
 
-- Prior design document: *Host API Product Requirements* (internal PRD, v0.5, 2026-01-30).
-- [*Free transactions for PoP users*](https://docs.google.com/document/d/1bs60ZxiUP7s_c3mmIaNvknW9oBXnmje82RvjLsZaa4w/edit?usp=sharing) (George Pisaltu, under review, last updated 2026-03-13). Source for the PGAS token, daily-claim-budget mechanism, and the `pallet-resources` ZK-claim flow used by SC allowance.
-- *Smart Contract Gas Allowance for People* — context document referenced by *Free transactions for PoP users* for the W3S smart-contract use case.
+- Prior design document: _Host API Product Requirements_ (internal PRD, v0.5, 2026-01-30).
+- [_Free transactions for PoP users_](https://docs.google.com/document/d/1bs60ZxiUP7s_c3mmIaNvknW9oBXnmje82RvjLsZaa4w/edit?usp=sharing) (George Pisaltu, under review, last updated 2026-03-13). Source for the PGAS token, daily-claim-budget mechanism, and the `pallet-resources` ZK-claim flow used by SC allowance.
+- _Smart Contract Gas Allowance for People_ — context document referenced by _Free transactions for PoP users_ for the W3S smart-contract use case.
 - Rejected predecessor: the original `preimage_submit` host call, removed for lack of per-product renewal control. This RFC's Bulletin design restores submission capability while preserving the independent-grant property that motivated the removal.
 - Superseded design: an earlier draft of this RFC introduced `account_get_sponsorship_member_key(collectionId)` to support a separate proof-of-attendance ring for SC. That ring is no longer needed because PGAS claims reuse the existing (lite-)person ring; the call is dropped from this RFC.
 
@@ -406,4 +406,4 @@ No migration is required for existing products; they continue to work without al
 - **Revocation.** A follow-up RFC should define how a user revokes allowance or AutoSigning grants, and how the Host purges cached material. This includes product uninstall, explicit user action, and policy-driven revocation (e.g. inactivity).
 - **Paid allowance tier.** A separate initiative is in flight to let users buy additional allowance once their free daily / slot-based budget is exhausted. The current intent is for this to remain implicit from the product's perspective and be handled inside the Account Holder; products see no API change. `NotAvailable` retains its meaning regardless — it's returned when the resource cannot be granted under the user's current budget (free or paid), not as a signal that paid options exist.
 - **ZK-voucher authorization for SSS.** `statement_create_proof_authorized` is signatured to accept any proof allowed to submit to SSS. The current implementation uses a host-internal allowance account; a future version could accept a ZK voucher, removing the need for per-product slot accounts entirely.
-- **Unifying allowances under PGAS.** The SC allowance already uses PGAS; the long-term direction (per *Free transactions for PoP users*) is for users to claim a periodic PGAS budget and spend it on **all** system resources — Bulletin slot allowance, SSS slot allowance, AH execution / storage, etc. — collapsing the slot-table mechanisms used by Bulletin and SSS into a single token-spend model. That convergence is out of scope here.
+- **Unifying allowances under PGAS.** The SC allowance already uses PGAS; the long-term direction (per _Free transactions for PoP users_) is for users to claim a periodic PGAS budget and spend it on **all** system resources — Bulletin slot allowance, SSS slot allowance, AH execution / storage, etc. — collapsing the slot-table mechanisms used by Bulletin and SSS into a single token-spend model. That convergence is out of scope here.

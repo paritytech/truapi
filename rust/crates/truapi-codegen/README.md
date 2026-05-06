@@ -1,56 +1,48 @@
 # truapi-codegen
 
-*Code generator that reads rustdoc JSON from `truapi` and emits generated TypeScript client code plus optional Rust dispatcher glue.*
+_Code generator that reads rustdoc JSON from `truapi` and emits generated TypeScript client code._
 
 ## What this crate is for
 
-`truapi-codegen` keeps generated client and dispatcher code aligned with Rust protocol definitions.
+`truapi-codegen` keeps generated client code aligned with Rust protocol definitions.
 
 It reads rustdoc JSON, extracts TrUAPI API shape, then writes:
 
 - generated TypeScript types
 - generated TypeScript client classes
 - generated TypeScript wire table
-- optional generated Rust dispatcher registration and wire table
 
 That output looks like this in practice.
 
-Generated TypeScript client methods wrap wire method names and codecs in small domain classes:
+Generated TypeScript client methods keep the API codecs local, encode payload bytes, and hand only wire frames to the transport:
 
 ```ts
 export interface TrUApiTransport {
-  request<Request, Response>(method: string, value: Request, requestCodec: S.Codec<Request>, responseCodec: S.Codec<Response>): Promise<Response>;
+  request<Response>(params: {
+    method: string;
+    payload: Uint8Array;
+    decodeResponse: (payload: Uint8Array) => Response;
+  }): Promise<Response>;
 }
 
 export class AccountManagementClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
-  async accountGet(request: T.ProductAccountId): Promise<Result<T.Account, T.RequestCredentialsError>> {
-    return this.transport.request("host_account_get", request, T.ProductAccountId, S.result(T.Account, T.RequestCredentialsError)) as Promise<Result<T.Account, T.RequestCredentialsError>>;
+  async accountGet(
+    request: T.ProductAccountId,
+  ): Promise<Result<T.Account, T.RequestCredentialsError>> {
+    const result = await this.transport.request<
+      S.ResultPayload<T.Account, T.RequestCredentialsError>
+    >({
+      method: "host_account_get",
+      payload: T.HostAccountGetRequest.enc({ tag: "V2", value: request }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V2: [1, S.result(T.Account, T.RequestCredentialsError)] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
   }
-}
-```
-
-Optional Rust output registers the same generated wire methods against the
-server dispatcher and emits the runtime wire table used by `ProtocolMessage`
-encoding:
-
-```rust
-pub(crate) fn register<P>(dispatcher: &mut Dispatcher, host: Arc<P>)
-where
-    P: TrUApi + 'static,
-{
-    register_calls(dispatcher, host.clone());
-    register_permissions(dispatcher, host.clone());
-    register_local_storage(dispatcher, host.clone());
-    register_account(dispatcher, host.clone());
-    register_signing(dispatcher, host.clone());
-    register_chat(dispatcher, host.clone());
-    register_statement_store(dispatcher, host.clone());
-    register_preimage(dispatcher, host.clone());
-    register_payment(dispatcher, host.clone());
-    register_entropy(dispatcher, host.clone());
-    register_chain(dispatcher, host);
 }
 ```
 
@@ -60,7 +52,7 @@ The generator has three stages:
 
 1. `rustdoc` parses JSON emitted by nightly rustdoc
 2. extracted API model is normalized, including each method's `#[wire(id = N)]`
-3. generators write TypeScript and optional Rust output
+3. generators write TypeScript output
 
 Missing or duplicate wire ids fail generation. Subscription methods reserve four
 consecutive ids for `_start`, `_stop`, `_interrupt`, and `_receive`.
@@ -70,23 +62,16 @@ consecutive ids for `_start`, `_stop`, `_interrupt`, and `_receive`.
 ```bash
 cargo run -p truapi-codegen -- \
   --input target/doc/truapi.json \
-  --output js/packages/truapi-client/src/generated
-```
-
-Generate Rust dispatcher output too:
-
-```bash
-cargo run -p truapi-codegen -- \
-  --input target/doc/truapi.json \
-  --output js/packages/truapi-client/src/generated \
-  --rust-output rust/crates/truapi-server/src/generated
+  --output js/packages/truapi/src/generated \
+  --version V2 \
+  --codec-version 1
 ```
 
 ## Example workflow
 
 ```bash
 cargo +nightly rustdoc -p truapi -- -Z unstable-options --output-format json
-cargo run -p truapi-codegen -- --input target/doc/truapi.json --output js/packages/truapi-client/src/generated
+cargo run -p truapi-codegen -- --input target/doc/truapi.json --output js/packages/truapi/src/generated --version V2 --codec-version 1
 ```
 
 ## When to use it

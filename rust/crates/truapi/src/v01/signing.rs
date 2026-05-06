@@ -1,8 +1,10 @@
+use parity_scale_codec::{Decode, Encode};
+
 use super::{GenesisHash, Hex};
 
 /// Full Substrate extrinsic signing payload with all fields needed for signature
 /// generation.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct SigningPayload {
     /// Signer address (SS58 or hex).
     pub address: String,
@@ -39,7 +41,7 @@ pub struct SigningPayload {
 }
 
 /// Raw data to sign -- either binary bytes or a string message.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
 pub enum RawPayload {
     /// Raw binary data to sign.
@@ -49,7 +51,7 @@ pub enum RawPayload {
 }
 
 /// A raw signing request pairing an address with raw data.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct SigningRawPayload {
     /// Signer address.
     pub address: String,
@@ -58,7 +60,7 @@ pub struct SigningRawPayload {
 }
 
 /// Result of a signing operation.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct SigningResult {
     /// The cryptographic signature.
     pub signature: Hex,
@@ -67,7 +69,7 @@ pub struct SigningResult {
 }
 
 /// Signing operation error.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
 pub enum SigningError {
     /// Payload could not be deserialized.

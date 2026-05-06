@@ -12,17 +12,17 @@ rust/crates/
   truapi-codegen/        rustdoc JSON → TypeScript client + Rust dispatcher
   truapi-macros/         #[wire(id = N)] proc-macro
 js/packages/
-  truapi-client/         @truapi/client TS package; src/generated/ produced by truapi-codegen
+  truapi/         @parity/truapi TS package; src/generated/ produced by truapi-codegen
 playground/              Next.js interactive explorer; deploys to truapi-playground.dot
-hosts/dotli/             dotli submodule 
+hosts/dotli/             dotli submodule
 docs/                    design docs, RFCs, feature proposals
 scripts/codegen.sh       regenerate the TS client from the Rust crate
 ```
 
 ## Code style
 
-- Every `pub` Rust item (functions, methods, types, traits, modules, constants) carries a doc comment (`///` or `//!`). 
-Keep it short and focused on intent or invariants, not on what the signature already says.
+- Every `pub` Rust item (functions, methods, types, traits, modules, constants) carries a doc comment (`///` or `//!`).
+  Keep it short and focused on intent or invariants, not on what the signature already says.
 - In Rust format strings, prefer inlined variables: `"log value: {value:?}"` over `"log value: {:?}", value`.
 
 ## First-time setup
@@ -32,9 +32,9 @@ Keep it short and focused on intent or invariants, not on what the signature alr
 git submodule update --init --recursive
 
 # Build the TypeScript client (triggers tsc via `prepare`)
-( cd js/packages/truapi-client && npm install )
+( cd js/packages/truapi && npm install )
 
-# Install playground dependencies (picks up @truapi/client via the file: link)
+# Install playground dependencies (picks up @parity/truapi via the file: link)
 ( cd playground && yarn install --frozen-lockfile )
 ```
 
@@ -46,15 +46,15 @@ When the Rust trait surface changes, rerun:
 ./scripts/codegen.sh
 ```
 
-That will repopulate `js/packages/truapi-client/src/generated/`. Commit the regenerated files alongside the Rust changes.
+That will repopulate `js/packages/truapi/src/generated/`. Commit the regenerated files alongside the Rust changes.
 After regenerating, rebuild the client and refresh the playground's link copy:
 
 ```bash
-( cd js/packages/truapi-client && npm run build )
-( cd playground && rm -rf node_modules/@truapi && yarn install )
+( cd js/packages/truapi && npm run build )
+( cd playground && rm -rf node_modules/@parity && yarn install )
 ```
 
-(yarn 1.x copies `file:` deps at install time, so the playground's `node_modules/@truapi/client` is a snapshot.)
+(yarn 1.x copies `file:` deps at install time, so the playground's `node_modules/@parity/truapi` is a snapshot.)
 
 ## Local development
 
@@ -70,7 +70,7 @@ cargo test --workspace
 ### TypeScript client
 
 ```bash
-cd js/packages/truapi-client
+cd js/packages/truapi
 npm run build
 npm test                # wire-equality + wire-table-loop smoke tests
 ```

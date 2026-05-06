@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Project Is
 
-An interactive explorer for the TrUAPI — the Host API surface exposed to products running inside the Polkadot Desktop Browser webview. The app must be opened from within a Host environment; the `injectSpektrExtension()` bridge is only available in that context.
+An interactive explorer for the TrUAPI — the Host API surface exposed to products running inside the Polkadot Desktop Browser webview. The app must be opened from within a Host environment. It talks to the host over iframe `postMessage` frames or the native webview `window.__HOST_API_PORT__` MessagePort.
 
 To develop locally, run `yarn dev` and open the app via `https://dot.li/localhost:3000` inside the Desktop Host.
 
@@ -27,14 +27,14 @@ There is no test command — validation is done interactively in the app UI.
 
 ### Key Files
 
-| File | Role |
-|------|------|
-| `src/lib/services.ts` | Single source of truth for all methods: name, type, description, requestDescription, defaultRequest, noParams |
-| `src/lib/host-api-bridge.ts` | `methodMap` wires `"ServiceName/method_name"` → `[serviceField, clientMethod, isStream]` on the generated `@truapi/client`; exports `getMethodBinding`, `isMethodSupported`, `stringify` |
-| `src/lib/transport.ts` | Singleton `Provider`/`Transport`/`TrUApiClient` over iframe postMessage or webview MessagePort, using `@truapi/client` |
-| `src/components/ServiceTable.tsx` | Method browser: renders all services/methods with type badges and description |
-| `src/components/MethodView.tsx` | Per-method view: request editor, call/subscribe, response display |
-| `src/app/page.tsx` | Root: manages connection status and service/method selection state |
+| File                              | Role                                                                                                                                                                                     |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `src/lib/services.ts`             | Single source of truth for all methods: name, type, description, requestDescription, defaultRequest, noParams                                                                            |
+| `src/lib/host-api-bridge.ts`      | `methodMap` wires `"ServiceName/method_name"` → `[serviceField, clientMethod, isStream]` on the generated `@parity/truapi`; exports `getMethodBinding`, `isMethodSupported`, `stringify` |
+| `src/lib/transport.ts`            | Singleton `Provider`/`Transport`/`TrUApiClient` over iframe postMessage or webview MessagePort, using `@parity/truapi`                                                                   |
+| `src/components/ServiceTable.tsx` | Method browser: renders all services/methods with type badges and description                                                                                                            |
+| `src/components/MethodView.tsx`   | Per-method view: request editor, call/subscribe, response display                                                                                                                        |
+| `src/app/page.tsx`                | Root: manages connection status and service/method selection state                                                                                                                       |
 
 ### Adding a Method
 
@@ -49,11 +49,11 @@ Omitting step 2 is valid — the method will appear with a "Not supported" badge
 ServiceTable click → page.tsx setSelection
   → MethodView: getMethodBinding(service, method)
     → methodMap lookup → wraps client[serviceField][clientMethod] in a call or subscribe binding
-      → unary: client[svc][m](req) → { success, value } → { ok, data }
+      → unary: client[svc][m](req) → neverthrow Result → { ok, data }
       → stream: client[svc][m](req, onEvent) → Unsubscribe
 ```
 
-The generated client wraps requests in the V2 versioned envelope internally, so callers pass the inner request value directly. Multi-parameter methods (e.g. `accountCreateProof(productAccountId, ringLocation, context)`) take the request as a JSON array.
+The generated client wraps requests in the package's generated TrUAPI version envelope, so callers pass the inner request value directly. Multi-field methods take a single request object matching the generated inner type.
 
 ### noParams Flag
 
@@ -61,6 +61,6 @@ Methods that take no parameters should set `noParams: true` in `services.ts`. Th
 
 ### Transport
 
-`transport.ts` auto-detects environment (iframe vs webview) and exposes singletons `getTransport()` and `getClient()`. The first call to `subscribeConnectionStatus()` triggers a `host_handshake(1)` round-trip. Never create multiple transport or client instances.
+`transport.ts` auto-detects environment (iframe vs webview) and exposes singletons `getTransport()` and `getClient()`. The first call to `subscribeConnectionStatus()` triggers a generated `host_handshake` round-trip. The generated package owns both `TRUAPI_VERSION` and `TRUAPI_CODEC_VERSION`, so callers do not pass the codec version manually. Never create multiple transport or client instances.
 
-In iframe mode the playground talks to its parent window via `postMessage` carrying SCALE-encoded `Uint8Array` frames. In webview mode it pulls a `MessagePort` from `window.__HOST_API_PORT__` (set by the native host) and uses `createMessagePortProvider`.
+In iframe mode the playground talks to its parent window via `postMessage` carrying SCALE-encoded `Uint8Array` frames. In webview mode it pulls a `MessagePort` from `window.__HOST_API_PORT__` (set by the native host) and uses `createMessagePortProvider`. The shared `@parity/truapi` transport also answers inbound `host_handshake_request` frames automatically by decoding the inbound versioned wrapper and encoding the matching `HostHandshakeResponse` variant, so V2 hosts receive V2 responses while V1 hosts remain decodable.

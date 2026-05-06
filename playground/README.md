@@ -1,12 +1,10 @@
 # TrUAPI Playground
 
-An interactive explorer for the [TrUAPI](https://paritytech.github.io/truapi-explorer/v/0.2/), the API surface exposed to products running inside the Polkadot Desktop Browser webview.
+An interactive explorer for the TrUAPI, the API surface exposed to products running inside the Polkadot Desktop Browser webview.
 
 Browse all available methods, read their descriptions, edit request payloads, and call or subscribe to them directly from the browser.
 
-**Live app:** [https://truapi-playground.dot.li/](https://truapi-playground.dot.li/) 
-
-
+**Live app:** [https://truapi-playground.dot.li/](https://truapi-playground.dot.li/)
 
 ### Local Development
 
@@ -25,13 +23,11 @@ https://dot.li/localhost:3000
 
 ## Features
 
-- Browse all TrUAPI methods from the [TrUAPI Explorer docs](https://paritytech.github.io/truapi-explorer/v/0.2/method/host_account_create_proof) grouped by category
+- Browse all configured TrUAPI methods grouped by category
 - Each method shows its description and type badge (Request / Response or Subscription)
 - Methods not yet wired to a binding are marked as "Not supported"
 - Auto-test view that executes every wired method and reports pass/fail results
-- Descriptions and request type hints sourced 
-
-
+- Descriptions and request type hints sourced
 
 ## Adding a New Method
 
@@ -59,8 +55,9 @@ npm install -g bulletin-deploy
 
 ```bash
 yarn install --frozen-lockfile
-yarn build 
+yarn build
 ```
+
 The build output will be located at `./out`
 
 2. Publish `out/` to the `truapi-playground.dot` DotNS name:
@@ -78,4 +75,3 @@ A `deploy:test` script is provided for quick iteration against the same DotNS na
 ```bash
 yarn deploy:test
 ```
-

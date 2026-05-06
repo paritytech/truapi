@@ -303,11 +303,11 @@ enum EmissionKind {
 }
 
 impl MethodEmission {
-    /// Wire-compat: responses and subscription items are encoded as the full
-    /// versioned wrapper (variant byte + inner). The dispatcher emits an
-    /// identity unwrap so the wrapper round-trips through the wire codec; the
-    /// closure's `resp: Wrapper` annotation also keeps the wrapper import
-    /// referenced (avoids `#[allow(unused_imports)]`).
+    /// Wire-compat: request payloads and subscription items are full versioned
+    /// wrappers (variant byte + inner). Request responses are returned to the
+    /// runtime as wrapper values so it can encode `Versioned<Result<Ok, Err>>`
+    /// for the negotiated version. The closure's `resp: Wrapper` annotation also
+    /// keeps the wrapper import referenced (avoids `#[allow(unused_imports)]`).
     fn build(method: &MethodDef, wrappers: &HashSet<String>) -> Result<Self> {
         let mut used_wrappers = Vec::new();
 
@@ -326,10 +326,10 @@ impl MethodEmission {
         }
 
         // Wire compatibility note: the versioned wrapper variant byte is part of
-        // the SCALE-encoded wire payload (matches Novasama's `Enum({v1: ...})`
-        // shape). The dispatcher therefore decodes/encodes the full wrapper
-        // type, with no destructuring at the wire boundary. Variant unwrap
-        // happens inside the trait impl (e.g. `let Wrapper::V2(inner) = req`).
+        // the SCALE-encoded request payload (matches Novasama's `Enum({v1: ...})`
+        // shape). The dispatcher therefore decodes the full request wrapper, with
+        // no destructuring at the wire boundary. Variant unwrap happens inside the
+        // trait impl (e.g. `let Wrapper::V2(inner) = req`).
         let (param_destructure, param_type, call_site) = match &request_wrapper {
             Some(wrapper_name) => (
                 "request".to_string(),
@@ -651,7 +651,7 @@ fn write_imports(out: &mut String, modules: &[ModuleEmission]) {
     writeln!(out).unwrap();
     writeln!(out, "use futures::future::FutureExt;").unwrap();
     writeln!(out, "use futures::StreamExt;").unwrap();
-    writeln!(out, "use truapi::traits::TrUApi;").unwrap();
+    writeln!(out, "use truapi::api::TrUApi;").unwrap();
 
     for (module, items) in &wrappers_by_module {
         if items.is_empty() {

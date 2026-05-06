@@ -7,7 +7,7 @@ This repository is the single source of truth for the protocol:
 - **`rust/crates/truapi/`** — Rust trait and type definitions for protocol versions v0.1 and v0.2.
 - **`rust/crates/truapi-codegen/`** — code generator that turns rustdoc JSON into the TypeScript client.
 - **`rust/crates/truapi-macros/`** — proc-macro for `#[wire(id = N)]` annotations.
-- **`js/packages/truapi-client/`** — the typed TypeScript client (`@truapi/client`), with `src/generated/` produced by `truapi-codegen`.
+- **`js/packages/truapi/`** — the typed TypeScript client (`@parity/truapi`), with `src/generated/` produced by `truapi-codegen`.
 - **`playground/`** — interactive Next.js explorer/playground for the protocol, deployed to [`truapi-playground.dot`](https://truapi-playground.dot.li/).
 
 ## Layout
@@ -18,7 +18,7 @@ rust/crates/
   truapi-codegen/        rustdoc JSON → TS client + Rust dispatcher
   truapi-macros/         #[wire(id = N)] proc-macro
 js/packages/
-  truapi-client/         @truapi/client TS package
+  truapi/         @parity/truapi TS package
 playground/              Next.js interactive playground
 docs/                    design docs, RFCs, feature proposals
 scripts/codegen.sh       regenerate the TS client from the Rust crate
@@ -36,7 +36,7 @@ Under the hood this runs:
 cargo +nightly rustdoc -p truapi -- -Z unstable-options --output-format json
 cargo run -p truapi-codegen -- \
   --input target/doc/truapi.json \
-  --output js/packages/truapi-client/src/generated
+  --output js/packages/truapi/src/generated
 ```
 
 Commit the regenerated `src/generated/` alongside the Rust changes.
@@ -55,7 +55,7 @@ cargo test --workspace
 ### TypeScript client
 
 ```bash
-cd js/packages/truapi-client
+cd js/packages/truapi
 npm install
 npm run build
 npm test

@@ -1,4 +1,6 @@
-use super::Bytes;
+use parity_scale_codec::{Decode, Encode};
+
+use super::{Bytes, ProductAccountId};
 
 /// 32-byte topic identifier.
 pub type Topic = [u8; 32];
@@ -10,7 +12,7 @@ pub type Channel = [u8; 32];
 pub type DecryptionKey = [u8; 32];
 
 /// Cryptographic proof for a statement.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
 pub enum StatementProof {
     /// Sr25519 signature proof.
@@ -41,7 +43,7 @@ pub enum StatementProof {
 }
 
 /// A statement with optional proof and metadata.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct Statement {
     /// Optional cryptographic proof.
     pub proof: Option<StatementProof>,
@@ -58,7 +60,7 @@ pub struct Statement {
 }
 
 /// A statement with a required (not optional) proof.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct SignedStatement {
     /// Required cryptographic proof.
     pub proof: StatementProof,
@@ -74,8 +76,17 @@ pub struct SignedStatement {
     pub data: Option<Bytes>,
 }
 
+/// Request to create a cryptographic proof for a statement.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
+pub struct StatementStoreCreateProofRequest {
+    /// Product account that should create the proof.
+    pub product_account_id: ProductAccountId,
+    /// Statement to prove.
+    pub statement: Statement,
+}
+
 /// Statement proof creation error.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
 pub enum StatementProofError {
     /// Signing operation failed.

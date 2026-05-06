@@ -1,6 +1,6 @@
 //! TypeScript code generation from extracted API definitions.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Write;
 use std::fs;
 use std::path::Path;
@@ -15,19 +15,20 @@ struct CodecContext {
 }
 
 /// A versioned enum wrapper like `enum HostSignPayloadRequest { V2(Inner) }`,
-/// `enum HostCreateTransactionRequest { V2 { product_account_id, payload } }`,
+/// `enum HostCreateTransactionRequest { V2(CreateTransactionRequest) }`,
 /// or a multi-version enum `enum HostDevicePermissionRequest { V1(_), V2(_) }`.
 ///
-/// The client generator unwraps the **earliest** version at the method
-/// boundary so the wire payload is decodable by legacy hosts that only
-/// register the `v1` variant of each method (e.g. dotli, which ships
-/// `@novasamatech/host-api@0.6.x`). Newer hosts that know multiple variants
-/// still accept V1 because every wrapper keeps `V1` as `#[codec(index = 0)]`.
+/// The client generator selects the latest wrapper variant up to its target
+/// protocol version, so a V2 package emits V2 wire payloads when available and
+/// falls back to V1 for wrappers whose shape did not change.
 #[derive(Debug, Clone)]
 struct VersionedWrapper {
-    /// `V<N>` variant the client emits on outbound requests and expects on
-    /// inbound responses.
-    variant: String,
+    variants: BTreeMap<u32, VersionedWrapperVariant>,
+}
+
+#[derive(Debug, Clone)]
+struct VersionedWrapperVariant {
+    version: u32,
     kind: VersionedKind,
 }
 
@@ -35,7 +36,6 @@ struct VersionedWrapper {
 enum VersionedKind {
     Unit,
     Tuple(TypeRef),
-    Struct(Vec<FieldDef>),
 }
 
 fn detect_versioned_wrapper(ty: &TypeDef) -> Option<VersionedWrapper> {
@@ -48,22 +48,21 @@ fn detect_versioned_wrapper(ty: &TypeDef) -> Option<VersionedWrapper> {
     if variants.is_empty() || !variants.iter().all(|v| is_versioned_variant_name(&v.name)) {
         return None;
     }
-    // Pick the lowest V<N> as the client-facing variant (V1 if present,
-    // otherwise the lowest declared). This keeps the wire decodable by
-    // legacy hosts that only know V1; newer hosts still accept V1 because
-    // it remains at `#[codec(index = 0)]` in every wrapper.
-    let chosen = variants
-        .iter()
-        .min_by_key(|v| version_number(&v.name).unwrap_or(u32::MAX))?;
-    let kind = match &chosen.fields {
-        VariantFields::Unit => VersionedKind::Unit,
-        VariantFields::Unnamed(types) if types.len() == 1 => VersionedKind::Tuple(types[0].clone()),
-        VariantFields::Named(fields) => VersionedKind::Struct(fields.clone()),
-        _ => return None,
-    };
+    let mut version_variants = BTreeMap::new();
+    for variant in variants {
+        let version = version_number(&variant.name)?;
+        let kind = match &variant.fields {
+            VariantFields::Unit => VersionedKind::Unit,
+            VariantFields::Unnamed(types) if types.len() == 1 => {
+                VersionedKind::Tuple(types[0].clone())
+            }
+            _ => return None,
+        };
+        version_variants.insert(version, VersionedWrapperVariant { version, kind });
+    }
+
     Some(VersionedWrapper {
-        variant: chosen.name.clone(),
-        kind,
+        variants: version_variants,
     })
 }
 
@@ -84,6 +83,28 @@ fn collect_versioned_wrappers(api: &ApiDefinition) -> HashMap<String, VersionedW
         .iter()
         .filter_map(|ty| detect_versioned_wrapper(ty).map(|w| (ty.name.clone(), w)))
         .collect()
+}
+
+fn validate_versioned_wrapper_shapes(api: &ApiDefinition) -> Result<()> {
+    for ty in &api.types {
+        let TypeDefKind::Enum(variants) = &ty.kind else {
+            continue;
+        };
+        if variants.is_empty() || !variants.iter().all(|v| is_versioned_variant_name(&v.name)) {
+            continue;
+        }
+        for variant in variants {
+            if matches!(variant.fields, VariantFields::Named(_)) {
+                bail!(
+                    "versioned wrapper `{}` variant `{}` uses named fields; define a request/response struct in the v0x module and wrap it as `{}`(v0x::MyStruct)",
+                    ty.name,
+                    variant.name,
+                    variant.name
+                );
+            }
+        }
+    }
+    Ok(())
 }
 
 fn versioned_wrapper_for<'a>(
@@ -138,23 +159,237 @@ fn write_jsdoc(out: &mut String, indent: &str, docs: Option<&str>) {
 
 /// Generates the TypeScript client, types, and barrel files for an extracted
 /// API definition into `output_dir`.
-pub fn generate(api: &ApiDefinition, output_dir: &str) -> Result<()> {
+pub fn generate(
+    api: &ApiDefinition,
+    output_dir: &str,
+    target_version: u32,
+    codec_version: u8,
+) -> Result<()> {
     fs::create_dir_all(output_dir)?;
+    validate_versioned_wrapper_shapes(api)?;
 
     let types_code = generate_types(api)?;
     fs::write(Path::new(output_dir).join("types.ts"), types_code)?;
 
-    let client_code = generate_client(api)?;
+    let client_code = generate_client(api, target_version, codec_version)?;
     fs::write(Path::new(output_dir).join("client.ts"), client_code)?;
 
     let index_code = generate_index();
     fs::write(Path::new(output_dir).join("index.ts"), index_code)?;
+
+    let wire_table_code = generate_wire_table(api, target_version)?;
+    fs::write(Path::new(output_dir).join("wire-table.ts"), wire_table_code)?;
 
     Ok(())
 }
 
 fn generate_index() -> String {
     "export * from './types.js';\nexport * from './client.js';\n".to_string()
+}
+
+fn generate_wire_table(api: &ApiDefinition, target_version: u32) -> Result<String> {
+    let wrappers = collect_versioned_wrappers(api);
+    let mut entries: Vec<(u8, String)> = Vec::new();
+    let mut seen: BTreeMap<u8, String> = BTreeMap::new();
+
+    for trait_def in &api.traits {
+        for method in &trait_def.methods {
+            if !method_is_included(trait_def, method, &wrappers, target_version)? {
+                continue;
+            }
+            let base = method.wire_id.expect("validated by method_is_included");
+            let suffixes: &[&str] = match method.kind {
+                MethodKind::Request => &["request", "response"],
+                MethodKind::Subscription | MethodKind::ResultSubscription => {
+                    &["start", "stop", "interrupt", "receive"]
+                }
+            };
+            for (offset, suffix) in suffixes.iter().enumerate() {
+                let id = base.checked_add(offset as u8).ok_or_else(|| {
+                    anyhow::anyhow!("wire id overflow on `{}` (base {})", method.name, base)
+                })?;
+                let tag = format!("{}_{}", method.name, suffix);
+                if let Some(existing) = seen.insert(id, tag.clone()) {
+                    bail!(
+                        "wire id {} reused: `{}` and `{}` collide",
+                        id,
+                        existing,
+                        tag
+                    );
+                }
+                entries.push((id, tag));
+            }
+        }
+    }
+
+    entries.sort_by_key(|(id, _)| *id);
+
+    let mut out = String::new();
+    writeln!(out, "// Auto-generated by truapi-codegen. Do not edit.").unwrap();
+    writeln!(out, "//").unwrap();
+    writeln!(
+        out,
+        "// Wire-protocol discriminant table. Pairs (id, tag) where tag is `<method>_<suffix>`,"
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "// suffix in {{request, response, start, stop, interrupt, receive}}."
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "// Method ordering is part of the wire protocol; only ever append."
+    )
+    .unwrap();
+    writeln!(out).unwrap();
+    writeln!(
+        out,
+        "/** Sorted (id, tag) pairs. Mirrors Rust `WIRE_TABLE` exactly. */"
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "export const WIRE_TABLE: ReadonlyArray<readonly [number, string]> = ["
+    )
+    .unwrap();
+    for (id, tag) in &entries {
+        writeln!(out, "  [{}, '{}'],", id, tag).unwrap();
+    }
+    writeln!(out, "];").unwrap();
+    writeln!(out).unwrap();
+    writeln!(out, "const ID_BY_TAG: Map<string, number> = new Map(").unwrap();
+    writeln!(out, "  WIRE_TABLE.map(([id, tag]) => [tag, id]),").unwrap();
+    writeln!(out, ");").unwrap();
+    writeln!(out, "const TAG_BY_ID: Map<number, string> = new Map(").unwrap();
+    writeln!(out, "  WIRE_TABLE.map(([id, tag]) => [id, tag]),").unwrap();
+    writeln!(out, ");").unwrap();
+    writeln!(out).unwrap();
+    writeln!(out, "/** Lookup discriminant for a tag string. */").unwrap();
+    writeln!(
+        out,
+        "export function idForTag(tag: string): number | undefined {{"
+    )
+    .unwrap();
+    writeln!(out, "  return ID_BY_TAG.get(tag);").unwrap();
+    writeln!(out, "}}").unwrap();
+    writeln!(out).unwrap();
+    writeln!(out, "/** Lookup tag for a discriminant. */").unwrap();
+    writeln!(
+        out,
+        "export function tagForId(id: number): string | undefined {{"
+    )
+    .unwrap();
+    writeln!(out, "  return TAG_BY_ID.get(id);").unwrap();
+    writeln!(out, "}}").unwrap();
+
+    Ok(out)
+}
+
+fn method_is_included(
+    trait_def: &TraitDef,
+    method: &MethodDef,
+    wrappers: &HashMap<String, VersionedWrapper>,
+    target_version: u32,
+) -> Result<bool> {
+    if method.wire_id.is_none() {
+        bail!(
+            "method `{}::{}` is missing #[wire(id = N)] annotation",
+            trait_def.name,
+            method.name
+        );
+    };
+
+    let wrapper_names = method_versioned_wrappers(method, wrappers);
+    Ok(
+        wrapper_names.is_empty()
+            || method_wire_version(method, wrappers, target_version)?.is_some(),
+    )
+}
+
+fn method_wire_version(
+    method: &MethodDef,
+    wrappers: &HashMap<String, VersionedWrapper>,
+    target_version: u32,
+) -> Result<Option<u32>> {
+    let wrapper_names = method_versioned_wrappers(method, wrappers);
+    if wrapper_names.is_empty() {
+        return Ok(None);
+    }
+
+    let mut candidates: Option<Vec<u32>> = None;
+    for wrapper_name in wrapper_names {
+        let wrapper = wrappers
+            .get(&wrapper_name)
+            .expect("method_versioned_wrappers only returns known wrappers");
+        let versions = wrapper
+            .variants
+            .keys()
+            .filter(|version| **version <= target_version)
+            .copied()
+            .collect::<Vec<_>>();
+        candidates = Some(match candidates {
+            Some(current) => current
+                .into_iter()
+                .filter(|version| versions.contains(version))
+                .collect(),
+            None => versions,
+        });
+    }
+
+    Ok(candidates.and_then(|versions| versions.into_iter().max()))
+}
+
+fn method_versioned_wrappers(
+    method: &MethodDef,
+    wrappers: &HashMap<String, VersionedWrapper>,
+) -> Vec<String> {
+    let mut names = Vec::new();
+    for param in &method.params {
+        collect_type_versioned_wrappers(&param.type_ref, wrappers, &mut names);
+    }
+    match &method.return_type {
+        ReturnType::Result { ok, err } => {
+            collect_type_versioned_wrappers(ok, wrappers, &mut names);
+            collect_type_versioned_wrappers(err, wrappers, &mut names);
+        }
+        ReturnType::Subscription(item) => {
+            collect_type_versioned_wrappers(item, wrappers, &mut names);
+        }
+        ReturnType::ResultSubscription { item, err } => {
+            collect_type_versioned_wrappers(item, wrappers, &mut names);
+            collect_type_versioned_wrappers(err, wrappers, &mut names);
+        }
+    }
+    names.sort();
+    names.dedup();
+    names
+}
+
+fn collect_type_versioned_wrappers(
+    ty: &TypeRef,
+    wrappers: &HashMap<String, VersionedWrapper>,
+    names: &mut Vec<String>,
+) {
+    match ty {
+        TypeRef::Named { name, args } => {
+            if args.is_empty() && wrappers.contains_key(name) {
+                names.push(name.clone());
+            }
+            for arg in args {
+                collect_type_versioned_wrappers(arg, wrappers, names);
+            }
+        }
+        TypeRef::Vec(inner) | TypeRef::Option(inner) | TypeRef::Array(inner, _) => {
+            collect_type_versioned_wrappers(inner, wrappers, names);
+        }
+        TypeRef::Tuple(items) => {
+            for item in items {
+                collect_type_versioned_wrappers(item, wrappers, names);
+            }
+        }
+        TypeRef::Primitive(_) | TypeRef::Generic(_) | TypeRef::Unit => {}
+    }
 }
 
 fn generate_types(api: &ApiDefinition) -> Result<String> {
@@ -174,38 +409,35 @@ fn generate_types(api: &ApiDefinition) -> Result<String> {
     Ok(out)
 }
 
-fn generate_client(api: &ApiDefinition) -> Result<String> {
+fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) -> Result<String> {
+    validate_versioned_wrapper_shapes(api)?;
+
     let mut out = String::new();
     writeln!(out, "// Auto-generated by truapi-codegen. Do not edit.").unwrap();
     writeln!(out).unwrap();
+    writeln!(out, "import {{ err, ok, type Result }} from 'neverthrow';").unwrap();
     writeln!(out, "import * as S from '../scale.js';").unwrap();
+    writeln!(
+        out,
+        "import type {{ SubscribeCallbacks, Subscription, TrUApiTransport }} from '../transport.js';"
+    )
+    .unwrap();
     writeln!(out, "import * as T from './types.js';").unwrap();
     writeln!(out).unwrap();
-    writeln!(out, "export type Result<V, E> =").unwrap();
-    writeln!(out, "  | {{ success: true; value: V }}").unwrap();
-    writeln!(out, "  | {{ success: false; value: E }};").unwrap();
-    writeln!(out).unwrap();
+    writeln!(out, "export {{ Result }};").unwrap();
+    writeln!(out, "export type {{ Subscription, TrUApiTransport }};").unwrap();
     writeln!(
         out,
-        "function mapResult<V, U, E>(result: Result<V, E>, map: (value: V) => U): Result<U, E> {{"
+        "export const TRUAPI_VERSION = {} as const;",
+        target_version
     )
     .unwrap();
     writeln!(
         out,
-        "  return result.success ? {{ success: true, value: map(result.value) }} : result;"
+        "export const TRUAPI_CODEC_VERSION = {} as const;",
+        codec_version
     )
     .unwrap();
-    writeln!(out, "}}").unwrap();
-    writeln!(out).unwrap();
-    writeln!(out, "export interface Subscription {{").unwrap();
-    writeln!(out, "  unsubscribe: () => void;").unwrap();
-    writeln!(out, "  subscriptionId: string;").unwrap();
-    writeln!(out, "}}").unwrap();
-    writeln!(out).unwrap();
-    writeln!(out, "export interface TrUApiTransport {{").unwrap();
-    writeln!(out, "  request<Request, Response>(method: string, value: Request, requestCodec: S.Codec<Request>, responseCodec: S.Codec<Response>): Promise<Response>;").unwrap();
-    writeln!(out, "  subscribe<Start, Item, Interrupt = never>(method: string, value: Start, startCodec: S.Codec<Start>, itemCodec: S.Codec<Item>, callback: (data: Item) => void, interruptCodec?: S.Codec<Interrupt>, onInterrupt?: (data: Interrupt) => void): Subscription;").unwrap();
-    writeln!(out, "}}").unwrap();
     writeln!(out).unwrap();
 
     let ctx = CodecContext::default();
@@ -213,6 +445,10 @@ fn generate_client(api: &ApiDefinition) -> Result<String> {
 
     for trait_def in &api.traits {
         if trait_def.name == "TrUApi" {
+            continue;
+        }
+        let methods = included_methods(trait_def, &wrappers, target_version)?;
+        if methods.is_empty() {
             continue;
         }
 
@@ -225,8 +461,8 @@ fn generate_client(api: &ApiDefinition) -> Result<String> {
         .unwrap();
         writeln!(out).unwrap();
 
-        for method in &trait_def.methods {
-            emit_method(&mut out, method, &wrappers, &ctx)?;
+        for method in methods {
+            emit_method(&mut out, method, &wrappers, &ctx, target_version)?;
             writeln!(out).unwrap();
         }
 
@@ -237,6 +473,9 @@ fn generate_client(api: &ApiDefinition) -> Result<String> {
     writeln!(out, "export interface TrUApiClient {{").unwrap();
     for trait_def in &api.traits {
         if trait_def.name == "TrUApi" {
+            continue;
+        }
+        if included_methods(trait_def, &wrappers, target_version)?.is_empty() {
             continue;
         }
         let field = to_camel_case(&trait_def.name);
@@ -261,6 +500,9 @@ fn generate_client(api: &ApiDefinition) -> Result<String> {
         if trait_def.name == "TrUApi" {
             continue;
         }
+        if included_methods(trait_def, &wrappers, target_version)?.is_empty() {
+            continue;
+        }
         let field = to_camel_case(&trait_def.name);
         writeln!(
             out,
@@ -275,20 +517,70 @@ fn generate_client(api: &ApiDefinition) -> Result<String> {
     Ok(out)
 }
 
-/// Lowered method payload: the TS param list, the value expression passed to
-/// the transport, and the codec used to encode it. The public method
-/// signature stays ergonomic (inner v02 types), while the actual wire payload
-/// is the versioned wrapper expected by the Rust dispatcher.
+fn included_methods<'a>(
+    trait_def: &'a TraitDef,
+    wrappers: &HashMap<String, VersionedWrapper>,
+    target_version: u32,
+) -> Result<Vec<&'a MethodDef>> {
+    trait_def
+        .methods
+        .iter()
+        .filter_map(|method| {
+            match method_is_included(trait_def, method, wrappers, target_version) {
+                Ok(true) => Some(Ok(method)),
+                Ok(false) => None,
+                Err(err) => Some(Err(err)),
+            }
+        })
+        .collect()
+}
+
+fn write_payload_field(
+    out: &mut String,
+    indent: &str,
+    codec_expr: &str,
+    wire_version: Option<u32>,
+    value_expr: &str,
+) {
+    if let Some(version) = wire_version {
+        writeln!(
+            out,
+            "{}payload: {}.enc({{ tag: \"V{}\", value: {} }}),",
+            indent, codec_expr, version, value_expr
+        )
+        .unwrap();
+    } else {
+        writeln!(
+            out,
+            "{}payload: {}.enc({}),",
+            indent, codec_expr, value_expr
+        )
+        .unwrap();
+    }
+}
+
+/// Lowered method payload: the TS param list, the inner value expression, and
+/// the wire codec/version used by the generated client to produce payload
+/// bytes. The public method signature stays ergonomic (inner version types),
+/// while the generated client owns versioned wrapper encoding.
 struct PayloadEmission {
+    /// Comma-separated `name: Type` entries used as the body of the user-facing
+    /// object argument type. Empty when the method takes no input.
     param_list: String,
-    payload_expr: String,
-    payload_codec: String,
+    /// Local names destructured in the method signature and referenced by
+    /// `value_expr`.
+    param_names: Vec<String>,
+    inner_type_ts: String,
+    value_expr: String,
+    wire_codec_expr: String,
+    wire_version: Option<u32>,
 }
 
 fn emit_payload(
     params: &[ParamDef],
     wrappers: &HashMap<String, VersionedWrapper>,
     ctx: &CodecContext,
+    wire_version: Option<u32>,
 ) -> Result<PayloadEmission> {
     // The unified contract always takes a single versioned-wrapper arg. On the
     // TS side callers pass the inner value directly, but we re-wrap before
@@ -298,105 +590,117 @@ fn emit_payload(
     if params.len() == 1 {
         if let Some((wrapper_name, wrapper)) = versioned_wrapper_for(&params[0].type_ref, wrappers)
         {
+            let version = wire_version.ok_or_else(|| {
+                anyhow::anyhow!("versioned wrapper `{wrapper_name}` has no selected wire version")
+            })?;
+            let wrapper = wrapper.variants.get(&version).ok_or_else(|| {
+                anyhow::anyhow!("versioned wrapper `{wrapper_name}` has no V{version} variant")
+            })?;
             return match &wrapper.kind {
                 VersionedKind::Unit => Ok(PayloadEmission {
                     param_list: String::new(),
-                    payload_expr: format!(
-                        "({{ tag: \"{}\", value: undefined }} as T.{})",
-                        wrapper.variant, wrapper_name
-                    ),
-                    payload_codec: format!("T.{}", wrapper_name),
+                    param_names: Vec::new(),
+                    inner_type_ts: "undefined".to_string(),
+                    value_expr: "undefined".to_string(),
+                    wire_codec_expr: format!("T.{}", wrapper_name),
+                    wire_version: Some(wrapper.version),
                 }),
                 VersionedKind::Tuple(inner) => {
-                    let arg_name = param_name(&params[0].name);
                     let inner_ts = ts_type_qualified(inner)?;
                     Ok(PayloadEmission {
-                        param_list: format!("{}: {}", arg_name, inner_ts),
-                        payload_expr: format!(
-                            "({{ tag: \"{}\", value: {} }} as T.{})",
-                            wrapper.variant, arg_name, wrapper_name
-                        ),
-                        payload_codec: format!("T.{}", wrapper_name),
-                    })
-                }
-                VersionedKind::Struct(fields) => {
-                    let mut param_parts = Vec::new();
-                    let mut value_parts = Vec::new();
-                    for field in fields {
-                        let (ts_name, optional) = ts_field_name(&field.name, &field.type_ref);
-                        let arg = param_name(&field.name);
-                        let ty_ts = if optional {
-                            ts_inner_option_with_named(&field.type_ref, true)?
-                        } else {
-                            ts_type_with_named(&field.type_ref, true)?
-                        };
-                        let suffix = if optional { "?" } else { "" };
-                        param_parts.push(format!("{}{}: {}", arg, suffix, ty_ts));
-                        if arg == ts_name {
-                            value_parts.push(arg.clone());
-                        } else {
-                            value_parts.push(format!("{}: {}", ts_name, arg));
-                        }
-                    }
-                    Ok(PayloadEmission {
-                        param_list: param_parts.join(", "),
-                        payload_expr: format!(
-                            "({{ tag: \"{}\", value: {{ {} }} }} as T.{})",
-                            wrapper.variant,
-                            value_parts.join(", "),
-                            wrapper_name
-                        ),
-                        payload_codec: format!("T.{}", wrapper_name),
+                        param_list: format!("request: {}", inner_ts),
+                        param_names: vec!["request".to_string()],
+                        inner_type_ts: inner_ts,
+                        value_expr: "request".to_string(),
+                        wire_codec_expr: format!("T.{}", wrapper_name),
+                        wire_version: Some(wrapper.version),
                     })
                 }
             };
         }
     }
 
+    let inner_type_ts = payload_type(params)?;
+    let has_request = !params.is_empty();
     Ok(PayloadEmission {
-        param_list: ts_param_list(params)?,
-        payload_expr: payload_expression(params)?,
-        payload_codec: method_payload_codec_expr(params, true, ctx)?,
+        param_list: if has_request {
+            format!("request: {}", inner_type_ts)
+        } else {
+            String::new()
+        },
+        param_names: if has_request {
+            vec!["request".to_string()]
+        } else {
+            Vec::new()
+        },
+        inner_type_ts: inner_type_ts.clone(),
+        value_expr: if has_request {
+            "request".to_string()
+        } else {
+            "undefined".to_string()
+        },
+        wire_codec_expr: method_payload_codec_expr(params, true, ctx)?,
+        wire_version: None,
     })
 }
 
 /// Response shape after the versioned wrapper is stripped. TS callers see the
-/// inner type, while the wire decoder consumes the full versioned wrapper.
+/// inner type; request responses decode `Versioned<Result<Ok, Err>>`, while
+/// subscription items still decode the full versioned item wrapper.
+#[derive(Clone)]
 struct ResponseEmission {
     inner_type_ts: String,
     wire_type_ts: String,
     wire_codec_expr: String,
-    unwrap_expr: String,
+    inner_codec_expr: String,
+}
+
+fn versioned_value_cast(wire_type: &str, inner_type: &str, version: u32) -> String {
+    format!(
+        "{{ tag: \"V{}\"; value: {} }} & {}",
+        version, inner_type, wire_type
+    )
+}
+
+fn versioned_value_expr(
+    value_expr: &str,
+    wire_type: &str,
+    inner_type: &str,
+    version: u32,
+) -> String {
+    format!(
+        "({} as {}).value",
+        value_expr,
+        versioned_value_cast(wire_type, inner_type, version)
+    )
 }
 
 fn emit_response(
     ty: &TypeRef,
     wrappers: &HashMap<String, VersionedWrapper>,
     ctx: &CodecContext,
+    wire_version: Option<u32>,
 ) -> Result<ResponseEmission> {
     if let Some((wrapper_name, wrapper)) = versioned_wrapper_for(ty, wrappers) {
+        let version = wire_version.ok_or_else(|| {
+            anyhow::anyhow!("versioned wrapper `{wrapper_name}` has no selected wire version")
+        })?;
+        let wrapper = wrapper.variants.get(&version).ok_or_else(|| {
+            anyhow::anyhow!("versioned wrapper `{wrapper_name}` has no V{version} variant")
+        })?;
         return match &wrapper.kind {
             VersionedKind::Unit => Ok(ResponseEmission {
                 inner_type_ts: "undefined".to_string(),
                 wire_type_ts: format!("T.{}", wrapper_name),
                 wire_codec_expr: format!("T.{}", wrapper_name),
-                unwrap_expr: "(value) => value.value".to_string(),
+                inner_codec_expr: "S.unit".to_string(),
             }),
             VersionedKind::Tuple(inner) => Ok(ResponseEmission {
                 inner_type_ts: ts_type_qualified(inner)?,
                 wire_type_ts: format!("T.{}", wrapper_name),
                 wire_codec_expr: format!("T.{}", wrapper_name),
-                unwrap_expr: "(value) => value.value".to_string(),
+                inner_codec_expr: codec_expr(inner, true, ctx)?,
             }),
-            VersionedKind::Struct(fields) => {
-                let inline_ty = inline_object_type(fields, true)?;
-                Ok(ResponseEmission {
-                    inner_type_ts: inline_ty,
-                    wire_type_ts: format!("T.{}", wrapper_name),
-                    wire_codec_expr: format!("T.{}", wrapper_name),
-                    unwrap_expr: "(value) => value.value".to_string(),
-                })
-            }
         };
     }
 
@@ -404,8 +708,36 @@ fn emit_response(
         inner_type_ts: ts_type_qualified(ty)?,
         wire_type_ts: ts_type_qualified(ty)?,
         wire_codec_expr: codec_expr(ty, true, ctx)?,
-        unwrap_expr: "(value) => value".to_string(),
+        inner_codec_expr: codec_expr(ty, true, ctx)?,
     })
+}
+
+fn versioned_kind_codec_expr(
+    kind: &VersionedKind,
+    qualified: bool,
+    ctx: &CodecContext,
+) -> Result<String> {
+    match kind {
+        VersionedKind::Unit => Ok("S.unit".to_string()),
+        VersionedKind::Tuple(inner) => codec_expr(inner, qualified, ctx),
+    }
+}
+
+fn indexed_versioned_codec_expr(
+    variants: impl IntoIterator<Item = (u32, String)>,
+) -> Result<String> {
+    let mut entries = Vec::new();
+    for (version, codec) in variants {
+        let index = version
+            .checked_sub(1)
+            .ok_or_else(|| anyhow::anyhow!("versioned wrapper uses invalid V0 variant"))?;
+        entries.push(format!("V{}: [{}, {}] as const", version, index, codec));
+    }
+    Ok(format!("S.indexedTaggedUnion({{{}}})", entries.join(", ")))
+}
+
+fn versioned_result_codec_expr(version: u32, ok_codec: &str, err_codec: &str) -> Result<String> {
+    indexed_versioned_codec_expr([(version, format!("S.result({}, {})", ok_codec, err_codec))])
 }
 
 fn emit_method(
@@ -413,106 +745,112 @@ fn emit_method(
     method: &MethodDef,
     wrappers: &HashMap<String, VersionedWrapper>,
     ctx: &CodecContext,
+    target_version: u32,
 ) -> Result<()> {
     let ts_method_name = to_camel_case(&strip_prefix(&method.name));
-    let payload = emit_payload(&method.params, wrappers, ctx)?;
+    let wire_version = method_wire_version(method, wrappers, target_version)?;
+    let payload = emit_payload(&method.params, wrappers, ctx, wire_version)?;
     write_jsdoc(out, "  ", method.docs.as_deref());
 
     match (&method.kind, &method.return_type) {
         (MethodKind::Request, ReturnType::Result { ok, err }) => {
-            let err_type = ts_type_qualified(err)?;
-            let err_codec = codec_expr(err, true, ctx)?;
-            let response = emit_response(ok, wrappers, ctx)?;
-            let response_codec = format!("S.result({}, {})", response.wire_codec_expr, err_codec);
+            let is_handshake = method.name == "host_handshake";
+            let response = emit_response(ok, wrappers, ctx, wire_version)?;
+            let error = emit_response(err, wrappers, ctx, wire_version)?;
+            let response_codec = match wire_version {
+                Some(version) => versioned_result_codec_expr(
+                    version,
+                    &response.inner_codec_expr,
+                    &error.inner_codec_expr,
+                )?,
+                None => format!(
+                    "S.result({}, {})",
+                    response.wire_codec_expr, error.wire_codec_expr
+                ),
+            };
+
+            let arg_decl = if is_handshake || payload.param_list.is_empty() {
+                String::new()
+            } else {
+                format!("request: {}", payload.inner_type_ts)
+            };
+            let request_expr = if is_handshake {
+                "this.transport.codecVersion"
+            } else {
+                &payload.value_expr
+            };
 
             writeln!(
                 out,
                 "  async {}({}): Promise<Result<{}, {}>> {{",
-                ts_method_name, payload.param_list, response.inner_type_ts, err_type
+                ts_method_name, arg_decl, response.inner_type_ts, error.inner_type_ts
             )
             .unwrap();
+            writeln!(out, "    const result = await this.transport.request<").unwrap();
             writeln!(
                 out,
-                "    const result = await this.transport.request(\"{}\", {}, {}, {}) as Result<{}, {}>;",
-                method.name,
-                payload.payload_expr,
-                payload.payload_codec,
-                response_codec,
-                response.wire_type_ts,
-                err_type
+                "      S.ResultPayload<{}, {}>",
+                response.inner_type_ts, error.inner_type_ts
             )
             .unwrap();
+            writeln!(out, "    >({{").unwrap();
+            writeln!(out, "      method: \"{}\",", method.name).unwrap();
+            write_payload_field(
+                out,
+                "      ",
+                &payload.wire_codec_expr,
+                payload.wire_version,
+                request_expr,
+            );
+            if wire_version.is_some() {
+                writeln!(
+                    out,
+                    "      decodeResponse: (payload) => {}.dec(payload).value,",
+                    response_codec
+                )
+                .unwrap();
+            } else {
+                writeln!(
+                    out,
+                    "      decodeResponse: (payload) => {}.dec(payload),",
+                    response_codec
+                )
+                .unwrap();
+            }
+            writeln!(out, "    }});").unwrap();
             writeln!(
                 out,
-                "    return mapResult(result, {});",
-                response.unwrap_expr
+                "    return result.success ? ok(result.value) : err(result.value);"
             )
             .unwrap();
             writeln!(out, "  }}").unwrap();
         }
         (MethodKind::Subscription, ReturnType::Subscription(ty)) => {
-            let response = emit_response(ty, wrappers, ctx)?;
-            let callback_param = if payload.param_list.is_empty() {
-                format!("callback: (value: {}) => void", response.inner_type_ts)
-            } else {
-                format!(
-                    "{}, callback: (value: {}) => void",
-                    payload.param_list, response.inner_type_ts
-                )
-            };
-
-            writeln!(
+            let response = emit_response(ty, wrappers, ctx, wire_version)?;
+            emit_subscribe_method(
                 out,
-                "  {}({}): Subscription {{",
-                ts_method_name, callback_param
-            )
-            .unwrap();
-            writeln!(
-                out,
-                "    return this.transport.subscribe(\"{}\", {}, {}, {}, (value) => callback(({})(value)));",
-                method.name,
-                payload.payload_expr,
-                payload.payload_codec,
-                response.wire_codec_expr,
-                response.unwrap_expr
-            )
-            .unwrap();
-            writeln!(out, "  }}").unwrap();
+                &ts_method_name,
+                &method.name,
+                &payload,
+                &response,
+                response.inner_type_ts.clone(),
+                None,
+                wire_version,
+            )?;
         }
         (MethodKind::ResultSubscription, ReturnType::ResultSubscription { item, err }) => {
-            let err_type = ts_type_qualified(err)?;
-            let err_codec = codec_expr(err, true, ctx)?;
-            let response = emit_response(item, wrappers, ctx)?;
-            let callback_param = if payload.param_list.is_empty() {
-                format!(
-                    "callback: (value: {}) => void, onError?: (error: {}) => void",
-                    response.inner_type_ts, err_type
-                )
-            } else {
-                format!(
-                    "{}, callback: (value: {}) => void, onError?: (error: {}) => void",
-                    payload.param_list, response.inner_type_ts, err_type
-                )
-            };
-
-            writeln!(
+            let response = emit_response(item, wrappers, ctx, wire_version)?;
+            let error = emit_response(err, wrappers, ctx, wire_version)?;
+            emit_subscribe_method(
                 out,
-                "  {}({}): Subscription {{",
-                ts_method_name, callback_param
-            )
-            .unwrap();
-            writeln!(
-                out,
-                "    return this.transport.subscribe(\"{}\", {}, {}, {}, (value) => callback(({})(value)), {}, onError);",
-                method.name,
-                payload.payload_expr,
-                payload.payload_codec,
-                response.wire_codec_expr,
-                response.unwrap_expr,
-                err_codec
-            )
-            .unwrap();
-            writeln!(out, "  }}").unwrap();
+                &ts_method_name,
+                &method.name,
+                &payload,
+                &response,
+                response.inner_type_ts.clone(),
+                Some(error),
+                wire_version,
+            )?;
         }
         (kind, return_type) => {
             bail!(
@@ -523,6 +861,117 @@ fn emit_method(
             );
         }
     }
+
+    Ok(())
+}
+
+/// Emits a subscribe method body that takes a single object combining the
+/// method-specific input fields with the universal `onData`/`onInterrupt`
+/// callbacks. The callback subset is typed via
+/// `Pick<SubscribeCallbacks<…>, 'onData' | 'onInterrupt'>` so generated methods
+/// expose typed user callbacks while the transport still carries bytes.
+#[allow(clippy::too_many_arguments)]
+fn emit_subscribe_method(
+    out: &mut String,
+    ts_method_name: &str,
+    wire_method_name: &str,
+    payload: &PayloadEmission,
+    response: &ResponseEmission,
+    item_type_ts: String,
+    err: Option<ResponseEmission>,
+    wire_version: Option<u32>,
+) -> Result<()> {
+    let interrupt_type = match &err {
+        Some(err) => err.inner_type_ts.clone(),
+        None => "never".to_string(),
+    };
+    let wire_interrupt_type = match &err {
+        Some(err) => err.wire_type_ts.clone(),
+        None => "never".to_string(),
+    };
+    let interrupt_arg = match &err {
+        Some(_) => format!(", {}", interrupt_type),
+        None => String::new(),
+    };
+    let pick = format!(
+        "Pick<SubscribeCallbacks<{}{}>, 'onData' | 'onInterrupt'>",
+        item_type_ts, interrupt_arg
+    );
+    let args_type = if payload.param_list.is_empty() {
+        pick
+    } else {
+        format!("{{ {} }} & {}", payload.param_list, pick)
+    };
+
+    let mut destructure = vec!["onData".to_string(), "onInterrupt".to_string()];
+    destructure.extend(payload.param_names.iter().cloned());
+
+    writeln!(
+        out,
+        "  {}({{ {} }}: {}): Subscription {{",
+        ts_method_name,
+        destructure.join(", "),
+        args_type
+    )
+    .unwrap();
+
+    writeln!(out, "    return this.transport.subscribe<").unwrap();
+    writeln!(out, "      {},", item_type_ts).unwrap();
+    writeln!(out, "      {}", interrupt_type).unwrap();
+    writeln!(out, "    >({{").unwrap();
+    writeln!(out, "      method: \"{}\",", wire_method_name).unwrap();
+    write_payload_field(
+        out,
+        "      ",
+        &payload.wire_codec_expr,
+        payload.wire_version,
+        &payload.value_expr,
+    );
+    let item_value = if let Some(version) = wire_version {
+        versioned_value_expr(
+            &format!("{}.dec(payload)", response.wire_codec_expr),
+            &response.wire_type_ts,
+            &item_type_ts,
+            version,
+        )
+    } else {
+        format!("{}.dec(payload)", response.wire_codec_expr)
+    };
+    writeln!(out, "      onData: (payload) => onData({}),", item_value).unwrap();
+    if let Some(err) = err {
+        let interrupt_value = if let Some(version) = wire_version {
+            versioned_value_expr(
+                &format!("{}.dec(payload)", err.wire_codec_expr),
+                &wire_interrupt_type,
+                &interrupt_type,
+                version,
+            )
+        } else {
+            format!("{}.dec(payload)", err.wire_codec_expr)
+        };
+        writeln!(out, "      onInterrupt: onInterrupt").unwrap();
+        writeln!(
+            out,
+            "        ? (payload) => onInterrupt({})",
+            interrupt_value
+        )
+        .unwrap();
+        writeln!(out, "        : undefined,").unwrap();
+        writeln!(out, "      onClose: onInterrupt").unwrap();
+        writeln!(
+            out,
+            "        ? (error) => onInterrupt(error as unknown as {})",
+            interrupt_type
+        )
+        .unwrap();
+        writeln!(out, "        : undefined,").unwrap();
+    } else {
+        writeln!(out, "      onClose: onInterrupt").unwrap();
+        writeln!(out, "        ? (error) => onInterrupt(error as never)").unwrap();
+        writeln!(out, "        : undefined,").unwrap();
+    }
+    writeln!(out, "    }});").unwrap();
+    writeln!(out, "  }}").unwrap();
 
     Ok(())
 }
@@ -583,6 +1032,30 @@ fn write_type_definition(out: &mut String, ty: &TypeDef) -> Result<()> {
 fn write_codec_definition(out: &mut String, ty: &TypeDef) -> Result<()> {
     if ty.generic_params.is_empty() {
         let ctx = CodecContext::default();
+        if let Some(wrapper) = detect_versioned_wrapper(ty) {
+            let codec_expr = indexed_versioned_codec_expr(
+                wrapper
+                    .variants
+                    .values()
+                    .map(|variant| {
+                        Ok((
+                            variant.version,
+                            versioned_kind_codec_expr(&variant.kind, false, &ctx)?,
+                        ))
+                    })
+                    .collect::<Result<Vec<_>>>()?,
+            )?;
+            writeln!(
+                out,
+                "export const {}: S.Codec<{}> = S.lazy((): S.Codec<{}> => {});",
+                ty.name,
+                top_level_type_name(&ty.name, &ty.generic_params),
+                top_level_type_name(&ty.name, &ty.generic_params),
+                codec_expr
+            )
+            .unwrap();
+            return Ok(());
+        }
         writeln!(
             out,
             "export const {}: S.Codec<{}> = S.lazy((): S.Codec<{}> => {});",
@@ -935,34 +1408,18 @@ fn ts_field_name(name: &str, ty: &TypeRef) -> (String, bool) {
     (camel, optional)
 }
 
-fn ts_param_list(params: &[ParamDef]) -> Result<String> {
-    Ok(params
-        .iter()
-        .map(|param| {
-            let name = param_name(&param.name);
-            Ok(format!("{}: {}", name, ts_type_qualified(&param.type_ref)?))
-        })
-        .collect::<Result<Vec<_>>>()?
-        .join(", "))
-}
-
-fn payload_expression(params: &[ParamDef]) -> Result<String> {
+fn payload_type(params: &[ParamDef]) -> Result<String> {
     match params.len() {
         0 => Ok("undefined".to_string()),
-        1 => Ok(param_name(&params[0].name)),
-        _ => {
-            let names = params
-                .iter()
-                .map(|param| param_name(&param.name))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let types = params
+        1 => ts_type_qualified(&params[0].type_ref),
+        _ => Ok(format!(
+            "[{}]",
+            params
                 .iter()
                 .map(|param| ts_type_qualified(&param.type_ref))
                 .collect::<Result<Vec<_>>>()?
-                .join(", ");
-            Ok(format!("[{}] as [{}]", names, types))
-        }
+                .join(", ")
+        )),
     }
 }
 
@@ -994,16 +1451,6 @@ fn codec_param_name(name: &str) -> String {
     format!("{}Codec", to_camel_case(name))
 }
 
-fn param_name(name: &str) -> String {
-    let stripped = name.trim_start_matches('_');
-    let camel = to_camel_case(stripped);
-    if camel == "payload" || camel == "response" {
-        format!("{}Arg", camel)
-    } else {
-        camel
-    }
-}
-
 fn strip_prefix(name: &str) -> String {
     for prefix in ["host_", "remote_", "product_"] {
         if let Some(rest) = name.strip_prefix(prefix) {
@@ -1029,4 +1476,464 @@ fn to_camel_case(s: &str) -> String {
         }
     }
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn request_method(name: &str, wire_id: Option<u8>) -> MethodDef {
+        MethodDef {
+            name: name.to_string(),
+            kind: MethodKind::Request,
+            params: Vec::new(),
+            return_type: ReturnType::Result {
+                ok: TypeRef::Unit,
+                err: TypeRef::Unit,
+            },
+            wire_id,
+            docs: None,
+        }
+    }
+
+    fn subscription_method(name: &str, wire_id: Option<u8>) -> MethodDef {
+        MethodDef {
+            name: name.to_string(),
+            kind: MethodKind::Subscription,
+            params: Vec::new(),
+            return_type: ReturnType::Subscription(TypeRef::Unit),
+            wire_id,
+            docs: None,
+        }
+    }
+
+    fn api(methods: Vec<MethodDef>) -> ApiDefinition {
+        ApiDefinition {
+            traits: vec![TraitDef {
+                name: "Example".to_string(),
+                methods,
+                docs: None,
+            }],
+            types: Vec::new(),
+        }
+    }
+
+    fn named_type(name: &str) -> TypeRef {
+        TypeRef::Named {
+            name: name.to_string(),
+            args: Vec::new(),
+        }
+    }
+
+    fn request_method_with_wrappers(
+        name: &str,
+        wire_id: Option<u8>,
+        request: &str,
+        response: &str,
+        error: &str,
+    ) -> MethodDef {
+        MethodDef {
+            name: name.to_string(),
+            kind: MethodKind::Request,
+            params: vec![ParamDef {
+                name: "request".to_string(),
+                type_ref: named_type(request),
+            }],
+            return_type: ReturnType::Result {
+                ok: named_type(response),
+                err: named_type(error),
+            },
+            wire_id,
+            docs: None,
+        }
+    }
+
+    fn subscription_method_with_wrappers(name: &str, wire_id: Option<u8>, item: &str) -> MethodDef {
+        MethodDef {
+            name: name.to_string(),
+            kind: MethodKind::Subscription,
+            params: Vec::new(),
+            return_type: ReturnType::Subscription(named_type(item)),
+            wire_id,
+            docs: None,
+        }
+    }
+
+    fn versioned_tuple_wrapper_variants(name: &str, variants: &[(u32, &str)]) -> TypeDef {
+        TypeDef {
+            name: name.to_string(),
+            generic_params: Vec::new(),
+            kind: TypeDefKind::Enum(
+                variants
+                    .iter()
+                    .map(|(version, inner)| VariantDef {
+                        name: format!("V{version}"),
+                        fields: VariantFields::Unnamed(vec![named_type(inner)]),
+                        docs: None,
+                    })
+                    .collect(),
+            ),
+            docs: None,
+        }
+    }
+
+    fn versioned_tuple_wrapper(name: &str, legacy: &str, latest: &str) -> TypeDef {
+        versioned_tuple_wrapper_variants(name, &[(1, legacy), (2, latest)])
+    }
+
+    fn named_field_versioned_wrapper(name: &str) -> TypeDef {
+        let fields = vec![
+            FieldDef {
+                name: "product_account_id".to_string(),
+                type_ref: TypeRef::Named {
+                    name: "ProductAccountId".to_string(),
+                    args: Vec::new(),
+                },
+                docs: None,
+            },
+            FieldDef {
+                name: "context".to_string(),
+                type_ref: TypeRef::Named {
+                    name: "Bytes".to_string(),
+                    args: Vec::new(),
+                },
+                docs: None,
+            },
+        ];
+        TypeDef {
+            name: name.to_string(),
+            generic_params: Vec::new(),
+            kind: TypeDefKind::Enum(vec![
+                VariantDef {
+                    name: "V1".to_string(),
+                    fields: VariantFields::Named(fields.clone()),
+                    docs: None,
+                },
+                VariantDef {
+                    name: "V2".to_string(),
+                    fields: VariantFields::Named(fields),
+                    docs: None,
+                },
+            ]),
+            docs: None,
+        }
+    }
+
+    #[test]
+    fn detect_versioned_wrapper_keeps_each_versioned_variant() {
+        let ty = TypeDef {
+            name: "ExampleRequest".to_string(),
+            generic_params: Vec::new(),
+            kind: TypeDefKind::Enum(vec![
+                VariantDef {
+                    name: "V1".to_string(),
+                    fields: VariantFields::Unnamed(vec![TypeRef::Named {
+                        name: "LegacyRequest".to_string(),
+                        args: Vec::new(),
+                    }]),
+                    docs: None,
+                },
+                VariantDef {
+                    name: "V10".to_string(),
+                    fields: VariantFields::Unnamed(vec![TypeRef::Named {
+                        name: "LatestRequest".to_string(),
+                        args: Vec::new(),
+                    }]),
+                    docs: None,
+                },
+                VariantDef {
+                    name: "V2".to_string(),
+                    fields: VariantFields::Unnamed(vec![TypeRef::Named {
+                        name: "IntermediateRequest".to_string(),
+                        args: Vec::new(),
+                    }]),
+                    docs: None,
+                },
+            ]),
+            docs: None,
+        };
+
+        let wrapper = detect_versioned_wrapper(&ty).expect("versioned wrapper");
+        let legacy = wrapper.variants.get(&1).expect("V1 variant");
+        let fallback = wrapper
+            .variants
+            .range(..=9)
+            .next_back()
+            .map(|(_, variant)| variant)
+            .expect("V2 fallback");
+        let latest = wrapper.variants.get(&10).expect("V10 variant");
+
+        match &legacy.kind {
+            VersionedKind::Tuple(TypeRef::Named { name, .. }) => {
+                assert_eq!(name, "LegacyRequest");
+            }
+            other => panic!("unexpected wrapper kind: {other:?}"),
+        }
+
+        match &latest.kind {
+            VersionedKind::Tuple(TypeRef::Named { name, .. }) => {
+                assert_eq!(name, "LatestRequest");
+            }
+            other => panic!("unexpected wrapper kind: {other:?}"),
+        }
+
+        match &fallback.kind {
+            VersionedKind::Tuple(TypeRef::Named { name, .. }) => {
+                assert_eq!(name, "IntermediateRequest");
+            }
+            other => panic!("unexpected wrapper kind: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn generate_wire_table_emits_sorted_typescript_entries() {
+        let source = generate_wire_table(
+            &api(vec![
+                request_method("later", Some(10)),
+                subscription_method("stream", Some(2)),
+            ]),
+            2,
+        )
+        .expect("generate wire table");
+
+        assert!(source.contains("export const WIRE_TABLE"));
+        assert!(source.contains("  [2, 'stream_start'],"));
+        assert!(source.contains("  [5, 'stream_receive'],"));
+        assert!(source.contains("  [10, 'later_request'],"));
+        assert!(
+            source.find("[2, 'stream_start']").expect("stream entry")
+                < source.find("[10, 'later_request']").expect("later entry")
+        );
+    }
+
+    #[test]
+    fn generate_wire_table_rejects_duplicate_ids() {
+        let err = generate_wire_table(
+            &api(vec![
+                request_method("first", Some(2)),
+                subscription_method("second", Some(3)),
+            ]),
+            2,
+        )
+        .expect_err("duplicate ids must error");
+
+        assert!(err.to_string().contains("wire id 3 reused"));
+    }
+
+    #[test]
+    fn generate_wire_table_rejects_missing_annotation() {
+        let err = generate_wire_table(&api(vec![request_method("missing", None)]), 2)
+            .expect_err("missing wire id must error");
+
+        assert!(err.to_string().contains("missing #[wire(id = N)]"));
+    }
+
+    #[test]
+    fn generate_wire_table_filters_methods_by_target_version() {
+        let api = ApiDefinition {
+            traits: vec![TraitDef {
+                name: "Example".to_string(),
+                methods: vec![
+                    request_method_with_wrappers(
+                        "legacy",
+                        Some(2),
+                        "LegacyRequest",
+                        "LegacyResponse",
+                        "LegacyError",
+                    ),
+                    request_method_with_wrappers(
+                        "future",
+                        Some(10),
+                        "FutureRequest",
+                        "FutureResponse",
+                        "FutureError",
+                    ),
+                    subscription_method_with_wrappers("future_stream", Some(20), "FutureItem"),
+                ],
+                docs: None,
+            }],
+            types: vec![
+                versioned_tuple_wrapper_variants("LegacyRequest", &[(1, "LegacyRequestV1")]),
+                versioned_tuple_wrapper_variants("LegacyResponse", &[(1, "LegacyResponseV1")]),
+                versioned_tuple_wrapper_variants("LegacyError", &[(1, "LegacyErrorV1")]),
+                versioned_tuple_wrapper_variants("FutureRequest", &[(2, "FutureRequestV2")]),
+                versioned_tuple_wrapper_variants("FutureResponse", &[(2, "FutureResponseV2")]),
+                versioned_tuple_wrapper_variants("FutureError", &[(2, "FutureErrorV2")]),
+                versioned_tuple_wrapper_variants("FutureItem", &[(2, "FutureItemV2")]),
+            ],
+        };
+
+        let source = generate_wire_table(&api, 1).expect("generate wire table");
+
+        assert!(source.contains("  [2, 'legacy_request'],"));
+        assert!(!source.contains("future_request"));
+        assert!(!source.contains("future_stream_start"));
+    }
+
+    #[test]
+    fn generate_client_filters_empty_services_by_target_version() {
+        let api = ApiDefinition {
+            traits: vec![
+                TraitDef {
+                    name: "Legacy".to_string(),
+                    methods: vec![request_method_with_wrappers(
+                        "legacy_call",
+                        Some(2),
+                        "LegacyRequest",
+                        "LegacyResponse",
+                        "LegacyError",
+                    )],
+                    docs: None,
+                },
+                TraitDef {
+                    name: "FutureOnly".to_string(),
+                    methods: vec![request_method_with_wrappers(
+                        "future_call",
+                        Some(4),
+                        "FutureRequest",
+                        "FutureResponse",
+                        "FutureError",
+                    )],
+                    docs: None,
+                },
+            ],
+            types: vec![
+                versioned_tuple_wrapper_variants("LegacyRequest", &[(1, "LegacyRequestV1")]),
+                versioned_tuple_wrapper_variants("LegacyResponse", &[(1, "LegacyResponseV1")]),
+                versioned_tuple_wrapper_variants("LegacyError", &[(1, "LegacyErrorV1")]),
+                versioned_tuple_wrapper_variants("FutureRequest", &[(2, "FutureRequestV2")]),
+                versioned_tuple_wrapper_variants("FutureResponse", &[(2, "FutureResponseV2")]),
+                versioned_tuple_wrapper_variants("FutureError", &[(2, "FutureErrorV2")]),
+            ],
+        };
+
+        let source = generate_client(&api, 1, 1).expect("generate client");
+
+        assert!(source.contains("export const TRUAPI_VERSION = 1 as const;"));
+        assert!(source.contains("export const TRUAPI_CODEC_VERSION = 1 as const;"));
+        assert!(source.contains("export class LegacyClient"));
+        assert!(source.contains("legacyCall("));
+        assert!(!source.contains("FutureOnlyClient"));
+        assert!(!source.contains("futureCall("));
+    }
+
+    #[test]
+    fn generate_client_selects_target_version_wrapper_variant() {
+        let api = ApiDefinition {
+            traits: vec![TraitDef {
+                name: "Example".to_string(),
+                methods: vec![MethodDef {
+                    name: "example_call".to_string(),
+                    kind: MethodKind::Request,
+                    params: vec![ParamDef {
+                        name: "request".to_string(),
+                        type_ref: TypeRef::Named {
+                            name: "ExampleRequest".to_string(),
+                            args: Vec::new(),
+                        },
+                    }],
+                    return_type: ReturnType::Result {
+                        ok: TypeRef::Named {
+                            name: "ExampleResponse".to_string(),
+                            args: Vec::new(),
+                        },
+                        err: TypeRef::Unit,
+                    },
+                    wire_id: Some(2),
+                    docs: None,
+                }],
+                docs: None,
+            }],
+            types: vec![
+                versioned_tuple_wrapper("ExampleRequest", "LegacyRequest", "LatestRequest"),
+                versioned_tuple_wrapper("ExampleResponse", "LegacyResponse", "LatestResponse"),
+            ],
+        };
+
+        let client_source = generate_client(&api, 2, 1).expect("generate client");
+
+        assert!(client_source.contains("request: T.LatestRequest"));
+        assert!(client_source
+            .contains("payload: T.ExampleRequest.enc({ tag: \"V2\", value: request }),"));
+        assert!(client_source.contains("Promise<Result<T.LatestResponse, undefined>>"));
+    }
+
+    #[test]
+    fn generate_client_uses_latest_existing_wrapper_variant_not_package_version() {
+        let api = ApiDefinition {
+            traits: vec![TraitDef {
+                name: "Example".to_string(),
+                methods: vec![MethodDef {
+                    name: "example_call".to_string(),
+                    kind: MethodKind::Request,
+                    params: vec![ParamDef {
+                        name: "request".to_string(),
+                        type_ref: TypeRef::Named {
+                            name: "ExampleRequest".to_string(),
+                            args: Vec::new(),
+                        },
+                    }],
+                    return_type: ReturnType::Result {
+                        ok: TypeRef::Named {
+                            name: "ExampleResponse".to_string(),
+                            args: Vec::new(),
+                        },
+                        err: TypeRef::Unit,
+                    },
+                    wire_id: Some(2),
+                    docs: None,
+                }],
+                docs: None,
+            }],
+            types: vec![
+                versioned_tuple_wrapper_variants("ExampleRequest", &[(1, "LegacyRequest")]),
+                versioned_tuple_wrapper("ExampleResponse", "LegacyResponse", "LatestResponse"),
+            ],
+        };
+
+        let client_source = generate_client(&api, 2, 1).expect("generate client");
+
+        assert!(client_source.contains("request: T.LegacyRequest"));
+        assert!(client_source
+            .contains("payload: T.ExampleRequest.enc({ tag: \"V1\", value: request }),"));
+        assert!(client_source.contains("Promise<Result<T.LegacyResponse, undefined>>"));
+    }
+
+    #[test]
+    fn generate_client_rejects_named_field_versioned_wrapper() {
+        let api = ApiDefinition {
+            traits: vec![TraitDef {
+                name: "Example".to_string(),
+                methods: vec![MethodDef {
+                    name: "example_call".to_string(),
+                    kind: MethodKind::Request,
+                    params: vec![ParamDef {
+                        name: "request".to_string(),
+                        type_ref: TypeRef::Named {
+                            name: "ExampleRequest".to_string(),
+                            args: Vec::new(),
+                        },
+                    }],
+                    return_type: ReturnType::Result {
+                        ok: TypeRef::Named {
+                            name: "ExampleResponse".to_string(),
+                            args: Vec::new(),
+                        },
+                        err: TypeRef::Unit,
+                    },
+                    wire_id: Some(2),
+                    docs: None,
+                }],
+                docs: None,
+            }],
+            types: vec![
+                named_field_versioned_wrapper("ExampleRequest"),
+                versioned_tuple_wrapper("ExampleResponse", "LegacyResponse", "LatestResponse"),
+            ],
+        };
+
+        let err = generate_client(&api, 2, 1).expect_err("named field wrapper rejected");
+
+        assert!(err.to_string().contains("uses named fields"));
+    }
 }

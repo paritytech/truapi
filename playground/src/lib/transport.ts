@@ -1,5 +1,4 @@
 import {
-  byteProtocolCodecAdapter,
   createClient,
   createMessagePortProvider,
   createTransport,
@@ -8,10 +7,9 @@ import {
   type Provider,
   type TrUApiClient,
   type TrUApiTransport,
-  type WireMessage,
-} from '@truapi/client';
+} from "@parity/truapi";
 
-export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected';
+export type ConnectionStatus = "disconnected" | "connecting" | "connected";
 
 declare global {
   interface Window {
@@ -40,13 +38,15 @@ async function waitForWebviewPort(timeoutMs = 20_000): Promise<MessagePort> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
     if (window.__HOST_API_PORT__) return window.__HOST_API_PORT__;
-    await new Promise(r => setTimeout(r, 50));
+    await new Promise((r) => setTimeout(r, 50));
   }
-  throw new Error(`Timed out waiting for window.__HOST_API_PORT__ (${timeoutMs}ms)`);
+  throw new Error(
+    `Timed out waiting for window.__HOST_API_PORT__ (${timeoutMs}ms)`,
+  );
 }
 
 function createIframeProvider(): Provider {
-  type MessageListener = (msg: WireMessage) => void;
+  type MessageListener = (msg: Uint8Array) => void;
   type CloseListener = (error: Error) => void;
   const listeners = new Set<MessageListener>();
   const closeListeners = new Set<CloseListener>();
@@ -54,7 +54,7 @@ function createIframeProvider(): Provider {
 
   const parent = window.parent;
   if (!parent) {
-    throw new Error('Iframe provider requires a parent window');
+    throw new Error("Iframe provider requires a parent window");
   }
 
   const onMessage = (event: MessageEvent) => {
@@ -64,16 +64,13 @@ function createIframeProvider(): Provider {
     for (const listener of listeners) listener(event.data);
   };
 
-  window.addEventListener('message', onMessage);
+  window.addEventListener("message", onMessage);
 
   return {
-    postMessage(message: WireMessage) {
-      if (disposed) throw new Error('iframe provider disposed');
-      if (!(message instanceof Uint8Array)) {
-        throw new Error('Iframe provider requires a binary codec adapter');
-      }
+    postMessage(message: Uint8Array) {
+      if (disposed) throw new Error("iframe provider disposed");
       // Transfer the underlying buffer for zero-copy where possible.
-      parent.postMessage(message, '*', [message.buffer]);
+      parent.postMessage(message, "*", [message.buffer]);
     },
     subscribe(callback: MessageListener) {
       listeners.add(callback);
@@ -90,8 +87,8 @@ function createIframeProvider(): Provider {
     dispose() {
       if (disposed) return;
       disposed = true;
-      window.removeEventListener('message', onMessage);
-      const error = new Error('iframe provider disposed');
+      window.removeEventListener("message", onMessage);
+      const error = new Error("iframe provider disposed");
       for (const listener of closeListeners) listener(error);
       listeners.clear();
       closeListeners.clear();
@@ -105,14 +102,14 @@ function createSandboxProvider(): Provider {
     return createMessagePortProvider(waitForWebviewPort());
   }
   throw new Error(
-    'Playground must be opened inside a TrUAPI host (iframe or webview); detected neither.',
+    "Playground must be opened inside a TrUAPI host (iframe or webview); detected neither.",
   );
 }
 
 let _provider: Provider | null = null;
 let _transport: TrUApiTransport | null = null;
 let _client: TrUApiClient | null = null;
-let _status: ConnectionStatus = 'disconnected';
+let _status: ConnectionStatus = "disconnected";
 const _statusListeners = new Set<(status: ConnectionStatus) => void>();
 
 function setStatus(next: ConnectionStatus) {
@@ -124,14 +121,14 @@ function setStatus(next: ConnectionStatus) {
 function ensureClient(): TrUApiClient {
   if (_client) return _client;
   if (!isCorrectEnvironment()) {
-    throw new Error('Playground must be opened inside a TrUAPI host');
+    throw new Error("Playground must be opened inside a TrUAPI host");
   }
   _provider = createSandboxProvider();
-  _provider.subscribeClose?.(() => setStatus('disconnected'));
+  _provider.subscribeClose?.(() => setStatus("disconnected"));
   // `createTransport` auto-responds to inbound `host_handshake_request`
-  // frames so legacy hosts can complete their startup handshake — see the
-  // matching comment in @truapi/client/client.ts.
-  _transport = createTransport(_provider, byteProtocolCodecAdapter);
+  // frames with the versioned response variant requested by the host; see
+  // the matching comment in @parity/truapi/client.ts.
+  _transport = createTransport(_provider);
   _client = createClient(_transport);
   return _client;
 }
@@ -148,30 +145,36 @@ export function getTransport(): TrUApiTransport {
 const HANDSHAKE_TIMEOUT_MS = 5_000;
 
 /** Subscribe to connection status changes; kicks off a handshake the first time. */
-export function subscribeConnectionStatus(callback: (status: ConnectionStatus) => void): () => void {
+export function subscribeConnectionStatus(
+  callback: (status: ConnectionStatus) => void,
+): () => void {
   _statusListeners.add(callback);
   callback(_status);
 
-  if (_status === 'disconnected') {
+  if (_status === "disconnected") {
     if (!isCorrectEnvironment()) {
       // Standalone (not iframed, not webview): no host to talk to. Stay
       // disconnected so the UI surfaces the OFFLINE chip and method bindings
       // gracefully refuse to bind.
-      return () => { _statusListeners.delete(callback); };
+      return () => {
+        _statusListeners.delete(callback);
+      };
     }
-    setStatus('connecting');
+    setStatus("connecting");
     try {
       const handshake = ensureClient()
-        .trUApiCalls.handshake(1)
-        .then((result: { success: boolean }) => result.success);
+        .trUApiCalls.handshake()
+        .then((result) => result.isOk());
       const timeout = new Promise<boolean>((resolve) =>
         setTimeout(() => resolve(false), HANDSHAKE_TIMEOUT_MS),
       );
       void Promise.race([handshake, timeout])
-        .then((success: boolean) => setStatus(success ? 'connected' : 'disconnected'))
-        .catch(() => setStatus('disconnected'));
+        .then((success: boolean) =>
+          setStatus(success ? "connected" : "disconnected"),
+        )
+        .catch(() => setStatus("disconnected"));
     } catch {
-      setStatus('disconnected');
+      setStatus("disconnected");
     }
   }
 
@@ -197,6 +200,7 @@ type ChainHeadEventListener = (event: ChainHeadEvent) => void;
 
 export interface EphemeralFollow {
   subscriptionId: string;
+  genesisHash: Hex;
   finalizedBlockHash: Hex;
   /** Subscribe to subsequent ChainHeadEvents on this follow. */
   onEvent: (listener: ChainHeadEventListener) => () => void;
@@ -228,35 +232,44 @@ export function openEphemeralFollow(
   const client = getClient();
   const listeners = new Set<ChainHeadEventListener>();
   const genesisHashBytes =
-    typeof genesisHash === 'string' ? hexToBytes(genesisHash) : genesisHash;
+    typeof genesisHash === "string" ? hexToBytes(genesisHash) : genesisHash;
 
   return new Promise((resolve, reject) => {
     let settled = false;
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-    const sub = client.chainInteraction.chainHeadFollow(
-      { genesisHash: genesisHashBytes, withRuntime },
-      (event) => {
+    const sub = client.chainInteraction.chainHeadFollow({
+      request: { genesisHash: genesisHashBytes, withRuntime },
+      onData: (event) => {
         if (!settled) {
-          if (event.tag !== 'Initialized') return;
+          if (event.tag !== "Initialized") return;
           const finalizedBlockHash = event.value.finalizedBlockHashes[0];
           if (!finalizedBlockHash) {
             settled = true;
             if (timeoutHandle !== null) clearTimeout(timeoutHandle);
-            try { sub.unsubscribe(); } catch { /* benign */ }
-            reject(new Error('Initialized event had no finalized block hash'));
+            try {
+              sub.unsubscribe();
+            } catch {
+              /* benign */
+            }
+            reject(new Error("Initialized event had no finalized block hash"));
             return;
           }
           settled = true;
           if (timeoutHandle !== null) clearTimeout(timeoutHandle);
           resolve({
             subscriptionId: sub.subscriptionId,
+            genesisHash: genesisHashBytes,
             finalizedBlockHash,
             onEvent: (listener) => {
               listeners.add(listener);
               return () => listeners.delete(listener);
             },
             unsubscribe: () => {
-              try { sub.unsubscribe(); } catch { /* benign */ }
+              try {
+                sub.unsubscribe();
+              } catch {
+                /* benign */
+              }
               listeners.clear();
             },
           });
@@ -264,12 +277,20 @@ export function openEphemeralFollow(
         }
         for (const listener of listeners) listener(event);
       },
-    );
+    });
     timeoutHandle = setTimeout(() => {
       if (settled) return;
       settled = true;
-      try { sub.unsubscribe(); } catch { /* benign */ }
-      reject(new Error(`openEphemeralFollow: no Initialized event within ${timeoutMs}ms`));
+      try {
+        sub.unsubscribe();
+      } catch {
+        /* benign */
+      }
+      reject(
+        new Error(
+          `openEphemeralFollow: no Initialized event within ${timeoutMs}ms`,
+        ),
+      );
     }, timeoutMs);
   });
 }
@@ -289,7 +310,8 @@ export function awaitChainHeadOperation(
     const cleanup = follow.onEvent((event) => {
       if (settled) return;
       if (!terminalTags.includes(event.tag)) return;
-      const eventOpId = (event.value as { operationId?: string } | undefined)?.operationId;
+      const eventOpId = (event.value as { operationId?: string } | undefined)
+        ?.operationId;
       if (eventOpId !== operationId) return;
       settled = true;
       if (timeoutHandle !== null) clearTimeout(timeoutHandle);
@@ -300,7 +322,11 @@ export function awaitChainHeadOperation(
       if (settled) return;
       settled = true;
       cleanup();
-      reject(new Error(`awaitChainHeadOperation: no terminal event for ${operationId} within ${timeoutMs}ms`));
+      reject(
+        new Error(
+          `awaitChainHeadOperation: no terminal event for ${operationId} within ${timeoutMs}ms`,
+        ),
+      );
     }, timeoutMs);
   });
 }
@@ -317,7 +343,11 @@ export function awaitChainHeadStorage(
   } = {},
 ): Promise<{ items: unknown[]; done: ChainHeadEvent }> {
   const timeoutMs = options.timeoutMs ?? 30_000;
-  const TERMINAL = ['OperationStorageDone', 'OperationError', 'OperationInaccessible'];
+  const TERMINAL = [
+    "OperationStorageDone",
+    "OperationError",
+    "OperationInaccessible",
+  ];
 
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -325,14 +355,15 @@ export function awaitChainHeadStorage(
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
     const cleanup = follow.onEvent((event) => {
       if (settled) return;
-      const eventOpId = (event.value as { operationId?: string } | undefined)?.operationId;
+      const eventOpId = (event.value as { operationId?: string } | undefined)
+        ?.operationId;
       if (eventOpId !== operationId) return;
-      if (event.tag === 'OperationStorageItems') {
+      if (event.tag === "OperationStorageItems") {
         const evValue = event.value as { items?: unknown[] };
         if (Array.isArray(evValue.items)) items.push(...evValue.items);
         return;
       }
-      if (event.tag === 'OperationWaitingForContinue') {
+      if (event.tag === "OperationWaitingForContinue") {
         options.onWaitingForContinue?.();
         return;
       }
@@ -347,7 +378,11 @@ export function awaitChainHeadStorage(
       if (settled) return;
       settled = true;
       cleanup();
-      reject(new Error(`awaitChainHeadStorage: no terminal event for ${operationId} within ${timeoutMs}ms`));
+      reject(
+        new Error(
+          `awaitChainHeadStorage: no terminal event for ${operationId} within ${timeoutMs}ms`,
+        ),
+      );
     }, timeoutMs);
   });
 }

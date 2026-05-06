@@ -40,7 +40,7 @@ pub struct ApiDefinition {
 pub struct TraitDef {
     pub name: String,
     pub methods: Vec<MethodDef>,
-    /// Rustdoc comment on the trait, with the `@wire_id=` marker stripped.
+    /// Rustdoc comment on the trait, with hidden codegen markers stripped.
     pub docs: Option<String>,
 }
 
@@ -53,7 +53,7 @@ pub struct MethodDef {
     /// Base wire-protocol discriminant id for this method (from `#[wire(id = N)]`).
     /// `None` for trait methods that have not been annotated yet (legacy / opt-in).
     pub wire_id: Option<u8>,
-    /// Rustdoc comment on the method, with the `@wire_id=` marker stripped.
+    /// Rustdoc comment on the method, with hidden codegen markers stripped.
     pub docs: Option<String>,
 }
 
@@ -152,9 +152,9 @@ pub fn extract_api(krate: &Crate) -> Result<ApiDefinition> {
         // `Versioned` is a runtime-helper trait on the wrapper enums, not a
         // protocol-method trait. The codegen only cares about the protocol
         // surface (TrUAPI methods); skip anything declared outside
-        // `truapi::traits::*`.
+        // `truapi::api::*`.
         let candidate = select_candidate(&name, &candidates)?;
-        if !candidate.path.iter().any(|s| s == "traits") {
+        if !candidate.path.iter().any(|s| s == "api") {
             continue;
         }
         let item = krate
@@ -242,12 +242,12 @@ fn compare_candidates(a: &ItemCandidate, b: &ItemCandidate) -> Ordering {
 }
 
 fn version_rank(path: &[String]) -> u32 {
-    // The unified contract lives under `traits::` for sub-traits and
+    // The unified contract lives under `api::` for sub-traits and
     // `versioned::` for request/response wrappers; both must outrank the
     // version-numbered `v0N` legacy modules.
     if path
         .iter()
-        .any(|segment| segment == "traits" || segment == "versioned")
+        .any(|segment| segment == "api" || segment == "versioned")
     {
         return u32::MAX;
     }
@@ -438,14 +438,14 @@ fn extract_method(item_id: &str, item: &Item) -> Result<Option<MethodDef>> {
     }))
 }
 
-/// Strips the `@wire_id=N` marker line from a rustdoc comment so it can be
+/// Strips hidden codegen marker lines from a rustdoc comment so it can be
 /// emitted as user-facing JSDoc. Returns `None` when the remaining text is
 /// empty.
 pub fn clean_docs(docs: Option<&str>) -> Option<String> {
     let raw = docs?;
     let cleaned = raw
         .lines()
-        .filter(|line| !line.trim_start().starts_with("@wire_id="))
+        .filter(|line| !is_codegen_doc_marker(line))
         .collect::<Vec<_>>()
         .join("\n");
     let trimmed = cleaned.trim_end_matches('\n').to_string();
@@ -454,6 +454,11 @@ pub fn clean_docs(docs: Option<&str>) -> Option<String> {
     } else {
         Some(trimmed)
     }
+}
+
+fn is_codegen_doc_marker(line: &str) -> bool {
+    let line = line.trim_start();
+    line.starts_with("@wire_id=")
 }
 
 /// Extracts `@wire_id=N` from a doc comment block. Annotated methods carry

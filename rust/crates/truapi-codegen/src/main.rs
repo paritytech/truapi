@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::Parser;
+use std::str::FromStr;
 
 mod rust_dispatcher;
 mod rustdoc;
@@ -19,9 +20,46 @@ struct Cli {
     #[arg(short, long, default_value = "generated")]
     output: String,
 
+    /// TrUAPI protocol version for the generated TypeScript package.
+    ///
+    /// Accepts `V<N>` or `<N>`, for example `V1`, `V2`, or `2`.
+    #[arg(long, default_value = "V2")]
+    version: ProtocolVersionArg,
+
+    /// Wire codec version for generated handshake calls.
+    #[arg(long, default_value_t = 1)]
+    codec_version: u8,
+
     /// Output directory for the generated Rust dispatcher (optional).
     #[arg(long)]
     rust_output: Option<String>,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct ProtocolVersionArg(u32);
+
+impl ProtocolVersionArg {
+    fn number(self) -> u32 {
+        self.0
+    }
+}
+
+impl FromStr for ProtocolVersionArg {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        let number = value.strip_prefix('V').unwrap_or(value);
+        if number.is_empty() {
+            return Err("version must be written as V<N> or <N>".to_string());
+        }
+        let number = number
+            .parse::<u32>()
+            .map_err(|_| "version must be written as V<N> or <N>".to_string())?;
+        if number == 0 {
+            return Err("version must be at least V1".to_string());
+        }
+        Ok(Self(number))
+    }
 }
 
 fn main() -> Result<()> {
@@ -29,9 +67,13 @@ fn main() -> Result<()> {
     let json = std::fs::read_to_string(&cli.input)?;
     let krate = rustdoc::parse(&json)?;
     let api = rustdoc::extract_api(&krate)?;
-    typescript::generate(&api, &cli.output)?;
+    typescript::generate(&api, &cli.output, cli.version.number(), cli.codec_version)?;
     let output = &cli.output;
-    println!("Generated TypeScript client in {output}");
+    println!(
+        "Generated TypeScript client for TrUAPI V{} codec {} in {output}",
+        cli.version.number(),
+        cli.codec_version
+    );
     if let Some(path) = &cli.rust_output {
         rust_dispatcher::generate(&api, path)?;
         println!("Generated Rust dispatcher in {path}");

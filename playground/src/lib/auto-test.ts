@@ -1,9 +1,9 @@
-import { getMethodBinding, stringify } from './host-api-bridge';
-import type { MethodInfo, ServiceInfo } from './services';
+import { getMethodBinding, stringify } from "./host-api-bridge";
+import type { MethodInfo, ServiceInfo } from "./services";
 
-export const AUTO_TEST_ID = '__auto_test__';
+export const AUTO_TEST_ID = "__auto_test__";
 
-export type TestStatus = 'idle' | 'running' | 'pass' | 'fail' | 'skipped';
+export type TestStatus = "idle" | "running" | "pass" | "fail" | "skipped";
 
 export interface TestEntry {
   status: TestStatus;
@@ -12,15 +12,15 @@ export interface TestEntry {
 }
 
 export const EXCLUDED_METHODS = new Set([
-  'TrUAPI Calls/host_navigate_to',
-  'TrUAPI Calls/host_push_notification',
-  'Permissions/host_device_permission',
-  'Permissions/remote_permission',
-  'Signing/host_sign_payload',
-  'Signing/host_sign_raw',
-  'Signing/host_create_transaction',
-  'Signing/host_create_transaction_with_non_product_account',
-  'Account Management/host_account_get_alias',
+  "TrUAPI Calls/host_navigate_to",
+  "TrUAPI Calls/host_push_notification",
+  "Permissions/host_device_permission",
+  "Permissions/remote_permission",
+  "Signing/host_sign_payload",
+  "Signing/host_sign_raw",
+  "Signing/host_create_transaction",
+  "Signing/host_create_transaction_with_non_product_account",
+  "Account Management/host_account_get_alias",
 ]);
 
 const UNARY_TIMEOUT_MS = 2_000;
@@ -30,16 +30,16 @@ const SUBSCRIPTION_TIMEOUT_MS = 6_000;
 const CONCURRENCY = 6;
 // Each chain-head method depends on a live follow subscription on the host
 // side; running the service serially avoids fanning out concurrent follows.
-const SERIAL_SERVICES = new Set(['Chain Interaction']);
+const SERIAL_SERVICES = new Set(["Chain Interaction"]);
 
-const STATEMENT_STORE_SERVICE = 'Statement Store';
-const STATEMENT_CREATE_PROOF_METHOD = 'remote_statement_store_create_proof';
-const STATEMENT_SUBMIT_ID = 'Statement Store/remote_statement_store_submit';
+const STATEMENT_STORE_SERVICE = "Statement Store";
+const STATEMENT_CREATE_PROOF_METHOD = "remote_statement_store_create_proof";
+const STATEMENT_SUBMIT_ID = "Statement Store/remote_statement_store_submit";
 
 function parseRequest(method: MethodInfo): unknown {
   if (method.noParams) return null;
   try {
-    return JSON.parse(method.defaultRequest ?? '{}');
+    return JSON.parse(method.defaultRequest ?? "{}");
   } catch {
     return null;
   }
@@ -49,7 +49,7 @@ async function testUnary(
   call: (req: unknown) => Promise<{ ok: boolean; data: unknown }>,
   req: unknown,
   timeoutMs: number,
-): Promise<{ result: 'pass' | 'fail'; output: string }> {
+): Promise<{ result: "pass" | "fail"; output: string }> {
   try {
     const result = await Promise.race([
       call(req),
@@ -60,9 +60,15 @@ async function testUnary(
         ),
       ),
     ]);
-    return { result: result.ok ? 'pass' : 'fail', output: stringify(result.data) ?? 'null' };
+    return {
+      result: result.ok ? "pass" : "fail",
+      output: stringify(result.data) ?? "null",
+    };
   } catch (e) {
-    return { result: 'fail', output: e instanceof Error ? e.message : String(e) };
+    return {
+      result: "fail",
+      output: e instanceof Error ? e.message : String(e),
+    };
   }
 }
 
@@ -73,28 +79,33 @@ async function testSubscription(
     onEnd: () => void,
   ) => { unsubscribe: () => void },
   req: unknown,
-): Promise<{ result: 'pass' | 'fail'; output: string }> {
+): Promise<{ result: "pass" | "fail"; output: string }> {
   return new Promise((resolve) => {
     let settled = false;
     let sub: { unsubscribe: () => void } | null = null;
 
-    const settle = (result: 'pass' | 'fail', output: string) => {
+    const settle = (result: "pass" | "fail", output: string) => {
       if (settled) return;
       settled = true;
       clearTimeout(timeout);
-      try { sub?.unsubscribe(); } catch { /* benign */ }
+      try {
+        sub?.unsubscribe();
+      } catch {
+        /* benign */
+      }
       resolve({ result, output });
     };
 
     const timeout = setTimeout(
-      () => settle('fail', `timed out after ${SUBSCRIPTION_TIMEOUT_MS / 1000}s`),
+      () =>
+        settle("fail", `timed out after ${SUBSCRIPTION_TIMEOUT_MS / 1000}s`),
       SUBSCRIPTION_TIMEOUT_MS,
     );
 
     sub = subscribe(
       req,
-      (event) => settle('pass', stringify(event) ?? 'null'),
-      () => settle('fail', 'stream ended without events'),
+      (event) => settle("pass", stringify(event) ?? "null"),
+      () => settle("fail", "stream ended without events"),
     );
   });
 }
@@ -109,7 +120,10 @@ async function fetchStatementProof(services: ServiceInfo[]): Promise<unknown> {
     ?.methods.find((m) => m.name === STATEMENT_CREATE_PROOF_METHOD);
   if (!proofMethod) return undefined;
 
-  const binding = getMethodBinding(STATEMENT_STORE_SERVICE, STATEMENT_CREATE_PROOF_METHOD);
+  const binding = getMethodBinding(
+    STATEMENT_STORE_SERVICE,
+    STATEMENT_CREATE_PROOF_METHOD,
+  );
   if (!binding || binding.isStream) return undefined;
 
   const result = await binding.call(parseRequest(proofMethod));
@@ -142,17 +156,17 @@ async function runOne({
   const id = `${serviceName}/${method.name}`;
 
   if (excludeSet.has(id)) {
-    onUpdate(id, { status: 'skipped' });
+    onUpdate(id, { status: "skipped" });
     return;
   }
 
   const binding = getMethodBinding(serviceName, method.name);
   if (!binding) {
-    onUpdate(id, { status: 'skipped' });
+    onUpdate(id, { status: "skipped" });
     return;
   }
 
-  onUpdate(id, { status: 'running' });
+  onUpdate(id, { status: "running" });
 
   let req: unknown;
   if (requestOverride !== undefined) {
@@ -160,7 +174,7 @@ async function runOne({
       req = JSON.parse(requestOverride);
     } catch (e) {
       onUpdate(id, {
-        status: 'fail',
+        status: "fail",
         request: requestOverride,
         output: `Invalid JSON: ${e instanceof Error ? e.message : String(e)}`,
       });
@@ -170,13 +184,19 @@ async function runOne({
     req = parseRequest(method);
     if (id === STATEMENT_SUBMIT_ID) {
       const proof = await fetchStatementProof(services);
-      if (proof !== undefined && typeof req === 'object' && req !== null && !Array.isArray(req)) {
+      if (
+        proof !== undefined &&
+        typeof req === "object" &&
+        req !== null &&
+        !Array.isArray(req)
+      ) {
         req = { ...req, proof };
       }
     }
   }
 
-  const timeoutMs = serviceName === 'Signing' ? SIGNING_TIMEOUT_MS : UNARY_TIMEOUT_MS;
+  const timeoutMs =
+    serviceName === "Signing" ? SIGNING_TIMEOUT_MS : UNARY_TIMEOUT_MS;
   const requestStr = stringify(req);
   const { result, output } = binding.isStream
     ? await testSubscription(binding.subscribe, req)
@@ -220,12 +240,28 @@ export async function runAutoTests(
       tasks.push(async () => {
         for (const m of svc.methods) {
           if (signal?.aborted) return;
-          await runOne({ services, serviceName: svc.name, method: m, onUpdate, excludeSet, signal });
+          await runOne({
+            services,
+            serviceName: svc.name,
+            method: m,
+            onUpdate,
+            excludeSet,
+            signal,
+          });
         }
       });
     } else {
       for (const m of svc.methods) {
-        tasks.push(() => runOne({ services, serviceName: svc.name, method: m, onUpdate, excludeSet, signal }));
+        tasks.push(() =>
+          runOne({
+            services,
+            serviceName: svc.name,
+            method: m,
+            onUpdate,
+            excludeSet,
+            signal,
+          }),
+        );
       }
     }
   }

@@ -1,11 +1,11 @@
-import type { ServiceInfo } from '@/src/lib/services';
-import { isMethodSupported } from '@/src/lib/host-api-bridge';
-import type { TestEntry } from '@/src/lib/auto-test';
-import { AUTO_TEST_ID } from '@/src/lib/auto-test';
+import type { ServiceInfo } from "@/src/lib/services";
+import { isMethodSupported } from "@/src/lib/host-api-bridge";
+import type { TestEntry } from "@/src/lib/auto-test";
+import { AUTO_TEST_ID } from "@/src/lib/auto-test";
 
 const KIND_LABEL: Record<string, string> = {
-  unary: 'Req / Res',
-  subscription: 'Subscription',
+  unary: "Req / Res",
+  subscription: "Subscription",
 };
 
 export function ServiceTable({
@@ -23,18 +23,25 @@ export function ServiceTable({
 
   let autoTestMark: string | null = null;
   if (testResults && Object.keys(testResults).length > 0) {
-    const isRunning = Object.values(testResults).some((e) => e.status === 'running');
+    const isRunning = Object.values(testResults).some(
+      (e) => e.status === "running",
+    );
     if (isRunning) {
-      autoTestMark = '…';
+      autoTestMark = "…";
     } else {
-      const pass = Object.values(testResults).filter((e) => e.status === 'pass').length;
-      const fail = Object.values(testResults).filter((e) => e.status === 'fail').length;
+      const pass = Object.values(testResults).filter(
+        (e) => e.status === "pass",
+      ).length;
+      const fail = Object.values(testResults).filter(
+        (e) => e.status === "fail",
+      ).length;
       autoTestMark = `${pass}p · ${fail}f`;
     }
   }
 
   const autoTestMarkRunning =
-    testResults != null && Object.values(testResults).some((e) => e.status === 'running');
+    testResults != null &&
+    Object.values(testResults).some((e) => e.status === "running");
 
   return (
     <>
@@ -43,7 +50,7 @@ export function ServiceTable({
         className="method method--autotest"
         data-active={isAutoTestActive}
         data-supported="true"
-        onClick={() => onSelect(AUTO_TEST_ID, '')}
+        onClick={() => onSelect(AUTO_TEST_ID, "")}
       >
         <div className="method__body">
           <div className="method__name">Auto-Test</div>
@@ -62,9 +69,13 @@ export function ServiceTable({
       </button>
       <nav aria-label="Service methods">
         {services.map((svc, i) => {
-          const index = String(i + 1).padStart(2, '0');
+          const index = String(i + 1).padStart(2, "0");
           return (
-            <section key={svc.name} className="service" data-testid={`service-${svc.name}`}>
+            <section
+              key={svc.name}
+              className="service"
+              data-testid={`service-${svc.name}`}
+            >
               <div className="service__head">
                 <span className="service__index">{index}</span>
                 <span className="service__name">{svc.name}</span>
@@ -74,9 +85,12 @@ export function ServiceTable({
                 {svc.methods.map((m) => {
                   const supported = isMethodSupported(svc.name, m.name);
                   const isActive =
-                    activeMethod?.service === svc.name && activeMethod?.method === m.name;
-                  const testStatus = testResults?.[`${svc.name}/${m.name}`]?.status;
-                  const showStatus = testStatus != null && testStatus !== 'idle';
+                    activeMethod?.service === svc.name &&
+                    activeMethod?.method === m.name;
+                  const testStatus =
+                    testResults?.[`${svc.name}/${m.name}`]?.status;
+                  const showStatus =
+                    testStatus != null && testStatus !== "idle";
                   return (
                     <button
                       key={m.name}
@@ -92,10 +106,12 @@ export function ServiceTable({
                         <div className="method__name">{m.name}</div>
                         <div className="method__meta">
                           {m.description && (
-                            <span className="method__desc">{m.description}</span>
+                            <span className="method__desc">
+                              {m.description}
+                            </span>
                           )}
                           <span className="method__mark" data-kind={m.type}>
-                            {!supported ? 'n/a' : KIND_LABEL[m.type]}
+                            {!supported ? "n/a" : KIND_LABEL[m.type]}
                           </span>
                         </div>
                       </div>

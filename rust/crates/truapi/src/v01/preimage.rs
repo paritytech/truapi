@@ -1,3 +1,5 @@
+use parity_scale_codec::{Decode, Encode};
+
 use super::Hex;
 
 /// Hash of the preimage.
@@ -7,7 +9,7 @@ pub type PreimageKey = Hex;
 pub type PreimageValue = Vec<u8>;
 
 /// Preimage submission error.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
 pub enum PreimageSubmitError {
     /// Catch-all.

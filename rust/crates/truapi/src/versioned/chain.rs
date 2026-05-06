@@ -1,697 +1,82 @@
-//! Versioned wrappers for [`ChainInteraction`](super::super::v02::ChainInteraction) methods.
+//! Versioned wrappers for [`ChainInteraction`](crate::api::ChainInteraction) methods.
 
-use parity_scale_codec::{Decode, Encode};
+use crate::v01;
 
-use super::Versioned;
-use crate::v02::{
-    ChainHeadBlockRequest, ChainHeadCallRequest, ChainHeadEvent, ChainHeadFollowRequest,
-    ChainHeadOperationRequest, ChainHeadStorageRequest, ChainHeadUnpinRequest,
-    ChainTransactionBroadcastRequest, ChainTransactionStopRequest, GenesisHash, Hex,
-    OperationStartedResult,
-};
-
-/// Subscription request wrapper for `remote_chain_head_follow`.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RemoteChainHeadFollowRequest {
-    /// Pre-RFC-0001 variant.
-    #[codec(index = 0)]
-    V1(ChainHeadFollowRequest),
-    /// RFC-0001 variant.
-    #[codec(index = 1)]
-    V2(ChainHeadFollowRequest),
-}
-
-impl Versioned for RemoteChainHeadFollowRequest {
-    type Inner = ChainHeadFollowRequest;
-    fn wrap(version: u8, inner: Self::Inner) -> Self {
-        match version {
-            1 => Self::V1(inner),
-            _ => Self::V2(inner),
-        }
-    }
-    fn into_inner(self) -> Self::Inner {
-        match self {
-            Self::V1(x) | Self::V2(x) => x,
-        }
-    }
-}
-
-/// Subscription item wrapper for `remote_chain_head_follow`.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RemoteChainHeadFollowItem {
-    /// Pre-RFC-0001 variant.
-    #[codec(index = 0)]
-    V1(ChainHeadEvent),
-    /// RFC-0001 variant.
-    #[codec(index = 1)]
-    V2(ChainHeadEvent),
-}
-
-impl Versioned for RemoteChainHeadFollowItem {
-    type Inner = ChainHeadEvent;
-    fn wrap(version: u8, inner: Self::Inner) -> Self {
-        match version {
-            1 => Self::V1(inner),
-            _ => Self::V2(inner),
-        }
-    }
-    fn into_inner(self) -> Self::Inner {
-        match self {
-            Self::V1(x) | Self::V2(x) => x,
-        }
-    }
-}
-
-/// Request wrapper for `remote_chain_head_header`.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RemoteChainHeadHeaderRequest {
-    /// Pre-RFC-0001 variant.
-    #[codec(index = 0)]
-    V1(ChainHeadBlockRequest),
-    /// RFC-0001 variant.
-    #[codec(index = 1)]
-    V2(ChainHeadBlockRequest),
-}
-
-impl Versioned for RemoteChainHeadHeaderRequest {
-    type Inner = ChainHeadBlockRequest;
-    fn wrap(version: u8, inner: Self::Inner) -> Self {
-        match version {
-            1 => Self::V1(inner),
-            _ => Self::V2(inner),
-        }
-    }
-    fn into_inner(self) -> Self::Inner {
-        match self {
-            Self::V1(x) | Self::V2(x) => x,
-        }
-    }
-}
-
-/// Response wrapper for `remote_chain_head_header`.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RemoteChainHeadHeaderResponse {
-    /// Pre-RFC-0001 variant.
-    #[codec(index = 0)]
-    V1(Option<Hex>),
-    /// RFC-0001 variant.
-    #[codec(index = 1)]
-    V2(Option<Hex>),
-}
-
-impl Versioned for RemoteChainHeadHeaderResponse {
-    type Inner = Option<Hex>;
-    fn wrap(version: u8, inner: Self::Inner) -> Self {
-        match version {
-            1 => Self::V1(inner),
-            _ => Self::V2(inner),
-        }
-    }
-    fn into_inner(self) -> Self::Inner {
-        match self {
-            Self::V1(x) | Self::V2(x) => x,
-        }
-    }
-}
-
-/// Request wrapper for `remote_chain_head_body`.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RemoteChainHeadBodyRequest {
-    /// Pre-RFC-0001 variant.
-    #[codec(index = 0)]
-    V1(ChainHeadBlockRequest),
-    /// RFC-0001 variant.
-    #[codec(index = 1)]
-    V2(ChainHeadBlockRequest),
-}
-
-impl Versioned for RemoteChainHeadBodyRequest {
-    type Inner = ChainHeadBlockRequest;
-    fn wrap(version: u8, inner: Self::Inner) -> Self {
-        match version {
-            1 => Self::V1(inner),
-            _ => Self::V2(inner),
-        }
-    }
-    fn into_inner(self) -> Self::Inner {
-        match self {
-            Self::V1(x) | Self::V2(x) => x,
-        }
-    }
-}
-
-/// Response wrapper for `remote_chain_head_body`.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RemoteChainHeadBodyResponse {
-    /// Pre-RFC-0001 variant.
-    #[codec(index = 0)]
-    V1(OperationStartedResult),
-    /// RFC-0001 variant.
-    #[codec(index = 1)]
-    V2(OperationStartedResult),
-}
-
-impl Versioned for RemoteChainHeadBodyResponse {
-    type Inner = OperationStartedResult;
-    fn wrap(version: u8, inner: Self::Inner) -> Self {
-        match version {
-            1 => Self::V1(inner),
-            _ => Self::V2(inner),
-        }
-    }
-    fn into_inner(self) -> Self::Inner {
-        match self {
-            Self::V1(x) | Self::V2(x) => x,
-        }
-    }
-}
-
-/// Request wrapper for `remote_chain_head_storage`.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RemoteChainHeadStorageRequest {
-    /// Pre-RFC-0001 variant.
-    #[codec(index = 0)]
-    V1(ChainHeadStorageRequest),
-    /// RFC-0001 variant.
-    #[codec(index = 1)]
-    V2(ChainHeadStorageRequest),
-}
-
-impl Versioned for RemoteChainHeadStorageRequest {
-    type Inner = ChainHeadStorageRequest;
-    fn wrap(version: u8, inner: Self::Inner) -> Self {
-        match version {
-            1 => Self::V1(inner),
-            _ => Self::V2(inner),
-        }
-    }
-    fn into_inner(self) -> Self::Inner {
-        match self {
-            Self::V1(x) | Self::V2(x) => x,
-        }
-    }
-}
-
-/// Response wrapper for `remote_chain_head_storage`.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RemoteChainHeadStorageResponse {
-    /// Pre-RFC-0001 variant.
-    #[codec(index = 0)]
-    V1(OperationStartedResult),
-    /// RFC-0001 variant.
-    #[codec(index = 1)]
-    V2(OperationStartedResult),
-}
-
-impl Versioned for RemoteChainHeadStorageResponse {
-    type Inner = OperationStartedResult;
-    fn wrap(version: u8, inner: Self::Inner) -> Self {
-        match version {
-            1 => Self::V1(inner),
-            _ => Self::V2(inner),
-        }
-    }
-    fn into_inner(self) -> Self::Inner {
-        match self {
-            Self::V1(x) | Self::V2(x) => x,
-        }
-    }
-}
-
-/// Request wrapper for `remote_chain_head_call`.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RemoteChainHeadCallRequest {
-    /// Pre-RFC-0001 variant.
-    #[codec(index = 0)]
-    V1(ChainHeadCallRequest),
-    /// RFC-0001 variant.
-    #[codec(index = 1)]
-    V2(ChainHeadCallRequest),
-}
-
-impl Versioned for RemoteChainHeadCallRequest {
-    type Inner = ChainHeadCallRequest;
-    fn wrap(version: u8, inner: Self::Inner) -> Self {
-        match version {
-            1 => Self::V1(inner),
-            _ => Self::V2(inner),
-        }
-    }
-    fn into_inner(self) -> Self::Inner {
-        match self {
-            Self::V1(x) | Self::V2(x) => x,
-        }
-    }
-}
-
-/// Response wrapper for `remote_chain_head_call`.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RemoteChainHeadCallResponse {
-    /// Pre-RFC-0001 variant.
-    #[codec(index = 0)]
-    V1(OperationStartedResult),
-    /// RFC-0001 variant.
-    #[codec(index = 1)]
-    V2(OperationStartedResult),
-}
-
-impl Versioned for RemoteChainHeadCallResponse {
-    type Inner = OperationStartedResult;
-    fn wrap(version: u8, inner: Self::Inner) -> Self {
-        match version {
-            1 => Self::V1(inner),
-            _ => Self::V2(inner),
-        }
-    }
-    fn into_inner(self) -> Self::Inner {
-        match self {
-            Self::V1(x) | Self::V2(x) => x,
-        }
-    }
-}
-
-/// Request wrapper for `remote_chain_head_unpin`.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RemoteChainHeadUnpinRequest {
-    /// Pre-RFC-0001 variant.
-    #[codec(index = 0)]
-    V1(ChainHeadUnpinRequest),
-    /// RFC-0001 variant.
-    #[codec(index = 1)]
-    V2(ChainHeadUnpinRequest),
-}
-
-impl Versioned for RemoteChainHeadUnpinRequest {
-    type Inner = ChainHeadUnpinRequest;
-    fn wrap(version: u8, inner: Self::Inner) -> Self {
-        match version {
-            1 => Self::V1(inner),
-            _ => Self::V2(inner),
-        }
-    }
-    fn into_inner(self) -> Self::Inner {
-        match self {
-            Self::V1(x) | Self::V2(x) => x,
-        }
-    }
-}
-
-/// Response wrapper for `remote_chain_head_unpin`.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RemoteChainHeadUnpinResponse {
-    /// Pre-RFC-0001 variant.
-    #[codec(index = 0)]
-    V1,
-    /// RFC-0001 variant.
-    #[codec(index = 1)]
-    V2,
-}
-
-impl Versioned for RemoteChainHeadUnpinResponse {
-    type Inner = ();
-    fn wrap(version: u8, _: ()) -> Self {
-        match version {
-            1 => Self::V1,
-            _ => Self::V2,
-        }
-    }
-    fn into_inner(self) {}
-}
-
-/// Request wrapper for `remote_chain_head_continue`.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RemoteChainHeadContinueRequest {
-    /// Pre-RFC-0001 variant.
-    #[codec(index = 0)]
-    V1(ChainHeadOperationRequest),
-    /// RFC-0001 variant.
-    #[codec(index = 1)]
-    V2(ChainHeadOperationRequest),
-}
-
-impl Versioned for RemoteChainHeadContinueRequest {
-    type Inner = ChainHeadOperationRequest;
-    fn wrap(version: u8, inner: Self::Inner) -> Self {
-        match version {
-            1 => Self::V1(inner),
-            _ => Self::V2(inner),
-        }
-    }
-    fn into_inner(self) -> Self::Inner {
-        match self {
-            Self::V1(x) | Self::V2(x) => x,
-        }
-    }
-}
-
-/// Response wrapper for `remote_chain_head_continue`.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RemoteChainHeadContinueResponse {
-    /// Pre-RFC-0001 variant.
-    #[codec(index = 0)]
-    V1,
-    /// RFC-0001 variant.
-    #[codec(index = 1)]
-    V2,
-}
-
-impl Versioned for RemoteChainHeadContinueResponse {
-    type Inner = ();
-    fn wrap(version: u8, _: ()) -> Self {
-        match version {
-            1 => Self::V1,
-            _ => Self::V2,
-        }
-    }
-    fn into_inner(self) {}
-}
-
-/// Request wrapper for `remote_chain_head_stop_operation`.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RemoteChainHeadStopOperationRequest {
-    /// Pre-RFC-0001 variant.
-    #[codec(index = 0)]
-    V1(ChainHeadOperationRequest),
-    /// RFC-0001 variant.
-    #[codec(index = 1)]
-    V2(ChainHeadOperationRequest),
-}
-
-impl Versioned for RemoteChainHeadStopOperationRequest {
-    type Inner = ChainHeadOperationRequest;
-    fn wrap(version: u8, inner: Self::Inner) -> Self {
-        match version {
-            1 => Self::V1(inner),
-            _ => Self::V2(inner),
-        }
-    }
-    fn into_inner(self) -> Self::Inner {
-        match self {
-            Self::V1(x) | Self::V2(x) => x,
-        }
-    }
-}
-
-/// Response wrapper for `remote_chain_head_stop_operation`.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RemoteChainHeadStopOperationResponse {
-    /// Pre-RFC-0001 variant.
-    #[codec(index = 0)]
-    V1,
-    /// RFC-0001 variant.
-    #[codec(index = 1)]
-    V2,
-}
-
-impl Versioned for RemoteChainHeadStopOperationResponse {
-    type Inner = ();
-    fn wrap(version: u8, _: ()) -> Self {
-        match version {
-            1 => Self::V1,
-            _ => Self::V2,
-        }
-    }
-    fn into_inner(self) {}
-}
-
-/// Request wrapper for `remote_chain_spec_genesis_hash`.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RemoteChainSpecGenesisHashRequest {
-    /// Pre-RFC-0001 variant.
-    #[codec(index = 0)]
-    V1(GenesisHash),
-    /// RFC-0001 variant.
-    #[codec(index = 1)]
-    V2(GenesisHash),
-}
-
-impl Versioned for RemoteChainSpecGenesisHashRequest {
-    type Inner = GenesisHash;
-    fn wrap(version: u8, inner: Self::Inner) -> Self {
-        match version {
-            1 => Self::V1(inner),
-            _ => Self::V2(inner),
-        }
-    }
-    fn into_inner(self) -> Self::Inner {
-        match self {
-            Self::V1(x) | Self::V2(x) => x,
-        }
-    }
-}
-
-/// Response wrapper for `remote_chain_spec_genesis_hash`.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RemoteChainSpecGenesisHashResponse {
-    /// Pre-RFC-0001 variant.
-    #[codec(index = 0)]
-    V1(Hex),
-    /// RFC-0001 variant.
-    #[codec(index = 1)]
-    V2(Hex),
-}
-
-impl Versioned for RemoteChainSpecGenesisHashResponse {
-    type Inner = Hex;
-    fn wrap(version: u8, inner: Self::Inner) -> Self {
-        match version {
-            1 => Self::V1(inner),
-            _ => Self::V2(inner),
-        }
-    }
-    fn into_inner(self) -> Self::Inner {
-        match self {
-            Self::V1(x) | Self::V2(x) => x,
-        }
-    }
-}
-
-/// Request wrapper for `remote_chain_spec_chain_name`.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RemoteChainSpecChainNameRequest {
-    /// Pre-RFC-0001 variant.
-    #[codec(index = 0)]
-    V1(GenesisHash),
-    /// RFC-0001 variant.
-    #[codec(index = 1)]
-    V2(GenesisHash),
-}
-
-impl Versioned for RemoteChainSpecChainNameRequest {
-    type Inner = GenesisHash;
-    fn wrap(version: u8, inner: Self::Inner) -> Self {
-        match version {
-            1 => Self::V1(inner),
-            _ => Self::V2(inner),
-        }
-    }
-    fn into_inner(self) -> Self::Inner {
-        match self {
-            Self::V1(x) | Self::V2(x) => x,
-        }
-    }
-}
-
-/// Response wrapper for `remote_chain_spec_chain_name`.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RemoteChainSpecChainNameResponse {
-    /// Pre-RFC-0001 variant.
-    #[codec(index = 0)]
-    V1(String),
-    /// RFC-0001 variant.
-    #[codec(index = 1)]
-    V2(String),
-}
-
-impl Versioned for RemoteChainSpecChainNameResponse {
-    type Inner = String;
-    fn wrap(version: u8, inner: Self::Inner) -> Self {
-        match version {
-            1 => Self::V1(inner),
-            _ => Self::V2(inner),
-        }
-    }
-    fn into_inner(self) -> Self::Inner {
-        match self {
-            Self::V1(x) | Self::V2(x) => x,
-        }
-    }
-}
-
-/// Request wrapper for `remote_chain_spec_properties`.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RemoteChainSpecPropertiesRequest {
-    /// Pre-RFC-0001 variant.
-    #[codec(index = 0)]
-    V1(GenesisHash),
-    /// RFC-0001 variant.
-    #[codec(index = 1)]
-    V2(GenesisHash),
-}
-
-impl Versioned for RemoteChainSpecPropertiesRequest {
-    type Inner = GenesisHash;
-    fn wrap(version: u8, inner: Self::Inner) -> Self {
-        match version {
-            1 => Self::V1(inner),
-            _ => Self::V2(inner),
-        }
-    }
-    fn into_inner(self) -> Self::Inner {
-        match self {
-            Self::V1(x) | Self::V2(x) => x,
-        }
-    }
-}
-
-/// Response wrapper for `remote_chain_spec_properties`.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RemoteChainSpecPropertiesResponse {
-    /// Pre-RFC-0001 variant.
-    #[codec(index = 0)]
-    V1(String),
-    /// RFC-0001 variant.
-    #[codec(index = 1)]
-    V2(String),
-}
-
-impl Versioned for RemoteChainSpecPropertiesResponse {
-    type Inner = String;
-    fn wrap(version: u8, inner: Self::Inner) -> Self {
-        match version {
-            1 => Self::V1(inner),
-            _ => Self::V2(inner),
-        }
-    }
-    fn into_inner(self) -> Self::Inner {
-        match self {
-            Self::V1(x) | Self::V2(x) => x,
-        }
-    }
-}
-
-/// Request wrapper for `remote_chain_transaction_broadcast`.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RemoteChainTransactionBroadcastRequest {
-    /// Pre-RFC-0001 variant.
-    #[codec(index = 0)]
-    V1(ChainTransactionBroadcastRequest),
-    /// RFC-0001 variant.
-    #[codec(index = 1)]
-    V2(ChainTransactionBroadcastRequest),
-}
-
-impl Versioned for RemoteChainTransactionBroadcastRequest {
-    type Inner = ChainTransactionBroadcastRequest;
-    fn wrap(version: u8, inner: Self::Inner) -> Self {
-        match version {
-            1 => Self::V1(inner),
-            _ => Self::V2(inner),
-        }
-    }
-    fn into_inner(self) -> Self::Inner {
-        match self {
-            Self::V1(x) | Self::V2(x) => x,
-        }
-    }
-}
-
-/// Response wrapper for `remote_chain_transaction_broadcast`.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RemoteChainTransactionBroadcastResponse {
-    /// Pre-RFC-0001 variant.
-    #[codec(index = 0)]
-    V1(Option<String>),
-    /// RFC-0001 variant.
-    #[codec(index = 1)]
-    V2(Option<String>),
-}
-
-impl Versioned for RemoteChainTransactionBroadcastResponse {
-    type Inner = Option<String>;
-    fn wrap(version: u8, inner: Self::Inner) -> Self {
-        match version {
-            1 => Self::V1(inner),
-            _ => Self::V2(inner),
-        }
-    }
-    fn into_inner(self) -> Self::Inner {
-        match self {
-            Self::V1(x) | Self::V2(x) => x,
-        }
-    }
-}
-
-/// Request wrapper for `remote_chain_transaction_stop`.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RemoteChainTransactionStopRequest {
-    /// Pre-RFC-0001 variant.
-    #[codec(index = 0)]
-    V1(ChainTransactionStopRequest),
-    /// RFC-0001 variant.
-    #[codec(index = 1)]
-    V2(ChainTransactionStopRequest),
-}
-
-impl Versioned for RemoteChainTransactionStopRequest {
-    type Inner = ChainTransactionStopRequest;
-    fn wrap(version: u8, inner: Self::Inner) -> Self {
-        match version {
-            1 => Self::V1(inner),
-            _ => Self::V2(inner),
-        }
-    }
-    fn into_inner(self) -> Self::Inner {
-        match self {
-            Self::V1(x) | Self::V2(x) => x,
-        }
-    }
-}
-
-/// Response wrapper for `remote_chain_transaction_stop`.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RemoteChainTransactionStopResponse {
-    /// Pre-RFC-0001 variant.
-    #[codec(index = 0)]
-    V1,
-    /// RFC-0001 variant.
-    #[codec(index = 1)]
-    V2,
-}
-
-impl Versioned for RemoteChainTransactionStopResponse {
-    type Inner = ();
-    fn wrap(version: u8, _: ()) -> Self {
-        match version {
-            1 => Self::V1,
-            _ => Self::V2,
-        }
-    }
-    fn into_inner(self) {}
+versioned_type! {
+    /// Subscription request wrapper for `remote_chain_head_follow`.
+    pub enum RemoteChainHeadFollowRequest { V1 => v01::ChainHeadFollowRequest }
+    /// Subscription item wrapper for `remote_chain_head_follow`.
+    pub enum RemoteChainHeadFollowItem { V1 => v01::ChainHeadEvent }
+    /// Request wrapper for `remote_chain_head_header`.
+    pub enum RemoteChainHeadHeaderRequest { V1 => v01::ChainHeadBlockRequest }
+    /// Response wrapper for `remote_chain_head_header`.
+    pub enum RemoteChainHeadHeaderResponse { V1 => Option<v01::Hex> }
+    /// Error wrapper for `remote_chain_head_header`.
+    pub enum RemoteChainHeadHeaderError { V1 => v01::GenericError }
+    /// Request wrapper for `remote_chain_head_body`.
+    pub enum RemoteChainHeadBodyRequest { V1 => v01::ChainHeadBlockRequest }
+    /// Response wrapper for `remote_chain_head_body`.
+    pub enum RemoteChainHeadBodyResponse { V1 => v01::OperationStartedResult }
+    /// Error wrapper for `remote_chain_head_body`.
+    pub enum RemoteChainHeadBodyError { V1 => v01::GenericError }
+    /// Request wrapper for `remote_chain_head_storage`.
+    pub enum RemoteChainHeadStorageRequest { V1 => v01::ChainHeadStorageRequest }
+    /// Response wrapper for `remote_chain_head_storage`.
+    pub enum RemoteChainHeadStorageResponse { V1 => v01::OperationStartedResult }
+    /// Error wrapper for `remote_chain_head_storage`.
+    pub enum RemoteChainHeadStorageError { V1 => v01::GenericError }
+    /// Request wrapper for `remote_chain_head_call`.
+    pub enum RemoteChainHeadCallRequest { V1 => v01::ChainHeadCallRequest }
+    /// Response wrapper for `remote_chain_head_call`.
+    pub enum RemoteChainHeadCallResponse { V1 => v01::OperationStartedResult }
+    /// Error wrapper for `remote_chain_head_call`.
+    pub enum RemoteChainHeadCallError { V1 => v01::GenericError }
+    /// Request wrapper for `remote_chain_head_unpin`.
+    pub enum RemoteChainHeadUnpinRequest { V1 => v01::ChainHeadUnpinRequest }
+    /// Response wrapper for `remote_chain_head_unpin`.
+    pub enum RemoteChainHeadUnpinResponse { V1 }
+    /// Error wrapper for `remote_chain_head_unpin`.
+    pub enum RemoteChainHeadUnpinError { V1 => v01::GenericError }
+    /// Request wrapper for `remote_chain_head_continue`.
+    pub enum RemoteChainHeadContinueRequest { V1 => v01::ChainHeadOperationRequest }
+    /// Response wrapper for `remote_chain_head_continue`.
+    pub enum RemoteChainHeadContinueResponse { V1 }
+    /// Error wrapper for `remote_chain_head_continue`.
+    pub enum RemoteChainHeadContinueError { V1 => v01::GenericError }
+    /// Request wrapper for `remote_chain_head_stop_operation`.
+    pub enum RemoteChainHeadStopOperationRequest { V1 => v01::ChainHeadOperationRequest }
+    /// Response wrapper for `remote_chain_head_stop_operation`.
+    pub enum RemoteChainHeadStopOperationResponse { V1 }
+    /// Error wrapper for `remote_chain_head_stop_operation`.
+    pub enum RemoteChainHeadStopOperationError { V1 => v01::GenericError }
+    /// Request wrapper for `remote_chain_spec_genesis_hash`.
+    pub enum RemoteChainSpecGenesisHashRequest { V1 => v01::GenesisHash }
+    /// Response wrapper for `remote_chain_spec_genesis_hash`.
+    pub enum RemoteChainSpecGenesisHashResponse { V1 => v01::Hex }
+    /// Error wrapper for `remote_chain_spec_genesis_hash`.
+    pub enum RemoteChainSpecGenesisHashError { V1 => v01::GenericError }
+    /// Request wrapper for `remote_chain_spec_chain_name`.
+    pub enum RemoteChainSpecChainNameRequest { V1 => v01::GenesisHash }
+    /// Response wrapper for `remote_chain_spec_chain_name`.
+    pub enum RemoteChainSpecChainNameResponse { V1 => String }
+    /// Error wrapper for `remote_chain_spec_chain_name`.
+    pub enum RemoteChainSpecChainNameError { V1 => v01::GenericError }
+    /// Request wrapper for `remote_chain_spec_properties`.
+    pub enum RemoteChainSpecPropertiesRequest { V1 => v01::GenesisHash }
+    /// Response wrapper for `remote_chain_spec_properties`.
+    pub enum RemoteChainSpecPropertiesResponse { V1 => String }
+    /// Error wrapper for `remote_chain_spec_properties`.
+    pub enum RemoteChainSpecPropertiesError { V1 => v01::GenericError }
+    /// Request wrapper for `remote_chain_transaction_broadcast`.
+    pub enum RemoteChainTransactionBroadcastRequest { V1 => v01::ChainTransactionBroadcastRequest }
+    /// Response wrapper for `remote_chain_transaction_broadcast`.
+    pub enum RemoteChainTransactionBroadcastResponse { V1 => Option<String> }
+    /// Error wrapper for `remote_chain_transaction_broadcast`.
+    pub enum RemoteChainTransactionBroadcastError { V1 => v01::GenericError }
+    /// Request wrapper for `remote_chain_transaction_stop`.
+    pub enum RemoteChainTransactionStopRequest { V1 => v01::ChainTransactionStopRequest }
+    /// Response wrapper for `remote_chain_transaction_stop`.
+    pub enum RemoteChainTransactionStopResponse { V1 }
+    /// Error wrapper for `remote_chain_transaction_stop`.
+    pub enum RemoteChainTransactionStopError { V1 => v01::GenericError }
 }

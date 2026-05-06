@@ -1,0 +1,19 @@
+{
+  "name": "truapi",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "npm run build --prefix js/packages/truapi && cd playground && yarn build",
+    "codegen": "./scripts/codegen.sh",
+    "format": "prettier --write \"**/*.{ts,tsx,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,md}\"",
+    "typecheck": "npm run build --prefix js/packages/truapi && cd playground && npx tsc --noEmit --noUnusedLocals --noUnusedParameters",
+    "test": "cargo test --workspace && npm test --prefix js/packages/truapi",
+    "lint": "npm run format:check && npm run typecheck"
+  },
+  "devDependencies": {
+    "prettier": "^3.8.3"
+  }
+}

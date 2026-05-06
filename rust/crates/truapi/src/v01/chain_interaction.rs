@@ -1,3 +1,5 @@
+use parity_scale_codec::{Decode, Encode};
+
 use super::{GenesisHash, Hex};
 
 /// Block hash identifier.
@@ -10,7 +12,7 @@ pub type OperationId = String;
 pub type RuntimeApi = (String, u32);
 
 /// Runtime specification metadata.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct RuntimeSpec {
     /// Specification name.
     pub spec_name: String,
@@ -27,7 +29,7 @@ pub struct RuntimeSpec {
 }
 
 /// Runtime validity check result.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
 pub enum RuntimeType {
     /// Valid runtime with spec.
@@ -37,7 +39,7 @@ pub enum RuntimeType {
 }
 
 /// Type of storage query to perform.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
 pub enum StorageQueryType {
     Value,
@@ -48,7 +50,7 @@ pub enum StorageQueryType {
 }
 
 /// A single storage query.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct StorageQueryItem {
     /// Storage key to query.
     pub key: Hex,
@@ -57,7 +59,7 @@ pub struct StorageQueryItem {
 }
 
 /// Result of a storage query.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct StorageResultItem {
     /// The queried key.
     pub key: Hex,
@@ -70,7 +72,7 @@ pub struct StorageResultItem {
 }
 
 /// Result of starting a chain operation.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
 pub enum OperationStartedResult {
     /// Operation started successfully.
@@ -83,7 +85,7 @@ pub enum OperationStartedResult {
 }
 
 /// Events received when following the chain head.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
 pub enum ChainHeadEvent {
     /// Initial state with finalized blocks.
@@ -121,7 +123,7 @@ pub enum ChainHeadEvent {
     },
     /// Storage query completed.
     OperationStorageDone { operation_id: OperationId },
-    /// Operation paused, needs [`super::ChainInteraction::remote_chain_head_continue`].
+    /// Operation paused, needs [`crate::api::ChainInteraction::remote_chain_head_continue`].
     OperationWaitingForContinue { operation_id: OperationId },
     /// Block became inaccessible.
     OperationInaccessible { operation_id: OperationId },
@@ -134,8 +136,8 @@ pub enum ChainHeadEvent {
     Stop,
 }
 
-/// Parameters for [`super::ChainInteraction::remote_chain_head_follow`].
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+/// Parameters for [`crate::api::ChainInteraction::remote_chain_head_follow`].
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct ChainHeadFollowRequest {
     /// Chain genesis hash.
     pub genesis_hash: GenesisHash,
@@ -145,7 +147,7 @@ pub struct ChainHeadFollowRequest {
 
 /// Parameters for chain head methods that operate within a follow subscription
 /// on a specific block.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct ChainHeadBlockRequest {
     /// Chain genesis hash.
     pub genesis_hash: GenesisHash,
@@ -155,8 +157,8 @@ pub struct ChainHeadBlockRequest {
     pub hash: BlockHash,
 }
 
-/// Parameters for [`super::ChainInteraction::remote_chain_head_storage`].
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+/// Parameters for [`crate::api::ChainInteraction::remote_chain_head_storage`].
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct ChainHeadStorageRequest {
     /// Chain genesis hash.
     pub genesis_hash: GenesisHash,
@@ -170,8 +172,8 @@ pub struct ChainHeadStorageRequest {
     pub child_trie: Option<Hex>,
 }
 
-/// Parameters for [`super::ChainInteraction::remote_chain_head_call`].
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+/// Parameters for [`crate::api::ChainInteraction::remote_chain_head_call`].
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct ChainHeadCallRequest {
     /// Chain genesis hash.
     pub genesis_hash: GenesisHash,
@@ -185,8 +187,8 @@ pub struct ChainHeadCallRequest {
     pub call_parameters: Hex,
 }
 
-/// Parameters for [`super::ChainInteraction::remote_chain_head_unpin`].
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+/// Parameters for [`crate::api::ChainInteraction::remote_chain_head_unpin`].
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct ChainHeadUnpinRequest {
     /// Chain genesis hash.
     pub genesis_hash: GenesisHash,
@@ -198,7 +200,7 @@ pub struct ChainHeadUnpinRequest {
 
 /// Parameters for chain head operations that reference a specific operation within
 /// a follow subscription.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct ChainHeadOperationRequest {
     /// Chain genesis hash.
     pub genesis_hash: GenesisHash,
@@ -208,8 +210,8 @@ pub struct ChainHeadOperationRequest {
     pub operation_id: OperationId,
 }
 
-/// Parameters for [`super::ChainInteraction::remote_chain_transaction_broadcast`].
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+/// Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_broadcast`].
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct ChainTransactionBroadcastRequest {
     /// Chain genesis hash.
     pub genesis_hash: GenesisHash,
@@ -217,8 +219,8 @@ pub struct ChainTransactionBroadcastRequest {
     pub transaction: Hex,
 }
 
-/// Parameters for [`super::ChainInteraction::remote_chain_transaction_stop`].
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+/// Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_stop`].
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct ChainTransactionStopRequest {
     /// Chain genesis hash.
     pub genesis_hash: GenesisHash,

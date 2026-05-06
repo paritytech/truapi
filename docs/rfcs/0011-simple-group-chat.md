@@ -82,14 +82,14 @@ host_chat_create_simple_group
 
 ### Relationship to Existing Chat API
 
-| Capability | `host_chat_create_room` | `host_chat_create_simple_group` |
-|---|---|---|
-| Product posts messages | Yes | No |
-| Custom message rendering | Yes | No |
-| Action subscriptions | Yes | No |
-| Bot integration | Yes | No |
-| Join link for participants | No | Yes |
-| Host-native UI | Product-controlled | Host-controlled |
+| Capability                 | `host_chat_create_room` | `host_chat_create_simple_group` |
+| -------------------------- | ----------------------- | ------------------------------- |
+| Product posts messages     | Yes                     | No                              |
+| Custom message rendering   | Yes                     | No                              |
+| Action subscriptions       | Yes                     | No                              |
+| Bot integration            | Yes                     | No                              |
+| Join link for participants | No                      | Yes                             |
+| Host-native UI             | Product-controlled      | Host-controlled                 |
 
 Simple groups are intentionally limited. Products that need richer control should use the existing room extension API or wait for Chat Extension v2.
 

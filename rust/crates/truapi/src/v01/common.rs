@@ -10,21 +10,21 @@ pub type Bytes = Vec<u8>;
 pub type GenesisHash = Hex;
 
 /// Generic error payload carrying a human-readable reason string.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct GenericErr {
     pub reason: String,
 }
 
 /// Single-variant error enum wrapping [`GenericErr`]. Used by many methods as a
 /// catch-all error type.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
 pub enum GenericError {
     GenericError(GenericErr),
 }
 
 /// Feature to check for host support.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
 pub enum Feature {
     /// Is this blockchain supported?
@@ -32,7 +32,7 @@ pub enum Feature {
 }
 
 /// Navigation error.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
 pub enum NavigateToError {
     /// Navigation not allowed.
@@ -42,7 +42,7 @@ pub enum NavigateToError {
 }
 
 /// Push notification payload.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct PushNotification {
     /// Notification text.
     pub text: String,

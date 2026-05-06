@@ -1,13 +1,13 @@
 //! Proc-macros for TrUAPI trait annotations.
 //!
 //! The single attribute exposed is [`wire`], which marks a trait method with
-//! its wire-protocol discriminant id. The id appears on the wire as the u8
-//! discriminant in the `Struct { request_id: str, payload: Enum(<methods>) }`
-//! envelope; method ordering becomes part of the wire protocol.
+//! its wire-protocol discriminant id. The id appears on the wire as the u8 discriminant in the
+//! `Struct { request_id: str, payload: Enum(<methods>) }` envelope; method
+//! ordering becomes part of the wire protocol.
 //!
-//! At compile time the macro validates that the literal is a `u8` and emits
-//! a `#[doc = "@wire_id=<N>"]` line so the value survives into rustdoc JSON,
-//! where `truapi-codegen` reads it to build the discriminant table.
+//! At compile time the macro validates that the id literal is a `u8`. It emits
+//! a hidden doc line so the value survives into rustdoc JSON, where
+//! `truapi-codegen` reads it to build generated wire tables.
 //!
 //! Why doc-smuggling instead of leaving `#[wire(id = N)]` on the method for
 //! the codegen to read directly: rustdoc's JSON `attrs` field stringifies
@@ -19,7 +19,7 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
-use syn::{parse_macro_input, ItemFn, LitInt, Token, TraitItemFn};
+use syn::{parse_macro_input, Ident, ItemFn, LitInt, Token, TraitItemFn};
 
 struct WireArgs {
     id: u8,
@@ -27,22 +27,35 @@ struct WireArgs {
 
 impl Parse for WireArgs {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
-        // Expects `id = N`.
-        let key: syn::Ident = input.parse()?;
-        if key != "id" {
-            return Err(syn::Error::new(
-                key.span(),
-                "expected `id`, e.g. `#[wire(id = 4)]`",
-            ));
+        let mut id = None;
+
+        while !input.is_empty() {
+            let key: Ident = input.parse()?;
+            input.parse::<Token![=]>()?;
+
+            if key == "id" {
+                if id.is_some() {
+                    return Err(syn::Error::new(key.span(), "duplicate `id`"));
+                }
+                let lit: LitInt = input.parse()?;
+                id = Some(lit.base10_parse().map_err(|err| {
+                    syn::Error::new(lit.span(), format!("wire id must fit in a u8: {err}"))
+                })?);
+            } else {
+                return Err(syn::Error::new(
+                    key.span(),
+                    "expected `id`, e.g. `#[wire(id = 4)]`",
+                ));
+            }
+
+            if input.is_empty() {
+                break;
+            }
+            input.parse::<Token![,]>()?;
         }
-        input.parse::<Token![=]>()?;
-        let lit: LitInt = input.parse()?;
-        let id: u8 = lit.base10_parse().map_err(|err| {
-            syn::Error::new(lit.span(), format!("wire id must fit in a u8: {err}"))
-        })?;
-        if !input.is_empty() {
-            return Err(input.error("unexpected tokens after `id = N`"));
-        }
+
+        let id = id.ok_or_else(|| input.error("missing `id = N`"))?;
+
         Ok(Self { id })
     }
 }
@@ -54,20 +67,20 @@ impl Parse for WireArgs {
 /// async fn host_account_get(...) -> ...;
 /// ```
 ///
-/// Expands to the original method plus a hidden doc tag that
-/// `truapi-codegen` extracts from rustdoc JSON to build the wire table.
+/// Expands to the original method plus hidden doc tags that `truapi-codegen`
+/// extracts from rustdoc JSON to build the wire table and versioned clients.
 #[proc_macro_attribute]
 pub fn wire(args: TokenStream, item: TokenStream) -> TokenStream {
     let WireArgs { id } = parse_macro_input!(args as WireArgs);
-    let tag = format!("@wire_id={id}");
+    let id_tag = format!("@wire_id={id}");
 
     if let Ok(mut method) = syn::parse::<TraitItemFn>(item.clone()) {
-        method.attrs.push(syn::parse_quote!(#[doc = #tag]));
+        method.attrs.push(syn::parse_quote!(#[doc = #id_tag]));
         return quote!(#method).into();
     }
 
     if let Ok(mut function) = syn::parse::<ItemFn>(item) {
-        function.attrs.push(syn::parse_quote!(#[doc = #tag]));
+        function.attrs.push(syn::parse_quote!(#[doc = #id_tag]));
         return quote!(#function).into();
     }
 

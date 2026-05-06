@@ -11,7 +11,7 @@
 
 use sp_statement_store::{self as sp, MAX_TOPICS};
 
-use super::{SignedStatement, Statement, StatementProof};
+use crate::v01::{SignedStatement, Statement, StatementProof};
 
 /// Reason a `Statement` / `SignedStatement` cannot be mapped into an
 /// `sp_statement_store::Statement`.

@@ -1,22 +1,31 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { subscribeConnectionStatus, type ConnectionStatus } from '@/src/lib/transport';
-import { ServiceTable } from '@/src/components/ServiceTable';
-import { MethodView } from '@/src/components/MethodView';
-import { AutoTestView } from '@/src/components/AutoTestView';
-import { CommandPalette } from '@/src/components/CommandPalette';
-import { services } from '@/src/lib/services';
-import { type TestEntry, AUTO_TEST_ID, EXCLUDED_METHODS, runAutoTests, runSingleTest } from '@/src/lib/auto-test';
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  subscribeConnectionStatus,
+  type ConnectionStatus,
+} from "@/src/lib/transport";
+import { ServiceTable } from "@/src/components/ServiceTable";
+import { MethodView } from "@/src/components/MethodView";
+import { AutoTestView } from "@/src/components/AutoTestView";
+import { CommandPalette } from "@/src/components/CommandPalette";
+import { services } from "@/src/lib/services";
+import {
+  type TestEntry,
+  AUTO_TEST_ID,
+  EXCLUDED_METHODS,
+  runAutoTests,
+  runSingleTest,
+} from "@/src/lib/auto-test";
 
 const STATUS_LABEL: Record<string, string> = {
-  connected: 'Host Linked',
-  connecting: 'Handshaking',
-  disconnected: 'Offline',
+  connected: "Host Linked",
+  connecting: "Handshaking",
+  disconnected: "Offline",
 };
 
 function StatusChip({ status }: { status: ConnectionStatus | null }) {
-  const key = status ?? 'connecting';
+  const key = status ?? "connecting";
   const label = STATUS_LABEL[key] ?? key;
   return (
     <span className={`status status--${key}`} title={label}>
@@ -40,7 +49,7 @@ function SearchTrigger({ onOpen }: { onOpen: () => void }) {
     >
       <span aria-hidden>⌕</span>
       <span className="search-btn__label">Search</span>
-      <span className="search-btn__kbd">{isMac ? '⌘' : 'Ctrl'}K</span>
+      <span className="search-btn__kbd">{isMac ? "⌘" : "Ctrl"}K</span>
     </button>
   );
 }
@@ -62,14 +71,6 @@ function Masthead({
         </div>
         <div className="masthead__right">
           <SearchTrigger onOpen={onSearch} />
-          <a
-            className="doc-link"
-            href="https://paritytech.github.io/truapi-explorer/v/0.2/"
-            target="_blank"
-            rel="noreferrer"
-          >
-            Protocol Docs
-          </a>
           <StatusChip status={status} />
         </div>
       </div>
@@ -78,7 +79,7 @@ function Masthead({
 }
 
 function Splash({ status }: { status: ConnectionStatus | null }) {
-  const connecting = status === null || status === 'connecting';
+  const connecting = status === null || status === "connecting";
   return (
     <div className="splash">
       <div className="splash__card">
@@ -87,12 +88,12 @@ function Splash({ status }: { status: ConnectionStatus | null }) {
           <span>TrUAPI Playground · v0.2</span>
         </div>
         <h1 className="splash__title">
-          {connecting ? 'Linking to host…' : 'Host is offline.'}
+          {connecting ? "Linking to host…" : "Host is offline."}
         </h1>
         <p className="splash__body">
           {connecting
-            ? 'Completing the postMessage handshake with the Polkadot Desktop Host. One moment.'
-            : 'This playground must be opened from inside the Polkadot Desktop Host. While developing locally, launch it through:'}
+            ? "Completing the postMessage handshake with the Polkadot Desktop Host. One moment."
+            : "This playground must be opened from inside the Polkadot Desktop Host. While developing locally, launch it through:"}
         </p>
         {!connecting && (
           <code className="splash__code">https://dot.li/localhost:3000</code>
@@ -104,7 +105,10 @@ function Splash({ status }: { status: ConnectionStatus | null }) {
 
 export default function PlaygroundPage() {
   const [status, setStatus] = useState<ConnectionStatus | null>(null);
-  const [selection, setSelection] = useState<{ service: string; method: string } | null>(null);
+  const [selection, setSelection] = useState<{
+    service: string;
+    method: string;
+  } | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [testResults, setTestResults] = useState<Record<string, TestEntry>>({});
   const [isTestRunning, setIsTestRunning] = useState(false);
@@ -114,21 +118,21 @@ export default function PlaygroundPage() {
     try {
       return subscribeConnectionStatus(setStatus);
     } catch {
-      setStatus('disconnected');
+      setStatus("disconnected");
     }
   }, []);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
         setPaletteOpen((v) => !v);
-      } else if (e.key === 'Escape' && paletteOpen) {
+      } else if (e.key === "Escape" && paletteOpen) {
         setPaletteOpen(false);
       }
     };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
   }, [paletteOpen]);
 
   const handlePaletteSelect = useCallback((service: string, method: string) => {
@@ -136,48 +140,69 @@ export default function PlaygroundPage() {
     setPaletteOpen(false);
   }, []);
 
-  const handleRunTests = useCallback(async (mode: 'all' | 'safe') => {
-    if (isTestRunning) return;
-    const excludeSet = mode === 'safe' ? EXCLUDED_METHODS : new Set<string>();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setIsTestRunning(true);
-    const initial: Record<string, TestEntry> = {};
-    for (const svc of services) {
-      for (const m of svc.methods) {
-        const id = `${svc.name}/${m.name}`;
-        initial[id] = { status: excludeSet.has(id) ? 'skipped' : 'idle' };
-      }
-    }
-    setTestResults(initial);
-    try {
-      await runAutoTests(services, (id, entry) => {
-        setTestResults((prev) => ({ ...prev, [id]: entry }));
-      }, controller.signal, excludeSet);
-    } finally {
-      setTestResults((prev) => {
-        const updated = { ...prev };
-        for (const [id, entry] of Object.entries(updated)) {
-          if (entry.status === 'running') updated[id] = { status: 'idle' };
+  const handleRunTests = useCallback(
+    async (mode: "all" | "safe") => {
+      if (isTestRunning) return;
+      const excludeSet = mode === "safe" ? EXCLUDED_METHODS : new Set<string>();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      setIsTestRunning(true);
+      const initial: Record<string, TestEntry> = {};
+      for (const svc of services) {
+        for (const m of svc.methods) {
+          const id = `${svc.name}/${m.name}`;
+          initial[id] = { status: excludeSet.has(id) ? "skipped" : "idle" };
         }
-        return updated;
-      });
-      setIsTestRunning(false);
-    }
-  }, [isTestRunning]);
+      }
+      setTestResults(initial);
+      try {
+        await runAutoTests(
+          services,
+          (id, entry) => {
+            setTestResults((prev) => ({ ...prev, [id]: entry }));
+          },
+          controller.signal,
+          excludeSet,
+        );
+      } finally {
+        setTestResults((prev) => {
+          const updated = { ...prev };
+          for (const [id, entry] of Object.entries(updated)) {
+            if (entry.status === "running") updated[id] = { status: "idle" };
+          }
+          return updated;
+        });
+        setIsTestRunning(false);
+      }
+    },
+    [isTestRunning],
+  );
 
   const handleStopTests = useCallback(() => {
     abortRef.current?.abort();
   }, []);
 
-  const handleRetryTest = useCallback(async (serviceName: string, methodName: string, requestOverride?: string) => {
-    if (isTestRunning) return;
-    await runSingleTest(services, serviceName, methodName, (id, entry) => {
-      setTestResults((prev) => ({ ...prev, [id]: entry }));
-    }, requestOverride);
-  }, [isTestRunning]);
+  const handleRetryTest = useCallback(
+    async (
+      serviceName: string,
+      methodName: string,
+      requestOverride?: string,
+    ) => {
+      if (isTestRunning) return;
+      await runSingleTest(
+        services,
+        serviceName,
+        methodName,
+        (id, entry) => {
+          setTestResults((prev) => ({ ...prev, [id]: entry }));
+        },
+        requestOverride,
+      );
+    },
+    [isTestRunning],
+  );
 
-  if (status === null || status === 'connecting') {
+  if (status === null || status === "connecting") {
     return <Splash status={status} />;
   }
 
@@ -190,8 +215,8 @@ export default function PlaygroundPage() {
       <div className="board" data-has-view={hasView}>
         <aside className="rail">
           <p className="rail__intro">
-            An interactive explorer for the TrUAPI surface exposed to products inside
-            the Polkadot Desktop Browser.
+            An interactive explorer for the TrUAPI surface exposed to products
+            inside the Polkadot Desktop Browser.
           </p>
           <ServiceTable
             services={services}

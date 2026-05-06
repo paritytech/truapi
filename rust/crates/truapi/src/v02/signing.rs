@@ -1,5 +1,6 @@
-use super::*;
 use parity_scale_codec::{Decode, Encode};
+
+use crate::v01::{GenesisHash, Hex, ProductAccountId, RawPayload};
 
 /// Full Substrate extrinsic signing payload with all fields needed for signature
 /// generation.
@@ -44,14 +45,20 @@ pub struct SigningPayload {
     pub with_signed_transaction: Option<bool>,
 }
 
-/// Raw data to sign — either binary bytes or a string message.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum RawPayload {
-    /// Raw binary data to sign.
-    Bytes(Vec<u8>),
-    /// String message to sign.
-    Payload(String),
+impl TryFrom<crate::v01::SigningPayload> for SigningPayload {
+    type Error = ();
+
+    fn try_from(_value: crate::v01::SigningPayload) -> Result<Self, Self::Error> {
+        Err(())
+    }
+}
+
+impl TryFrom<SigningPayload> for crate::v01::SigningPayload {
+    type Error = ();
+
+    fn try_from(_value: SigningPayload) -> Result<Self, Self::Error> {
+        Err(())
+    }
 }
 
 /// A raw signing request pairing an account with raw data.
@@ -67,25 +74,18 @@ pub struct SigningRawPayload {
     pub data: RawPayload,
 }
 
-/// Result of a signing operation.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-pub struct SigningResult {
-    /// The cryptographic signature.
-    pub signature: Hex,
-    /// Full signed transaction, if requested.
-    pub signed_transaction: Option<Hex>,
+impl TryFrom<crate::v01::SigningRawPayload> for SigningRawPayload {
+    type Error = ();
+
+    fn try_from(_value: crate::v01::SigningRawPayload) -> Result<Self, Self::Error> {
+        Err(())
+    }
 }
 
-/// Signing operation error.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum SigningError {
-    /// Payload could not be deserialized.
-    FailedToDecode,
-    /// User rejected signing.
-    Rejected,
-    /// Not authenticated.
-    PermissionDenied,
-    /// Catch-all.
-    Unknown { reason: String },
+impl TryFrom<SigningRawPayload> for crate::v01::SigningRawPayload {
+    type Error = ();
+
+    fn try_from(_value: SigningRawPayload) -> Result<Self, Self::Error> {
+        Err(())
+    }
 }

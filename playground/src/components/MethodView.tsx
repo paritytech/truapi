@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
-import { getMethodBinding, stringify } from '@/src/lib/host-api-bridge';
-import { services } from '@/src/lib/services';
+import { useState, useEffect, useRef } from "react";
+import { getMethodBinding, stringify } from "@/src/lib/host-api-bridge";
+import { services } from "@/src/lib/services";
 
 function renderWithLinks(text: string) {
   const parts = text.split(/(\[[^\]]+\]\("[^"]+"\))/g);
@@ -22,16 +22,16 @@ function renderWithLinks(text: string) {
 // Surface the message and append the payload only when it adds information.
 function formatError(value: unknown): string {
   if (value instanceof Error) {
-    const message = value.message || value.name || 'Error';
+    const message = value.message || value.name || "Error";
     const payload = (value as Error & { payload?: unknown }).payload;
-    if (payload && typeof payload === 'object') {
+    if (payload && typeof payload === "object") {
       const payloadStr = stringify(payload);
       if (payloadStr === stringify({ reason: message })) return message;
       return `${message}\n\n${payloadStr}`;
     }
     return message;
   }
-  if (typeof value === 'string') return value;
+  if (typeof value === "string") return value;
   return stringify(value);
 }
 
@@ -50,10 +50,15 @@ export function MethodView({
   const noParams = methodInfo?.noParams ?? false;
 
   const formatDefault = (raw: string) => {
-    try { return JSON.stringify(JSON.parse(raw), null, 2); } catch { return raw; }
+    try {
+      return JSON.stringify(JSON.parse(raw), null, 2);
+    } catch {
+      return raw;
+    }
   };
 
-  const buildInitialRequest = () => formatDefault(methodInfo?.defaultRequest ?? '{}');
+  const buildInitialRequest = () =>
+    formatDefault(methodInfo?.defaultRequest ?? "{}");
 
   const [request, setRequest] = useState(buildInitialRequest);
 
@@ -61,14 +66,14 @@ export function MethodView({
   useEffect(() => {
     const el = textareaRef.current;
     if (!el) return;
-    el.style.height = 'auto';
+    el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
   }, [request]);
 
   useEffect(() => {
     setRequest(buildInitialRequest());
-    setResponse('');
-    setError('');
+    setResponse("");
+    setError("");
     setStreamLog([]);
     setStreamActive(false);
     setActiveSub((prev) => {
@@ -78,12 +83,14 @@ export function MethodView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [service, method]);
 
-  const [response, setResponse] = useState<string>('');
-  const [error, setError] = useState<string>('');
+  const [response, setResponse] = useState<string>("");
+  const [error, setError] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [streamLog, setStreamLog] = useState<string[]>([]);
   const [streamActive, setStreamActive] = useState(false);
-  const [activeSub, setActiveSub] = useState<{ unsubscribe: () => void } | null>(null);
+  const [activeSub, setActiveSub] = useState<{
+    unsubscribe: () => void;
+  } | null>(null);
   const callAbortRef = useRef<((reason: string) => void) | null>(null);
 
   const CALL_TIMEOUT_MS = 30_000;
@@ -92,8 +99,8 @@ export function MethodView({
 
   const handleCall = async () => {
     if (!binding) return;
-    setResponse('');
-    setError('');
+    setResponse("");
+    setError("");
     setStreamLog([]);
 
     let parsed: unknown;
@@ -103,7 +110,7 @@ export function MethodView({
       try {
         parsed = JSON.parse(request);
       } catch {
-        setError('Invalid JSON request');
+        setError("Invalid JSON request");
         return;
       }
     }
@@ -116,7 +123,7 @@ export function MethodView({
           setStreamLog((prev) => [...prev, stringify(event)]);
         },
         () => {
-          setStreamLog((prev) => [...prev, '--- stream ended ---']);
+          setStreamLog((prev) => [...prev, "--- stream ended ---"]);
           setStreamActive(false);
           setActiveSub(null);
         },
@@ -128,14 +135,17 @@ export function MethodView({
       const abortPromise = new Promise<never>((_, reject) => {
         callAbortRef.current = (reason: string) => reject(new Error(reason));
         timeoutHandle = setTimeout(
-          () => reject(new Error(`Call timed out after ${CALL_TIMEOUT_MS / 1000}s`)),
+          () =>
+            reject(
+              new Error(`Call timed out after ${CALL_TIMEOUT_MS / 1000}s`),
+            ),
           CALL_TIMEOUT_MS,
         );
       });
       try {
         const result = await Promise.race([binding.call(parsed), abortPromise]);
         if (result.ok) {
-          setResponse(stringify(result.data) ?? 'null');
+          setResponse(stringify(result.data) ?? "null");
         } else {
           setError(formatError(result.data));
         }
@@ -151,16 +161,16 @@ export function MethodView({
 
   const handleStop = () => {
     if (loading && callAbortRef.current) {
-      callAbortRef.current('Call aborted');
+      callAbortRef.current("Call aborted");
       return;
     }
     activeSub?.unsubscribe();
     setStreamActive(false);
     setActiveSub(null);
-    setStreamLog((prev) => [...prev, '--- stopped ---']);
+    setStreamLog((prev) => [...prev, "--- stopped ---"]);
   };
 
-  const kind = methodInfo?.type ?? 'unary';
+  const kind = methodInfo?.type ?? "unary";
 
   return (
     <div>
@@ -182,7 +192,7 @@ export function MethodView({
         <span className="view__method">{method}</span>
       </h1>
       <div className="view__kind" data-kind={kind}>
-        {kind === 'subscription' ? 'Subscription' : 'Request / Response'}
+        {kind === "subscription" ? "Subscription" : "Request / Response"}
       </div>
 
       {/* Description */}
@@ -200,7 +210,9 @@ export function MethodView({
           <>
             <div className="panel__head">
               <span className="panel__label">Request Payload</span>
-              <span className="panel__label" style={{ color: 'var(--ink-4)' }}>JSON</span>
+              <span className="panel__label" style={{ color: "var(--ink-4)" }}>
+                JSON
+              </span>
             </div>
             {methodInfo?.requestDescription && (
               <div className="panel__hint">
@@ -282,14 +294,23 @@ export function MethodView({
         <div className="console">
           <div className="console__head">
             <span className="console__title">
-              {error ? 'Error' : binding?.isStream ? 'Stream output' : 'Response'}
+              {error
+                ? "Error"
+                : binding?.isStream
+                  ? "Stream output"
+                  : "Response"}
             </span>
             <span className="console__dots" aria-hidden>
-              <i /><i /><i />
+              <i />
+              <i />
+              <i />
             </span>
           </div>
           {error && (
-            <div className="console__body console__body--error" data-testid="error-display">
+            <div
+              className="console__body console__body--error"
+              data-testid="error-display"
+            >
               {error}
             </div>
           )}
@@ -301,15 +322,15 @@ export function MethodView({
           {streamLog.length > 0 && (
             <div className="console__body" data-testid="stream-log">
               {streamLog.map((entry, i) => {
-                const isMeta = entry.startsWith('---');
+                const isMeta = entry.startsWith("---");
                 return (
                   <div
                     key={i}
-                    className={`console__entry${isMeta ? ' console__entry--meta' : ''}`}
+                    className={`console__entry${isMeta ? " console__entry--meta" : ""}`}
                     data-testid="stream-entry"
                   >
                     <span className="console__entry-i">
-                      {isMeta ? '··' : String(i + 1).padStart(2, '0')}
+                      {isMeta ? "··" : String(i + 1).padStart(2, "0")}
                     </span>
                     <span className="console__entry-body">{entry}</span>
                   </div>

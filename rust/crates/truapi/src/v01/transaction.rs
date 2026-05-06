@@ -1,7 +1,9 @@
-use super::Hex;
+use parity_scale_codec::{Decode, Encode};
+
+use super::{Hex, ProductAccountId};
 
 /// A signed extension for a transaction payload.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct TxPayloadExtensionV1 {
     /// Extension name (e.g., `"CheckSpecVersion"`).
     pub id: String,
@@ -12,7 +14,7 @@ pub struct TxPayloadExtensionV1 {
 }
 
 /// Context information for transaction construction.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct TxPayloadContextV1 {
     /// `RuntimeMetadataPrefixed` blob (SCALE).
     pub metadata: Hex,
@@ -26,7 +28,7 @@ pub struct TxPayloadContextV1 {
 
 /// Version 1 transaction payload with all data needed to construct a signed
 /// extrinsic.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct TxPayloadV1 {
     /// Signer hint (address/name), `None` = host picks.
     pub signer: Option<String>,
@@ -41,15 +43,24 @@ pub struct TxPayloadV1 {
 }
 
 /// Versioned transaction payload envelope.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
 pub enum VersionedTxPayload {
     /// Version 1 payload.
     V1(TxPayloadV1),
 }
 
+/// Request to create a transaction for a product account.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
+pub struct CreateTransactionRequest {
+    /// Product account that will sign the transaction.
+    pub product_account_id: ProductAccountId,
+    /// Versioned transaction payload.
+    pub payload: VersionedTxPayload,
+}
+
 /// Transaction creation error.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
 pub enum CreateTransactionError {
     /// Payload could not be deserialized.

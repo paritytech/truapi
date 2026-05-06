@@ -1,5 +1,6 @@
-use super::*;
 use parity_scale_codec::{Decode, Encode};
+
+use crate::v01::{AccountId, DerivationIndex};
 
 /// Balance amount for payment operations. Interpreted according to the host's
 /// single fixed payment asset (e.g. pUSD).
@@ -40,6 +41,24 @@ pub enum PaymentTopUpSource {
     PrivateKey(Ed25519PrivateKey),
 }
 
+/// Request to top up the product payment balance.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
+pub struct PaymentTopUpRequest {
+    /// Amount to top up.
+    pub amount: Balance,
+    /// Funding source for the top-up.
+    pub source: PaymentTopUpSource,
+}
+
+/// Request to initiate a payment to another account.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
+pub struct PaymentRequest {
+    /// Amount to pay.
+    pub amount: Balance,
+    /// Destination account.
+    pub destination: AccountId,
+}
+
 /// Receipt returned after a successful payment request.
 ///
 /// See [RFC 0006].
@@ -70,7 +89,7 @@ pub enum PaymentStatus {
     Failed(String),
 }
 
-/// Error from [`Payment::host_payment_balance_subscribe`].
+/// Error from [`crate::api::Payment::host_payment_balance_subscribe`].
 ///
 /// See [RFC 0006].
 ///
@@ -84,7 +103,7 @@ pub enum PaymentBalanceError {
     Unknown { reason: String },
 }
 
-/// Error from [`Payment::host_payment_top_up`].
+/// Error from [`crate::api::Payment::host_payment_top_up`].
 ///
 /// See [RFC 0006].
 ///
@@ -100,7 +119,7 @@ pub enum PaymentTopUpError {
     Unknown { reason: String },
 }
 
-/// Error from [`Payment::host_payment_request`].
+/// Error from [`crate::api::Payment::host_payment_request`].
 ///
 /// See [RFC 0006].
 ///
@@ -116,7 +135,7 @@ pub enum PaymentRequestError {
     Unknown { reason: String },
 }
 
-/// Error from [`Payment::host_payment_status_subscribe`].
+/// Error from [`crate::api::Payment::host_payment_status_subscribe`].
 ///
 /// See [RFC 0006].
 ///

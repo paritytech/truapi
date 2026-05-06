@@ -12,7 +12,7 @@
     "lint:fix": "next lint --fix"
   },
   "dependencies": {
-    "@truapi/client": "file:../js/packages/truapi-client",
+    "@parity/truapi": "file:../js/packages/truapi",
     "next": "15.5.15",
     "react": "^19.2.1",
     "react-dom": "^19.2.1"

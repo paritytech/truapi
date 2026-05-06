@@ -1,0 +1,21 @@
+{
+  "name": "@parity/truapi",
+  "version": "0.1.0",
+  "description": "TrUAPI TypeScript transport, SCALE codecs, and generated API client",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "prepare": "npm run build",
+    "codegen": "cargo run -p truapi-codegen -- --input ../../../target/doc/truapi.json --output src/generated",
+    "test": "for f in test/*.test.mjs; do echo \"=== $f ===\" && bun \"$f\" || exit 1; done"
+  },
+  "devDependencies": {
+    "typescript": "^5.7"
+  },
+  "dependencies": {
+    "neverthrow": "^8.2.0",
+    "scale-ts": "^1.6.1"
+  }
+}

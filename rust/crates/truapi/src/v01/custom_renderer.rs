@@ -1,3 +1,5 @@
+use parity_scale_codec::{Decode, Encode};
+
 use super::Bytes;
 
 /// Variable-length unsigned integer used for dimensions (SCALE compact-encoded
@@ -9,7 +11,7 @@ pub type Size = u64;
 pub type Dimensions = (Size, Size, Option<Size>, Option<Size>);
 
 /// Text typography presets.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
 pub enum TypographyStyle {
     TitleXL,
@@ -20,7 +22,7 @@ pub enum TypographyStyle {
 }
 
 /// Button style variants.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
 pub enum ButtonVariant {
     Primary,
@@ -29,7 +31,7 @@ pub enum ButtonVariant {
 }
 
 /// Semantic color tokens for theming.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
 pub enum ColorToken {
     TextPrimary,
@@ -44,7 +46,7 @@ pub enum ColorToken {
 }
 
 /// 2D content alignment.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
 pub enum ContentAlignment {
     TopStart,
@@ -59,7 +61,7 @@ pub enum ContentAlignment {
 }
 
 /// Horizontal alignment options.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
 pub enum HorizontalAlignment {
     Start,
@@ -68,7 +70,7 @@ pub enum HorizontalAlignment {
 }
 
 /// Vertical alignment options.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
 pub enum VerticalAlignment {
     Top,
@@ -77,7 +79,7 @@ pub enum VerticalAlignment {
 }
 
 /// Layout arrangement (like CSS flexbox `justify-content`).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
 pub enum Arrangement {
     Start,
@@ -89,7 +91,7 @@ pub enum Arrangement {
 }
 
 /// Shape for borders and backgrounds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
 pub enum Shape {
     /// Border radius value.
@@ -99,7 +101,7 @@ pub enum Shape {
 }
 
 /// Border styling.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct BorderStyle {
     /// Border width.
     pub width: Size,
@@ -110,7 +112,7 @@ pub struct BorderStyle {
 }
 
 /// Background styling.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct Background {
     /// Background color.
     pub color: ColorToken,
@@ -119,7 +121,7 @@ pub struct Background {
 }
 
 /// Layout and styling modifiers applied to custom renderer components.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
 pub enum Modifier {
     /// Outer spacing.
@@ -145,14 +147,14 @@ pub enum Modifier {
 }
 
 /// Properties for a [`CustomRendererNode::Box`] container.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct BoxProps {
     /// Content alignment within the box.
     pub content_alignment: Option<ContentAlignment>,
 }
 
 /// Properties for a [`CustomRendererNode::Column`] layout.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct ColumnProps {
     /// Horizontal alignment of children.
     pub horizontal_alignment: Option<HorizontalAlignment>,
@@ -161,7 +163,7 @@ pub struct ColumnProps {
 }
 
 /// Properties for a [`CustomRendererNode::Row`] layout.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct RowProps {
     /// Vertical alignment of children.
     pub vertical_alignment: Option<VerticalAlignment>,
@@ -170,7 +172,7 @@ pub struct RowProps {
 }
 
 /// Properties for a [`CustomRendererNode::Text`] display.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct TextProps {
     /// Typography preset.
     pub style: Option<TypographyStyle>,
@@ -179,7 +181,7 @@ pub struct TextProps {
 }
 
 /// Properties for a [`CustomRendererNode::Button`].
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct ButtonProps {
     /// Button label text.
     pub text: String,
@@ -190,7 +192,7 @@ pub struct ButtonProps {
 }
 
 /// Properties for a [`CustomRendererNode::TextField`].
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct TextFieldProps {
     /// Placeholder text.
     pub placeholder: Option<String>,
@@ -202,7 +204,7 @@ pub struct TextFieldProps {
 
 /// A component in the custom renderer UI tree, combining modifiers, typed props,
 /// and recursive children.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct Component<P> {
     /// Layout and styling modifiers.
     pub modifiers: Vec<Modifier>,
@@ -214,7 +216,7 @@ pub struct Component<P> {
 
 /// A node in the custom renderer UI tree. Can be nested recursively via the
 /// `children` field of each [`Component`].
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
 pub enum CustomRendererNode {
     /// Empty node.
@@ -238,7 +240,7 @@ pub enum CustomRendererNode {
 }
 
 /// Request from the host asking the product to render a custom chat message.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 pub struct CustomMessageRenderRequest {
     /// Message identifier.
     pub message_id: String,

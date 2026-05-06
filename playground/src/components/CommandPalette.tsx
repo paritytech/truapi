@@ -1,18 +1,18 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ServiceInfo } from '@/src/lib/services';
-import { isMethodSupported } from '@/src/lib/host-api-bridge';
+import { useEffect, useMemo, useRef, useState } from "react";
+import type { ServiceInfo } from "@/src/lib/services";
+import { isMethodSupported } from "@/src/lib/host-api-bridge";
 
 interface FlatMethod {
   service: string;
   name: string;
-  type: 'unary' | 'subscription';
+  type: "unary" | "subscription";
   description?: string;
   supported: boolean;
 }
 
 const KIND_LABEL: Record<string, string> = {
-  unary: 'Req / Res',
-  subscription: 'Subscription',
+  unary: "Req / Res",
+  subscription: "Subscription",
 };
 
 function flatten(services: ServiceInfo[]): FlatMethod[] {
@@ -36,7 +36,7 @@ function score(method: FlatMethod, q: string): number {
   const query = q.toLowerCase();
   const name = method.name.toLowerCase();
   const service = method.service.toLowerCase();
-  const desc = (method.description ?? '').toLowerCase();
+  const desc = (method.description ?? "").toLowerCase();
 
   if (name === query) return 1000;
   if (name.startsWith(query)) return 500;
@@ -61,7 +61,7 @@ export function CommandPalette({
   onSelect: (service: string, method: string) => void;
   onClose: () => void;
 }) {
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState("");
   const [activeIdx, setActiveIdx] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -89,20 +89,20 @@ export function CommandPalette({
     const item = listRef.current?.querySelector<HTMLElement>(
       `[data-idx="${activeIdx}"]`,
     );
-    item?.scrollIntoView({ block: 'nearest' });
+    item?.scrollIntoView({ block: "nearest" });
   }, [activeIdx]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
+    if (e.key === "Escape") {
       e.preventDefault();
       onClose();
-    } else if (e.key === 'ArrowDown') {
+    } else if (e.key === "ArrowDown") {
       e.preventDefault();
       setActiveIdx((i) => Math.min(i + 1, results.length - 1));
-    } else if (e.key === 'ArrowUp') {
+    } else if (e.key === "ArrowUp") {
       e.preventDefault();
       setActiveIdx((i) => Math.max(i - 1, 0));
-    } else if (e.key === 'Enter') {
+    } else if (e.key === "Enter") {
       e.preventDefault();
       const hit = results[activeIdx];
       if (hit) onSelect(hit.service, hit.name);
@@ -168,7 +168,7 @@ export function CommandPalette({
                   <span className="palette__item-service">{m.service}</span>
                 </div>
                 <span className="palette__item-kind" data-kind={m.type}>
-                  {m.supported ? KIND_LABEL[m.type] : 'n/a'}
+                  {m.supported ? KIND_LABEL[m.type] : "n/a"}
                 </span>
               </button>
             ))
@@ -191,7 +191,9 @@ export function CommandPalette({
               close
             </span>
           </div>
-          <span>{results.length} match{results.length === 1 ? '' : 'es'}</span>
+          <span>
+            {results.length} match{results.length === 1 ? "" : "es"}
+          </span>
         </div>
       </div>
     </div>

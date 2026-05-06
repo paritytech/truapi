@@ -1,13 +1,13 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
-import type { ServiceInfo } from '@/src/lib/services';
-import type { TestEntry, TestStatus } from '@/src/lib/auto-test';
+import { useState, useEffect, useMemo, useRef } from "react";
+import type { ServiceInfo } from "@/src/lib/services";
+import type { TestEntry, TestStatus } from "@/src/lib/auto-test";
 
 const STATUS_LABEL: Record<TestStatus, string> = {
-  idle: '—',
-  running: 'running…',
-  pass: 'pass',
-  fail: 'fail',
-  skipped: 'skip',
+  idle: "—",
+  running: "running…",
+  pass: "pass",
+  fail: "fail",
+  skipped: "skip",
 };
 
 export function AutoTestView({
@@ -22,14 +22,18 @@ export function AutoTestView({
   services: ServiceInfo[];
   testResults: Record<string, TestEntry>;
   isRunning: boolean;
-  onRun: (mode: 'all' | 'safe') => void;
+  onRun: (mode: "all" | "safe") => void;
   onStop: () => void;
-  onRetry: (serviceName: string, methodName: string, requestOverride?: string) => void;
+  onRetry: (
+    serviceName: string,
+    methodName: string,
+    requestOverride?: string,
+  ) => void;
   onBack: () => void;
 }) {
-  const [mode, setMode] = useState<'all' | 'safe'>('safe');
+  const [mode, setMode] = useState<"all" | "safe">("safe");
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [editedRequest, setEditedRequest] = useState<string>('');
+  const [editedRequest, setEditedRequest] = useState<string>("");
   const editTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -39,7 +43,7 @@ export function AutoTestView({
   useEffect(() => {
     const el = editTextareaRef.current;
     if (!el) return;
-    el.style.height = 'auto';
+    el.style.height = "auto";
     el.style.height = `${el.scrollHeight}px`;
   }, [editedRequest, expandedId]);
 
@@ -49,15 +53,15 @@ export function AutoTestView({
       return;
     }
     setExpandedId(id);
-    setEditedRequest(testResults[id]?.request ?? '');
+    setEditedRequest(testResults[id]?.request ?? "");
   };
 
   const { hasResults, passCount, failCount } = useMemo(() => {
     const entries = Object.values(testResults);
     return {
       hasResults: entries.length > 0,
-      passCount: entries.filter((e) => e.status === 'pass').length,
-      failCount: entries.filter((e) => e.status === 'fail').length,
+      passCount: entries.filter((e) => e.status === "pass").length,
+      failCount: entries.filter((e) => e.status === "fail").length,
     };
   }, [testResults]);
 
@@ -84,8 +88,9 @@ export function AutoTestView({
           <span className="panel__label">About</span>
         </div>
         <p className="panel__desc">
-          Calls every supported method with its default request and reports pass or fail.
-          Disruptive methods (those that open pop-ups or navigate away) can be skipped with the toggle below.
+          Calls every supported method with its default request and reports pass
+          or fail. Disruptive methods (those that open pop-ups or navigate away)
+          can be skipped with the toggle below.
         </p>
       </div>
 
@@ -94,18 +99,18 @@ export function AutoTestView({
           <button
             type="button"
             className="autotest__mode-btn"
-            data-active={mode === 'safe'}
+            data-active={mode === "safe"}
             disabled={isRunning}
-            onClick={() => setMode('safe')}
+            onClick={() => setMode("safe")}
           >
             Skip disruptive
           </button>
           <button
             type="button"
             className="autotest__mode-btn"
-            data-active={mode === 'all'}
+            data-active={mode === "all"}
             disabled={isRunning}
-            onClick={() => setMode('all')}
+            onClick={() => setMode("all")}
           >
             All methods
           </button>
@@ -118,13 +123,20 @@ export function AutoTestView({
               Stop
             </button>
           ) : (
-            <button type="button" className="btn btn--primary" onClick={() => onRun(mode)}>
+            <button
+              type="button"
+              className="btn btn--primary"
+              onClick={() => onRun(mode)}
+            >
               <span className="btn__glyph">▶</span>
               Run All Tests
             </button>
           )}
           {hasResults && (
-            <span className="autotest__summary" data-has-fail={!isRunning && failCount > 0}>
+            <span
+              className="autotest__summary"
+              data-has-fail={!isRunning && failCount > 0}
+            >
               {passCount} pass · {failCount} fail
             </span>
           )}
@@ -139,8 +151,8 @@ export function AutoTestView({
               {svc.methods.map((m) => {
                 const id = `${svc.name}/${m.name}`;
                 const entry = testResults[id];
-                const status = entry?.status ?? 'idle';
-                const isExpandable = status === 'pass' || status === 'fail';
+                const status = entry?.status ?? "idle";
+                const isExpandable = status === "pass" || status === "fail";
                 const isExpanded = expandedId === id;
 
                 return (
@@ -149,20 +161,29 @@ export function AutoTestView({
                       className="autotest__row"
                       data-status={status}
                       data-expandable={isExpandable}
-                      onClick={isExpandable ? () => toggleExpand(id) : undefined}
+                      onClick={
+                        isExpandable ? () => toggleExpand(id) : undefined
+                      }
                     >
                       <span className="autotest__dot" data-status={status} />
                       <span className="autotest__name">{m.name}</span>
                       {isExpandable && (
-                        <span className="autotest__chevron">{isExpanded ? '▲' : '▼'}</span>
+                        <span className="autotest__chevron">
+                          {isExpanded ? "▲" : "▼"}
+                        </span>
                       )}
                       <span className="autotest__status" data-status={status}>
                         {STATUS_LABEL[status]}
                       </span>
                     </div>
                     {isExpanded && (
-                      <div className="autotest__detail" onClick={(e) => e.stopPropagation()}>
-                        <div className="autotest__detail-label">Request (editable)</div>
+                      <div
+                        className="autotest__detail"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="autotest__detail-label">
+                          Request (editable)
+                        </div>
                         <textarea
                           ref={editTextareaRef}
                           className="autotest__detail-edit"
@@ -174,18 +195,29 @@ export function AutoTestView({
                         />
                         {entry?.output != null && (
                           <>
-                            <div className="autotest__detail-label">Response</div>
-                            <pre className="autotest__detail-body">{entry.output}</pre>
+                            <div className="autotest__detail-label">
+                              Response
+                            </div>
+                            <pre className="autotest__detail-body">
+                              {entry.output}
+                            </pre>
                           </>
                         )}
                         <button
                           type="button"
                           className="autotest__retry"
                           disabled={isRunning}
-                          title={isRunning ? 'Wait for the auto-test run to finish before retrying' : undefined}
+                          title={
+                            isRunning
+                              ? "Wait for the auto-test run to finish before retrying"
+                              : undefined
+                          }
                           onClick={(e) => {
                             e.stopPropagation();
-                            const override = editedRequest === entry?.request ? undefined : editedRequest;
+                            const override =
+                              editedRequest === entry?.request
+                                ? undefined
+                                : editedRequest;
                             onRetry(svc.name, m.name, override);
                           }}
                         >

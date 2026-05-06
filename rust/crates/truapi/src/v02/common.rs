@@ -1,45 +1,6 @@
 use parity_scale_codec::{Decode, Encode};
 
-/// Hex-encoded arbitrary bytes (SCALE length-prefixed on the wire).
-pub type Hex = Vec<u8>;
-
-/// Arbitrary binary data (SCALE length-prefixed on the wire).
-pub type Bytes = Vec<u8>;
-
-/// Blockchain genesis hash, used to identify a specific chain.
-pub type GenesisHash = Hex;
-
-/// Generic error payload carrying a human-readable reason string.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-pub struct GenericErr {
-    pub reason: String,
-}
-
-/// Single-variant error enum wrapping [`GenericErr`]. Used by many methods as a
-/// catch-all error type.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum GenericError {
-    GenericError(GenericErr),
-}
-
-/// Feature to check for host support.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum Feature {
-    /// Is this blockchain supported?
-    Chain(GenesisHash),
-}
-
-/// Navigation error.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum NavigateToError {
-    /// Navigation not allowed.
-    PermissionDenied,
-    /// Catch-all.
-    Unknown { reason: String },
-}
+use crate::v01::GenericErr;
 
 /// Handshake error. Mirrors Novasama's `HandshakeErr` byte-for-byte so that
 /// pre-codegen products (built against `@novasamatech/host-api`) can decode
@@ -50,15 +11,6 @@ pub enum HandshakeError {
     Timeout,
     UnsupportedProtocolVersion,
     Unknown(GenericErr),
-}
-
-/// Push notification payload.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-pub struct PushNotification {
-    /// Notification text.
-    pub text: String,
-    /// Optional URL to open on tap.
-    pub deeplink: Option<String>,
 }
 
 /// Device capability to request access to.
@@ -87,9 +39,40 @@ pub enum DevicePermission {
     Biometrics,
 }
 
+impl TryFrom<crate::v01::DevicePermissionRequest> for DevicePermission {
+    type Error = ();
+
+    fn try_from(value: crate::v01::DevicePermissionRequest) -> Result<Self, Self::Error> {
+        Ok(match value {
+            crate::v01::DevicePermissionRequest::Camera => Self::Camera,
+            crate::v01::DevicePermissionRequest::Microphone => Self::Microphone,
+            crate::v01::DevicePermissionRequest::Bluetooth => Self::Bluetooth,
+            crate::v01::DevicePermissionRequest::Location => Self::Location,
+        })
+    }
+}
+
+impl TryFrom<DevicePermission> for crate::v01::DevicePermissionRequest {
+    type Error = ();
+
+    fn try_from(value: DevicePermission) -> Result<Self, Self::Error> {
+        match value {
+            DevicePermission::Camera => Ok(Self::Camera),
+            DevicePermission::Microphone => Ok(Self::Microphone),
+            DevicePermission::Bluetooth => Ok(Self::Bluetooth),
+            DevicePermission::Location => Ok(Self::Location),
+            DevicePermission::Notifications
+            | DevicePermission::NFC
+            | DevicePermission::Clipboard
+            | DevicePermission::OpenUrl
+            | DevicePermission::Biometrics => Err(()),
+        }
+    }
+}
+
 /// A single remote-operation permission entry.
 ///
-/// V0.2: replaces `RemotePermissionRequest`. The [`super::Permissions::remote_permission`] method
+/// V0.2: replaces `RemotePermissionRequest`. The [`crate::api::Permissions::remote_permission`] method
 /// now accepts a `Vec<RemotePermission>` so products can batch multiple
 /// permission requests into a single prompt.
 ///
@@ -107,8 +90,44 @@ pub enum RemotePermission {
     /// WebRTC access — can expose the user's IP address.
     WebRtc,
     /// Broadcast signed transactions via
-    /// [`super::ChainInteraction::remote_chain_transaction_broadcast`].
+    /// [`crate::api::ChainInteraction::remote_chain_transaction_broadcast`].
     ChainSubmit,
-    /// Submit statements via [`super::StatementStore::remote_statement_store_submit`].
+    /// Submit statements via [`crate::api::StatementStore::remote_statement_store_submit`].
     StatementSubmit,
+}
+
+impl TryFrom<crate::v01::RemotePermissionRequestV1> for Vec<RemotePermission> {
+    type Error = ();
+
+    fn try_from(value: crate::v01::RemotePermissionRequestV1) -> Result<Self, Self::Error> {
+        Ok(match value {
+            crate::v01::RemotePermissionRequestV1::ExternalRequest(url) => {
+                let host = url_host(&url).unwrap_or(url);
+                vec![RemotePermission::Remote(vec![host])]
+            }
+            crate::v01::RemotePermissionRequestV1::TransactionSubmit => {
+                vec![RemotePermission::ChainSubmit]
+            }
+        })
+    }
+}
+
+impl TryFrom<Vec<RemotePermission>> for crate::v01::RemotePermissionRequestV1 {
+    type Error = ();
+
+    fn try_from(_value: Vec<RemotePermission>) -> Result<Self, Self::Error> {
+        Err(())
+    }
+}
+
+/// Extract the host portion of a URL. Tiny hand-rolled parse to avoid pulling
+/// the `url` crate into the trait crate.
+fn url_host(input: &str) -> Option<String> {
+    let after_scheme = input.split_once("://")?.1;
+    let host = after_scheme.split(['/', '?', '#', ':']).next()?;
+    if host.is_empty() {
+        None
+    } else {
+        Some(host.to_string())
+    }
 }
