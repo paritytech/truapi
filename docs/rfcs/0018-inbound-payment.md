@@ -35,14 +35,14 @@ A neutral receiver-side surface lets all of these be built directly on TrUAPI wi
 1. **Symmetry with RFC 0006.** Receiving complements sending. Lifecycle types and prompt semantics are reused.
 2. **Asynchronous settlement.** Like outbound payments, inbound settlement is not synchronous. Status flows through a subscription.
 3. **No interpretation of product state.** The host does not understand sales, sessions, subscriptions, channels, currencies beyond the single payment asset, or any product-defined concept. It exposes plumbing only.
-4. **Distribution is product-chosen.** The host produces an opaque rendezvous blob; the product decides how to deliver it (QR, NFC, statement store, deep link, custom transport).
-5. **Funds are scoped per-product.** Holdings are partitioned by a product-supplied opaque tag so the host can derivation-namespace receiving keys and the product can build its own views.
+4. **Distribution is product-chosen.** The host produces an opaque pay-code blob; the product decides how to deliver it (QR, NFC, statement store, deep link, custom transport).
+5. **Funds are scoped per-product.** Holdings are partitioned by a product-supplied opaque tag so the host can derivation-namespace receiving keys and the product can build its own views. Funds in any of these buckets are nothing more than ordinary coins in the underlying private payment system, distinguished only by the seed-derivation namespace under which their public keys were generated.
 
 ### API Calls
 
 #### 1. Allocate a receiving target
 
-Allocates a fresh inbound target. The host derives fresh receiving keys, plans how the requested amount will be received, and bundles everything into an opaque rendezvous. The rendezvous is what a payer's host needs in order to construct an inbound payment to this target.
+Allocates a fresh inbound target. The host derives fresh receiving keys, plans how the requested amount will be received, and bundles everything into an opaque pay-code. The pay-code is what a payer's host needs in order to construct an inbound payment to this target.
 
 ```rust
 fn host_payment_inbound_create(
@@ -63,11 +63,11 @@ type ScopeTag = Vec<u8>;
 /// Opaque blob a payer's host needs in order to construct a payment
 /// to this target. Products treat it as opaque; only host
 /// implementations can decode it.
-type InboundRendezvous = Vec<u8>;
+type InboundCode = Vec<u8>;
 
 struct InboundPayment {
     id: InboundPaymentId,
-    rendezvous: InboundRendezvous,
+    code: InboundCode,
     expires_at_ms: Option<u64>,
 }
 
@@ -84,9 +84,9 @@ enum InboundPaymentCreateErr {
 }
 ```
 
-The host MUST integrity-protect the rendezvous so that a payer's host can verify it has not been modified since allocation. The expiry, when set, is part of the integrity-protected payload.
+The host MUST integrity-protect the pay-code so that a payer's host can verify it has not been modified since allocation. The expiry, when set, is part of the integrity-protected payload.
 
-The product distributes the rendezvous bytes through whatever channel it chooses. The host MUST NOT unilaterally publish the rendezvous to the statement store, the chain, or any other transport.
+The product distributes the pay-code bytes through whatever channel it chooses. The host MUST NOT unilaterally publish the pay-code to the statement store, the chain, or any other transport.
 
 #### 2. Subscribe to inbound payment status
 
@@ -138,16 +138,28 @@ A payer's host is permitted (but not required) to deliver a small opaque blob al
 
 A product that wants to stop tracking a target before it terminates simply ends the active subscription via the standard `Subscriber` cancellation mechanism. Active cancellation of the target itself is not exposed: targets terminate naturally on `Received` / `LateReceived` / expiry. Funds that arrive at a target after the product has stopped subscribing are still retained by the host and surface in `host_payment_holdings_subscribe` aggregate balances.
 
-#### 3. Pay a rendezvous
+#### 3. Pay an inbound code
 
-Make a payment to a rendezvous published by another product (or the same one on another device). This is the receiver-symmetric counterpart to `host_payment_request` and triggers a user authorization prompt. Returns a `PaymentReceipt` whose `PaymentId` can be tracked via `host_payment_status_subscribe` (defined in RFC 0006).
+Make an outbound payment to an inbound code published by another product (or the same one on another device). The `source` argument selects which pool of funds the payment is drawn from: the user's general payment balance, or a product-scoped pool the host holds on the calling product's behalf. Triggers a user authorization prompt. Returns a `PaymentReceipt` whose `PaymentId` can be tracked via `host_payment_status_subscribe` (defined in RFC 0006).
 
 ```rust
-fn host_payment_to_rendezvous_request(
+fn host_payment_outbound_request(
+    source: PaymentSource,
     amount: Balance,
-    rendezvous: InboundRendezvous,
+    code: InboundCode,
     options: OutboundPaymentOptions
-) -> Result<PaymentReceipt, PaymentToRendezvousErr>
+) -> Result<PaymentReceipt, PaymentOutboundErr>
+
+enum PaymentSource {
+    /// Spend from the user's general payment balance — the same
+    /// balance reported by host_payment_balance_subscribe and drawn
+    /// from by host_payment_request (RFC 0006).
+    UserBalance,
+    /// Spend from funds held by the host on this product's behalf
+    /// under the given scope. The pool is populated by prior
+    /// host_payment_inbound_create receipts.
+    ProductHoldings(ScopeTag),
+}
 
 struct OutboundPaymentOptions {
     /// Opaque bytes to deliver to the receiver alongside the payment.
@@ -156,57 +168,33 @@ struct OutboundPaymentOptions {
     attached: Option<Vec<u8>>,
 }
 
-enum PaymentToRendezvousErr {
+enum PaymentOutboundErr {
     /// User denied the payment request.
     Rejected,
-    /// User's available balance is not sufficient.
+    /// Selected source has insufficient funds.
     InsufficientBalance,
-    /// Rendezvous bytes cannot be decoded by this host.
-    RendezvousInvalid,
-    /// Rendezvous expiry has clearly passed (subject to a small clock
-    /// tolerance).
-    RendezvousExpired,
-    /// amount does not fit the rendezvous plan.
-    RendezvousMismatch,
+    /// Caller has no holdings under the given scope.
+    ScopeEmpty,
+    /// Inbound-code bytes cannot be decoded by this host.
+    CodeInvalid,
+    /// Inbound code expiry has clearly passed (subject to a small
+    /// clock tolerance).
+    CodeExpired,
+    /// amount does not fit the plan in the inbound code.
+    CodeMismatch,
     /// attached exceeds the host's maximum size.
     AttachedTooLarge,
     Unknown(GenericErr)
 }
 ```
 
-The host MUST validate the rendezvous expiry against its local clock with a small tolerance (suggested: 30 seconds) before prompting the user. If the rendezvous is clearly expired, the host MUST return `RendezvousExpired` without prompting.
+The host MUST validate the inbound-code expiry against its local clock with a small tolerance (suggested: 30 seconds) before prompting the user. If the inbound code is clearly expired, the host MUST return `CodeExpired` without prompting.
+
+The host MAY apply different prompt policies depending on `source` (for example, suppressing the prompt for refund-shaped operations from product holdings within a configurable threshold of recent inbound receipts). Prompt policy is a host implementation choice, not part of the API contract.
 
 A successful response means the user authorized the payment and the host accepted it for processing. It does not mean the payment has settled — use `host_payment_status_subscribe`.
 
-#### 4. Spend product-held funds
-
-Spend funds the host holds for the calling product to a rendezvous. Used wherever a product needs to send funds onward (for example, returning funds to a payer who attached a refund rendezvous, or transferring between products that share a host).
-
-```rust
-fn host_payment_holdings_spend(
-    source_scope: ScopeTag,
-    amount: Balance,
-    rendezvous: InboundRendezvous,
-    options: OutboundPaymentOptions
-) -> Result<PaymentReceipt, PaymentHoldingsSpendErr>
-
-enum PaymentHoldingsSpendErr {
-    /// Same shape as PaymentToRendezvousErr.
-    Rejected,
-    InsufficientBalance,
-    RendezvousInvalid,
-    RendezvousExpired,
-    RendezvousMismatch,
-    AttachedTooLarge,
-    /// Caller has no holdings under source_scope.
-    ScopeEmpty,
-    Unknown(GenericErr)
-}
-```
-
-The host MAY apply a different prompt policy than `host_payment_to_rendezvous_request` (for example, suppressing the prompt for small refund-shaped operations). Prompt policy is a host implementation choice, not part of the API contract.
-
-#### 5. Subscribe to product holdings
+#### 4. Subscribe to product holdings
 
 Aggregate balance of funds the host holds on the calling product's behalf, optionally narrowed to one scope. On the first call, the host MUST prompt the user for permission to disclose, mirroring `host_payment_balance_subscribe`.
 
@@ -221,7 +209,8 @@ struct PaymentHoldings {
     available: Balance,
     /// Received but not yet final.
     pending: Balance,
-    /// Provisionally reserved by an in-flight host_payment_holdings_spend.
+    /// Provisionally reserved by an in-flight outbound payment from
+    /// product holdings.
     reserved: Balance,
     /// Advisory hint: this much of `available` is in funds approaching
     /// internal age limits or sitting in dust. Host will internally
@@ -240,25 +229,25 @@ The host SHOULD coalesce frequent updates; suggested debounce is ~250 ms.
 
 ### Behavioural Requirements
 
-1. **Rendezvous integrity.** The bytes returned by `host_payment_inbound_create` MUST be tamper-evident. A payer-side host that decodes them MUST be able to verify they were produced by a conforming host implementation and have not been modified.
+1. **Inbound-code integrity.** The bytes returned by `host_payment_inbound_create` MUST be tamper-evident. A payer-side host that decodes them MUST be able to verify they were produced by a conforming host implementation and have not been modified.
 
-2. **Payer-side expiry guard.** `host_payment_to_rendezvous_request` MUST validate the rendezvous expiry locally with a small tolerance before prompting the user, and return `RendezvousExpired` when the tolerance is exceeded.
+2. **Payer-side expiry guard.** `host_payment_outbound_request` MUST validate the inbound-code expiry locally with a small tolerance before prompting the user, and return `CodeExpired` when the tolerance is exceeded.
 
 3. **Late receipts.** When funds matching an inbound target arrive after `expires_at_ms`, the host MUST emit `LateReceived` rather than `Received`. The product decides any further policy.
 
 4. **Parallel inbound targets.** A product MAY have arbitrarily many open inbound targets at once. The host MUST namespace receiving-key derivation disjointly across targets within a `(product, scope)` tuple and observe the chain for all of them concurrently.
 
-5. **Holdings durability.** `PaymentHoldings` MUST reflect funds under host control across host restarts. Funds that have been spent onward via `host_payment_holdings_spend` MUST NOT be counted.
+5. **Holdings durability.** `PaymentHoldings` MUST reflect funds under host control across host restarts. Funds that have been spent onward via `host_payment_outbound_request` with `source = ProductHoldings(...)` MUST NOT be counted.
 
-6. **Spend reservation.** While `host_payment_holdings_spend` is in flight, consumed funds MUST appear in `reserved`, not in `available`. On settlement they leave holdings entirely; on failure they revert to `available`.
+6. **Spend reservation.** While an outbound payment from product holdings is in flight, consumed funds MUST appear in `reserved`, not in `available`. On settlement they leave holdings entirely; on failure they revert to `available`.
 
 7. **Attached delivery.** The host MUST attempt to transmit `attached` bytes from payer to receiver out-of-band of the on-chain transfer. Delivery is best-effort: if it fails, the inbound target completes with `attached: None`. The transport is host-implementation-defined.
 
-8. **Subscription cancellation does not retract on-chain receipts.** Ending the active subscription on a target is a hint to the host that the product is no longer tracking it; the host MAY use this to free internal resources. Funds arriving at the target afterwards are still retained by the host and surface in `PaymentHoldings`. Products that need to actively reject funds must implement that policy themselves via `host_payment_holdings_spend`.
+8. **Subscription cancellation does not retract on-chain receipts.** Ending the active subscription on a target is a hint to the host that the product is no longer tracking it; the host MAY use this to free internal resources. Funds arriving at the target afterwards are still retained by the host and surface in `PaymentHoldings`. Products that need to actively reject funds must implement that policy themselves via `host_payment_outbound_request` with `source = ProductHoldings(...)`.
 
 9. **Inbound target scoping.** An `InboundPaymentId` is scoped to the product that created it. A product MUST NOT be able to query or subscribe to another product's inbound targets.
 
-10. **Payment authorization.** `host_payment_to_rendezvous_request` MUST trigger a user-facing confirmation prompt showing amount and any host-renderable identification of the destination. Hosts MUST NOT auto-approve.
+10. **Payment authorization.** `host_payment_outbound_request` MUST trigger a user-facing confirmation prompt showing amount, source, and any host-renderable identification of the destination. Hosts MUST NOT auto-approve, except where a host policy explicitly suppresses prompts for `ProductHoldings` sources within configured refund-shaped operation thresholds (see method documentation).
 
 11. **Holdings disclosure consent.** `host_payment_holdings_subscribe` consent semantics mirror `host_payment_balance_subscribe`. Granularity of consent (per-session, persistent) is left to host implementation.
 
@@ -268,11 +257,11 @@ This proposal inherits RFC 0006's single fixed payment asset assumption. `Balanc
 
 ### Compatibility
 
-This RFC is purely additive. Existing RFC 0006 methods are unchanged. `host_payment_request(amount, AccountId)` continues to mean an outbound payment to a regular destination address; `host_payment_to_rendezvous_request(amount, rendezvous, ...)` is the new product-to-product path.
+This RFC is purely additive. Existing RFC 0006 methods are unchanged. `host_payment_request(amount, AccountId)` continues to mean an outbound payment from the user's balance to a regular destination address; `host_payment_outbound_request(source, amount, code, ...)` is the new product-to-product path supporting both user-balance and product-holdings sources.
 
 ## Drawbacks
 
-1. **Rendezvous wire format.** `InboundRendezvous` becomes a host-to-host wire protocol. It needs a stable version field and a clear deprecation path so that an old payer host can recognize a new receiver's rendezvous. Adding a new payment system later requires either piggybacking onto the existing rendezvous (with version negotiation) or introducing a parallel API.
+1. **Inbound-code wire format.** `InboundCode` becomes a host-to-host wire protocol. It needs a stable version field and a clear deprecation path so that an old payer host can recognize a new receiver's inbound code. Adding a new payment system later requires either piggybacking onto the existing format (with version negotiation) or introducing a parallel API.
 
 2. **Stateful host.** The host now performs ongoing bookkeeping for every product that receives funds (open targets, key derivation namespaces, observed deposits, in-flight spends, scope-keyed holdings). This is the cost of keeping product code small.
 
@@ -288,7 +277,7 @@ The API is intentionally low-level and aligned with the rest of TrUAPI. Higher-l
 
 ### A single combined inbound + outbound surface
 
-We could redefine RFC 0006's `host_payment_request` to take a richer destination type that covers both `AccountId` and `InboundRendezvous`. Rejected because the two destinations have meaningfully different semantics (offboard to a regular address vs. native product-to-product transfer) and overloading them complicates host implementation and product code. Keeping the lexical distinction makes intent explicit.
+We could redefine RFC 0006's `host_payment_request` to take a richer destination type that covers both `AccountId` and `InboundCode`. Rejected because the two destinations have meaningfully different semantics (offboard to a regular address vs. native product-to-product transfer) and overloading them complicates host implementation and product code. Keeping the lexical distinction makes intent explicit.
 
 ### Expose payment-system internals (denominations, key handles, ring memberships)
 
@@ -298,14 +287,14 @@ Lets products do their own splitting and routing. Rejected because it forces eve
 
 Bundle target creation, distribution, observation, receipt, and refund into a single host-managed object. Rejected because each product has different opinions about lifecycle, idempotency, status semantics, distribution channel, and metadata. Baking any one set of opinions into TrUAPI permanently couples it to that product. The primitives in this RFC support such a higher-level surface as a product or SDK library, without forcing the choice on every product.
 
-### Host-driven rendezvous distribution
+### Host-driven inbound-code distribution
 
-Have the host post the rendezvous to the statement store automatically. Rejected because distribution channel choice is product policy (some products want a QR, some want NFC, some want a deep link, some want a custom transport, some want all of them). The host should not silently consume statement-store allowance for distribution.
+Have the host post the inbound code to the statement store automatically. Rejected because distribution channel choice is product policy (some products want a QR, some want NFC, some want a deep link, some want a custom transport, some want all of them). The host should not silently consume statement-store allowance for distribution.
 
 ## Unresolved Questions
 
-- **Rendezvous wire format and version negotiation.** The exact byte layout and the rules for cross-version interoperability between payer and receiver hosts.
-- **Encryption of `attached`.** Whether the host should encrypt `attached` automatically using a deposit-bound key from the rendezvous, with an opt-out for plaintext memos.
+- **Inbound-code wire format and version negotiation.** The exact byte layout and the rules for cross-version interoperability between payer and receiver hosts.
+- **Encryption of `attached`.** Whether the host should encrypt `attached` automatically using a deposit-bound key from the inbound code, with an opt-out for plaintext memos.
 - **Maximum simultaneous inbound targets per product.** A natural ceiling protects the host from runaway products. Suggested floor: 1024.
 - **`needs_attention` semantics.** The exact threshold under which funds are flagged is left to host implementation. A future revision may standardize the hint.
 - **Holdings disclosure granularity.** Whether scope-narrowed holdings disclosure carries the same consent weight as full disclosure.
@@ -317,6 +306,8 @@ This appendix is informational. It sketches the shape of the host-side bookkeepi
 
 The mechanics below assume familiarity with Coinage as specified in `paritytech/individuality::pallet-coinage`: fixed denominations `2^k × $0.01`, one coin per fresh Bandersnatch public key, per-coin age incremented by `transfer`/`split`, ring-based recycler with denomination-segregated rings, free vs paid unload tokens.
 
+A note on what holdings physically are: every `Balance` value reflected by this RFC — user balance, pending inbound, product holdings under any scope — is a sum over actual Coinage coins on the People chain whose public keys are recorded in the host's coin store and whose secret halves are reproducible from the user's seed at known derivation paths. There is no separate ledger, IOU layer, or off-chain accounting. The only thing distinguishing one bucket from another is the **derivation namespace** the host chose when allocating the receiving keys (see A.2). All buckets share the same denomination constraints, age limits, recycler cycle, and privacy properties.
+
 ### A.1 Coin store
 
 The host maintains a durable, locally-encrypted store. Suggested tables:
@@ -324,7 +315,7 @@ The host maintains a durable, locally-encrypted store. Suggested tables:
 - `COINS` — one row per coin currently under host control: `(coin_pk, value_exponent, age, status, derivation_path, last_seen_block, owner_product, owner_scope, denomination_role)`. Status ranges over `pending_inbound | available | reserved | in_split | in_transfer_out | in_recycle_load | recycled_out | dust_destroyed | locked`.
 - `INBOUND_TARGETS` — one row per outstanding `host_payment_inbound_create`: `(id, owner_product, owner_scope, nominal_amount, expires_at_ms, status, received_amount, attached_bytes, chain_anchor)`.
 - `INBOUND_SLOTS` — one row per receiving key allocated under a target: `(id, slot, dest_pk, expected_value_exponent, state)`.
-- `SPENDS` — one row per in-flight outbound: `(spend_id, owner_product, owner_scope, dest_rendezvous, amount, status, reserved_coins, finalized_block)`.
+- `SPENDS` — one row per in-flight outbound: `(spend_id, source, owner_product, owner_scope, dest_code, amount, status, reserved_coins, finalized_block)`. `source` records whether the spend is drawing from `UserBalance` or a specific `ProductHoldings(scope)`.
 - `RECYCLER_RECORDS` — one row per coin currently inside a recycler ring on behalf of the host: `(coin_pk_pre, value_exponent, ring_index, member_pk, state, voucher_alias, fresh_coin_pk_post)`.
 - `TOKEN_ALLOWANCE` — period-keyed counters for free-unload-token consumption (`people` / `lite-people`) and paid-token ring memberships.
 - `ANCHORS` — most recent finalized block hash and number, used for restart reconciliation.
@@ -382,10 +373,10 @@ Emit on every commit that touches `COINS` for the relevant `(product, scope)`, d
 
 ### A.7 Spending: coin selection and operation planning
 
-When `host_payment_to_rendezvous_request` (user balance) or `host_payment_holdings_spend` (product scope) runs:
+When `host_payment_outbound_request` runs:
 
-1. Decode the rendezvous → list of `(value_exponent_i, dest_pk_i)`.
-2. From `COINS where status='available'` for the relevant ownership, plan a sequence of Coinage operations producing the required denominations at the destinations:
+1. Decode the inbound code → list of `(value_exponent_i, dest_pk_i)`.
+2. From `COINS where status='available'` for the ownership selected by `source` (the user's general namespace for `UserBalance`, or `(product, scope)` for `ProductHoldings`), plan a sequence of Coinage operations producing the required denominations at the destinations:
    - For each target denomination, prefer an exact-match coin.
    - Otherwise, plan a `split` of a larger coin into the needed sub-denominations.
    - If only smaller coins exist, plan a `recycle-and-consolidate` (load N coins into a recycler, unload one combined coin). This is slow (rings need to fill, ~10 minutes); return `InsufficientBalance` rather than blocking, unless the host has a pre-warmed combined coin available.
@@ -438,8 +429,8 @@ Consolidation uses the same flow but provides multiple vouchers to produce a sin
 
 The transport is host-implementation-defined per the normative section. A workable default:
 
-1. Just before broadcasting the on-chain transfer extrinsics, compute `delivery_topic = blake2_256("inbound-attached" || rendezvous_id)`.
-2. Submit a statement to the statement store under `delivery_topic` whose payload is the `attached` bytes (ideally encrypted to a deposit-bound key carried in the rendezvous; see Unresolved Questions).
+1. Just before broadcasting the on-chain transfer extrinsics, compute `delivery_topic = blake2_256("inbound-attached" || code_id)`.
+2. Submit a statement to the statement store under `delivery_topic` whose payload is the `attached` bytes (ideally encrypted to a deposit-bound key carried in the inbound code; see Unresolved Questions).
 3. The receiver's host has a matching subscription on `delivery_topic` for every open inbound target. On receipt, store the bytes against the target and surface them in `InboundPaymentEvidence::attached`.
 
 Statement-store allowance is consumed from the host's own consumer registration on the People chain (resources pallet), not the product's. If the side-channel post fails for any reason, the inbound target still completes — `attached` is best-effort by contract.
