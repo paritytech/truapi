@@ -3,22 +3,22 @@
 use crate::v01;
 
 versioned_type! {
-    /// Request wrapper for `host_local_storage_read`.
-    pub enum HostLocalStorageReadRequest { V1 => v01::StorageKey }
-    /// Response wrapper for `host_local_storage_read`.
-    pub enum HostLocalStorageReadResponse { V1 => Option<v01::StorageValue> }
-    /// Error wrapper for `host_local_storage_read`.
-    pub enum HostLocalStorageReadError { V1 => v01::StorageError }
-    /// Request wrapper for `host_local_storage_write`.
-    pub enum HostLocalStorageWriteRequest { V1 => v01::LocalStorageWriteRequest }
-    /// Response wrapper for `host_local_storage_write`.
+    /// Versioned wrapper for [`v01::HostLocalStorageReadRequest`] and older versions.
+    pub enum HostLocalStorageReadRequest { V1 => v01::HostLocalStorageReadRequest }
+    /// Versioned wrapper for [`v01::HostLocalStorageReadResponse`] and older versions.
+    pub enum HostLocalStorageReadResponse { V1 => v01::HostLocalStorageReadResponse }
+    /// Versioned wrapper for [`v01::HostLocalStorageReadError`] and older versions.
+    pub enum HostLocalStorageReadError { V1 => v01::HostLocalStorageReadError }
+    /// Versioned wrapper for [`v01::HostLocalStorageWriteRequest`] and older versions.
+    pub enum HostLocalStorageWriteRequest { V1 => v01::HostLocalStorageWriteRequest }
+    /// Versioned wrapper for unit and older versions.
     pub enum HostLocalStorageWriteResponse { V1 }
-    /// Error wrapper for `host_local_storage_write`.
-    pub enum HostLocalStorageWriteError { V1 => v01::StorageError }
-    /// Request wrapper for `host_local_storage_clear`.
-    pub enum HostLocalStorageClearRequest { V1 => v01::StorageKey }
-    /// Response wrapper for `host_local_storage_clear`.
+    /// Versioned wrapper for [`v01::HostLocalStorageWriteError`] and older versions.
+    pub enum HostLocalStorageWriteError { V1 => v01::HostLocalStorageWriteError }
+    /// Versioned wrapper for [`v01::HostLocalStorageClearRequest`] and older versions.
+    pub enum HostLocalStorageClearRequest { V1 => v01::HostLocalStorageClearRequest }
+    /// Versioned wrapper for unit and older versions.
     pub enum HostLocalStorageClearResponse { V1 }
-    /// Error wrapper for `host_local_storage_clear`.
-    pub enum HostLocalStorageClearError { V1 => v01::StorageError }
+    /// Versioned wrapper for [`v01::HostLocalStorageClearError`] and older versions.
+    pub enum HostLocalStorageClearError { V1 => v01::HostLocalStorageClearError }
 }

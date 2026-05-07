@@ -249,3 +249,5 @@ pub struct CustomMessageRenderRequest {
     /// Binary payload.
     pub payload: Bytes,
 }
+
+pub type ProductChatCustomMessageRenderSubscribeItem = CustomMessageRenderRequest;

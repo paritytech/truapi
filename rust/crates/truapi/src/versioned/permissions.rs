@@ -3,35 +3,24 @@
 use crate::{v01, v02};
 
 versioned_type! {
-    /// Request wrapper for `host_device_permission`.
-    ///
-    /// V1 mirrors `host-api@0.6.x`'s `Status('Camera', 'Microphone', 'Bluetooth',
-    /// 'Location')` enum; V2 widens it per RFC-0001.
+    /// Versioned wrapper for [`v02::HostDevicePermissionRequest`] and older versions.
     pub enum HostDevicePermissionRequest {
-        /// Pre-RFC-0001 four-variant enum, as shipped by `@novasamatech/host-api@0.6.x`.
         V1 => v01::HostDevicePermissionRequest,
-        /// RFC-0001 nine-variant enum.
         V2 => v02::HostDevicePermissionRequest,
     }
-    /// Response wrapper for `host_device_permission`.
-    pub enum HostDevicePermissionResponse { V1 => bool, V2 => bool }
-    /// Error wrapper for `host_device_permission`.
-    pub enum HostDevicePermissionError { V1 => v01::GenericError, V2 => v01::GenericError }
-    /// Request wrapper for `remote_permission`.
-    ///
-    /// V1 mirrors `host-api@0.6.x`'s single-permission `ExternalRequest(String) |
-    /// TransactionSubmit`; V2 batches multiple [`RemotePermission`](v02::RemotePermission)
-    /// entries per RFC-0001.
+    /// Versioned wrapper for [`v01::HostDevicePermissionResponse`] and older versions.
+    pub enum HostDevicePermissionResponse { V1 => v01::HostDevicePermissionResponse, V2 => v01::HostDevicePermissionResponse }
+    /// Versioned wrapper for [`v01::HostDevicePermissionError`] and older versions.
+    pub enum HostDevicePermissionError { V1 => v01::HostDevicePermissionError, V2 => v01::HostDevicePermissionError }
+    /// Versioned wrapper for [`v02::RemotePermissionRequest`] and older versions.
     pub enum RemotePermissionRequest {
-        /// Pre-RFC-0001 single-permission request.
         V1 => v01::RemotePermissionRequest,
-        /// RFC-0001 batch request.
-        V2 => Vec<v02::RemotePermission>,
+        V2 => v02::RemotePermissionRequest,
     }
-    /// Response wrapper for `remote_permission`.
-    pub enum RemotePermissionResponse { V1 => bool, V2 => bool }
-    /// Error wrapper for `remote_permission`.
-    pub enum RemotePermissionError { V1 => v01::GenericError, V2 => v01::GenericError }
+    /// Versioned wrapper for [`v01::RemotePermissionResponse`] and older versions.
+    pub enum RemotePermissionResponse { V1 => v01::RemotePermissionResponse, V2 => v01::RemotePermissionResponse }
+    /// Versioned wrapper for [`v01::RemotePermissionError`] and older versions.
+    pub enum RemotePermissionError { V1 => v01::RemotePermissionError, V2 => v01::RemotePermissionError }
 }
 
 #[cfg(test)]

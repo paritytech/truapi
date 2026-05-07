@@ -37,3 +37,6 @@ impl TryFrom<TopicFilter> for Vec<crate::v01::Topic> {
             .ok_or(())
     }
 }
+
+pub type RemoteStatementStoreSubscribeRequest = TopicFilter;
+pub type RemoteStatementStoreSubscribeItem = Vec<crate::v01::SignedStatement>;

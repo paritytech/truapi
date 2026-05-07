@@ -89,3 +89,6 @@ impl TryFrom<SigningRawPayload> for crate::v01::SigningRawPayload {
         Err(())
     }
 }
+
+pub type HostSignPayloadRequest = SigningPayload;
+pub type HostSignRawRequest = SigningRawPayload;

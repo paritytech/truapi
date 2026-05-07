@@ -227,3 +227,38 @@ pub struct ChainTransactionStopRequest {
     /// Operation identifier of the broadcast to stop.
     pub operation_id: OperationId,
 }
+
+pub type RemoteChainHeadFollowRequest = ChainHeadFollowRequest;
+pub type RemoteChainHeadFollowItem = ChainHeadEvent;
+pub type RemoteChainHeadHeaderRequest = ChainHeadBlockRequest;
+pub type RemoteChainHeadHeaderResponse = Option<Hex>;
+pub type RemoteChainHeadHeaderError = super::GenericError;
+pub type RemoteChainHeadBodyRequest = ChainHeadBlockRequest;
+pub type RemoteChainHeadBodyResponse = OperationStartedResult;
+pub type RemoteChainHeadBodyError = super::GenericError;
+pub type RemoteChainHeadStorageRequest = ChainHeadStorageRequest;
+pub type RemoteChainHeadStorageResponse = OperationStartedResult;
+pub type RemoteChainHeadStorageError = super::GenericError;
+pub type RemoteChainHeadCallRequest = ChainHeadCallRequest;
+pub type RemoteChainHeadCallResponse = OperationStartedResult;
+pub type RemoteChainHeadCallError = super::GenericError;
+pub type RemoteChainHeadUnpinRequest = ChainHeadUnpinRequest;
+pub type RemoteChainHeadUnpinError = super::GenericError;
+pub type RemoteChainHeadContinueRequest = ChainHeadOperationRequest;
+pub type RemoteChainHeadContinueError = super::GenericError;
+pub type RemoteChainHeadStopOperationRequest = ChainHeadOperationRequest;
+pub type RemoteChainHeadStopOperationError = super::GenericError;
+pub type RemoteChainSpecGenesisHashRequest = GenesisHash;
+pub type RemoteChainSpecGenesisHashResponse = Hex;
+pub type RemoteChainSpecGenesisHashError = super::GenericError;
+pub type RemoteChainSpecChainNameRequest = GenesisHash;
+pub type RemoteChainSpecChainNameResponse = String;
+pub type RemoteChainSpecChainNameError = super::GenericError;
+pub type RemoteChainSpecPropertiesRequest = GenesisHash;
+pub type RemoteChainSpecPropertiesResponse = String;
+pub type RemoteChainSpecPropertiesError = super::GenericError;
+pub type RemoteChainTransactionBroadcastRequest = ChainTransactionBroadcastRequest;
+pub type RemoteChainTransactionBroadcastResponse = Option<String>;
+pub type RemoteChainTransactionBroadcastError = super::GenericError;
+pub type RemoteChainTransactionStopRequest = ChainTransactionStopRequest;
+pub type RemoteChainTransactionStopError = super::GenericError;

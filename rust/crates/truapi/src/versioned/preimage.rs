@@ -3,8 +3,8 @@
 use crate::v01;
 
 versioned_type! {
-    /// Subscription request wrapper for `remote_preimage_lookup_subscribe`.
-    pub enum RemotePreimageLookupSubscribeRequest { V1 => v01::PreimageKey }
-    /// Subscription item wrapper for `remote_preimage_lookup_subscribe`.
-    pub enum RemotePreimageLookupSubscribeItem { V1 => Option<v01::PreimageValue> }
+    /// Versioned wrapper for [`v01::RemotePreimageLookupSubscribeRequest`] and older versions.
+    pub enum RemotePreimageLookupSubscribeRequest { V1 => v01::RemotePreimageLookupSubscribeRequest }
+    /// Versioned wrapper for [`v01::RemotePreimageLookupSubscribeItem`] and older versions.
+    pub enum RemotePreimageLookupSubscribeItem { V1 => v01::RemotePreimageLookupSubscribeItem }
 }

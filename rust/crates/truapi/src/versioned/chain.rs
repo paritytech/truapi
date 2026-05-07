@@ -3,80 +3,80 @@
 use crate::v01;
 
 versioned_type! {
-    /// Subscription request wrapper for `remote_chain_head_follow`.
-    pub enum RemoteChainHeadFollowRequest { V1 => v01::ChainHeadFollowRequest }
-    /// Subscription item wrapper for `remote_chain_head_follow`.
-    pub enum RemoteChainHeadFollowItem { V1 => v01::ChainHeadEvent }
-    /// Request wrapper for `remote_chain_head_header`.
-    pub enum RemoteChainHeadHeaderRequest { V1 => v01::ChainHeadBlockRequest }
-    /// Response wrapper for `remote_chain_head_header`.
-    pub enum RemoteChainHeadHeaderResponse { V1 => Option<v01::Hex> }
-    /// Error wrapper for `remote_chain_head_header`.
-    pub enum RemoteChainHeadHeaderError { V1 => v01::GenericError }
-    /// Request wrapper for `remote_chain_head_body`.
-    pub enum RemoteChainHeadBodyRequest { V1 => v01::ChainHeadBlockRequest }
-    /// Response wrapper for `remote_chain_head_body`.
-    pub enum RemoteChainHeadBodyResponse { V1 => v01::OperationStartedResult }
-    /// Error wrapper for `remote_chain_head_body`.
-    pub enum RemoteChainHeadBodyError { V1 => v01::GenericError }
-    /// Request wrapper for `remote_chain_head_storage`.
-    pub enum RemoteChainHeadStorageRequest { V1 => v01::ChainHeadStorageRequest }
-    /// Response wrapper for `remote_chain_head_storage`.
-    pub enum RemoteChainHeadStorageResponse { V1 => v01::OperationStartedResult }
-    /// Error wrapper for `remote_chain_head_storage`.
-    pub enum RemoteChainHeadStorageError { V1 => v01::GenericError }
-    /// Request wrapper for `remote_chain_head_call`.
-    pub enum RemoteChainHeadCallRequest { V1 => v01::ChainHeadCallRequest }
-    /// Response wrapper for `remote_chain_head_call`.
-    pub enum RemoteChainHeadCallResponse { V1 => v01::OperationStartedResult }
-    /// Error wrapper for `remote_chain_head_call`.
-    pub enum RemoteChainHeadCallError { V1 => v01::GenericError }
-    /// Request wrapper for `remote_chain_head_unpin`.
-    pub enum RemoteChainHeadUnpinRequest { V1 => v01::ChainHeadUnpinRequest }
-    /// Response wrapper for `remote_chain_head_unpin`.
+    /// Versioned wrapper for [`v01::RemoteChainHeadFollowRequest`] and older versions.
+    pub enum RemoteChainHeadFollowRequest { V1 => v01::RemoteChainHeadFollowRequest }
+    /// Versioned wrapper for [`v01::RemoteChainHeadFollowItem`] and older versions.
+    pub enum RemoteChainHeadFollowItem { V1 => v01::RemoteChainHeadFollowItem }
+    /// Versioned wrapper for [`v01::RemoteChainHeadHeaderRequest`] and older versions.
+    pub enum RemoteChainHeadHeaderRequest { V1 => v01::RemoteChainHeadHeaderRequest }
+    /// Versioned wrapper for [`v01::RemoteChainHeadHeaderResponse`] and older versions.
+    pub enum RemoteChainHeadHeaderResponse { V1 => v01::RemoteChainHeadHeaderResponse }
+    /// Versioned wrapper for [`v01::RemoteChainHeadHeaderError`] and older versions.
+    pub enum RemoteChainHeadHeaderError { V1 => v01::RemoteChainHeadHeaderError }
+    /// Versioned wrapper for [`v01::RemoteChainHeadBodyRequest`] and older versions.
+    pub enum RemoteChainHeadBodyRequest { V1 => v01::RemoteChainHeadBodyRequest }
+    /// Versioned wrapper for [`v01::RemoteChainHeadBodyResponse`] and older versions.
+    pub enum RemoteChainHeadBodyResponse { V1 => v01::RemoteChainHeadBodyResponse }
+    /// Versioned wrapper for [`v01::RemoteChainHeadBodyError`] and older versions.
+    pub enum RemoteChainHeadBodyError { V1 => v01::RemoteChainHeadBodyError }
+    /// Versioned wrapper for [`v01::RemoteChainHeadStorageRequest`] and older versions.
+    pub enum RemoteChainHeadStorageRequest { V1 => v01::RemoteChainHeadStorageRequest }
+    /// Versioned wrapper for [`v01::RemoteChainHeadStorageResponse`] and older versions.
+    pub enum RemoteChainHeadStorageResponse { V1 => v01::RemoteChainHeadStorageResponse }
+    /// Versioned wrapper for [`v01::RemoteChainHeadStorageError`] and older versions.
+    pub enum RemoteChainHeadStorageError { V1 => v01::RemoteChainHeadStorageError }
+    /// Versioned wrapper for [`v01::RemoteChainHeadCallRequest`] and older versions.
+    pub enum RemoteChainHeadCallRequest { V1 => v01::RemoteChainHeadCallRequest }
+    /// Versioned wrapper for [`v01::RemoteChainHeadCallResponse`] and older versions.
+    pub enum RemoteChainHeadCallResponse { V1 => v01::RemoteChainHeadCallResponse }
+    /// Versioned wrapper for [`v01::RemoteChainHeadCallError`] and older versions.
+    pub enum RemoteChainHeadCallError { V1 => v01::RemoteChainHeadCallError }
+    /// Versioned wrapper for [`v01::RemoteChainHeadUnpinRequest`] and older versions.
+    pub enum RemoteChainHeadUnpinRequest { V1 => v01::RemoteChainHeadUnpinRequest }
+    /// Versioned wrapper for unit and older versions.
     pub enum RemoteChainHeadUnpinResponse { V1 }
-    /// Error wrapper for `remote_chain_head_unpin`.
-    pub enum RemoteChainHeadUnpinError { V1 => v01::GenericError }
-    /// Request wrapper for `remote_chain_head_continue`.
-    pub enum RemoteChainHeadContinueRequest { V1 => v01::ChainHeadOperationRequest }
-    /// Response wrapper for `remote_chain_head_continue`.
+    /// Versioned wrapper for [`v01::RemoteChainHeadUnpinError`] and older versions.
+    pub enum RemoteChainHeadUnpinError { V1 => v01::RemoteChainHeadUnpinError }
+    /// Versioned wrapper for [`v01::RemoteChainHeadContinueRequest`] and older versions.
+    pub enum RemoteChainHeadContinueRequest { V1 => v01::RemoteChainHeadContinueRequest }
+    /// Versioned wrapper for unit and older versions.
     pub enum RemoteChainHeadContinueResponse { V1 }
-    /// Error wrapper for `remote_chain_head_continue`.
-    pub enum RemoteChainHeadContinueError { V1 => v01::GenericError }
-    /// Request wrapper for `remote_chain_head_stop_operation`.
-    pub enum RemoteChainHeadStopOperationRequest { V1 => v01::ChainHeadOperationRequest }
-    /// Response wrapper for `remote_chain_head_stop_operation`.
+    /// Versioned wrapper for [`v01::RemoteChainHeadContinueError`] and older versions.
+    pub enum RemoteChainHeadContinueError { V1 => v01::RemoteChainHeadContinueError }
+    /// Versioned wrapper for [`v01::RemoteChainHeadStopOperationRequest`] and older versions.
+    pub enum RemoteChainHeadStopOperationRequest { V1 => v01::RemoteChainHeadStopOperationRequest }
+    /// Versioned wrapper for unit and older versions.
     pub enum RemoteChainHeadStopOperationResponse { V1 }
-    /// Error wrapper for `remote_chain_head_stop_operation`.
-    pub enum RemoteChainHeadStopOperationError { V1 => v01::GenericError }
-    /// Request wrapper for `remote_chain_spec_genesis_hash`.
-    pub enum RemoteChainSpecGenesisHashRequest { V1 => v01::GenesisHash }
-    /// Response wrapper for `remote_chain_spec_genesis_hash`.
-    pub enum RemoteChainSpecGenesisHashResponse { V1 => v01::Hex }
-    /// Error wrapper for `remote_chain_spec_genesis_hash`.
-    pub enum RemoteChainSpecGenesisHashError { V1 => v01::GenericError }
-    /// Request wrapper for `remote_chain_spec_chain_name`.
-    pub enum RemoteChainSpecChainNameRequest { V1 => v01::GenesisHash }
-    /// Response wrapper for `remote_chain_spec_chain_name`.
-    pub enum RemoteChainSpecChainNameResponse { V1 => String }
-    /// Error wrapper for `remote_chain_spec_chain_name`.
-    pub enum RemoteChainSpecChainNameError { V1 => v01::GenericError }
-    /// Request wrapper for `remote_chain_spec_properties`.
-    pub enum RemoteChainSpecPropertiesRequest { V1 => v01::GenesisHash }
-    /// Response wrapper for `remote_chain_spec_properties`.
-    pub enum RemoteChainSpecPropertiesResponse { V1 => String }
-    /// Error wrapper for `remote_chain_spec_properties`.
-    pub enum RemoteChainSpecPropertiesError { V1 => v01::GenericError }
-    /// Request wrapper for `remote_chain_transaction_broadcast`.
-    pub enum RemoteChainTransactionBroadcastRequest { V1 => v01::ChainTransactionBroadcastRequest }
-    /// Response wrapper for `remote_chain_transaction_broadcast`.
-    pub enum RemoteChainTransactionBroadcastResponse { V1 => Option<String> }
-    /// Error wrapper for `remote_chain_transaction_broadcast`.
-    pub enum RemoteChainTransactionBroadcastError { V1 => v01::GenericError }
-    /// Request wrapper for `remote_chain_transaction_stop`.
-    pub enum RemoteChainTransactionStopRequest { V1 => v01::ChainTransactionStopRequest }
-    /// Response wrapper for `remote_chain_transaction_stop`.
+    /// Versioned wrapper for [`v01::RemoteChainHeadStopOperationError`] and older versions.
+    pub enum RemoteChainHeadStopOperationError { V1 => v01::RemoteChainHeadStopOperationError }
+    /// Versioned wrapper for [`v01::RemoteChainSpecGenesisHashRequest`] and older versions.
+    pub enum RemoteChainSpecGenesisHashRequest { V1 => v01::RemoteChainSpecGenesisHashRequest }
+    /// Versioned wrapper for [`v01::RemoteChainSpecGenesisHashResponse`] and older versions.
+    pub enum RemoteChainSpecGenesisHashResponse { V1 => v01::RemoteChainSpecGenesisHashResponse }
+    /// Versioned wrapper for [`v01::RemoteChainSpecGenesisHashError`] and older versions.
+    pub enum RemoteChainSpecGenesisHashError { V1 => v01::RemoteChainSpecGenesisHashError }
+    /// Versioned wrapper for [`v01::RemoteChainSpecChainNameRequest`] and older versions.
+    pub enum RemoteChainSpecChainNameRequest { V1 => v01::RemoteChainSpecChainNameRequest }
+    /// Versioned wrapper for [`v01::RemoteChainSpecChainNameResponse`] and older versions.
+    pub enum RemoteChainSpecChainNameResponse { V1 => v01::RemoteChainSpecChainNameResponse }
+    /// Versioned wrapper for [`v01::RemoteChainSpecChainNameError`] and older versions.
+    pub enum RemoteChainSpecChainNameError { V1 => v01::RemoteChainSpecChainNameError }
+    /// Versioned wrapper for [`v01::RemoteChainSpecPropertiesRequest`] and older versions.
+    pub enum RemoteChainSpecPropertiesRequest { V1 => v01::RemoteChainSpecPropertiesRequest }
+    /// Versioned wrapper for [`v01::RemoteChainSpecPropertiesResponse`] and older versions.
+    pub enum RemoteChainSpecPropertiesResponse { V1 => v01::RemoteChainSpecPropertiesResponse }
+    /// Versioned wrapper for [`v01::RemoteChainSpecPropertiesError`] and older versions.
+    pub enum RemoteChainSpecPropertiesError { V1 => v01::RemoteChainSpecPropertiesError }
+    /// Versioned wrapper for [`v01::RemoteChainTransactionBroadcastRequest`] and older versions.
+    pub enum RemoteChainTransactionBroadcastRequest { V1 => v01::RemoteChainTransactionBroadcastRequest }
+    /// Versioned wrapper for [`v01::RemoteChainTransactionBroadcastResponse`] and older versions.
+    pub enum RemoteChainTransactionBroadcastResponse { V1 => v01::RemoteChainTransactionBroadcastResponse }
+    /// Versioned wrapper for [`v01::RemoteChainTransactionBroadcastError`] and older versions.
+    pub enum RemoteChainTransactionBroadcastError { V1 => v01::RemoteChainTransactionBroadcastError }
+    /// Versioned wrapper for [`v01::RemoteChainTransactionStopRequest`] and older versions.
+    pub enum RemoteChainTransactionStopRequest { V1 => v01::RemoteChainTransactionStopRequest }
+    /// Versioned wrapper for unit and older versions.
     pub enum RemoteChainTransactionStopResponse { V1 }
-    /// Error wrapper for `remote_chain_transaction_stop`.
-    pub enum RemoteChainTransactionStopError { V1 => v01::GenericError }
+    /// Versioned wrapper for [`v01::RemoteChainTransactionStopError`] and older versions.
+    pub enum RemoteChainTransactionStopError { V1 => v01::RemoteChainTransactionStopError }
 }

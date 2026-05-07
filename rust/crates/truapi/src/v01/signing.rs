@@ -81,3 +81,13 @@ pub enum SigningError {
     /// Catch-all.
     Unknown { reason: String },
 }
+
+pub type HostSignPayloadRequest = SigningPayload;
+pub type HostSignPayloadResponse = SigningResult;
+pub type HostSignPayloadError = SigningError;
+pub type HostSignRawRequest = SigningRawPayload;
+pub type HostSignRawResponse = SigningResult;
+pub type HostSignRawError = SigningError;
+pub type HostCreateTransactionResponse = Hex;
+pub type HostCreateTransactionWithNonProductAccountRequest = super::VersionedTxPayload;
+pub type HostCreateTransactionWithNonProductAccountResponse = Hex;

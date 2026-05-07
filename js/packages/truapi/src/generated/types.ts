@@ -1227,382 +1227,443 @@ export const HorizontalAlignment: S.Codec<HorizontalAlignment> = S.lazy(
     S.taggedUnion({ Start: S.unit, Center: S.unit, End: S.unit }),
 );
 
-/** Subscription item wrapper for `host_account_connection_status_subscribe`. */
+/** Versioned wrapper for [`v01::HostAccountConnectionStatusSubscribeItem`] and older versions. */
 export type HostAccountConnectionStatusSubscribeItem = {
   tag: "V1";
-  value: AccountConnectionStatus;
+  value: V01HostAccountConnectionStatusSubscribeItem;
 };
 
 export const HostAccountConnectionStatusSubscribeItem: S.Codec<HostAccountConnectionStatusSubscribeItem> =
   S.lazy(
     (): S.Codec<HostAccountConnectionStatusSubscribeItem> =>
-      S.indexedTaggedUnion({ V1: [0, AccountConnectionStatus] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01HostAccountConnectionStatusSubscribeItem] as const,
+      }),
   );
 
-/** Error wrapper for `host_account_create_proof`. */
+/** Versioned wrapper for [`v01::HostAccountCreateProofError`] and older versions. */
 export type HostAccountCreateProofError = {
   tag: "V1";
-  value: CreateProofError;
+  value: V01HostAccountCreateProofError;
 };
 
 export const HostAccountCreateProofError: S.Codec<HostAccountCreateProofError> =
   S.lazy(
     (): S.Codec<HostAccountCreateProofError> =>
-      S.indexedTaggedUnion({ V1: [0, CreateProofError] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01HostAccountCreateProofError] as const,
+      }),
   );
 
-/** Request wrapper for `host_account_create_proof`. */
+/** Versioned wrapper for [`v01::HostAccountCreateProofRequest`] and older versions. */
 export type HostAccountCreateProofRequest = {
   tag: "V1";
-  value: AccountCreateProofRequest;
+  value: V01HostAccountCreateProofRequest;
 };
 
 export const HostAccountCreateProofRequest: S.Codec<HostAccountCreateProofRequest> =
   S.lazy(
     (): S.Codec<HostAccountCreateProofRequest> =>
-      S.indexedTaggedUnion({ V1: [0, AccountCreateProofRequest] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01HostAccountCreateProofRequest] as const,
+      }),
   );
 
-/** Response wrapper for `host_account_create_proof`. */
-export type HostAccountCreateProofResponse = { tag: "V1"; value: RingVrfProof };
+/** Versioned wrapper for [`v01::HostAccountCreateProofResponse`] and older versions. */
+export type HostAccountCreateProofResponse = {
+  tag: "V1";
+  value: V01HostAccountCreateProofResponse;
+};
 
 export const HostAccountCreateProofResponse: S.Codec<HostAccountCreateProofResponse> =
   S.lazy(
     (): S.Codec<HostAccountCreateProofResponse> =>
-      S.indexedTaggedUnion({ V1: [0, RingVrfProof] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01HostAccountCreateProofResponse] as const,
+      }),
   );
 
-/** Error wrapper for `host_account_get_alias`. */
+/** Versioned wrapper for [`v01::HostAccountGetAliasError`] and older versions. */
 export type HostAccountGetAliasError = {
   tag: "V1";
-  value: RequestCredentialsError;
+  value: V01HostAccountGetAliasError;
 };
 
 export const HostAccountGetAliasError: S.Codec<HostAccountGetAliasError> =
   S.lazy(
     (): S.Codec<HostAccountGetAliasError> =>
-      S.indexedTaggedUnion({ V1: [0, RequestCredentialsError] as const }),
+      S.indexedTaggedUnion({ V1: [0, V01HostAccountGetAliasError] as const }),
   );
 
-/** Request wrapper for `host_account_get_alias`. */
-export type HostAccountGetAliasRequest = { tag: "V1"; value: ProductAccountId };
+/** Versioned wrapper for [`v01::HostAccountGetAliasRequest`] and older versions. */
+export type HostAccountGetAliasRequest = {
+  tag: "V1";
+  value: V01HostAccountGetAliasRequest;
+};
 
 export const HostAccountGetAliasRequest: S.Codec<HostAccountGetAliasRequest> =
   S.lazy(
     (): S.Codec<HostAccountGetAliasRequest> =>
-      S.indexedTaggedUnion({ V1: [0, ProductAccountId] as const }),
+      S.indexedTaggedUnion({ V1: [0, V01HostAccountGetAliasRequest] as const }),
   );
 
-/** Response wrapper for `host_account_get_alias`. */
-export type HostAccountGetAliasResponse = { tag: "V1"; value: ContextualAlias };
+/** Versioned wrapper for [`v01::HostAccountGetAliasResponse`] and older versions. */
+export type HostAccountGetAliasResponse = {
+  tag: "V1";
+  value: V01HostAccountGetAliasResponse;
+};
 
 export const HostAccountGetAliasResponse: S.Codec<HostAccountGetAliasResponse> =
   S.lazy(
     (): S.Codec<HostAccountGetAliasResponse> =>
-      S.indexedTaggedUnion({ V1: [0, ContextualAlias] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01HostAccountGetAliasResponse] as const,
+      }),
   );
 
-/** Error wrapper for `host_account_get`. */
-export type HostAccountGetError = { tag: "V1"; value: RequestCredentialsError };
+/** Versioned wrapper for [`v01::HostAccountGetError`] and older versions. */
+export type HostAccountGetError = { tag: "V1"; value: V01HostAccountGetError };
 
 export const HostAccountGetError: S.Codec<HostAccountGetError> = S.lazy(
   (): S.Codec<HostAccountGetError> =>
-    S.indexedTaggedUnion({ V1: [0, RequestCredentialsError] as const }),
+    S.indexedTaggedUnion({ V1: [0, V01HostAccountGetError] as const }),
 );
 
-/** Request wrapper for `host_account_get`. */
-export type HostAccountGetRequest = { tag: "V1"; value: ProductAccountId };
+/** Versioned wrapper for [`v01::HostAccountGetRequest`] and older versions. */
+export type HostAccountGetRequest = {
+  tag: "V1";
+  value: V01HostAccountGetRequest;
+};
 
 export const HostAccountGetRequest: S.Codec<HostAccountGetRequest> = S.lazy(
   (): S.Codec<HostAccountGetRequest> =>
-    S.indexedTaggedUnion({ V1: [0, ProductAccountId] as const }),
+    S.indexedTaggedUnion({ V1: [0, V01HostAccountGetRequest] as const }),
 );
 
-/** Response wrapper for `host_account_get`. */
-export type HostAccountGetResponse = { tag: "V1"; value: Account };
+/** Versioned wrapper for [`v01::HostAccountGetResponse`] and older versions. */
+export type HostAccountGetResponse = {
+  tag: "V1";
+  value: V01HostAccountGetResponse;
+};
 
 export const HostAccountGetResponse: S.Codec<HostAccountGetResponse> = S.lazy(
   (): S.Codec<HostAccountGetResponse> =>
-    S.indexedTaggedUnion({ V1: [0, Account] as const }),
+    S.indexedTaggedUnion({ V1: [0, V01HostAccountGetResponse] as const }),
 );
 
-/** Subscription item wrapper for `host_chat_action_subscribe`. */
+/** Versioned wrapper for [`v01::HostChatActionSubscribeItem`] and older versions. */
 export type HostChatActionSubscribeItem = {
   tag: "V1";
-  value: ReceivedChatAction;
+  value: V01HostChatActionSubscribeItem;
 };
 
 export const HostChatActionSubscribeItem: S.Codec<HostChatActionSubscribeItem> =
   S.lazy(
     (): S.Codec<HostChatActionSubscribeItem> =>
-      S.indexedTaggedUnion({ V1: [0, ReceivedChatAction] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01HostChatActionSubscribeItem] as const,
+      }),
   );
 
-/** Error wrapper for `host_chat_create_room`. */
+/** Versioned wrapper for [`v01::HostChatCreateRoomError`] and older versions. */
 export type HostChatCreateRoomError = {
   tag: "V1";
-  value: ChatRoomRegistrationError;
+  value: V01HostChatCreateRoomError;
 };
 
 export const HostChatCreateRoomError: S.Codec<HostChatCreateRoomError> = S.lazy(
   (): S.Codec<HostChatCreateRoomError> =>
-    S.indexedTaggedUnion({ V1: [0, ChatRoomRegistrationError] as const }),
+    S.indexedTaggedUnion({ V1: [0, V01HostChatCreateRoomError] as const }),
 );
 
-/** Request wrapper for `host_chat_create_room`. */
-export type HostChatCreateRoomRequest = { tag: "V1"; value: ChatRoomRequest };
+/** Versioned wrapper for [`v01::HostChatCreateRoomRequest`] and older versions. */
+export type HostChatCreateRoomRequest = {
+  tag: "V1";
+  value: V01HostChatCreateRoomRequest;
+};
 
 export const HostChatCreateRoomRequest: S.Codec<HostChatCreateRoomRequest> =
   S.lazy(
     (): S.Codec<HostChatCreateRoomRequest> =>
-      S.indexedTaggedUnion({ V1: [0, ChatRoomRequest] as const }),
+      S.indexedTaggedUnion({ V1: [0, V01HostChatCreateRoomRequest] as const }),
   );
 
-/** Response wrapper for `host_chat_create_room`. */
+/** Versioned wrapper for [`v01::HostChatCreateRoomResponse`] and older versions. */
 export type HostChatCreateRoomResponse = {
   tag: "V1";
-  value: ChatRoomRegistrationResult;
+  value: V01HostChatCreateRoomResponse;
 };
 
 export const HostChatCreateRoomResponse: S.Codec<HostChatCreateRoomResponse> =
   S.lazy(
     (): S.Codec<HostChatCreateRoomResponse> =>
-      S.indexedTaggedUnion({ V1: [0, ChatRoomRegistrationResult] as const }),
+      S.indexedTaggedUnion({ V1: [0, V01HostChatCreateRoomResponse] as const }),
   );
 
-/** Error wrapper for `host_chat_create_simple_group` (V0.2+ only). */
+/** Versioned wrapper for [`v02::HostChatCreateSimpleGroupError`] and older versions. */
 export type HostChatCreateSimpleGroupError = {
   tag: "V2";
-  value: ChatRoomRegistrationError;
+  value: V02HostChatCreateSimpleGroupError;
 };
 
 export const HostChatCreateSimpleGroupError: S.Codec<HostChatCreateSimpleGroupError> =
   S.lazy(
     (): S.Codec<HostChatCreateSimpleGroupError> =>
-      S.indexedTaggedUnion({ V2: [1, ChatRoomRegistrationError] as const }),
+      S.indexedTaggedUnion({
+        V2: [1, V02HostChatCreateSimpleGroupError] as const,
+      }),
   );
 
-/** Request wrapper for `host_chat_create_simple_group` (V0.2+ only -- no V0.1 counterpart). */
+/** Versioned wrapper for [`v02::HostChatCreateSimpleGroupRequest`] and older versions. */
 export type HostChatCreateSimpleGroupRequest = {
   tag: "V2";
-  value: SimpleGroupChatRequest;
+  value: V02HostChatCreateSimpleGroupRequest;
 };
 
 export const HostChatCreateSimpleGroupRequest: S.Codec<HostChatCreateSimpleGroupRequest> =
   S.lazy(
     (): S.Codec<HostChatCreateSimpleGroupRequest> =>
-      S.indexedTaggedUnion({ V2: [1, SimpleGroupChatRequest] as const }),
+      S.indexedTaggedUnion({
+        V2: [1, V02HostChatCreateSimpleGroupRequest] as const,
+      }),
   );
 
-/** Response wrapper for `host_chat_create_simple_group` (V0.2+ only). */
+/** Versioned wrapper for [`v02::HostChatCreateSimpleGroupResponse`] and older versions. */
 export type HostChatCreateSimpleGroupResponse = {
   tag: "V2";
-  value: SimpleGroupChatResult;
+  value: V02HostChatCreateSimpleGroupResponse;
 };
 
 export const HostChatCreateSimpleGroupResponse: S.Codec<HostChatCreateSimpleGroupResponse> =
   S.lazy(
     (): S.Codec<HostChatCreateSimpleGroupResponse> =>
-      S.indexedTaggedUnion({ V2: [1, SimpleGroupChatResult] as const }),
+      S.indexedTaggedUnion({
+        V2: [1, V02HostChatCreateSimpleGroupResponse] as const,
+      }),
   );
 
-/** Subscription item wrapper for `host_chat_list_subscribe`. */
-export type HostChatListSubscribeItem = { tag: "V1"; value: Array<ChatRoom> };
+/** Versioned wrapper for [`v01::HostChatListSubscribeItem`] and older versions. */
+export type HostChatListSubscribeItem = {
+  tag: "V1";
+  value: V01HostChatListSubscribeItem;
+};
 
 export const HostChatListSubscribeItem: S.Codec<HostChatListSubscribeItem> =
   S.lazy(
     (): S.Codec<HostChatListSubscribeItem> =>
-      S.indexedTaggedUnion({ V1: [0, S.vec(ChatRoom)] as const }),
+      S.indexedTaggedUnion({ V1: [0, V01HostChatListSubscribeItem] as const }),
   );
 
-/** Error wrapper for `host_chat_post_message`. */
+/** Versioned wrapper for [`v01::HostChatPostMessageError`] and older versions. */
 export type HostChatPostMessageError = {
   tag: "V1";
-  value: ChatMessagePostingError;
+  value: V01HostChatPostMessageError;
 };
 
 export const HostChatPostMessageError: S.Codec<HostChatPostMessageError> =
   S.lazy(
     (): S.Codec<HostChatPostMessageError> =>
-      S.indexedTaggedUnion({ V1: [0, ChatMessagePostingError] as const }),
+      S.indexedTaggedUnion({ V1: [0, V01HostChatPostMessageError] as const }),
   );
 
-/** Request wrapper for `host_chat_post_message`. */
+/** Versioned wrapper for [`v01::HostChatPostMessageRequest`] and older versions. */
 export type HostChatPostMessageRequest = {
   tag: "V1";
-  value: ChatPostMessageRequest;
+  value: V01HostChatPostMessageRequest;
 };
 
 export const HostChatPostMessageRequest: S.Codec<HostChatPostMessageRequest> =
   S.lazy(
     (): S.Codec<HostChatPostMessageRequest> =>
-      S.indexedTaggedUnion({ V1: [0, ChatPostMessageRequest] as const }),
+      S.indexedTaggedUnion({ V1: [0, V01HostChatPostMessageRequest] as const }),
   );
 
-/** Response wrapper for `host_chat_post_message`. */
+/** Versioned wrapper for [`v01::HostChatPostMessageResponse`] and older versions. */
 export type HostChatPostMessageResponse = {
   tag: "V1";
-  value: ChatPostMessageResult;
+  value: V01HostChatPostMessageResponse;
 };
 
 export const HostChatPostMessageResponse: S.Codec<HostChatPostMessageResponse> =
   S.lazy(
     (): S.Codec<HostChatPostMessageResponse> =>
-      S.indexedTaggedUnion({ V1: [0, ChatPostMessageResult] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01HostChatPostMessageResponse] as const,
+      }),
   );
 
-/** Error wrapper for `host_chat_register_bot`. */
+/** Versioned wrapper for [`v01::HostChatRegisterBotError`] and older versions. */
 export type HostChatRegisterBotError = {
   tag: "V1";
-  value: ChatBotRegistrationError;
+  value: V01HostChatRegisterBotError;
 };
 
 export const HostChatRegisterBotError: S.Codec<HostChatRegisterBotError> =
   S.lazy(
     (): S.Codec<HostChatRegisterBotError> =>
-      S.indexedTaggedUnion({ V1: [0, ChatBotRegistrationError] as const }),
+      S.indexedTaggedUnion({ V1: [0, V01HostChatRegisterBotError] as const }),
   );
 
-/** Request wrapper for `host_chat_register_bot`. */
-export type HostChatRegisterBotRequest = { tag: "V1"; value: ChatBotRequest };
+/** Versioned wrapper for [`v01::HostChatRegisterBotRequest`] and older versions. */
+export type HostChatRegisterBotRequest = {
+  tag: "V1";
+  value: V01HostChatRegisterBotRequest;
+};
 
 export const HostChatRegisterBotRequest: S.Codec<HostChatRegisterBotRequest> =
   S.lazy(
     (): S.Codec<HostChatRegisterBotRequest> =>
-      S.indexedTaggedUnion({ V1: [0, ChatBotRequest] as const }),
+      S.indexedTaggedUnion({ V1: [0, V01HostChatRegisterBotRequest] as const }),
   );
 
-/** Response wrapper for `host_chat_register_bot`. */
+/** Versioned wrapper for [`v01::HostChatRegisterBotResponse`] and older versions. */
 export type HostChatRegisterBotResponse = {
   tag: "V1";
-  value: ChatBotRegistrationResult;
+  value: V01HostChatRegisterBotResponse;
 };
 
 export const HostChatRegisterBotResponse: S.Codec<HostChatRegisterBotResponse> =
   S.lazy(
     (): S.Codec<HostChatRegisterBotResponse> =>
-      S.indexedTaggedUnion({ V1: [0, ChatBotRegistrationResult] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01HostChatRegisterBotResponse] as const,
+      }),
   );
 
-/** Error wrapper for `host_create_transaction`. */
+/** Versioned wrapper for [`v01::HostCreateTransactionError`] and older versions. */
 export type HostCreateTransactionError = {
   tag: "V1";
-  value: CreateTransactionError;
+  value: V01HostCreateTransactionError;
 };
 
 export const HostCreateTransactionError: S.Codec<HostCreateTransactionError> =
   S.lazy(
     (): S.Codec<HostCreateTransactionError> =>
-      S.indexedTaggedUnion({ V1: [0, CreateTransactionError] as const }),
+      S.indexedTaggedUnion({ V1: [0, V01HostCreateTransactionError] as const }),
   );
 
-/** Request wrapper for `host_create_transaction`. */
+/** Versioned wrapper for [`v01::HostCreateTransactionRequest`] and older versions. */
 export type HostCreateTransactionRequest = {
   tag: "V1";
-  value: CreateTransactionRequest;
+  value: V01HostCreateTransactionRequest;
 };
 
 export const HostCreateTransactionRequest: S.Codec<HostCreateTransactionRequest> =
   S.lazy(
     (): S.Codec<HostCreateTransactionRequest> =>
-      S.indexedTaggedUnion({ V1: [0, CreateTransactionRequest] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01HostCreateTransactionRequest] as const,
+      }),
   );
 
-/** Response wrapper for `host_create_transaction`. */
-export type HostCreateTransactionResponse = { tag: "V1"; value: Bytes };
+/** Versioned wrapper for [`v01::HostCreateTransactionResponse`] and older versions. */
+export type HostCreateTransactionResponse = {
+  tag: "V1";
+  value: V01HostCreateTransactionResponse;
+};
 
 export const HostCreateTransactionResponse: S.Codec<HostCreateTransactionResponse> =
   S.lazy(
     (): S.Codec<HostCreateTransactionResponse> =>
-      S.indexedTaggedUnion({ V1: [0, Bytes] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01HostCreateTransactionResponse] as const,
+      }),
   );
 
-/** Error wrapper for `host_create_transaction_with_non_product_account`. */
+/** Versioned wrapper for [`v01::HostCreateTransactionWithNonProductAccountError`] and older versions. */
 export type HostCreateTransactionWithNonProductAccountError = {
   tag: "V1";
-  value: CreateTransactionError;
+  value: V01HostCreateTransactionWithNonProductAccountError;
 };
 
 export const HostCreateTransactionWithNonProductAccountError: S.Codec<HostCreateTransactionWithNonProductAccountError> =
   S.lazy(
     (): S.Codec<HostCreateTransactionWithNonProductAccountError> =>
-      S.indexedTaggedUnion({ V1: [0, CreateTransactionError] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01HostCreateTransactionWithNonProductAccountError] as const,
+      }),
   );
 
-/** Request wrapper for `host_create_transaction_with_non_product_account`. */
+/** Versioned wrapper for [`v01::HostCreateTransactionWithNonProductAccountRequest`] and older versions. */
 export type HostCreateTransactionWithNonProductAccountRequest = {
   tag: "V1";
-  value: VersionedTxPayload;
+  value: V01HostCreateTransactionWithNonProductAccountRequest;
 };
 
 export const HostCreateTransactionWithNonProductAccountRequest: S.Codec<HostCreateTransactionWithNonProductAccountRequest> =
   S.lazy(
     (): S.Codec<HostCreateTransactionWithNonProductAccountRequest> =>
-      S.indexedTaggedUnion({ V1: [0, VersionedTxPayload] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01HostCreateTransactionWithNonProductAccountRequest] as const,
+      }),
   );
 
-/** Response wrapper for `host_create_transaction_with_non_product_account`. */
+/** Versioned wrapper for [`v01::HostCreateTransactionWithNonProductAccountResponse`] and older versions. */
 export type HostCreateTransactionWithNonProductAccountResponse = {
   tag: "V1";
-  value: Bytes;
+  value: V01HostCreateTransactionWithNonProductAccountResponse;
 };
 
 export const HostCreateTransactionWithNonProductAccountResponse: S.Codec<HostCreateTransactionWithNonProductAccountResponse> =
   S.lazy(
     (): S.Codec<HostCreateTransactionWithNonProductAccountResponse> =>
-      S.indexedTaggedUnion({ V1: [0, Bytes] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01HostCreateTransactionWithNonProductAccountResponse] as const,
+      }),
   );
 
-/** Error wrapper for `host_derive_entropy` (V0.2+ only). */
-export type HostDeriveEntropyError = { tag: "V2"; value: DeriveEntropyError };
+/** Versioned wrapper for [`v02::HostDeriveEntropyError`] and older versions. */
+export type HostDeriveEntropyError = {
+  tag: "V2";
+  value: V02HostDeriveEntropyError;
+};
 
 export const HostDeriveEntropyError: S.Codec<HostDeriveEntropyError> = S.lazy(
   (): S.Codec<HostDeriveEntropyError> =>
-    S.indexedTaggedUnion({ V2: [1, DeriveEntropyError] as const }),
+    S.indexedTaggedUnion({ V2: [1, V02HostDeriveEntropyError] as const }),
 );
 
-/** Request wrapper for `host_derive_entropy` (V0.2+ only). */
-export type HostDeriveEntropyRequest = { tag: "V2"; value: Uint8Array };
+/** Versioned wrapper for [`v02::HostDeriveEntropyRequest`] and older versions. */
+export type HostDeriveEntropyRequest = {
+  tag: "V2";
+  value: V02HostDeriveEntropyRequest;
+};
 
 export const HostDeriveEntropyRequest: S.Codec<HostDeriveEntropyRequest> =
   S.lazy(
     (): S.Codec<HostDeriveEntropyRequest> =>
-      S.indexedTaggedUnion({ V2: [1, S.bytes] as const }),
+      S.indexedTaggedUnion({ V2: [1, V02HostDeriveEntropyRequest] as const }),
   );
 
-/** Response wrapper for `host_derive_entropy` (V0.2+ only). */
-export type HostDeriveEntropyResponse = { tag: "V2"; value: Entropy };
+/** Versioned wrapper for [`v02::HostDeriveEntropyResponse`] and older versions. */
+export type HostDeriveEntropyResponse = {
+  tag: "V2";
+  value: V02HostDeriveEntropyResponse;
+};
 
 export const HostDeriveEntropyResponse: S.Codec<HostDeriveEntropyResponse> =
   S.lazy(
     (): S.Codec<HostDeriveEntropyResponse> =>
-      S.indexedTaggedUnion({ V2: [1, Entropy] as const }),
+      S.indexedTaggedUnion({ V2: [1, V02HostDeriveEntropyResponse] as const }),
   );
 
-/** Error wrapper for `host_device_permission`. */
+/** Versioned wrapper for [`v01::HostDevicePermissionError`] and older versions. */
 export type HostDevicePermissionError =
-  | { tag: "V1"; value: GenericError }
-  | { tag: "V2"; value: GenericError };
+  | { tag: "V1"; value: V01HostDevicePermissionError }
+  | { tag: "V2"; value: V01HostDevicePermissionError };
 
 export const HostDevicePermissionError: S.Codec<HostDevicePermissionError> =
   S.lazy(
     (): S.Codec<HostDevicePermissionError> =>
       S.indexedTaggedUnion({
-        V1: [0, GenericError] as const,
-        V2: [1, GenericError] as const,
+        V1: [0, V01HostDevicePermissionError] as const,
+        V2: [1, V01HostDevicePermissionError] as const,
       }),
   );
 
-/**
- * Request wrapper for `host_device_permission`.
- *
- * V1 mirrors `host-api@0.6.x`'s `Status('Camera', 'Microphone', 'Bluetooth',
- * 'Location')` enum; V2 widens it per RFC-0001.
- */
+/** Versioned wrapper for [`v02::HostDevicePermissionRequest`] and older versions. */
 export type HostDevicePermissionRequest =
-  /** Pre-RFC-0001 four-variant enum, as shipped by `@novasamatech/host-api@0.6.x`. */
   | { tag: "V1"; value: V01HostDevicePermissionRequest }
-  /** RFC-0001 nine-variant enum. */
   | { tag: "V2"; value: V02HostDevicePermissionRequest };
 
 export const HostDevicePermissionRequest: S.Codec<HostDevicePermissionRequest> =
@@ -1614,60 +1675,75 @@ export const HostDevicePermissionRequest: S.Codec<HostDevicePermissionRequest> =
       }),
   );
 
-/** Response wrapper for `host_device_permission`. */
+/** Versioned wrapper for [`v01::HostDevicePermissionResponse`] and older versions. */
 export type HostDevicePermissionResponse =
-  | { tag: "V1"; value: boolean }
-  | { tag: "V2"; value: boolean };
+  | { tag: "V1"; value: V01HostDevicePermissionResponse }
+  | { tag: "V2"; value: V01HostDevicePermissionResponse };
 
 export const HostDevicePermissionResponse: S.Codec<HostDevicePermissionResponse> =
   S.lazy(
     (): S.Codec<HostDevicePermissionResponse> =>
       S.indexedTaggedUnion({
-        V1: [0, S.bool] as const,
-        V2: [1, S.bool] as const,
+        V1: [0, V01HostDevicePermissionResponse] as const,
+        V2: [1, V01HostDevicePermissionResponse] as const,
       }),
   );
 
-/** Error wrapper for `host_feature_supported`. */
-export type HostFeatureSupportedError = { tag: "V1"; value: GenericError };
+/** Versioned wrapper for [`v01::HostFeatureSupportedError`] and older versions. */
+export type HostFeatureSupportedError = {
+  tag: "V1";
+  value: V01HostFeatureSupportedError;
+};
 
 export const HostFeatureSupportedError: S.Codec<HostFeatureSupportedError> =
   S.lazy(
     (): S.Codec<HostFeatureSupportedError> =>
-      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
+      S.indexedTaggedUnion({ V1: [0, V01HostFeatureSupportedError] as const }),
   );
 
-/** Request wrapper for `host_feature_supported`. */
-export type HostFeatureSupportedRequest = { tag: "V1"; value: Feature };
+/** Versioned wrapper for [`v01::HostFeatureSupportedRequest`] and older versions. */
+export type HostFeatureSupportedRequest = {
+  tag: "V1";
+  value: V01HostFeatureSupportedRequest;
+};
 
 export const HostFeatureSupportedRequest: S.Codec<HostFeatureSupportedRequest> =
   S.lazy(
     (): S.Codec<HostFeatureSupportedRequest> =>
-      S.indexedTaggedUnion({ V1: [0, Feature] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01HostFeatureSupportedRequest] as const,
+      }),
   );
 
-/** Response wrapper for `host_feature_supported`. */
-export type HostFeatureSupportedResponse = { tag: "V1"; value: boolean };
+/** Versioned wrapper for [`v01::HostFeatureSupportedResponse`] and older versions. */
+export type HostFeatureSupportedResponse = {
+  tag: "V1";
+  value: V01HostFeatureSupportedResponse;
+};
 
 export const HostFeatureSupportedResponse: S.Codec<HostFeatureSupportedResponse> =
   S.lazy(
     (): S.Codec<HostFeatureSupportedResponse> =>
-      S.indexedTaggedUnion({ V1: [0, S.bool] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01HostFeatureSupportedResponse] as const,
+      }),
   );
 
-/** Error wrapper for `host_get_non_product_accounts`. */
+/** Versioned wrapper for [`v01::HostGetNonProductAccountsError`] and older versions. */
 export type HostGetNonProductAccountsError = {
   tag: "V1";
-  value: RequestCredentialsError;
+  value: V01HostGetNonProductAccountsError;
 };
 
 export const HostGetNonProductAccountsError: S.Codec<HostGetNonProductAccountsError> =
   S.lazy(
     (): S.Codec<HostGetNonProductAccountsError> =>
-      S.indexedTaggedUnion({ V1: [0, RequestCredentialsError] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01HostGetNonProductAccountsError] as const,
+      }),
   );
 
-/** Request wrapper for `host_get_non_product_accounts`. */
+/** Versioned wrapper for unit and older versions. */
 export type HostGetNonProductAccountsRequest = { tag: "V1"; value: undefined };
 
 export const HostGetNonProductAccountsRequest: S.Codec<HostGetNonProductAccountsRequest> =
@@ -1676,27 +1752,29 @@ export const HostGetNonProductAccountsRequest: S.Codec<HostGetNonProductAccounts
       S.indexedTaggedUnion({ V1: [0, S.unit] as const }),
   );
 
-/** Response wrapper for `host_get_non_product_accounts`. */
+/** Versioned wrapper for [`v01::HostGetNonProductAccountsResponse`] and older versions. */
 export type HostGetNonProductAccountsResponse = {
   tag: "V1";
-  value: Array<Account>;
+  value: V01HostGetNonProductAccountsResponse;
 };
 
 export const HostGetNonProductAccountsResponse: S.Codec<HostGetNonProductAccountsResponse> =
   S.lazy(
     (): S.Codec<HostGetNonProductAccountsResponse> =>
-      S.indexedTaggedUnion({ V1: [0, S.vec(Account)] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01HostGetNonProductAccountsResponse] as const,
+      }),
   );
 
-/** Error wrapper for `host_get_user_id` (V0.2+ only). */
-export type HostGetUserIdError = { tag: "V2"; value: UserIdentityError };
+/** Versioned wrapper for [`v02::HostGetUserIdError`] and older versions. */
+export type HostGetUserIdError = { tag: "V2"; value: V02HostGetUserIdError };
 
 export const HostGetUserIdError: S.Codec<HostGetUserIdError> = S.lazy(
   (): S.Codec<HostGetUserIdError> =>
-    S.indexedTaggedUnion({ V2: [1, UserIdentityError] as const }),
+    S.indexedTaggedUnion({ V2: [1, V02HostGetUserIdError] as const }),
 );
 
-/** Request wrapper for `host_get_user_id` (V0.2+ only - no V0.1 counterpart). */
+/** Versioned wrapper for unit and older versions. */
 export type HostGetUserIdRequest = { tag: "V2"; value: undefined };
 
 export const HostGetUserIdRequest: S.Codec<HostGetUserIdRequest> = S.lazy(
@@ -1704,31 +1782,37 @@ export const HostGetUserIdRequest: S.Codec<HostGetUserIdRequest> = S.lazy(
     S.indexedTaggedUnion({ V2: [1, S.unit] as const }),
 );
 
-/** Response wrapper for `host_get_user_id` (V0.2+ only). */
-export type HostGetUserIdResponse = { tag: "V2"; value: UserIdentity };
+/** Versioned wrapper for [`v02::HostGetUserIdResponse`] and older versions. */
+export type HostGetUserIdResponse = {
+  tag: "V2";
+  value: V02HostGetUserIdResponse;
+};
 
 export const HostGetUserIdResponse: S.Codec<HostGetUserIdResponse> = S.lazy(
   (): S.Codec<HostGetUserIdResponse> =>
-    S.indexedTaggedUnion({ V2: [1, UserIdentity] as const }),
+    S.indexedTaggedUnion({ V2: [1, V02HostGetUserIdResponse] as const }),
 );
 
-/** Error wrapper for `host_handshake`. */
-export type HostHandshakeError = { tag: "V1"; value: HandshakeError };
+/** Versioned wrapper for [`v02::HostHandshakeError`] and older versions. */
+export type HostHandshakeError = { tag: "V1"; value: V02HostHandshakeError };
 
 export const HostHandshakeError: S.Codec<HostHandshakeError> = S.lazy(
   (): S.Codec<HostHandshakeError> =>
-    S.indexedTaggedUnion({ V1: [0, HandshakeError] as const }),
+    S.indexedTaggedUnion({ V1: [0, V02HostHandshakeError] as const }),
 );
 
-/** Request wrapper for `host_handshake`. Inner u8 is the codec version. */
-export type HostHandshakeRequest = { tag: "V1"; value: number };
+/** Versioned wrapper for [`v01::HostHandshakeRequest`] and older versions. */
+export type HostHandshakeRequest = {
+  tag: "V1";
+  value: V01HostHandshakeRequest;
+};
 
 export const HostHandshakeRequest: S.Codec<HostHandshakeRequest> = S.lazy(
   (): S.Codec<HostHandshakeRequest> =>
-    S.indexedTaggedUnion({ V1: [0, S.u8] as const }),
+    S.indexedTaggedUnion({ V1: [0, V01HostHandshakeRequest] as const }),
 );
 
-/** Response wrapper for `host_handshake`. */
+/** Versioned wrapper for unit and older versions. */
 export type HostHandshakeResponse = { tag: "V1"; value: undefined };
 
 export const HostHandshakeResponse: S.Codec<HostHandshakeResponse> = S.lazy(
@@ -1736,25 +1820,33 @@ export const HostHandshakeResponse: S.Codec<HostHandshakeResponse> = S.lazy(
     S.indexedTaggedUnion({ V1: [0, S.unit] as const }),
 );
 
-/** Error wrapper for `host_local_storage_clear`. */
-export type HostLocalStorageClearError = { tag: "V1"; value: StorageError };
+/** Versioned wrapper for [`v01::HostLocalStorageClearError`] and older versions. */
+export type HostLocalStorageClearError = {
+  tag: "V1";
+  value: V01HostLocalStorageClearError;
+};
 
 export const HostLocalStorageClearError: S.Codec<HostLocalStorageClearError> =
   S.lazy(
     (): S.Codec<HostLocalStorageClearError> =>
-      S.indexedTaggedUnion({ V1: [0, StorageError] as const }),
+      S.indexedTaggedUnion({ V1: [0, V01HostLocalStorageClearError] as const }),
   );
 
-/** Request wrapper for `host_local_storage_clear`. */
-export type HostLocalStorageClearRequest = { tag: "V1"; value: StorageKey };
+/** Versioned wrapper for [`v01::HostLocalStorageClearRequest`] and older versions. */
+export type HostLocalStorageClearRequest = {
+  tag: "V1";
+  value: V01HostLocalStorageClearRequest;
+};
 
 export const HostLocalStorageClearRequest: S.Codec<HostLocalStorageClearRequest> =
   S.lazy(
     (): S.Codec<HostLocalStorageClearRequest> =>
-      S.indexedTaggedUnion({ V1: [0, StorageKey] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01HostLocalStorageClearRequest] as const,
+      }),
   );
 
-/** Response wrapper for `host_local_storage_clear`. */
+/** Versioned wrapper for unit and older versions. */
 export type HostLocalStorageClearResponse = { tag: "V1"; value: undefined };
 
 export const HostLocalStorageClearResponse: S.Codec<HostLocalStorageClearResponse> =
@@ -1763,58 +1855,73 @@ export const HostLocalStorageClearResponse: S.Codec<HostLocalStorageClearRespons
       S.indexedTaggedUnion({ V1: [0, S.unit] as const }),
   );
 
-/** Error wrapper for `host_local_storage_read`. */
-export type HostLocalStorageReadError = { tag: "V1"; value: StorageError };
+/** Versioned wrapper for [`v01::HostLocalStorageReadError`] and older versions. */
+export type HostLocalStorageReadError = {
+  tag: "V1";
+  value: V01HostLocalStorageReadError;
+};
 
 export const HostLocalStorageReadError: S.Codec<HostLocalStorageReadError> =
   S.lazy(
     (): S.Codec<HostLocalStorageReadError> =>
-      S.indexedTaggedUnion({ V1: [0, StorageError] as const }),
+      S.indexedTaggedUnion({ V1: [0, V01HostLocalStorageReadError] as const }),
   );
 
-/** Request wrapper for `host_local_storage_read`. */
-export type HostLocalStorageReadRequest = { tag: "V1"; value: StorageKey };
+/** Versioned wrapper for [`v01::HostLocalStorageReadRequest`] and older versions. */
+export type HostLocalStorageReadRequest = {
+  tag: "V1";
+  value: V01HostLocalStorageReadRequest;
+};
 
 export const HostLocalStorageReadRequest: S.Codec<HostLocalStorageReadRequest> =
   S.lazy(
     (): S.Codec<HostLocalStorageReadRequest> =>
-      S.indexedTaggedUnion({ V1: [0, StorageKey] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01HostLocalStorageReadRequest] as const,
+      }),
   );
 
-/** Response wrapper for `host_local_storage_read`. */
+/** Versioned wrapper for [`v01::HostLocalStorageReadResponse`] and older versions. */
 export type HostLocalStorageReadResponse = {
   tag: "V1";
-  value: StorageValue | undefined;
+  value: V01HostLocalStorageReadResponse;
 };
 
 export const HostLocalStorageReadResponse: S.Codec<HostLocalStorageReadResponse> =
   S.lazy(
     (): S.Codec<HostLocalStorageReadResponse> =>
-      S.indexedTaggedUnion({ V1: [0, S.option(StorageValue)] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01HostLocalStorageReadResponse] as const,
+      }),
   );
 
-/** Error wrapper for `host_local_storage_write`. */
-export type HostLocalStorageWriteError = { tag: "V1"; value: StorageError };
+/** Versioned wrapper for [`v01::HostLocalStorageWriteError`] and older versions. */
+export type HostLocalStorageWriteError = {
+  tag: "V1";
+  value: V01HostLocalStorageWriteError;
+};
 
 export const HostLocalStorageWriteError: S.Codec<HostLocalStorageWriteError> =
   S.lazy(
     (): S.Codec<HostLocalStorageWriteError> =>
-      S.indexedTaggedUnion({ V1: [0, StorageError] as const }),
+      S.indexedTaggedUnion({ V1: [0, V01HostLocalStorageWriteError] as const }),
   );
 
-/** Request wrapper for `host_local_storage_write`. */
+/** Versioned wrapper for [`v01::HostLocalStorageWriteRequest`] and older versions. */
 export type HostLocalStorageWriteRequest = {
   tag: "V1";
-  value: LocalStorageWriteRequest;
+  value: V01HostLocalStorageWriteRequest;
 };
 
 export const HostLocalStorageWriteRequest: S.Codec<HostLocalStorageWriteRequest> =
   S.lazy(
     (): S.Codec<HostLocalStorageWriteRequest> =>
-      S.indexedTaggedUnion({ V1: [0, LocalStorageWriteRequest] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01HostLocalStorageWriteRequest] as const,
+      }),
   );
 
-/** Response wrapper for `host_local_storage_write`. */
+/** Versioned wrapper for unit and older versions. */
 export type HostLocalStorageWriteResponse = { tag: "V1"; value: undefined };
 
 export const HostLocalStorageWriteResponse: S.Codec<HostLocalStorageWriteResponse> =
@@ -1823,23 +1930,26 @@ export const HostLocalStorageWriteResponse: S.Codec<HostLocalStorageWriteRespons
       S.indexedTaggedUnion({ V1: [0, S.unit] as const }),
   );
 
-/** Error wrapper for `host_navigate_to`. */
-export type HostNavigateToError = { tag: "V1"; value: NavigateToError };
+/** Versioned wrapper for [`v01::HostNavigateToError`] and older versions. */
+export type HostNavigateToError = { tag: "V1"; value: V01HostNavigateToError };
 
 export const HostNavigateToError: S.Codec<HostNavigateToError> = S.lazy(
   (): S.Codec<HostNavigateToError> =>
-    S.indexedTaggedUnion({ V1: [0, NavigateToError] as const }),
+    S.indexedTaggedUnion({ V1: [0, V01HostNavigateToError] as const }),
 );
 
-/** Request wrapper for `host_navigate_to`. */
-export type HostNavigateToRequest = { tag: "V1"; value: string };
+/** Versioned wrapper for [`v01::HostNavigateToRequest`] and older versions. */
+export type HostNavigateToRequest = {
+  tag: "V1";
+  value: V01HostNavigateToRequest;
+};
 
 export const HostNavigateToRequest: S.Codec<HostNavigateToRequest> = S.lazy(
   (): S.Codec<HostNavigateToRequest> =>
-    S.indexedTaggedUnion({ V1: [0, S.str] as const }),
+    S.indexedTaggedUnion({ V1: [0, V01HostNavigateToRequest] as const }),
 );
 
-/** Response wrapper for `host_navigate_to`. */
+/** Versioned wrapper for unit and older versions. */
 export type HostNavigateToResponse = { tag: "V1"; value: undefined };
 
 export const HostNavigateToResponse: S.Codec<HostNavigateToResponse> = S.lazy(
@@ -1847,31 +1957,35 @@ export const HostNavigateToResponse: S.Codec<HostNavigateToResponse> = S.lazy(
     S.indexedTaggedUnion({ V1: [0, S.unit] as const }),
 );
 
-/** Error wrapper for `host_payment_balance_subscribe` (V0.2+ only). */
+/** Versioned wrapper for [`v02::HostPaymentBalanceSubscribeError`] and older versions. */
 export type HostPaymentBalanceSubscribeError = {
   tag: "V2";
-  value: PaymentBalanceError;
+  value: V02HostPaymentBalanceSubscribeError;
 };
 
 export const HostPaymentBalanceSubscribeError: S.Codec<HostPaymentBalanceSubscribeError> =
   S.lazy(
     (): S.Codec<HostPaymentBalanceSubscribeError> =>
-      S.indexedTaggedUnion({ V2: [1, PaymentBalanceError] as const }),
+      S.indexedTaggedUnion({
+        V2: [1, V02HostPaymentBalanceSubscribeError] as const,
+      }),
   );
 
-/** Subscription item wrapper for `host_payment_balance_subscribe` (V0.2+ only). */
+/** Versioned wrapper for [`v02::HostPaymentBalanceSubscribeItem`] and older versions. */
 export type HostPaymentBalanceSubscribeItem = {
   tag: "V2";
-  value: PaymentBalance;
+  value: V02HostPaymentBalanceSubscribeItem;
 };
 
 export const HostPaymentBalanceSubscribeItem: S.Codec<HostPaymentBalanceSubscribeItem> =
   S.lazy(
     (): S.Codec<HostPaymentBalanceSubscribeItem> =>
-      S.indexedTaggedUnion({ V2: [1, PaymentBalance] as const }),
+      S.indexedTaggedUnion({
+        V2: [1, V02HostPaymentBalanceSubscribeItem] as const,
+      }),
   );
 
-/** Subscription request wrapper for `host_payment_balance_subscribe` (V0.2+ only). */
+/** Versioned wrapper for unit and older versions. */
 export type HostPaymentBalanceSubscribeRequest = {
   tag: "V2";
   value: undefined;
@@ -1883,82 +1997,106 @@ export const HostPaymentBalanceSubscribeRequest: S.Codec<HostPaymentBalanceSubsc
       S.indexedTaggedUnion({ V2: [1, S.unit] as const }),
   );
 
-/** Error wrapper for `host_payment_request` (V0.2+ only). */
-export type HostPaymentRequestError = { tag: "V2"; value: PaymentRequestError };
+/** Versioned wrapper for [`v02::HostPaymentRequestError`] and older versions. */
+export type HostPaymentRequestError = {
+  tag: "V2";
+  value: V02HostPaymentRequestError;
+};
 
 export const HostPaymentRequestError: S.Codec<HostPaymentRequestError> = S.lazy(
   (): S.Codec<HostPaymentRequestError> =>
-    S.indexedTaggedUnion({ V2: [1, PaymentRequestError] as const }),
+    S.indexedTaggedUnion({ V2: [1, V02HostPaymentRequestError] as const }),
 );
 
-/** Request wrapper for `host_payment_request` (V0.2+ only). */
-export type HostPaymentRequestRequest = { tag: "V2"; value: PaymentRequest };
+/** Versioned wrapper for [`v02::HostPaymentRequestRequest`] and older versions. */
+export type HostPaymentRequestRequest = {
+  tag: "V2";
+  value: V02HostPaymentRequestRequest;
+};
 
 export const HostPaymentRequestRequest: S.Codec<HostPaymentRequestRequest> =
   S.lazy(
     (): S.Codec<HostPaymentRequestRequest> =>
-      S.indexedTaggedUnion({ V2: [1, PaymentRequest] as const }),
+      S.indexedTaggedUnion({ V2: [1, V02HostPaymentRequestRequest] as const }),
   );
 
-/** Response wrapper for `host_payment_request` (V0.2+ only). */
-export type HostPaymentRequestResponse = { tag: "V2"; value: PaymentReceipt };
+/** Versioned wrapper for [`v02::HostPaymentRequestResponse`] and older versions. */
+export type HostPaymentRequestResponse = {
+  tag: "V2";
+  value: V02HostPaymentRequestResponse;
+};
 
 export const HostPaymentRequestResponse: S.Codec<HostPaymentRequestResponse> =
   S.lazy(
     (): S.Codec<HostPaymentRequestResponse> =>
-      S.indexedTaggedUnion({ V2: [1, PaymentReceipt] as const }),
+      S.indexedTaggedUnion({ V2: [1, V02HostPaymentRequestResponse] as const }),
   );
 
-/** Error wrapper for `host_payment_status_subscribe` (V0.2+ only). */
+/** Versioned wrapper for [`v02::HostPaymentStatusSubscribeError`] and older versions. */
 export type HostPaymentStatusSubscribeError = {
   tag: "V2";
-  value: PaymentStatusError;
+  value: V02HostPaymentStatusSubscribeError;
 };
 
 export const HostPaymentStatusSubscribeError: S.Codec<HostPaymentStatusSubscribeError> =
   S.lazy(
     (): S.Codec<HostPaymentStatusSubscribeError> =>
-      S.indexedTaggedUnion({ V2: [1, PaymentStatusError] as const }),
+      S.indexedTaggedUnion({
+        V2: [1, V02HostPaymentStatusSubscribeError] as const,
+      }),
   );
 
-/** Subscription item wrapper for `host_payment_status_subscribe` (V0.2+ only). */
+/** Versioned wrapper for [`v02::HostPaymentStatusSubscribeItem`] and older versions. */
 export type HostPaymentStatusSubscribeItem = {
   tag: "V2";
-  value: PaymentStatus;
+  value: V02HostPaymentStatusSubscribeItem;
 };
 
 export const HostPaymentStatusSubscribeItem: S.Codec<HostPaymentStatusSubscribeItem> =
   S.lazy(
     (): S.Codec<HostPaymentStatusSubscribeItem> =>
-      S.indexedTaggedUnion({ V2: [1, PaymentStatus] as const }),
+      S.indexedTaggedUnion({
+        V2: [1, V02HostPaymentStatusSubscribeItem] as const,
+      }),
   );
 
-/** Subscription request wrapper for `host_payment_status_subscribe` (V0.2+ only). */
-export type HostPaymentStatusSubscribeRequest = { tag: "V2"; value: PaymentId };
+/** Versioned wrapper for [`v02::HostPaymentStatusSubscribeRequest`] and older versions. */
+export type HostPaymentStatusSubscribeRequest = {
+  tag: "V2";
+  value: V02HostPaymentStatusSubscribeRequest;
+};
 
 export const HostPaymentStatusSubscribeRequest: S.Codec<HostPaymentStatusSubscribeRequest> =
   S.lazy(
     (): S.Codec<HostPaymentStatusSubscribeRequest> =>
-      S.indexedTaggedUnion({ V2: [1, PaymentId] as const }),
+      S.indexedTaggedUnion({
+        V2: [1, V02HostPaymentStatusSubscribeRequest] as const,
+      }),
   );
 
-/** Error wrapper for `host_payment_top_up` (V0.2+ only). */
-export type HostPaymentTopUpError = { tag: "V2"; value: PaymentTopUpError };
+/** Versioned wrapper for [`v02::HostPaymentTopUpError`] and older versions. */
+export type HostPaymentTopUpError = {
+  tag: "V2";
+  value: V02HostPaymentTopUpError;
+};
 
 export const HostPaymentTopUpError: S.Codec<HostPaymentTopUpError> = S.lazy(
   (): S.Codec<HostPaymentTopUpError> =>
-    S.indexedTaggedUnion({ V2: [1, PaymentTopUpError] as const }),
+    S.indexedTaggedUnion({ V2: [1, V02HostPaymentTopUpError] as const }),
 );
 
-/** Request wrapper for `host_payment_top_up` (V0.2+ only). */
-export type HostPaymentTopUpRequest = { tag: "V2"; value: PaymentTopUpRequest };
+/** Versioned wrapper for [`v02::HostPaymentTopUpRequest`] and older versions. */
+export type HostPaymentTopUpRequest = {
+  tag: "V2";
+  value: V02HostPaymentTopUpRequest;
+};
 
 export const HostPaymentTopUpRequest: S.Codec<HostPaymentTopUpRequest> = S.lazy(
   (): S.Codec<HostPaymentTopUpRequest> =>
-    S.indexedTaggedUnion({ V2: [1, PaymentTopUpRequest] as const }),
+    S.indexedTaggedUnion({ V2: [1, V02HostPaymentTopUpRequest] as const }),
 );
 
-/** Response wrapper for `host_payment_top_up` (V0.2+ only). */
+/** Versioned wrapper for unit and older versions. */
 export type HostPaymentTopUpResponse = { tag: "V2"; value: undefined };
 
 export const HostPaymentTopUpResponse: S.Codec<HostPaymentTopUpResponse> =
@@ -1967,28 +2105,33 @@ export const HostPaymentTopUpResponse: S.Codec<HostPaymentTopUpResponse> =
       S.indexedTaggedUnion({ V2: [1, S.unit] as const }),
   );
 
-/** Error wrapper for `host_push_notification`. */
-export type HostPushNotificationError = { tag: "V1"; value: GenericError };
+/** Versioned wrapper for [`v01::HostPushNotificationError`] and older versions. */
+export type HostPushNotificationError = {
+  tag: "V1";
+  value: V01HostPushNotificationError;
+};
 
 export const HostPushNotificationError: S.Codec<HostPushNotificationError> =
   S.lazy(
     (): S.Codec<HostPushNotificationError> =>
-      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
+      S.indexedTaggedUnion({ V1: [0, V01HostPushNotificationError] as const }),
   );
 
-/** Request wrapper for `host_push_notification`. */
+/** Versioned wrapper for [`v01::HostPushNotificationRequest`] and older versions. */
 export type HostPushNotificationRequest = {
   tag: "V1";
-  value: PushNotification;
+  value: V01HostPushNotificationRequest;
 };
 
 export const HostPushNotificationRequest: S.Codec<HostPushNotificationRequest> =
   S.lazy(
     (): S.Codec<HostPushNotificationRequest> =>
-      S.indexedTaggedUnion({ V1: [0, PushNotification] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01HostPushNotificationRequest] as const,
+      }),
   );
 
-/** Response wrapper for `host_push_notification`. */
+/** Versioned wrapper for unit and older versions. */
 export type HostPushNotificationResponse = { tag: "V1"; value: undefined };
 
 export const HostPushNotificationResponse: S.Codec<HostPushNotificationResponse> =
@@ -1997,94 +2140,81 @@ export const HostPushNotificationResponse: S.Codec<HostPushNotificationResponse>
       S.indexedTaggedUnion({ V1: [0, S.unit] as const }),
   );
 
-/** Error wrapper for `host_sign_payload`. */
+/** Versioned wrapper for [`v01::HostSignPayloadError`] and older versions. */
 export type HostSignPayloadError =
-  | { tag: "V1"; value: SigningError }
-  | { tag: "V2"; value: SigningError };
+  | { tag: "V1"; value: V01HostSignPayloadError }
+  | { tag: "V2"; value: V01HostSignPayloadError };
 
 export const HostSignPayloadError: S.Codec<HostSignPayloadError> = S.lazy(
   (): S.Codec<HostSignPayloadError> =>
     S.indexedTaggedUnion({
-      V1: [0, SigningError] as const,
-      V2: [1, SigningError] as const,
+      V1: [0, V01HostSignPayloadError] as const,
+      V2: [1, V01HostSignPayloadError] as const,
     }),
 );
 
-/**
- * Request wrapper for `host_sign_payload`.
- *
- * V1 uses the legacy `address: String` shape; V2 carries
- * `account: ProductAccountId` per RFC-0005. Cross-version conversion is
- * lossy in both directions, so `into_version` only succeeds
- * when the requested version matches the active variant.
- */
+/** Versioned wrapper for [`v02::HostSignPayloadRequest`] and older versions. */
 export type HostSignPayloadRequest =
-  | { tag: "V1"; value: V01SigningPayload }
-  | { tag: "V2"; value: V02SigningPayload };
+  | { tag: "V1"; value: V01HostSignPayloadRequest }
+  | { tag: "V2"; value: V02HostSignPayloadRequest };
 
 export const HostSignPayloadRequest: S.Codec<HostSignPayloadRequest> = S.lazy(
   (): S.Codec<HostSignPayloadRequest> =>
     S.indexedTaggedUnion({
-      V1: [0, V01SigningPayload] as const,
-      V2: [1, V02SigningPayload] as const,
+      V1: [0, V01HostSignPayloadRequest] as const,
+      V2: [1, V02HostSignPayloadRequest] as const,
     }),
 );
 
-/** Response wrapper for `host_sign_payload`. */
+/** Versioned wrapper for [`v01::HostSignPayloadResponse`] and older versions. */
 export type HostSignPayloadResponse =
-  | { tag: "V1"; value: SigningResult }
-  | { tag: "V2"; value: SigningResult };
+  | { tag: "V1"; value: V01HostSignPayloadResponse }
+  | { tag: "V2"; value: V01HostSignPayloadResponse };
 
 export const HostSignPayloadResponse: S.Codec<HostSignPayloadResponse> = S.lazy(
   (): S.Codec<HostSignPayloadResponse> =>
     S.indexedTaggedUnion({
-      V1: [0, SigningResult] as const,
-      V2: [1, SigningResult] as const,
+      V1: [0, V01HostSignPayloadResponse] as const,
+      V2: [1, V01HostSignPayloadResponse] as const,
     }),
 );
 
-/** Error wrapper for `host_sign_raw`. */
+/** Versioned wrapper for [`v01::HostSignRawError`] and older versions. */
 export type HostSignRawError =
-  | { tag: "V1"; value: SigningError }
-  | { tag: "V2"; value: SigningError };
+  | { tag: "V1"; value: V01HostSignRawError }
+  | { tag: "V2"; value: V01HostSignRawError };
 
 export const HostSignRawError: S.Codec<HostSignRawError> = S.lazy(
   (): S.Codec<HostSignRawError> =>
     S.indexedTaggedUnion({
-      V1: [0, SigningError] as const,
-      V2: [1, SigningError] as const,
+      V1: [0, V01HostSignRawError] as const,
+      V2: [1, V01HostSignRawError] as const,
     }),
 );
 
-/**
- * Request wrapper for `host_sign_raw`.
- *
- * V1 uses the legacy `address: String` shape; V2 carries
- * `account: ProductAccountId` per RFC-0005. Cross-version conversion is
- * lossy in both directions.
- */
+/** Versioned wrapper for [`v02::HostSignRawRequest`] and older versions. */
 export type HostSignRawRequest =
-  | { tag: "V1"; value: V01SigningRawPayload }
-  | { tag: "V2"; value: V02SigningRawPayload };
+  | { tag: "V1"; value: V01HostSignRawRequest }
+  | { tag: "V2"; value: V02HostSignRawRequest };
 
 export const HostSignRawRequest: S.Codec<HostSignRawRequest> = S.lazy(
   (): S.Codec<HostSignRawRequest> =>
     S.indexedTaggedUnion({
-      V1: [0, V01SigningRawPayload] as const,
-      V2: [1, V02SigningRawPayload] as const,
+      V1: [0, V01HostSignRawRequest] as const,
+      V2: [1, V02HostSignRawRequest] as const,
     }),
 );
 
-/** Response wrapper for `host_sign_raw`. */
+/** Versioned wrapper for [`v01::HostSignRawResponse`] and older versions. */
 export type HostSignRawResponse =
-  | { tag: "V1"; value: SigningResult }
-  | { tag: "V2"; value: SigningResult };
+  | { tag: "V1"; value: V01HostSignRawResponse }
+  | { tag: "V2"; value: V01HostSignRawResponse };
 
 export const HostSignRawResponse: S.Codec<HostSignRawResponse> = S.lazy(
   (): S.Codec<HostSignRawResponse> =>
     S.indexedTaggedUnion({
-      V1: [0, SigningResult] as const,
-      V2: [1, SigningResult] as const,
+      V1: [0, V01HostSignRawResponse] as const,
+      V2: [1, V01HostSignRawResponse] as const,
     }),
 );
 
@@ -2437,16 +2567,18 @@ export const ProductAccountId: S.Codec<ProductAccountId> = S.lazy(
   (): S.Codec<ProductAccountId> => S.tuple(DotNsIdentifier, DerivationIndex),
 );
 
-/** Subscription item wrapper for `product_chat_custom_message_render_subscribe`. */
+/** Versioned wrapper for [`v01::ProductChatCustomMessageRenderSubscribeItem`] and older versions. */
 export type ProductChatCustomMessageRenderSubscribeItem = {
   tag: "V1";
-  value: CustomMessageRenderRequest;
+  value: V01ProductChatCustomMessageRenderSubscribeItem;
 };
 
 export const ProductChatCustomMessageRenderSubscribeItem: S.Codec<ProductChatCustomMessageRenderSubscribeItem> =
   S.lazy(
     (): S.Codec<ProductChatCustomMessageRenderSubscribeItem> =>
-      S.indexedTaggedUnion({ V1: [0, CustomMessageRenderRequest] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01ProductChatCustomMessageRenderSubscribeItem] as const,
+      }),
   );
 
 /** Variable-length public key. */
@@ -2502,94 +2634,111 @@ export const ReceivedChatAction: S.Codec<ReceivedChatAction> = S.lazy(
     }) as S.Codec<ReceivedChatAction>,
 );
 
-/** Error wrapper for `remote_chain_head_body`. */
-export type RemoteChainHeadBodyError = { tag: "V1"; value: GenericError };
+/** Versioned wrapper for [`v01::RemoteChainHeadBodyError`] and older versions. */
+export type RemoteChainHeadBodyError = {
+  tag: "V1";
+  value: V01RemoteChainHeadBodyError;
+};
 
 export const RemoteChainHeadBodyError: S.Codec<RemoteChainHeadBodyError> =
   S.lazy(
     (): S.Codec<RemoteChainHeadBodyError> =>
-      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
+      S.indexedTaggedUnion({ V1: [0, V01RemoteChainHeadBodyError] as const }),
   );
 
-/** Request wrapper for `remote_chain_head_body`. */
+/** Versioned wrapper for [`v01::RemoteChainHeadBodyRequest`] and older versions. */
 export type RemoteChainHeadBodyRequest = {
   tag: "V1";
-  value: ChainHeadBlockRequest;
+  value: V01RemoteChainHeadBodyRequest;
 };
 
 export const RemoteChainHeadBodyRequest: S.Codec<RemoteChainHeadBodyRequest> =
   S.lazy(
     (): S.Codec<RemoteChainHeadBodyRequest> =>
-      S.indexedTaggedUnion({ V1: [0, ChainHeadBlockRequest] as const }),
+      S.indexedTaggedUnion({ V1: [0, V01RemoteChainHeadBodyRequest] as const }),
   );
 
-/** Response wrapper for `remote_chain_head_body`. */
+/** Versioned wrapper for [`v01::RemoteChainHeadBodyResponse`] and older versions. */
 export type RemoteChainHeadBodyResponse = {
   tag: "V1";
-  value: OperationStartedResult;
+  value: V01RemoteChainHeadBodyResponse;
 };
 
 export const RemoteChainHeadBodyResponse: S.Codec<RemoteChainHeadBodyResponse> =
   S.lazy(
     (): S.Codec<RemoteChainHeadBodyResponse> =>
-      S.indexedTaggedUnion({ V1: [0, OperationStartedResult] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteChainHeadBodyResponse] as const,
+      }),
   );
 
-/** Error wrapper for `remote_chain_head_call`. */
-export type RemoteChainHeadCallError = { tag: "V1"; value: GenericError };
+/** Versioned wrapper for [`v01::RemoteChainHeadCallError`] and older versions. */
+export type RemoteChainHeadCallError = {
+  tag: "V1";
+  value: V01RemoteChainHeadCallError;
+};
 
 export const RemoteChainHeadCallError: S.Codec<RemoteChainHeadCallError> =
   S.lazy(
     (): S.Codec<RemoteChainHeadCallError> =>
-      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
+      S.indexedTaggedUnion({ V1: [0, V01RemoteChainHeadCallError] as const }),
   );
 
-/** Request wrapper for `remote_chain_head_call`. */
+/** Versioned wrapper for [`v01::RemoteChainHeadCallRequest`] and older versions. */
 export type RemoteChainHeadCallRequest = {
   tag: "V1";
-  value: ChainHeadCallRequest;
+  value: V01RemoteChainHeadCallRequest;
 };
 
 export const RemoteChainHeadCallRequest: S.Codec<RemoteChainHeadCallRequest> =
   S.lazy(
     (): S.Codec<RemoteChainHeadCallRequest> =>
-      S.indexedTaggedUnion({ V1: [0, ChainHeadCallRequest] as const }),
+      S.indexedTaggedUnion({ V1: [0, V01RemoteChainHeadCallRequest] as const }),
   );
 
-/** Response wrapper for `remote_chain_head_call`. */
+/** Versioned wrapper for [`v01::RemoteChainHeadCallResponse`] and older versions. */
 export type RemoteChainHeadCallResponse = {
   tag: "V1";
-  value: OperationStartedResult;
+  value: V01RemoteChainHeadCallResponse;
 };
 
 export const RemoteChainHeadCallResponse: S.Codec<RemoteChainHeadCallResponse> =
   S.lazy(
     (): S.Codec<RemoteChainHeadCallResponse> =>
-      S.indexedTaggedUnion({ V1: [0, OperationStartedResult] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteChainHeadCallResponse] as const,
+      }),
   );
 
-/** Error wrapper for `remote_chain_head_continue`. */
-export type RemoteChainHeadContinueError = { tag: "V1"; value: GenericError };
+/** Versioned wrapper for [`v01::RemoteChainHeadContinueError`] and older versions. */
+export type RemoteChainHeadContinueError = {
+  tag: "V1";
+  value: V01RemoteChainHeadContinueError;
+};
 
 export const RemoteChainHeadContinueError: S.Codec<RemoteChainHeadContinueError> =
   S.lazy(
     (): S.Codec<RemoteChainHeadContinueError> =>
-      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteChainHeadContinueError] as const,
+      }),
   );
 
-/** Request wrapper for `remote_chain_head_continue`. */
+/** Versioned wrapper for [`v01::RemoteChainHeadContinueRequest`] and older versions. */
 export type RemoteChainHeadContinueRequest = {
   tag: "V1";
-  value: ChainHeadOperationRequest;
+  value: V01RemoteChainHeadContinueRequest;
 };
 
 export const RemoteChainHeadContinueRequest: S.Codec<RemoteChainHeadContinueRequest> =
   S.lazy(
     (): S.Codec<RemoteChainHeadContinueRequest> =>
-      S.indexedTaggedUnion({ V1: [0, ChainHeadOperationRequest] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteChainHeadContinueRequest] as const,
+      }),
   );
 
-/** Response wrapper for `remote_chain_head_continue`. */
+/** Versioned wrapper for unit and older versions. */
 export type RemoteChainHeadContinueResponse = { tag: "V1"; value: undefined };
 
 export const RemoteChainHeadContinueResponse: S.Codec<RemoteChainHeadContinueResponse> =
@@ -2598,85 +2747,101 @@ export const RemoteChainHeadContinueResponse: S.Codec<RemoteChainHeadContinueRes
       S.indexedTaggedUnion({ V1: [0, S.unit] as const }),
   );
 
-/** Subscription item wrapper for `remote_chain_head_follow`. */
-export type RemoteChainHeadFollowItem = { tag: "V1"; value: ChainHeadEvent };
+/** Versioned wrapper for [`v01::RemoteChainHeadFollowItem`] and older versions. */
+export type RemoteChainHeadFollowItem = {
+  tag: "V1";
+  value: V01RemoteChainHeadFollowItem;
+};
 
 export const RemoteChainHeadFollowItem: S.Codec<RemoteChainHeadFollowItem> =
   S.lazy(
     (): S.Codec<RemoteChainHeadFollowItem> =>
-      S.indexedTaggedUnion({ V1: [0, ChainHeadEvent] as const }),
+      S.indexedTaggedUnion({ V1: [0, V01RemoteChainHeadFollowItem] as const }),
   );
 
-/** Subscription request wrapper for `remote_chain_head_follow`. */
+/** Versioned wrapper for [`v01::RemoteChainHeadFollowRequest`] and older versions. */
 export type RemoteChainHeadFollowRequest = {
   tag: "V1";
-  value: ChainHeadFollowRequest;
+  value: V01RemoteChainHeadFollowRequest;
 };
 
 export const RemoteChainHeadFollowRequest: S.Codec<RemoteChainHeadFollowRequest> =
   S.lazy(
     (): S.Codec<RemoteChainHeadFollowRequest> =>
-      S.indexedTaggedUnion({ V1: [0, ChainHeadFollowRequest] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteChainHeadFollowRequest] as const,
+      }),
   );
 
-/** Error wrapper for `remote_chain_head_header`. */
-export type RemoteChainHeadHeaderError = { tag: "V1"; value: GenericError };
+/** Versioned wrapper for [`v01::RemoteChainHeadHeaderError`] and older versions. */
+export type RemoteChainHeadHeaderError = {
+  tag: "V1";
+  value: V01RemoteChainHeadHeaderError;
+};
 
 export const RemoteChainHeadHeaderError: S.Codec<RemoteChainHeadHeaderError> =
   S.lazy(
     (): S.Codec<RemoteChainHeadHeaderError> =>
-      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
+      S.indexedTaggedUnion({ V1: [0, V01RemoteChainHeadHeaderError] as const }),
   );
 
-/** Request wrapper for `remote_chain_head_header`. */
+/** Versioned wrapper for [`v01::RemoteChainHeadHeaderRequest`] and older versions. */
 export type RemoteChainHeadHeaderRequest = {
   tag: "V1";
-  value: ChainHeadBlockRequest;
+  value: V01RemoteChainHeadHeaderRequest;
 };
 
 export const RemoteChainHeadHeaderRequest: S.Codec<RemoteChainHeadHeaderRequest> =
   S.lazy(
     (): S.Codec<RemoteChainHeadHeaderRequest> =>
-      S.indexedTaggedUnion({ V1: [0, ChainHeadBlockRequest] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteChainHeadHeaderRequest] as const,
+      }),
   );
 
-/** Response wrapper for `remote_chain_head_header`. */
+/** Versioned wrapper for [`v01::RemoteChainHeadHeaderResponse`] and older versions. */
 export type RemoteChainHeadHeaderResponse = {
   tag: "V1";
-  value: Hex | undefined;
+  value: V01RemoteChainHeadHeaderResponse;
 };
 
 export const RemoteChainHeadHeaderResponse: S.Codec<RemoteChainHeadHeaderResponse> =
   S.lazy(
     (): S.Codec<RemoteChainHeadHeaderResponse> =>
-      S.indexedTaggedUnion({ V1: [0, S.option(Hex)] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteChainHeadHeaderResponse] as const,
+      }),
   );
 
-/** Error wrapper for `remote_chain_head_stop_operation`. */
+/** Versioned wrapper for [`v01::RemoteChainHeadStopOperationError`] and older versions. */
 export type RemoteChainHeadStopOperationError = {
   tag: "V1";
-  value: GenericError;
+  value: V01RemoteChainHeadStopOperationError;
 };
 
 export const RemoteChainHeadStopOperationError: S.Codec<RemoteChainHeadStopOperationError> =
   S.lazy(
     (): S.Codec<RemoteChainHeadStopOperationError> =>
-      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteChainHeadStopOperationError] as const,
+      }),
   );
 
-/** Request wrapper for `remote_chain_head_stop_operation`. */
+/** Versioned wrapper for [`v01::RemoteChainHeadStopOperationRequest`] and older versions. */
 export type RemoteChainHeadStopOperationRequest = {
   tag: "V1";
-  value: ChainHeadOperationRequest;
+  value: V01RemoteChainHeadStopOperationRequest;
 };
 
 export const RemoteChainHeadStopOperationRequest: S.Codec<RemoteChainHeadStopOperationRequest> =
   S.lazy(
     (): S.Codec<RemoteChainHeadStopOperationRequest> =>
-      S.indexedTaggedUnion({ V1: [0, ChainHeadOperationRequest] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteChainHeadStopOperationRequest] as const,
+      }),
   );
 
-/** Response wrapper for `remote_chain_head_stop_operation`. */
+/** Versioned wrapper for unit and older versions. */
 export type RemoteChainHeadStopOperationResponse = {
   tag: "V1";
   value: undefined;
@@ -2688,61 +2853,75 @@ export const RemoteChainHeadStopOperationResponse: S.Codec<RemoteChainHeadStopOp
       S.indexedTaggedUnion({ V1: [0, S.unit] as const }),
   );
 
-/** Error wrapper for `remote_chain_head_storage`. */
-export type RemoteChainHeadStorageError = { tag: "V1"; value: GenericError };
+/** Versioned wrapper for [`v01::RemoteChainHeadStorageError`] and older versions. */
+export type RemoteChainHeadStorageError = {
+  tag: "V1";
+  value: V01RemoteChainHeadStorageError;
+};
 
 export const RemoteChainHeadStorageError: S.Codec<RemoteChainHeadStorageError> =
   S.lazy(
     (): S.Codec<RemoteChainHeadStorageError> =>
-      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteChainHeadStorageError] as const,
+      }),
   );
 
-/** Request wrapper for `remote_chain_head_storage`. */
+/** Versioned wrapper for [`v01::RemoteChainHeadStorageRequest`] and older versions. */
 export type RemoteChainHeadStorageRequest = {
   tag: "V1";
-  value: ChainHeadStorageRequest;
+  value: V01RemoteChainHeadStorageRequest;
 };
 
 export const RemoteChainHeadStorageRequest: S.Codec<RemoteChainHeadStorageRequest> =
   S.lazy(
     (): S.Codec<RemoteChainHeadStorageRequest> =>
-      S.indexedTaggedUnion({ V1: [0, ChainHeadStorageRequest] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteChainHeadStorageRequest] as const,
+      }),
   );
 
-/** Response wrapper for `remote_chain_head_storage`. */
+/** Versioned wrapper for [`v01::RemoteChainHeadStorageResponse`] and older versions. */
 export type RemoteChainHeadStorageResponse = {
   tag: "V1";
-  value: OperationStartedResult;
+  value: V01RemoteChainHeadStorageResponse;
 };
 
 export const RemoteChainHeadStorageResponse: S.Codec<RemoteChainHeadStorageResponse> =
   S.lazy(
     (): S.Codec<RemoteChainHeadStorageResponse> =>
-      S.indexedTaggedUnion({ V1: [0, OperationStartedResult] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteChainHeadStorageResponse] as const,
+      }),
   );
 
-/** Error wrapper for `remote_chain_head_unpin`. */
-export type RemoteChainHeadUnpinError = { tag: "V1"; value: GenericError };
+/** Versioned wrapper for [`v01::RemoteChainHeadUnpinError`] and older versions. */
+export type RemoteChainHeadUnpinError = {
+  tag: "V1";
+  value: V01RemoteChainHeadUnpinError;
+};
 
 export const RemoteChainHeadUnpinError: S.Codec<RemoteChainHeadUnpinError> =
   S.lazy(
     (): S.Codec<RemoteChainHeadUnpinError> =>
-      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
+      S.indexedTaggedUnion({ V1: [0, V01RemoteChainHeadUnpinError] as const }),
   );
 
-/** Request wrapper for `remote_chain_head_unpin`. */
+/** Versioned wrapper for [`v01::RemoteChainHeadUnpinRequest`] and older versions. */
 export type RemoteChainHeadUnpinRequest = {
   tag: "V1";
-  value: ChainHeadUnpinRequest;
+  value: V01RemoteChainHeadUnpinRequest;
 };
 
 export const RemoteChainHeadUnpinRequest: S.Codec<RemoteChainHeadUnpinRequest> =
   S.lazy(
     (): S.Codec<RemoteChainHeadUnpinRequest> =>
-      S.indexedTaggedUnion({ V1: [0, ChainHeadUnpinRequest] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteChainHeadUnpinRequest] as const,
+      }),
   );
 
-/** Response wrapper for `remote_chain_head_unpin`. */
+/** Versioned wrapper for unit and older versions. */
 export type RemoteChainHeadUnpinResponse = { tag: "V1"; value: undefined };
 
 export const RemoteChainHeadUnpinResponse: S.Codec<RemoteChainHeadUnpinResponse> =
@@ -2751,159 +2930,203 @@ export const RemoteChainHeadUnpinResponse: S.Codec<RemoteChainHeadUnpinResponse>
       S.indexedTaggedUnion({ V1: [0, S.unit] as const }),
   );
 
-/** Error wrapper for `remote_chain_spec_chain_name`. */
-export type RemoteChainSpecChainNameError = { tag: "V1"; value: GenericError };
+/** Versioned wrapper for [`v01::RemoteChainSpecChainNameError`] and older versions. */
+export type RemoteChainSpecChainNameError = {
+  tag: "V1";
+  value: V01RemoteChainSpecChainNameError;
+};
 
 export const RemoteChainSpecChainNameError: S.Codec<RemoteChainSpecChainNameError> =
   S.lazy(
     (): S.Codec<RemoteChainSpecChainNameError> =>
-      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteChainSpecChainNameError] as const,
+      }),
   );
 
-/** Request wrapper for `remote_chain_spec_chain_name`. */
-export type RemoteChainSpecChainNameRequest = { tag: "V1"; value: GenesisHash };
+/** Versioned wrapper for [`v01::RemoteChainSpecChainNameRequest`] and older versions. */
+export type RemoteChainSpecChainNameRequest = {
+  tag: "V1";
+  value: V01RemoteChainSpecChainNameRequest;
+};
 
 export const RemoteChainSpecChainNameRequest: S.Codec<RemoteChainSpecChainNameRequest> =
   S.lazy(
     (): S.Codec<RemoteChainSpecChainNameRequest> =>
-      S.indexedTaggedUnion({ V1: [0, GenesisHash] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteChainSpecChainNameRequest] as const,
+      }),
   );
 
-/** Response wrapper for `remote_chain_spec_chain_name`. */
-export type RemoteChainSpecChainNameResponse = { tag: "V1"; value: string };
+/** Versioned wrapper for [`v01::RemoteChainSpecChainNameResponse`] and older versions. */
+export type RemoteChainSpecChainNameResponse = {
+  tag: "V1";
+  value: V01RemoteChainSpecChainNameResponse;
+};
 
 export const RemoteChainSpecChainNameResponse: S.Codec<RemoteChainSpecChainNameResponse> =
   S.lazy(
     (): S.Codec<RemoteChainSpecChainNameResponse> =>
-      S.indexedTaggedUnion({ V1: [0, S.str] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteChainSpecChainNameResponse] as const,
+      }),
   );
 
-/** Error wrapper for `remote_chain_spec_genesis_hash`. */
+/** Versioned wrapper for [`v01::RemoteChainSpecGenesisHashError`] and older versions. */
 export type RemoteChainSpecGenesisHashError = {
   tag: "V1";
-  value: GenericError;
+  value: V01RemoteChainSpecGenesisHashError;
 };
 
 export const RemoteChainSpecGenesisHashError: S.Codec<RemoteChainSpecGenesisHashError> =
   S.lazy(
     (): S.Codec<RemoteChainSpecGenesisHashError> =>
-      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteChainSpecGenesisHashError] as const,
+      }),
   );
 
-/** Request wrapper for `remote_chain_spec_genesis_hash`. */
+/** Versioned wrapper for [`v01::RemoteChainSpecGenesisHashRequest`] and older versions. */
 export type RemoteChainSpecGenesisHashRequest = {
   tag: "V1";
-  value: GenesisHash;
+  value: V01RemoteChainSpecGenesisHashRequest;
 };
 
 export const RemoteChainSpecGenesisHashRequest: S.Codec<RemoteChainSpecGenesisHashRequest> =
   S.lazy(
     (): S.Codec<RemoteChainSpecGenesisHashRequest> =>
-      S.indexedTaggedUnion({ V1: [0, GenesisHash] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteChainSpecGenesisHashRequest] as const,
+      }),
   );
 
-/** Response wrapper for `remote_chain_spec_genesis_hash`. */
-export type RemoteChainSpecGenesisHashResponse = { tag: "V1"; value: Hex };
+/** Versioned wrapper for [`v01::RemoteChainSpecGenesisHashResponse`] and older versions. */
+export type RemoteChainSpecGenesisHashResponse = {
+  tag: "V1";
+  value: V01RemoteChainSpecGenesisHashResponse;
+};
 
 export const RemoteChainSpecGenesisHashResponse: S.Codec<RemoteChainSpecGenesisHashResponse> =
   S.lazy(
     (): S.Codec<RemoteChainSpecGenesisHashResponse> =>
-      S.indexedTaggedUnion({ V1: [0, Hex] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteChainSpecGenesisHashResponse] as const,
+      }),
   );
 
-/** Error wrapper for `remote_chain_spec_properties`. */
-export type RemoteChainSpecPropertiesError = { tag: "V1"; value: GenericError };
+/** Versioned wrapper for [`v01::RemoteChainSpecPropertiesError`] and older versions. */
+export type RemoteChainSpecPropertiesError = {
+  tag: "V1";
+  value: V01RemoteChainSpecPropertiesError;
+};
 
 export const RemoteChainSpecPropertiesError: S.Codec<RemoteChainSpecPropertiesError> =
   S.lazy(
     (): S.Codec<RemoteChainSpecPropertiesError> =>
-      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteChainSpecPropertiesError] as const,
+      }),
   );
 
-/** Request wrapper for `remote_chain_spec_properties`. */
+/** Versioned wrapper for [`v01::RemoteChainSpecPropertiesRequest`] and older versions. */
 export type RemoteChainSpecPropertiesRequest = {
   tag: "V1";
-  value: GenesisHash;
+  value: V01RemoteChainSpecPropertiesRequest;
 };
 
 export const RemoteChainSpecPropertiesRequest: S.Codec<RemoteChainSpecPropertiesRequest> =
   S.lazy(
     (): S.Codec<RemoteChainSpecPropertiesRequest> =>
-      S.indexedTaggedUnion({ V1: [0, GenesisHash] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteChainSpecPropertiesRequest] as const,
+      }),
   );
 
-/** Response wrapper for `remote_chain_spec_properties`. */
-export type RemoteChainSpecPropertiesResponse = { tag: "V1"; value: string };
+/** Versioned wrapper for [`v01::RemoteChainSpecPropertiesResponse`] and older versions. */
+export type RemoteChainSpecPropertiesResponse = {
+  tag: "V1";
+  value: V01RemoteChainSpecPropertiesResponse;
+};
 
 export const RemoteChainSpecPropertiesResponse: S.Codec<RemoteChainSpecPropertiesResponse> =
   S.lazy(
     (): S.Codec<RemoteChainSpecPropertiesResponse> =>
-      S.indexedTaggedUnion({ V1: [0, S.str] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteChainSpecPropertiesResponse] as const,
+      }),
   );
 
-/** Error wrapper for `remote_chain_transaction_broadcast`. */
+/** Versioned wrapper for [`v01::RemoteChainTransactionBroadcastError`] and older versions. */
 export type RemoteChainTransactionBroadcastError = {
   tag: "V1";
-  value: GenericError;
+  value: V01RemoteChainTransactionBroadcastError;
 };
 
 export const RemoteChainTransactionBroadcastError: S.Codec<RemoteChainTransactionBroadcastError> =
   S.lazy(
     (): S.Codec<RemoteChainTransactionBroadcastError> =>
-      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteChainTransactionBroadcastError] as const,
+      }),
   );
 
-/** Request wrapper for `remote_chain_transaction_broadcast`. */
+/** Versioned wrapper for [`v01::RemoteChainTransactionBroadcastRequest`] and older versions. */
 export type RemoteChainTransactionBroadcastRequest = {
   tag: "V1";
-  value: ChainTransactionBroadcastRequest;
+  value: V01RemoteChainTransactionBroadcastRequest;
 };
 
 export const RemoteChainTransactionBroadcastRequest: S.Codec<RemoteChainTransactionBroadcastRequest> =
   S.lazy(
     (): S.Codec<RemoteChainTransactionBroadcastRequest> =>
       S.indexedTaggedUnion({
-        V1: [0, ChainTransactionBroadcastRequest] as const,
+        V1: [0, V01RemoteChainTransactionBroadcastRequest] as const,
       }),
   );
 
-/** Response wrapper for `remote_chain_transaction_broadcast`. */
+/** Versioned wrapper for [`v01::RemoteChainTransactionBroadcastResponse`] and older versions. */
 export type RemoteChainTransactionBroadcastResponse = {
   tag: "V1";
-  value: string | undefined;
+  value: V01RemoteChainTransactionBroadcastResponse;
 };
 
 export const RemoteChainTransactionBroadcastResponse: S.Codec<RemoteChainTransactionBroadcastResponse> =
   S.lazy(
     (): S.Codec<RemoteChainTransactionBroadcastResponse> =>
-      S.indexedTaggedUnion({ V1: [0, S.option(S.str)] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteChainTransactionBroadcastResponse] as const,
+      }),
   );
 
-/** Error wrapper for `remote_chain_transaction_stop`. */
+/** Versioned wrapper for [`v01::RemoteChainTransactionStopError`] and older versions. */
 export type RemoteChainTransactionStopError = {
   tag: "V1";
-  value: GenericError;
+  value: V01RemoteChainTransactionStopError;
 };
 
 export const RemoteChainTransactionStopError: S.Codec<RemoteChainTransactionStopError> =
   S.lazy(
     (): S.Codec<RemoteChainTransactionStopError> =>
-      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteChainTransactionStopError] as const,
+      }),
   );
 
-/** Request wrapper for `remote_chain_transaction_stop`. */
+/** Versioned wrapper for [`v01::RemoteChainTransactionStopRequest`] and older versions. */
 export type RemoteChainTransactionStopRequest = {
   tag: "V1";
-  value: ChainTransactionStopRequest;
+  value: V01RemoteChainTransactionStopRequest;
 };
 
 export const RemoteChainTransactionStopRequest: S.Codec<RemoteChainTransactionStopRequest> =
   S.lazy(
     (): S.Codec<RemoteChainTransactionStopRequest> =>
-      S.indexedTaggedUnion({ V1: [0, ChainTransactionStopRequest] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteChainTransactionStopRequest] as const,
+      }),
   );
 
-/** Response wrapper for `remote_chain_transaction_stop`. */
+/** Versioned wrapper for unit and older versions. */
 export type RemoteChainTransactionStopResponse = {
   tag: "V1";
   value: undefined;
@@ -2954,178 +3177,183 @@ export const RemotePermission: S.Codec<RemotePermission> = S.lazy(
     }),
 );
 
-/** Error wrapper for `remote_permission`. */
+/** Versioned wrapper for [`v01::RemotePermissionError`] and older versions. */
 export type RemotePermissionError =
-  | { tag: "V1"; value: GenericError }
-  | { tag: "V2"; value: GenericError };
+  | { tag: "V1"; value: V01RemotePermissionError }
+  | { tag: "V2"; value: V01RemotePermissionError };
 
 export const RemotePermissionError: S.Codec<RemotePermissionError> = S.lazy(
   (): S.Codec<RemotePermissionError> =>
     S.indexedTaggedUnion({
-      V1: [0, GenericError] as const,
-      V2: [1, GenericError] as const,
+      V1: [0, V01RemotePermissionError] as const,
+      V2: [1, V01RemotePermissionError] as const,
     }),
 );
 
-/**
- * Request wrapper for `remote_permission`.
- *
- * V1 mirrors `host-api@0.6.x`'s single-permission `ExternalRequest(String) |
- * TransactionSubmit`; V2 batches multiple [`RemotePermission`](v02::RemotePermission)
- * entries per RFC-0001.
- */
+/** Versioned wrapper for [`v02::RemotePermissionRequest`] and older versions. */
 export type RemotePermissionRequest =
-  /** Pre-RFC-0001 single-permission request. */
   | { tag: "V1"; value: V01RemotePermissionRequest }
-  /** RFC-0001 batch request. */
-  | { tag: "V2"; value: Array<RemotePermission> };
+  | { tag: "V2"; value: V02RemotePermissionRequest };
 
 export const RemotePermissionRequest: S.Codec<RemotePermissionRequest> = S.lazy(
   (): S.Codec<RemotePermissionRequest> =>
     S.indexedTaggedUnion({
       V1: [0, V01RemotePermissionRequest] as const,
-      V2: [1, S.vec(RemotePermission)] as const,
+      V2: [1, V02RemotePermissionRequest] as const,
     }),
 );
 
-/** Response wrapper for `remote_permission`. */
+/** Versioned wrapper for [`v01::RemotePermissionResponse`] and older versions. */
 export type RemotePermissionResponse =
-  | { tag: "V1"; value: boolean }
-  | { tag: "V2"; value: boolean };
+  | { tag: "V1"; value: V01RemotePermissionResponse }
+  | { tag: "V2"; value: V01RemotePermissionResponse };
 
 export const RemotePermissionResponse: S.Codec<RemotePermissionResponse> =
   S.lazy(
     (): S.Codec<RemotePermissionResponse> =>
       S.indexedTaggedUnion({
-        V1: [0, S.bool] as const,
-        V2: [1, S.bool] as const,
+        V1: [0, V01RemotePermissionResponse] as const,
+        V2: [1, V01RemotePermissionResponse] as const,
       }),
   );
 
-/** Subscription item wrapper for `remote_preimage_lookup_subscribe`. */
+/** Versioned wrapper for [`v01::RemotePreimageLookupSubscribeItem`] and older versions. */
 export type RemotePreimageLookupSubscribeItem = {
   tag: "V1";
-  value: PreimageValue | undefined;
+  value: V01RemotePreimageLookupSubscribeItem;
 };
 
 export const RemotePreimageLookupSubscribeItem: S.Codec<RemotePreimageLookupSubscribeItem> =
   S.lazy(
     (): S.Codec<RemotePreimageLookupSubscribeItem> =>
-      S.indexedTaggedUnion({ V1: [0, S.option(PreimageValue)] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemotePreimageLookupSubscribeItem] as const,
+      }),
   );
 
-/** Subscription request wrapper for `remote_preimage_lookup_subscribe`. */
+/** Versioned wrapper for [`v01::RemotePreimageLookupSubscribeRequest`] and older versions. */
 export type RemotePreimageLookupSubscribeRequest = {
   tag: "V1";
-  value: PreimageKey;
+  value: V01RemotePreimageLookupSubscribeRequest;
 };
 
 export const RemotePreimageLookupSubscribeRequest: S.Codec<RemotePreimageLookupSubscribeRequest> =
   S.lazy(
     (): S.Codec<RemotePreimageLookupSubscribeRequest> =>
-      S.indexedTaggedUnion({ V1: [0, PreimageKey] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemotePreimageLookupSubscribeRequest] as const,
+      }),
   );
 
-/** Error wrapper for `remote_statement_store_create_proof`. */
+/** Versioned wrapper for [`v01::RemoteStatementStoreCreateProofError`] and older versions. */
 export type RemoteStatementStoreCreateProofError = {
   tag: "V1";
-  value: StatementProofError;
+  value: V01RemoteStatementStoreCreateProofError;
 };
 
 export const RemoteStatementStoreCreateProofError: S.Codec<RemoteStatementStoreCreateProofError> =
   S.lazy(
     (): S.Codec<RemoteStatementStoreCreateProofError> =>
-      S.indexedTaggedUnion({ V1: [0, StatementProofError] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteStatementStoreCreateProofError] as const,
+      }),
   );
 
-/** Request wrapper for `remote_statement_store_create_proof`. */
+/** Versioned wrapper for [`v01::RemoteStatementStoreCreateProofRequest`] and older versions. */
 export type RemoteStatementStoreCreateProofRequest = {
   tag: "V1";
-  value: StatementStoreCreateProofRequest;
+  value: V01RemoteStatementStoreCreateProofRequest;
 };
 
 export const RemoteStatementStoreCreateProofRequest: S.Codec<RemoteStatementStoreCreateProofRequest> =
   S.lazy(
     (): S.Codec<RemoteStatementStoreCreateProofRequest> =>
       S.indexedTaggedUnion({
-        V1: [0, StatementStoreCreateProofRequest] as const,
+        V1: [0, V01RemoteStatementStoreCreateProofRequest] as const,
       }),
   );
 
-/** Response wrapper for `remote_statement_store_create_proof`. */
+/** Versioned wrapper for [`v01::RemoteStatementStoreCreateProofResponse`] and older versions. */
 export type RemoteStatementStoreCreateProofResponse = {
   tag: "V1";
-  value: StatementProof;
+  value: V01RemoteStatementStoreCreateProofResponse;
 };
 
 export const RemoteStatementStoreCreateProofResponse: S.Codec<RemoteStatementStoreCreateProofResponse> =
   S.lazy(
     (): S.Codec<RemoteStatementStoreCreateProofResponse> =>
-      S.indexedTaggedUnion({ V1: [0, StatementProof] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteStatementStoreCreateProofResponse] as const,
+      }),
   );
 
-/** Error wrapper for `remote_statement_store_submit`. */
+/** Versioned wrapper for [`v01::RemoteStatementStoreSubmitError`] and older versions. */
 export type RemoteStatementStoreSubmitError = {
   tag: "V1";
-  value: GenericError;
+  value: V01RemoteStatementStoreSubmitError;
 };
 
 export const RemoteStatementStoreSubmitError: S.Codec<RemoteStatementStoreSubmitError> =
   S.lazy(
     (): S.Codec<RemoteStatementStoreSubmitError> =>
-      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteStatementStoreSubmitError] as const,
+      }),
   );
 
-/** Request wrapper for `remote_statement_store_submit`. */
-export type RemoteStatementStoreSubmitRequest = { tag: "V1"; value: Bytes };
+/** Versioned wrapper for [`v01::RemoteStatementStoreSubmitRequest`] and older versions. */
+export type RemoteStatementStoreSubmitRequest = {
+  tag: "V1";
+  value: V01RemoteStatementStoreSubmitRequest;
+};
 
 export const RemoteStatementStoreSubmitRequest: S.Codec<RemoteStatementStoreSubmitRequest> =
   S.lazy(
     (): S.Codec<RemoteStatementStoreSubmitRequest> =>
-      S.indexedTaggedUnion({ V1: [0, Bytes] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteStatementStoreSubmitRequest] as const,
+      }),
   );
 
-/** Response wrapper for `remote_statement_store_submit`. */
-export type RemoteStatementStoreSubmitResponse = { tag: "V1"; value: string };
+/** Versioned wrapper for [`v01::RemoteStatementStoreSubmitResponse`] and older versions. */
+export type RemoteStatementStoreSubmitResponse = {
+  tag: "V1";
+  value: V01RemoteStatementStoreSubmitResponse;
+};
 
 export const RemoteStatementStoreSubmitResponse: S.Codec<RemoteStatementStoreSubmitResponse> =
   S.lazy(
     (): S.Codec<RemoteStatementStoreSubmitResponse> =>
-      S.indexedTaggedUnion({ V1: [0, S.str] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, V01RemoteStatementStoreSubmitResponse] as const,
+      }),
   );
 
-/** Subscription item wrapper for `remote_statement_store_subscribe`. */
+/** Versioned wrapper for [`v02::RemoteStatementStoreSubscribeItem`] and older versions. */
 export type RemoteStatementStoreSubscribeItem =
-  | { tag: "V1"; value: Array<SignedStatement> }
-  | { tag: "V2"; value: Array<SignedStatement> };
+  | { tag: "V1"; value: V01RemoteStatementStoreSubscribeItem }
+  | { tag: "V2"; value: V02RemoteStatementStoreSubscribeItem };
 
 export const RemoteStatementStoreSubscribeItem: S.Codec<RemoteStatementStoreSubscribeItem> =
   S.lazy(
     (): S.Codec<RemoteStatementStoreSubscribeItem> =>
       S.indexedTaggedUnion({
-        V1: [0, S.vec(SignedStatement)] as const,
-        V2: [1, S.vec(SignedStatement)] as const,
+        V1: [0, V01RemoteStatementStoreSubscribeItem] as const,
+        V2: [1, V02RemoteStatementStoreSubscribeItem] as const,
       }),
   );
 
-/**
- * Subscription request wrapper for `remote_statement_store_subscribe`.
- *
- * V0.1 took a plain `Vec<Topic>`; V0.2 promoted it to a [`TopicFilter`](v02::TopicFilter)
- * with positional wildcard support. Upgrading V1 to V2 wraps the topics as
- * exact-match positions; downgrading V2 to V1 succeeds only when the filter
- * has no wildcards.
- */
+/** Versioned wrapper for [`v02::RemoteStatementStoreSubscribeRequest`] and older versions. */
 export type RemoteStatementStoreSubscribeRequest =
-  | { tag: "V1"; value: Array<Topic> }
-  | { tag: "V2"; value: TopicFilter };
+  | { tag: "V1"; value: V01RemoteStatementStoreSubscribeRequest }
+  | { tag: "V2"; value: V02RemoteStatementStoreSubscribeRequest };
 
 export const RemoteStatementStoreSubscribeRequest: S.Codec<RemoteStatementStoreSubscribeRequest> =
   S.lazy(
     (): S.Codec<RemoteStatementStoreSubscribeRequest> =>
       S.indexedTaggedUnion({
-        V1: [0, S.vec(Topic)] as const,
-        V2: [1, TopicFilter] as const,
+        V1: [0, V01RemoteStatementStoreSubscribeRequest] as const,
+        V2: [1, V02RemoteStatementStoreSubscribeRequest] as const,
       }),
   );
 
@@ -3757,6 +3985,169 @@ export const UserIdentityError: S.Codec<UserIdentityError> = S.lazy(
     }),
 );
 
+export type V01HostAccountConnectionStatusSubscribeItem =
+  AccountConnectionStatus;
+
+export const V01HostAccountConnectionStatusSubscribeItem: S.Codec<V01HostAccountConnectionStatusSubscribeItem> =
+  S.lazy(
+    (): S.Codec<V01HostAccountConnectionStatusSubscribeItem> =>
+      AccountConnectionStatus,
+  );
+
+export type V01HostAccountCreateProofError = CreateProofError;
+
+export const V01HostAccountCreateProofError: S.Codec<V01HostAccountCreateProofError> =
+  S.lazy((): S.Codec<V01HostAccountCreateProofError> => CreateProofError);
+
+export type V01HostAccountCreateProofRequest = AccountCreateProofRequest;
+
+export const V01HostAccountCreateProofRequest: S.Codec<V01HostAccountCreateProofRequest> =
+  S.lazy(
+    (): S.Codec<V01HostAccountCreateProofRequest> => AccountCreateProofRequest,
+  );
+
+export type V01HostAccountCreateProofResponse = RingVrfProof;
+
+export const V01HostAccountCreateProofResponse: S.Codec<V01HostAccountCreateProofResponse> =
+  S.lazy((): S.Codec<V01HostAccountCreateProofResponse> => RingVrfProof);
+
+export type V01HostAccountGetAliasError = RequestCredentialsError;
+
+export const V01HostAccountGetAliasError: S.Codec<V01HostAccountGetAliasError> =
+  S.lazy((): S.Codec<V01HostAccountGetAliasError> => RequestCredentialsError);
+
+export type V01HostAccountGetAliasRequest = ProductAccountId;
+
+export const V01HostAccountGetAliasRequest: S.Codec<V01HostAccountGetAliasRequest> =
+  S.lazy((): S.Codec<V01HostAccountGetAliasRequest> => ProductAccountId);
+
+export type V01HostAccountGetAliasResponse = ContextualAlias;
+
+export const V01HostAccountGetAliasResponse: S.Codec<V01HostAccountGetAliasResponse> =
+  S.lazy((): S.Codec<V01HostAccountGetAliasResponse> => ContextualAlias);
+
+export type V01HostAccountGetError = RequestCredentialsError;
+
+export const V01HostAccountGetError: S.Codec<V01HostAccountGetError> = S.lazy(
+  (): S.Codec<V01HostAccountGetError> => RequestCredentialsError,
+);
+
+export type V01HostAccountGetRequest = ProductAccountId;
+
+export const V01HostAccountGetRequest: S.Codec<V01HostAccountGetRequest> =
+  S.lazy((): S.Codec<V01HostAccountGetRequest> => ProductAccountId);
+
+export type V01HostAccountGetResponse = Account;
+
+export const V01HostAccountGetResponse: S.Codec<V01HostAccountGetResponse> =
+  S.lazy((): S.Codec<V01HostAccountGetResponse> => Account);
+
+export type V01HostChatActionSubscribeItem = ReceivedChatAction;
+
+export const V01HostChatActionSubscribeItem: S.Codec<V01HostChatActionSubscribeItem> =
+  S.lazy((): S.Codec<V01HostChatActionSubscribeItem> => ReceivedChatAction);
+
+export type V01HostChatCreateRoomError = ChatRoomRegistrationError;
+
+export const V01HostChatCreateRoomError: S.Codec<V01HostChatCreateRoomError> =
+  S.lazy((): S.Codec<V01HostChatCreateRoomError> => ChatRoomRegistrationError);
+
+export type V01HostChatCreateRoomRequest = ChatRoomRequest;
+
+export const V01HostChatCreateRoomRequest: S.Codec<V01HostChatCreateRoomRequest> =
+  S.lazy((): S.Codec<V01HostChatCreateRoomRequest> => ChatRoomRequest);
+
+export type V01HostChatCreateRoomResponse = ChatRoomRegistrationResult;
+
+export const V01HostChatCreateRoomResponse: S.Codec<V01HostChatCreateRoomResponse> =
+  S.lazy(
+    (): S.Codec<V01HostChatCreateRoomResponse> => ChatRoomRegistrationResult,
+  );
+
+export type V01HostChatListSubscribeItem = Array<ChatRoom>;
+
+export const V01HostChatListSubscribeItem: S.Codec<V01HostChatListSubscribeItem> =
+  S.lazy((): S.Codec<V01HostChatListSubscribeItem> => S.vec(ChatRoom));
+
+export type V01HostChatPostMessageError = ChatMessagePostingError;
+
+export const V01HostChatPostMessageError: S.Codec<V01HostChatPostMessageError> =
+  S.lazy((): S.Codec<V01HostChatPostMessageError> => ChatMessagePostingError);
+
+export type V01HostChatPostMessageRequest = ChatPostMessageRequest;
+
+export const V01HostChatPostMessageRequest: S.Codec<V01HostChatPostMessageRequest> =
+  S.lazy((): S.Codec<V01HostChatPostMessageRequest> => ChatPostMessageRequest);
+
+export type V01HostChatPostMessageResponse = ChatPostMessageResult;
+
+export const V01HostChatPostMessageResponse: S.Codec<V01HostChatPostMessageResponse> =
+  S.lazy((): S.Codec<V01HostChatPostMessageResponse> => ChatPostMessageResult);
+
+export type V01HostChatRegisterBotError = ChatBotRegistrationError;
+
+export const V01HostChatRegisterBotError: S.Codec<V01HostChatRegisterBotError> =
+  S.lazy((): S.Codec<V01HostChatRegisterBotError> => ChatBotRegistrationError);
+
+export type V01HostChatRegisterBotRequest = ChatBotRequest;
+
+export const V01HostChatRegisterBotRequest: S.Codec<V01HostChatRegisterBotRequest> =
+  S.lazy((): S.Codec<V01HostChatRegisterBotRequest> => ChatBotRequest);
+
+export type V01HostChatRegisterBotResponse = ChatBotRegistrationResult;
+
+export const V01HostChatRegisterBotResponse: S.Codec<V01HostChatRegisterBotResponse> =
+  S.lazy(
+    (): S.Codec<V01HostChatRegisterBotResponse> => ChatBotRegistrationResult,
+  );
+
+export type V01HostCreateTransactionError = CreateTransactionError;
+
+export const V01HostCreateTransactionError: S.Codec<V01HostCreateTransactionError> =
+  S.lazy((): S.Codec<V01HostCreateTransactionError> => CreateTransactionError);
+
+export type V01HostCreateTransactionRequest = CreateTransactionRequest;
+
+export const V01HostCreateTransactionRequest: S.Codec<V01HostCreateTransactionRequest> =
+  S.lazy(
+    (): S.Codec<V01HostCreateTransactionRequest> => CreateTransactionRequest,
+  );
+
+export type V01HostCreateTransactionResponse = Hex;
+
+export const V01HostCreateTransactionResponse: S.Codec<V01HostCreateTransactionResponse> =
+  S.lazy((): S.Codec<V01HostCreateTransactionResponse> => Hex);
+
+export type V01HostCreateTransactionWithNonProductAccountError =
+  CreateTransactionError;
+
+export const V01HostCreateTransactionWithNonProductAccountError: S.Codec<V01HostCreateTransactionWithNonProductAccountError> =
+  S.lazy(
+    (): S.Codec<V01HostCreateTransactionWithNonProductAccountError> =>
+      CreateTransactionError,
+  );
+
+export type V01HostCreateTransactionWithNonProductAccountRequest =
+  VersionedTxPayload;
+
+export const V01HostCreateTransactionWithNonProductAccountRequest: S.Codec<V01HostCreateTransactionWithNonProductAccountRequest> =
+  S.lazy(
+    (): S.Codec<V01HostCreateTransactionWithNonProductAccountRequest> =>
+      VersionedTxPayload,
+  );
+
+export type V01HostCreateTransactionWithNonProductAccountResponse = Hex;
+
+export const V01HostCreateTransactionWithNonProductAccountResponse: S.Codec<V01HostCreateTransactionWithNonProductAccountResponse> =
+  S.lazy(
+    (): S.Codec<V01HostCreateTransactionWithNonProductAccountResponse> => Hex,
+  );
+
+export type V01HostDevicePermissionError = GenericError;
+
+export const V01HostDevicePermissionError: S.Codec<V01HostDevicePermissionError> =
+  S.lazy((): S.Codec<V01HostDevicePermissionError> => GenericError);
+
 /** Device capability to request access to. */
 export type V01HostDevicePermissionRequest =
   | { tag: "Camera"; value: undefined }
@@ -3775,6 +4166,342 @@ export const V01HostDevicePermissionRequest: S.Codec<V01HostDevicePermissionRequ
       }),
   );
 
+export type V01HostDevicePermissionResponse = boolean;
+
+export const V01HostDevicePermissionResponse: S.Codec<V01HostDevicePermissionResponse> =
+  S.lazy((): S.Codec<V01HostDevicePermissionResponse> => S.bool);
+
+export type V01HostFeatureSupportedError = GenericError;
+
+export const V01HostFeatureSupportedError: S.Codec<V01HostFeatureSupportedError> =
+  S.lazy((): S.Codec<V01HostFeatureSupportedError> => GenericError);
+
+export type V01HostFeatureSupportedRequest = Feature;
+
+export const V01HostFeatureSupportedRequest: S.Codec<V01HostFeatureSupportedRequest> =
+  S.lazy((): S.Codec<V01HostFeatureSupportedRequest> => Feature);
+
+export type V01HostFeatureSupportedResponse = boolean;
+
+export const V01HostFeatureSupportedResponse: S.Codec<V01HostFeatureSupportedResponse> =
+  S.lazy((): S.Codec<V01HostFeatureSupportedResponse> => S.bool);
+
+export type V01HostGetNonProductAccountsError = RequestCredentialsError;
+
+export const V01HostGetNonProductAccountsError: S.Codec<V01HostGetNonProductAccountsError> =
+  S.lazy(
+    (): S.Codec<V01HostGetNonProductAccountsError> => RequestCredentialsError,
+  );
+
+export type V01HostGetNonProductAccountsResponse = Array<Account>;
+
+export const V01HostGetNonProductAccountsResponse: S.Codec<V01HostGetNonProductAccountsResponse> =
+  S.lazy((): S.Codec<V01HostGetNonProductAccountsResponse> => S.vec(Account));
+
+export type V01HostHandshakeRequest = number;
+
+export const V01HostHandshakeRequest: S.Codec<V01HostHandshakeRequest> = S.lazy(
+  (): S.Codec<V01HostHandshakeRequest> => S.u8,
+);
+
+export type V01HostLocalStorageClearError = StorageError;
+
+export const V01HostLocalStorageClearError: S.Codec<V01HostLocalStorageClearError> =
+  S.lazy((): S.Codec<V01HostLocalStorageClearError> => StorageError);
+
+export type V01HostLocalStorageClearRequest = StorageKey;
+
+export const V01HostLocalStorageClearRequest: S.Codec<V01HostLocalStorageClearRequest> =
+  S.lazy((): S.Codec<V01HostLocalStorageClearRequest> => StorageKey);
+
+export type V01HostLocalStorageReadError = StorageError;
+
+export const V01HostLocalStorageReadError: S.Codec<V01HostLocalStorageReadError> =
+  S.lazy((): S.Codec<V01HostLocalStorageReadError> => StorageError);
+
+export type V01HostLocalStorageReadRequest = StorageKey;
+
+export const V01HostLocalStorageReadRequest: S.Codec<V01HostLocalStorageReadRequest> =
+  S.lazy((): S.Codec<V01HostLocalStorageReadRequest> => StorageKey);
+
+export type V01HostLocalStorageReadResponse = StorageValue | undefined;
+
+export const V01HostLocalStorageReadResponse: S.Codec<V01HostLocalStorageReadResponse> =
+  S.lazy(
+    (): S.Codec<V01HostLocalStorageReadResponse> => S.option(StorageValue),
+  );
+
+export type V01HostLocalStorageWriteError = StorageError;
+
+export const V01HostLocalStorageWriteError: S.Codec<V01HostLocalStorageWriteError> =
+  S.lazy((): S.Codec<V01HostLocalStorageWriteError> => StorageError);
+
+export type V01HostLocalStorageWriteRequest = LocalStorageWriteRequest;
+
+export const V01HostLocalStorageWriteRequest: S.Codec<V01HostLocalStorageWriteRequest> =
+  S.lazy(
+    (): S.Codec<V01HostLocalStorageWriteRequest> => LocalStorageWriteRequest,
+  );
+
+export type V01HostNavigateToError = NavigateToError;
+
+export const V01HostNavigateToError: S.Codec<V01HostNavigateToError> = S.lazy(
+  (): S.Codec<V01HostNavigateToError> => NavigateToError,
+);
+
+export type V01HostNavigateToRequest = string;
+
+export const V01HostNavigateToRequest: S.Codec<V01HostNavigateToRequest> =
+  S.lazy((): S.Codec<V01HostNavigateToRequest> => S.str);
+
+export type V01HostPushNotificationError = GenericError;
+
+export const V01HostPushNotificationError: S.Codec<V01HostPushNotificationError> =
+  S.lazy((): S.Codec<V01HostPushNotificationError> => GenericError);
+
+export type V01HostPushNotificationRequest = PushNotification;
+
+export const V01HostPushNotificationRequest: S.Codec<V01HostPushNotificationRequest> =
+  S.lazy((): S.Codec<V01HostPushNotificationRequest> => PushNotification);
+
+export type V01HostSignPayloadError = SigningError;
+
+export const V01HostSignPayloadError: S.Codec<V01HostSignPayloadError> = S.lazy(
+  (): S.Codec<V01HostSignPayloadError> => SigningError,
+);
+
+export type V01HostSignPayloadRequest = V01SigningPayload;
+
+export const V01HostSignPayloadRequest: S.Codec<V01HostSignPayloadRequest> =
+  S.lazy((): S.Codec<V01HostSignPayloadRequest> => V01SigningPayload);
+
+export type V01HostSignPayloadResponse = SigningResult;
+
+export const V01HostSignPayloadResponse: S.Codec<V01HostSignPayloadResponse> =
+  S.lazy((): S.Codec<V01HostSignPayloadResponse> => SigningResult);
+
+export type V01HostSignRawError = SigningError;
+
+export const V01HostSignRawError: S.Codec<V01HostSignRawError> = S.lazy(
+  (): S.Codec<V01HostSignRawError> => SigningError,
+);
+
+export type V01HostSignRawRequest = V01SigningRawPayload;
+
+export const V01HostSignRawRequest: S.Codec<V01HostSignRawRequest> = S.lazy(
+  (): S.Codec<V01HostSignRawRequest> => V01SigningRawPayload,
+);
+
+export type V01HostSignRawResponse = SigningResult;
+
+export const V01HostSignRawResponse: S.Codec<V01HostSignRawResponse> = S.lazy(
+  (): S.Codec<V01HostSignRawResponse> => SigningResult,
+);
+
+export type V01ProductChatCustomMessageRenderSubscribeItem =
+  CustomMessageRenderRequest;
+
+export const V01ProductChatCustomMessageRenderSubscribeItem: S.Codec<V01ProductChatCustomMessageRenderSubscribeItem> =
+  S.lazy(
+    (): S.Codec<V01ProductChatCustomMessageRenderSubscribeItem> =>
+      CustomMessageRenderRequest,
+  );
+
+export type V01RemoteChainHeadBodyError = GenericError;
+
+export const V01RemoteChainHeadBodyError: S.Codec<V01RemoteChainHeadBodyError> =
+  S.lazy((): S.Codec<V01RemoteChainHeadBodyError> => GenericError);
+
+export type V01RemoteChainHeadBodyRequest = ChainHeadBlockRequest;
+
+export const V01RemoteChainHeadBodyRequest: S.Codec<V01RemoteChainHeadBodyRequest> =
+  S.lazy((): S.Codec<V01RemoteChainHeadBodyRequest> => ChainHeadBlockRequest);
+
+export type V01RemoteChainHeadBodyResponse = OperationStartedResult;
+
+export const V01RemoteChainHeadBodyResponse: S.Codec<V01RemoteChainHeadBodyResponse> =
+  S.lazy((): S.Codec<V01RemoteChainHeadBodyResponse> => OperationStartedResult);
+
+export type V01RemoteChainHeadCallError = GenericError;
+
+export const V01RemoteChainHeadCallError: S.Codec<V01RemoteChainHeadCallError> =
+  S.lazy((): S.Codec<V01RemoteChainHeadCallError> => GenericError);
+
+export type V01RemoteChainHeadCallRequest = ChainHeadCallRequest;
+
+export const V01RemoteChainHeadCallRequest: S.Codec<V01RemoteChainHeadCallRequest> =
+  S.lazy((): S.Codec<V01RemoteChainHeadCallRequest> => ChainHeadCallRequest);
+
+export type V01RemoteChainHeadCallResponse = OperationStartedResult;
+
+export const V01RemoteChainHeadCallResponse: S.Codec<V01RemoteChainHeadCallResponse> =
+  S.lazy((): S.Codec<V01RemoteChainHeadCallResponse> => OperationStartedResult);
+
+export type V01RemoteChainHeadContinueError = GenericError;
+
+export const V01RemoteChainHeadContinueError: S.Codec<V01RemoteChainHeadContinueError> =
+  S.lazy((): S.Codec<V01RemoteChainHeadContinueError> => GenericError);
+
+export type V01RemoteChainHeadContinueRequest = ChainHeadOperationRequest;
+
+export const V01RemoteChainHeadContinueRequest: S.Codec<V01RemoteChainHeadContinueRequest> =
+  S.lazy(
+    (): S.Codec<V01RemoteChainHeadContinueRequest> => ChainHeadOperationRequest,
+  );
+
+export type V01RemoteChainHeadFollowItem = ChainHeadEvent;
+
+export const V01RemoteChainHeadFollowItem: S.Codec<V01RemoteChainHeadFollowItem> =
+  S.lazy((): S.Codec<V01RemoteChainHeadFollowItem> => ChainHeadEvent);
+
+export type V01RemoteChainHeadFollowRequest = ChainHeadFollowRequest;
+
+export const V01RemoteChainHeadFollowRequest: S.Codec<V01RemoteChainHeadFollowRequest> =
+  S.lazy(
+    (): S.Codec<V01RemoteChainHeadFollowRequest> => ChainHeadFollowRequest,
+  );
+
+export type V01RemoteChainHeadHeaderError = GenericError;
+
+export const V01RemoteChainHeadHeaderError: S.Codec<V01RemoteChainHeadHeaderError> =
+  S.lazy((): S.Codec<V01RemoteChainHeadHeaderError> => GenericError);
+
+export type V01RemoteChainHeadHeaderRequest = ChainHeadBlockRequest;
+
+export const V01RemoteChainHeadHeaderRequest: S.Codec<V01RemoteChainHeadHeaderRequest> =
+  S.lazy((): S.Codec<V01RemoteChainHeadHeaderRequest> => ChainHeadBlockRequest);
+
+export type V01RemoteChainHeadHeaderResponse = Hex | undefined;
+
+export const V01RemoteChainHeadHeaderResponse: S.Codec<V01RemoteChainHeadHeaderResponse> =
+  S.lazy((): S.Codec<V01RemoteChainHeadHeaderResponse> => S.option(Hex));
+
+export type V01RemoteChainHeadStopOperationError = GenericError;
+
+export const V01RemoteChainHeadStopOperationError: S.Codec<V01RemoteChainHeadStopOperationError> =
+  S.lazy((): S.Codec<V01RemoteChainHeadStopOperationError> => GenericError);
+
+export type V01RemoteChainHeadStopOperationRequest = ChainHeadOperationRequest;
+
+export const V01RemoteChainHeadStopOperationRequest: S.Codec<V01RemoteChainHeadStopOperationRequest> =
+  S.lazy(
+    (): S.Codec<V01RemoteChainHeadStopOperationRequest> =>
+      ChainHeadOperationRequest,
+  );
+
+export type V01RemoteChainHeadStorageError = GenericError;
+
+export const V01RemoteChainHeadStorageError: S.Codec<V01RemoteChainHeadStorageError> =
+  S.lazy((): S.Codec<V01RemoteChainHeadStorageError> => GenericError);
+
+export type V01RemoteChainHeadStorageRequest = ChainHeadStorageRequest;
+
+export const V01RemoteChainHeadStorageRequest: S.Codec<V01RemoteChainHeadStorageRequest> =
+  S.lazy(
+    (): S.Codec<V01RemoteChainHeadStorageRequest> => ChainHeadStorageRequest,
+  );
+
+export type V01RemoteChainHeadStorageResponse = OperationStartedResult;
+
+export const V01RemoteChainHeadStorageResponse: S.Codec<V01RemoteChainHeadStorageResponse> =
+  S.lazy(
+    (): S.Codec<V01RemoteChainHeadStorageResponse> => OperationStartedResult,
+  );
+
+export type V01RemoteChainHeadUnpinError = GenericError;
+
+export const V01RemoteChainHeadUnpinError: S.Codec<V01RemoteChainHeadUnpinError> =
+  S.lazy((): S.Codec<V01RemoteChainHeadUnpinError> => GenericError);
+
+export type V01RemoteChainHeadUnpinRequest = ChainHeadUnpinRequest;
+
+export const V01RemoteChainHeadUnpinRequest: S.Codec<V01RemoteChainHeadUnpinRequest> =
+  S.lazy((): S.Codec<V01RemoteChainHeadUnpinRequest> => ChainHeadUnpinRequest);
+
+export type V01RemoteChainSpecChainNameError = GenericError;
+
+export const V01RemoteChainSpecChainNameError: S.Codec<V01RemoteChainSpecChainNameError> =
+  S.lazy((): S.Codec<V01RemoteChainSpecChainNameError> => GenericError);
+
+export type V01RemoteChainSpecChainNameRequest = GenesisHash;
+
+export const V01RemoteChainSpecChainNameRequest: S.Codec<V01RemoteChainSpecChainNameRequest> =
+  S.lazy((): S.Codec<V01RemoteChainSpecChainNameRequest> => GenesisHash);
+
+export type V01RemoteChainSpecChainNameResponse = string;
+
+export const V01RemoteChainSpecChainNameResponse: S.Codec<V01RemoteChainSpecChainNameResponse> =
+  S.lazy((): S.Codec<V01RemoteChainSpecChainNameResponse> => S.str);
+
+export type V01RemoteChainSpecGenesisHashError = GenericError;
+
+export const V01RemoteChainSpecGenesisHashError: S.Codec<V01RemoteChainSpecGenesisHashError> =
+  S.lazy((): S.Codec<V01RemoteChainSpecGenesisHashError> => GenericError);
+
+export type V01RemoteChainSpecGenesisHashRequest = GenesisHash;
+
+export const V01RemoteChainSpecGenesisHashRequest: S.Codec<V01RemoteChainSpecGenesisHashRequest> =
+  S.lazy((): S.Codec<V01RemoteChainSpecGenesisHashRequest> => GenesisHash);
+
+export type V01RemoteChainSpecGenesisHashResponse = Hex;
+
+export const V01RemoteChainSpecGenesisHashResponse: S.Codec<V01RemoteChainSpecGenesisHashResponse> =
+  S.lazy((): S.Codec<V01RemoteChainSpecGenesisHashResponse> => Hex);
+
+export type V01RemoteChainSpecPropertiesError = GenericError;
+
+export const V01RemoteChainSpecPropertiesError: S.Codec<V01RemoteChainSpecPropertiesError> =
+  S.lazy((): S.Codec<V01RemoteChainSpecPropertiesError> => GenericError);
+
+export type V01RemoteChainSpecPropertiesRequest = GenesisHash;
+
+export const V01RemoteChainSpecPropertiesRequest: S.Codec<V01RemoteChainSpecPropertiesRequest> =
+  S.lazy((): S.Codec<V01RemoteChainSpecPropertiesRequest> => GenesisHash);
+
+export type V01RemoteChainSpecPropertiesResponse = string;
+
+export const V01RemoteChainSpecPropertiesResponse: S.Codec<V01RemoteChainSpecPropertiesResponse> =
+  S.lazy((): S.Codec<V01RemoteChainSpecPropertiesResponse> => S.str);
+
+export type V01RemoteChainTransactionBroadcastError = GenericError;
+
+export const V01RemoteChainTransactionBroadcastError: S.Codec<V01RemoteChainTransactionBroadcastError> =
+  S.lazy((): S.Codec<V01RemoteChainTransactionBroadcastError> => GenericError);
+
+export type V01RemoteChainTransactionBroadcastRequest =
+  ChainTransactionBroadcastRequest;
+
+export const V01RemoteChainTransactionBroadcastRequest: S.Codec<V01RemoteChainTransactionBroadcastRequest> =
+  S.lazy(
+    (): S.Codec<V01RemoteChainTransactionBroadcastRequest> =>
+      ChainTransactionBroadcastRequest,
+  );
+
+export type V01RemoteChainTransactionBroadcastResponse = string | undefined;
+
+export const V01RemoteChainTransactionBroadcastResponse: S.Codec<V01RemoteChainTransactionBroadcastResponse> =
+  S.lazy(
+    (): S.Codec<V01RemoteChainTransactionBroadcastResponse> => S.option(S.str),
+  );
+
+export type V01RemoteChainTransactionStopError = GenericError;
+
+export const V01RemoteChainTransactionStopError: S.Codec<V01RemoteChainTransactionStopError> =
+  S.lazy((): S.Codec<V01RemoteChainTransactionStopError> => GenericError);
+
+export type V01RemoteChainTransactionStopRequest = ChainTransactionStopRequest;
+
+export const V01RemoteChainTransactionStopRequest: S.Codec<V01RemoteChainTransactionStopRequest> =
+  S.lazy(
+    (): S.Codec<V01RemoteChainTransactionStopRequest> =>
+      ChainTransactionStopRequest,
+  );
+
+export type V01RemotePermissionError = GenericError;
+
+export const V01RemotePermissionError: S.Codec<V01RemotePermissionError> =
+  S.lazy((): S.Codec<V01RemotePermissionError> => GenericError);
+
 /**
  * Pre-RFC-0001 remote operation permission, as shipped by
  * `@novasamatech/host-api@0.6.x`.
@@ -3790,6 +4517,74 @@ export const V01RemotePermissionRequest: S.Codec<V01RemotePermissionRequest> =
     (): S.Codec<V01RemotePermissionRequest> =>
       S.taggedUnion({ ExternalRequest: S.str, TransactionSubmit: S.unit }),
   );
+
+export type V01RemotePermissionResponse = boolean;
+
+export const V01RemotePermissionResponse: S.Codec<V01RemotePermissionResponse> =
+  S.lazy((): S.Codec<V01RemotePermissionResponse> => S.bool);
+
+export type V01RemotePreimageLookupSubscribeItem = PreimageValue | undefined;
+
+export const V01RemotePreimageLookupSubscribeItem: S.Codec<V01RemotePreimageLookupSubscribeItem> =
+  S.lazy(
+    (): S.Codec<V01RemotePreimageLookupSubscribeItem> =>
+      S.option(PreimageValue),
+  );
+
+export type V01RemotePreimageLookupSubscribeRequest = PreimageKey;
+
+export const V01RemotePreimageLookupSubscribeRequest: S.Codec<V01RemotePreimageLookupSubscribeRequest> =
+  S.lazy((): S.Codec<V01RemotePreimageLookupSubscribeRequest> => PreimageKey);
+
+export type V01RemoteStatementStoreCreateProofError = StatementProofError;
+
+export const V01RemoteStatementStoreCreateProofError: S.Codec<V01RemoteStatementStoreCreateProofError> =
+  S.lazy(
+    (): S.Codec<V01RemoteStatementStoreCreateProofError> => StatementProofError,
+  );
+
+export type V01RemoteStatementStoreCreateProofRequest =
+  StatementStoreCreateProofRequest;
+
+export const V01RemoteStatementStoreCreateProofRequest: S.Codec<V01RemoteStatementStoreCreateProofRequest> =
+  S.lazy(
+    (): S.Codec<V01RemoteStatementStoreCreateProofRequest> =>
+      StatementStoreCreateProofRequest,
+  );
+
+export type V01RemoteStatementStoreCreateProofResponse = StatementProof;
+
+export const V01RemoteStatementStoreCreateProofResponse: S.Codec<V01RemoteStatementStoreCreateProofResponse> =
+  S.lazy(
+    (): S.Codec<V01RemoteStatementStoreCreateProofResponse> => StatementProof,
+  );
+
+export type V01RemoteStatementStoreSubmitError = GenericError;
+
+export const V01RemoteStatementStoreSubmitError: S.Codec<V01RemoteStatementStoreSubmitError> =
+  S.lazy((): S.Codec<V01RemoteStatementStoreSubmitError> => GenericError);
+
+export type V01RemoteStatementStoreSubmitRequest = Bytes;
+
+export const V01RemoteStatementStoreSubmitRequest: S.Codec<V01RemoteStatementStoreSubmitRequest> =
+  S.lazy((): S.Codec<V01RemoteStatementStoreSubmitRequest> => Bytes);
+
+export type V01RemoteStatementStoreSubmitResponse = string;
+
+export const V01RemoteStatementStoreSubmitResponse: S.Codec<V01RemoteStatementStoreSubmitResponse> =
+  S.lazy((): S.Codec<V01RemoteStatementStoreSubmitResponse> => S.str);
+
+export type V01RemoteStatementStoreSubscribeItem = Array<SignedStatement>;
+
+export const V01RemoteStatementStoreSubscribeItem: S.Codec<V01RemoteStatementStoreSubscribeItem> =
+  S.lazy(
+    (): S.Codec<V01RemoteStatementStoreSubscribeItem> => S.vec(SignedStatement),
+  );
+
+export type V01RemoteStatementStoreSubscribeRequest = Array<Topic>;
+
+export const V01RemoteStatementStoreSubscribeRequest: S.Codec<V01RemoteStatementStoreSubscribeRequest> =
+  S.lazy((): S.Codec<V01RemoteStatementStoreSubscribeRequest> => S.vec(Topic));
 
 /**
  * Full Substrate extrinsic signing payload with all fields needed for signature
@@ -3868,6 +4663,42 @@ export const V01SigningRawPayload: S.Codec<V01SigningRawPayload> = S.lazy(
     }) as S.Codec<V01SigningRawPayload>,
 );
 
+export type V02HostChatCreateSimpleGroupError = ChatRoomRegistrationError;
+
+export const V02HostChatCreateSimpleGroupError: S.Codec<V02HostChatCreateSimpleGroupError> =
+  S.lazy(
+    (): S.Codec<V02HostChatCreateSimpleGroupError> => ChatRoomRegistrationError,
+  );
+
+export type V02HostChatCreateSimpleGroupRequest = SimpleGroupChatRequest;
+
+export const V02HostChatCreateSimpleGroupRequest: S.Codec<V02HostChatCreateSimpleGroupRequest> =
+  S.lazy(
+    (): S.Codec<V02HostChatCreateSimpleGroupRequest> => SimpleGroupChatRequest,
+  );
+
+export type V02HostChatCreateSimpleGroupResponse = SimpleGroupChatResult;
+
+export const V02HostChatCreateSimpleGroupResponse: S.Codec<V02HostChatCreateSimpleGroupResponse> =
+  S.lazy(
+    (): S.Codec<V02HostChatCreateSimpleGroupResponse> => SimpleGroupChatResult,
+  );
+
+export type V02HostDeriveEntropyError = DeriveEntropyError;
+
+export const V02HostDeriveEntropyError: S.Codec<V02HostDeriveEntropyError> =
+  S.lazy((): S.Codec<V02HostDeriveEntropyError> => DeriveEntropyError);
+
+export type V02HostDeriveEntropyRequest = Uint8Array;
+
+export const V02HostDeriveEntropyRequest: S.Codec<V02HostDeriveEntropyRequest> =
+  S.lazy((): S.Codec<V02HostDeriveEntropyRequest> => S.bytes);
+
+export type V02HostDeriveEntropyResponse = Entropy;
+
+export const V02HostDeriveEntropyResponse: S.Codec<V02HostDeriveEntropyResponse> =
+  S.lazy((): S.Codec<V02HostDeriveEntropyResponse> => Entropy);
+
 /**
  * Device capability to request access to.
  *
@@ -3907,6 +4738,103 @@ export const V02HostDevicePermissionRequest: S.Codec<V02HostDevicePermissionRequ
         Biometrics: S.unit,
       }),
   );
+
+export type V02HostGetUserIdError = UserIdentityError;
+
+export const V02HostGetUserIdError: S.Codec<V02HostGetUserIdError> = S.lazy(
+  (): S.Codec<V02HostGetUserIdError> => UserIdentityError,
+);
+
+export type V02HostGetUserIdResponse = UserIdentity;
+
+export const V02HostGetUserIdResponse: S.Codec<V02HostGetUserIdResponse> =
+  S.lazy((): S.Codec<V02HostGetUserIdResponse> => UserIdentity);
+
+export type V02HostHandshakeError = HandshakeError;
+
+export const V02HostHandshakeError: S.Codec<V02HostHandshakeError> = S.lazy(
+  (): S.Codec<V02HostHandshakeError> => HandshakeError,
+);
+
+export type V02HostPaymentBalanceSubscribeError = PaymentBalanceError;
+
+export const V02HostPaymentBalanceSubscribeError: S.Codec<V02HostPaymentBalanceSubscribeError> =
+  S.lazy(
+    (): S.Codec<V02HostPaymentBalanceSubscribeError> => PaymentBalanceError,
+  );
+
+export type V02HostPaymentBalanceSubscribeItem = PaymentBalance;
+
+export const V02HostPaymentBalanceSubscribeItem: S.Codec<V02HostPaymentBalanceSubscribeItem> =
+  S.lazy((): S.Codec<V02HostPaymentBalanceSubscribeItem> => PaymentBalance);
+
+export type V02HostPaymentRequestError = PaymentRequestError;
+
+export const V02HostPaymentRequestError: S.Codec<V02HostPaymentRequestError> =
+  S.lazy((): S.Codec<V02HostPaymentRequestError> => PaymentRequestError);
+
+export type V02HostPaymentRequestRequest = PaymentRequest;
+
+export const V02HostPaymentRequestRequest: S.Codec<V02HostPaymentRequestRequest> =
+  S.lazy((): S.Codec<V02HostPaymentRequestRequest> => PaymentRequest);
+
+export type V02HostPaymentRequestResponse = PaymentReceipt;
+
+export const V02HostPaymentRequestResponse: S.Codec<V02HostPaymentRequestResponse> =
+  S.lazy((): S.Codec<V02HostPaymentRequestResponse> => PaymentReceipt);
+
+export type V02HostPaymentStatusSubscribeError = PaymentStatusError;
+
+export const V02HostPaymentStatusSubscribeError: S.Codec<V02HostPaymentStatusSubscribeError> =
+  S.lazy((): S.Codec<V02HostPaymentStatusSubscribeError> => PaymentStatusError);
+
+export type V02HostPaymentStatusSubscribeItem = PaymentStatus;
+
+export const V02HostPaymentStatusSubscribeItem: S.Codec<V02HostPaymentStatusSubscribeItem> =
+  S.lazy((): S.Codec<V02HostPaymentStatusSubscribeItem> => PaymentStatus);
+
+export type V02HostPaymentStatusSubscribeRequest = PaymentId;
+
+export const V02HostPaymentStatusSubscribeRequest: S.Codec<V02HostPaymentStatusSubscribeRequest> =
+  S.lazy((): S.Codec<V02HostPaymentStatusSubscribeRequest> => PaymentId);
+
+export type V02HostPaymentTopUpError = PaymentTopUpError;
+
+export const V02HostPaymentTopUpError: S.Codec<V02HostPaymentTopUpError> =
+  S.lazy((): S.Codec<V02HostPaymentTopUpError> => PaymentTopUpError);
+
+export type V02HostPaymentTopUpRequest = PaymentTopUpRequest;
+
+export const V02HostPaymentTopUpRequest: S.Codec<V02HostPaymentTopUpRequest> =
+  S.lazy((): S.Codec<V02HostPaymentTopUpRequest> => PaymentTopUpRequest);
+
+export type V02HostSignPayloadRequest = V02SigningPayload;
+
+export const V02HostSignPayloadRequest: S.Codec<V02HostSignPayloadRequest> =
+  S.lazy((): S.Codec<V02HostSignPayloadRequest> => V02SigningPayload);
+
+export type V02HostSignRawRequest = V02SigningRawPayload;
+
+export const V02HostSignRawRequest: S.Codec<V02HostSignRawRequest> = S.lazy(
+  (): S.Codec<V02HostSignRawRequest> => V02SigningRawPayload,
+);
+
+export type V02RemotePermissionRequest = Array<RemotePermission>;
+
+export const V02RemotePermissionRequest: S.Codec<V02RemotePermissionRequest> =
+  S.lazy((): S.Codec<V02RemotePermissionRequest> => S.vec(RemotePermission));
+
+export type V02RemoteStatementStoreSubscribeItem = Array<SignedStatement>;
+
+export const V02RemoteStatementStoreSubscribeItem: S.Codec<V02RemoteStatementStoreSubscribeItem> =
+  S.lazy(
+    (): S.Codec<V02RemoteStatementStoreSubscribeItem> => S.vec(SignedStatement),
+  );
+
+export type V02RemoteStatementStoreSubscribeRequest = TopicFilter;
+
+export const V02RemoteStatementStoreSubscribeRequest: S.Codec<V02RemoteStatementStoreSubscribeRequest> =
+  S.lazy((): S.Codec<V02RemoteStatementStoreSubscribeRequest> => TopicFilter);
 
 /**
  * Full Substrate extrinsic signing payload with all fields needed for signature

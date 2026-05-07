@@ -27,3 +27,7 @@ pub struct SimpleGroupChatResult {
     /// Deep link that participants can use to join the room.
     pub join_link: String,
 }
+
+pub type HostChatCreateSimpleGroupRequest = SimpleGroupChatRequest;
+pub type HostChatCreateSimpleGroupResponse = SimpleGroupChatResult;
+pub type HostChatCreateSimpleGroupError = crate::v01::ChatRoomRegistrationError;

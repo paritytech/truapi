@@ -26,3 +26,6 @@ pub enum UserIdentityError {
     /// Catch-all.
     Unknown { reason: String },
 }
+
+pub type HostGetUserIdResponse = UserIdentity;
+pub type HostGetUserIdError = UserIdentityError;

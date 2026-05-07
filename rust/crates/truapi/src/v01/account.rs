@@ -101,3 +101,16 @@ pub enum CreateProofError {
     /// Catch-all.
     Unknown { reason: String },
 }
+
+pub type HostAccountGetRequest = ProductAccountId;
+pub type HostAccountGetResponse = Account;
+pub type HostAccountGetError = RequestCredentialsError;
+pub type HostAccountGetAliasRequest = ProductAccountId;
+pub type HostAccountGetAliasResponse = ContextualAlias;
+pub type HostAccountGetAliasError = RequestCredentialsError;
+pub type HostAccountCreateProofRequest = AccountCreateProofRequest;
+pub type HostAccountCreateProofResponse = RingVrfProof;
+pub type HostAccountCreateProofError = CreateProofError;
+pub type HostGetNonProductAccountsResponse = Vec<Account>;
+pub type HostGetNonProductAccountsError = RequestCredentialsError;
+pub type HostAccountConnectionStatusSubscribeItem = AccountConnectionStatus;

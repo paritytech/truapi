@@ -256,7 +256,9 @@ mod tests {
         let v1 = permissions::HostDevicePermissionRequest::V1(
             crate::v01::HostDevicePermissionRequest::Camera,
         );
-        let v2 = permissions::HostDevicePermissionRequest::V2(crate::v02::HostDevicePermissionRequest::Camera);
+        let v2 = permissions::HostDevicePermissionRequest::V2(
+            crate::v02::HostDevicePermissionRequest::Camera,
+        );
         assert_eq!(v1.encode()[0], 0, "V1 must encode discriminant 0");
         assert_eq!(v2.encode()[0], 1, "V2 must encode discriminant 1");
     }

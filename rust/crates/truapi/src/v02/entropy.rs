@@ -24,3 +24,7 @@ pub enum DeriveEntropyError {
     /// An unexpected error occurred in the host.
     Unknown,
 }
+
+pub type HostDeriveEntropyRequest = Vec<u8>;
+pub type HostDeriveEntropyResponse = Entropy;
+pub type HostDeriveEntropyError = DeriveEntropyError;

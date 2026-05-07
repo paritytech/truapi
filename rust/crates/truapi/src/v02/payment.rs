@@ -148,3 +148,14 @@ pub enum PaymentStatusError {
     /// Catch-all.
     Unknown { reason: String },
 }
+
+pub type HostPaymentBalanceSubscribeItem = PaymentBalance;
+pub type HostPaymentBalanceSubscribeError = PaymentBalanceError;
+pub type HostPaymentTopUpRequest = PaymentTopUpRequest;
+pub type HostPaymentTopUpError = PaymentTopUpError;
+pub type HostPaymentRequestRequest = PaymentRequest;
+pub type HostPaymentRequestResponse = PaymentReceipt;
+pub type HostPaymentRequestError = PaymentRequestError;
+pub type HostPaymentStatusSubscribeRequest = PaymentId;
+pub type HostPaymentStatusSubscribeItem = PaymentStatus;
+pub type HostPaymentStatusSubscribeError = PaymentStatusError;

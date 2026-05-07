@@ -256,3 +256,15 @@ pub struct ReceivedChatAction {
     /// The action payload.
     pub payload: ChatActionPayload,
 }
+
+pub type HostChatCreateRoomRequest = ChatRoomRequest;
+pub type HostChatCreateRoomResponse = ChatRoomRegistrationResult;
+pub type HostChatCreateRoomError = ChatRoomRegistrationError;
+pub type HostChatRegisterBotRequest = ChatBotRequest;
+pub type HostChatRegisterBotResponse = ChatBotRegistrationResult;
+pub type HostChatRegisterBotError = ChatBotRegistrationError;
+pub type HostChatPostMessageRequest = ChatPostMessageRequest;
+pub type HostChatPostMessageResponse = ChatPostMessageResult;
+pub type HostChatPostMessageError = ChatMessagePostingError;
+pub type HostChatListSubscribeItem = Vec<ChatRoom>;
+pub type HostChatActionSubscribeItem = ReceivedChatAction;

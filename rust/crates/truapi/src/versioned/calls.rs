@@ -3,28 +3,28 @@
 use crate::{v01, v02};
 
 versioned_type! {
-    /// Request wrapper for `host_handshake`. Inner u8 is the codec version.
-    pub enum HostHandshakeRequest { V1 => u8 }
-    /// Response wrapper for `host_handshake`.
+    /// Versioned wrapper for [`v01::HostHandshakeRequest`] and older versions.
+    pub enum HostHandshakeRequest { V1 => v01::HostHandshakeRequest }
+    /// Versioned wrapper for unit and older versions.
     pub enum HostHandshakeResponse { V1 }
-    /// Error wrapper for `host_handshake`.
-    pub enum HostHandshakeError { V1 => v02::HandshakeError }
-    /// Request wrapper for `host_feature_supported`.
-    pub enum HostFeatureSupportedRequest { V1 => v01::Feature }
-    /// Response wrapper for `host_feature_supported`.
-    pub enum HostFeatureSupportedResponse { V1 => bool }
-    /// Error wrapper for `host_feature_supported`.
-    pub enum HostFeatureSupportedError { V1 => v01::GenericError }
-    /// Request wrapper for `host_navigate_to`.
-    pub enum HostNavigateToRequest { V1 => String }
-    /// Response wrapper for `host_navigate_to`.
+    /// Versioned wrapper for [`v02::HostHandshakeError`] and older versions.
+    pub enum HostHandshakeError { V1 => v02::HostHandshakeError }
+    /// Versioned wrapper for [`v01::HostFeatureSupportedRequest`] and older versions.
+    pub enum HostFeatureSupportedRequest { V1 => v01::HostFeatureSupportedRequest }
+    /// Versioned wrapper for [`v01::HostFeatureSupportedResponse`] and older versions.
+    pub enum HostFeatureSupportedResponse { V1 => v01::HostFeatureSupportedResponse }
+    /// Versioned wrapper for [`v01::HostFeatureSupportedError`] and older versions.
+    pub enum HostFeatureSupportedError { V1 => v01::HostFeatureSupportedError }
+    /// Versioned wrapper for [`v01::HostNavigateToRequest`] and older versions.
+    pub enum HostNavigateToRequest { V1 => v01::HostNavigateToRequest }
+    /// Versioned wrapper for unit and older versions.
     pub enum HostNavigateToResponse { V1 }
-    /// Error wrapper for `host_navigate_to`.
-    pub enum HostNavigateToError { V1 => v01::NavigateToError }
-    /// Request wrapper for `host_push_notification`.
-    pub enum HostPushNotificationRequest { V1 => v01::PushNotification }
-    /// Response wrapper for `host_push_notification`.
+    /// Versioned wrapper for [`v01::HostNavigateToError`] and older versions.
+    pub enum HostNavigateToError { V1 => v01::HostNavigateToError }
+    /// Versioned wrapper for [`v01::HostPushNotificationRequest`] and older versions.
+    pub enum HostPushNotificationRequest { V1 => v01::HostPushNotificationRequest }
+    /// Versioned wrapper for unit and older versions.
     pub enum HostPushNotificationResponse { V1 }
-    /// Error wrapper for `host_push_notification`.
-    pub enum HostPushNotificationError { V1 => v01::GenericError }
+    /// Versioned wrapper for [`v01::HostPushNotificationError`] and older versions.
+    pub enum HostPushNotificationError { V1 => v01::HostPushNotificationError }
 }

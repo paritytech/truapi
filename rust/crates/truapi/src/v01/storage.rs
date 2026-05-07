@@ -24,3 +24,11 @@ pub enum StorageError {
     /// Catch-all.
     Unknown { reason: String },
 }
+
+pub type HostLocalStorageReadRequest = StorageKey;
+pub type HostLocalStorageReadResponse = Option<StorageValue>;
+pub type HostLocalStorageReadError = StorageError;
+pub type HostLocalStorageWriteRequest = LocalStorageWriteRequest;
+pub type HostLocalStorageWriteError = StorageError;
+pub type HostLocalStorageClearRequest = StorageKey;
+pub type HostLocalStorageClearError = StorageError;

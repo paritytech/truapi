@@ -70,3 +70,16 @@ pub enum RemotePermissionRequest {
     /// Product wants to submit a transaction.
     TransactionSubmit,
 }
+
+pub type HostHandshakeRequest = u8;
+pub type HostFeatureSupportedRequest = Feature;
+pub type HostFeatureSupportedResponse = bool;
+pub type HostFeatureSupportedError = GenericError;
+pub type HostNavigateToRequest = String;
+pub type HostNavigateToError = NavigateToError;
+pub type HostPushNotificationRequest = PushNotification;
+pub type HostPushNotificationError = GenericError;
+pub type HostDevicePermissionResponse = bool;
+pub type HostDevicePermissionError = GenericError;
+pub type RemotePermissionResponse = bool;
+pub type RemotePermissionError = GenericError;

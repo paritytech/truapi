@@ -96,3 +96,12 @@ pub enum StatementProofError {
     /// Catch-all.
     Unknown { reason: String },
 }
+
+pub type RemoteStatementStoreSubscribeRequest = Vec<Topic>;
+pub type RemoteStatementStoreSubscribeItem = Vec<SignedStatement>;
+pub type RemoteStatementStoreCreateProofRequest = StatementStoreCreateProofRequest;
+pub type RemoteStatementStoreCreateProofResponse = StatementProof;
+pub type RemoteStatementStoreCreateProofError = StatementProofError;
+pub type RemoteStatementStoreSubmitRequest = Bytes;
+pub type RemoteStatementStoreSubmitResponse = String;
+pub type RemoteStatementStoreSubmitError = super::GenericError;

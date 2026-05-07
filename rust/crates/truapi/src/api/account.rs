@@ -1,12 +1,12 @@
 //! Unified [`AccountManagement`] trait.
 
 use crate::versioned::account::{
-    HostAccountConnectionStatusSubscribeItem, HostAccountCreateProofError, HostAccountCreateProofRequest,
-    HostAccountCreateProofResponse, HostAccountGetAliasError, HostAccountGetAliasRequest,
-    HostAccountGetAliasResponse, HostAccountGetError, HostAccountGetRequest,
-    HostAccountGetResponse, HostGetNonProductAccountsError, HostGetNonProductAccountsRequest,
-    HostGetNonProductAccountsResponse, HostGetUserIdError, HostGetUserIdRequest,
-    HostGetUserIdResponse,
+    HostAccountConnectionStatusSubscribeItem, HostAccountCreateProofError,
+    HostAccountCreateProofRequest, HostAccountCreateProofResponse, HostAccountGetAliasError,
+    HostAccountGetAliasRequest, HostAccountGetAliasResponse, HostAccountGetError,
+    HostAccountGetRequest, HostAccountGetResponse, HostGetNonProductAccountsError,
+    HostGetNonProductAccountsRequest, HostGetNonProductAccountsResponse, HostGetUserIdError,
+    HostGetUserIdRequest, HostGetUserIdResponse,
 };
 use crate::wire;
 use crate::{CallContext, CallError, Subscription};

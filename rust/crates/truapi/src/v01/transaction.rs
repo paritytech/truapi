@@ -74,3 +74,7 @@ pub enum CreateTransactionError {
     /// Catch-all.
     Unknown { reason: String },
 }
+
+pub type HostCreateTransactionRequest = CreateTransactionRequest;
+pub type HostCreateTransactionError = CreateTransactionError;
+pub type HostCreateTransactionWithNonProductAccountError = CreateTransactionError;

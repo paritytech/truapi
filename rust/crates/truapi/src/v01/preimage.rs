@@ -15,3 +15,6 @@ pub enum PreimageSubmitError {
     /// Catch-all.
     Unknown { reason: String },
 }
+
+pub type RemotePreimageLookupSubscribeRequest = PreimageKey;
+pub type RemotePreimageLookupSubscribeItem = Option<PreimageValue>;

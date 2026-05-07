@@ -131,3 +131,6 @@ fn url_host(input: &str) -> Option<String> {
         Some(host.to_string())
     }
 }
+
+pub type HostHandshakeError = HandshakeError;
+pub type RemotePermissionRequest = Vec<RemotePermission>;

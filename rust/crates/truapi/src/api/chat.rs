@@ -5,7 +5,8 @@ use crate::versioned::chat::{
     HostChatCreateRoomResponse, HostChatCreateSimpleGroupError, HostChatCreateSimpleGroupRequest,
     HostChatCreateSimpleGroupResponse, HostChatListSubscribeItem, HostChatPostMessageError,
     HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotError,
-    HostChatRegisterBotRequest, HostChatRegisterBotResponse, ProductChatCustomMessageRenderSubscribeItem,
+    HostChatRegisterBotRequest, HostChatRegisterBotResponse,
+    ProductChatCustomMessageRenderSubscribeItem,
 };
 use crate::wire;
 use crate::{CallContext, CallError, Subscription};
@@ -38,7 +39,10 @@ pub trait Chat: Send + Sync {
 
     /// Subscribe to the list of chat rooms.
     #[wire(id = 42)]
-    async fn host_chat_list_subscribe(&self, _cx: &CallContext) -> Subscription<HostChatListSubscribeItem> {
+    async fn host_chat_list_subscribe(
+        &self,
+        _cx: &CallContext,
+    ) -> Subscription<HostChatListSubscribeItem> {
         Subscription::empty()
     }
 
