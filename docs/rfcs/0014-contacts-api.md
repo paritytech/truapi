@@ -56,6 +56,8 @@ struct Contact {
 
 The host filters `entries` to only the requesting product's `ProductAccountId`. `LocalContactInfo` is always included. The product sees only identifiers scoped to its own context — it cannot learn the user's aliases or accounts in other products.
 
+Note: while a product already knows the *current user's own* alias in its context, it does not know the aliases of *other users* in that same context. Tier 1 reveals those peer aliases within the product's context only, which is the minimum needed for social features like showing "friends who also use this app."
+
 #### Tier 2: Cross-context (privileged)
 
 Returns the full `entries` map. Required for host-privileged products that aggregate identities across contexts (e.g. Browse, profile, honour). The host MAY grant implicit tier 2 access to built-in host products that need it for their core function (e.g. a contact management UI).
@@ -64,8 +66,8 @@ Returns the full `entries` map. Required for host-privileged products that aggre
 
 ```rust
 enum ContactsErr {
-  NotConnected,
-  Rejected,
+  NotConnected,      // user has no active session
+  Rejected,          // user denied the permission prompt
   Unknown(GenericErr)
 }
 
@@ -86,11 +88,11 @@ This API returns only contacts the user has explicitly saved in their address bo
 
 ### Permission Model
 
-Extends `DevicePermission` from RFC-0002 with two new variants:
+Extends `DevicePermission` from RFC-0002 with two new variants. These are defined here rather than amending RFC-0002, since they are specific to this feature. Hosts add them to their existing `DevicePermission` enum.
 
 ```rust
 enum DevicePermission {
-  // ... existing variants ...
+  // ... existing variants from RFC-0002 ...
   Contacts,
   ContactsCrossContext
 }
@@ -137,15 +139,15 @@ The host can render a contact picker in a privileged overlay using full contact 
 
 ### A: Freeform context keys instead of ProductAccountId
 
-Using arbitrary strings as context keys would lose alignment with Ring VRF contexts and make scoping ambiguous — there would be no canonical key for "this product's view of a contact."
+Context keys could be arbitrary strings chosen by each product (e.g. `"my-app-v2"`). This would lose alignment with Ring VRF contexts — there would be no canonical key for "this product's view of a contact," and products could invent colliding keys. Using `ProductAccountId` keeps context keys deterministic and tied to DotNS identity, which the host already understands.
 
 ### B: Per-contact lookup by alias instead of full list
 
-An API that takes an alias and returns the matching contact would require the product to already know the alias, which defeats the discovery use case. Products need to browse the contact list, not just resolve known identifiers.
+An API like `host_contact_lookup(alias: Vec<u8>) -> Option<Contact>` would require the product to already know a contact's alias before looking them up, which defeats the discovery use case. The core scenario — "show me which of my contacts are relevant here" — requires browsing the full list. A lookup API could complement the list API but cannot replace it.
 
 ### C: No context scoping — return all entries to all products
 
-Simpler, but breaks unlinkability. Any product could correlate aliases across all contexts, learning which contacts the user interacts with in other products.
+The simplest approach: every product gets every contact's full `entries` map. This breaks unlinkability — a malicious product could correlate aliases across all contexts to learn which contacts the user interacts with in other products, building a cross-product social graph the user never consented to share. The two-tier model preserves unlinkability by default while still allowing privileged products (with explicit permission) to access cross-context data.
 
 ## Unresolved Questions
 
