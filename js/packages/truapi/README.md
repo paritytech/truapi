@@ -77,4 +77,6 @@ npm run build
 npm test
 ```
 
-`npm test` currently uses `bun` to run the package smoke tests.
+`npm test` runs the package smoke tests under [bun](https://bun.sh/), so it
+must be installed locally (`curl -fsSL https://bun.sh/install | bash`). The
+tests load the source `.ts` files directly without a build step.

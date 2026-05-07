@@ -168,7 +168,16 @@ export function createTransport(
     } else if (payload.tag.endsWith("_receive")) {
       const subscription = subscriptions.get(requestId);
       if (subscription) {
-        subscription.onData(payload.value);
+        try {
+          subscription.onData(payload.value);
+        } catch (error) {
+          // A consumer-side decode/handler error must not tear down the
+          // provider's message loop and silently break every other
+          // subscription on the same transport. Surface via onClose and
+          // drop this subscription; siblings stay alive.
+          subscriptions.delete(requestId);
+          subscription.onClose?.(toError(error));
+        }
       }
     } else if (payload.tag.endsWith("_interrupt")) {
       const subscription = subscriptions.get(requestId);
@@ -259,7 +268,7 @@ export function createTransport(
         }
       });
     },
-    subscribe<Item>({
+    subscribe({
       method,
       payload,
       onData,

@@ -163,20 +163,20 @@ export const services: ServiceInfo[] = [
         name: "host_sign_payload",
         type: "unary",
         description:
-          "Requests the host to sign a Substrate transaction payload using a product-derived account. The host typically shows a confirmation modal. Returns the signature, plus the full signed transaction if requested.",
+          "Requests the host to sign a Substrate transaction payload. The host typically shows a confirmation modal. Returns the signature, plus the full signed transaction if requested.",
         requestDescription:
-          "SigningPayload object: product account, transaction metadata, method bytes, nonce, era, signed extensions, and tip.",
-        defaultRequest: `{ "account": ["truapi-playground.dot", 0], "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000000", "blockNumber": "0x00000000", "era": "0x00", "genesisHash": "${PASEO_GENESIS}", "method": "0x00000000", "nonce": "0x00000000", "signedExtensions": [], "specVersion": "0x00000000", "tip": "0x00000000000000000000000000000000", "transactionVersion": "0x00000000", "version": 4 }`,
+          "SigningPayload object: signer address (SS58 or hex), transaction metadata, method bytes, nonce, era, signed extensions, and tip.",
+        defaultRequest: `{ "address": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY", "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000000", "blockNumber": "0x00000000", "era": "0x00", "genesisHash": "${PASEO_GENESIS}", "method": "0x00000000", "nonce": "0x00000000", "signedExtensions": [], "specVersion": "0x00000000", "tip": "0x00000000000000000000000000000000", "transactionVersion": "0x00000000", "version": 4 }`,
       },
       {
         name: "host_sign_raw",
         type: "unary",
         description:
-          "Requests the host to sign raw bytes or a string payload (not a transaction) using a product-derived account. Returns the signature.",
+          "Requests the host to sign raw bytes or a string payload (not a transaction). Returns the signature.",
         requestDescription:
-          "SigningRawPayload object: product account and raw data tagged as Bytes or String.",
+          "SigningRawPayload object: signer address (SS58 or hex) and raw data tagged as Bytes or Payload.",
         defaultRequest:
-          '{ "account": ["truapi-playground.dot", 0], "data": { "tag": "Bytes", "value": "0x48656c6c6f" } }',
+          '{ "address": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY", "data": { "tag": "Bytes", "value": "0x48656c6c6f" } }',
       },
       {
         name: "host_create_transaction",
@@ -253,7 +253,10 @@ export const services: ServiceInfo[] = [
         type: "unary",
         description:
           "Creates a simple group chat room. Participants join via the returned deep link. The host handles the group chat UI with default rendering (no custom elements).",
-        noParams: true,
+        requestDescription:
+          "SimpleGroupChatRequest: roomId, name, and icon (URL or base64).",
+        defaultRequest:
+          '{ "roomId": "test-simple-group", "name": "Test Group", "icon": "" }',
       },
     ],
   },
@@ -264,10 +267,10 @@ export const services: ServiceInfo[] = [
         name: "remote_statement_store_subscribe",
         type: "subscription",
         description:
-          "Subscribes to statements matching a positional topic filter. The host pushes each matching signed statement as it arrives.",
+          "Subscribes to statements matching a topic vector. The host pushes each matching signed statement as it arrives.",
         requestDescription:
-          "TopicFilter object; each entry is a 32-byte topic hex string or null as a wildcard",
-        defaultRequest: '{ "topics": [] }',
+          "Vec<Topic>: each entry is a 32-byte topic hex string. Empty array matches all statements.",
+        defaultRequest: "[]",
       },
       {
         name: "remote_statement_store_create_proof",
@@ -427,8 +430,9 @@ export const services: ServiceInfo[] = [
         description:
           "Tops up the user's payment balance from a product-controlled funding source (ProductAccount or PrivateKey). This operation is always in the user's favour and does not require user consent.",
         requestDescription:
-          "Balance amount and a PaymentTopUpSource (ProductAccount or PrivateKey)",
-        noParams: true,
+          "PaymentTopUpRequest: amount (Balance, u128) and source (PaymentTopUpSource enum: ProductAccount(ProductAccountId) | PrivateKey([u8; 32])).",
+        defaultRequest:
+          '{ "amount": "0n", "source": { "tag": "ProductAccount", "value": ["truapi-playground.dot", 0] } }',
       },
       {
         name: "host_payment_request",
@@ -436,15 +440,18 @@ export const services: ServiceInfo[] = [
         description:
           "Requests a payment from the user's available balance to a destination account. The host prompts the user to authorize. Returns a payment id (track via host_payment_status_subscribe); a successful response means the host accepted the payment for processing, not that it has settled.",
         requestDescription:
-          "Balance amount and destination AccountId (32 bytes)",
-        noParams: true,
+          "PaymentRequestRequest: amount (Balance, u128) and destination (32-byte AccountId).",
+        defaultRequest:
+          '{ "amount": "0n", "destination": "0x0000000000000000000000000000000000000000000000000000000000000000" }',
       },
       {
         name: "host_payment_status_subscribe",
         type: "subscription",
         description:
           "Subscribes to status updates for a previously requested payment. Emits Processing, then a terminal Completed or Failed (which carries an error reason).",
-        noParams: true,
+        requestDescription:
+          "PaymentId returned by host_payment_request (string).",
+        defaultRequest: '"payment-id"',
       },
     ],
   },
@@ -457,8 +464,8 @@ export const services: ServiceInfo[] = [
         description:
           "Derives 32 bytes of deterministic entropy scoped to the calling product and the provided key. Uses a three-layer BLAKE2b-256 keyed hashing scheme over the user's root BIP-39 entropy. The same root account + product + key always yields the same output on any conforming host.",
         requestDescription:
-          "Arbitrary key bytes (up to 32 bytes) chosen by the caller",
-        noParams: true,
+          "Arbitrary key bytes (up to 32 bytes) chosen by the caller; hex-encoded.",
+        defaultRequest: '"0x"',
       },
     ],
   },

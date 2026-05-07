@@ -307,6 +307,17 @@ fn method_is_included(
     )
 }
 
+/// Picks the wrapper variant the generated client emits on the wire for a
+/// given method. Returns the lowest variant supported by every wrapper the
+/// method touches and that is ≤ `target_version`. Returns `None` when no
+/// shared variant exists at or below the cap (the method is not exposed by
+/// the client).
+///
+/// Picking the **lowest** variant keeps outbound frames decodable by legacy
+/// hosts (e.g. dotli's vendored `@novasamatech/host-api`, which only
+/// registers each method's `v1` codec). Newer hosts that know multiple
+/// variants still accept V1 because every wrapper keeps `V1` at
+/// `#[codec(index = 0)]`.
 fn method_wire_version(
     method: &MethodDef,
     wrappers: &HashMap<String, VersionedWrapper>,
@@ -337,7 +348,7 @@ fn method_wire_version(
         });
     }
 
-    Ok(candidates.and_then(|versions| versions.into_iter().max()))
+    Ok(candidates.and_then(|versions| versions.into_iter().min()))
 }
 
 fn method_versioned_wrappers(
@@ -1801,7 +1812,7 @@ mod tests {
     }
 
     #[test]
-    fn generate_client_selects_target_version_wrapper_variant() {
+    fn generate_client_selects_lowest_shared_wrapper_variant() {
         let api = ApiDefinition {
             traits: vec![TraitDef {
                 name: "Example".to_string(),
@@ -1835,14 +1846,17 @@ mod tests {
 
         let client_source = generate_client(&api, 2, 1).expect("generate client");
 
-        assert!(client_source.contains("request: T.LatestRequest"));
+        // V1 is the lowest variant supported by every wrapper at or below the
+        // target version. The codegen prefers V1 so the wire payload is
+        // decodable by legacy hosts that only register `v1`.
+        assert!(client_source.contains("request: T.LegacyRequest"));
         assert!(client_source
-            .contains("payload: T.ExampleRequest.enc({ tag: \"V2\", value: request }),"));
-        assert!(client_source.contains("Promise<Result<T.LatestResponse, undefined>>"));
+            .contains("payload: T.ExampleRequest.enc({ tag: \"V1\", value: request }),"));
+        assert!(client_source.contains("Promise<Result<T.LegacyResponse, undefined>>"));
     }
 
     #[test]
-    fn generate_client_uses_latest_existing_wrapper_variant_not_package_version() {
+    fn generate_client_uses_only_existing_wrapper_variant() {
         let api = ApiDefinition {
             traits: vec![TraitDef {
                 name: "Example".to_string(),

@@ -783,16 +783,16 @@ export class PermissionsClient {
 
   /** Request a device-capability permission from the user. */
   async devicePermission(
-    request: T.DevicePermission,
+    request: T.DevicePermissionRequest,
   ): Promise<Result<boolean, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<boolean, T.GenericError>
     >({
       method: "host_device_permission",
-      payload: T.HostDevicePermissionRequest.enc({ tag: "V2", value: request }),
+      payload: T.HostDevicePermissionRequest.enc({ tag: "V1", value: request }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V2: [1, S.result(S.bool, T.GenericError)] as const,
+          V1: [0, S.result(S.bool, T.GenericError)] as const,
         }).dec(payload).value,
     });
     return result.success ? ok(result.value) : err(result.value);
@@ -800,16 +800,16 @@ export class PermissionsClient {
 
   /** Request one or more remote-operation permissions. */
   async permission(
-    request: Array<T.RemotePermission>,
+    request: T.RemotePermissionRequestV1,
   ): Promise<Result<boolean, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<boolean, T.GenericError>
     >({
       method: "remote_permission",
-      payload: T.RemotePermissionRequest.enc({ tag: "V2", value: request }),
+      payload: T.RemotePermissionRequest.enc({ tag: "V1", value: request }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V2: [1, S.result(S.bool, T.GenericError)] as const,
+          V1: [0, S.result(S.bool, T.GenericError)] as const,
         }).dec(payload).value,
     });
     return result.success ? ok(result.value) : err(result.value);
@@ -914,10 +914,10 @@ export class SigningClient {
       S.ResultPayload<T.SigningResult, T.SigningError>
     >({
       method: "host_sign_raw",
-      payload: T.HostSignRawRequest.enc({ tag: "V2", value: request }),
+      payload: T.HostSignRawRequest.enc({ tag: "V1", value: request }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V2: [1, S.result(T.SigningResult, T.SigningError)] as const,
+          V1: [0, S.result(T.SigningResult, T.SigningError)] as const,
         }).dec(payload).value,
     });
     return result.success ? ok(result.value) : err(result.value);
@@ -931,10 +931,10 @@ export class SigningClient {
       S.ResultPayload<T.SigningResult, T.SigningError>
     >({
       method: "host_sign_payload",
-      payload: T.HostSignPayloadRequest.enc({ tag: "V2", value: request }),
+      payload: T.HostSignPayloadRequest.enc({ tag: "V1", value: request }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V2: [1, S.result(T.SigningResult, T.SigningError)] as const,
+          V1: [0, S.result(T.SigningResult, T.SigningError)] as const,
         }).dec(payload).value,
     });
     return result.success ? ok(result.value) : err(result.value);
@@ -955,21 +955,21 @@ export class StatementStoreClient {
     onData,
     onInterrupt,
     request,
-  }: { request: T.TopicFilter } & Pick<
+  }: { request: Array<T.Topic> } & Pick<
     SubscribeCallbacks<Array<T.SignedStatement>>,
     "onData" | "onInterrupt"
   >): Subscription {
     return this.transport.subscribe<Array<T.SignedStatement>>({
       method: "remote_statement_store_subscribe",
       payload: T.RemoteStatementStoreSubscribeRequest.enc({
-        tag: "V2",
+        tag: "V1",
         value: request,
       }),
       onData: (payload) =>
         onData(
           (
             T.RemoteStatementStoreSubscribeItem.dec(payload) as {
-              tag: "V2";
+              tag: "V1";
               value: Array<T.SignedStatement>;
             } & T.RemoteStatementStoreSubscribeItem
           ).value,

@@ -45,6 +45,21 @@ async function waitForWebviewPort(timeoutMs = 20_000): Promise<MessagePort> {
   );
 }
 
+/** Origin used as the `targetOrigin` argument for outbound `postMessage`
+ * frames. `document.referrer` is the URL of the parent document that loaded
+ * the iframe, so its origin is the host that's expected to receive our
+ * frames. We refuse to send if we can't pin a concrete origin (rather than
+ * falling back to `"*"`), since the frames carry signed payloads and account
+ * ids that must not leak to an unrelated frame parent. */
+function resolveHostOrigin(): string | null {
+  if (typeof document === "undefined" || !document.referrer) return null;
+  try {
+    return new URL(document.referrer).origin;
+  } catch {
+    return null;
+  }
+}
+
 function createIframeProvider(): Provider {
   type MessageListener = (msg: Uint8Array) => void;
   type CloseListener = (error: Error) => void;
@@ -57,9 +72,18 @@ function createIframeProvider(): Provider {
     throw new Error("Iframe provider requires a parent window");
   }
 
+  const hostOrigin = resolveHostOrigin();
+  if (!hostOrigin) {
+    throw new Error(
+      "Iframe provider could not resolve the host origin from document.referrer; " +
+        "the playground must be embedded by a host that sends a Referer header.",
+    );
+  }
+
   const onMessage = (event: MessageEvent) => {
     if (disposed) return;
     if (event.source !== parent) return;
+    if (event.origin !== hostOrigin) return;
     if (!(event.data instanceof Uint8Array)) return;
     for (const listener of listeners) listener(event.data);
   };
@@ -69,8 +93,10 @@ function createIframeProvider(): Provider {
   return {
     postMessage(message: Uint8Array) {
       if (disposed) throw new Error("iframe provider disposed");
+      // Pin the target origin so SCALE-encoded frames carrying signed
+      // payloads / account ids don't leak to an unrelated frame parent.
       // Transfer the underlying buffer for zero-copy where possible.
-      parent.postMessage(message, "*", [message.buffer]);
+      parent.postMessage(message, hostOrigin, [message.buffer]);
     },
     subscribe(callback: MessageListener) {
       listeners.add(callback);

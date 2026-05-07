@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::Parser;
 use std::str::FromStr;
 
@@ -64,10 +64,13 @@ impl FromStr for ProtocolVersionArg {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
-    let json = std::fs::read_to_string(&cli.input)?;
-    let krate = rustdoc::parse(&json)?;
-    let api = rustdoc::extract_api(&krate)?;
-    typescript::generate(&api, &cli.output, cli.version.number(), cli.codec_version)?;
+    let json = std::fs::read_to_string(&cli.input)
+        .with_context(|| format!("reading rustdoc JSON from {}", cli.input))?;
+    let krate = rustdoc::parse(&json).with_context(|| format!("parsing {}", cli.input))?;
+    let api = rustdoc::extract_api(&krate)
+        .with_context(|| format!("extracting API definition from {}", cli.input))?;
+    typescript::generate(&api, &cli.output, cli.version.number(), cli.codec_version)
+        .with_context(|| format!("writing TypeScript client to {}", cli.output))?;
     let output = &cli.output;
     println!(
         "Generated TypeScript client for TrUAPI V{} codec {} in {output}",
@@ -75,7 +78,8 @@ fn main() -> Result<()> {
         cli.codec_version
     );
     if let Some(path) = &cli.rust_output {
-        rust_dispatcher::generate(&api, path)?;
+        rust_dispatcher::generate(&api, path)
+            .with_context(|| format!("writing Rust dispatcher to {path}"))?;
         println!("Generated Rust dispatcher in {path}");
     }
     Ok(())

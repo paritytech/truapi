@@ -24,4 +24,9 @@ cargo run -p truapi-codegen -- \
 
 npm exec --yes -- prettier --write "js/packages/truapi/src/generated/**/*.ts"
 
+# Rebuild dist/ so downstream consumers (in particular the playground,
+# which picks up @parity/truapi via yarn 1.x file: snapshot) see the
+# regenerated bindings without a separate npm run build step.
+npm run build --prefix js/packages/truapi
+
 echo "Generated client at js/packages/truapi/src/generated/"
