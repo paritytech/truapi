@@ -53,7 +53,7 @@ pub struct PushNotification {
 /// Device capability to request access to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
-pub enum DevicePermissionRequest {
+pub enum HostDevicePermissionRequest {
     Camera,
     Microphone,
     Bluetooth,
@@ -61,12 +61,10 @@ pub enum DevicePermissionRequest {
 }
 
 /// Pre-RFC-0001 remote operation permission, as shipped by
-/// `@novasamatech/host-api@0.6.x`. Suffixed with `V1` so the simple name
-/// doesn't collide with the versioned wrapper `RemotePermissionRequest`
-/// when both reach the codegen output (rustdoc flattens module paths).
+/// `@novasamatech/host-api@0.6.x`.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
-pub enum RemotePermissionRequestV1 {
+pub enum RemotePermissionRequest {
     /// URL the product wants to fetch.
     ExternalRequest(String),
     /// Product wants to submit a transaction.

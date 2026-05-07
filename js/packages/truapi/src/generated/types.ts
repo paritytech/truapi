@@ -1117,62 +1117,6 @@ export const DeriveEntropyError: S.Codec<DeriveEntropyError> = S.lazy(
 );
 
 /**
- * Device capability to request access to.
- *
- * V0.2: extended with `Notifications`, `NFC`, `Clipboard`, `OpenUrl`, and
- * `Biometrics` per [RFC 0001] (JIT permissions).
- *
- * [RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66
- */
-export type DevicePermission =
-  /** Push notification delivery permission. */
-  | { tag: "Notifications"; value: undefined }
-  | { tag: "Camera"; value: undefined }
-  | { tag: "Microphone"; value: undefined }
-  | { tag: "Bluetooth"; value: undefined }
-  /** Near-field communication access. */
-  | { tag: "NFC"; value: undefined }
-  | { tag: "Location"; value: undefined }
-  /** System clipboard access. */
-  | { tag: "Clipboard"; value: undefined }
-  /** Open a URL in an external browser. */
-  | { tag: "OpenUrl"; value: undefined }
-  /** Biometric authentication (fingerprint, face ID). */
-  | { tag: "Biometrics"; value: undefined };
-
-export const DevicePermission: S.Codec<DevicePermission> = S.lazy(
-  (): S.Codec<DevicePermission> =>
-    S.taggedUnion({
-      Notifications: S.unit,
-      Camera: S.unit,
-      Microphone: S.unit,
-      Bluetooth: S.unit,
-      NFC: S.unit,
-      Location: S.unit,
-      Clipboard: S.unit,
-      OpenUrl: S.unit,
-      Biometrics: S.unit,
-    }),
-);
-
-/** Device capability to request access to. */
-export type DevicePermissionRequest =
-  | { tag: "Camera"; value: undefined }
-  | { tag: "Microphone"; value: undefined }
-  | { tag: "Bluetooth"; value: undefined }
-  | { tag: "Location"; value: undefined };
-
-export const DevicePermissionRequest: S.Codec<DevicePermissionRequest> = S.lazy(
-  (): S.Codec<DevicePermissionRequest> =>
-    S.taggedUnion({
-      Camera: S.unit,
-      Microphone: S.unit,
-      Bluetooth: S.unit,
-      Location: S.unit,
-    }),
-);
-
-/**
  * CSS-like dimensions: (top, end, bottom, start).
  * Bottom defaults to top, start defaults to end when `None`.
  */
@@ -1284,14 +1228,14 @@ export const HorizontalAlignment: S.Codec<HorizontalAlignment> = S.lazy(
 );
 
 /** Subscription item wrapper for `host_account_connection_status_subscribe`. */
-export type HostAccountConnectionStatusItem = {
+export type HostAccountConnectionStatusSubscribeItem = {
   tag: "V1";
   value: AccountConnectionStatus;
 };
 
-export const HostAccountConnectionStatusItem: S.Codec<HostAccountConnectionStatusItem> =
+export const HostAccountConnectionStatusSubscribeItem: S.Codec<HostAccountConnectionStatusSubscribeItem> =
   S.lazy(
-    (): S.Codec<HostAccountConnectionStatusItem> =>
+    (): S.Codec<HostAccountConnectionStatusSubscribeItem> =>
       S.indexedTaggedUnion({ V1: [0, AccountConnectionStatus] as const }),
   );
 
@@ -1383,12 +1327,16 @@ export const HostAccountGetResponse: S.Codec<HostAccountGetResponse> = S.lazy(
 );
 
 /** Subscription item wrapper for `host_chat_action_subscribe`. */
-export type HostChatActionItem = { tag: "V1"; value: ReceivedChatAction };
+export type HostChatActionSubscribeItem = {
+  tag: "V1";
+  value: ReceivedChatAction;
+};
 
-export const HostChatActionItem: S.Codec<HostChatActionItem> = S.lazy(
-  (): S.Codec<HostChatActionItem> =>
-    S.indexedTaggedUnion({ V1: [0, ReceivedChatAction] as const }),
-);
+export const HostChatActionSubscribeItem: S.Codec<HostChatActionSubscribeItem> =
+  S.lazy(
+    (): S.Codec<HostChatActionSubscribeItem> =>
+      S.indexedTaggedUnion({ V1: [0, ReceivedChatAction] as const }),
+  );
 
 /** Error wrapper for `host_chat_create_room`. */
 export type HostChatCreateRoomError = {
@@ -1459,12 +1407,13 @@ export const HostChatCreateSimpleGroupResponse: S.Codec<HostChatCreateSimpleGrou
   );
 
 /** Subscription item wrapper for `host_chat_list_subscribe`. */
-export type HostChatListItem = { tag: "V1"; value: Array<ChatRoom> };
+export type HostChatListSubscribeItem = { tag: "V1"; value: Array<ChatRoom> };
 
-export const HostChatListItem: S.Codec<HostChatListItem> = S.lazy(
-  (): S.Codec<HostChatListItem> =>
-    S.indexedTaggedUnion({ V1: [0, S.vec(ChatRoom)] as const }),
-);
+export const HostChatListSubscribeItem: S.Codec<HostChatListSubscribeItem> =
+  S.lazy(
+    (): S.Codec<HostChatListSubscribeItem> =>
+      S.indexedTaggedUnion({ V1: [0, S.vec(ChatRoom)] as const }),
+  );
 
 /** Error wrapper for `host_chat_post_message`. */
 export type HostChatPostMessageError = {
@@ -1652,16 +1601,16 @@ export const HostDevicePermissionError: S.Codec<HostDevicePermissionError> =
  */
 export type HostDevicePermissionRequest =
   /** Pre-RFC-0001 four-variant enum, as shipped by `@novasamatech/host-api@0.6.x`. */
-  | { tag: "V1"; value: DevicePermissionRequest }
+  | { tag: "V1"; value: V01HostDevicePermissionRequest }
   /** RFC-0001 nine-variant enum. */
-  | { tag: "V2"; value: DevicePermission };
+  | { tag: "V2"; value: V02HostDevicePermissionRequest };
 
 export const HostDevicePermissionRequest: S.Codec<HostDevicePermissionRequest> =
   S.lazy(
     (): S.Codec<HostDevicePermissionRequest> =>
       S.indexedTaggedUnion({
-        V1: [0, DevicePermissionRequest] as const,
-        V2: [1, DevicePermission] as const,
+        V1: [0, V01HostDevicePermissionRequest] as const,
+        V2: [1, V02HostDevicePermissionRequest] as const,
       }),
   );
 
@@ -1899,20 +1848,28 @@ export const HostNavigateToResponse: S.Codec<HostNavigateToResponse> = S.lazy(
 );
 
 /** Error wrapper for `host_payment_balance_subscribe` (V0.2+ only). */
-export type HostPaymentBalanceError = { tag: "V2"; value: PaymentBalanceError };
+export type HostPaymentBalanceSubscribeError = {
+  tag: "V2";
+  value: PaymentBalanceError;
+};
 
-export const HostPaymentBalanceError: S.Codec<HostPaymentBalanceError> = S.lazy(
-  (): S.Codec<HostPaymentBalanceError> =>
-    S.indexedTaggedUnion({ V2: [1, PaymentBalanceError] as const }),
-);
+export const HostPaymentBalanceSubscribeError: S.Codec<HostPaymentBalanceSubscribeError> =
+  S.lazy(
+    (): S.Codec<HostPaymentBalanceSubscribeError> =>
+      S.indexedTaggedUnion({ V2: [1, PaymentBalanceError] as const }),
+  );
 
 /** Subscription item wrapper for `host_payment_balance_subscribe` (V0.2+ only). */
-export type HostPaymentBalanceItem = { tag: "V2"; value: PaymentBalance };
+export type HostPaymentBalanceSubscribeItem = {
+  tag: "V2";
+  value: PaymentBalance;
+};
 
-export const HostPaymentBalanceItem: S.Codec<HostPaymentBalanceItem> = S.lazy(
-  (): S.Codec<HostPaymentBalanceItem> =>
-    S.indexedTaggedUnion({ V2: [1, PaymentBalance] as const }),
-);
+export const HostPaymentBalanceSubscribeItem: S.Codec<HostPaymentBalanceSubscribeItem> =
+  S.lazy(
+    (): S.Codec<HostPaymentBalanceSubscribeItem> =>
+      S.indexedTaggedUnion({ V2: [1, PaymentBalance] as const }),
+  );
 
 /** Subscription request wrapper for `host_payment_balance_subscribe` (V0.2+ only). */
 export type HostPaymentBalanceSubscribeRequest = {
@@ -1953,20 +1910,28 @@ export const HostPaymentRequestResponse: S.Codec<HostPaymentRequestResponse> =
   );
 
 /** Error wrapper for `host_payment_status_subscribe` (V0.2+ only). */
-export type HostPaymentStatusError = { tag: "V2"; value: PaymentStatusError };
+export type HostPaymentStatusSubscribeError = {
+  tag: "V2";
+  value: PaymentStatusError;
+};
 
-export const HostPaymentStatusError: S.Codec<HostPaymentStatusError> = S.lazy(
-  (): S.Codec<HostPaymentStatusError> =>
-    S.indexedTaggedUnion({ V2: [1, PaymentStatusError] as const }),
-);
+export const HostPaymentStatusSubscribeError: S.Codec<HostPaymentStatusSubscribeError> =
+  S.lazy(
+    (): S.Codec<HostPaymentStatusSubscribeError> =>
+      S.indexedTaggedUnion({ V2: [1, PaymentStatusError] as const }),
+  );
 
 /** Subscription item wrapper for `host_payment_status_subscribe` (V0.2+ only). */
-export type HostPaymentStatusItem = { tag: "V2"; value: PaymentStatus };
+export type HostPaymentStatusSubscribeItem = {
+  tag: "V2";
+  value: PaymentStatus;
+};
 
-export const HostPaymentStatusItem: S.Codec<HostPaymentStatusItem> = S.lazy(
-  (): S.Codec<HostPaymentStatusItem> =>
-    S.indexedTaggedUnion({ V2: [1, PaymentStatus] as const }),
-);
+export const HostPaymentStatusSubscribeItem: S.Codec<HostPaymentStatusSubscribeItem> =
+  S.lazy(
+    (): S.Codec<HostPaymentStatusSubscribeItem> =>
+      S.indexedTaggedUnion({ V2: [1, PaymentStatus] as const }),
+  );
 
 /** Subscription request wrapper for `host_payment_status_subscribe` (V0.2+ only). */
 export type HostPaymentStatusSubscribeRequest = { tag: "V2"; value: PaymentId };
@@ -2054,14 +2019,14 @@ export const HostSignPayloadError: S.Codec<HostSignPayloadError> = S.lazy(
  * when the requested version matches the active variant.
  */
 export type HostSignPayloadRequest =
-  | { tag: "V1"; value: SigningPayload }
-  | { tag: "V2"; value: SigningPayload };
+  | { tag: "V1"; value: V01SigningPayload }
+  | { tag: "V2"; value: V02SigningPayload };
 
 export const HostSignPayloadRequest: S.Codec<HostSignPayloadRequest> = S.lazy(
   (): S.Codec<HostSignPayloadRequest> =>
     S.indexedTaggedUnion({
-      V1: [0, SigningPayload] as const,
-      V2: [1, SigningPayload] as const,
+      V1: [0, V01SigningPayload] as const,
+      V2: [1, V02SigningPayload] as const,
     }),
 );
 
@@ -2099,14 +2064,14 @@ export const HostSignRawError: S.Codec<HostSignRawError> = S.lazy(
  * lossy in both directions.
  */
 export type HostSignRawRequest =
-  | { tag: "V1"; value: SigningRawPayload }
-  | { tag: "V2"; value: SigningRawPayload };
+  | { tag: "V1"; value: V01SigningRawPayload }
+  | { tag: "V2"; value: V02SigningRawPayload };
 
 export const HostSignRawRequest: S.Codec<HostSignRawRequest> = S.lazy(
   (): S.Codec<HostSignRawRequest> =>
     S.indexedTaggedUnion({
-      V1: [0, SigningRawPayload] as const,
-      V2: [1, SigningRawPayload] as const,
+      V1: [0, V01SigningRawPayload] as const,
+      V2: [1, V02SigningRawPayload] as const,
     }),
 );
 
@@ -2473,14 +2438,14 @@ export const ProductAccountId: S.Codec<ProductAccountId> = S.lazy(
 );
 
 /** Subscription item wrapper for `product_chat_custom_message_render_subscribe`. */
-export type ProductChatCustomMessageRenderItem = {
+export type ProductChatCustomMessageRenderSubscribeItem = {
   tag: "V1";
   value: CustomMessageRenderRequest;
 };
 
-export const ProductChatCustomMessageRenderItem: S.Codec<ProductChatCustomMessageRenderItem> =
+export const ProductChatCustomMessageRenderSubscribeItem: S.Codec<ProductChatCustomMessageRenderSubscribeItem> =
   S.lazy(
-    (): S.Codec<ProductChatCustomMessageRenderItem> =>
+    (): S.Codec<ProductChatCustomMessageRenderSubscribeItem> =>
       S.indexedTaggedUnion({ V1: [0, CustomMessageRenderRequest] as const }),
   );
 
@@ -3011,35 +2976,17 @@ export const RemotePermissionError: S.Codec<RemotePermissionError> = S.lazy(
  */
 export type RemotePermissionRequest =
   /** Pre-RFC-0001 single-permission request. */
-  | { tag: "V1"; value: RemotePermissionRequestV1 }
+  | { tag: "V1"; value: V01RemotePermissionRequest }
   /** RFC-0001 batch request. */
   | { tag: "V2"; value: Array<RemotePermission> };
 
 export const RemotePermissionRequest: S.Codec<RemotePermissionRequest> = S.lazy(
   (): S.Codec<RemotePermissionRequest> =>
     S.indexedTaggedUnion({
-      V1: [0, RemotePermissionRequestV1] as const,
+      V1: [0, V01RemotePermissionRequest] as const,
       V2: [1, S.vec(RemotePermission)] as const,
     }),
 );
-
-/**
- * Pre-RFC-0001 remote operation permission, as shipped by
- * `@novasamatech/host-api@0.6.x`. Suffixed with `V1` so the simple name
- * doesn't collide with the versioned wrapper `RemotePermissionRequest`
- * when both reach the codegen output (rustdoc flattens module paths).
- */
-export type RemotePermissionRequestV1 =
-  /** URL the product wants to fetch. */
-  | { tag: "ExternalRequest"; value: string }
-  /** Product wants to submit a transaction. */
-  | { tag: "TransactionSubmit"; value: undefined };
-
-export const RemotePermissionRequestV1: S.Codec<RemotePermissionRequestV1> =
-  S.lazy(
-    (): S.Codec<RemotePermissionRequestV1> =>
-      S.taggedUnion({ ExternalRequest: S.str, TransactionSubmit: S.unit }),
-  );
 
 /** Response wrapper for `remote_permission`. */
 export type RemotePermissionResponse =
@@ -3364,96 +3311,6 @@ export const SigningError: S.Codec<SigningError> = S.lazy(
       PermissionDenied: S.unit,
       Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
     }),
-);
-
-/**
- * Full Substrate extrinsic signing payload with all fields needed for signature
- * generation.
- */
-export interface SigningPayload {
-  /**
-   * Product account that will sign this payload.
-   *
-   * V0.2: replaces the previous `address: String` field per [RFC 0005],
-   * aligning with all other TrUAPI account-related methods.
-   *
-   * [RFC 0005]: https://github.com/paritytech/triangle-js-sdks/pull/82
-   */
-  account: ProductAccountId;
-  /** Reference block hash. */
-  blockHash: Hex;
-  /** Reference block number. */
-  blockNumber: Hex;
-  /** Mortality era encoding. */
-  era: Hex;
-  /** Chain genesis hash. */
-  genesisHash: GenesisHash;
-  /** SCALE-encoded call data. */
-  method: Hex;
-  /** Account nonce. */
-  nonce: Hex;
-  /** Runtime spec version. */
-  specVersion: Hex;
-  /** Transaction tip. */
-  tip: Hex;
-  /** Transaction format version. */
-  transactionVersion: Hex;
-  /** Extension identifiers. */
-  signedExtensions: Array<string>;
-  /** Extrinsic version. */
-  version: number;
-  /** For multi-asset tips. */
-  assetId?: Hex;
-  /** CheckMetadataHash extension. */
-  metadataHash?: Hex;
-  /** Metadata mode. */
-  mode?: number;
-  /** Request signed transaction back. */
-  withSignedTransaction?: boolean;
-}
-
-export const SigningPayload: S.Codec<SigningPayload> = S.lazy(
-  (): S.Codec<SigningPayload> =>
-    S.struct({
-      account: ProductAccountId,
-      blockHash: Hex,
-      blockNumber: Hex,
-      era: Hex,
-      genesisHash: GenesisHash,
-      method: Hex,
-      nonce: Hex,
-      specVersion: Hex,
-      tip: Hex,
-      transactionVersion: Hex,
-      signedExtensions: S.vec(S.str),
-      version: S.u32,
-      assetId: S.option(Hex),
-      metadataHash: S.option(Hex),
-      mode: S.option(S.u32),
-      withSignedTransaction: S.option(S.bool),
-    }) as S.Codec<SigningPayload>,
-);
-
-/**
- * A raw signing request pairing an account with raw data.
- *
- * V0.2: `address` replaced with `account: ProductAccountId` per [RFC 0005].
- *
- * [RFC 0005]: https://github.com/paritytech/triangle-js-sdks/pull/82
- */
-export interface SigningRawPayload {
-  /** Product account that will sign this data. */
-  account: ProductAccountId;
-  /** The data to sign. */
-  data: RawPayload;
-}
-
-export const SigningRawPayload: S.Codec<SigningRawPayload> = S.lazy(
-  (): S.Codec<SigningRawPayload> =>
-    S.struct({
-      account: ProductAccountId,
-      data: RawPayload,
-    }) as S.Codec<SigningRawPayload>,
 );
 
 /** Result of a signing operation. */
@@ -3898,6 +3755,247 @@ export const UserIdentityError: S.Codec<UserIdentityError> = S.lazy(
       NotConnected: S.unit,
       Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
     }),
+);
+
+/** Device capability to request access to. */
+export type V01HostDevicePermissionRequest =
+  | { tag: "Camera"; value: undefined }
+  | { tag: "Microphone"; value: undefined }
+  | { tag: "Bluetooth"; value: undefined }
+  | { tag: "Location"; value: undefined };
+
+export const V01HostDevicePermissionRequest: S.Codec<V01HostDevicePermissionRequest> =
+  S.lazy(
+    (): S.Codec<V01HostDevicePermissionRequest> =>
+      S.taggedUnion({
+        Camera: S.unit,
+        Microphone: S.unit,
+        Bluetooth: S.unit,
+        Location: S.unit,
+      }),
+  );
+
+/**
+ * Pre-RFC-0001 remote operation permission, as shipped by
+ * `@novasamatech/host-api@0.6.x`.
+ */
+export type V01RemotePermissionRequest =
+  /** URL the product wants to fetch. */
+  | { tag: "ExternalRequest"; value: string }
+  /** Product wants to submit a transaction. */
+  | { tag: "TransactionSubmit"; value: undefined };
+
+export const V01RemotePermissionRequest: S.Codec<V01RemotePermissionRequest> =
+  S.lazy(
+    (): S.Codec<V01RemotePermissionRequest> =>
+      S.taggedUnion({ ExternalRequest: S.str, TransactionSubmit: S.unit }),
+  );
+
+/**
+ * Full Substrate extrinsic signing payload with all fields needed for signature
+ * generation.
+ */
+export interface V01SigningPayload {
+  /** Signer address (SS58 or hex). */
+  address: string;
+  /** Reference block hash. */
+  blockHash: Hex;
+  /** Reference block number. */
+  blockNumber: Hex;
+  /** Mortality era encoding. */
+  era: Hex;
+  /** Chain genesis hash. */
+  genesisHash: GenesisHash;
+  /** SCALE-encoded call data. */
+  method: Hex;
+  /** Account nonce. */
+  nonce: Hex;
+  /** Runtime spec version. */
+  specVersion: Hex;
+  /** Transaction tip. */
+  tip: Hex;
+  /** Transaction format version. */
+  transactionVersion: Hex;
+  /** Extension identifiers. */
+  signedExtensions: Array<string>;
+  /** Extrinsic version. */
+  version: number;
+  /** For multi-asset tips. */
+  assetId?: Hex;
+  /** CheckMetadataHash extension. */
+  metadataHash?: Hex;
+  /** Metadata mode. */
+  mode?: number;
+  /** Request signed transaction back. */
+  withSignedTransaction?: boolean;
+}
+
+export const V01SigningPayload: S.Codec<V01SigningPayload> = S.lazy(
+  (): S.Codec<V01SigningPayload> =>
+    S.struct({
+      address: S.str,
+      blockHash: Hex,
+      blockNumber: Hex,
+      era: Hex,
+      genesisHash: GenesisHash,
+      method: Hex,
+      nonce: Hex,
+      specVersion: Hex,
+      tip: Hex,
+      transactionVersion: Hex,
+      signedExtensions: S.vec(S.str),
+      version: S.u32,
+      assetId: S.option(Hex),
+      metadataHash: S.option(Hex),
+      mode: S.option(S.u32),
+      withSignedTransaction: S.option(S.bool),
+    }) as S.Codec<V01SigningPayload>,
+);
+
+/** A raw signing request pairing an address with raw data. */
+export interface V01SigningRawPayload {
+  /** Signer address. */
+  address: string;
+  /** The data to sign. */
+  data: RawPayload;
+}
+
+export const V01SigningRawPayload: S.Codec<V01SigningRawPayload> = S.lazy(
+  (): S.Codec<V01SigningRawPayload> =>
+    S.struct({
+      address: S.str,
+      data: RawPayload,
+    }) as S.Codec<V01SigningRawPayload>,
+);
+
+/**
+ * Device capability to request access to.
+ *
+ * V0.2: extended with `Notifications`, `NFC`, `Clipboard`, `OpenUrl`, and
+ * `Biometrics` per [RFC 0001] (JIT permissions).
+ *
+ * [RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66
+ */
+export type V02HostDevicePermissionRequest =
+  /** Push notification delivery permission. */
+  | { tag: "Notifications"; value: undefined }
+  | { tag: "Camera"; value: undefined }
+  | { tag: "Microphone"; value: undefined }
+  | { tag: "Bluetooth"; value: undefined }
+  /** Near-field communication access. */
+  | { tag: "NFC"; value: undefined }
+  | { tag: "Location"; value: undefined }
+  /** System clipboard access. */
+  | { tag: "Clipboard"; value: undefined }
+  /** Open a URL in an external browser. */
+  | { tag: "OpenUrl"; value: undefined }
+  /** Biometric authentication (fingerprint, face ID). */
+  | { tag: "Biometrics"; value: undefined };
+
+export const V02HostDevicePermissionRequest: S.Codec<V02HostDevicePermissionRequest> =
+  S.lazy(
+    (): S.Codec<V02HostDevicePermissionRequest> =>
+      S.taggedUnion({
+        Notifications: S.unit,
+        Camera: S.unit,
+        Microphone: S.unit,
+        Bluetooth: S.unit,
+        NFC: S.unit,
+        Location: S.unit,
+        Clipboard: S.unit,
+        OpenUrl: S.unit,
+        Biometrics: S.unit,
+      }),
+  );
+
+/**
+ * Full Substrate extrinsic signing payload with all fields needed for signature
+ * generation.
+ */
+export interface V02SigningPayload {
+  /**
+   * Product account that will sign this payload.
+   *
+   * V0.2: replaces the previous `address: String` field per [RFC 0005],
+   * aligning with all other TrUAPI account-related methods.
+   *
+   * [RFC 0005]: https://github.com/paritytech/triangle-js-sdks/pull/82
+   */
+  account: ProductAccountId;
+  /** Reference block hash. */
+  blockHash: Hex;
+  /** Reference block number. */
+  blockNumber: Hex;
+  /** Mortality era encoding. */
+  era: Hex;
+  /** Chain genesis hash. */
+  genesisHash: GenesisHash;
+  /** SCALE-encoded call data. */
+  method: Hex;
+  /** Account nonce. */
+  nonce: Hex;
+  /** Runtime spec version. */
+  specVersion: Hex;
+  /** Transaction tip. */
+  tip: Hex;
+  /** Transaction format version. */
+  transactionVersion: Hex;
+  /** Extension identifiers. */
+  signedExtensions: Array<string>;
+  /** Extrinsic version. */
+  version: number;
+  /** For multi-asset tips. */
+  assetId?: Hex;
+  /** CheckMetadataHash extension. */
+  metadataHash?: Hex;
+  /** Metadata mode. */
+  mode?: number;
+  /** Request signed transaction back. */
+  withSignedTransaction?: boolean;
+}
+
+export const V02SigningPayload: S.Codec<V02SigningPayload> = S.lazy(
+  (): S.Codec<V02SigningPayload> =>
+    S.struct({
+      account: ProductAccountId,
+      blockHash: Hex,
+      blockNumber: Hex,
+      era: Hex,
+      genesisHash: GenesisHash,
+      method: Hex,
+      nonce: Hex,
+      specVersion: Hex,
+      tip: Hex,
+      transactionVersion: Hex,
+      signedExtensions: S.vec(S.str),
+      version: S.u32,
+      assetId: S.option(Hex),
+      metadataHash: S.option(Hex),
+      mode: S.option(S.u32),
+      withSignedTransaction: S.option(S.bool),
+    }) as S.Codec<V02SigningPayload>,
+);
+
+/**
+ * A raw signing request pairing an account with raw data.
+ *
+ * V0.2: `address` replaced with `account: ProductAccountId` per [RFC 0005].
+ *
+ * [RFC 0005]: https://github.com/paritytech/triangle-js-sdks/pull/82
+ */
+export interface V02SigningRawPayload {
+  /** Product account that will sign this data. */
+  account: ProductAccountId;
+  /** The data to sign. */
+  data: RawPayload;
+}
+
+export const V02SigningRawPayload: S.Codec<V02SigningRawPayload> = S.lazy(
+  (): S.Codec<V02SigningRawPayload> =>
+    S.struct({
+      account: ProductAccountId,
+      data: RawPayload,
+    }) as S.Codec<V02SigningRawPayload>,
 );
 
 /**

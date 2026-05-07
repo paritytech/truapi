@@ -1,7 +1,7 @@
 //! Unified [`AccountManagement`] trait.
 
 use crate::versioned::account::{
-    HostAccountConnectionStatusItem, HostAccountCreateProofError, HostAccountCreateProofRequest,
+    HostAccountConnectionStatusSubscribeItem, HostAccountCreateProofError, HostAccountCreateProofRequest,
     HostAccountCreateProofResponse, HostAccountGetAliasError, HostAccountGetAliasRequest,
     HostAccountGetAliasResponse, HostAccountGetError, HostAccountGetRequest,
     HostAccountGetResponse, HostGetNonProductAccountsError, HostGetNonProductAccountsRequest,
@@ -22,7 +22,7 @@ pub trait AccountManagement: Send + Sync {
     async fn host_account_connection_status_subscribe(
         &self,
         _cx: &CallContext,
-    ) -> Subscription<HostAccountConnectionStatusItem> {
+    ) -> Subscription<HostAccountConnectionStatusSubscribeItem> {
         Subscription::empty()
     }
 

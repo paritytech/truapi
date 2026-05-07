@@ -28,9 +28,9 @@ versioned_type! {
     /// Error wrapper for `host_chat_post_message`.
     pub enum HostChatPostMessageError { V1 => v01::ChatMessagePostingError }
     /// Subscription item wrapper for `host_chat_list_subscribe`.
-    pub enum HostChatListItem { V1 => Vec<v01::ChatRoom> }
+    pub enum HostChatListSubscribeItem { V1 => Vec<v01::ChatRoom> }
     /// Subscription item wrapper for `host_chat_action_subscribe`.
-    pub enum HostChatActionItem { V1 => v01::ReceivedChatAction }
+    pub enum HostChatActionSubscribeItem { V1 => v01::ReceivedChatAction }
     /// Subscription item wrapper for `product_chat_custom_message_render_subscribe`.
-    pub enum ProductChatCustomMessageRenderItem { V1 => v01::CustomMessageRenderRequest }
+    pub enum ProductChatCustomMessageRenderSubscribeItem { V1 => v01::CustomMessageRenderRequest }
 }

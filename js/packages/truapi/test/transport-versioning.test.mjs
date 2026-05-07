@@ -171,7 +171,7 @@ function handshakeResponsePayload(value) {
       requestId: sub.subscriptionId,
       payload: {
         tag: "host_account_connection_status_subscribe_receive",
-        value: T.HostAccountConnectionStatusItem.enc({
+        value: T.HostAccountConnectionStatusSubscribeItem.enc({
           tag: "V1",
           value: { tag: "Connected", value: undefined },
         }),

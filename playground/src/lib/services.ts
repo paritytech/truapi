@@ -63,7 +63,7 @@ export const services: ServiceInfo[] = [
         description:
           "Requests access to a device capability. Returns true if granted.",
         requestDescription:
-          "DevicePermissionRequest enum: Camera | Microphone | Bluetooth | Location",
+          "HostDevicePermissionRequest enum: Camera | Microphone | Bluetooth | Location",
         defaultRequest: '{ "tag": "Camera" }',
       },
       {
@@ -72,7 +72,7 @@ export const services: ServiceInfo[] = [
         description:
           "Requests permission for an ExternalRequest (a URL string) or TransactionSubmit. Returns true if granted.",
         requestDescription:
-          "RemotePermissionRequestV1 enum: ExternalRequest(str) | TransactionSubmit",
+          "V01RemotePermissionRequest enum: ExternalRequest(str) | TransactionSubmit",
         defaultRequest:
           '{ "tag": "ExternalRequest", "value": "https://api.example.com" }',
       },

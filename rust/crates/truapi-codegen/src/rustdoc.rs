@@ -135,6 +135,28 @@ struct ItemCandidate {
     kind: String,
 }
 
+#[derive(Debug, Default)]
+struct NameContext {
+    by_item_id: HashMap<String, String>,
+    by_path: HashMap<String, String>,
+}
+
+impl NameContext {
+    fn name_for_item(&self, item_id: &str, fallback: &str) -> String {
+        self.by_item_id
+            .get(item_id)
+            .cloned()
+            .unwrap_or_else(|| fallback.to_string())
+    }
+
+    fn name_for_path(&self, path: &str) -> String {
+        self.by_path
+            .get(path)
+            .cloned()
+            .unwrap_or_else(|| path_suffix(path).to_string())
+    }
+}
+
 /// Parses rustdoc JSON output into the minimal crate model used by the code
 /// generator.
 pub fn parse(json: &str) -> Result<Crate> {
@@ -146,6 +168,7 @@ pub fn parse(json: &str) -> Result<Crate> {
 pub fn extract_api(krate: &Crate) -> Result<ApiDefinition> {
     let trait_candidates = collect_public_candidates(krate, &["trait"]);
     let type_candidates = collect_public_candidates(krate, &["struct", "enum", "type_alias"]);
+    let names = build_name_context(&type_candidates);
 
     let mut traits = Vec::new();
     for (name, candidates) in trait_candidates {
@@ -161,53 +184,123 @@ pub fn extract_api(krate: &Crate) -> Result<ApiDefinition> {
             .index
             .get(&candidate.item_id)
             .with_context(|| format!("Missing rustdoc item `{}`", candidate.item_id))?;
-        traits.push(extract_trait(&candidate.item_id, item, krate)?);
+        traits.push(extract_trait(&candidate.item_id, item, krate, &names)?);
     }
 
     let mut types = Vec::new();
+    let mut generated_names = BTreeMap::new();
     for (name, candidates) in type_candidates {
-        if matches!(
-            name.as_str(),
-            "Subscription"
-                | "CallContext"
-                | "CallError"
-                | "CancellationToken"
-                | "FrameworkOnlyError"
-                | "Infallible"
-                | "RequestId"
-                | "RuntimeFailure"
-                | "RuntimeFailureKind"
-        ) {
+        if should_skip_type_name(&name) {
             continue;
         }
 
-        let candidate = select_candidate(&name, &candidates)?;
-        let item = krate
-            .index
-            .get(&candidate.item_id)
-            .with_context(|| format!("Missing rustdoc item `{}`", candidate.item_id))?;
+        for candidate in candidates {
+            let item = krate
+                .index
+                .get(&candidate.item_id)
+                .with_context(|| format!("Missing rustdoc item `{}`", candidate.item_id))?;
 
-        let type_def = if candidate.kind == "struct" {
-            extract_struct(&candidate.item_id, item, krate)?
-        } else if candidate.kind == "enum" {
-            extract_enum(&candidate.item_id, item, krate)?
-        } else if candidate.kind == "type_alias" {
-            extract_type_alias(&candidate.item_id, item)?
-        } else {
-            bail!(
-                "Unsupported rustdoc item kind `{}` for `{}`",
-                candidate.kind,
-                candidate.path.join("::")
-            );
-        };
+            let type_def = if candidate.kind == "struct" {
+                extract_struct(&candidate.item_id, item, krate, &names)?
+            } else if candidate.kind == "enum" {
+                extract_enum(&candidate.item_id, item, krate, &names)?
+            } else if candidate.kind == "type_alias" {
+                extract_type_alias(&candidate.item_id, item, &names)?
+            } else {
+                bail!(
+                    "Unsupported rustdoc item kind `{}` for `{}`",
+                    candidate.kind,
+                    candidate.path.join("::")
+                );
+            };
 
-        types.push(type_def);
+            if let Some(existing) =
+                generated_names.insert(type_def.name.clone(), candidate.path.join("::"))
+            {
+                bail!(
+                    "Generated type name `{}` is ambiguous between `{}` and `{}`",
+                    type_def.name,
+                    existing,
+                    candidate.path.join("::")
+                );
+            }
+            types.push(type_def);
+        }
     }
 
     traits.sort_by(|a, b| a.name.cmp(&b.name));
     types.sort_by(|a, b| a.name.cmp(&b.name));
 
     Ok(ApiDefinition { traits, types })
+}
+
+fn should_skip_type_name(name: &str) -> bool {
+    matches!(
+        name,
+        "Subscription"
+            | "CallContext"
+            | "CallError"
+            | "CancellationToken"
+            | "FrameworkOnlyError"
+            | "Infallible"
+            | "RequestId"
+            | "RuntimeFailure"
+            | "RuntimeFailureKind"
+    )
+}
+
+fn build_name_context(type_candidates: &BTreeMap<String, Vec<ItemCandidate>>) -> NameContext {
+    let mut ctx = NameContext::default();
+    for (simple_name, candidates) in type_candidates {
+        if should_skip_type_name(simple_name) {
+            continue;
+        }
+        let has_conflict = candidates.len() > 1;
+        for candidate in candidates {
+            let output_name = if has_conflict {
+                disambiguated_type_name(simple_name, &candidate.path)
+            } else {
+                simple_name.clone()
+            };
+            ctx.by_item_id
+                .insert(candidate.item_id.clone(), output_name.clone());
+            ctx.by_path.insert(candidate.path.join("::"), output_name);
+        }
+    }
+    ctx
+}
+
+fn disambiguated_type_name(simple_name: &str, path: &[String]) -> String {
+    if path.iter().any(|segment| segment == "versioned") {
+        return simple_name.to_string();
+    }
+    if path.iter().any(|segment| segment == "v01") {
+        return format!("V01{simple_name}");
+    }
+    if path.iter().any(|segment| segment == "v02") {
+        return format!("V02{simple_name}");
+    }
+    let module = path
+        .iter()
+        .rev()
+        .nth(1)
+        .map(|segment| to_pascal_case(segment))
+        .unwrap_or_default();
+    format!("{module}{simple_name}")
+}
+
+fn to_pascal_case(value: &str) -> String {
+    value
+        .split('_')
+        .filter(|part| !part.is_empty())
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => first.to_uppercase().chain(chars).collect::<String>(),
+                None => String::new(),
+            }
+        })
+        .collect()
 }
 
 fn collect_public_candidates(
@@ -299,7 +392,12 @@ fn select_candidate<'a>(name: &str, candidates: &'a [ItemCandidate]) -> Result<&
     Ok(selected)
 }
 
-fn extract_trait(item_id: &str, item: &Item, krate: &Crate) -> Result<TraitDef> {
+fn extract_trait(
+    item_id: &str,
+    item: &Item,
+    krate: &Crate,
+    names: &NameContext,
+) -> Result<TraitDef> {
     let name = item
         .name
         .as_ref()
@@ -322,7 +420,7 @@ fn extract_trait(item_id: &str, item: &Item, krate: &Crate) -> Result<TraitDef> 
             .index
             .get(&method_id)
             .with_context(|| format!("Trait `{}` references missing item `{}`", name, method_id))?;
-        if let Some(method_def) = extract_method(&method_id, method_item)? {
+        if let Some(method_def) = extract_method(&method_id, method_item, names)? {
             methods.push(method_def);
         }
     }
@@ -334,7 +432,7 @@ fn extract_trait(item_id: &str, item: &Item, krate: &Crate) -> Result<TraitDef> 
     })
 }
 
-fn extract_method(item_id: &str, item: &Item) -> Result<Option<MethodDef>> {
+fn extract_method(item_id: &str, item: &Item, names: &NameContext) -> Result<Option<MethodDef>> {
     let Some(fn_inner) = item.inner.get("function") else {
         return Ok(None);
     };
@@ -356,13 +454,13 @@ fn extract_method(item_id: &str, item: &Item) -> Result<Option<MethodDef>> {
         (
             MethodKind::ResultSubscription,
             ReturnType::ResultSubscription {
-                item: extract_result_subscription_inner(output).with_context(|| {
+                item: extract_result_subscription_inner(output, names).with_context(|| {
                     format!(
                         "Method `{}` has invalid Result<Subscription<..>, E> return type",
                         name
                     )
                 })?,
-                err: extract_generic_arg(output, 1).with_context(|| {
+                err: extract_generic_arg(output, 1, names).with_context(|| {
                     format!(
                         "Method `{}` is missing the error type in Result<Subscription<..>, E>",
                         name
@@ -373,7 +471,7 @@ fn extract_method(item_id: &str, item: &Item) -> Result<Option<MethodDef>> {
     } else if is_subscription_return(output) {
         (
             MethodKind::Subscription,
-            ReturnType::Subscription(extract_generic_arg(output, 0).with_context(|| {
+            ReturnType::Subscription(extract_generic_arg(output, 0, names).with_context(|| {
                 format!("Method `{}` is missing Subscription<T> item type", name)
             })?),
         )
@@ -381,10 +479,10 @@ fn extract_method(item_id: &str, item: &Item) -> Result<Option<MethodDef>> {
         (
             MethodKind::Request,
             ReturnType::Result {
-                ok: extract_generic_arg(output, 0).with_context(|| {
+                ok: extract_generic_arg(output, 0, names).with_context(|| {
                     format!("Method `{}` is missing Result<T, E> ok type", name)
                 })?,
-                err: extract_generic_arg(output, 1).with_context(|| {
+                err: extract_generic_arg(output, 1, names).with_context(|| {
                     format!("Method `{}` is missing Result<T, E> error type", name)
                 })?,
             },
@@ -421,7 +519,7 @@ fn extract_method(item_id: &str, item: &Item) -> Result<Option<MethodDef>> {
         if is_call_context_ref(ty) {
             continue;
         }
-        let type_ref = resolve_type(ty).with_context(|| {
+        let type_ref = resolve_type(ty, names).with_context(|| {
             format!(
                 "Method `{}` input `{}` has an unsupported type",
                 name, param_name
@@ -572,7 +670,10 @@ fn is_result_return(output: &serde_json::Value) -> bool {
         .unwrap_or(false)
 }
 
-fn extract_result_subscription_inner(output: &serde_json::Value) -> Result<TypeRef> {
+fn extract_result_subscription_inner(
+    output: &serde_json::Value,
+    names: &NameContext,
+) -> Result<TypeRef> {
     let ok_type = get_generic_arg_value(output, 0)
         .context("Result<Subscription<T>, E> return type is missing its ok type")?;
 
@@ -583,7 +684,7 @@ fn extract_result_subscription_inner(output: &serde_json::Value) -> Result<TypeR
         );
     }
 
-    extract_generic_arg(&ok_type, 0)
+    extract_generic_arg(&ok_type, 0, names)
 }
 
 fn get_resolved_name(ty: &serde_json::Value) -> Option<String> {
@@ -603,7 +704,11 @@ fn get_generic_arg_value(ty: &serde_json::Value, index: usize) -> Option<serde_j
     args.get(index)?.get("type").cloned()
 }
 
-fn extract_generic_arg(ty: &serde_json::Value, index: usize) -> Result<TypeRef> {
+fn extract_generic_arg(
+    ty: &serde_json::Value,
+    index: usize,
+    names: &NameContext,
+) -> Result<TypeRef> {
     let generic = get_generic_arg_value(ty, index).with_context(|| {
         format!(
             "Missing generic argument {} in {}",
@@ -611,10 +716,10 @@ fn extract_generic_arg(ty: &serde_json::Value, index: usize) -> Result<TypeRef> 
             summarize_json(ty)
         )
     })?;
-    resolve_type(&generic)
+    resolve_type(&generic, names)
 }
 
-fn resolve_type(ty: &serde_json::Value) -> Result<TypeRef> {
+fn resolve_type(ty: &serde_json::Value, names: &NameContext) -> Result<TypeRef> {
     if let Some(name) = ty.get("generic").and_then(|value| value.as_str()) {
         return Ok(TypeRef::Generic(name.to_string()));
     }
@@ -629,7 +734,7 @@ fn resolve_type(ty: &serde_json::Value) -> Result<TypeRef> {
             .and_then(|value| value.as_str())
             .with_context(|| format!("resolved_path missing path in {}", summarize_json(ty)))?;
         let name = raw_name.rsplit("::").next().unwrap_or(raw_name);
-        let args = resolve_resolved_path_args(resolved)?;
+        let args = resolve_resolved_path_args(resolved, names)?;
 
         return match name {
             "Vec" => Ok(TypeRef::Vec(Box::new(expect_single_arg("Vec", args)?))),
@@ -647,7 +752,11 @@ fn resolve_type(ty: &serde_json::Value) -> Result<TypeRef> {
             }
             "Box" => expect_single_arg("Box", args),
             _ => Ok(TypeRef::Named {
-                name: name.to_string(),
+                name: resolved
+                    .get("id")
+                    .and_then(|id| value_id(id).ok())
+                    .map(|id| names.name_for_item(&id, path_suffix(raw_name)))
+                    .unwrap_or_else(|| names.name_for_path(raw_name)),
                 args,
             }),
         };
@@ -663,7 +772,10 @@ fn resolve_type(ty: &serde_json::Value) -> Result<TypeRef> {
         if items.is_empty() {
             return Ok(TypeRef::Unit);
         }
-        let types = items.iter().map(resolve_type).collect::<Result<Vec<_>>>()?;
+        let types = items
+            .iter()
+            .map(|item| resolve_type(item, names))
+            .collect::<Result<Vec<_>>>()?;
         return Ok(TypeRef::Tuple(types));
     }
 
@@ -671,7 +783,7 @@ fn resolve_type(ty: &serde_json::Value) -> Result<TypeRef> {
         let inner = array
             .get("type")
             .context("array rustdoc shape is missing its inner type")
-            .and_then(resolve_type)?;
+            .and_then(|ty| resolve_type(ty, names))?;
         let len = array
             .get("len")
             .and_then(|value| value.as_str())
@@ -690,13 +802,16 @@ fn resolve_type(ty: &serde_json::Value) -> Result<TypeRef> {
         let inner = borrowed_ref
             .get("type")
             .context("borrowed_ref rustdoc shape is missing its inner type")?;
-        return resolve_type(inner);
+        return resolve_type(inner, names);
     }
 
     bail!("Unsupported rustdoc type shape: {}", summarize_json(ty))
 }
 
-fn resolve_resolved_path_args(resolved: &serde_json::Value) -> Result<Vec<TypeRef>> {
+fn resolve_resolved_path_args(
+    resolved: &serde_json::Value,
+    names: &NameContext,
+) -> Result<Vec<TypeRef>> {
     let Some(args) = resolved.get("args") else {
         return Ok(Vec::new());
     };
@@ -724,7 +839,7 @@ fn resolve_resolved_path_args(resolved: &serde_json::Value) -> Result<Vec<TypeRe
                     summarize_json(arg)
                 )
             })?;
-            resolve_type(ty)
+            resolve_type(ty, names)
         })
         .collect()
 }
@@ -740,12 +855,18 @@ fn expect_single_arg(type_name: &str, mut args: Vec<TypeRef>) -> Result<TypeRef>
     Ok(args.remove(0))
 }
 
-fn extract_struct(item_id: &str, item: &Item, krate: &Crate) -> Result<TypeDef> {
-    let name = item
+fn extract_struct(
+    item_id: &str,
+    item: &Item,
+    krate: &Crate,
+    names: &NameContext,
+) -> Result<TypeDef> {
+    let rust_name = item
         .name
         .as_ref()
         .cloned()
         .with_context(|| format!("Struct item `{}` has no name", item_id))?;
+    let name = names.name_for_item(item_id, &rust_name);
     let struct_inner = item
         .inner
         .get("struct")
@@ -788,7 +909,7 @@ fn extract_struct(item_id: &str, item: &Item, krate: &Crate) -> Result<TypeDef> 
         })?;
         fields.push(FieldDef {
             name: field_name,
-            type_ref: resolve_type(field_type).with_context(|| {
+            type_ref: resolve_type(field_type, names).with_context(|| {
                 format!(
                     "Struct `{}` field `{}` has an unsupported type",
                     name, field_id
@@ -806,12 +927,13 @@ fn extract_struct(item_id: &str, item: &Item, krate: &Crate) -> Result<TypeDef> 
     })
 }
 
-fn extract_enum(item_id: &str, item: &Item, krate: &Crate) -> Result<TypeDef> {
-    let name = item
+fn extract_enum(item_id: &str, item: &Item, krate: &Crate, names: &NameContext) -> Result<TypeDef> {
+    let rust_name = item
         .name
         .as_ref()
         .cloned()
         .with_context(|| format!("Enum item `{}` has no name", item_id))?;
+    let name = names.name_for_item(item_id, &rust_name);
     let enum_inner = item
         .inner
         .get("enum")
@@ -838,7 +960,7 @@ fn extract_enum(item_id: &str, item: &Item, krate: &Crate) -> Result<TypeDef> {
             .as_ref()
             .cloned()
             .with_context(|| format!("Enum `{}` variant `{}` has no name", name, variant_id))?;
-        let fields = extract_variant_fields(variant_item.inner.get("variant"), krate)
+        let fields = extract_variant_fields(variant_item.inner.get("variant"), krate, names)
             .with_context(|| {
                 format!(
                     "Enum `{}` variant `{}` has an unsupported shape",
@@ -863,6 +985,7 @@ fn extract_enum(item_id: &str, item: &Item, krate: &Crate) -> Result<TypeDef> {
 fn extract_variant_fields(
     variant_inner: Option<&serde_json::Value>,
     krate: &Crate,
+    names: &NameContext,
 ) -> Result<VariantFields> {
     let inner = variant_inner.context("variant rustdoc entry is missing its body")?;
     let kind = inner
@@ -895,7 +1018,7 @@ fn extract_variant_fields(
                     field_id
                 )
             })?;
-            types.push(resolve_type(ty)?);
+            types.push(resolve_type(ty, names)?);
         }
         return if types.is_empty() {
             Ok(VariantFields::Unit)
@@ -930,7 +1053,7 @@ fn extract_variant_fields(
             })?;
             fields.push(FieldDef {
                 name,
-                type_ref: resolve_type(ty)?,
+                type_ref: resolve_type(ty, names)?,
                 docs: clean_docs(item.docs.as_deref()),
             });
         }
@@ -940,12 +1063,13 @@ fn extract_variant_fields(
     bail!("Unsupported enum variant kind: {}", summarize_json(kind))
 }
 
-fn extract_type_alias(item_id: &str, item: &Item) -> Result<TypeDef> {
-    let name = item
+fn extract_type_alias(item_id: &str, item: &Item, names: &NameContext) -> Result<TypeDef> {
+    let rust_name = item
         .name
         .as_ref()
         .cloned()
         .with_context(|| format!("Type alias item `{}` has no name", item_id))?;
+    let name = names.name_for_item(item_id, &rust_name);
     let type_alias = item
         .inner
         .get("type_alias")
@@ -955,7 +1079,7 @@ fn extract_type_alias(item_id: &str, item: &Item) -> Result<TypeDef> {
     let ty = type_alias
         .get("type")
         .with_context(|| format!("Type alias `{}` is missing its target type", name))?;
-    let target = resolve_type(ty)
+    let target = resolve_type(ty, names)
         .with_context(|| format!("Type alias `{}` has an unsupported target type", name))?;
 
     Ok(TypeDef {

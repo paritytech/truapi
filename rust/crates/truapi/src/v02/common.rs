@@ -22,7 +22,7 @@ pub enum HandshakeError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize)]
 #[serde(tag = "tag", content = "value")]
 #[allow(clippy::upper_case_acronyms)]
-pub enum DevicePermission {
+pub enum HostDevicePermissionRequest {
     /// Push notification delivery permission.
     Notifications,
     Camera,
@@ -39,33 +39,33 @@ pub enum DevicePermission {
     Biometrics,
 }
 
-impl TryFrom<crate::v01::DevicePermissionRequest> for DevicePermission {
+impl TryFrom<crate::v01::HostDevicePermissionRequest> for HostDevicePermissionRequest {
     type Error = ();
 
-    fn try_from(value: crate::v01::DevicePermissionRequest) -> Result<Self, Self::Error> {
+    fn try_from(value: crate::v01::HostDevicePermissionRequest) -> Result<Self, Self::Error> {
         Ok(match value {
-            crate::v01::DevicePermissionRequest::Camera => Self::Camera,
-            crate::v01::DevicePermissionRequest::Microphone => Self::Microphone,
-            crate::v01::DevicePermissionRequest::Bluetooth => Self::Bluetooth,
-            crate::v01::DevicePermissionRequest::Location => Self::Location,
+            crate::v01::HostDevicePermissionRequest::Camera => Self::Camera,
+            crate::v01::HostDevicePermissionRequest::Microphone => Self::Microphone,
+            crate::v01::HostDevicePermissionRequest::Bluetooth => Self::Bluetooth,
+            crate::v01::HostDevicePermissionRequest::Location => Self::Location,
         })
     }
 }
 
-impl TryFrom<DevicePermission> for crate::v01::DevicePermissionRequest {
+impl TryFrom<HostDevicePermissionRequest> for crate::v01::HostDevicePermissionRequest {
     type Error = ();
 
-    fn try_from(value: DevicePermission) -> Result<Self, Self::Error> {
+    fn try_from(value: HostDevicePermissionRequest) -> Result<Self, Self::Error> {
         match value {
-            DevicePermission::Camera => Ok(Self::Camera),
-            DevicePermission::Microphone => Ok(Self::Microphone),
-            DevicePermission::Bluetooth => Ok(Self::Bluetooth),
-            DevicePermission::Location => Ok(Self::Location),
-            DevicePermission::Notifications
-            | DevicePermission::NFC
-            | DevicePermission::Clipboard
-            | DevicePermission::OpenUrl
-            | DevicePermission::Biometrics => Err(()),
+            HostDevicePermissionRequest::Camera => Ok(Self::Camera),
+            HostDevicePermissionRequest::Microphone => Ok(Self::Microphone),
+            HostDevicePermissionRequest::Bluetooth => Ok(Self::Bluetooth),
+            HostDevicePermissionRequest::Location => Ok(Self::Location),
+            HostDevicePermissionRequest::Notifications
+            | HostDevicePermissionRequest::NFC
+            | HostDevicePermissionRequest::Clipboard
+            | HostDevicePermissionRequest::OpenUrl
+            | HostDevicePermissionRequest::Biometrics => Err(()),
         }
     }
 }
@@ -96,23 +96,23 @@ pub enum RemotePermission {
     StatementSubmit,
 }
 
-impl TryFrom<crate::v01::RemotePermissionRequestV1> for Vec<RemotePermission> {
+impl TryFrom<crate::v01::RemotePermissionRequest> for Vec<RemotePermission> {
     type Error = ();
 
-    fn try_from(value: crate::v01::RemotePermissionRequestV1) -> Result<Self, Self::Error> {
+    fn try_from(value: crate::v01::RemotePermissionRequest) -> Result<Self, Self::Error> {
         Ok(match value {
-            crate::v01::RemotePermissionRequestV1::ExternalRequest(url) => {
+            crate::v01::RemotePermissionRequest::ExternalRequest(url) => {
                 let host = url_host(&url).unwrap_or(url);
                 vec![RemotePermission::Remote(vec![host])]
             }
-            crate::v01::RemotePermissionRequestV1::TransactionSubmit => {
+            crate::v01::RemotePermissionRequest::TransactionSubmit => {
                 vec![RemotePermission::ChainSubmit]
             }
         })
     }
 }
 
-impl TryFrom<Vec<RemotePermission>> for crate::v01::RemotePermissionRequestV1 {
+impl TryFrom<Vec<RemotePermission>> for crate::v01::RemotePermissionRequest {
     type Error = ();
 
     fn try_from(_value: Vec<RemotePermission>) -> Result<Self, Self::Error> {

@@ -1,11 +1,11 @@
 //! Unified [`Chat`] trait.
 
 use crate::versioned::chat::{
-    HostChatActionItem, HostChatCreateRoomError, HostChatCreateRoomRequest,
+    HostChatActionSubscribeItem, HostChatCreateRoomError, HostChatCreateRoomRequest,
     HostChatCreateRoomResponse, HostChatCreateSimpleGroupError, HostChatCreateSimpleGroupRequest,
-    HostChatCreateSimpleGroupResponse, HostChatListItem, HostChatPostMessageError,
+    HostChatCreateSimpleGroupResponse, HostChatListSubscribeItem, HostChatPostMessageError,
     HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotError,
-    HostChatRegisterBotRequest, HostChatRegisterBotResponse, ProductChatCustomMessageRenderItem,
+    HostChatRegisterBotRequest, HostChatRegisterBotResponse, ProductChatCustomMessageRenderSubscribeItem,
 };
 use crate::wire;
 use crate::{CallContext, CallError, Subscription};
@@ -38,7 +38,7 @@ pub trait Chat: Send + Sync {
 
     /// Subscribe to the list of chat rooms.
     #[wire(id = 42)]
-    async fn host_chat_list_subscribe(&self, _cx: &CallContext) -> Subscription<HostChatListItem> {
+    async fn host_chat_list_subscribe(&self, _cx: &CallContext) -> Subscription<HostChatListSubscribeItem> {
         Subscription::empty()
     }
 
@@ -57,7 +57,7 @@ pub trait Chat: Send + Sync {
     async fn host_chat_action_subscribe(
         &self,
         _cx: &CallContext,
-    ) -> Subscription<HostChatActionItem> {
+    ) -> Subscription<HostChatActionSubscribeItem> {
         Subscription::empty()
     }
 
@@ -66,7 +66,7 @@ pub trait Chat: Send + Sync {
     async fn product_chat_custom_message_render_subscribe(
         &self,
         _cx: &CallContext,
-    ) -> Subscription<ProductChatCustomMessageRenderItem> {
+    ) -> Subscription<ProductChatCustomMessageRenderSubscribeItem> {
         Subscription::empty()
     }
 

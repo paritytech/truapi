@@ -44,7 +44,7 @@ Implement one or more unified sub-traits. `TrUApi` is a blanket trait over the f
 use truapi::{CallContext, CallError, Subscription};
 use truapi::api::{AccountManagement, TrUApi};
 use truapi::versioned::account::{
-    HostAccountConnectionStatusItem,
+    HostAccountConnectionStatusSubscribeItem,
     HostAccountGetError,
     HostAccountGetRequest,
     HostAccountGetResponse,
@@ -69,7 +69,7 @@ impl AccountManagement for MyHost {
     async fn host_account_connection_status_subscribe(
         &self,
         _cx: &CallContext,
-    ) -> Subscription<HostAccountConnectionStatusItem> {
+    ) -> Subscription<HostAccountConnectionStatusSubscribeItem> {
         Subscription::empty()
     }
 }
@@ -81,10 +81,10 @@ Subscription endpoints use `Subscription<T>` so hosts can stream versioned items
 
 ```rust
 use truapi::Subscription;
-use truapi::versioned::account::HostAccountConnectionStatusItem;
+use truapi::versioned::account::HostAccountConnectionStatusSubscribeItem;
 
 fn _subscription_shape(
-) -> Subscription<HostAccountConnectionStatusItem> {
+) -> Subscription<HostAccountConnectionStatusSubscribeItem> {
     Subscription::empty()
 }
 ```

@@ -37,10 +37,10 @@ export class AccountManagementClient {
       onData: (payload) =>
         onData(
           (
-            T.HostAccountConnectionStatusItem.dec(payload) as {
+            T.HostAccountConnectionStatusSubscribeItem.dec(payload) as {
               tag: "V1";
               value: T.AccountConnectionStatus;
-            } & T.HostAccountConnectionStatusItem
+            } & T.HostAccountConnectionStatusSubscribeItem
           ).value,
         ),
       onInterrupt,
@@ -479,10 +479,10 @@ export class ChatClient {
       onData: (payload) =>
         onData(
           (
-            T.HostChatListItem.dec(payload) as {
+            T.HostChatListSubscribeItem.dec(payload) as {
               tag: "V1";
               value: Array<T.ChatRoom>;
-            } & T.HostChatListItem
+            } & T.HostChatListSubscribeItem
           ).value,
         ),
       onInterrupt,
@@ -524,10 +524,10 @@ export class ChatClient {
       onData: (payload) =>
         onData(
           (
-            T.HostChatActionItem.dec(payload) as {
+            T.HostChatActionSubscribeItem.dec(payload) as {
               tag: "V1";
               value: T.ReceivedChatAction;
-            } & T.HostChatActionItem
+            } & T.HostChatActionSubscribeItem
           ).value,
         ),
       onInterrupt,
@@ -549,10 +549,10 @@ export class ChatClient {
       onData: (payload) =>
         onData(
           (
-            T.ProductChatCustomMessageRenderItem.dec(payload) as {
+            T.ProductChatCustomMessageRenderSubscribeItem.dec(payload) as {
               tag: "V1";
               value: T.CustomMessageRenderRequest;
-            } & T.ProductChatCustomMessageRenderItem
+            } & T.ProductChatCustomMessageRenderSubscribeItem
           ).value,
         ),
       onInterrupt,
@@ -702,10 +702,10 @@ export class PaymentClient {
       onData: (payload) =>
         onData(
           (
-            T.HostPaymentBalanceItem.dec(payload) as {
+            T.HostPaymentBalanceSubscribeItem.dec(payload) as {
               tag: "V2";
               value: T.PaymentBalance;
-            } & T.HostPaymentBalanceItem
+            } & T.HostPaymentBalanceSubscribeItem
           ).value,
         ),
       onInterrupt,
@@ -748,10 +748,10 @@ export class PaymentClient {
       onData: (payload) =>
         onData(
           (
-            T.HostPaymentStatusItem.dec(payload) as {
+            T.HostPaymentStatusSubscribeItem.dec(payload) as {
               tag: "V2";
               value: T.PaymentStatus;
-            } & T.HostPaymentStatusItem
+            } & T.HostPaymentStatusSubscribeItem
           ).value,
         ),
       onInterrupt,
@@ -783,7 +783,7 @@ export class PermissionsClient {
 
   /** Request a device-capability permission from the user. */
   async devicePermission(
-    request: T.DevicePermissionRequest,
+    request: T.V01HostDevicePermissionRequest,
   ): Promise<Result<boolean, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<boolean, T.GenericError>
@@ -800,7 +800,7 @@ export class PermissionsClient {
 
   /** Request one or more remote-operation permissions. */
   async permission(
-    request: T.RemotePermissionRequestV1,
+    request: T.V01RemotePermissionRequest,
   ): Promise<Result<boolean, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<boolean, T.GenericError>
@@ -908,7 +908,7 @@ export class SigningClient {
 
   /** Sign raw bytes or a message. */
   async signRaw(
-    request: T.SigningRawPayload,
+    request: T.V01SigningRawPayload,
   ): Promise<Result<T.SigningResult, T.SigningError>> {
     const result = await this.transport.request<
       S.ResultPayload<T.SigningResult, T.SigningError>
@@ -925,7 +925,7 @@ export class SigningClient {
 
   /** Sign a Substrate extrinsic payload. */
   async signPayload(
-    request: T.SigningPayload,
+    request: T.V01SigningPayload,
   ): Promise<Result<T.SigningResult, T.SigningError>> {
     const result = await this.transport.request<
       S.ResultPayload<T.SigningResult, T.SigningError>

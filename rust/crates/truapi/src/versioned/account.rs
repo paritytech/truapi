@@ -28,7 +28,7 @@ versioned_type! {
     /// Error wrapper for `host_get_non_product_accounts`.
     pub enum HostGetNonProductAccountsError { V1 => v01::RequestCredentialsError }
     /// Subscription item wrapper for `host_account_connection_status_subscribe`.
-    pub enum HostAccountConnectionStatusItem { V1 => v01::AccountConnectionStatus }
+    pub enum HostAccountConnectionStatusSubscribeItem { V1 => v01::AccountConnectionStatus }
     /// Request wrapper for `host_get_user_id` (V0.2+ only - no V0.1 counterpart).
     pub enum HostGetUserIdRequest { V2 }
     /// Response wrapper for `host_get_user_id` (V0.2+ only).

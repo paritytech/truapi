@@ -9,9 +9,9 @@ versioned_type! {
     /// 'Location')` enum; V2 widens it per RFC-0001.
     pub enum HostDevicePermissionRequest {
         /// Pre-RFC-0001 four-variant enum, as shipped by `@novasamatech/host-api@0.6.x`.
-        V1 => v01::DevicePermissionRequest,
+        V1 => v01::HostDevicePermissionRequest,
         /// RFC-0001 nine-variant enum.
-        V2 => v02::DevicePermission,
+        V2 => v02::HostDevicePermissionRequest,
     }
     /// Response wrapper for `host_device_permission`.
     pub enum HostDevicePermissionResponse { V1 => bool, V2 => bool }
@@ -24,7 +24,7 @@ versioned_type! {
     /// entries per RFC-0001.
     pub enum RemotePermissionRequest {
         /// Pre-RFC-0001 single-permission request.
-        V1 => v01::RemotePermissionRequestV1,
+        V1 => v01::RemotePermissionRequest,
         /// RFC-0001 batch request.
         V2 => Vec<v02::RemotePermission>,
     }
@@ -41,7 +41,7 @@ mod tests {
 
     #[test]
     fn v1_external_request_upgrades_to_v2_remote_domain() {
-        let v1 = RemotePermissionRequest::V1(v01::RemotePermissionRequestV1::ExternalRequest(
+        let v1 = RemotePermissionRequest::V1(v01::RemotePermissionRequest::ExternalRequest(
             "https://api.example.com/x".into(),
         ));
         assert_eq!(
@@ -54,7 +54,7 @@ mod tests {
 
     #[test]
     fn v1_transaction_submit_upgrades_to_v2_chain_submit() {
-        let v1 = RemotePermissionRequest::V1(v01::RemotePermissionRequestV1::TransactionSubmit);
+        let v1 = RemotePermissionRequest::V1(v01::RemotePermissionRequest::TransactionSubmit);
         assert_eq!(
             v1.into_version(Version::V2),
             Ok(RemotePermissionRequest::V2(vec![
@@ -65,7 +65,7 @@ mod tests {
 
     #[test]
     fn v1_external_request_with_unparseable_url_falls_back_to_raw() {
-        let v1 = RemotePermissionRequest::V1(v01::RemotePermissionRequestV1::ExternalRequest(
+        let v1 = RemotePermissionRequest::V1(v01::RemotePermissionRequest::ExternalRequest(
             "not a url".into(),
         ));
         assert_eq!(
@@ -78,7 +78,7 @@ mod tests {
 
     #[test]
     fn device_permission_v2_to_v1_is_rejected_when_no_v1_counterpart_exists() {
-        let v2 = HostDevicePermissionRequest::V2(v02::DevicePermission::Notifications);
+        let v2 = HostDevicePermissionRequest::V2(v02::HostDevicePermissionRequest::Notifications);
         assert_eq!(v2.into_version(Version::V1), Err(()));
     }
 

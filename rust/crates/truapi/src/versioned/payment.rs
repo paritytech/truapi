@@ -6,9 +6,9 @@ versioned_type! {
     /// Subscription request wrapper for `host_payment_balance_subscribe` (V0.2+ only).
     pub enum HostPaymentBalanceSubscribeRequest { V2 }
     /// Subscription item wrapper for `host_payment_balance_subscribe` (V0.2+ only).
-    pub enum HostPaymentBalanceItem { V2 => v02::PaymentBalance }
+    pub enum HostPaymentBalanceSubscribeItem { V2 => v02::PaymentBalance }
     /// Error wrapper for `host_payment_balance_subscribe` (V0.2+ only).
-    pub enum HostPaymentBalanceError { V2 => v02::PaymentBalanceError }
+    pub enum HostPaymentBalanceSubscribeError { V2 => v02::PaymentBalanceError }
     /// Request wrapper for `host_payment_top_up` (V0.2+ only).
     pub enum HostPaymentTopUpRequest { V2 => v02::PaymentTopUpRequest }
     /// Response wrapper for `host_payment_top_up` (V0.2+ only).
@@ -24,7 +24,7 @@ versioned_type! {
     /// Subscription request wrapper for `host_payment_status_subscribe` (V0.2+ only).
     pub enum HostPaymentStatusSubscribeRequest { V2 => v02::PaymentId }
     /// Subscription item wrapper for `host_payment_status_subscribe` (V0.2+ only).
-    pub enum HostPaymentStatusItem { V2 => v02::PaymentStatus }
+    pub enum HostPaymentStatusSubscribeItem { V2 => v02::PaymentStatus }
     /// Error wrapper for `host_payment_status_subscribe` (V0.2+ only).
-    pub enum HostPaymentStatusError { V2 => v02::PaymentStatusError }
+    pub enum HostPaymentStatusSubscribeError { V2 => v02::PaymentStatusError }
 }

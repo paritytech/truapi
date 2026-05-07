@@ -1,8 +1,8 @@
 //! Unified [`Payment`] trait (V0.2+).
 
 use crate::versioned::payment::{
-    HostPaymentBalanceItem, HostPaymentBalanceSubscribeRequest, HostPaymentRequestError,
-    HostPaymentRequestRequest, HostPaymentRequestResponse, HostPaymentStatusItem,
+    HostPaymentBalanceSubscribeItem, HostPaymentBalanceSubscribeRequest, HostPaymentRequestError,
+    HostPaymentRequestRequest, HostPaymentRequestResponse, HostPaymentStatusSubscribeItem,
     HostPaymentStatusSubscribeRequest, HostPaymentTopUpError, HostPaymentTopUpRequest,
     HostPaymentTopUpResponse,
 };
@@ -21,7 +21,7 @@ pub trait Payment: Send + Sync {
         &self,
         _cx: &CallContext,
         _request: HostPaymentBalanceSubscribeRequest,
-    ) -> Subscription<HostPaymentBalanceItem> {
+    ) -> Subscription<HostPaymentBalanceSubscribeItem> {
         Subscription::empty()
     }
 
@@ -41,7 +41,7 @@ pub trait Payment: Send + Sync {
         &self,
         _cx: &CallContext,
         _request: HostPaymentStatusSubscribeRequest,
-    ) -> Subscription<HostPaymentStatusItem> {
+    ) -> Subscription<HostPaymentStatusSubscribeItem> {
         Subscription::empty()
     }
 
