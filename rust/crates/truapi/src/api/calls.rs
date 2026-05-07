@@ -29,13 +29,7 @@ use crate::{CallContext, CallError};
 /// - 112-113: `host_request_login` (request, response)
 #[async_trait::async_trait]
 pub trait TrUApiCalls: Send + Sync {
-    /// Negotiates the wire codec version with the product. Required for
-    /// compatibility with `@novasamatech/host-api`-built products that gate
-    /// "connected" state on a successful handshake response.
-    ///
-    /// Default impl accepts codec version `1` (Novasama's `JAM_CODEC_PROTOCOL_ID`)
-    /// and rejects everything else with `UnsupportedProtocolVersion`. Hosts that
-    /// want to gate handshake on additional preconditions can override.
+    /// Negotiates the wire codec version with the product.
     #[wire(id = 0)]
     async fn host_handshake(
         &self,

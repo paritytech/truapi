@@ -634,7 +634,7 @@ fn path_suffix(path: &str) -> &str {
 }
 
 /// Whether `ty` is a `&CallContext` rustdoc param. Used to filter the ambient
-/// [`truapi::CallContext`] out of generated API signatures because it is a
+/// `CallContext` out of generated API signatures because it is a
 /// framework-level dependency, not part of the public wire contract.
 fn is_call_context_ref(ty: &serde_json::Value) -> bool {
     let Some(inner) = ty.get("borrowed_ref").and_then(|r| r.get("type")) else {
