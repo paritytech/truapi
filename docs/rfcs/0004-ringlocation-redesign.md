@@ -16,7 +16,7 @@ pr:
 
 ## Summary
 
-This RFC proposes replacing the current `RingLocation` struct in `host_account_create_proof` with a junction-based addressing scheme. The current design is fragile when rings change frequently (e.g. new members are added) because it relies on `ring_root_hash`, which becomes stale mid-request. It also cannot address rings within pallets that host multiple ring collections. The proposed design uses a `Vec<RingLocationJunction>` path that references only stable, immutable identifiers and returns the ring revision alongside the proof.
+This RFC proposes replacing the current `RingLocation` struct in `host_account_create_proof` with a junction-based addressing scheme. The current design is fragile when rings change frequently (e.g. new members are added) because it relies on `ring_root_hash`, which becomes stale mid-request. It also cannot address rings within pallets that host multiple ring collections. The proposed design uses a `Vec<RingLocationJunction>` path that references only stable, immutable identifiers and returns the ring index and revision alongside the proof, so products can pass them directly to downstream precompiles without additional on-chain queries.
 
 ## Motivation
 
@@ -71,14 +71,14 @@ enum RingLocationJunction {
     Chain(GenesisHash),
     PalletInstance(u8),
     CollectionId(Vec<u8>),
-    RingIndex(u32),
 }
 
 type RingLocation = Vec<RingLocationJunction>;
 
 struct RingVrfProof {
     proof: Vec<u8>,
-    ring_revision: Option<u32>, // None when the ring is immutable
+    ring_index: u32,
+    ring_revision: u32,
 }
 
 fn host_account_create_proof(
@@ -90,11 +90,13 @@ fn host_account_create_proof(
 
 ### Design Rationale
 
-**Only stable identifiers in the request.** The product supplies a path of junctions that are constant for the lifetime of the ring — chain genesis hash, pallet instance, collection id, and ring index. None of these change when ring membership is updated. The host resolves the current ring root internally, eliminating the race condition.
+**Only stable identifiers in the request.** The product supplies a path of junctions that are constant for the lifetime of the ring — chain genesis hash, pallet instance, and collection id. None of these change when ring membership is updated. The host resolves the current ring root and the caller's ring index internally, eliminating the race condition.
 
-**Ring revision in the response.** The host knows which revision of the ring it used to generate the proof. By returning `ring_revision`, the product can pass it along to downstream consumers (e.g. coinage's recycler transaction extension) without a separate lookup.
+**Ring index and revision in the response.** The host knows which ring index the caller occupies and which revision of the ring it used to generate the proof. By returning both `ring_index` and `ring_revision`, the product can pass them directly to downstream consumers (e.g. the `personhoodInfoByProof` precompile from [individuality#891](https://github.com/paritytech/individuality/pull/891), or coinage's recycler transaction extension) without a separate lookup. Moving `ring_index` to the output also means the product never needs to discover or track its own position in the ring — the host resolves it from the product's derived account.
 
 **Extensible junction set.** New junction variants can be added in the future without breaking existing consumers, since `RingLocation` is simply a vector of junctions. For example, if a new addressing dimension is introduced (e.g. a sub-collection), a new `RingLocationJunction` variant can be appended.
+
+**Abstraction-friendly.** Products should not need to know low-level ring addressing details. The junction-based path lets the host abstract away pallet instances and collection ids behind a well-known alias or default path in the future, while the structured response (`ring_index`, `ring_revision`, `proof`) gives products everything they need to call downstream precompiles without any additional on-chain queries.
 
 ### Migration
 
@@ -111,12 +113,15 @@ RingLocation {
 }
 
 // After
-vec![
+let location = vec![
     RingLocationJunction::Chain(chain_genesis),
     RingLocationJunction::PalletInstance(42),
     RingLocationJunction::CollectionId(collection),
-    RingLocationJunction::RingIndex(index),
-]
+];
+let result = host_account_create_proof(domain, location, message)?;
+// result.proof      — the ring-vrf proof bytes
+// result.ring_index — the caller's index in the ring (for precompile calls)
+// result.ring_revision — the ring revision the proof was generated against
 ```
 
 ### Stakeholders
@@ -126,7 +131,7 @@ vec![
 
 ### Testing, Security, and Privacy
 
-- **Testing**: Implementations should verify that proof generation succeeds even when ring membership changes between request construction and proof generation. The returned `ring_revision` must match the actual ring state used for the proof.
+- **Testing**: Implementations should verify that proof generation succeeds even when ring membership changes between request construction and proof generation. The returned `ring_index` and `ring_revision` must match the actual ring state used for the proof.
 - **Security**: The host must validate that the junction path resolves to a real ring. Invalid or malicious paths should return `CreateProofErr` rather than panicking or producing invalid proofs.
 - **Privacy**: No change from the current model — the same information is exchanged, just addressed differently.
 
@@ -160,11 +165,15 @@ This is a breaking change to the `host_account_create_proof` method signature. B
 
 1. Should the junction ordering be enforced (e.g. `Chain` must come first), or is any order acceptable as long as the host can resolve it?
 2. Should `CollectionId` use a fixed-size type (e.g. `[u8; 32]`) instead of `Vec<u8>` for consistency with other on-chain identifiers?
-3. Are there ring identification schemes beyond `(collection_id, ring_index)` that we should anticipate in the junction design?
+3. Are there ring identification schemes beyond `(collection_id)` that we should anticipate in the junction design?
 4. Should `CreateProofErr` gain a new variant (e.g. `RingLocationInvalid`) for unresolvable junction paths, or is the existing `RingNotFound` sufficient?
+5. Should the host provide a well-known default `RingLocation` (e.g. for the canonical personhood ring on the relay chain) so products can request proofs without knowing any chain/pallet/collection details? This would address the ergonomics concern raised in [triangle-js-sdks#81](https://github.com/paritytech/triangle-js-sdks/pull/81).
 
 ## References
 
 - [Host API Design Document v0.5](https://docs.google.com/document/d/1AxKjF15y7gmdl-a6twc5wd8R5xcxKxMO8Ahp2l20v0g/edit?usp=sharing)
 - XCM `MultiLocation` junction model — inspiration for the junction-based addressing pattern
 - [Polkadot People Registry / Ring VRF](https://forum.polkadot.network/t/the-people-registry/12749)
+- [individuality#878](https://github.com/paritytech/individuality/pull/878) — alias-account assignment for derived product addresses
+- [individuality#891](https://github.com/paritytech/individuality/pull/891) — `personhoodInfoByProof` precompile (motivates `ring_index` in the response)
+- [triangle-js-sdks#81 comment](https://github.com/paritytech/triangle-js-sdks/pull/81) — @Zebedeusz's feedback on moving `ring_index` to output and abstraction concerns
