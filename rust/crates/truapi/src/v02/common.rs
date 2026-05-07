@@ -5,9 +5,8 @@ use crate::v01::GenericErr;
 /// Handshake error. Mirrors Novasama's `HandshakeErr` byte-for-byte so that
 /// pre-codegen products (built against `@novasamatech/host-api`) can decode
 /// `host_handshake_response` frames produced by this host.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum HandshakeError {
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum HostHandshakeError {
     Timeout,
     UnsupportedProtocolVersion,
     Unknown(GenericErr),
@@ -19,8 +18,7 @@ pub enum HandshakeError {
 /// `Biometrics` per [RFC 0001] (JIT permissions).
 ///
 /// [RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 #[allow(clippy::upper_case_acronyms)]
 pub enum HostDevicePermissionRequest {
     /// Push notification delivery permission.
@@ -80,13 +78,15 @@ impl TryFrom<HostDevicePermissionRequest> for crate::v01::HostDevicePermissionRe
 ///
 /// [RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66
 /// [issue #64]: https://github.com/paritytech/triangle-js-sdks/issues/64
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum RemotePermission {
     /// HTTP/HTTPS/WS/WSS access to specific domains. Each string is a domain
     /// pattern: `"api.example.com"` (exact), `"*.example.com"` (wildcard
     /// subdomain), or `"*"` (all hosts).
-    Remote(Vec<String>),
+    Remote {
+        /// Domain patterns requested by the product.
+        domains: Vec<String>,
+    },
     /// WebRTC access — can expose the user's IP address.
     WebRtc,
     /// Broadcast signed transactions via
@@ -96,26 +96,37 @@ pub enum RemotePermission {
     StatementSubmit,
 }
 
-impl TryFrom<crate::v01::RemotePermissionRequest> for Vec<RemotePermission> {
+/// Request containing batched remote-operation permissions.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct RemotePermissionRequest {
+    /// Permissions requested by the product.
+    pub permissions: Vec<RemotePermission>,
+}
+
+impl TryFrom<crate::v01::RemotePermissionRequest> for RemotePermissionRequest {
     type Error = ();
 
     fn try_from(value: crate::v01::RemotePermissionRequest) -> Result<Self, Self::Error> {
-        Ok(match value {
-            crate::v01::RemotePermissionRequest::ExternalRequest(url) => {
-                let host = url_host(&url).unwrap_or(url);
-                vec![RemotePermission::Remote(vec![host])]
-            }
-            crate::v01::RemotePermissionRequest::TransactionSubmit => {
-                vec![RemotePermission::ChainSubmit]
-            }
+        Ok(Self {
+            permissions: match value {
+                crate::v01::RemotePermissionRequest::ExternalRequest { url } => {
+                    let host = url_host(&url).unwrap_or(url);
+                    vec![RemotePermission::Remote {
+                        domains: vec![host],
+                    }]
+                }
+                crate::v01::RemotePermissionRequest::TransactionSubmit => {
+                    vec![RemotePermission::ChainSubmit]
+                }
+            },
         })
     }
 }
 
-impl TryFrom<Vec<RemotePermission>> for crate::v01::RemotePermissionRequest {
+impl TryFrom<RemotePermissionRequest> for crate::v01::RemotePermissionRequest {
     type Error = ();
 
-    fn try_from(_value: Vec<RemotePermission>) -> Result<Self, Self::Error> {
+    fn try_from(_value: RemotePermissionRequest) -> Result<Self, Self::Error> {
         Err(())
     }
 }
@@ -131,6 +142,3 @@ fn url_host(input: &str) -> Option<String> {
         Some(host.to_string())
     }
 }
-
-pub type HostHandshakeError = HandshakeError;
-pub type RemotePermissionRequest = Vec<RemotePermission>;

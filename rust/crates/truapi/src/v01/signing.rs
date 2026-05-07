@@ -1,39 +1,37 @@
 use parity_scale_codec::{Decode, Encode};
 
-use super::{GenesisHash, Hex};
-
 /// Full Substrate extrinsic signing payload with all fields needed for signature
 /// generation.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-pub struct SigningPayload {
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostSignPayloadRequest {
     /// Signer address (SS58 or hex).
     pub address: String,
     /// Reference block hash.
-    pub block_hash: Hex,
+    pub block_hash: Vec<u8>,
     /// Reference block number.
-    pub block_number: Hex,
+    pub block_number: Vec<u8>,
     /// Mortality era encoding.
-    pub era: Hex,
+    pub era: Vec<u8>,
     /// Chain genesis hash.
-    pub genesis_hash: GenesisHash,
+    pub genesis_hash: Vec<u8>,
     /// SCALE-encoded call data.
-    pub method: Hex,
+    pub method: Vec<u8>,
     /// Account nonce.
-    pub nonce: Hex,
+    pub nonce: Vec<u8>,
     /// Runtime spec version.
-    pub spec_version: Hex,
+    pub spec_version: Vec<u8>,
     /// Transaction tip.
-    pub tip: Hex,
+    pub tip: Vec<u8>,
     /// Transaction format version.
-    pub transaction_version: Hex,
+    pub transaction_version: Vec<u8>,
     /// Extension identifiers.
     pub signed_extensions: Vec<String>,
     /// Extrinsic version.
     pub version: u32,
     /// For multi-asset tips.
-    pub asset_id: Option<Hex>,
+    pub asset_id: Option<Vec<u8>>,
     /// CheckMetadataHash extension.
-    pub metadata_hash: Option<Hex>,
+    pub metadata_hash: Option<Vec<u8>>,
     /// Metadata mode.
     pub mode: Option<u32>,
     /// Request signed transaction back.
@@ -41,18 +39,23 @@ pub struct SigningPayload {
 }
 
 /// Raw data to sign -- either binary bytes or a string message.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum RawPayload {
     /// Raw binary data to sign.
-    Bytes(Vec<u8>),
+    Bytes {
+        /// Raw binary payload bytes.
+        bytes: Vec<u8>,
+    },
     /// String message to sign.
-    Payload(String),
+    Payload {
+        /// String payload to sign.
+        payload: String,
+    },
 }
 
 /// A raw signing request pairing an address with raw data.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-pub struct SigningRawPayload {
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostSignRawRequest {
     /// Signer address.
     pub address: String,
     /// The data to sign.
@@ -60,18 +63,17 @@ pub struct SigningRawPayload {
 }
 
 /// Result of a signing operation.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-pub struct SigningResult {
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostSignPayloadResponse {
     /// The cryptographic signature.
-    pub signature: Hex,
+    pub signature: Vec<u8>,
     /// Full signed transaction, if requested.
-    pub signed_transaction: Option<Hex>,
+    pub signed_transaction: Option<Vec<u8>>,
 }
 
 /// Signing operation error.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum SigningError {
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum HostSignPayloadError {
     /// Payload could not be deserialized.
     FailedToDecode,
     /// User rejected signing.
@@ -82,12 +84,23 @@ pub enum SigningError {
     Unknown { reason: String },
 }
 
-pub type HostSignPayloadRequest = SigningPayload;
-pub type HostSignPayloadResponse = SigningResult;
-pub type HostSignPayloadError = SigningError;
-pub type HostSignRawRequest = SigningRawPayload;
-pub type HostSignRawResponse = SigningResult;
-pub type HostSignRawError = SigningError;
-pub type HostCreateTransactionResponse = Hex;
-pub type HostCreateTransactionWithNonProductAccountRequest = super::VersionedTxPayload;
-pub type HostCreateTransactionWithNonProductAccountResponse = Hex;
+/// Response containing a created transaction.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostCreateTransactionResponse {
+    /// SCALE-encoded signed transaction.
+    pub transaction: Vec<u8>,
+}
+
+/// Request to create a transaction with a non-product account.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostCreateTransactionWithNonProductAccountRequest {
+    /// Versioned transaction payload to sign.
+    pub payload: super::VersionedTxPayload,
+}
+
+/// Response containing a transaction created with a non-product account.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostCreateTransactionWithNonProductAccountResponse {
+    /// SCALE-encoded signed transaction.
+    pub transaction: Vec<u8>,
+}

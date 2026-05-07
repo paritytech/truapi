@@ -20,6 +20,7 @@ function unwrap(result, message) {
 function providerFixture() {
   const sent = [];
   let listener = () => {};
+  let closeListener = () => {};
   return {
     sent,
     provider: {
@@ -30,17 +31,24 @@ function providerFixture() {
         listener = callback;
         return () => {};
       },
+      subscribeClose(callback) {
+        closeListener = callback;
+        return () => {};
+      },
       dispose() {},
     },
     receive(message) {
       listener(message);
+    },
+    close(error) {
+      closeListener(error);
     },
   };
 }
 
 function handshakeResponsePayload(value) {
   return indexedTaggedUnion({
-    V1: [0, result(unit, T.HandshakeError)],
+    V1: [0, result(unit, T.V02HostHandshakeError)],
   }).enc({ tag: "V1", value });
 }
 
@@ -51,11 +59,18 @@ function handshakeResponsePayload(value) {
   const transport = createTransport(fixture.provider);
   const client = createClient(transport);
 
-  void client.accountManagement.accountGet(["foo", 0]);
+  const request = {
+    productAccountId: {
+      dotNsIdentifier: "foo",
+      derivationIndex: 0,
+    },
+  };
+
+  void client.accountManagement.accountGet(request);
 
   const expectedPayload = T.HostAccountGetRequest.enc({
     tag: "V1",
-    value: ["foo", 0],
+    value: request,
   });
   const expectedFrame = new Uint8Array(
     str.enc("p:1").length + 1 + expectedPayload.length,
@@ -80,7 +95,7 @@ function handshakeResponsePayload(value) {
 
   const expectedPayload = T.HostHandshakeRequest.enc({
     tag: "V1",
-    value: 1,
+    value: { codecVersion: 1 },
   });
   const expectedFrame = new Uint8Array(
     str.enc("p:1").length + 1 + expectedPayload.length,
@@ -122,7 +137,7 @@ function handshakeResponsePayload(value) {
 
   const requestPayload = T.HostHandshakeRequest.enc({
     tag: "V1",
-    value: 1,
+    value: { codecVersion: 1 },
   });
   const requestFrame = unwrap(
     encodeWireMessage({
@@ -210,6 +225,83 @@ function handshakeResponsePayload(value) {
   fixture.receive(frame);
 
   assert.deepEqual(interrupts, [[]]);
+}
+
+// Malformed receive payloads are local decode failures, not protocol
+// interrupts or transport closes. Generated subscriptions surface them through
+// onError and keep the subscription alive for later receive frames.
+{
+  const fixture = providerFixture();
+  const transport = createTransport(fixture.provider);
+  const client = createClient(transport);
+  const events = [];
+  const interrupts = [];
+  const errors = [];
+  const closes = [];
+
+  const sub = client.accountManagement.accountConnectionStatusSubscribe({
+    onData: (value) => events.push(value),
+    onInterrupt: (...args) => interrupts.push(args),
+    onError: (error) => errors.push(error),
+    onClose: (error) => closes.push(error),
+  });
+
+  const malformedFrame = unwrap(
+    encodeWireMessage({
+      requestId: sub.subscriptionId,
+      payload: {
+        tag: "host_account_connection_status_subscribe_receive",
+        value: unit.enc(undefined),
+      },
+    }),
+    "encode malformed receive",
+  );
+  fixture.receive(malformedFrame);
+
+  assert.deepEqual(events, []);
+  assert.deepEqual(interrupts, []);
+  assert.deepEqual(closes, []);
+  assert.equal(errors.length, 1);
+  assert.ok(errors[0] instanceof Error);
+
+  const validFrame = unwrap(
+    encodeWireMessage({
+      requestId: sub.subscriptionId,
+      payload: {
+        tag: "host_account_connection_status_subscribe_receive",
+        value: T.HostAccountConnectionStatusSubscribeItem.enc({
+          tag: "V1",
+          value: { tag: "Connected", value: undefined },
+        }),
+      },
+    }),
+    "encode receive after malformed receive",
+  );
+  fixture.receive(validFrame);
+
+  assert.deepEqual(events, [{ tag: "Connected", value: undefined }]);
+}
+
+// Provider close/error is a transport lifecycle event, surfaced separately via
+// onClose.
+{
+  const fixture = providerFixture();
+  const transport = createTransport(fixture.provider);
+  const client = createClient(transport);
+  const errors = [];
+  const closes = [];
+
+  client.accountManagement.accountConnectionStatusSubscribe({
+    onData: () => {},
+    onError: (error) => errors.push(error),
+    onClose: (error) => closes.push(error),
+  });
+
+  fixture.close(new Error("provider closed"));
+
+  assert.deepEqual(errors, []);
+  assert.equal(closes.length, 1);
+  assert.equal(closes[0].message, "provider closed");
 }
 
 console.log("transport version wrapping tests passed");

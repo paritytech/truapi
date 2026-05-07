@@ -72,9 +72,9 @@ export const services: ServiceInfo[] = [
         description:
           "Requests permission for an ExternalRequest (a URL string) or TransactionSubmit. Returns true if granted.",
         requestDescription:
-          "V01RemotePermissionRequest enum: ExternalRequest(str) | TransactionSubmit",
+          "V01RemotePermissionRequest enum: ExternalRequest { url } | TransactionSubmit",
         defaultRequest:
-          '{ "tag": "ExternalRequest", "value": "https://api.example.com" }',
+          '{ "tag": "ExternalRequest", "value": { "url": "https://api.example.com" } }',
       },
     ],
   },
@@ -113,8 +113,9 @@ export const services: ServiceInfo[] = [
         description:
           "Retrieves a product-specific derived account. The product provides a DotNS identifier and derivation index; the host returns the derived public key (and optional human-readable name) for that combination.",
         requestDescription:
-          "ProductAccountId is a Tuple(DotNsIdentifier, DerivationIndex)",
-        defaultRequest: '["truapi-playground.dot", 0]',
+          "HostAccountGetRequest: productAccountId { dotNsIdentifier, derivationIndex }",
+        defaultRequest:
+          '{ "productAccountId": { "dotNsIdentifier": "truapi-playground.dot", "derivationIndex": 0 } }',
       },
       {
         name: "host_account_get_alias",
@@ -122,8 +123,9 @@ export const services: ServiceInfo[] = [
         description:
           "Retrieves a contextual alias (ring VRF based) for a product account, plus the context bytes used to derive it.",
         requestDescription:
-          "ProductAccountId is a Tuple(DotNsIdentifier, DerivationIndex)",
-        defaultRequest: '["truapi-playground.dot",0]',
+          "HostAccountGetAliasRequest: productAccountId { dotNsIdentifier, derivationIndex }",
+        defaultRequest:
+          '{ "productAccountId": { "dotNsIdentifier": "truapi-playground.dot", "derivationIndex": 0 } }',
       },
       {
         name: "host_account_create_proof",
@@ -131,7 +133,7 @@ export const services: ServiceInfo[] = [
         description:
           "Creates a ring VRF proof for a product account against a specific ring, signing the provided context bytes. Returns the proof bytes.",
         requestDescription: "ProductAccountId, RingLocation, and context bytes",
-        defaultRequest: `{ "productAccountId": ["truapi-playground.dot", 0], "ringLocation": { "genesisHash": "${PASEO_GENESIS}", "ringRootHash": "${PASEO_GENESIS}", "hints": { "palletInstance": 42 } }, "context": "0x" }`,
+        defaultRequest: `{ "productAccountId": { "dotNsIdentifier": "truapi-playground.dot", "derivationIndex": 0 }, "ringLocation": { "genesisHash": "${PASEO_GENESIS}", "ringRootHash": "${PASEO_GENESIS}", "hints": { "palletInstance": 42 } }, "context": "0x" }`,
       },
       {
         name: "host_get_non_product_accounts",
@@ -176,7 +178,7 @@ export const services: ServiceInfo[] = [
         requestDescription:
           "SigningRawPayload object: signer address (SS58 or hex) and raw data tagged as Bytes or Payload.",
         defaultRequest:
-          '{ "address": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY", "data": { "tag": "Bytes", "value": "0x48656c6c6f" } }',
+          '{ "address": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY", "data": { "tag": "Bytes", "value": { "bytes": "0x48656c6c6f" } } }',
       },
       {
         name: "host_create_transaction",
@@ -185,7 +187,7 @@ export const services: ServiceInfo[] = [
           "Requests the host to create and sign a full transaction from a structured payload, using a product-derived account. Returns the signed transaction bytes.",
         requestDescription: "ProductAccountId and a VersionedTxPayload",
         defaultRequest:
-          '{ "productAccountId": ["truapi-playground.dot", 0], "payload": { "tag": "V1", "value": { "signer": null, "callData": "0x0000", "extensions": [], "txExtVersion": 0, "context": { "metadata": "0x", "tokenSymbol": "DOT", "tokenDecimals": 10, "bestBlockHeight": 0 } } } }',
+          '{ "productAccountId": { "dotNsIdentifier": "truapi-playground.dot", "derivationIndex": 0 }, "payload": { "tag": "V1", "value": { "signer": null, "callData": "0x0000", "extensions": [], "txExtVersion": 0, "context": { "metadata": "0x", "tokenSymbol": "DOT", "tokenDecimals": 10, "bestBlockHeight": 0 } } } }',
       },
       {
         name: "host_create_transaction_with_non_product_account",
@@ -279,7 +281,7 @@ export const services: ServiceInfo[] = [
           "Creates a cryptographic proof for a statement using a product account's key. Returns one of Sr25519, Ed25519, Ecdsa, or OnChain proof variants.",
         requestDescription: "ProductAccountId and a Statement to sign",
         defaultRequest:
-          '{ "productAccountId": ["truapi-playground.dot", 0], "statement": { "proof": null, "decryptionKey": null, "expiry": "9999999999999n", "channel": null, "topics": [], "data": null } }',
+          '{ "productAccountId": { "dotNsIdentifier": "truapi-playground.dot", "derivationIndex": 0 }, "statement": { "proof": null, "decryptionKey": null, "expiry": "9999999999999n", "channel": null, "topics": [], "data": null } }',
       },
       {
         name: "remote_statement_store_submit",
@@ -430,9 +432,9 @@ export const services: ServiceInfo[] = [
         description:
           "Tops up the user's payment balance from a product-controlled funding source (ProductAccount or PrivateKey). This operation is always in the user's favour and does not require user consent.",
         requestDescription:
-          "PaymentTopUpRequest: amount (Balance, u128) and source (PaymentTopUpSource enum: ProductAccount(ProductAccountId) | PrivateKey([u8; 32])).",
+          "PaymentTopUpRequest: amount (Balance) and source (PaymentTopUpSource enum: ProductAccount { derivationIndex } | PrivateKey { ed25519PrivateKey }).",
         defaultRequest:
-          '{ "amount": "0n", "source": { "tag": "ProductAccount", "value": ["truapi-playground.dot", 0] } }',
+          '{ "amount": "0n", "source": { "tag": "ProductAccount", "value": { "derivationIndex": 0 } } }',
       },
       {
         name: "host_payment_request",

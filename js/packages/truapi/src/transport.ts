@@ -24,6 +24,8 @@ export interface RequestParams<Response> {
 export interface SubscribeCallbacks<Item> {
   onData: (data: Item) => void;
   onInterrupt?: () => void;
+  onError?: (error: Error) => void;
+  onClose?: (error: Error) => void;
 }
 
 /** Options object accepted by `TrUApiTransport.subscribe`. Generated client

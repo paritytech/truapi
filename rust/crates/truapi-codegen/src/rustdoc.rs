@@ -102,6 +102,7 @@ pub struct TypeDef {
 pub enum TypeDefKind {
     Alias(TypeRef),
     Struct(Vec<FieldDef>),
+    TupleStruct(Vec<TypeRef>),
     Enum(Vec<VariantDef>),
 }
 
@@ -876,6 +877,46 @@ fn extract_struct(
     let kind = struct_inner
         .get("kind")
         .with_context(|| format!("Struct `{}` missing rustdoc kind", name))?;
+
+    if let Some(field_ids) = kind.get("tuple").and_then(|tuple| {
+        tuple.as_array().cloned().or_else(|| {
+            tuple
+                .get("fields")
+                .and_then(|fields| fields.as_array())
+                .cloned()
+        })
+    }) {
+        let mut fields = Vec::new();
+        for field_id in field_ids {
+            let field_id = value_id(&field_id)
+                .with_context(|| format!("Tuple struct `{}` had a non-item field id", name))?;
+            let field_item = krate.index.get(&field_id).with_context(|| {
+                format!(
+                    "Tuple struct `{}` references missing field `{}`",
+                    name, field_id
+                )
+            })?;
+            let field_type = field_item.inner.get("struct_field").with_context(|| {
+                format!(
+                    "Tuple struct `{}` field `{}` is missing rustdoc type info",
+                    name, field_id
+                )
+            })?;
+            fields.push(resolve_type(field_type, names).with_context(|| {
+                format!(
+                    "Tuple struct `{}` field `{}` has an unsupported type",
+                    name, field_id
+                )
+            })?);
+        }
+
+        return Ok(TypeDef {
+            name,
+            generic_params,
+            kind: TypeDefKind::TupleStruct(fields),
+            docs: clean_docs(item.docs.as_deref()),
+        });
+    }
 
     let field_ids = kind
         .get("plain")

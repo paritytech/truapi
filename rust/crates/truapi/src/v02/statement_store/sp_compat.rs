@@ -15,8 +15,7 @@ use crate::v01::{SignedStatement, Statement, StatementProof};
 
 /// Reason a `Statement` / `SignedStatement` cannot be mapped into an
 /// `sp_statement_store::Statement`.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StatementMappingError {
     /// Host supplied more than `sp_statement_store::MAX_TOPICS` topics.
     TooManyTopics {

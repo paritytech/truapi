@@ -32,7 +32,7 @@ function protocolVersionTag(version: number): `V${number}` {
   return `V${version}` as `V${number}`;
 }
 
-type HandshakeResponse = ResultPayload<undefined, T.HandshakeError>;
+type HandshakeResponse = ResultPayload<undefined, T.HostHandshakeError>;
 const HANDSHAKE_WIRE_VERSION = 1;
 
 function handshakeResponseCodec(
@@ -41,7 +41,7 @@ function handshakeResponseCodec(
   return indexedTaggedUnion({
     [protocolVersionTag(version)]: [
       version - 1,
-      result(unit, T.HandshakeError),
+      result(unit, T.HostHandshakeError),
     ] as const,
   }) as Codec<{ tag: `V${number}`; value: HandshakeResponse }>;
 }
@@ -62,8 +62,11 @@ function encodeUnsupportedHandshakeResponse(version: number): Uint8Array {
     value: {
       success: false,
       value: {
-        tag: "UnsupportedProtocolVersion",
-        value: undefined,
+        tag: "V1",
+        value: {
+          tag: "UnsupportedProtocolVersion",
+          value: undefined,
+        },
       },
     },
   });
@@ -196,9 +199,10 @@ export function createTransport(
       // Respond with the handshake method's selected wire version. The inner
       // request carries the wire codec version.
       try {
-        const requestedCodecVersion = unwrapVersionedWireValue(
+        const request = unwrapVersionedWireValue(
           T.HostHandshakeRequest.dec(payload.value),
-        );
+        ) as T.V01HostHandshakeRequest;
+        const requestedCodecVersion = request.codecVersion;
         const response =
           requestedCodecVersion === codecVersion
             ? encodeSuccessfulHandshakeResponse(HANDSHAKE_WIRE_VERSION)

@@ -1,10 +1,8 @@
 use parity_scale_codec::{Decode, Encode};
 
-use super::Bytes;
-
 /// Request to create a chat room.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-pub struct ChatRoomRequest {
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostChatCreateRoomRequest {
     /// Unique room identifier.
     pub room_id: String,
     /// Room display name.
@@ -14,24 +12,22 @@ pub struct ChatRoomRequest {
 }
 
 /// Whether the room was newly created or already existed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum ChatRoomRegistrationStatus {
     New,
     Exists,
 }
 
 /// Result of a room registration.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-pub struct ChatRoomRegistrationResult {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+pub struct HostChatCreateRoomResponse {
     /// `New` or `Exists`.
     pub status: ChatRoomRegistrationStatus,
 }
 
 /// Chat room registration error.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum ChatRoomRegistrationError {
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum HostChatCreateRoomError {
     /// Not allowed.
     PermissionDenied,
     /// Catch-all.
@@ -39,8 +35,8 @@ pub enum ChatRoomRegistrationError {
 }
 
 /// Request to register a chat bot.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-pub struct ChatBotRequest {
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostChatRegisterBotRequest {
     /// Unique bot identifier.
     pub bot_id: String,
     /// Bot display name.
@@ -50,24 +46,22 @@ pub struct ChatBotRequest {
 }
 
 /// Whether the bot was newly registered or already existed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum ChatBotRegistrationStatus {
     New,
     Exists,
 }
 
 /// Result of a bot registration.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-pub struct ChatBotRegistrationResult {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+pub struct HostChatRegisterBotResponse {
     /// `New` or `Exists`.
     pub status: ChatBotRegistrationStatus,
 }
 
 /// Chat bot registration error.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum ChatBotRegistrationError {
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum HostChatRegisterBotError {
     /// Not allowed.
     PermissionDenied,
     /// Catch-all.
@@ -75,15 +69,14 @@ pub enum ChatBotRegistrationError {
 }
 
 /// How the product participates in a chat room.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum ChatRoomParticipation {
     RoomHost,
     Bot,
 }
 
 /// A chat room the product participates in.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct ChatRoom {
     /// Room identifier.
     pub room_id: String,
@@ -92,7 +85,7 @@ pub struct ChatRoom {
 }
 
 /// A clickable action button in a chat message.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct ChatAction {
     /// Action identifier.
     pub action_id: String,
@@ -101,15 +94,14 @@ pub struct ChatAction {
 }
 
 /// Layout for action buttons.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum ChatActionLayout {
     Column,
     Grid,
 }
 
 /// A set of action buttons with optional text.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct ChatActions {
     /// Optional message text.
     pub text: Option<String>,
@@ -120,14 +112,14 @@ pub struct ChatActions {
 }
 
 /// A media attachment.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct ChatMedia {
     /// Media URL.
     pub url: String,
 }
 
 /// Rich text message with optional media.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct ChatRichText {
     /// Optional text content.
     pub text: Option<String>,
@@ -136,7 +128,7 @@ pub struct ChatRichText {
 }
 
 /// A file attachment in a chat message.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct ChatFile {
     /// File download URL.
     pub url: String,
@@ -151,7 +143,7 @@ pub struct ChatFile {
 }
 
 /// A reaction to a chat message.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct ChatReaction {
     /// Message being reacted to.
     pub message_id: String,
@@ -160,20 +152,22 @@ pub struct ChatReaction {
 }
 
 /// A custom message with application-defined type and binary payload.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct ChatCustomMessage {
     /// Application-defined type key.
     pub message_type: String,
     /// Binary payload.
-    pub payload: Bytes,
+    pub payload: Vec<u8>,
 }
 
 /// Content of a chat message -- one of several types.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum ChatMessageContent {
     /// Plain text message.
-    Text(String),
+    Text {
+        /// Message text.
+        text: String,
+    },
     /// Rich text with media.
     RichText(ChatRichText),
     /// Action button set.
@@ -189,8 +183,8 @@ pub enum ChatMessageContent {
 }
 
 /// Request to post a message to a chat room.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-pub struct ChatPostMessageRequest {
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostChatPostMessageRequest {
     /// Room to post to.
     pub room_id: String,
     /// Message content.
@@ -198,16 +192,15 @@ pub struct ChatPostMessageRequest {
 }
 
 /// Result of posting a message.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-pub struct ChatPostMessageResult {
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostChatPostMessageResponse {
     /// Assigned message ID.
     pub message_id: String,
 }
 
 /// Chat message posting error.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum ChatMessagePostingError {
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum HostChatPostMessageError {
     /// Message exceeded size limit.
     MessageTooLarge,
     /// Catch-all.
@@ -215,18 +208,18 @@ pub enum ChatMessagePostingError {
 }
 
 /// Payload when a user clicks an action button.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct ActionTrigger {
     /// Message containing the action.
     pub message_id: String,
     /// Which action was triggered.
     pub action_id: String,
     /// Optional additional data.
-    pub payload: Option<Bytes>,
+    pub payload: Option<Vec<u8>>,
 }
 
 /// A slash command from a chat user.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct ChatCommand {
     /// Command name.
     pub command: String,
@@ -235,8 +228,7 @@ pub struct ChatCommand {
 }
 
 /// Payload of a received chat action.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum ChatActionPayload {
     /// A peer posted a message.
     MessagePosted(ChatMessageContent),
@@ -247,8 +239,8 @@ pub enum ChatActionPayload {
 }
 
 /// A chat action received from the host.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-pub struct ReceivedChatAction {
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostChatActionSubscribeItem {
     /// Room where the action occurred.
     pub room_id: String,
     /// Peer who initiated the action.
@@ -257,14 +249,9 @@ pub struct ReceivedChatAction {
     pub payload: ChatActionPayload,
 }
 
-pub type HostChatCreateRoomRequest = ChatRoomRequest;
-pub type HostChatCreateRoomResponse = ChatRoomRegistrationResult;
-pub type HostChatCreateRoomError = ChatRoomRegistrationError;
-pub type HostChatRegisterBotRequest = ChatBotRequest;
-pub type HostChatRegisterBotResponse = ChatBotRegistrationResult;
-pub type HostChatRegisterBotError = ChatBotRegistrationError;
-pub type HostChatPostMessageRequest = ChatPostMessageRequest;
-pub type HostChatPostMessageResponse = ChatPostMessageResult;
-pub type HostChatPostMessageError = ChatMessagePostingError;
-pub type HostChatListSubscribeItem = Vec<ChatRoom>;
-pub type HostChatActionSubscribeItem = ReceivedChatAction;
+/// Item containing the current chat rooms.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostChatListSubscribeItem {
+    /// Chat rooms the product participates in.
+    pub rooms: Vec<ChatRoom>,
+}

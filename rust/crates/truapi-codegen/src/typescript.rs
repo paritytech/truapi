@@ -460,6 +460,14 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
     )
     .unwrap();
     writeln!(out).unwrap();
+    writeln!(out, "function toError(error: unknown): Error {{").unwrap();
+    writeln!(
+        out,
+        "  return error instanceof Error ? error : new Error(String(error));"
+    )
+    .unwrap();
+    writeln!(out, "}}").unwrap();
+    writeln!(out).unwrap();
 
     let ctx = CodecContext::default();
     let wrappers = collect_versioned_wrappers(api);
@@ -810,7 +818,7 @@ fn emit_method(
                 format!("request: {}", payload.inner_type_ts)
             };
             let request_expr = if is_handshake {
-                "this.transport.codecVersion"
+                "{ codecVersion: this.transport.codecVersion }"
             } else {
                 &payload.value_expr
             };
@@ -900,9 +908,9 @@ fn emit_method(
 }
 
 /// Emits a subscribe method body that takes a single object combining the
-/// method-specific input fields with the universal `onData`/`onInterrupt`
-/// callbacks. `_interrupt` is payloadless for compatibility, so generated
-/// methods decode only `_receive` payloads.
+/// method-specific input fields with the universal subscription callbacks.
+/// `_interrupt` is payloadless for compatibility, so generated methods decode
+/// only `_receive` payloads.
 #[allow(clippy::too_many_arguments)]
 fn emit_subscribe_method(
     out: &mut String,
@@ -916,7 +924,7 @@ fn emit_subscribe_method(
 ) -> Result<()> {
     let _ = err;
     let pick = format!(
-        "Pick<SubscribeCallbacks<{}>, 'onData' | 'onInterrupt'>",
+        "Pick<SubscribeCallbacks<{}>, 'onData' | 'onInterrupt' | 'onError' | 'onClose'>",
         item_type_ts
     );
     let args_type = if payload.param_list.is_empty() {
@@ -925,7 +933,12 @@ fn emit_subscribe_method(
         format!("{{ {} }} & {}", payload.param_list, pick)
     };
 
-    let mut destructure = vec!["onData".to_string(), "onInterrupt".to_string()];
+    let mut destructure = vec![
+        "onData".to_string(),
+        "onInterrupt".to_string(),
+        "onError".to_string(),
+        "onClose".to_string(),
+    ];
     destructure.extend(payload.param_names.iter().cloned());
 
     writeln!(
@@ -961,9 +974,18 @@ fn emit_subscribe_method(
     } else {
         format!("{}.dec(payload)", response.wire_codec_expr)
     };
-    writeln!(out, "      onData: (payload) => onData({}),", item_value).unwrap();
+    writeln!(out, "      onData: (payload) => {{").unwrap();
+    writeln!(out, "        let item: {}; ", item_type_ts).unwrap();
+    writeln!(out, "        try {{").unwrap();
+    writeln!(out, "          item = {}; ", item_value).unwrap();
+    writeln!(out, "        }} catch (error) {{").unwrap();
+    writeln!(out, "          onError?.(toError(error));").unwrap();
+    writeln!(out, "          return;").unwrap();
+    writeln!(out, "        }}").unwrap();
+    writeln!(out, "        onData(item);").unwrap();
+    writeln!(out, "      }},").unwrap();
     writeln!(out, "      onInterrupt,").unwrap();
-    writeln!(out, "      onClose: onInterrupt,").unwrap();
+    writeln!(out, "      onClose,").unwrap();
     writeln!(out, "    }});").unwrap();
     writeln!(out, "  }}").unwrap();
 
@@ -1003,6 +1025,16 @@ fn write_type_definition(out: &mut String, ty: &TypeDef) -> Result<()> {
                 }
             }
             writeln!(out, "}}").unwrap();
+        }
+        TypeDefKind::TupleStruct(fields) => {
+            writeln!(
+                out,
+                "export type {}{} = {};",
+                ty.name,
+                generic_decl,
+                unnamed_fields_type(fields)?
+            )
+            .unwrap();
         }
         TypeDefKind::Enum(variants) => {
             writeln!(out, "export type {}{} =", ty.name, generic_decl).unwrap();
@@ -1107,6 +1139,7 @@ fn type_codec_expr(ty: &TypeDef, ctx: &CodecContext) -> Result<String> {
             false,
             ctx,
         ),
+        TypeDefKind::TupleStruct(fields) => unnamed_fields_codec_expr(fields, false, ctx),
         TypeDefKind::Enum(variants) => {
             let variants = variants
                 .iter()
@@ -1127,20 +1160,7 @@ fn type_codec_expr(ty: &TypeDef, ctx: &CodecContext) -> Result<String> {
 fn variant_value_type(fields: &VariantFields) -> Result<String> {
     match fields {
         VariantFields::Unit => Ok("undefined".to_string()),
-        VariantFields::Unnamed(types) => {
-            if types.len() == 1 {
-                ts_type(&types[0])
-            } else {
-                Ok(format!(
-                    "[{}]",
-                    types
-                        .iter()
-                        .map(ts_type)
-                        .collect::<Result<Vec<_>>>()?
-                        .join(", ")
-                ))
-            }
-        }
+        VariantFields::Unnamed(types) => unnamed_fields_type(types),
         VariantFields::Named(fields) => inline_object_type(fields, false),
     }
 }
@@ -1152,24 +1172,49 @@ fn variant_codec_expr(
 ) -> Result<String> {
     match fields {
         VariantFields::Unit => Ok("S.unit".to_string()),
-        VariantFields::Unnamed(types) => {
-            if types.len() == 1 {
-                codec_expr(&types[0], qualified, ctx)
-            } else {
-                let codecs = types
-                    .iter()
-                    .map(|ty| codec_expr(ty, qualified, ctx))
-                    .collect::<Result<Vec<_>>>()?
-                    .join(", ");
-                Ok(format!("S.tuple({})", codecs))
-            }
-        }
+        VariantFields::Unnamed(types) => unnamed_fields_codec_expr(types, qualified, ctx),
         VariantFields::Named(fields) => struct_codec_expr(
             fields,
             &inline_object_type(fields, qualified)?,
             qualified,
             ctx,
         ),
+    }
+}
+
+fn unnamed_fields_type(types: &[TypeRef]) -> Result<String> {
+    if types.is_empty() {
+        Ok("undefined".to_string())
+    } else if types.len() == 1 {
+        ts_type(&types[0])
+    } else {
+        Ok(format!(
+            "[{}]",
+            types
+                .iter()
+                .map(ts_type)
+                .collect::<Result<Vec<_>>>()?
+                .join(", ")
+        ))
+    }
+}
+
+fn unnamed_fields_codec_expr(
+    types: &[TypeRef],
+    qualified: bool,
+    ctx: &CodecContext,
+) -> Result<String> {
+    if types.is_empty() {
+        Ok("S.unit".to_string())
+    } else if types.len() == 1 {
+        codec_expr(&types[0], qualified, ctx)
+    } else {
+        let codecs = types
+            .iter()
+            .map(|ty| codec_expr(ty, qualified, ctx))
+            .collect::<Result<Vec<_>>>()?
+            .join(", ");
+        Ok(format!("S.tuple({})", codecs))
     }
 }
 

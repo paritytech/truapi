@@ -13,8 +13,8 @@ versioned_type! {
     pub enum HostChatCreateSimpleGroupRequest { V2 => v02::HostChatCreateSimpleGroupRequest }
     /// Versioned wrapper for [`v02::HostChatCreateSimpleGroupResponse`] and older versions.
     pub enum HostChatCreateSimpleGroupResponse { V2 => v02::HostChatCreateSimpleGroupResponse }
-    /// Versioned wrapper for [`v02::HostChatCreateSimpleGroupError`] and older versions.
-    pub enum HostChatCreateSimpleGroupError { V2 => v02::HostChatCreateSimpleGroupError }
+    /// Versioned wrapper for [`v01::HostChatCreateRoomError`] and older versions.
+    pub enum HostChatCreateSimpleGroupError { V2 => v01::HostChatCreateRoomError }
     /// Versioned wrapper for [`v01::HostChatRegisterBotRequest`] and older versions.
     pub enum HostChatRegisterBotRequest { V1 => v01::HostChatRegisterBotRequest }
     /// Versioned wrapper for [`v01::HostChatRegisterBotResponse`] and older versions.

@@ -13,12 +13,12 @@ versioned_type! {
     pub enum HostLocalStorageWriteRequest { V1 => v01::HostLocalStorageWriteRequest }
     /// Versioned wrapper for unit and older versions.
     pub enum HostLocalStorageWriteResponse { V1 }
-    /// Versioned wrapper for [`v01::HostLocalStorageWriteError`] and older versions.
-    pub enum HostLocalStorageWriteError { V1 => v01::HostLocalStorageWriteError }
+    /// Versioned wrapper for [`v01::HostLocalStorageReadError`] and older versions.
+    pub enum HostLocalStorageWriteError { V1 => v01::HostLocalStorageReadError }
     /// Versioned wrapper for [`v01::HostLocalStorageClearRequest`] and older versions.
     pub enum HostLocalStorageClearRequest { V1 => v01::HostLocalStorageClearRequest }
     /// Versioned wrapper for unit and older versions.
     pub enum HostLocalStorageClearResponse { V1 }
-    /// Versioned wrapper for [`v01::HostLocalStorageClearError`] and older versions.
-    pub enum HostLocalStorageClearError { V1 => v01::HostLocalStorageClearError }
+    /// Versioned wrapper for [`v01::HostLocalStorageReadError`] and older versions.
+    pub enum HostLocalStorageClearError { V1 => v01::HostLocalStorageReadError }
 }

@@ -10,8 +10,8 @@ versioned_type! {
     }
     /// Versioned wrapper for [`v01::HostDevicePermissionResponse`] and older versions.
     pub enum HostDevicePermissionResponse { V1 => v01::HostDevicePermissionResponse, V2 => v01::HostDevicePermissionResponse }
-    /// Versioned wrapper for [`v01::HostDevicePermissionError`] and older versions.
-    pub enum HostDevicePermissionError { V1 => v01::HostDevicePermissionError, V2 => v01::HostDevicePermissionError }
+    /// Versioned wrapper for [`v01::GenericError`] and older versions.
+    pub enum HostDevicePermissionError { V1 => v01::GenericError, V2 => v01::GenericError }
     /// Versioned wrapper for [`v02::RemotePermissionRequest`] and older versions.
     pub enum RemotePermissionRequest {
         V1 => v01::RemotePermissionRequest,
@@ -19,8 +19,8 @@ versioned_type! {
     }
     /// Versioned wrapper for [`v01::RemotePermissionResponse`] and older versions.
     pub enum RemotePermissionResponse { V1 => v01::RemotePermissionResponse, V2 => v01::RemotePermissionResponse }
-    /// Versioned wrapper for [`v01::RemotePermissionError`] and older versions.
-    pub enum RemotePermissionError { V1 => v01::RemotePermissionError, V2 => v01::RemotePermissionError }
+    /// Versioned wrapper for [`v01::GenericError`] and older versions.
+    pub enum RemotePermissionError { V1 => v01::GenericError, V2 => v01::GenericError }
 }
 
 #[cfg(test)]
@@ -30,14 +30,16 @@ mod tests {
 
     #[test]
     fn v1_external_request_upgrades_to_v2_remote_domain() {
-        let v1 = RemotePermissionRequest::V1(v01::RemotePermissionRequest::ExternalRequest(
-            "https://api.example.com/x".into(),
-        ));
+        let v1 = RemotePermissionRequest::V1(v01::RemotePermissionRequest::ExternalRequest {
+            url: "https://api.example.com/x".into(),
+        });
         assert_eq!(
             v1.into_version(Version::V2),
-            Ok(RemotePermissionRequest::V2(vec![
-                v02::RemotePermission::Remote(vec!["api.example.com".into()])
-            ])),
+            Ok(RemotePermissionRequest::V2(v02::RemotePermissionRequest {
+                permissions: vec![v02::RemotePermission::Remote {
+                    domains: vec!["api.example.com".into()]
+                }],
+            })),
         );
     }
 
@@ -46,22 +48,24 @@ mod tests {
         let v1 = RemotePermissionRequest::V1(v01::RemotePermissionRequest::TransactionSubmit);
         assert_eq!(
             v1.into_version(Version::V2),
-            Ok(RemotePermissionRequest::V2(vec![
-                v02::RemotePermission::ChainSubmit
-            ])),
+            Ok(RemotePermissionRequest::V2(v02::RemotePermissionRequest {
+                permissions: vec![v02::RemotePermission::ChainSubmit],
+            })),
         );
     }
 
     #[test]
     fn v1_external_request_with_unparseable_url_falls_back_to_raw() {
-        let v1 = RemotePermissionRequest::V1(v01::RemotePermissionRequest::ExternalRequest(
-            "not a url".into(),
-        ));
+        let v1 = RemotePermissionRequest::V1(v01::RemotePermissionRequest::ExternalRequest {
+            url: "not a url".into(),
+        });
         assert_eq!(
             v1.into_version(Version::V2),
-            Ok(RemotePermissionRequest::V2(vec![
-                v02::RemotePermission::Remote(vec!["not a url".into()])
-            ])),
+            Ok(RemotePermissionRequest::V2(v02::RemotePermissionRequest {
+                permissions: vec![v02::RemotePermission::Remote {
+                    domains: vec!["not a url".into()],
+                }],
+            })),
         );
     }
 
@@ -74,12 +78,18 @@ mod tests {
     #[test]
     fn response_into_version_picks_target() {
         assert_eq!(
-            HostDevicePermissionResponse::V1(true).into_version(Version::V2),
-            Ok(HostDevicePermissionResponse::V2(true))
+            HostDevicePermissionResponse::V1(v01::HostDevicePermissionResponse { granted: true })
+                .into_version(Version::V2),
+            Ok(HostDevicePermissionResponse::V2(
+                v01::HostDevicePermissionResponse { granted: true }
+            ))
         );
         assert_eq!(
-            HostDevicePermissionResponse::V2(false).into_latest(),
-            Ok(HostDevicePermissionResponse::V2(false))
+            HostDevicePermissionResponse::V2(v01::HostDevicePermissionResponse { granted: false })
+                .into_latest(),
+            Ok(HostDevicePermissionResponse::V2(
+                v01::HostDevicePermissionResponse { granted: false }
+            ))
         );
     }
 }

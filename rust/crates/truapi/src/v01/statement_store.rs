@@ -1,37 +1,23 @@
 use parity_scale_codec::{Decode, Encode};
 
-use super::{Bytes, ProductAccountId};
-
-/// 32-byte topic identifier.
-pub type Topic = [u8; 32];
-
-/// 32-byte channel identifier.
-pub type Channel = [u8; 32];
-
-/// 32-byte decryption key.
-pub type DecryptionKey = [u8; 32];
+use super::ProductAccountId;
 
 /// Cryptographic proof for a statement.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum StatementProof {
     /// Sr25519 signature proof.
     Sr25519 {
-        #[serde(serialize_with = "crate::serde_helpers::hex_bytes")]
         signature: [u8; 64],
         signer: [u8; 32],
     },
     /// Ed25519 signature proof.
     Ed25519 {
-        #[serde(serialize_with = "crate::serde_helpers::hex_bytes")]
         signature: [u8; 64],
         signer: [u8; 32],
     },
     /// ECDSA signature proof.
     Ecdsa {
-        #[serde(serialize_with = "crate::serde_helpers::hex_bytes")]
         signature: [u8; 65],
-        #[serde(serialize_with = "crate::serde_helpers::hex_bytes")]
         signer: [u8; 33],
     },
     /// On-chain event proof.
@@ -43,42 +29,42 @@ pub enum StatementProof {
 }
 
 /// A statement with optional proof and metadata.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct Statement {
     /// Optional cryptographic proof.
     pub proof: Option<StatementProof>,
     /// Optional decryption key.
-    pub decryption_key: Option<DecryptionKey>,
+    pub decryption_key: Option<[u8; 32]>,
     /// Optional Unix timestamp expiry.
     pub expiry: Option<u64>,
     /// Optional channel.
-    pub channel: Option<Channel>,
-    /// Topic tags.
-    pub topics: Vec<Topic>,
+    pub channel: Option<[u8; 32]>,
+    /// [u8; 32] tags.
+    pub topics: Vec<[u8; 32]>,
     /// Optional data payload.
-    pub data: Option<Bytes>,
+    pub data: Option<Vec<u8>>,
 }
 
 /// A statement with a required (not optional) proof.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SignedStatement {
     /// Required cryptographic proof.
     pub proof: StatementProof,
     /// Optional decryption key.
-    pub decryption_key: Option<DecryptionKey>,
+    pub decryption_key: Option<[u8; 32]>,
     /// Optional Unix timestamp expiry.
     pub expiry: Option<u64>,
     /// Optional channel.
-    pub channel: Option<Channel>,
-    /// Topic tags.
-    pub topics: Vec<Topic>,
+    pub channel: Option<[u8; 32]>,
+    /// [u8; 32] tags.
+    pub topics: Vec<[u8; 32]>,
     /// Optional data payload.
-    pub data: Option<Bytes>,
+    pub data: Option<Vec<u8>>,
 }
 
 /// Request to create a cryptographic proof for a statement.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-pub struct StatementStoreCreateProofRequest {
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct RemoteStatementStoreCreateProofRequest {
     /// Product account that should create the proof.
     pub product_account_id: ProductAccountId,
     /// Statement to prove.
@@ -86,9 +72,8 @@ pub struct StatementStoreCreateProofRequest {
 }
 
 /// Statement proof creation error.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, serde::Serialize)]
-#[serde(tag = "tag", content = "value")]
-pub enum StatementProofError {
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum RemoteStatementStoreCreateProofError {
     /// Signing operation failed.
     UnableToSign,
     /// Account not recognized.
@@ -97,11 +82,37 @@ pub enum StatementProofError {
     Unknown { reason: String },
 }
 
-pub type RemoteStatementStoreSubscribeRequest = Vec<Topic>;
-pub type RemoteStatementStoreSubscribeItem = Vec<SignedStatement>;
-pub type RemoteStatementStoreCreateProofRequest = StatementStoreCreateProofRequest;
-pub type RemoteStatementStoreCreateProofResponse = StatementProof;
-pub type RemoteStatementStoreCreateProofError = StatementProofError;
-pub type RemoteStatementStoreSubmitRequest = Bytes;
-pub type RemoteStatementStoreSubmitResponse = String;
-pub type RemoteStatementStoreSubmitError = super::GenericError;
+/// Request to subscribe to statements matching topics.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct RemoteStatementStoreSubscribeRequest {
+    /// Required topics.
+    pub topics: Vec<[u8; 32]>,
+}
+
+/// Item containing statements delivered by the statement store subscription.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct RemoteStatementStoreSubscribeItem {
+    /// Signed statements matching the subscription.
+    pub statements: Vec<SignedStatement>,
+}
+
+/// Response containing a statement proof.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct RemoteStatementStoreCreateProofResponse {
+    /// Created statement proof.
+    pub proof: StatementProof,
+}
+
+/// Request to submit a statement.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct RemoteStatementStoreSubmitRequest {
+    /// SCALE-encoded statement payload.
+    pub statement: Vec<u8>,
+}
+
+/// Response containing the submitted statement identifier.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct RemoteStatementStoreSubmitResponse {
+    /// Statement identifier assigned by the host.
+    pub statement_id: String,
+}

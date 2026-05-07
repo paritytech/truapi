@@ -17,6 +17,6 @@ versioned_type! {
     pub enum RemoteStatementStoreSubmitRequest { V1 => v01::RemoteStatementStoreSubmitRequest }
     /// Versioned wrapper for [`v01::RemoteStatementStoreSubmitResponse`] and older versions.
     pub enum RemoteStatementStoreSubmitResponse { V1 => v01::RemoteStatementStoreSubmitResponse }
-    /// Versioned wrapper for [`v01::RemoteStatementStoreSubmitError`] and older versions.
-    pub enum RemoteStatementStoreSubmitError { V1 => v01::RemoteStatementStoreSubmitError }
+    /// Versioned wrapper for [`v01::GenericError`] and older versions.
+    pub enum RemoteStatementStoreSubmitError { V1 => v01::GenericError }
 }

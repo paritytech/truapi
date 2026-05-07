@@ -65,8 +65,7 @@ macro_rules! versioned_type {
         }
     ) => {
         $(#[$meta])*
-        #[derive(Debug, Clone, PartialEq, Eq, parity_scale_codec::Encode, parity_scale_codec::Decode, serde::Serialize)]
-        #[serde(tag = "tag", content = "value")]
+        #[derive(Debug, Clone, PartialEq, Eq, parity_scale_codec::Encode, parity_scale_codec::Decode)]
         pub enum $name {
             $(#[$v1_meta])*
             #[codec(index = 0)]
@@ -89,8 +88,7 @@ macro_rules! versioned_type {
         }
     ) => {
         $(#[$meta])*
-        #[derive(Debug, Clone, PartialEq, Eq, parity_scale_codec::Encode, parity_scale_codec::Decode, serde::Serialize)]
-        #[serde(tag = "tag", content = "value")]
+        #[derive(Debug, Clone, PartialEq, Eq, parity_scale_codec::Encode, parity_scale_codec::Decode)]
         pub enum $name {
             $(#[$v1_meta])*
             #[codec(index = 0)]
@@ -115,8 +113,7 @@ macro_rules! versioned_type {
         }
     ) => {
         $(#[$meta])*
-        #[derive(Debug, Clone, PartialEq, Eq, parity_scale_codec::Encode, parity_scale_codec::Decode, serde::Serialize)]
-        #[serde(tag = "tag", content = "value")]
+        #[derive(Debug, Clone, PartialEq, Eq, parity_scale_codec::Encode, parity_scale_codec::Decode)]
         pub enum $name {
             $(#[$v1_meta])*
             #[codec(index = 0)]
@@ -157,8 +154,7 @@ macro_rules! versioned_type {
         }
     ) => {
         $(#[$meta])*
-        #[derive(Debug, Clone, PartialEq, Eq, parity_scale_codec::Encode, parity_scale_codec::Decode, serde::Serialize)]
-        #[serde(tag = "tag", content = "value")]
+        #[derive(Debug, Clone, PartialEq, Eq, parity_scale_codec::Encode, parity_scale_codec::Decode)]
         pub enum $name {
             $(#[$v1_meta])*
             #[codec(index = 0)]
@@ -188,8 +184,7 @@ macro_rules! versioned_type {
         }
     ) => {
         $(#[$meta])*
-        #[derive(Debug, Clone, PartialEq, Eq, parity_scale_codec::Encode, parity_scale_codec::Decode, serde::Serialize)]
-        #[serde(tag = "tag", content = "value")]
+        #[derive(Debug, Clone, PartialEq, Eq, parity_scale_codec::Encode, parity_scale_codec::Decode)]
         pub enum $name {
             $(#[$v2_meta])*
             #[codec(index = 1)]
@@ -215,8 +210,7 @@ macro_rules! versioned_type {
         }
     ) => {
         $(#[$meta])*
-        #[derive(Debug, Clone, PartialEq, Eq, parity_scale_codec::Encode, parity_scale_codec::Decode, serde::Serialize)]
-        #[serde(tag = "tag", content = "value")]
+        #[derive(Debug, Clone, PartialEq, Eq, parity_scale_codec::Encode, parity_scale_codec::Decode)]
         pub enum $name {
             $(#[$v2_meta])*
             #[codec(index = 1)]
@@ -273,11 +267,12 @@ mod tests {
 
     #[test]
     fn struct_variant_roundtrip() {
-        let original =
-            local_storage::HostLocalStorageWriteRequest::V1(crate::v01::LocalStorageWriteRequest {
+        let original = local_storage::HostLocalStorageWriteRequest::V1(
+            crate::v01::HostLocalStorageWriteRequest {
                 key: "greeting".into(),
                 value: b"hello".to_vec(),
-            });
+            },
+        );
         let decoded =
             local_storage::HostLocalStorageWriteRequest::decode(&mut &original.encode()[..])
                 .expect("decode");

@@ -13,8 +13,8 @@ versioned_type! {
     pub enum HostAccountGetAliasRequest { V1 => v01::HostAccountGetAliasRequest }
     /// Versioned wrapper for [`v01::HostAccountGetAliasResponse`] and older versions.
     pub enum HostAccountGetAliasResponse { V1 => v01::HostAccountGetAliasResponse }
-    /// Versioned wrapper for [`v01::HostAccountGetAliasError`] and older versions.
-    pub enum HostAccountGetAliasError { V1 => v01::HostAccountGetAliasError }
+    /// Versioned wrapper for [`v01::HostAccountGetError`] and older versions.
+    pub enum HostAccountGetAliasError { V1 => v01::HostAccountGetError }
     /// Versioned wrapper for [`v01::HostAccountCreateProofRequest`] and older versions.
     pub enum HostAccountCreateProofRequest { V1 => v01::HostAccountCreateProofRequest }
     /// Versioned wrapper for [`v01::HostAccountCreateProofResponse`] and older versions.
@@ -25,8 +25,8 @@ versioned_type! {
     pub enum HostGetNonProductAccountsRequest { V1 }
     /// Versioned wrapper for [`v01::HostGetNonProductAccountsResponse`] and older versions.
     pub enum HostGetNonProductAccountsResponse { V1 => v01::HostGetNonProductAccountsResponse }
-    /// Versioned wrapper for [`v01::HostGetNonProductAccountsError`] and older versions.
-    pub enum HostGetNonProductAccountsError { V1 => v01::HostGetNonProductAccountsError }
+    /// Versioned wrapper for [`v01::HostAccountGetError`] and older versions.
+    pub enum HostGetNonProductAccountsError { V1 => v01::HostAccountGetError }
     /// Versioned wrapper for [`v01::HostAccountConnectionStatusSubscribeItem`] and older versions.
     pub enum HostAccountConnectionStatusSubscribeItem { V1 => v01::HostAccountConnectionStatusSubscribeItem }
     /// Versioned wrapper for unit and older versions.

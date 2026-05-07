@@ -37,11 +37,11 @@ pub trait TrUApiCalls: Send + Sync {
         request: HostHandshakeRequest,
     ) -> Result<HostHandshakeResponse, CallError<HostHandshakeError>> {
         let HostHandshakeRequest::V1(version) = request;
-        if version == 1 {
+        if version.codec_version == 1 {
             Ok(HostHandshakeResponse::V1)
         } else {
             Err(CallError::Domain(HostHandshakeError::V1(
-                crate::v02::HandshakeError::UnsupportedProtocolVersion,
+                crate::v02::HostHandshakeError::UnsupportedProtocolVersion,
             )))
         }
     }

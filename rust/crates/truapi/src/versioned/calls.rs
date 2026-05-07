@@ -13,8 +13,8 @@ versioned_type! {
     pub enum HostFeatureSupportedRequest { V1 => v01::HostFeatureSupportedRequest }
     /// Versioned wrapper for [`v01::HostFeatureSupportedResponse`] and older versions.
     pub enum HostFeatureSupportedResponse { V1 => v01::HostFeatureSupportedResponse }
-    /// Versioned wrapper for [`v01::HostFeatureSupportedError`] and older versions.
-    pub enum HostFeatureSupportedError { V1 => v01::HostFeatureSupportedError }
+    /// Versioned wrapper for [`v01::GenericError`] and older versions.
+    pub enum HostFeatureSupportedError { V1 => v01::GenericError }
     /// Versioned wrapper for [`v01::HostNavigateToRequest`] and older versions.
     pub enum HostNavigateToRequest { V1 => v01::HostNavigateToRequest }
     /// Versioned wrapper for unit and older versions.
@@ -25,6 +25,6 @@ versioned_type! {
     pub enum HostPushNotificationRequest { V1 => v01::HostPushNotificationRequest }
     /// Versioned wrapper for unit and older versions.
     pub enum HostPushNotificationResponse { V1 }
-    /// Versioned wrapper for [`v01::HostPushNotificationError`] and older versions.
-    pub enum HostPushNotificationError { V1 => v01::HostPushNotificationError }
+    /// Versioned wrapper for [`v01::GenericError`] and older versions.
+    pub enum HostPushNotificationError { V1 => v01::GenericError }
 }

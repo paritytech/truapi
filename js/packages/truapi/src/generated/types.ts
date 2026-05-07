@@ -5,54 +5,14 @@ import * as S from "../scale.js";
 /** An account with its public key and optional display name. */
 export interface Account {
   /** The account public key (variable-length bytes). */
-  publicKey: PublicKey;
+  publicKey: Uint8Array;
   /** Optional human-readable display name. */
   name?: string;
 }
 
 export const Account: S.Codec<Account> = S.lazy(
   (): S.Codec<Account> =>
-    S.struct({
-      publicKey: PublicKey,
-      name: S.option(S.str),
-    }) as S.Codec<Account>,
-);
-
-/** User's authentication state. */
-export type AccountConnectionStatus =
-  | { tag: "Disconnected"; value: undefined }
-  | { tag: "Connected"; value: undefined };
-
-export const AccountConnectionStatus: S.Codec<AccountConnectionStatus> = S.lazy(
-  (): S.Codec<AccountConnectionStatus> =>
-    S.taggedUnion({ Disconnected: S.unit, Connected: S.unit }),
-);
-
-/** Request to create a ring VRF proof for a product account. */
-export interface AccountCreateProofRequest {
-  /** Product account that should create the proof. */
-  productAccountId: ProductAccountId;
-  /** Ring location to use for proof generation. */
-  ringLocation: RingLocation;
-  /** Context bytes bound to the proof. */
-  context: Bytes;
-}
-
-export const AccountCreateProofRequest: S.Codec<AccountCreateProofRequest> =
-  S.lazy(
-    (): S.Codec<AccountCreateProofRequest> =>
-      S.struct({
-        productAccountId: ProductAccountId,
-        ringLocation: RingLocation,
-        context: Bytes,
-      }) as S.Codec<AccountCreateProofRequest>,
-  );
-
-/** 32-byte account identifier (typically an SS58 public key). */
-export type AccountId = Uint8Array;
-
-export const AccountId: S.Codec<AccountId> = S.lazy(
-  (): S.Codec<AccountId> => S.byteArray(32),
+    S.struct({ publicKey: S.bytes, name: S.option(S.str) }) as S.Codec<Account>,
 );
 
 /** Payload when a user clicks an action button. */
@@ -62,7 +22,7 @@ export interface ActionTrigger {
   /** Which action was triggered. */
   actionId: string;
   /** Optional additional data. */
-  payload?: Bytes;
+  payload?: Uint8Array;
 }
 
 export const ActionTrigger: S.Codec<ActionTrigger> = S.lazy(
@@ -70,7 +30,7 @@ export const ActionTrigger: S.Codec<ActionTrigger> = S.lazy(
     S.struct({
       messageId: S.str,
       actionId: S.str,
-      payload: S.option(Bytes),
+      payload: S.option(S.bytes),
     }) as S.Codec<ActionTrigger>,
 );
 
@@ -119,17 +79,10 @@ export type Balance = bigint;
 
 export const Balance: S.Codec<Balance> = S.lazy((): S.Codec<Balance> => S.u128);
 
-/** Block hash identifier. */
-export type BlockHash = Hex;
-
-export const BlockHash: S.Codec<BlockHash> = S.lazy(
-  (): S.Codec<BlockHash> => Hex,
-);
-
 /** Border styling. */
 export interface BorderStyle {
   /** Border width. */
-  width: Size;
+  width: bigint;
   /** Border color. */
   color: ColorToken;
   /** Border shape. */
@@ -139,7 +92,7 @@ export interface BorderStyle {
 export const BorderStyle: S.Codec<BorderStyle> = S.lazy(
   (): S.Codec<BorderStyle> =>
     S.struct({
-      width: Size,
+      width: S.u64,
       color: ColorToken,
       shape: S.option(Shape),
     }) as S.Codec<BorderStyle>,
@@ -186,301 +139,6 @@ export type ButtonVariant =
 export const ButtonVariant: S.Codec<ButtonVariant> = S.lazy(
   (): S.Codec<ButtonVariant> =>
     S.taggedUnion({ Primary: S.unit, Secondary: S.unit, Text: S.unit }),
-);
-
-/** Arbitrary binary data (SCALE length-prefixed on the wire). */
-export type Bytes = Uint8Array;
-
-export const Bytes: S.Codec<Bytes> = S.lazy((): S.Codec<Bytes> => S.bytes);
-
-/**
- * Parameters for chain head methods that operate within a follow subscription
- * on a specific block.
- */
-export interface ChainHeadBlockRequest {
-  /** Chain genesis hash. */
-  genesisHash: GenesisHash;
-  /** Follow subscription identifier. */
-  followSubscriptionId: string;
-  /** Block hash. */
-  hash: BlockHash;
-}
-
-export const ChainHeadBlockRequest: S.Codec<ChainHeadBlockRequest> = S.lazy(
-  (): S.Codec<ChainHeadBlockRequest> =>
-    S.struct({
-      genesisHash: GenesisHash,
-      followSubscriptionId: S.str,
-      hash: BlockHash,
-    }) as S.Codec<ChainHeadBlockRequest>,
-);
-
-/** Parameters for [`crate::api::ChainInteraction::remote_chain_head_call`]. */
-export interface ChainHeadCallRequest {
-  /** Chain genesis hash. */
-  genesisHash: GenesisHash;
-  /** Follow subscription identifier. */
-  followSubscriptionId: string;
-  /** Block hash. */
-  hash: BlockHash;
-  /** Runtime API function name. */
-  function: string;
-  /** SCALE-encoded call parameters. */
-  callParameters: Hex;
-}
-
-export const ChainHeadCallRequest: S.Codec<ChainHeadCallRequest> = S.lazy(
-  (): S.Codec<ChainHeadCallRequest> =>
-    S.struct({
-      genesisHash: GenesisHash,
-      followSubscriptionId: S.str,
-      hash: BlockHash,
-      function: S.str,
-      callParameters: Hex,
-    }) as S.Codec<ChainHeadCallRequest>,
-);
-
-/** Events received when following the chain head. */
-export type ChainHeadEvent =
-  /** Initial state with finalized blocks. */
-  | {
-      tag: "Initialized";
-      value: {
-        finalizedBlockHashes: Array<BlockHash>;
-        finalizedBlockRuntime?: RuntimeType;
-      };
-    }
-  /** A new block was produced. */
-  | {
-      tag: "NewBlock";
-      value: {
-        blockHash: BlockHash;
-        parentBlockHash: BlockHash;
-        newRuntime?: RuntimeType;
-      };
-    }
-  /** Best block changed. */
-  | { tag: "BestBlockChanged"; value: { bestBlockHash: BlockHash } }
-  /** Blocks were finalized. */
-  | {
-      tag: "Finalized";
-      value: {
-        finalizedBlockHashes: Array<BlockHash>;
-        prunedBlockHashes: Array<BlockHash>;
-      };
-    }
-  /** Body fetch completed. */
-  | {
-      tag: "OperationBodyDone";
-      value: { operationId: OperationId; value: Array<Hex> };
-    }
-  /** Runtime call completed. */
-  | {
-      tag: "OperationCallDone";
-      value: { operationId: OperationId; output: Hex };
-    }
-  /** Storage results batch. */
-  | {
-      tag: "OperationStorageItems";
-      value: { operationId: OperationId; items: Array<StorageResultItem> };
-    }
-  /** Storage query completed. */
-  | { tag: "OperationStorageDone"; value: { operationId: OperationId } }
-  /** Operation paused, needs [`crate::api::ChainInteraction::remote_chain_head_continue`]. */
-  | { tag: "OperationWaitingForContinue"; value: { operationId: OperationId } }
-  /** Block became inaccessible. */
-  | { tag: "OperationInaccessible"; value: { operationId: OperationId } }
-  /** Operation failed. */
-  | {
-      tag: "OperationError";
-      value: { operationId: OperationId; error: string };
-    }
-  /** Subscription terminated by server. */
-  | { tag: "Stop"; value: undefined };
-
-export const ChainHeadEvent: S.Codec<ChainHeadEvent> = S.lazy(
-  (): S.Codec<ChainHeadEvent> =>
-    S.taggedUnion({
-      Initialized: S.struct({
-        finalizedBlockHashes: S.vec(BlockHash),
-        finalizedBlockRuntime: S.option(RuntimeType),
-      }) as S.Codec<{
-        finalizedBlockHashes: Array<BlockHash>;
-        finalizedBlockRuntime?: RuntimeType;
-      }>,
-      NewBlock: S.struct({
-        blockHash: BlockHash,
-        parentBlockHash: BlockHash,
-        newRuntime: S.option(RuntimeType),
-      }) as S.Codec<{
-        blockHash: BlockHash;
-        parentBlockHash: BlockHash;
-        newRuntime?: RuntimeType;
-      }>,
-      BestBlockChanged: S.struct({ bestBlockHash: BlockHash }) as S.Codec<{
-        bestBlockHash: BlockHash;
-      }>,
-      Finalized: S.struct({
-        finalizedBlockHashes: S.vec(BlockHash),
-        prunedBlockHashes: S.vec(BlockHash),
-      }) as S.Codec<{
-        finalizedBlockHashes: Array<BlockHash>;
-        prunedBlockHashes: Array<BlockHash>;
-      }>,
-      OperationBodyDone: S.struct({
-        operationId: OperationId,
-        value: S.vec(Hex),
-      }) as S.Codec<{ operationId: OperationId; value: Array<Hex> }>,
-      OperationCallDone: S.struct({
-        operationId: OperationId,
-        output: Hex,
-      }) as S.Codec<{ operationId: OperationId; output: Hex }>,
-      OperationStorageItems: S.struct({
-        operationId: OperationId,
-        items: S.vec(StorageResultItem),
-      }) as S.Codec<{
-        operationId: OperationId;
-        items: Array<StorageResultItem>;
-      }>,
-      OperationStorageDone: S.struct({ operationId: OperationId }) as S.Codec<{
-        operationId: OperationId;
-      }>,
-      OperationWaitingForContinue: S.struct({
-        operationId: OperationId,
-      }) as S.Codec<{ operationId: OperationId }>,
-      OperationInaccessible: S.struct({ operationId: OperationId }) as S.Codec<{
-        operationId: OperationId;
-      }>,
-      OperationError: S.struct({
-        operationId: OperationId,
-        error: S.str,
-      }) as S.Codec<{ operationId: OperationId; error: string }>,
-      Stop: S.unit,
-    }),
-);
-
-/** Parameters for [`crate::api::ChainInteraction::remote_chain_head_follow`]. */
-export interface ChainHeadFollowRequest {
-  /** Chain genesis hash. */
-  genesisHash: GenesisHash;
-  /** Whether to include runtime information in events. */
-  withRuntime: boolean;
-}
-
-export const ChainHeadFollowRequest: S.Codec<ChainHeadFollowRequest> = S.lazy(
-  (): S.Codec<ChainHeadFollowRequest> =>
-    S.struct({
-      genesisHash: GenesisHash,
-      withRuntime: S.bool,
-    }) as S.Codec<ChainHeadFollowRequest>,
-);
-
-/**
- * Parameters for chain head operations that reference a specific operation within
- * a follow subscription.
- */
-export interface ChainHeadOperationRequest {
-  /** Chain genesis hash. */
-  genesisHash: GenesisHash;
-  /** Follow subscription identifier. */
-  followSubscriptionId: string;
-  /** Operation identifier. */
-  operationId: OperationId;
-}
-
-export const ChainHeadOperationRequest: S.Codec<ChainHeadOperationRequest> =
-  S.lazy(
-    (): S.Codec<ChainHeadOperationRequest> =>
-      S.struct({
-        genesisHash: GenesisHash,
-        followSubscriptionId: S.str,
-        operationId: OperationId,
-      }) as S.Codec<ChainHeadOperationRequest>,
-  );
-
-/** Parameters for [`crate::api::ChainInteraction::remote_chain_head_storage`]. */
-export interface ChainHeadStorageRequest {
-  /** Chain genesis hash. */
-  genesisHash: GenesisHash;
-  /** Follow subscription identifier. */
-  followSubscriptionId: string;
-  /** Block hash. */
-  hash: BlockHash;
-  /** Storage items to query. */
-  items: Array<StorageQueryItem>;
-  /** Optional child trie. */
-  childTrie?: Hex;
-}
-
-export const ChainHeadStorageRequest: S.Codec<ChainHeadStorageRequest> = S.lazy(
-  (): S.Codec<ChainHeadStorageRequest> =>
-    S.struct({
-      genesisHash: GenesisHash,
-      followSubscriptionId: S.str,
-      hash: BlockHash,
-      items: S.vec(StorageQueryItem),
-      childTrie: S.option(Hex),
-    }) as S.Codec<ChainHeadStorageRequest>,
-);
-
-/** Parameters for [`crate::api::ChainInteraction::remote_chain_head_unpin`]. */
-export interface ChainHeadUnpinRequest {
-  /** Chain genesis hash. */
-  genesisHash: GenesisHash;
-  /** Follow subscription identifier. */
-  followSubscriptionId: string;
-  /** Block hashes to unpin. */
-  hashes: Array<BlockHash>;
-}
-
-export const ChainHeadUnpinRequest: S.Codec<ChainHeadUnpinRequest> = S.lazy(
-  (): S.Codec<ChainHeadUnpinRequest> =>
-    S.struct({
-      genesisHash: GenesisHash,
-      followSubscriptionId: S.str,
-      hashes: S.vec(BlockHash),
-    }) as S.Codec<ChainHeadUnpinRequest>,
-);
-
-/** Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_broadcast`]. */
-export interface ChainTransactionBroadcastRequest {
-  /** Chain genesis hash. */
-  genesisHash: GenesisHash;
-  /** Signed transaction bytes. */
-  transaction: Hex;
-}
-
-export const ChainTransactionBroadcastRequest: S.Codec<ChainTransactionBroadcastRequest> =
-  S.lazy(
-    (): S.Codec<ChainTransactionBroadcastRequest> =>
-      S.struct({
-        genesisHash: GenesisHash,
-        transaction: Hex,
-      }) as S.Codec<ChainTransactionBroadcastRequest>,
-  );
-
-/** Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_stop`]. */
-export interface ChainTransactionStopRequest {
-  /** Chain genesis hash. */
-  genesisHash: GenesisHash;
-  /** Operation identifier of the broadcast to stop. */
-  operationId: OperationId;
-}
-
-export const ChainTransactionStopRequest: S.Codec<ChainTransactionStopRequest> =
-  S.lazy(
-    (): S.Codec<ChainTransactionStopRequest> =>
-      S.struct({
-        genesisHash: GenesisHash,
-        operationId: OperationId,
-      }) as S.Codec<ChainTransactionStopRequest>,
-  );
-
-/** 32-byte channel identifier. */
-export type Channel = Uint8Array;
-
-export const Channel: S.Codec<Channel> = S.lazy(
-  (): S.Codec<Channel> => S.byteArray(32),
 );
 
 /** A clickable action button in a chat message. */
@@ -543,36 +201,6 @@ export const ChatActions: S.Codec<ChatActions> = S.lazy(
     }) as S.Codec<ChatActions>,
 );
 
-/** Chat bot registration error. */
-export type ChatBotRegistrationError =
-  /** Not allowed. */
-  | { tag: "PermissionDenied"; value: undefined }
-  /** Catch-all. */
-  | { tag: "Unknown"; value: { reason: string } };
-
-export const ChatBotRegistrationError: S.Codec<ChatBotRegistrationError> =
-  S.lazy(
-    (): S.Codec<ChatBotRegistrationError> =>
-      S.taggedUnion({
-        PermissionDenied: S.unit,
-        Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
-      }),
-  );
-
-/** Result of a bot registration. */
-export interface ChatBotRegistrationResult {
-  /** `New` or `Exists`. */
-  status: ChatBotRegistrationStatus;
-}
-
-export const ChatBotRegistrationResult: S.Codec<ChatBotRegistrationResult> =
-  S.lazy(
-    (): S.Codec<ChatBotRegistrationResult> =>
-      S.struct({
-        status: ChatBotRegistrationStatus,
-      }) as S.Codec<ChatBotRegistrationResult>,
-  );
-
 /** Whether the bot was newly registered or already existed. */
 export type ChatBotRegistrationStatus =
   | { tag: "New"; value: undefined }
@@ -583,25 +211,6 @@ export const ChatBotRegistrationStatus: S.Codec<ChatBotRegistrationStatus> =
     (): S.Codec<ChatBotRegistrationStatus> =>
       S.taggedUnion({ New: S.unit, Exists: S.unit }),
   );
-
-/** Request to register a chat bot. */
-export interface ChatBotRequest {
-  /** Unique bot identifier. */
-  botId: string;
-  /** Bot display name. */
-  name: string;
-  /** URL or base64 image. */
-  icon: string;
-}
-
-export const ChatBotRequest: S.Codec<ChatBotRequest> = S.lazy(
-  (): S.Codec<ChatBotRequest> =>
-    S.struct({
-      botId: S.str,
-      name: S.str,
-      icon: S.str,
-    }) as S.Codec<ChatBotRequest>,
-);
 
 /** A slash command from a chat user. */
 export interface ChatCommand {
@@ -621,14 +230,14 @@ export interface ChatCustomMessage {
   /** Application-defined type key. */
   messageType: string;
   /** Binary payload. */
-  payload: Bytes;
+  payload: Uint8Array;
 }
 
 export const ChatCustomMessage: S.Codec<ChatCustomMessage> = S.lazy(
   (): S.Codec<ChatCustomMessage> =>
     S.struct({
       messageType: S.str,
-      payload: Bytes,
+      payload: S.bytes,
     }) as S.Codec<ChatCustomMessage>,
 );
 
@@ -670,7 +279,7 @@ export const ChatMedia: S.Codec<ChatMedia> = S.lazy(
 /** Content of a chat message -- one of several types. */
 export type ChatMessageContent =
   /** Plain text message. */
-  | { tag: "Text"; value: string }
+  | { tag: "Text"; value: { text: string } }
   /** Rich text with media. */
   | { tag: "RichText"; value: ChatRichText }
   /** Action button set. */
@@ -687,7 +296,7 @@ export type ChatMessageContent =
 export const ChatMessageContent: S.Codec<ChatMessageContent> = S.lazy(
   (): S.Codec<ChatMessageContent> =>
     S.taggedUnion({
-      Text: S.str,
+      Text: S.struct({ text: S.str }) as S.Codec<{ text: string }>,
       RichText: ChatRichText,
       Actions: ChatActions,
       File: ChatFile,
@@ -695,48 +304,6 @@ export const ChatMessageContent: S.Codec<ChatMessageContent> = S.lazy(
       ReactionRemoved: ChatReaction,
       Custom: ChatCustomMessage,
     }),
-);
-
-/** Chat message posting error. */
-export type ChatMessagePostingError =
-  /** Message exceeded size limit. */
-  | { tag: "MessageTooLarge"; value: undefined }
-  /** Catch-all. */
-  | { tag: "Unknown"; value: { reason: string } };
-
-export const ChatMessagePostingError: S.Codec<ChatMessagePostingError> = S.lazy(
-  (): S.Codec<ChatMessagePostingError> =>
-    S.taggedUnion({
-      MessageTooLarge: S.unit,
-      Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
-    }),
-);
-
-/** Request to post a message to a chat room. */
-export interface ChatPostMessageRequest {
-  /** Room to post to. */
-  roomId: string;
-  /** Message content. */
-  payload: ChatMessageContent;
-}
-
-export const ChatPostMessageRequest: S.Codec<ChatPostMessageRequest> = S.lazy(
-  (): S.Codec<ChatPostMessageRequest> =>
-    S.struct({
-      roomId: S.str,
-      payload: ChatMessageContent,
-    }) as S.Codec<ChatPostMessageRequest>,
-);
-
-/** Result of posting a message. */
-export interface ChatPostMessageResult {
-  /** Assigned message ID. */
-  messageId: string;
-}
-
-export const ChatPostMessageResult: S.Codec<ChatPostMessageResult> = S.lazy(
-  (): S.Codec<ChatPostMessageResult> =>
-    S.struct({ messageId: S.str }) as S.Codec<ChatPostMessageResult>,
 );
 
 /** A reaction to a chat message. */
@@ -794,36 +361,6 @@ export const ChatRoomParticipation: S.Codec<ChatRoomParticipation> = S.lazy(
     S.taggedUnion({ RoomHost: S.unit, Bot: S.unit }),
 );
 
-/** Chat room registration error. */
-export type ChatRoomRegistrationError =
-  /** Not allowed. */
-  | { tag: "PermissionDenied"; value: undefined }
-  /** Catch-all. */
-  | { tag: "Unknown"; value: { reason: string } };
-
-export const ChatRoomRegistrationError: S.Codec<ChatRoomRegistrationError> =
-  S.lazy(
-    (): S.Codec<ChatRoomRegistrationError> =>
-      S.taggedUnion({
-        PermissionDenied: S.unit,
-        Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
-      }),
-  );
-
-/** Result of a room registration. */
-export interface ChatRoomRegistrationResult {
-  /** `New` or `Exists`. */
-  status: ChatRoomRegistrationStatus;
-}
-
-export const ChatRoomRegistrationResult: S.Codec<ChatRoomRegistrationResult> =
-  S.lazy(
-    (): S.Codec<ChatRoomRegistrationResult> =>
-      S.struct({
-        status: ChatRoomRegistrationStatus,
-      }) as S.Codec<ChatRoomRegistrationResult>,
-  );
-
 /** Whether the room was newly created or already existed. */
 export type ChatRoomRegistrationStatus =
   | { tag: "New"; value: undefined }
@@ -834,25 +371,6 @@ export const ChatRoomRegistrationStatus: S.Codec<ChatRoomRegistrationStatus> =
     (): S.Codec<ChatRoomRegistrationStatus> =>
       S.taggedUnion({ New: S.unit, Exists: S.unit }),
   );
-
-/** Request to create a chat room. */
-export interface ChatRoomRequest {
-  /** Unique room identifier. */
-  roomId: string;
-  /** Room display name. */
-  name: string;
-  /** URL or base64 image. */
-  icon: string;
-}
-
-export const ChatRoomRequest: S.Codec<ChatRoomRequest> = S.lazy(
-  (): S.Codec<ChatRoomRequest> =>
-    S.struct({
-      roomId: S.str,
-      name: S.str,
-      icon: S.str,
-    }) as S.Codec<ChatRoomRequest>,
-);
 
 /** Semantic color tokens for theming. */
 export type ColorToken =
@@ -950,101 +468,6 @@ export const ContentAlignment: S.Codec<ContentAlignment> = S.lazy(
     }),
 );
 
-/** A privacy-preserving alias derived via ring VRF, bound to a specific context. */
-export interface ContextualAlias {
-  /** 32-byte context identifier. */
-  context: Uint8Array;
-  /** Ring VRF alias (variable length). */
-  alias: Uint8Array;
-}
-
-export const ContextualAlias: S.Codec<ContextualAlias> = S.lazy(
-  (): S.Codec<ContextualAlias> =>
-    S.struct({
-      context: S.byteArray(32),
-      alias: S.bytes,
-    }) as S.Codec<ContextualAlias>,
-);
-
-/** Error returned when ring VRF proof creation fails. */
-export type CreateProofError =
-  /** Ring not available at the specified location. */
-  | { tag: "RingNotFound"; value: undefined }
-  /** User or host rejected. */
-  | { tag: "Rejected"; value: undefined }
-  /** Catch-all. */
-  | { tag: "Unknown"; value: { reason: string } };
-
-export const CreateProofError: S.Codec<CreateProofError> = S.lazy(
-  (): S.Codec<CreateProofError> =>
-    S.taggedUnion({
-      RingNotFound: S.unit,
-      Rejected: S.unit,
-      Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
-    }),
-);
-
-/** Transaction creation error. */
-export type CreateTransactionError =
-  /** Payload could not be deserialized. */
-  | { tag: "FailedToDecode"; value: undefined }
-  /** User rejected. */
-  | { tag: "Rejected"; value: undefined }
-  /** Unsupported payload version or extension. */
-  | { tag: "NotSupported"; value: string }
-  /** Not authenticated. */
-  | { tag: "PermissionDenied"; value: undefined }
-  /** Catch-all. */
-  | { tag: "Unknown"; value: { reason: string } };
-
-export const CreateTransactionError: S.Codec<CreateTransactionError> = S.lazy(
-  (): S.Codec<CreateTransactionError> =>
-    S.taggedUnion({
-      FailedToDecode: S.unit,
-      Rejected: S.unit,
-      NotSupported: S.str,
-      PermissionDenied: S.unit,
-      Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
-    }),
-);
-
-/** Request to create a transaction for a product account. */
-export interface CreateTransactionRequest {
-  /** Product account that will sign the transaction. */
-  productAccountId: ProductAccountId;
-  /** Versioned transaction payload. */
-  payload: VersionedTxPayload;
-}
-
-export const CreateTransactionRequest: S.Codec<CreateTransactionRequest> =
-  S.lazy(
-    (): S.Codec<CreateTransactionRequest> =>
-      S.struct({
-        productAccountId: ProductAccountId,
-        payload: VersionedTxPayload,
-      }) as S.Codec<CreateTransactionRequest>,
-  );
-
-/** Request from the host asking the product to render a custom chat message. */
-export interface CustomMessageRenderRequest {
-  /** Message identifier. */
-  messageId: string;
-  /** Application-defined message type. */
-  messageType: string;
-  /** Binary payload. */
-  payload: Bytes;
-}
-
-export const CustomMessageRenderRequest: S.Codec<CustomMessageRenderRequest> =
-  S.lazy(
-    (): S.Codec<CustomMessageRenderRequest> =>
-      S.struct({
-        messageId: S.str,
-        messageType: S.str,
-        payload: Bytes,
-      }) as S.Codec<CustomMessageRenderRequest>,
-  );
-
 /**
  * A node in the custom renderer UI tree. Can be nested recursively via the
  * `children` field of each [`Component`].
@@ -1053,7 +476,7 @@ export type CustomRendererNode =
   /** Empty node. */
   | { tag: "Nil"; value: undefined }
   /** Raw text string. */
-  | { tag: "String"; value: string }
+  | { tag: "String"; value: { text: string } }
   /** Generic container. */
   | { tag: "Box"; value: Component<BoxProps> }
   /** Vertical layout. */
@@ -1073,7 +496,7 @@ export const CustomRendererNode: S.Codec<CustomRendererNode> = S.lazy(
   (): S.Codec<CustomRendererNode> =>
     S.taggedUnion({
       Nil: S.unit,
-      String: S.str,
+      String: S.struct({ text: S.str }) as S.Codec<{ text: string }>,
       Box: Component(BoxProps),
       Column: Component(ColumnProps),
       Row: Component(RowProps),
@@ -1084,86 +507,29 @@ export const CustomRendererNode: S.Codec<CustomRendererNode> = S.lazy(
     }),
 );
 
-/** 32-byte decryption key. */
-export type DecryptionKey = Uint8Array;
-
-export const DecryptionKey: S.Codec<DecryptionKey> = S.lazy(
-  (): S.Codec<DecryptionKey> => S.byteArray(32),
-);
-
-/** Key derivation index for generating product-specific accounts. */
-export type DerivationIndex = number;
-
-export const DerivationIndex: S.Codec<DerivationIndex> = S.lazy(
-  (): S.Codec<DerivationIndex> => S.u32,
-);
-
-/**
- * Error from [`crate::api::EntropyDerivation::host_derive_entropy`].
- *
- * Under normal operation the function always succeeds; `Unknown` indicates an
- * unrecoverable internal host error.
- *
- * See [RFC 0007].
- *
- * [RFC 0007]: https://github.com/paritytech/triangle-js-sdks/pull/95
- */
-export type DeriveEntropyError =
-  /** An unexpected error occurred in the host. */
-  { tag: "Unknown"; value: undefined };
-
-export const DeriveEntropyError: S.Codec<DeriveEntropyError> = S.lazy(
-  (): S.Codec<DeriveEntropyError> => S.taggedUnion({ Unknown: S.unit }),
-);
-
 /**
  * CSS-like dimensions: (top, end, bottom, start).
  * Bottom defaults to top, start defaults to end when `None`.
  */
-export type Dimensions = [Size, Size, Size | undefined, Size | undefined];
+export interface Dimensions {
+  /** Top dimension. */
+  top: bigint;
+  /** End dimension. */
+  end: bigint;
+  /** Bottom dimension. Defaults to top when absent. */
+  bottom?: bigint;
+  /** Start dimension. Defaults to end when absent. */
+  start?: bigint;
+}
 
 export const Dimensions: S.Codec<Dimensions> = S.lazy(
   (): S.Codec<Dimensions> =>
-    S.tuple(Size, Size, S.option(Size), S.option(Size)),
-);
-
-/** A dotNS domain name identifier (e.g., `"my-product.dot"`). */
-export type DotNsIdentifier = string;
-
-export const DotNsIdentifier: S.Codec<DotNsIdentifier> = S.lazy(
-  (): S.Codec<DotNsIdentifier> => S.str,
-);
-
-/** Ed25519 private key bytes (32 bytes). */
-export type Ed25519PrivateKey = Uint8Array;
-
-export const Ed25519PrivateKey: S.Codec<Ed25519PrivateKey> = S.lazy(
-  (): S.Codec<Ed25519PrivateKey> => S.byteArray(32),
-);
-
-/**
- * 32 bytes of deterministic entropy derived from the user's root BIP-39
- * entropy via a three-layer BLAKE2b-256 keyed hashing scheme. The same
- * root account + product + key always yields the same output on any
- * conforming host.
- *
- * See [RFC 0007].
- *
- * [RFC 0007]: https://github.com/paritytech/triangle-js-sdks/pull/95
- */
-export type Entropy = Uint8Array;
-
-export const Entropy: S.Codec<Entropy> = S.lazy(
-  (): S.Codec<Entropy> => S.byteArray(32),
-);
-
-/** Feature to check for host support. */
-export type Feature =
-  /** Is this blockchain supported? */
-  { tag: "Chain"; value: GenesisHash };
-
-export const Feature: S.Codec<Feature> = S.lazy(
-  (): S.Codec<Feature> => S.taggedUnion({ Chain: GenesisHash }),
+    S.struct({
+      top: S.u64,
+      end: S.u64,
+      bottom: S.option(S.u64),
+      start: S.option(S.u64),
+    }) as S.Codec<Dimensions>,
 );
 
 /** Generic error payload carrying a human-readable reason string. */
@@ -1184,37 +550,6 @@ export type GenericError = { tag: "GenericError"; value: GenericErr };
 export const GenericError: S.Codec<GenericError> = S.lazy(
   (): S.Codec<GenericError> => S.taggedUnion({ GenericError: GenericErr }),
 );
-
-/** Blockchain genesis hash, used to identify a specific chain. */
-export type GenesisHash = Hex;
-
-export const GenesisHash: S.Codec<GenesisHash> = S.lazy(
-  (): S.Codec<GenesisHash> => Hex,
-);
-
-/**
- * Handshake error. Mirrors Novasama's `HandshakeErr` byte-for-byte so that
- * pre-codegen products (built against `@novasamatech/host-api`) can decode
- * `host_handshake_response` frames produced by this host.
- */
-export type HandshakeError =
-  | { tag: "Timeout"; value: undefined }
-  | { tag: "UnsupportedProtocolVersion"; value: undefined }
-  | { tag: "Unknown"; value: GenericErr };
-
-export const HandshakeError: S.Codec<HandshakeError> = S.lazy(
-  (): S.Codec<HandshakeError> =>
-    S.taggedUnion({
-      Timeout: S.unit,
-      UnsupportedProtocolVersion: S.unit,
-      Unknown: GenericErr,
-    }),
-);
-
-/** Hex-encoded arbitrary bytes (SCALE length-prefixed on the wire). */
-export type Hex = Uint8Array;
-
-export const Hex: S.Codec<Hex> = S.lazy((): S.Codec<Hex> => S.bytes);
 
 /** Horizontal alignment options. */
 export type HorizontalAlignment =
@@ -1283,16 +618,16 @@ export const HostAccountCreateProofResponse: S.Codec<HostAccountCreateProofRespo
       }),
   );
 
-/** Versioned wrapper for [`v01::HostAccountGetAliasError`] and older versions. */
+/** Versioned wrapper for [`v01::HostAccountGetError`] and older versions. */
 export type HostAccountGetAliasError = {
   tag: "V1";
-  value: V01HostAccountGetAliasError;
+  value: V01HostAccountGetError;
 };
 
 export const HostAccountGetAliasError: S.Codec<HostAccountGetAliasError> =
   S.lazy(
     (): S.Codec<HostAccountGetAliasError> =>
-      S.indexedTaggedUnion({ V1: [0, V01HostAccountGetAliasError] as const }),
+      S.indexedTaggedUnion({ V1: [0, V01HostAccountGetError] as const }),
   );
 
 /** Versioned wrapper for [`v01::HostAccountGetAliasRequest`] and older versions. */
@@ -1400,18 +735,16 @@ export const HostChatCreateRoomResponse: S.Codec<HostChatCreateRoomResponse> =
       S.indexedTaggedUnion({ V1: [0, V01HostChatCreateRoomResponse] as const }),
   );
 
-/** Versioned wrapper for [`v02::HostChatCreateSimpleGroupError`] and older versions. */
+/** Versioned wrapper for [`v01::HostChatCreateRoomError`] and older versions. */
 export type HostChatCreateSimpleGroupError = {
   tag: "V2";
-  value: V02HostChatCreateSimpleGroupError;
+  value: V01HostChatCreateRoomError;
 };
 
 export const HostChatCreateSimpleGroupError: S.Codec<HostChatCreateSimpleGroupError> =
   S.lazy(
     (): S.Codec<HostChatCreateSimpleGroupError> =>
-      S.indexedTaggedUnion({
-        V2: [1, V02HostChatCreateSimpleGroupError] as const,
-      }),
+      S.indexedTaggedUnion({ V2: [1, V01HostChatCreateRoomError] as const }),
   );
 
 /** Versioned wrapper for [`v02::HostChatCreateSimpleGroupRequest`] and older versions. */
@@ -1570,18 +903,16 @@ export const HostCreateTransactionResponse: S.Codec<HostCreateTransactionRespons
       }),
   );
 
-/** Versioned wrapper for [`v01::HostCreateTransactionWithNonProductAccountError`] and older versions. */
+/** Versioned wrapper for [`v01::HostCreateTransactionError`] and older versions. */
 export type HostCreateTransactionWithNonProductAccountError = {
   tag: "V1";
-  value: V01HostCreateTransactionWithNonProductAccountError;
+  value: V01HostCreateTransactionError;
 };
 
 export const HostCreateTransactionWithNonProductAccountError: S.Codec<HostCreateTransactionWithNonProductAccountError> =
   S.lazy(
     (): S.Codec<HostCreateTransactionWithNonProductAccountError> =>
-      S.indexedTaggedUnion({
-        V1: [0, V01HostCreateTransactionWithNonProductAccountError] as const,
-      }),
+      S.indexedTaggedUnion({ V1: [0, V01HostCreateTransactionError] as const }),
   );
 
 /** Versioned wrapper for [`v01::HostCreateTransactionWithNonProductAccountRequest`] and older versions. */
@@ -1647,17 +978,17 @@ export const HostDeriveEntropyResponse: S.Codec<HostDeriveEntropyResponse> =
       S.indexedTaggedUnion({ V2: [1, V02HostDeriveEntropyResponse] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostDevicePermissionError`] and older versions. */
+/** Versioned wrapper for [`v01::GenericError`] and older versions. */
 export type HostDevicePermissionError =
-  | { tag: "V1"; value: V01HostDevicePermissionError }
-  | { tag: "V2"; value: V01HostDevicePermissionError };
+  | { tag: "V1"; value: GenericError }
+  | { tag: "V2"; value: GenericError };
 
 export const HostDevicePermissionError: S.Codec<HostDevicePermissionError> =
   S.lazy(
     (): S.Codec<HostDevicePermissionError> =>
       S.indexedTaggedUnion({
-        V1: [0, V01HostDevicePermissionError] as const,
-        V2: [1, V01HostDevicePermissionError] as const,
+        V1: [0, GenericError] as const,
+        V2: [1, GenericError] as const,
       }),
   );
 
@@ -1689,16 +1020,13 @@ export const HostDevicePermissionResponse: S.Codec<HostDevicePermissionResponse>
       }),
   );
 
-/** Versioned wrapper for [`v01::HostFeatureSupportedError`] and older versions. */
-export type HostFeatureSupportedError = {
-  tag: "V1";
-  value: V01HostFeatureSupportedError;
-};
+/** Versioned wrapper for [`v01::GenericError`] and older versions. */
+export type HostFeatureSupportedError = { tag: "V1"; value: GenericError };
 
 export const HostFeatureSupportedError: S.Codec<HostFeatureSupportedError> =
   S.lazy(
     (): S.Codec<HostFeatureSupportedError> =>
-      S.indexedTaggedUnion({ V1: [0, V01HostFeatureSupportedError] as const }),
+      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
 /** Versioned wrapper for [`v01::HostFeatureSupportedRequest`] and older versions. */
@@ -1729,18 +1057,16 @@ export const HostFeatureSupportedResponse: S.Codec<HostFeatureSupportedResponse>
       }),
   );
 
-/** Versioned wrapper for [`v01::HostGetNonProductAccountsError`] and older versions. */
+/** Versioned wrapper for [`v01::HostAccountGetError`] and older versions. */
 export type HostGetNonProductAccountsError = {
   tag: "V1";
-  value: V01HostGetNonProductAccountsError;
+  value: V01HostAccountGetError;
 };
 
 export const HostGetNonProductAccountsError: S.Codec<HostGetNonProductAccountsError> =
   S.lazy(
     (): S.Codec<HostGetNonProductAccountsError> =>
-      S.indexedTaggedUnion({
-        V1: [0, V01HostGetNonProductAccountsError] as const,
-      }),
+      S.indexedTaggedUnion({ V1: [0, V01HostAccountGetError] as const }),
   );
 
 /** Versioned wrapper for unit and older versions. */
@@ -1820,16 +1146,16 @@ export const HostHandshakeResponse: S.Codec<HostHandshakeResponse> = S.lazy(
     S.indexedTaggedUnion({ V1: [0, S.unit] as const }),
 );
 
-/** Versioned wrapper for [`v01::HostLocalStorageClearError`] and older versions. */
+/** Versioned wrapper for [`v01::HostLocalStorageReadError`] and older versions. */
 export type HostLocalStorageClearError = {
   tag: "V1";
-  value: V01HostLocalStorageClearError;
+  value: V01HostLocalStorageReadError;
 };
 
 export const HostLocalStorageClearError: S.Codec<HostLocalStorageClearError> =
   S.lazy(
     (): S.Codec<HostLocalStorageClearError> =>
-      S.indexedTaggedUnion({ V1: [0, V01HostLocalStorageClearError] as const }),
+      S.indexedTaggedUnion({ V1: [0, V01HostLocalStorageReadError] as const }),
   );
 
 /** Versioned wrapper for [`v01::HostLocalStorageClearRequest`] and older versions. */
@@ -1895,16 +1221,16 @@ export const HostLocalStorageReadResponse: S.Codec<HostLocalStorageReadResponse>
       }),
   );
 
-/** Versioned wrapper for [`v01::HostLocalStorageWriteError`] and older versions. */
+/** Versioned wrapper for [`v01::HostLocalStorageReadError`] and older versions. */
 export type HostLocalStorageWriteError = {
   tag: "V1";
-  value: V01HostLocalStorageWriteError;
+  value: V01HostLocalStorageReadError;
 };
 
 export const HostLocalStorageWriteError: S.Codec<HostLocalStorageWriteError> =
   S.lazy(
     (): S.Codec<HostLocalStorageWriteError> =>
-      S.indexedTaggedUnion({ V1: [0, V01HostLocalStorageWriteError] as const }),
+      S.indexedTaggedUnion({ V1: [0, V01HostLocalStorageReadError] as const }),
   );
 
 /** Versioned wrapper for [`v01::HostLocalStorageWriteRequest`] and older versions. */
@@ -2105,16 +1431,13 @@ export const HostPaymentTopUpResponse: S.Codec<HostPaymentTopUpResponse> =
       S.indexedTaggedUnion({ V2: [1, S.unit] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostPushNotificationError`] and older versions. */
-export type HostPushNotificationError = {
-  tag: "V1";
-  value: V01HostPushNotificationError;
-};
+/** Versioned wrapper for [`v01::GenericError`] and older versions. */
+export type HostPushNotificationError = { tag: "V1"; value: GenericError };
 
 export const HostPushNotificationError: S.Codec<HostPushNotificationError> =
   S.lazy(
     (): S.Codec<HostPushNotificationError> =>
-      S.indexedTaggedUnion({ V1: [0, V01HostPushNotificationError] as const }),
+      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
 /** Versioned wrapper for [`v01::HostPushNotificationRequest`] and older versions. */
@@ -2179,16 +1502,16 @@ export const HostSignPayloadResponse: S.Codec<HostSignPayloadResponse> = S.lazy(
     }),
 );
 
-/** Versioned wrapper for [`v01::HostSignRawError`] and older versions. */
+/** Versioned wrapper for [`v01::HostSignPayloadError`] and older versions. */
 export type HostSignRawError =
-  | { tag: "V1"; value: V01HostSignRawError }
-  | { tag: "V2"; value: V01HostSignRawError };
+  | { tag: "V1"; value: V01HostSignPayloadError }
+  | { tag: "V2"; value: V01HostSignPayloadError };
 
 export const HostSignRawError: S.Codec<HostSignRawError> = S.lazy(
   (): S.Codec<HostSignRawError> =>
     S.indexedTaggedUnion({
-      V1: [0, V01HostSignRawError] as const,
-      V2: [1, V01HostSignRawError] as const,
+      V1: [0, V01HostSignPayloadError] as const,
+      V2: [1, V01HostSignPayloadError] as const,
     }),
 );
 
@@ -2205,35 +1528,18 @@ export const HostSignRawRequest: S.Codec<HostSignRawRequest> = S.lazy(
     }),
 );
 
-/** Versioned wrapper for [`v01::HostSignRawResponse`] and older versions. */
+/** Versioned wrapper for [`v01::HostSignPayloadResponse`] and older versions. */
 export type HostSignRawResponse =
-  | { tag: "V1"; value: V01HostSignRawResponse }
-  | { tag: "V2"; value: V01HostSignRawResponse };
+  | { tag: "V1"; value: V01HostSignPayloadResponse }
+  | { tag: "V2"; value: V01HostSignPayloadResponse };
 
 export const HostSignRawResponse: S.Codec<HostSignRawResponse> = S.lazy(
   (): S.Codec<HostSignRawResponse> =>
     S.indexedTaggedUnion({
-      V1: [0, V01HostSignRawResponse] as const,
-      V2: [1, V01HostSignRawResponse] as const,
+      V1: [0, V01HostSignPayloadResponse] as const,
+      V2: [1, V01HostSignPayloadResponse] as const,
     }),
 );
-
-/** Request to write a value into local storage. */
-export interface LocalStorageWriteRequest {
-  /** Storage key to write. */
-  key: StorageKey;
-  /** Value to store at the key. */
-  value: StorageValue;
-}
-
-export const LocalStorageWriteRequest: S.Codec<LocalStorageWriteRequest> =
-  S.lazy(
-    (): S.Codec<LocalStorageWriteRequest> =>
-      S.struct({
-        key: StorageKey,
-        value: StorageValue,
-      }) as S.Codec<LocalStorageWriteRequest>,
-  );
 
 /** Layout and styling modifiers applied to custom renderer components. */
 export type Modifier =
@@ -2246,17 +1552,17 @@ export type Modifier =
   /** Border style. */
   | { tag: "Border"; value: BorderStyle }
   /** Fixed height. */
-  | { tag: "Height"; value: Size }
+  | { tag: "Height"; value: { height: bigint } }
   /** Fixed width. */
-  | { tag: "Width"; value: Size }
+  | { tag: "Width"; value: { width: bigint } }
   /** Minimum width. */
-  | { tag: "MinWidth"; value: Size }
+  | { tag: "MinWidth"; value: { width: bigint } }
   /** Minimum height. */
-  | { tag: "MinHeight"; value: Size }
+  | { tag: "MinHeight"; value: { height: bigint } }
   /** Fill available width. */
-  | { tag: "FillWidth"; value: boolean }
+  | { tag: "FillWidth"; value: { enabled: boolean } }
   /** Fill available height. */
-  | { tag: "FillHeight"; value: boolean };
+  | { tag: "FillHeight"; value: { enabled: boolean } };
 
 export const Modifier: S.Codec<Modifier> = S.lazy(
   (): S.Codec<Modifier> =>
@@ -2265,246 +1571,32 @@ export const Modifier: S.Codec<Modifier> = S.lazy(
       Padding: Dimensions,
       Background: Background,
       Border: BorderStyle,
-      Height: Size,
-      Width: Size,
-      MinWidth: Size,
-      MinHeight: Size,
-      FillWidth: S.bool,
-      FillHeight: S.bool,
+      Height: S.struct({ height: S.u64 }) as S.Codec<{ height: bigint }>,
+      Width: S.struct({ width: S.u64 }) as S.Codec<{ width: bigint }>,
+      MinWidth: S.struct({ width: S.u64 }) as S.Codec<{ width: bigint }>,
+      MinHeight: S.struct({ height: S.u64 }) as S.Codec<{ height: bigint }>,
+      FillWidth: S.struct({ enabled: S.bool }) as S.Codec<{ enabled: boolean }>,
+      FillHeight: S.struct({ enabled: S.bool }) as S.Codec<{
+        enabled: boolean;
+      }>,
     }),
-);
-
-/** Navigation error. */
-export type NavigateToError =
-  /** Navigation not allowed. */
-  | { tag: "PermissionDenied"; value: undefined }
-  /** Catch-all. */
-  | { tag: "Unknown"; value: { reason: string } };
-
-export const NavigateToError: S.Codec<NavigateToError> = S.lazy(
-  (): S.Codec<NavigateToError> =>
-    S.taggedUnion({
-      PermissionDenied: S.unit,
-      Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
-    }),
-);
-
-/** Operation identifier for async chain operations. */
-export type OperationId = string;
-
-export const OperationId: S.Codec<OperationId> = S.lazy(
-  (): S.Codec<OperationId> => S.str,
 );
 
 /** Result of starting a chain operation. */
 export type OperationStartedResult =
   /** Operation started successfully. */
-  | { tag: "Started"; value: { operationId: OperationId } }
+  | { tag: "Started"; value: { operationId: string } }
   /** Too many concurrent operations. */
   | { tag: "LimitReached"; value: undefined };
 
 export const OperationStartedResult: S.Codec<OperationStartedResult> = S.lazy(
   (): S.Codec<OperationStartedResult> =>
     S.taggedUnion({
-      Started: S.struct({ operationId: OperationId }) as S.Codec<{
-        operationId: OperationId;
+      Started: S.struct({ operationId: S.str }) as S.Codec<{
+        operationId: string;
       }>,
       LimitReached: S.unit,
     }),
-);
-
-/**
- * Current payment balance state pushed to subscribers.
- *
- * See [RFC 0006].
- *
- * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
- */
-export interface PaymentBalance {
-  /** Balance that can be spent right now. */
-  available: Balance;
-  /**
-   * Balance the user possesses but cannot spend yet (e.g. in recycling
-   * stage).
-   */
-  pending: Balance;
-}
-
-export const PaymentBalance: S.Codec<PaymentBalance> = S.lazy(
-  (): S.Codec<PaymentBalance> =>
-    S.struct({
-      available: Balance,
-      pending: Balance,
-    }) as S.Codec<PaymentBalance>,
-);
-
-/**
- * Error from [`crate::api::Payment::host_payment_balance_subscribe`].
- *
- * See [RFC 0006].
- *
- * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
- */
-export type PaymentBalanceError =
-  /** User denied the balance disclosure request. */
-  | { tag: "PermissionDenied"; value: undefined }
-  /** Catch-all. */
-  | { tag: "Unknown"; value: { reason: string } };
-
-export const PaymentBalanceError: S.Codec<PaymentBalanceError> = S.lazy(
-  (): S.Codec<PaymentBalanceError> =>
-    S.taggedUnion({
-      PermissionDenied: S.unit,
-      Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
-    }),
-);
-
-/** Unique payment identifier, scoped to the product that created it. */
-export type PaymentId = string;
-
-export const PaymentId: S.Codec<PaymentId> = S.lazy(
-  (): S.Codec<PaymentId> => S.str,
-);
-
-/**
- * Receipt returned after a successful payment request.
- *
- * See [RFC 0006].
- *
- * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
- */
-export interface PaymentReceipt {
-  /** The assigned payment identifier. */
-  id: PaymentId;
-}
-
-export const PaymentReceipt: S.Codec<PaymentReceipt> = S.lazy(
-  (): S.Codec<PaymentReceipt> =>
-    S.struct({ id: PaymentId }) as S.Codec<PaymentReceipt>,
-);
-
-/** Request to initiate a payment to another account. */
-export interface PaymentRequest {
-  /** Amount to pay. */
-  amount: Balance;
-  /** Destination account. */
-  destination: AccountId;
-}
-
-export const PaymentRequest: S.Codec<PaymentRequest> = S.lazy(
-  (): S.Codec<PaymentRequest> =>
-    S.struct({
-      amount: Balance,
-      destination: AccountId,
-    }) as S.Codec<PaymentRequest>,
-);
-
-/**
- * Error from [`crate::api::Payment::host_payment_request`].
- *
- * See [RFC 0006].
- *
- * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
- */
-export type PaymentRequestError =
-  /** User denied the payment request. */
-  | { tag: "Denied"; value: undefined }
-  /** User's available balance is not sufficient for the requested amount. */
-  | { tag: "InsufficientBalance"; value: undefined }
-  /** Catch-all. */
-  | { tag: "Unknown"; value: { reason: string } };
-
-export const PaymentRequestError: S.Codec<PaymentRequestError> = S.lazy(
-  (): S.Codec<PaymentRequestError> =>
-    S.taggedUnion({
-      Denied: S.unit,
-      InsufficientBalance: S.unit,
-      Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
-    }),
-);
-
-/**
- * Payment lifecycle status pushed to subscribers.
- *
- * Once a terminal state (`Completed` or `Failed`) is reached, the host
- * delivers it and may close the subscription.
- *
- * See [RFC 0006].
- *
- * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
- */
-export type PaymentStatus =
-  /** Payment is being processed. */
-  | { tag: "Processing"; value: undefined }
-  /** Payment has been settled successfully. */
-  | { tag: "Completed"; value: undefined }
-  /** Payment has failed. */
-  | { tag: "Failed"; value: string };
-
-export const PaymentStatus: S.Codec<PaymentStatus> = S.lazy(
-  (): S.Codec<PaymentStatus> =>
-    S.taggedUnion({ Processing: S.unit, Completed: S.unit, Failed: S.str }),
-);
-
-/**
- * Error from [`crate::api::Payment::host_payment_status_subscribe`].
- *
- * See [RFC 0006].
- *
- * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
- */
-export type PaymentStatusError =
-  /** Payment ID was not found or does not belong to the current product. */
-  | { tag: "PaymentNotFound"; value: undefined }
-  /** Catch-all. */
-  | { tag: "Unknown"; value: { reason: string } };
-
-export const PaymentStatusError: S.Codec<PaymentStatusError> = S.lazy(
-  (): S.Codec<PaymentStatusError> =>
-    S.taggedUnion({
-      PaymentNotFound: S.unit,
-      Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
-    }),
-);
-
-/**
- * Error from [`crate::api::Payment::host_payment_top_up`].
- *
- * See [RFC 0006].
- *
- * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
- */
-export type PaymentTopUpError =
-  /** The source account does not hold sufficient funds. */
-  | { tag: "InsufficientFunds"; value: undefined }
-  /** The source account was not found or is invalid. */
-  | { tag: "InvalidSource"; value: undefined }
-  /** Catch-all. */
-  | { tag: "Unknown"; value: { reason: string } };
-
-export const PaymentTopUpError: S.Codec<PaymentTopUpError> = S.lazy(
-  (): S.Codec<PaymentTopUpError> =>
-    S.taggedUnion({
-      InsufficientFunds: S.unit,
-      InvalidSource: S.unit,
-      Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
-    }),
-);
-
-/** Request to top up the product payment balance. */
-export interface PaymentTopUpRequest {
-  /** Amount to top up. */
-  amount: Balance;
-  /** Funding source for the top-up. */
-  source: PaymentTopUpSource;
-}
-
-export const PaymentTopUpRequest: S.Codec<PaymentTopUpRequest> = S.lazy(
-  (): S.Codec<PaymentTopUpRequest> =>
-    S.struct({
-      amount: Balance,
-      source: PaymentTopUpSource,
-    }) as S.Codec<PaymentTopUpRequest>,
 );
 
 /**
@@ -2516,26 +1608,23 @@ export const PaymentTopUpRequest: S.Codec<PaymentTopUpRequest> = S.lazy(
  */
 export type PaymentTopUpSource =
   /** Fund from one of the calling product's scoped accounts. */
-  | { tag: "ProductAccount"; value: DerivationIndex }
+  | { tag: "ProductAccount"; value: { derivationIndex: number } }
   /**
    * Fund from a one-time account represented by its private key. This is a
    * standard account holding public funds, not a coin key.
    */
-  | { tag: "PrivateKey"; value: Ed25519PrivateKey };
+  | { tag: "PrivateKey"; value: { ed25519PrivateKey: Uint8Array } };
 
 export const PaymentTopUpSource: S.Codec<PaymentTopUpSource> = S.lazy(
   (): S.Codec<PaymentTopUpSource> =>
     S.taggedUnion({
-      ProductAccount: DerivationIndex,
-      PrivateKey: Ed25519PrivateKey,
+      ProductAccount: S.struct({ derivationIndex: S.u32 }) as S.Codec<{
+        derivationIndex: number;
+      }>,
+      PrivateKey: S.struct({ ed25519PrivateKey: S.byteArray(32) }) as S.Codec<{
+        ed25519PrivateKey: Uint8Array;
+      }>,
     }),
-);
-
-/** Hash of the preimage. */
-export type PreimageKey = Hex;
-
-export const PreimageKey: S.Codec<PreimageKey> = S.lazy(
-  (): S.Codec<PreimageKey> => Hex,
 );
 
 /** Preimage submission error. */
@@ -2550,21 +1639,23 @@ export const PreimageSubmitError: S.Codec<PreimageSubmitError> = S.lazy(
     }),
 );
 
-/** The preimage data. */
-export type PreimageValue = Uint8Array;
-
-export const PreimageValue: S.Codec<PreimageValue> = S.lazy(
-  (): S.Codec<PreimageValue> => S.bytes,
-);
-
 /**
  * Identifies a product-specific account by combining a dotNS domain name with a
  * derivation index.
  */
-export type ProductAccountId = [DotNsIdentifier, DerivationIndex];
+export interface ProductAccountId {
+  /** A dotNS domain name identifier (e.g., `"my-product.dot"`). */
+  dotNsIdentifier: string;
+  /** Key derivation index for generating product-specific accounts. */
+  derivationIndex: number;
+}
 
 export const ProductAccountId: S.Codec<ProductAccountId> = S.lazy(
-  (): S.Codec<ProductAccountId> => S.tuple(DotNsIdentifier, DerivationIndex),
+  (): S.Codec<ProductAccountId> =>
+    S.struct({
+      dotNsIdentifier: S.str,
+      derivationIndex: S.u32,
+    }) as S.Codec<ProductAccountId>,
 );
 
 /** Versioned wrapper for [`v01::ProductChatCustomMessageRenderSubscribeItem`] and older versions. */
@@ -2581,69 +1672,28 @@ export const ProductChatCustomMessageRenderSubscribeItem: S.Codec<ProductChatCus
       }),
   );
 
-/** Variable-length public key. */
-export type PublicKey = Uint8Array;
-
-export const PublicKey: S.Codec<PublicKey> = S.lazy(
-  (): S.Codec<PublicKey> => S.bytes,
-);
-
-/** Push notification payload. */
-export interface PushNotification {
-  /** Notification text. */
-  text: string;
-  /** Optional URL to open on tap. */
-  deeplink?: string;
-}
-
-export const PushNotification: S.Codec<PushNotification> = S.lazy(
-  (): S.Codec<PushNotification> =>
-    S.struct({
-      text: S.str,
-      deeplink: S.option(S.str),
-    }) as S.Codec<PushNotification>,
-);
-
 /** Raw data to sign -- either binary bytes or a string message. */
 export type RawPayload =
   /** Raw binary data to sign. */
-  | { tag: "Bytes"; value: Uint8Array }
+  | { tag: "Bytes"; value: { bytes: Uint8Array } }
   /** String message to sign. */
-  | { tag: "Payload"; value: string };
+  | { tag: "Payload"; value: { payload: string } };
 
 export const RawPayload: S.Codec<RawPayload> = S.lazy(
-  (): S.Codec<RawPayload> => S.taggedUnion({ Bytes: S.bytes, Payload: S.str }),
+  (): S.Codec<RawPayload> =>
+    S.taggedUnion({
+      Bytes: S.struct({ bytes: S.bytes }) as S.Codec<{ bytes: Uint8Array }>,
+      Payload: S.struct({ payload: S.str }) as S.Codec<{ payload: string }>,
+    }),
 );
 
-/** A chat action received from the host. */
-export interface ReceivedChatAction {
-  /** Room where the action occurred. */
-  roomId: string;
-  /** Peer who initiated the action. */
-  peer: string;
-  /** The action payload. */
-  payload: ChatActionPayload;
-}
-
-export const ReceivedChatAction: S.Codec<ReceivedChatAction> = S.lazy(
-  (): S.Codec<ReceivedChatAction> =>
-    S.struct({
-      roomId: S.str,
-      peer: S.str,
-      payload: ChatActionPayload,
-    }) as S.Codec<ReceivedChatAction>,
-);
-
-/** Versioned wrapper for [`v01::RemoteChainHeadBodyError`] and older versions. */
-export type RemoteChainHeadBodyError = {
-  tag: "V1";
-  value: V01RemoteChainHeadBodyError;
-};
+/** Versioned wrapper for [`v01::GenericError`] and older versions. */
+export type RemoteChainHeadBodyError = { tag: "V1"; value: GenericError };
 
 export const RemoteChainHeadBodyError: S.Codec<RemoteChainHeadBodyError> =
   S.lazy(
     (): S.Codec<RemoteChainHeadBodyError> =>
-      S.indexedTaggedUnion({ V1: [0, V01RemoteChainHeadBodyError] as const }),
+      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
 /** Versioned wrapper for [`v01::RemoteChainHeadBodyRequest`] and older versions. */
@@ -2672,16 +1722,13 @@ export const RemoteChainHeadBodyResponse: S.Codec<RemoteChainHeadBodyResponse> =
       }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainHeadCallError`] and older versions. */
-export type RemoteChainHeadCallError = {
-  tag: "V1";
-  value: V01RemoteChainHeadCallError;
-};
+/** Versioned wrapper for [`v01::GenericError`] and older versions. */
+export type RemoteChainHeadCallError = { tag: "V1"; value: GenericError };
 
 export const RemoteChainHeadCallError: S.Codec<RemoteChainHeadCallError> =
   S.lazy(
     (): S.Codec<RemoteChainHeadCallError> =>
-      S.indexedTaggedUnion({ V1: [0, V01RemoteChainHeadCallError] as const }),
+      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
 /** Versioned wrapper for [`v01::RemoteChainHeadCallRequest`] and older versions. */
@@ -2710,18 +1757,13 @@ export const RemoteChainHeadCallResponse: S.Codec<RemoteChainHeadCallResponse> =
       }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainHeadContinueError`] and older versions. */
-export type RemoteChainHeadContinueError = {
-  tag: "V1";
-  value: V01RemoteChainHeadContinueError;
-};
+/** Versioned wrapper for [`v01::GenericError`] and older versions. */
+export type RemoteChainHeadContinueError = { tag: "V1"; value: GenericError };
 
 export const RemoteChainHeadContinueError: S.Codec<RemoteChainHeadContinueError> =
   S.lazy(
     (): S.Codec<RemoteChainHeadContinueError> =>
-      S.indexedTaggedUnion({
-        V1: [0, V01RemoteChainHeadContinueError] as const,
-      }),
+      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
 /** Versioned wrapper for [`v01::RemoteChainHeadContinueRequest`] and older versions. */
@@ -2773,16 +1815,13 @@ export const RemoteChainHeadFollowRequest: S.Codec<RemoteChainHeadFollowRequest>
       }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainHeadHeaderError`] and older versions. */
-export type RemoteChainHeadHeaderError = {
-  tag: "V1";
-  value: V01RemoteChainHeadHeaderError;
-};
+/** Versioned wrapper for [`v01::GenericError`] and older versions. */
+export type RemoteChainHeadHeaderError = { tag: "V1"; value: GenericError };
 
 export const RemoteChainHeadHeaderError: S.Codec<RemoteChainHeadHeaderError> =
   S.lazy(
     (): S.Codec<RemoteChainHeadHeaderError> =>
-      S.indexedTaggedUnion({ V1: [0, V01RemoteChainHeadHeaderError] as const }),
+      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
 /** Versioned wrapper for [`v01::RemoteChainHeadHeaderRequest`] and older versions. */
@@ -2813,18 +1852,16 @@ export const RemoteChainHeadHeaderResponse: S.Codec<RemoteChainHeadHeaderRespons
       }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainHeadStopOperationError`] and older versions. */
+/** Versioned wrapper for [`v01::GenericError`] and older versions. */
 export type RemoteChainHeadStopOperationError = {
   tag: "V1";
-  value: V01RemoteChainHeadStopOperationError;
+  value: GenericError;
 };
 
 export const RemoteChainHeadStopOperationError: S.Codec<RemoteChainHeadStopOperationError> =
   S.lazy(
     (): S.Codec<RemoteChainHeadStopOperationError> =>
-      S.indexedTaggedUnion({
-        V1: [0, V01RemoteChainHeadStopOperationError] as const,
-      }),
+      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
 /** Versioned wrapper for [`v01::RemoteChainHeadStopOperationRequest`] and older versions. */
@@ -2853,18 +1890,13 @@ export const RemoteChainHeadStopOperationResponse: S.Codec<RemoteChainHeadStopOp
       S.indexedTaggedUnion({ V1: [0, S.unit] as const }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainHeadStorageError`] and older versions. */
-export type RemoteChainHeadStorageError = {
-  tag: "V1";
-  value: V01RemoteChainHeadStorageError;
-};
+/** Versioned wrapper for [`v01::GenericError`] and older versions. */
+export type RemoteChainHeadStorageError = { tag: "V1"; value: GenericError };
 
 export const RemoteChainHeadStorageError: S.Codec<RemoteChainHeadStorageError> =
   S.lazy(
     (): S.Codec<RemoteChainHeadStorageError> =>
-      S.indexedTaggedUnion({
-        V1: [0, V01RemoteChainHeadStorageError] as const,
-      }),
+      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
 /** Versioned wrapper for [`v01::RemoteChainHeadStorageRequest`] and older versions. */
@@ -2895,16 +1927,13 @@ export const RemoteChainHeadStorageResponse: S.Codec<RemoteChainHeadStorageRespo
       }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainHeadUnpinError`] and older versions. */
-export type RemoteChainHeadUnpinError = {
-  tag: "V1";
-  value: V01RemoteChainHeadUnpinError;
-};
+/** Versioned wrapper for [`v01::GenericError`] and older versions. */
+export type RemoteChainHeadUnpinError = { tag: "V1"; value: GenericError };
 
 export const RemoteChainHeadUnpinError: S.Codec<RemoteChainHeadUnpinError> =
   S.lazy(
     (): S.Codec<RemoteChainHeadUnpinError> =>
-      S.indexedTaggedUnion({ V1: [0, V01RemoteChainHeadUnpinError] as const }),
+      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
 /** Versioned wrapper for [`v01::RemoteChainHeadUnpinRequest`] and older versions. */
@@ -2930,18 +1959,13 @@ export const RemoteChainHeadUnpinResponse: S.Codec<RemoteChainHeadUnpinResponse>
       S.indexedTaggedUnion({ V1: [0, S.unit] as const }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainSpecChainNameError`] and older versions. */
-export type RemoteChainSpecChainNameError = {
-  tag: "V1";
-  value: V01RemoteChainSpecChainNameError;
-};
+/** Versioned wrapper for [`v01::GenericError`] and older versions. */
+export type RemoteChainSpecChainNameError = { tag: "V1"; value: GenericError };
 
 export const RemoteChainSpecChainNameError: S.Codec<RemoteChainSpecChainNameError> =
   S.lazy(
     (): S.Codec<RemoteChainSpecChainNameError> =>
-      S.indexedTaggedUnion({
-        V1: [0, V01RemoteChainSpecChainNameError] as const,
-      }),
+      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
 /** Versioned wrapper for [`v01::RemoteChainSpecChainNameRequest`] and older versions. */
@@ -2972,18 +1996,16 @@ export const RemoteChainSpecChainNameResponse: S.Codec<RemoteChainSpecChainNameR
       }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainSpecGenesisHashError`] and older versions. */
+/** Versioned wrapper for [`v01::GenericError`] and older versions. */
 export type RemoteChainSpecGenesisHashError = {
   tag: "V1";
-  value: V01RemoteChainSpecGenesisHashError;
+  value: GenericError;
 };
 
 export const RemoteChainSpecGenesisHashError: S.Codec<RemoteChainSpecGenesisHashError> =
   S.lazy(
     (): S.Codec<RemoteChainSpecGenesisHashError> =>
-      S.indexedTaggedUnion({
-        V1: [0, V01RemoteChainSpecGenesisHashError] as const,
-      }),
+      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
 /** Versioned wrapper for [`v01::RemoteChainSpecGenesisHashRequest`] and older versions. */
@@ -3014,18 +2036,13 @@ export const RemoteChainSpecGenesisHashResponse: S.Codec<RemoteChainSpecGenesisH
       }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainSpecPropertiesError`] and older versions. */
-export type RemoteChainSpecPropertiesError = {
-  tag: "V1";
-  value: V01RemoteChainSpecPropertiesError;
-};
+/** Versioned wrapper for [`v01::GenericError`] and older versions. */
+export type RemoteChainSpecPropertiesError = { tag: "V1"; value: GenericError };
 
 export const RemoteChainSpecPropertiesError: S.Codec<RemoteChainSpecPropertiesError> =
   S.lazy(
     (): S.Codec<RemoteChainSpecPropertiesError> =>
-      S.indexedTaggedUnion({
-        V1: [0, V01RemoteChainSpecPropertiesError] as const,
-      }),
+      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
 /** Versioned wrapper for [`v01::RemoteChainSpecPropertiesRequest`] and older versions. */
@@ -3056,18 +2073,16 @@ export const RemoteChainSpecPropertiesResponse: S.Codec<RemoteChainSpecPropertie
       }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainTransactionBroadcastError`] and older versions. */
+/** Versioned wrapper for [`v01::GenericError`] and older versions. */
 export type RemoteChainTransactionBroadcastError = {
   tag: "V1";
-  value: V01RemoteChainTransactionBroadcastError;
+  value: GenericError;
 };
 
 export const RemoteChainTransactionBroadcastError: S.Codec<RemoteChainTransactionBroadcastError> =
   S.lazy(
     (): S.Codec<RemoteChainTransactionBroadcastError> =>
-      S.indexedTaggedUnion({
-        V1: [0, V01RemoteChainTransactionBroadcastError] as const,
-      }),
+      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
 /** Versioned wrapper for [`v01::RemoteChainTransactionBroadcastRequest`] and older versions. */
@@ -3098,18 +2113,16 @@ export const RemoteChainTransactionBroadcastResponse: S.Codec<RemoteChainTransac
       }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainTransactionStopError`] and older versions. */
+/** Versioned wrapper for [`v01::GenericError`] and older versions. */
 export type RemoteChainTransactionStopError = {
   tag: "V1";
-  value: V01RemoteChainTransactionStopError;
+  value: GenericError;
 };
 
 export const RemoteChainTransactionStopError: S.Codec<RemoteChainTransactionStopError> =
   S.lazy(
     (): S.Codec<RemoteChainTransactionStopError> =>
-      S.indexedTaggedUnion({
-        V1: [0, V01RemoteChainTransactionStopError] as const,
-      }),
+      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
 /** Versioned wrapper for [`v01::RemoteChainTransactionStopRequest`] and older versions. */
@@ -3156,7 +2169,7 @@ export type RemotePermission =
    * pattern: `"api.example.com"` (exact), `"*.example.com"` (wildcard
    * subdomain), or `"*"` (all hosts).
    */
-  | { tag: "Remote"; value: Array<string> }
+  | { tag: "Remote"; value: { domains: Array<string> } }
   /** WebRTC access — can expose the user's IP address. */
   | { tag: "WebRtc"; value: undefined }
   /**
@@ -3170,23 +2183,25 @@ export type RemotePermission =
 export const RemotePermission: S.Codec<RemotePermission> = S.lazy(
   (): S.Codec<RemotePermission> =>
     S.taggedUnion({
-      Remote: S.vec(S.str),
+      Remote: S.struct({ domains: S.vec(S.str) }) as S.Codec<{
+        domains: Array<string>;
+      }>,
       WebRtc: S.unit,
       ChainSubmit: S.unit,
       StatementSubmit: S.unit,
     }),
 );
 
-/** Versioned wrapper for [`v01::RemotePermissionError`] and older versions. */
+/** Versioned wrapper for [`v01::GenericError`] and older versions. */
 export type RemotePermissionError =
-  | { tag: "V1"; value: V01RemotePermissionError }
-  | { tag: "V2"; value: V01RemotePermissionError };
+  | { tag: "V1"; value: GenericError }
+  | { tag: "V2"; value: GenericError };
 
 export const RemotePermissionError: S.Codec<RemotePermissionError> = S.lazy(
   (): S.Codec<RemotePermissionError> =>
     S.indexedTaggedUnion({
-      V1: [0, V01RemotePermissionError] as const,
-      V2: [1, V01RemotePermissionError] as const,
+      V1: [0, GenericError] as const,
+      V2: [1, GenericError] as const,
     }),
 );
 
@@ -3287,18 +2302,16 @@ export const RemoteStatementStoreCreateProofResponse: S.Codec<RemoteStatementSto
       }),
   );
 
-/** Versioned wrapper for [`v01::RemoteStatementStoreSubmitError`] and older versions. */
+/** Versioned wrapper for [`v01::GenericError`] and older versions. */
 export type RemoteStatementStoreSubmitError = {
   tag: "V1";
-  value: V01RemoteStatementStoreSubmitError;
+  value: GenericError;
 };
 
 export const RemoteStatementStoreSubmitError: S.Codec<RemoteStatementStoreSubmitError> =
   S.lazy(
     (): S.Codec<RemoteStatementStoreSubmitError> =>
-      S.indexedTaggedUnion({
-        V1: [0, V01RemoteStatementStoreSubmitError] as const,
-      }),
+      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
 /** Versioned wrapper for [`v01::RemoteStatementStoreSubmitRequest`] and older versions. */
@@ -3357,33 +2370,12 @@ export const RemoteStatementStoreSubscribeRequest: S.Codec<RemoteStatementStoreS
       }),
   );
 
-/** Error returned when credential/account requests fail. */
-export type RequestCredentialsError =
-  /** User is not logged in. */
-  | { tag: "NotConnected"; value: undefined }
-  /** User or host rejected the request. */
-  | { tag: "Rejected"; value: undefined }
-  /** Domain identifier is invalid. */
-  | { tag: "DomainNotValid"; value: undefined }
-  /** Catch-all error with reason. */
-  | { tag: "Unknown"; value: { reason: string } };
-
-export const RequestCredentialsError: S.Codec<RequestCredentialsError> = S.lazy(
-  (): S.Codec<RequestCredentialsError> =>
-    S.taggedUnion({
-      NotConnected: S.unit,
-      Rejected: S.unit,
-      DomainNotValid: S.unit,
-      Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
-    }),
-);
-
 /** Locates a specific ring on a specific chain for ring VRF operations. */
 export interface RingLocation {
   /** Chain genesis hash. */
-  genesisHash: GenesisHash;
+  genesisHash: Uint8Array;
   /** Root hash of the ring. */
-  ringRootHash: Hex;
+  ringRootHash: Uint8Array;
   /** Optional location hints. */
   hints?: RingLocationHint;
 }
@@ -3391,8 +2383,8 @@ export interface RingLocation {
 export const RingLocation: S.Codec<RingLocation> = S.lazy(
   (): S.Codec<RingLocation> =>
     S.struct({
-      genesisHash: GenesisHash,
-      ringRootHash: Hex,
+      genesisHash: S.bytes,
+      ringRootHash: S.bytes,
       hints: S.option(RingLocationHint),
     }) as S.Codec<RingLocation>,
 );
@@ -3406,13 +2398,6 @@ export interface RingLocationHint {
 export const RingLocationHint: S.Codec<RingLocationHint> = S.lazy(
   (): S.Codec<RingLocationHint> =>
     S.struct({ palletInstance: S.option(S.u32) }) as S.Codec<RingLocationHint>,
-);
-
-/** Variable-length ring VRF proof bytes. */
-export type RingVrfProof = Uint8Array;
-
-export const RingVrfProof: S.Codec<RingVrfProof> = S.lazy(
-  (): S.Codec<RingVrfProof> => S.bytes,
 );
 
 /** Properties for a [`CustomRendererNode::Row`] layout. */
@@ -3432,10 +2417,16 @@ export const RowProps: S.Codec<RowProps> = S.lazy(
 );
 
 /** A runtime API identified by name and version. */
-export type RuntimeApi = [string, number];
+export interface RuntimeApi {
+  /** Runtime API name. */
+  name: string;
+  /** Runtime API version. */
+  version: number;
+}
 
 export const RuntimeApi: S.Codec<RuntimeApi> = S.lazy(
-  (): S.Codec<RuntimeApi> => S.tuple(S.str, S.u32),
+  (): S.Codec<RuntimeApi> =>
+    S.struct({ name: S.str, version: S.u32 }) as S.Codec<RuntimeApi>,
 );
 
 /** Runtime specification metadata. */
@@ -3484,12 +2475,16 @@ export const RuntimeType: S.Codec<RuntimeType> = S.lazy(
 /** Shape for borders and backgrounds. */
 export type Shape =
   /** Border radius value. */
-  | { tag: "Rounded"; value: Size }
+  | { tag: "Rounded"; value: { radius: bigint } }
   /** Circular shape. */
   | { tag: "Circle"; value: undefined };
 
 export const Shape: S.Codec<Shape> = S.lazy(
-  (): S.Codec<Shape> => S.taggedUnion({ Rounded: Size, Circle: S.unit }),
+  (): S.Codec<Shape> =>
+    S.taggedUnion({
+      Rounded: S.struct({ radius: S.u64 }) as S.Codec<{ radius: bigint }>,
+      Circle: S.unit,
+    }),
 );
 
 /** A statement with a required (not optional) proof. */
@@ -3497,144 +2492,54 @@ export interface SignedStatement {
   /** Required cryptographic proof. */
   proof: StatementProof;
   /** Optional decryption key. */
-  decryptionKey?: DecryptionKey;
+  decryptionKey?: Uint8Array;
   /** Optional Unix timestamp expiry. */
   expiry?: bigint;
   /** Optional channel. */
-  channel?: Channel;
-  /** Topic tags. */
-  topics: Array<Topic>;
+  channel?: Uint8Array;
+  /** [u8; 32] tags. */
+  topics: Array<Uint8Array>;
   /** Optional data payload. */
-  data?: Bytes;
+  data?: Uint8Array;
 }
 
 export const SignedStatement: S.Codec<SignedStatement> = S.lazy(
   (): S.Codec<SignedStatement> =>
     S.struct({
       proof: StatementProof,
-      decryptionKey: S.option(DecryptionKey),
+      decryptionKey: S.option(S.byteArray(32)),
       expiry: S.option(S.u64),
-      channel: S.option(Channel),
-      topics: S.vec(Topic),
-      data: S.option(Bytes),
+      channel: S.option(S.byteArray(32)),
+      topics: S.vec(S.byteArray(32)),
+      data: S.option(S.bytes),
     }) as S.Codec<SignedStatement>,
 );
-
-/** Signing operation error. */
-export type SigningError =
-  /** Payload could not be deserialized. */
-  | { tag: "FailedToDecode"; value: undefined }
-  /** User rejected signing. */
-  | { tag: "Rejected"; value: undefined }
-  /** Not authenticated. */
-  | { tag: "PermissionDenied"; value: undefined }
-  /** Catch-all. */
-  | { tag: "Unknown"; value: { reason: string } };
-
-export const SigningError: S.Codec<SigningError> = S.lazy(
-  (): S.Codec<SigningError> =>
-    S.taggedUnion({
-      FailedToDecode: S.unit,
-      Rejected: S.unit,
-      PermissionDenied: S.unit,
-      Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
-    }),
-);
-
-/** Result of a signing operation. */
-export interface SigningResult {
-  /** The cryptographic signature. */
-  signature: Hex;
-  /** Full signed transaction, if requested. */
-  signedTransaction?: Hex;
-}
-
-export const SigningResult: S.Codec<SigningResult> = S.lazy(
-  (): S.Codec<SigningResult> =>
-    S.struct({
-      signature: Hex,
-      signedTransaction: S.option(Hex),
-    }) as S.Codec<SigningResult>,
-);
-
-/**
- * Request to create a simple group chat room.
- *
- * V0.2: lightweight group chat that avoids the full Chat Extension v2
- * complexity. Participants join via deep link; the host handles the UI
- * with default rendering (no custom elements).
- */
-export interface SimpleGroupChatRequest {
-  /** Unique room identifier source. */
-  roomId: string;
-  /** Room display name. */
-  name: string;
-  /** URL or base64 image for the room avatar. */
-  icon: string;
-}
-
-export const SimpleGroupChatRequest: S.Codec<SimpleGroupChatRequest> = S.lazy(
-  (): S.Codec<SimpleGroupChatRequest> =>
-    S.struct({
-      roomId: S.str,
-      name: S.str,
-      icon: S.str,
-    }) as S.Codec<SimpleGroupChatRequest>,
-);
-
-/**
- * Result of creating a simple group chat room.
- *
- * V0.2.
- */
-export interface SimpleGroupChatResult {
-  /** Whether the room was newly created or already existed. */
-  status: ChatRoomRegistrationStatus;
-  /** Deep link that participants can use to join the room. */
-  joinLink: string;
-}
-
-export const SimpleGroupChatResult: S.Codec<SimpleGroupChatResult> = S.lazy(
-  (): S.Codec<SimpleGroupChatResult> =>
-    S.struct({
-      status: ChatRoomRegistrationStatus,
-      joinLink: S.str,
-    }) as S.Codec<SimpleGroupChatResult>,
-);
-
-/**
- * Variable-length unsigned integer used for dimensions (SCALE compact-encoded
- * on the wire).
- */
-export type Size = bigint;
-
-export const Size: S.Codec<Size> = S.lazy((): S.Codec<Size> => S.u64);
 
 /** A statement with optional proof and metadata. */
 export interface Statement {
   /** Optional cryptographic proof. */
   proof?: StatementProof;
   /** Optional decryption key. */
-  decryptionKey?: DecryptionKey;
+  decryptionKey?: Uint8Array;
   /** Optional Unix timestamp expiry. */
   expiry?: bigint;
   /** Optional channel. */
-  channel?: Channel;
-  /** Topic tags. */
-  topics: Array<Topic>;
+  channel?: Uint8Array;
+  /** [u8; 32] tags. */
+  topics: Array<Uint8Array>;
   /** Optional data payload. */
-  data?: Bytes;
+  data?: Uint8Array;
 }
 
 export const Statement: S.Codec<Statement> = S.lazy(
   (): S.Codec<Statement> =>
     S.struct({
       proof: S.option(StatementProof),
-      decryptionKey: S.option(DecryptionKey),
+      decryptionKey: S.option(S.byteArray(32)),
       expiry: S.option(S.u64),
-      channel: S.option(Channel),
-      topics: S.vec(Topic),
-      data: S.option(Bytes),
+      channel: S.option(S.byteArray(32)),
+      topics: S.vec(S.byteArray(32)),
+      data: S.option(S.bytes),
     }) as S.Codec<Statement>,
 );
 
@@ -3675,67 +2580,10 @@ export const StatementProof: S.Codec<StatementProof> = S.lazy(
     }),
 );
 
-/** Statement proof creation error. */
-export type StatementProofError =
-  /** Signing operation failed. */
-  | { tag: "UnableToSign"; value: undefined }
-  /** Account not recognized. */
-  | { tag: "UnknownAccount"; value: undefined }
-  /** Catch-all. */
-  | { tag: "Unknown"; value: { reason: string } };
-
-export const StatementProofError: S.Codec<StatementProofError> = S.lazy(
-  (): S.Codec<StatementProofError> =>
-    S.taggedUnion({
-      UnableToSign: S.unit,
-      UnknownAccount: S.unit,
-      Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
-    }),
-);
-
-/** Request to create a cryptographic proof for a statement. */
-export interface StatementStoreCreateProofRequest {
-  /** Product account that should create the proof. */
-  productAccountId: ProductAccountId;
-  /** Statement to prove. */
-  statement: Statement;
-}
-
-export const StatementStoreCreateProofRequest: S.Codec<StatementStoreCreateProofRequest> =
-  S.lazy(
-    (): S.Codec<StatementStoreCreateProofRequest> =>
-      S.struct({
-        productAccountId: ProductAccountId,
-        statement: Statement,
-      }) as S.Codec<StatementStoreCreateProofRequest>,
-  );
-
-/** Local storage operation error. */
-export type StorageError =
-  /** Storage quota exceeded. */
-  | { tag: "Full"; value: undefined }
-  /** Catch-all. */
-  | { tag: "Unknown"; value: { reason: string } };
-
-export const StorageError: S.Codec<StorageError> = S.lazy(
-  (): S.Codec<StorageError> =>
-    S.taggedUnion({
-      Full: S.unit,
-      Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
-    }),
-);
-
-/** Key name for local storage operations. */
-export type StorageKey = string;
-
-export const StorageKey: S.Codec<StorageKey> = S.lazy(
-  (): S.Codec<StorageKey> => S.str,
-);
-
 /** A single storage query. */
 export interface StorageQueryItem {
   /** Storage key to query. */
-  key: Hex;
+  key: Uint8Array;
   /** What to return. */
   queryType: StorageQueryType;
 }
@@ -3743,7 +2591,7 @@ export interface StorageQueryItem {
 export const StorageQueryItem: S.Codec<StorageQueryItem> = S.lazy(
   (): S.Codec<StorageQueryItem> =>
     S.struct({
-      key: Hex,
+      key: S.bytes,
       queryType: StorageQueryType,
     }) as S.Codec<StorageQueryItem>,
 );
@@ -3770,30 +2618,23 @@ export const StorageQueryType: S.Codec<StorageQueryType> = S.lazy(
 /** Result of a storage query. */
 export interface StorageResultItem {
   /** The queried key. */
-  key: Hex;
+  key: Uint8Array;
   /** Value, if requested. */
-  value?: Hex;
+  value?: Uint8Array;
   /** Hash, if requested. */
-  hash?: Hex;
+  hash?: Uint8Array;
   /** Merkle value, if requested. */
-  closestDescendantMerkleValue?: Hex;
+  closestDescendantMerkleValue?: Uint8Array;
 }
 
 export const StorageResultItem: S.Codec<StorageResultItem> = S.lazy(
   (): S.Codec<StorageResultItem> =>
     S.struct({
-      key: Hex,
-      value: S.option(Hex),
-      hash: S.option(Hex),
-      closestDescendantMerkleValue: S.option(Hex),
+      key: S.bytes,
+      value: S.option(S.bytes),
+      hash: S.option(S.bytes),
+      closestDescendantMerkleValue: S.option(S.bytes),
     }) as S.Codec<StorageResultItem>,
-);
-
-/** Binary value stored in local storage. */
-export type StorageValue = Uint8Array;
-
-export const StorageValue: S.Codec<StorageValue> = S.lazy(
-  (): S.Codec<StorageValue> => S.bytes,
 );
 
 /** Properties for a [`CustomRendererNode::TextField`]. */
@@ -3831,34 +2672,10 @@ export const TextProps: S.Codec<TextProps> = S.lazy(
     }) as S.Codec<TextProps>,
 );
 
-/** 32-byte topic identifier. */
-export type Topic = Uint8Array;
-
-export const Topic: S.Codec<Topic> = S.lazy(
-  (): S.Codec<Topic> => S.byteArray(32),
-);
-
-/**
- * Filter for statement subscriptions, allowing richer topic matching than plain
- * topic vectors. Each position in the filter can be `Some(topic)` to require an
- * exact match or `None` to act as a wildcard.
- *
- * Mirrors the `TopicFilter` type from `polkadot-sdk` statement store.
- */
-export interface TopicFilter {
-  /** Positional topic matchers. `None` entries act as wildcards. */
-  topics: Array<Topic | undefined>;
-}
-
-export const TopicFilter: S.Codec<TopicFilter> = S.lazy(
-  (): S.Codec<TopicFilter> =>
-    S.struct({ topics: S.vec(S.option(Topic)) }) as S.Codec<TopicFilter>,
-);
-
 /** Context information for transaction construction. */
 export interface TxPayloadContextV1 {
   /** `RuntimeMetadataPrefixed` blob (SCALE). */
-  metadata: Hex;
+  metadata: Uint8Array;
   /** Native token symbol. */
   tokenSymbol: string;
   /** Native token decimals. */
@@ -3870,7 +2687,7 @@ export interface TxPayloadContextV1 {
 export const TxPayloadContextV1: S.Codec<TxPayloadContextV1> = S.lazy(
   (): S.Codec<TxPayloadContextV1> =>
     S.struct({
-      metadata: Hex,
+      metadata: S.bytes,
       tokenSymbol: S.str,
       tokenDecimals: S.u32,
       bestBlockHeight: S.u32,
@@ -3882,17 +2699,17 @@ export interface TxPayloadExtensionV1 {
   /** Extension name (e.g., `"CheckSpecVersion"`). */
   id: string;
   /** SCALE-encoded extra data (in extrinsic body). */
-  extra: Hex;
+  extra: Uint8Array;
   /** SCALE-encoded implicit data (signed, not in body). */
-  additionalSigned: Hex;
+  additionalSigned: Uint8Array;
 }
 
 export const TxPayloadExtensionV1: S.Codec<TxPayloadExtensionV1> = S.lazy(
   (): S.Codec<TxPayloadExtensionV1> =>
     S.struct({
       id: S.str,
-      extra: Hex,
-      additionalSigned: Hex,
+      extra: S.bytes,
+      additionalSigned: S.bytes,
     }) as S.Codec<TxPayloadExtensionV1>,
 );
 
@@ -3904,7 +2721,7 @@ export interface TxPayloadV1 {
   /** Signer hint (address/name), `None` = host picks. */
   signer?: string;
   /** SCALE-encoded Call data. */
-  callData: Hex;
+  callData: Uint8Array;
   /** Signed extensions. */
   extensions: Array<TxPayloadExtensionV1>;
   /** 0 for Extrinsic V4, any for V5. */
@@ -3917,7 +2734,7 @@ export const TxPayloadV1: S.Codec<TxPayloadV1> = S.lazy(
   (): S.Codec<TxPayloadV1> =>
     S.struct({
       signer: S.option(S.str),
-      callData: Hex,
+      callData: S.bytes,
       extensions: S.vec(TxPayloadExtensionV1),
       txExtVersion: S.u8,
       context: TxPayloadContextV1,
@@ -3943,210 +2760,412 @@ export const TypographyStyle: S.Codec<TypographyStyle> = S.lazy(
     }),
 );
 
-/**
- * The user's primary DotNS account identity.
- *
- * V0.2.
- */
-export interface UserIdentity {
-  /** The user's primary DotNS identifier. */
-  dotNsIdentifier: DotNsIdentifier;
-  /** The user's primary public key. */
-  publicKey: PublicKey;
-}
-
-export const UserIdentity: S.Codec<UserIdentity> = S.lazy(
-  (): S.Codec<UserIdentity> =>
-    S.struct({
-      dotNsIdentifier: DotNsIdentifier,
-      publicKey: PublicKey,
-    }) as S.Codec<UserIdentity>,
-);
-
-/**
- * Error from [`crate::api::AccountManagement::host_get_user_id`].
- *
- * V0.2.
- */
-export type UserIdentityError =
-  /** User denied the identity disclosure request. */
-  | { tag: "Rejected"; value: undefined }
-  /** User is not logged in. */
-  | { tag: "NotConnected"; value: undefined }
-  /** Catch-all. */
-  | { tag: "Unknown"; value: { reason: string } };
-
-export const UserIdentityError: S.Codec<UserIdentityError> = S.lazy(
-  (): S.Codec<UserIdentityError> =>
-    S.taggedUnion({
-      Rejected: S.unit,
-      NotConnected: S.unit,
-      Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
-    }),
-);
-
+/** User's authentication state. */
 export type V01HostAccountConnectionStatusSubscribeItem =
-  AccountConnectionStatus;
+  | { tag: "Disconnected"; value: undefined }
+  | { tag: "Connected"; value: undefined };
 
 export const V01HostAccountConnectionStatusSubscribeItem: S.Codec<V01HostAccountConnectionStatusSubscribeItem> =
   S.lazy(
     (): S.Codec<V01HostAccountConnectionStatusSubscribeItem> =>
-      AccountConnectionStatus,
+      S.taggedUnion({ Disconnected: S.unit, Connected: S.unit }),
   );
 
-export type V01HostAccountCreateProofError = CreateProofError;
+/** Error returned when ring VRF proof creation fails. */
+export type V01HostAccountCreateProofError =
+  /** Ring not available at the specified location. */
+  | { tag: "RingNotFound"; value: undefined }
+  /** User or host rejected. */
+  | { tag: "Rejected"; value: undefined }
+  /** Catch-all. */
+  | { tag: "Unknown"; value: { reason: string } };
 
 export const V01HostAccountCreateProofError: S.Codec<V01HostAccountCreateProofError> =
-  S.lazy((): S.Codec<V01HostAccountCreateProofError> => CreateProofError);
+  S.lazy(
+    (): S.Codec<V01HostAccountCreateProofError> =>
+      S.taggedUnion({
+        RingNotFound: S.unit,
+        Rejected: S.unit,
+        Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
+      }),
+  );
 
-export type V01HostAccountCreateProofRequest = AccountCreateProofRequest;
+/** Request to create a ring VRF proof for a product account. */
+export interface V01HostAccountCreateProofRequest {
+  /** Product account that should create the proof. */
+  productAccountId: ProductAccountId;
+  /** Ring location to use for proof generation. */
+  ringLocation: RingLocation;
+  /** Context bytes bound to the proof. */
+  context: Uint8Array;
+}
 
 export const V01HostAccountCreateProofRequest: S.Codec<V01HostAccountCreateProofRequest> =
   S.lazy(
-    (): S.Codec<V01HostAccountCreateProofRequest> => AccountCreateProofRequest,
+    (): S.Codec<V01HostAccountCreateProofRequest> =>
+      S.struct({
+        productAccountId: ProductAccountId,
+        ringLocation: RingLocation,
+        context: S.bytes,
+      }) as S.Codec<V01HostAccountCreateProofRequest>,
   );
 
-export type V01HostAccountCreateProofResponse = RingVrfProof;
+/** Response containing a ring VRF proof. */
+export interface V01HostAccountCreateProofResponse {
+  /** Variable-length ring VRF proof bytes. */
+  proof: Uint8Array;
+}
 
 export const V01HostAccountCreateProofResponse: S.Codec<V01HostAccountCreateProofResponse> =
-  S.lazy((): S.Codec<V01HostAccountCreateProofResponse> => RingVrfProof);
+  S.lazy(
+    (): S.Codec<V01HostAccountCreateProofResponse> =>
+      S.struct({
+        proof: S.bytes,
+      }) as S.Codec<V01HostAccountCreateProofResponse>,
+  );
 
-export type V01HostAccountGetAliasError = RequestCredentialsError;
-
-export const V01HostAccountGetAliasError: S.Codec<V01HostAccountGetAliasError> =
-  S.lazy((): S.Codec<V01HostAccountGetAliasError> => RequestCredentialsError);
-
-export type V01HostAccountGetAliasRequest = ProductAccountId;
+/** Request to retrieve a contextual alias for a product account. */
+export interface V01HostAccountGetAliasRequest {
+  /** Product account to derive the alias for. */
+  productAccountId: ProductAccountId;
+}
 
 export const V01HostAccountGetAliasRequest: S.Codec<V01HostAccountGetAliasRequest> =
-  S.lazy((): S.Codec<V01HostAccountGetAliasRequest> => ProductAccountId);
+  S.lazy(
+    (): S.Codec<V01HostAccountGetAliasRequest> =>
+      S.struct({
+        productAccountId: ProductAccountId,
+      }) as S.Codec<V01HostAccountGetAliasRequest>,
+  );
 
-export type V01HostAccountGetAliasResponse = ContextualAlias;
+/** A privacy-preserving alias derived via ring VRF, bound to a specific context. */
+export interface V01HostAccountGetAliasResponse {
+  /** 32-byte context identifier. */
+  context: Uint8Array;
+  /** Ring VRF alias (variable length). */
+  alias: Uint8Array;
+}
 
 export const V01HostAccountGetAliasResponse: S.Codec<V01HostAccountGetAliasResponse> =
-  S.lazy((): S.Codec<V01HostAccountGetAliasResponse> => ContextualAlias);
+  S.lazy(
+    (): S.Codec<V01HostAccountGetAliasResponse> =>
+      S.struct({
+        context: S.byteArray(32),
+        alias: S.bytes,
+      }) as S.Codec<V01HostAccountGetAliasResponse>,
+  );
 
-export type V01HostAccountGetError = RequestCredentialsError;
+/** Error returned when credential/account requests fail. */
+export type V01HostAccountGetError =
+  /** User is not logged in. */
+  | { tag: "NotConnected"; value: undefined }
+  /** User or host rejected the request. */
+  | { tag: "Rejected"; value: undefined }
+  /** Domain identifier is invalid. */
+  | { tag: "DomainNotValid"; value: undefined }
+  /** Catch-all error with reason. */
+  | { tag: "Unknown"; value: { reason: string } };
 
 export const V01HostAccountGetError: S.Codec<V01HostAccountGetError> = S.lazy(
-  (): S.Codec<V01HostAccountGetError> => RequestCredentialsError,
+  (): S.Codec<V01HostAccountGetError> =>
+    S.taggedUnion({
+      NotConnected: S.unit,
+      Rejected: S.unit,
+      DomainNotValid: S.unit,
+      Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
+    }),
 );
 
-export type V01HostAccountGetRequest = ProductAccountId;
+/** Request to retrieve a product-scoped account. */
+export interface V01HostAccountGetRequest {
+  /** Product account to retrieve. */
+  productAccountId: ProductAccountId;
+}
 
 export const V01HostAccountGetRequest: S.Codec<V01HostAccountGetRequest> =
-  S.lazy((): S.Codec<V01HostAccountGetRequest> => ProductAccountId);
+  S.lazy(
+    (): S.Codec<V01HostAccountGetRequest> =>
+      S.struct({
+        productAccountId: ProductAccountId,
+      }) as S.Codec<V01HostAccountGetRequest>,
+  );
 
-export type V01HostAccountGetResponse = Account;
+/** Response containing a product-scoped account. */
+export interface V01HostAccountGetResponse {
+  /** Retrieved account. */
+  account: Account;
+}
 
 export const V01HostAccountGetResponse: S.Codec<V01HostAccountGetResponse> =
-  S.lazy((): S.Codec<V01HostAccountGetResponse> => Account);
+  S.lazy(
+    (): S.Codec<V01HostAccountGetResponse> =>
+      S.struct({ account: Account }) as S.Codec<V01HostAccountGetResponse>,
+  );
 
-export type V01HostChatActionSubscribeItem = ReceivedChatAction;
+/** A chat action received from the host. */
+export interface V01HostChatActionSubscribeItem {
+  /** Room where the action occurred. */
+  roomId: string;
+  /** Peer who initiated the action. */
+  peer: string;
+  /** The action payload. */
+  payload: ChatActionPayload;
+}
 
 export const V01HostChatActionSubscribeItem: S.Codec<V01HostChatActionSubscribeItem> =
-  S.lazy((): S.Codec<V01HostChatActionSubscribeItem> => ReceivedChatAction);
+  S.lazy(
+    (): S.Codec<V01HostChatActionSubscribeItem> =>
+      S.struct({
+        roomId: S.str,
+        peer: S.str,
+        payload: ChatActionPayload,
+      }) as S.Codec<V01HostChatActionSubscribeItem>,
+  );
 
-export type V01HostChatCreateRoomError = ChatRoomRegistrationError;
+/** Chat room registration error. */
+export type V01HostChatCreateRoomError =
+  /** Not allowed. */
+  | { tag: "PermissionDenied"; value: undefined }
+  /** Catch-all. */
+  | { tag: "Unknown"; value: { reason: string } };
 
 export const V01HostChatCreateRoomError: S.Codec<V01HostChatCreateRoomError> =
-  S.lazy((): S.Codec<V01HostChatCreateRoomError> => ChatRoomRegistrationError);
+  S.lazy(
+    (): S.Codec<V01HostChatCreateRoomError> =>
+      S.taggedUnion({
+        PermissionDenied: S.unit,
+        Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
+      }),
+  );
 
-export type V01HostChatCreateRoomRequest = ChatRoomRequest;
+/** Request to create a chat room. */
+export interface V01HostChatCreateRoomRequest {
+  /** Unique room identifier. */
+  roomId: string;
+  /** Room display name. */
+  name: string;
+  /** URL or base64 image. */
+  icon: string;
+}
 
 export const V01HostChatCreateRoomRequest: S.Codec<V01HostChatCreateRoomRequest> =
-  S.lazy((): S.Codec<V01HostChatCreateRoomRequest> => ChatRoomRequest);
+  S.lazy(
+    (): S.Codec<V01HostChatCreateRoomRequest> =>
+      S.struct({
+        roomId: S.str,
+        name: S.str,
+        icon: S.str,
+      }) as S.Codec<V01HostChatCreateRoomRequest>,
+  );
 
-export type V01HostChatCreateRoomResponse = ChatRoomRegistrationResult;
+/** Result of a room registration. */
+export interface V01HostChatCreateRoomResponse {
+  /** `New` or `Exists`. */
+  status: ChatRoomRegistrationStatus;
+}
 
 export const V01HostChatCreateRoomResponse: S.Codec<V01HostChatCreateRoomResponse> =
   S.lazy(
-    (): S.Codec<V01HostChatCreateRoomResponse> => ChatRoomRegistrationResult,
+    (): S.Codec<V01HostChatCreateRoomResponse> =>
+      S.struct({
+        status: ChatRoomRegistrationStatus,
+      }) as S.Codec<V01HostChatCreateRoomResponse>,
   );
 
-export type V01HostChatListSubscribeItem = Array<ChatRoom>;
+/** Item containing the current chat rooms. */
+export interface V01HostChatListSubscribeItem {
+  /** Chat rooms the product participates in. */
+  rooms: Array<ChatRoom>;
+}
 
 export const V01HostChatListSubscribeItem: S.Codec<V01HostChatListSubscribeItem> =
-  S.lazy((): S.Codec<V01HostChatListSubscribeItem> => S.vec(ChatRoom));
+  S.lazy(
+    (): S.Codec<V01HostChatListSubscribeItem> =>
+      S.struct({
+        rooms: S.vec(ChatRoom),
+      }) as S.Codec<V01HostChatListSubscribeItem>,
+  );
 
-export type V01HostChatPostMessageError = ChatMessagePostingError;
+/** Chat message posting error. */
+export type V01HostChatPostMessageError =
+  /** Message exceeded size limit. */
+  | { tag: "MessageTooLarge"; value: undefined }
+  /** Catch-all. */
+  | { tag: "Unknown"; value: { reason: string } };
 
 export const V01HostChatPostMessageError: S.Codec<V01HostChatPostMessageError> =
-  S.lazy((): S.Codec<V01HostChatPostMessageError> => ChatMessagePostingError);
+  S.lazy(
+    (): S.Codec<V01HostChatPostMessageError> =>
+      S.taggedUnion({
+        MessageTooLarge: S.unit,
+        Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
+      }),
+  );
 
-export type V01HostChatPostMessageRequest = ChatPostMessageRequest;
+/** Request to post a message to a chat room. */
+export interface V01HostChatPostMessageRequest {
+  /** Room to post to. */
+  roomId: string;
+  /** Message content. */
+  payload: ChatMessageContent;
+}
 
 export const V01HostChatPostMessageRequest: S.Codec<V01HostChatPostMessageRequest> =
-  S.lazy((): S.Codec<V01HostChatPostMessageRequest> => ChatPostMessageRequest);
+  S.lazy(
+    (): S.Codec<V01HostChatPostMessageRequest> =>
+      S.struct({
+        roomId: S.str,
+        payload: ChatMessageContent,
+      }) as S.Codec<V01HostChatPostMessageRequest>,
+  );
 
-export type V01HostChatPostMessageResponse = ChatPostMessageResult;
+/** Result of posting a message. */
+export interface V01HostChatPostMessageResponse {
+  /** Assigned message ID. */
+  messageId: string;
+}
 
 export const V01HostChatPostMessageResponse: S.Codec<V01HostChatPostMessageResponse> =
-  S.lazy((): S.Codec<V01HostChatPostMessageResponse> => ChatPostMessageResult);
+  S.lazy(
+    (): S.Codec<V01HostChatPostMessageResponse> =>
+      S.struct({ messageId: S.str }) as S.Codec<V01HostChatPostMessageResponse>,
+  );
 
-export type V01HostChatRegisterBotError = ChatBotRegistrationError;
+/** Chat bot registration error. */
+export type V01HostChatRegisterBotError =
+  /** Not allowed. */
+  | { tag: "PermissionDenied"; value: undefined }
+  /** Catch-all. */
+  | { tag: "Unknown"; value: { reason: string } };
 
 export const V01HostChatRegisterBotError: S.Codec<V01HostChatRegisterBotError> =
-  S.lazy((): S.Codec<V01HostChatRegisterBotError> => ChatBotRegistrationError);
+  S.lazy(
+    (): S.Codec<V01HostChatRegisterBotError> =>
+      S.taggedUnion({
+        PermissionDenied: S.unit,
+        Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
+      }),
+  );
 
-export type V01HostChatRegisterBotRequest = ChatBotRequest;
+/** Request to register a chat bot. */
+export interface V01HostChatRegisterBotRequest {
+  /** Unique bot identifier. */
+  botId: string;
+  /** Bot display name. */
+  name: string;
+  /** URL or base64 image. */
+  icon: string;
+}
 
 export const V01HostChatRegisterBotRequest: S.Codec<V01HostChatRegisterBotRequest> =
-  S.lazy((): S.Codec<V01HostChatRegisterBotRequest> => ChatBotRequest);
+  S.lazy(
+    (): S.Codec<V01HostChatRegisterBotRequest> =>
+      S.struct({
+        botId: S.str,
+        name: S.str,
+        icon: S.str,
+      }) as S.Codec<V01HostChatRegisterBotRequest>,
+  );
 
-export type V01HostChatRegisterBotResponse = ChatBotRegistrationResult;
+/** Result of a bot registration. */
+export interface V01HostChatRegisterBotResponse {
+  /** `New` or `Exists`. */
+  status: ChatBotRegistrationStatus;
+}
 
 export const V01HostChatRegisterBotResponse: S.Codec<V01HostChatRegisterBotResponse> =
   S.lazy(
-    (): S.Codec<V01HostChatRegisterBotResponse> => ChatBotRegistrationResult,
+    (): S.Codec<V01HostChatRegisterBotResponse> =>
+      S.struct({
+        status: ChatBotRegistrationStatus,
+      }) as S.Codec<V01HostChatRegisterBotResponse>,
   );
 
-export type V01HostCreateTransactionError = CreateTransactionError;
+/** Transaction creation error. */
+export type V01HostCreateTransactionError =
+  /** Payload could not be deserialized. */
+  | { tag: "FailedToDecode"; value: undefined }
+  /** User rejected. */
+  | { tag: "Rejected"; value: undefined }
+  /** Unsupported payload version or extension. */
+  | { tag: "NotSupported"; value: { reason: string } }
+  /** Not authenticated. */
+  | { tag: "PermissionDenied"; value: undefined }
+  /** Catch-all. */
+  | { tag: "Unknown"; value: { reason: string } };
 
 export const V01HostCreateTransactionError: S.Codec<V01HostCreateTransactionError> =
-  S.lazy((): S.Codec<V01HostCreateTransactionError> => CreateTransactionError);
+  S.lazy(
+    (): S.Codec<V01HostCreateTransactionError> =>
+      S.taggedUnion({
+        FailedToDecode: S.unit,
+        Rejected: S.unit,
+        NotSupported: S.struct({ reason: S.str }) as S.Codec<{
+          reason: string;
+        }>,
+        PermissionDenied: S.unit,
+        Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
+      }),
+  );
 
-export type V01HostCreateTransactionRequest = CreateTransactionRequest;
+/** Request to create a transaction for a product account. */
+export interface V01HostCreateTransactionRequest {
+  /** Product account that will sign the transaction. */
+  productAccountId: ProductAccountId;
+  /** Versioned transaction payload. */
+  payload: VersionedTxPayload;
+}
 
 export const V01HostCreateTransactionRequest: S.Codec<V01HostCreateTransactionRequest> =
   S.lazy(
-    (): S.Codec<V01HostCreateTransactionRequest> => CreateTransactionRequest,
+    (): S.Codec<V01HostCreateTransactionRequest> =>
+      S.struct({
+        productAccountId: ProductAccountId,
+        payload: VersionedTxPayload,
+      }) as S.Codec<V01HostCreateTransactionRequest>,
   );
 
-export type V01HostCreateTransactionResponse = Hex;
+/** Response containing a created transaction. */
+export interface V01HostCreateTransactionResponse {
+  /** SCALE-encoded signed transaction. */
+  transaction: Uint8Array;
+}
 
 export const V01HostCreateTransactionResponse: S.Codec<V01HostCreateTransactionResponse> =
-  S.lazy((): S.Codec<V01HostCreateTransactionResponse> => Hex);
-
-export type V01HostCreateTransactionWithNonProductAccountError =
-  CreateTransactionError;
-
-export const V01HostCreateTransactionWithNonProductAccountError: S.Codec<V01HostCreateTransactionWithNonProductAccountError> =
   S.lazy(
-    (): S.Codec<V01HostCreateTransactionWithNonProductAccountError> =>
-      CreateTransactionError,
+    (): S.Codec<V01HostCreateTransactionResponse> =>
+      S.struct({
+        transaction: S.bytes,
+      }) as S.Codec<V01HostCreateTransactionResponse>,
   );
 
-export type V01HostCreateTransactionWithNonProductAccountRequest =
-  VersionedTxPayload;
+/** Request to create a transaction with a non-product account. */
+export interface V01HostCreateTransactionWithNonProductAccountRequest {
+  /** Versioned transaction payload to sign. */
+  payload: VersionedTxPayload;
+}
 
 export const V01HostCreateTransactionWithNonProductAccountRequest: S.Codec<V01HostCreateTransactionWithNonProductAccountRequest> =
   S.lazy(
     (): S.Codec<V01HostCreateTransactionWithNonProductAccountRequest> =>
-      VersionedTxPayload,
+      S.struct({
+        payload: VersionedTxPayload,
+      }) as S.Codec<V01HostCreateTransactionWithNonProductAccountRequest>,
   );
 
-export type V01HostCreateTransactionWithNonProductAccountResponse = Hex;
+/** Response containing a transaction created with a non-product account. */
+export interface V01HostCreateTransactionWithNonProductAccountResponse {
+  /** SCALE-encoded signed transaction. */
+  transaction: Uint8Array;
+}
 
 export const V01HostCreateTransactionWithNonProductAccountResponse: S.Codec<V01HostCreateTransactionWithNonProductAccountResponse> =
   S.lazy(
-    (): S.Codec<V01HostCreateTransactionWithNonProductAccountResponse> => Hex,
+    (): S.Codec<V01HostCreateTransactionWithNonProductAccountResponse> =>
+      S.struct({
+        transaction: S.bytes,
+      }) as S.Codec<V01HostCreateTransactionWithNonProductAccountResponse>,
   );
-
-export type V01HostDevicePermissionError = GenericError;
-
-export const V01HostDevicePermissionError: S.Codec<V01HostDevicePermissionError> =
-  S.lazy((): S.Codec<V01HostDevicePermissionError> => GenericError);
 
 /** Device capability to request access to. */
 export type V01HostDevicePermissionRequest =
@@ -4166,341 +3185,793 @@ export const V01HostDevicePermissionRequest: S.Codec<V01HostDevicePermissionRequ
       }),
   );
 
-export type V01HostDevicePermissionResponse = boolean;
+/** Response indicating whether a device permission was granted. */
+export interface V01HostDevicePermissionResponse {
+  /** Whether the permission was granted. */
+  granted: boolean;
+}
 
 export const V01HostDevicePermissionResponse: S.Codec<V01HostDevicePermissionResponse> =
-  S.lazy((): S.Codec<V01HostDevicePermissionResponse> => S.bool);
-
-export type V01HostFeatureSupportedError = GenericError;
-
-export const V01HostFeatureSupportedError: S.Codec<V01HostFeatureSupportedError> =
-  S.lazy((): S.Codec<V01HostFeatureSupportedError> => GenericError);
-
-export type V01HostFeatureSupportedRequest = Feature;
-
-export const V01HostFeatureSupportedRequest: S.Codec<V01HostFeatureSupportedRequest> =
-  S.lazy((): S.Codec<V01HostFeatureSupportedRequest> => Feature);
-
-export type V01HostFeatureSupportedResponse = boolean;
-
-export const V01HostFeatureSupportedResponse: S.Codec<V01HostFeatureSupportedResponse> =
-  S.lazy((): S.Codec<V01HostFeatureSupportedResponse> => S.bool);
-
-export type V01HostGetNonProductAccountsError = RequestCredentialsError;
-
-export const V01HostGetNonProductAccountsError: S.Codec<V01HostGetNonProductAccountsError> =
   S.lazy(
-    (): S.Codec<V01HostGetNonProductAccountsError> => RequestCredentialsError,
+    (): S.Codec<V01HostDevicePermissionResponse> =>
+      S.struct({ granted: S.bool }) as S.Codec<V01HostDevicePermissionResponse>,
   );
 
-export type V01HostGetNonProductAccountsResponse = Array<Account>;
+/** Feature to check for host support. */
+export type V01HostFeatureSupportedRequest =
+  /** Is this blockchain supported? */
+  { tag: "Chain"; value: { genesisHash: Uint8Array } };
+
+export const V01HostFeatureSupportedRequest: S.Codec<V01HostFeatureSupportedRequest> =
+  S.lazy(
+    (): S.Codec<V01HostFeatureSupportedRequest> =>
+      S.taggedUnion({
+        Chain: S.struct({ genesisHash: S.bytes }) as S.Codec<{
+          genesisHash: Uint8Array;
+        }>,
+      }),
+  );
+
+/** Response indicating whether a host feature is supported. */
+export interface V01HostFeatureSupportedResponse {
+  /** Whether the feature is supported. */
+  supported: boolean;
+}
+
+export const V01HostFeatureSupportedResponse: S.Codec<V01HostFeatureSupportedResponse> =
+  S.lazy(
+    (): S.Codec<V01HostFeatureSupportedResponse> =>
+      S.struct({
+        supported: S.bool,
+      }) as S.Codec<V01HostFeatureSupportedResponse>,
+  );
+
+/** Response containing all non-product accounts owned by the user. */
+export interface V01HostGetNonProductAccountsResponse {
+  /** Non-product accounts. */
+  accounts: Array<Account>;
+}
 
 export const V01HostGetNonProductAccountsResponse: S.Codec<V01HostGetNonProductAccountsResponse> =
-  S.lazy((): S.Codec<V01HostGetNonProductAccountsResponse> => S.vec(Account));
+  S.lazy(
+    (): S.Codec<V01HostGetNonProductAccountsResponse> =>
+      S.struct({
+        accounts: S.vec(Account),
+      }) as S.Codec<V01HostGetNonProductAccountsResponse>,
+  );
 
-export type V01HostHandshakeRequest = number;
+/** Request to negotiate the wire codec version. */
+export interface V01HostHandshakeRequest {
+  /** Wire codec version requested by the peer. */
+  codecVersion: number;
+}
 
 export const V01HostHandshakeRequest: S.Codec<V01HostHandshakeRequest> = S.lazy(
-  (): S.Codec<V01HostHandshakeRequest> => S.u8,
+  (): S.Codec<V01HostHandshakeRequest> =>
+    S.struct({ codecVersion: S.u8 }) as S.Codec<V01HostHandshakeRequest>,
 );
 
-export type V01HostLocalStorageClearError = StorageError;
-
-export const V01HostLocalStorageClearError: S.Codec<V01HostLocalStorageClearError> =
-  S.lazy((): S.Codec<V01HostLocalStorageClearError> => StorageError);
-
-export type V01HostLocalStorageClearRequest = StorageKey;
+/** Request to clear a local storage key. */
+export interface V01HostLocalStorageClearRequest {
+  /** Storage key to clear. */
+  key: string;
+}
 
 export const V01HostLocalStorageClearRequest: S.Codec<V01HostLocalStorageClearRequest> =
-  S.lazy((): S.Codec<V01HostLocalStorageClearRequest> => StorageKey);
+  S.lazy(
+    (): S.Codec<V01HostLocalStorageClearRequest> =>
+      S.struct({ key: S.str }) as S.Codec<V01HostLocalStorageClearRequest>,
+  );
 
-export type V01HostLocalStorageReadError = StorageError;
+/** Local storage operation error. */
+export type V01HostLocalStorageReadError =
+  /** Storage quota exceeded. */
+  | { tag: "Full"; value: undefined }
+  /** Catch-all. */
+  | { tag: "Unknown"; value: { reason: string } };
 
 export const V01HostLocalStorageReadError: S.Codec<V01HostLocalStorageReadError> =
-  S.lazy((): S.Codec<V01HostLocalStorageReadError> => StorageError);
+  S.lazy(
+    (): S.Codec<V01HostLocalStorageReadError> =>
+      S.taggedUnion({
+        Full: S.unit,
+        Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
+      }),
+  );
 
-export type V01HostLocalStorageReadRequest = StorageKey;
+/** Request to read a local storage value. */
+export interface V01HostLocalStorageReadRequest {
+  /** Storage key to read. */
+  key: string;
+}
 
 export const V01HostLocalStorageReadRequest: S.Codec<V01HostLocalStorageReadRequest> =
-  S.lazy((): S.Codec<V01HostLocalStorageReadRequest> => StorageKey);
+  S.lazy(
+    (): S.Codec<V01HostLocalStorageReadRequest> =>
+      S.struct({ key: S.str }) as S.Codec<V01HostLocalStorageReadRequest>,
+  );
 
-export type V01HostLocalStorageReadResponse = StorageValue | undefined;
+/** Response containing an optional local storage value. */
+export interface V01HostLocalStorageReadResponse {
+  /** Stored value, if present. */
+  value?: Uint8Array;
+}
 
 export const V01HostLocalStorageReadResponse: S.Codec<V01HostLocalStorageReadResponse> =
   S.lazy(
-    (): S.Codec<V01HostLocalStorageReadResponse> => S.option(StorageValue),
+    (): S.Codec<V01HostLocalStorageReadResponse> =>
+      S.struct({
+        value: S.option(S.bytes),
+      }) as S.Codec<V01HostLocalStorageReadResponse>,
   );
 
-export type V01HostLocalStorageWriteError = StorageError;
-
-export const V01HostLocalStorageWriteError: S.Codec<V01HostLocalStorageWriteError> =
-  S.lazy((): S.Codec<V01HostLocalStorageWriteError> => StorageError);
-
-export type V01HostLocalStorageWriteRequest = LocalStorageWriteRequest;
+/** Request to write a value into local storage. */
+export interface V01HostLocalStorageWriteRequest {
+  /** Storage key to write. */
+  key: string;
+  /** Value to store at the key. */
+  value: Uint8Array;
+}
 
 export const V01HostLocalStorageWriteRequest: S.Codec<V01HostLocalStorageWriteRequest> =
   S.lazy(
-    (): S.Codec<V01HostLocalStorageWriteRequest> => LocalStorageWriteRequest,
+    (): S.Codec<V01HostLocalStorageWriteRequest> =>
+      S.struct({
+        key: S.str,
+        value: S.bytes,
+      }) as S.Codec<V01HostLocalStorageWriteRequest>,
   );
 
-export type V01HostNavigateToError = NavigateToError;
+/** Navigation error. */
+export type V01HostNavigateToError =
+  /** Navigation not allowed. */
+  | { tag: "PermissionDenied"; value: undefined }
+  /** Catch-all. */
+  | { tag: "Unknown"; value: { reason: string } };
 
 export const V01HostNavigateToError: S.Codec<V01HostNavigateToError> = S.lazy(
-  (): S.Codec<V01HostNavigateToError> => NavigateToError,
+  (): S.Codec<V01HostNavigateToError> =>
+    S.taggedUnion({
+      PermissionDenied: S.unit,
+      Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
+    }),
 );
 
-export type V01HostNavigateToRequest = string;
+/** Request to navigate to a URL. */
+export interface V01HostNavigateToRequest {
+  /** URL to open. */
+  url: string;
+}
 
 export const V01HostNavigateToRequest: S.Codec<V01HostNavigateToRequest> =
-  S.lazy((): S.Codec<V01HostNavigateToRequest> => S.str);
+  S.lazy(
+    (): S.Codec<V01HostNavigateToRequest> =>
+      S.struct({ url: S.str }) as S.Codec<V01HostNavigateToRequest>,
+  );
 
-export type V01HostPushNotificationError = GenericError;
-
-export const V01HostPushNotificationError: S.Codec<V01HostPushNotificationError> =
-  S.lazy((): S.Codec<V01HostPushNotificationError> => GenericError);
-
-export type V01HostPushNotificationRequest = PushNotification;
+/** Push notification payload. */
+export interface V01HostPushNotificationRequest {
+  /** Notification text. */
+  text: string;
+  /** Optional URL to open on tap. */
+  deeplink?: string;
+}
 
 export const V01HostPushNotificationRequest: S.Codec<V01HostPushNotificationRequest> =
-  S.lazy((): S.Codec<V01HostPushNotificationRequest> => PushNotification);
+  S.lazy(
+    (): S.Codec<V01HostPushNotificationRequest> =>
+      S.struct({
+        text: S.str,
+        deeplink: S.option(S.str),
+      }) as S.Codec<V01HostPushNotificationRequest>,
+  );
 
-export type V01HostSignPayloadError = SigningError;
+/** Signing operation error. */
+export type V01HostSignPayloadError =
+  /** Payload could not be deserialized. */
+  | { tag: "FailedToDecode"; value: undefined }
+  /** User rejected signing. */
+  | { tag: "Rejected"; value: undefined }
+  /** Not authenticated. */
+  | { tag: "PermissionDenied"; value: undefined }
+  /** Catch-all. */
+  | { tag: "Unknown"; value: { reason: string } };
 
 export const V01HostSignPayloadError: S.Codec<V01HostSignPayloadError> = S.lazy(
-  (): S.Codec<V01HostSignPayloadError> => SigningError,
+  (): S.Codec<V01HostSignPayloadError> =>
+    S.taggedUnion({
+      FailedToDecode: S.unit,
+      Rejected: S.unit,
+      PermissionDenied: S.unit,
+      Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
+    }),
 );
 
-export type V01HostSignPayloadRequest = V01SigningPayload;
+/**
+ * Full Substrate extrinsic signing payload with all fields needed for signature
+ * generation.
+ */
+export interface V01HostSignPayloadRequest {
+  /** Signer address (SS58 or hex). */
+  address: string;
+  /** Reference block hash. */
+  blockHash: Uint8Array;
+  /** Reference block number. */
+  blockNumber: Uint8Array;
+  /** Mortality era encoding. */
+  era: Uint8Array;
+  /** Chain genesis hash. */
+  genesisHash: Uint8Array;
+  /** SCALE-encoded call data. */
+  method: Uint8Array;
+  /** Account nonce. */
+  nonce: Uint8Array;
+  /** Runtime spec version. */
+  specVersion: Uint8Array;
+  /** Transaction tip. */
+  tip: Uint8Array;
+  /** Transaction format version. */
+  transactionVersion: Uint8Array;
+  /** Extension identifiers. */
+  signedExtensions: Array<string>;
+  /** Extrinsic version. */
+  version: number;
+  /** For multi-asset tips. */
+  assetId?: Uint8Array;
+  /** CheckMetadataHash extension. */
+  metadataHash?: Uint8Array;
+  /** Metadata mode. */
+  mode?: number;
+  /** Request signed transaction back. */
+  withSignedTransaction?: boolean;
+}
 
 export const V01HostSignPayloadRequest: S.Codec<V01HostSignPayloadRequest> =
-  S.lazy((): S.Codec<V01HostSignPayloadRequest> => V01SigningPayload);
+  S.lazy(
+    (): S.Codec<V01HostSignPayloadRequest> =>
+      S.struct({
+        address: S.str,
+        blockHash: S.bytes,
+        blockNumber: S.bytes,
+        era: S.bytes,
+        genesisHash: S.bytes,
+        method: S.bytes,
+        nonce: S.bytes,
+        specVersion: S.bytes,
+        tip: S.bytes,
+        transactionVersion: S.bytes,
+        signedExtensions: S.vec(S.str),
+        version: S.u32,
+        assetId: S.option(S.bytes),
+        metadataHash: S.option(S.bytes),
+        mode: S.option(S.u32),
+        withSignedTransaction: S.option(S.bool),
+      }) as S.Codec<V01HostSignPayloadRequest>,
+  );
 
-export type V01HostSignPayloadResponse = SigningResult;
+/** Result of a signing operation. */
+export interface V01HostSignPayloadResponse {
+  /** The cryptographic signature. */
+  signature: Uint8Array;
+  /** Full signed transaction, if requested. */
+  signedTransaction?: Uint8Array;
+}
 
 export const V01HostSignPayloadResponse: S.Codec<V01HostSignPayloadResponse> =
-  S.lazy((): S.Codec<V01HostSignPayloadResponse> => SigningResult);
+  S.lazy(
+    (): S.Codec<V01HostSignPayloadResponse> =>
+      S.struct({
+        signature: S.bytes,
+        signedTransaction: S.option(S.bytes),
+      }) as S.Codec<V01HostSignPayloadResponse>,
+  );
 
-export type V01HostSignRawError = SigningError;
-
-export const V01HostSignRawError: S.Codec<V01HostSignRawError> = S.lazy(
-  (): S.Codec<V01HostSignRawError> => SigningError,
-);
-
-export type V01HostSignRawRequest = V01SigningRawPayload;
+/** A raw signing request pairing an address with raw data. */
+export interface V01HostSignRawRequest {
+  /** Signer address. */
+  address: string;
+  /** The data to sign. */
+  data: RawPayload;
+}
 
 export const V01HostSignRawRequest: S.Codec<V01HostSignRawRequest> = S.lazy(
-  (): S.Codec<V01HostSignRawRequest> => V01SigningRawPayload,
+  (): S.Codec<V01HostSignRawRequest> =>
+    S.struct({
+      address: S.str,
+      data: RawPayload,
+    }) as S.Codec<V01HostSignRawRequest>,
 );
 
-export type V01HostSignRawResponse = SigningResult;
-
-export const V01HostSignRawResponse: S.Codec<V01HostSignRawResponse> = S.lazy(
-  (): S.Codec<V01HostSignRawResponse> => SigningResult,
-);
-
-export type V01ProductChatCustomMessageRenderSubscribeItem =
-  CustomMessageRenderRequest;
+/** Request from the host asking the product to render a custom chat message. */
+export interface V01ProductChatCustomMessageRenderSubscribeItem {
+  /** Message identifier. */
+  messageId: string;
+  /** Application-defined message type. */
+  messageType: string;
+  /** Binary payload. */
+  payload: Uint8Array;
+}
 
 export const V01ProductChatCustomMessageRenderSubscribeItem: S.Codec<V01ProductChatCustomMessageRenderSubscribeItem> =
   S.lazy(
     (): S.Codec<V01ProductChatCustomMessageRenderSubscribeItem> =>
-      CustomMessageRenderRequest,
+      S.struct({
+        messageId: S.str,
+        messageType: S.str,
+        payload: S.bytes,
+      }) as S.Codec<V01ProductChatCustomMessageRenderSubscribeItem>,
   );
 
-export type V01RemoteChainHeadBodyError = GenericError;
-
-export const V01RemoteChainHeadBodyError: S.Codec<V01RemoteChainHeadBodyError> =
-  S.lazy((): S.Codec<V01RemoteChainHeadBodyError> => GenericError);
-
-export type V01RemoteChainHeadBodyRequest = ChainHeadBlockRequest;
+/** Parameters for [`crate::api::ChainInteraction::remote_chain_head_body`]. */
+export interface V01RemoteChainHeadBodyRequest {
+  /** Chain genesis hash. */
+  genesisHash: Uint8Array;
+  /** Follow subscription identifier. */
+  followSubscriptionId: string;
+  /** Block hash. */
+  hash: Uint8Array;
+}
 
 export const V01RemoteChainHeadBodyRequest: S.Codec<V01RemoteChainHeadBodyRequest> =
-  S.lazy((): S.Codec<V01RemoteChainHeadBodyRequest> => ChainHeadBlockRequest);
+  S.lazy(
+    (): S.Codec<V01RemoteChainHeadBodyRequest> =>
+      S.struct({
+        genesisHash: S.bytes,
+        followSubscriptionId: S.str,
+        hash: S.bytes,
+      }) as S.Codec<V01RemoteChainHeadBodyRequest>,
+  );
 
-export type V01RemoteChainHeadBodyResponse = OperationStartedResult;
+/** Response indicating a block body operation was started. */
+export interface V01RemoteChainHeadBodyResponse {
+  /** Started operation result. */
+  operation: OperationStartedResult;
+}
 
 export const V01RemoteChainHeadBodyResponse: S.Codec<V01RemoteChainHeadBodyResponse> =
-  S.lazy((): S.Codec<V01RemoteChainHeadBodyResponse> => OperationStartedResult);
+  S.lazy(
+    (): S.Codec<V01RemoteChainHeadBodyResponse> =>
+      S.struct({
+        operation: OperationStartedResult,
+      }) as S.Codec<V01RemoteChainHeadBodyResponse>,
+  );
 
-export type V01RemoteChainHeadCallError = GenericError;
-
-export const V01RemoteChainHeadCallError: S.Codec<V01RemoteChainHeadCallError> =
-  S.lazy((): S.Codec<V01RemoteChainHeadCallError> => GenericError);
-
-export type V01RemoteChainHeadCallRequest = ChainHeadCallRequest;
+/** Parameters for [`crate::api::ChainInteraction::remote_chain_head_call`]. */
+export interface V01RemoteChainHeadCallRequest {
+  /** Chain genesis hash. */
+  genesisHash: Uint8Array;
+  /** Follow subscription identifier. */
+  followSubscriptionId: string;
+  /** Block hash. */
+  hash: Uint8Array;
+  /** Runtime API function name. */
+  function: string;
+  /** SCALE-encoded call parameters. */
+  callParameters: Uint8Array;
+}
 
 export const V01RemoteChainHeadCallRequest: S.Codec<V01RemoteChainHeadCallRequest> =
-  S.lazy((): S.Codec<V01RemoteChainHeadCallRequest> => ChainHeadCallRequest);
+  S.lazy(
+    (): S.Codec<V01RemoteChainHeadCallRequest> =>
+      S.struct({
+        genesisHash: S.bytes,
+        followSubscriptionId: S.str,
+        hash: S.bytes,
+        function: S.str,
+        callParameters: S.bytes,
+      }) as S.Codec<V01RemoteChainHeadCallRequest>,
+  );
 
-export type V01RemoteChainHeadCallResponse = OperationStartedResult;
+/** Response indicating a runtime call operation was started. */
+export interface V01RemoteChainHeadCallResponse {
+  /** Started operation result. */
+  operation: OperationStartedResult;
+}
 
 export const V01RemoteChainHeadCallResponse: S.Codec<V01RemoteChainHeadCallResponse> =
-  S.lazy((): S.Codec<V01RemoteChainHeadCallResponse> => OperationStartedResult);
+  S.lazy(
+    (): S.Codec<V01RemoteChainHeadCallResponse> =>
+      S.struct({
+        operation: OperationStartedResult,
+      }) as S.Codec<V01RemoteChainHeadCallResponse>,
+  );
 
-export type V01RemoteChainHeadContinueError = GenericError;
-
-export const V01RemoteChainHeadContinueError: S.Codec<V01RemoteChainHeadContinueError> =
-  S.lazy((): S.Codec<V01RemoteChainHeadContinueError> => GenericError);
-
-export type V01RemoteChainHeadContinueRequest = ChainHeadOperationRequest;
+/** Parameters for [`crate::api::ChainInteraction::remote_chain_head_continue`]. */
+export interface V01RemoteChainHeadContinueRequest {
+  /** Chain genesis hash. */
+  genesisHash: Uint8Array;
+  /** Follow subscription identifier. */
+  followSubscriptionId: string;
+  /** Operation identifier. */
+  operationId: string;
+}
 
 export const V01RemoteChainHeadContinueRequest: S.Codec<V01RemoteChainHeadContinueRequest> =
   S.lazy(
-    (): S.Codec<V01RemoteChainHeadContinueRequest> => ChainHeadOperationRequest,
+    (): S.Codec<V01RemoteChainHeadContinueRequest> =>
+      S.struct({
+        genesisHash: S.bytes,
+        followSubscriptionId: S.str,
+        operationId: S.str,
+      }) as S.Codec<V01RemoteChainHeadContinueRequest>,
   );
 
-export type V01RemoteChainHeadFollowItem = ChainHeadEvent;
+/** Events received when following the chain head. */
+export type V01RemoteChainHeadFollowItem =
+  /** Initial state with finalized blocks. */
+  | {
+      tag: "Initialized";
+      value: {
+        finalizedBlockHashes: Array<Uint8Array>;
+        finalizedBlockRuntime?: RuntimeType;
+      };
+    }
+  /** A new block was produced. */
+  | {
+      tag: "NewBlock";
+      value: {
+        blockHash: Uint8Array;
+        parentBlockHash: Uint8Array;
+        newRuntime?: RuntimeType;
+      };
+    }
+  /** Best block changed. */
+  | { tag: "BestBlockChanged"; value: { bestBlockHash: Uint8Array } }
+  /** Blocks were finalized. */
+  | {
+      tag: "Finalized";
+      value: {
+        finalizedBlockHashes: Array<Uint8Array>;
+        prunedBlockHashes: Array<Uint8Array>;
+      };
+    }
+  /** Body fetch completed. */
+  | {
+      tag: "OperationBodyDone";
+      value: { operationId: string; value: Array<Uint8Array> };
+    }
+  /** Runtime call completed. */
+  | {
+      tag: "OperationCallDone";
+      value: { operationId: string; output: Uint8Array };
+    }
+  /** Storage results batch. */
+  | {
+      tag: "OperationStorageItems";
+      value: { operationId: string; items: Array<StorageResultItem> };
+    }
+  /** Storage query completed. */
+  | { tag: "OperationStorageDone"; value: { operationId: string } }
+  /** Operation paused, needs [`crate::api::ChainInteraction::remote_chain_head_continue`]. */
+  | { tag: "OperationWaitingForContinue"; value: { operationId: string } }
+  /** Block became inaccessible. */
+  | { tag: "OperationInaccessible"; value: { operationId: string } }
+  /** Operation failed. */
+  | { tag: "OperationError"; value: { operationId: string; error: string } }
+  /** Subscription terminated by server. */
+  | { tag: "Stop"; value: undefined };
 
 export const V01RemoteChainHeadFollowItem: S.Codec<V01RemoteChainHeadFollowItem> =
-  S.lazy((): S.Codec<V01RemoteChainHeadFollowItem> => ChainHeadEvent);
+  S.lazy(
+    (): S.Codec<V01RemoteChainHeadFollowItem> =>
+      S.taggedUnion({
+        Initialized: S.struct({
+          finalizedBlockHashes: S.vec(S.bytes),
+          finalizedBlockRuntime: S.option(RuntimeType),
+        }) as S.Codec<{
+          finalizedBlockHashes: Array<Uint8Array>;
+          finalizedBlockRuntime?: RuntimeType;
+        }>,
+        NewBlock: S.struct({
+          blockHash: S.bytes,
+          parentBlockHash: S.bytes,
+          newRuntime: S.option(RuntimeType),
+        }) as S.Codec<{
+          blockHash: Uint8Array;
+          parentBlockHash: Uint8Array;
+          newRuntime?: RuntimeType;
+        }>,
+        BestBlockChanged: S.struct({ bestBlockHash: S.bytes }) as S.Codec<{
+          bestBlockHash: Uint8Array;
+        }>,
+        Finalized: S.struct({
+          finalizedBlockHashes: S.vec(S.bytes),
+          prunedBlockHashes: S.vec(S.bytes),
+        }) as S.Codec<{
+          finalizedBlockHashes: Array<Uint8Array>;
+          prunedBlockHashes: Array<Uint8Array>;
+        }>,
+        OperationBodyDone: S.struct({
+          operationId: S.str,
+          value: S.vec(S.bytes),
+        }) as S.Codec<{ operationId: string; value: Array<Uint8Array> }>,
+        OperationCallDone: S.struct({
+          operationId: S.str,
+          output: S.bytes,
+        }) as S.Codec<{ operationId: string; output: Uint8Array }>,
+        OperationStorageItems: S.struct({
+          operationId: S.str,
+          items: S.vec(StorageResultItem),
+        }) as S.Codec<{ operationId: string; items: Array<StorageResultItem> }>,
+        OperationStorageDone: S.struct({ operationId: S.str }) as S.Codec<{
+          operationId: string;
+        }>,
+        OperationWaitingForContinue: S.struct({
+          operationId: S.str,
+        }) as S.Codec<{ operationId: string }>,
+        OperationInaccessible: S.struct({ operationId: S.str }) as S.Codec<{
+          operationId: string;
+        }>,
+        OperationError: S.struct({
+          operationId: S.str,
+          error: S.str,
+        }) as S.Codec<{ operationId: string; error: string }>,
+        Stop: S.unit,
+      }),
+  );
 
-export type V01RemoteChainHeadFollowRequest = ChainHeadFollowRequest;
+/** Parameters for [`crate::api::ChainInteraction::remote_chain_head_follow`]. */
+export interface V01RemoteChainHeadFollowRequest {
+  /** Chain genesis hash. */
+  genesisHash: Uint8Array;
+  /** Whether to include runtime information in events. */
+  withRuntime: boolean;
+}
 
 export const V01RemoteChainHeadFollowRequest: S.Codec<V01RemoteChainHeadFollowRequest> =
   S.lazy(
-    (): S.Codec<V01RemoteChainHeadFollowRequest> => ChainHeadFollowRequest,
+    (): S.Codec<V01RemoteChainHeadFollowRequest> =>
+      S.struct({
+        genesisHash: S.bytes,
+        withRuntime: S.bool,
+      }) as S.Codec<V01RemoteChainHeadFollowRequest>,
   );
 
-export type V01RemoteChainHeadHeaderError = GenericError;
-
-export const V01RemoteChainHeadHeaderError: S.Codec<V01RemoteChainHeadHeaderError> =
-  S.lazy((): S.Codec<V01RemoteChainHeadHeaderError> => GenericError);
-
-export type V01RemoteChainHeadHeaderRequest = ChainHeadBlockRequest;
+/** Parameters for [`crate::api::ChainInteraction::remote_chain_head_header`]. */
+export interface V01RemoteChainHeadHeaderRequest {
+  /** Chain genesis hash. */
+  genesisHash: Uint8Array;
+  /** Follow subscription identifier. */
+  followSubscriptionId: string;
+  /** Block hash. */
+  hash: Uint8Array;
+}
 
 export const V01RemoteChainHeadHeaderRequest: S.Codec<V01RemoteChainHeadHeaderRequest> =
-  S.lazy((): S.Codec<V01RemoteChainHeadHeaderRequest> => ChainHeadBlockRequest);
+  S.lazy(
+    (): S.Codec<V01RemoteChainHeadHeaderRequest> =>
+      S.struct({
+        genesisHash: S.bytes,
+        followSubscriptionId: S.str,
+        hash: S.bytes,
+      }) as S.Codec<V01RemoteChainHeadHeaderRequest>,
+  );
 
-export type V01RemoteChainHeadHeaderResponse = Hex | undefined;
+/** Response containing a block header, if available. */
+export interface V01RemoteChainHeadHeaderResponse {
+  /** SCALE-encoded block header. */
+  header?: Uint8Array;
+}
 
 export const V01RemoteChainHeadHeaderResponse: S.Codec<V01RemoteChainHeadHeaderResponse> =
-  S.lazy((): S.Codec<V01RemoteChainHeadHeaderResponse> => S.option(Hex));
+  S.lazy(
+    (): S.Codec<V01RemoteChainHeadHeaderResponse> =>
+      S.struct({
+        header: S.option(S.bytes),
+      }) as S.Codec<V01RemoteChainHeadHeaderResponse>,
+  );
 
-export type V01RemoteChainHeadStopOperationError = GenericError;
-
-export const V01RemoteChainHeadStopOperationError: S.Codec<V01RemoteChainHeadStopOperationError> =
-  S.lazy((): S.Codec<V01RemoteChainHeadStopOperationError> => GenericError);
-
-export type V01RemoteChainHeadStopOperationRequest = ChainHeadOperationRequest;
+/** Parameters for [`crate::api::ChainInteraction::remote_chain_head_stop_operation`]. */
+export interface V01RemoteChainHeadStopOperationRequest {
+  /** Chain genesis hash. */
+  genesisHash: Uint8Array;
+  /** Follow subscription identifier. */
+  followSubscriptionId: string;
+  /** Operation identifier. */
+  operationId: string;
+}
 
 export const V01RemoteChainHeadStopOperationRequest: S.Codec<V01RemoteChainHeadStopOperationRequest> =
   S.lazy(
     (): S.Codec<V01RemoteChainHeadStopOperationRequest> =>
-      ChainHeadOperationRequest,
+      S.struct({
+        genesisHash: S.bytes,
+        followSubscriptionId: S.str,
+        operationId: S.str,
+      }) as S.Codec<V01RemoteChainHeadStopOperationRequest>,
   );
 
-export type V01RemoteChainHeadStorageError = GenericError;
-
-export const V01RemoteChainHeadStorageError: S.Codec<V01RemoteChainHeadStorageError> =
-  S.lazy((): S.Codec<V01RemoteChainHeadStorageError> => GenericError);
-
-export type V01RemoteChainHeadStorageRequest = ChainHeadStorageRequest;
+/** Parameters for [`crate::api::ChainInteraction::remote_chain_head_storage`]. */
+export interface V01RemoteChainHeadStorageRequest {
+  /** Chain genesis hash. */
+  genesisHash: Uint8Array;
+  /** Follow subscription identifier. */
+  followSubscriptionId: string;
+  /** Block hash. */
+  hash: Uint8Array;
+  /** Storage items to query. */
+  items: Array<StorageQueryItem>;
+  /** Optional child trie. */
+  childTrie?: Uint8Array;
+}
 
 export const V01RemoteChainHeadStorageRequest: S.Codec<V01RemoteChainHeadStorageRequest> =
   S.lazy(
-    (): S.Codec<V01RemoteChainHeadStorageRequest> => ChainHeadStorageRequest,
+    (): S.Codec<V01RemoteChainHeadStorageRequest> =>
+      S.struct({
+        genesisHash: S.bytes,
+        followSubscriptionId: S.str,
+        hash: S.bytes,
+        items: S.vec(StorageQueryItem),
+        childTrie: S.option(S.bytes),
+      }) as S.Codec<V01RemoteChainHeadStorageRequest>,
   );
 
-export type V01RemoteChainHeadStorageResponse = OperationStartedResult;
+/** Response indicating a storage query operation was started. */
+export interface V01RemoteChainHeadStorageResponse {
+  /** Started operation result. */
+  operation: OperationStartedResult;
+}
 
 export const V01RemoteChainHeadStorageResponse: S.Codec<V01RemoteChainHeadStorageResponse> =
   S.lazy(
-    (): S.Codec<V01RemoteChainHeadStorageResponse> => OperationStartedResult,
+    (): S.Codec<V01RemoteChainHeadStorageResponse> =>
+      S.struct({
+        operation: OperationStartedResult,
+      }) as S.Codec<V01RemoteChainHeadStorageResponse>,
   );
 
-export type V01RemoteChainHeadUnpinError = GenericError;
-
-export const V01RemoteChainHeadUnpinError: S.Codec<V01RemoteChainHeadUnpinError> =
-  S.lazy((): S.Codec<V01RemoteChainHeadUnpinError> => GenericError);
-
-export type V01RemoteChainHeadUnpinRequest = ChainHeadUnpinRequest;
+/** Parameters for [`crate::api::ChainInteraction::remote_chain_head_unpin`]. */
+export interface V01RemoteChainHeadUnpinRequest {
+  /** Chain genesis hash. */
+  genesisHash: Uint8Array;
+  /** Follow subscription identifier. */
+  followSubscriptionId: string;
+  /** Block hashes to unpin. */
+  hashes: Array<Uint8Array>;
+}
 
 export const V01RemoteChainHeadUnpinRequest: S.Codec<V01RemoteChainHeadUnpinRequest> =
-  S.lazy((): S.Codec<V01RemoteChainHeadUnpinRequest> => ChainHeadUnpinRequest);
+  S.lazy(
+    (): S.Codec<V01RemoteChainHeadUnpinRequest> =>
+      S.struct({
+        genesisHash: S.bytes,
+        followSubscriptionId: S.str,
+        hashes: S.vec(S.bytes),
+      }) as S.Codec<V01RemoteChainHeadUnpinRequest>,
+  );
 
-export type V01RemoteChainSpecChainNameError = GenericError;
-
-export const V01RemoteChainSpecChainNameError: S.Codec<V01RemoteChainSpecChainNameError> =
-  S.lazy((): S.Codec<V01RemoteChainSpecChainNameError> => GenericError);
-
-export type V01RemoteChainSpecChainNameRequest = GenesisHash;
+/** Request to fetch a chain display name. */
+export interface V01RemoteChainSpecChainNameRequest {
+  /** Chain genesis hash. */
+  genesisHash: Uint8Array;
+}
 
 export const V01RemoteChainSpecChainNameRequest: S.Codec<V01RemoteChainSpecChainNameRequest> =
-  S.lazy((): S.Codec<V01RemoteChainSpecChainNameRequest> => GenesisHash);
+  S.lazy(
+    (): S.Codec<V01RemoteChainSpecChainNameRequest> =>
+      S.struct({
+        genesisHash: S.bytes,
+      }) as S.Codec<V01RemoteChainSpecChainNameRequest>,
+  );
 
-export type V01RemoteChainSpecChainNameResponse = string;
+/** Response containing a chain display name. */
+export interface V01RemoteChainSpecChainNameResponse {
+  /** Chain display name. */
+  chainName: string;
+}
 
 export const V01RemoteChainSpecChainNameResponse: S.Codec<V01RemoteChainSpecChainNameResponse> =
-  S.lazy((): S.Codec<V01RemoteChainSpecChainNameResponse> => S.str);
+  S.lazy(
+    (): S.Codec<V01RemoteChainSpecChainNameResponse> =>
+      S.struct({
+        chainName: S.str,
+      }) as S.Codec<V01RemoteChainSpecChainNameResponse>,
+  );
 
-export type V01RemoteChainSpecGenesisHashError = GenericError;
-
-export const V01RemoteChainSpecGenesisHashError: S.Codec<V01RemoteChainSpecGenesisHashError> =
-  S.lazy((): S.Codec<V01RemoteChainSpecGenesisHashError> => GenericError);
-
-export type V01RemoteChainSpecGenesisHashRequest = GenesisHash;
+/** Request to fetch a chain genesis hash. */
+export interface V01RemoteChainSpecGenesisHashRequest {
+  /** Chain genesis hash requested by the product. */
+  genesisHash: Uint8Array;
+}
 
 export const V01RemoteChainSpecGenesisHashRequest: S.Codec<V01RemoteChainSpecGenesisHashRequest> =
-  S.lazy((): S.Codec<V01RemoteChainSpecGenesisHashRequest> => GenesisHash);
+  S.lazy(
+    (): S.Codec<V01RemoteChainSpecGenesisHashRequest> =>
+      S.struct({
+        genesisHash: S.bytes,
+      }) as S.Codec<V01RemoteChainSpecGenesisHashRequest>,
+  );
 
-export type V01RemoteChainSpecGenesisHashResponse = Hex;
+/** Response containing a chain genesis hash. */
+export interface V01RemoteChainSpecGenesisHashResponse {
+  /** Chain genesis hash. */
+  genesisHash: Uint8Array;
+}
 
 export const V01RemoteChainSpecGenesisHashResponse: S.Codec<V01RemoteChainSpecGenesisHashResponse> =
-  S.lazy((): S.Codec<V01RemoteChainSpecGenesisHashResponse> => Hex);
+  S.lazy(
+    (): S.Codec<V01RemoteChainSpecGenesisHashResponse> =>
+      S.struct({
+        genesisHash: S.bytes,
+      }) as S.Codec<V01RemoteChainSpecGenesisHashResponse>,
+  );
 
-export type V01RemoteChainSpecPropertiesError = GenericError;
-
-export const V01RemoteChainSpecPropertiesError: S.Codec<V01RemoteChainSpecPropertiesError> =
-  S.lazy((): S.Codec<V01RemoteChainSpecPropertiesError> => GenericError);
-
-export type V01RemoteChainSpecPropertiesRequest = GenesisHash;
+/** Request to fetch chain properties. */
+export interface V01RemoteChainSpecPropertiesRequest {
+  /** Chain genesis hash. */
+  genesisHash: Uint8Array;
+}
 
 export const V01RemoteChainSpecPropertiesRequest: S.Codec<V01RemoteChainSpecPropertiesRequest> =
-  S.lazy((): S.Codec<V01RemoteChainSpecPropertiesRequest> => GenesisHash);
+  S.lazy(
+    (): S.Codec<V01RemoteChainSpecPropertiesRequest> =>
+      S.struct({
+        genesisHash: S.bytes,
+      }) as S.Codec<V01RemoteChainSpecPropertiesRequest>,
+  );
 
-export type V01RemoteChainSpecPropertiesResponse = string;
+/** Response containing JSON-encoded chain properties. */
+export interface V01RemoteChainSpecPropertiesResponse {
+  /** JSON-encoded properties. */
+  properties: string;
+}
 
 export const V01RemoteChainSpecPropertiesResponse: S.Codec<V01RemoteChainSpecPropertiesResponse> =
-  S.lazy((): S.Codec<V01RemoteChainSpecPropertiesResponse> => S.str);
+  S.lazy(
+    (): S.Codec<V01RemoteChainSpecPropertiesResponse> =>
+      S.struct({
+        properties: S.str,
+      }) as S.Codec<V01RemoteChainSpecPropertiesResponse>,
+  );
 
-export type V01RemoteChainTransactionBroadcastError = GenericError;
-
-export const V01RemoteChainTransactionBroadcastError: S.Codec<V01RemoteChainTransactionBroadcastError> =
-  S.lazy((): S.Codec<V01RemoteChainTransactionBroadcastError> => GenericError);
-
-export type V01RemoteChainTransactionBroadcastRequest =
-  ChainTransactionBroadcastRequest;
+/** Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_broadcast`]. */
+export interface V01RemoteChainTransactionBroadcastRequest {
+  /** Chain genesis hash. */
+  genesisHash: Uint8Array;
+  /** Signed transaction bytes. */
+  transaction: Uint8Array;
+}
 
 export const V01RemoteChainTransactionBroadcastRequest: S.Codec<V01RemoteChainTransactionBroadcastRequest> =
   S.lazy(
     (): S.Codec<V01RemoteChainTransactionBroadcastRequest> =>
-      ChainTransactionBroadcastRequest,
+      S.struct({
+        genesisHash: S.bytes,
+        transaction: S.bytes,
+      }) as S.Codec<V01RemoteChainTransactionBroadcastRequest>,
   );
 
-export type V01RemoteChainTransactionBroadcastResponse = string | undefined;
+/** Response containing a transaction broadcast operation identifier. */
+export interface V01RemoteChainTransactionBroadcastResponse {
+  /** Broadcast operation identifier, if available. */
+  operationId?: string;
+}
 
 export const V01RemoteChainTransactionBroadcastResponse: S.Codec<V01RemoteChainTransactionBroadcastResponse> =
   S.lazy(
-    (): S.Codec<V01RemoteChainTransactionBroadcastResponse> => S.option(S.str),
+    (): S.Codec<V01RemoteChainTransactionBroadcastResponse> =>
+      S.struct({
+        operationId: S.option(S.str),
+      }) as S.Codec<V01RemoteChainTransactionBroadcastResponse>,
   );
 
-export type V01RemoteChainTransactionStopError = GenericError;
-
-export const V01RemoteChainTransactionStopError: S.Codec<V01RemoteChainTransactionStopError> =
-  S.lazy((): S.Codec<V01RemoteChainTransactionStopError> => GenericError);
-
-export type V01RemoteChainTransactionStopRequest = ChainTransactionStopRequest;
+/** Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_stop`]. */
+export interface V01RemoteChainTransactionStopRequest {
+  /** Chain genesis hash. */
+  genesisHash: Uint8Array;
+  /** Operation identifier of the broadcast to stop. */
+  operationId: string;
+}
 
 export const V01RemoteChainTransactionStopRequest: S.Codec<V01RemoteChainTransactionStopRequest> =
   S.lazy(
     (): S.Codec<V01RemoteChainTransactionStopRequest> =>
-      ChainTransactionStopRequest,
+      S.struct({
+        genesisHash: S.bytes,
+        operationId: S.str,
+      }) as S.Codec<V01RemoteChainTransactionStopRequest>,
   );
-
-export type V01RemotePermissionError = GenericError;
-
-export const V01RemotePermissionError: S.Codec<V01RemotePermissionError> =
-  S.lazy((): S.Codec<V01RemotePermissionError> => GenericError);
 
 /**
  * Pre-RFC-0001 remote operation permission, as shipped by
@@ -4508,196 +3979,257 @@ export const V01RemotePermissionError: S.Codec<V01RemotePermissionError> =
  */
 export type V01RemotePermissionRequest =
   /** URL the product wants to fetch. */
-  | { tag: "ExternalRequest"; value: string }
+  | { tag: "ExternalRequest"; value: { url: string } }
   /** Product wants to submit a transaction. */
   | { tag: "TransactionSubmit"; value: undefined };
 
 export const V01RemotePermissionRequest: S.Codec<V01RemotePermissionRequest> =
   S.lazy(
     (): S.Codec<V01RemotePermissionRequest> =>
-      S.taggedUnion({ ExternalRequest: S.str, TransactionSubmit: S.unit }),
+      S.taggedUnion({
+        ExternalRequest: S.struct({ url: S.str }) as S.Codec<{ url: string }>,
+        TransactionSubmit: S.unit,
+      }),
   );
 
-export type V01RemotePermissionResponse = boolean;
+/** Response indicating whether a remote permission was granted. */
+export interface V01RemotePermissionResponse {
+  /** Whether the permission was granted. */
+  granted: boolean;
+}
 
 export const V01RemotePermissionResponse: S.Codec<V01RemotePermissionResponse> =
-  S.lazy((): S.Codec<V01RemotePermissionResponse> => S.bool);
+  S.lazy(
+    (): S.Codec<V01RemotePermissionResponse> =>
+      S.struct({ granted: S.bool }) as S.Codec<V01RemotePermissionResponse>,
+  );
 
-export type V01RemotePreimageLookupSubscribeItem = PreimageValue | undefined;
+/** Item containing an optional preimage lookup result. */
+export interface V01RemotePreimageLookupSubscribeItem {
+  /** Preimage data, if found. */
+  value?: Uint8Array;
+}
 
 export const V01RemotePreimageLookupSubscribeItem: S.Codec<V01RemotePreimageLookupSubscribeItem> =
   S.lazy(
     (): S.Codec<V01RemotePreimageLookupSubscribeItem> =>
-      S.option(PreimageValue),
+      S.struct({
+        value: S.option(S.bytes),
+      }) as S.Codec<V01RemotePreimageLookupSubscribeItem>,
   );
 
-export type V01RemotePreimageLookupSubscribeRequest = PreimageKey;
+/** Request to subscribe to preimage lookup results. */
+export interface V01RemotePreimageLookupSubscribeRequest {
+  /** Hash of the preimage. */
+  key: Uint8Array;
+}
 
 export const V01RemotePreimageLookupSubscribeRequest: S.Codec<V01RemotePreimageLookupSubscribeRequest> =
-  S.lazy((): S.Codec<V01RemotePreimageLookupSubscribeRequest> => PreimageKey);
+  S.lazy(
+    (): S.Codec<V01RemotePreimageLookupSubscribeRequest> =>
+      S.struct({
+        key: S.bytes,
+      }) as S.Codec<V01RemotePreimageLookupSubscribeRequest>,
+  );
 
-export type V01RemoteStatementStoreCreateProofError = StatementProofError;
+/** Statement proof creation error. */
+export type V01RemoteStatementStoreCreateProofError =
+  /** Signing operation failed. */
+  | { tag: "UnableToSign"; value: undefined }
+  /** Account not recognized. */
+  | { tag: "UnknownAccount"; value: undefined }
+  /** Catch-all. */
+  | { tag: "Unknown"; value: { reason: string } };
 
 export const V01RemoteStatementStoreCreateProofError: S.Codec<V01RemoteStatementStoreCreateProofError> =
   S.lazy(
-    (): S.Codec<V01RemoteStatementStoreCreateProofError> => StatementProofError,
+    (): S.Codec<V01RemoteStatementStoreCreateProofError> =>
+      S.taggedUnion({
+        UnableToSign: S.unit,
+        UnknownAccount: S.unit,
+        Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
+      }),
   );
 
-export type V01RemoteStatementStoreCreateProofRequest =
-  StatementStoreCreateProofRequest;
+/** Request to create a cryptographic proof for a statement. */
+export interface V01RemoteStatementStoreCreateProofRequest {
+  /** Product account that should create the proof. */
+  productAccountId: ProductAccountId;
+  /** Statement to prove. */
+  statement: Statement;
+}
 
 export const V01RemoteStatementStoreCreateProofRequest: S.Codec<V01RemoteStatementStoreCreateProofRequest> =
   S.lazy(
     (): S.Codec<V01RemoteStatementStoreCreateProofRequest> =>
-      StatementStoreCreateProofRequest,
+      S.struct({
+        productAccountId: ProductAccountId,
+        statement: Statement,
+      }) as S.Codec<V01RemoteStatementStoreCreateProofRequest>,
   );
 
-export type V01RemoteStatementStoreCreateProofResponse = StatementProof;
+/** Response containing a statement proof. */
+export interface V01RemoteStatementStoreCreateProofResponse {
+  /** Created statement proof. */
+  proof: StatementProof;
+}
 
 export const V01RemoteStatementStoreCreateProofResponse: S.Codec<V01RemoteStatementStoreCreateProofResponse> =
   S.lazy(
-    (): S.Codec<V01RemoteStatementStoreCreateProofResponse> => StatementProof,
+    (): S.Codec<V01RemoteStatementStoreCreateProofResponse> =>
+      S.struct({
+        proof: StatementProof,
+      }) as S.Codec<V01RemoteStatementStoreCreateProofResponse>,
   );
 
-export type V01RemoteStatementStoreSubmitError = GenericError;
-
-export const V01RemoteStatementStoreSubmitError: S.Codec<V01RemoteStatementStoreSubmitError> =
-  S.lazy((): S.Codec<V01RemoteStatementStoreSubmitError> => GenericError);
-
-export type V01RemoteStatementStoreSubmitRequest = Bytes;
+/** Request to submit a statement. */
+export interface V01RemoteStatementStoreSubmitRequest {
+  /** SCALE-encoded statement payload. */
+  statement: Uint8Array;
+}
 
 export const V01RemoteStatementStoreSubmitRequest: S.Codec<V01RemoteStatementStoreSubmitRequest> =
-  S.lazy((): S.Codec<V01RemoteStatementStoreSubmitRequest> => Bytes);
+  S.lazy(
+    (): S.Codec<V01RemoteStatementStoreSubmitRequest> =>
+      S.struct({
+        statement: S.bytes,
+      }) as S.Codec<V01RemoteStatementStoreSubmitRequest>,
+  );
 
-export type V01RemoteStatementStoreSubmitResponse = string;
+/** Response containing the submitted statement identifier. */
+export interface V01RemoteStatementStoreSubmitResponse {
+  /** Statement identifier assigned by the host. */
+  statementId: string;
+}
 
 export const V01RemoteStatementStoreSubmitResponse: S.Codec<V01RemoteStatementStoreSubmitResponse> =
-  S.lazy((): S.Codec<V01RemoteStatementStoreSubmitResponse> => S.str);
+  S.lazy(
+    (): S.Codec<V01RemoteStatementStoreSubmitResponse> =>
+      S.struct({
+        statementId: S.str,
+      }) as S.Codec<V01RemoteStatementStoreSubmitResponse>,
+  );
 
-export type V01RemoteStatementStoreSubscribeItem = Array<SignedStatement>;
+/** Item containing statements delivered by the statement store subscription. */
+export interface V01RemoteStatementStoreSubscribeItem {
+  /** Signed statements matching the subscription. */
+  statements: Array<SignedStatement>;
+}
 
 export const V01RemoteStatementStoreSubscribeItem: S.Codec<V01RemoteStatementStoreSubscribeItem> =
   S.lazy(
-    (): S.Codec<V01RemoteStatementStoreSubscribeItem> => S.vec(SignedStatement),
+    (): S.Codec<V01RemoteStatementStoreSubscribeItem> =>
+      S.struct({
+        statements: S.vec(SignedStatement),
+      }) as S.Codec<V01RemoteStatementStoreSubscribeItem>,
   );
 
-export type V01RemoteStatementStoreSubscribeRequest = Array<Topic>;
+/** Request to subscribe to statements matching topics. */
+export interface V01RemoteStatementStoreSubscribeRequest {
+  /** Required topics. */
+  topics: Array<Uint8Array>;
+}
 
 export const V01RemoteStatementStoreSubscribeRequest: S.Codec<V01RemoteStatementStoreSubscribeRequest> =
-  S.lazy((): S.Codec<V01RemoteStatementStoreSubscribeRequest> => S.vec(Topic));
-
-/**
- * Full Substrate extrinsic signing payload with all fields needed for signature
- * generation.
- */
-export interface V01SigningPayload {
-  /** Signer address (SS58 or hex). */
-  address: string;
-  /** Reference block hash. */
-  blockHash: Hex;
-  /** Reference block number. */
-  blockNumber: Hex;
-  /** Mortality era encoding. */
-  era: Hex;
-  /** Chain genesis hash. */
-  genesisHash: GenesisHash;
-  /** SCALE-encoded call data. */
-  method: Hex;
-  /** Account nonce. */
-  nonce: Hex;
-  /** Runtime spec version. */
-  specVersion: Hex;
-  /** Transaction tip. */
-  tip: Hex;
-  /** Transaction format version. */
-  transactionVersion: Hex;
-  /** Extension identifiers. */
-  signedExtensions: Array<string>;
-  /** Extrinsic version. */
-  version: number;
-  /** For multi-asset tips. */
-  assetId?: Hex;
-  /** CheckMetadataHash extension. */
-  metadataHash?: Hex;
-  /** Metadata mode. */
-  mode?: number;
-  /** Request signed transaction back. */
-  withSignedTransaction?: boolean;
-}
-
-export const V01SigningPayload: S.Codec<V01SigningPayload> = S.lazy(
-  (): S.Codec<V01SigningPayload> =>
-    S.struct({
-      address: S.str,
-      blockHash: Hex,
-      blockNumber: Hex,
-      era: Hex,
-      genesisHash: GenesisHash,
-      method: Hex,
-      nonce: Hex,
-      specVersion: Hex,
-      tip: Hex,
-      transactionVersion: Hex,
-      signedExtensions: S.vec(S.str),
-      version: S.u32,
-      assetId: S.option(Hex),
-      metadataHash: S.option(Hex),
-      mode: S.option(S.u32),
-      withSignedTransaction: S.option(S.bool),
-    }) as S.Codec<V01SigningPayload>,
-);
-
-/** A raw signing request pairing an address with raw data. */
-export interface V01SigningRawPayload {
-  /** Signer address. */
-  address: string;
-  /** The data to sign. */
-  data: RawPayload;
-}
-
-export const V01SigningRawPayload: S.Codec<V01SigningRawPayload> = S.lazy(
-  (): S.Codec<V01SigningRawPayload> =>
-    S.struct({
-      address: S.str,
-      data: RawPayload,
-    }) as S.Codec<V01SigningRawPayload>,
-);
-
-export type V02HostChatCreateSimpleGroupError = ChatRoomRegistrationError;
-
-export const V02HostChatCreateSimpleGroupError: S.Codec<V02HostChatCreateSimpleGroupError> =
   S.lazy(
-    (): S.Codec<V02HostChatCreateSimpleGroupError> => ChatRoomRegistrationError,
+    (): S.Codec<V01RemoteStatementStoreSubscribeRequest> =>
+      S.struct({
+        topics: S.vec(S.byteArray(32)),
+      }) as S.Codec<V01RemoteStatementStoreSubscribeRequest>,
   );
 
-export type V02HostChatCreateSimpleGroupRequest = SimpleGroupChatRequest;
+/**
+ * Request to create a simple group chat room.
+ *
+ * V0.2: lightweight group chat that avoids the full Chat Extension v2
+ * complexity. Participants join via deep link; the host handles the UI
+ * with default rendering (no custom elements).
+ */
+export interface V02HostChatCreateSimpleGroupRequest {
+  /** Unique room identifier source. */
+  roomId: string;
+  /** Room display name. */
+  name: string;
+  /** URL or base64 image for the room avatar. */
+  icon: string;
+}
 
 export const V02HostChatCreateSimpleGroupRequest: S.Codec<V02HostChatCreateSimpleGroupRequest> =
   S.lazy(
-    (): S.Codec<V02HostChatCreateSimpleGroupRequest> => SimpleGroupChatRequest,
+    (): S.Codec<V02HostChatCreateSimpleGroupRequest> =>
+      S.struct({
+        roomId: S.str,
+        name: S.str,
+        icon: S.str,
+      }) as S.Codec<V02HostChatCreateSimpleGroupRequest>,
   );
 
-export type V02HostChatCreateSimpleGroupResponse = SimpleGroupChatResult;
+/**
+ * Result of creating a simple group chat room.
+ *
+ * V0.2.
+ */
+export interface V02HostChatCreateSimpleGroupResponse {
+  /** Whether the room was newly created or already existed. */
+  status: ChatRoomRegistrationStatus;
+  /** Deep link that participants can use to join the room. */
+  joinLink: string;
+}
 
 export const V02HostChatCreateSimpleGroupResponse: S.Codec<V02HostChatCreateSimpleGroupResponse> =
   S.lazy(
-    (): S.Codec<V02HostChatCreateSimpleGroupResponse> => SimpleGroupChatResult,
+    (): S.Codec<V02HostChatCreateSimpleGroupResponse> =>
+      S.struct({
+        status: ChatRoomRegistrationStatus,
+        joinLink: S.str,
+      }) as S.Codec<V02HostChatCreateSimpleGroupResponse>,
   );
 
-export type V02HostDeriveEntropyError = DeriveEntropyError;
+/**
+ * Error from [`crate::api::EntropyDerivation::host_derive_entropy`].
+ *
+ * Under normal operation the function always succeeds; `Unknown` indicates an
+ * unrecoverable internal host error.
+ *
+ * See [RFC 0007].
+ *
+ * [RFC 0007]: https://github.com/paritytech/triangle-js-sdks/pull/95
+ */
+export type V02HostDeriveEntropyError =
+  /** An unexpected error occurred in the host. */
+  { tag: "Unknown"; value: undefined };
 
 export const V02HostDeriveEntropyError: S.Codec<V02HostDeriveEntropyError> =
-  S.lazy((): S.Codec<V02HostDeriveEntropyError> => DeriveEntropyError);
+  S.lazy(
+    (): S.Codec<V02HostDeriveEntropyError> =>
+      S.taggedUnion({ Unknown: S.unit }),
+  );
 
-export type V02HostDeriveEntropyRequest = Uint8Array;
+/** Request to derive deterministic entropy. */
+export interface V02HostDeriveEntropyRequest {
+  /** Domain-separated derivation context. */
+  context: Uint8Array;
+}
 
 export const V02HostDeriveEntropyRequest: S.Codec<V02HostDeriveEntropyRequest> =
-  S.lazy((): S.Codec<V02HostDeriveEntropyRequest> => S.bytes);
+  S.lazy(
+    (): S.Codec<V02HostDeriveEntropyRequest> =>
+      S.struct({ context: S.bytes }) as S.Codec<V02HostDeriveEntropyRequest>,
+  );
 
-export type V02HostDeriveEntropyResponse = Entropy;
+/** Response containing derived deterministic entropy. */
+export interface V02HostDeriveEntropyResponse {
+  /** 32 bytes of derived entropy. */
+  entropy: Uint8Array;
+}
 
 export const V02HostDeriveEntropyResponse: S.Codec<V02HostDeriveEntropyResponse> =
-  S.lazy((): S.Codec<V02HostDeriveEntropyResponse> => Entropy);
+  S.lazy(
+    (): S.Codec<V02HostDeriveEntropyResponse> =>
+      S.struct({
+        entropy: S.byteArray(32),
+      }) as S.Codec<V02HostDeriveEntropyResponse>,
+  );
 
 /**
  * Device capability to request access to.
@@ -4739,108 +4271,287 @@ export const V02HostDevicePermissionRequest: S.Codec<V02HostDevicePermissionRequ
       }),
   );
 
-export type V02HostGetUserIdError = UserIdentityError;
+/**
+ * Error from [`crate::api::AccountManagement::host_get_user_id`].
+ *
+ * V0.2.
+ */
+export type V02HostGetUserIdError =
+  /** User denied the identity disclosure request. */
+  | { tag: "Rejected"; value: undefined }
+  /** User is not logged in. */
+  | { tag: "NotConnected"; value: undefined }
+  /** Catch-all. */
+  | { tag: "Unknown"; value: { reason: string } };
 
 export const V02HostGetUserIdError: S.Codec<V02HostGetUserIdError> = S.lazy(
-  (): S.Codec<V02HostGetUserIdError> => UserIdentityError,
+  (): S.Codec<V02HostGetUserIdError> =>
+    S.taggedUnion({
+      Rejected: S.unit,
+      NotConnected: S.unit,
+      Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
+    }),
 );
 
-export type V02HostGetUserIdResponse = UserIdentity;
+/**
+ * The user's primary DotNS account identity.
+ *
+ * V0.2.
+ */
+export interface V02HostGetUserIdResponse {
+  /** The user's primary DotNS identifier. */
+  dotNsIdentifier: string;
+  /** The user's primary public key. */
+  publicKey: Uint8Array;
+}
 
 export const V02HostGetUserIdResponse: S.Codec<V02HostGetUserIdResponse> =
-  S.lazy((): S.Codec<V02HostGetUserIdResponse> => UserIdentity);
+  S.lazy(
+    (): S.Codec<V02HostGetUserIdResponse> =>
+      S.struct({
+        dotNsIdentifier: S.str,
+        publicKey: S.bytes,
+      }) as S.Codec<V02HostGetUserIdResponse>,
+  );
 
-export type V02HostHandshakeError = HandshakeError;
+/**
+ * Handshake error. Mirrors Novasama's `HandshakeErr` byte-for-byte so that
+ * pre-codegen products (built against `@novasamatech/host-api`) can decode
+ * `host_handshake_response` frames produced by this host.
+ */
+export type V02HostHandshakeError =
+  | { tag: "Timeout"; value: undefined }
+  | { tag: "UnsupportedProtocolVersion"; value: undefined }
+  | { tag: "Unknown"; value: GenericErr };
 
 export const V02HostHandshakeError: S.Codec<V02HostHandshakeError> = S.lazy(
-  (): S.Codec<V02HostHandshakeError> => HandshakeError,
+  (): S.Codec<V02HostHandshakeError> =>
+    S.taggedUnion({
+      Timeout: S.unit,
+      UnsupportedProtocolVersion: S.unit,
+      Unknown: GenericErr,
+    }),
 );
 
-export type V02HostPaymentBalanceSubscribeError = PaymentBalanceError;
+/**
+ * Error from [`crate::api::Payment::host_payment_balance_subscribe`].
+ *
+ * See [RFC 0006].
+ *
+ * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+ */
+export type V02HostPaymentBalanceSubscribeError =
+  /** User denied the balance disclosure request. */
+  | { tag: "PermissionDenied"; value: undefined }
+  /** Catch-all. */
+  | { tag: "Unknown"; value: { reason: string } };
 
 export const V02HostPaymentBalanceSubscribeError: S.Codec<V02HostPaymentBalanceSubscribeError> =
   S.lazy(
-    (): S.Codec<V02HostPaymentBalanceSubscribeError> => PaymentBalanceError,
+    (): S.Codec<V02HostPaymentBalanceSubscribeError> =>
+      S.taggedUnion({
+        PermissionDenied: S.unit,
+        Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
+      }),
   );
 
-export type V02HostPaymentBalanceSubscribeItem = PaymentBalance;
+/**
+ * Current payment balance state pushed to subscribers.
+ *
+ * See [RFC 0006].
+ *
+ * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+ */
+export interface V02HostPaymentBalanceSubscribeItem {
+  /** Balance that can be spent right now. */
+  available: Balance;
+  /**
+   * Balance the user possesses but cannot spend yet (e.g. in recycling
+   * stage).
+   */
+  pending: Balance;
+}
 
 export const V02HostPaymentBalanceSubscribeItem: S.Codec<V02HostPaymentBalanceSubscribeItem> =
-  S.lazy((): S.Codec<V02HostPaymentBalanceSubscribeItem> => PaymentBalance);
-
-export type V02HostPaymentRequestError = PaymentRequestError;
-
-export const V02HostPaymentRequestError: S.Codec<V02HostPaymentRequestError> =
-  S.lazy((): S.Codec<V02HostPaymentRequestError> => PaymentRequestError);
-
-export type V02HostPaymentRequestRequest = PaymentRequest;
-
-export const V02HostPaymentRequestRequest: S.Codec<V02HostPaymentRequestRequest> =
-  S.lazy((): S.Codec<V02HostPaymentRequestRequest> => PaymentRequest);
-
-export type V02HostPaymentRequestResponse = PaymentReceipt;
-
-export const V02HostPaymentRequestResponse: S.Codec<V02HostPaymentRequestResponse> =
-  S.lazy((): S.Codec<V02HostPaymentRequestResponse> => PaymentReceipt);
-
-export type V02HostPaymentStatusSubscribeError = PaymentStatusError;
-
-export const V02HostPaymentStatusSubscribeError: S.Codec<V02HostPaymentStatusSubscribeError> =
-  S.lazy((): S.Codec<V02HostPaymentStatusSubscribeError> => PaymentStatusError);
-
-export type V02HostPaymentStatusSubscribeItem = PaymentStatus;
-
-export const V02HostPaymentStatusSubscribeItem: S.Codec<V02HostPaymentStatusSubscribeItem> =
-  S.lazy((): S.Codec<V02HostPaymentStatusSubscribeItem> => PaymentStatus);
-
-export type V02HostPaymentStatusSubscribeRequest = PaymentId;
-
-export const V02HostPaymentStatusSubscribeRequest: S.Codec<V02HostPaymentStatusSubscribeRequest> =
-  S.lazy((): S.Codec<V02HostPaymentStatusSubscribeRequest> => PaymentId);
-
-export type V02HostPaymentTopUpError = PaymentTopUpError;
-
-export const V02HostPaymentTopUpError: S.Codec<V02HostPaymentTopUpError> =
-  S.lazy((): S.Codec<V02HostPaymentTopUpError> => PaymentTopUpError);
-
-export type V02HostPaymentTopUpRequest = PaymentTopUpRequest;
-
-export const V02HostPaymentTopUpRequest: S.Codec<V02HostPaymentTopUpRequest> =
-  S.lazy((): S.Codec<V02HostPaymentTopUpRequest> => PaymentTopUpRequest);
-
-export type V02HostSignPayloadRequest = V02SigningPayload;
-
-export const V02HostSignPayloadRequest: S.Codec<V02HostSignPayloadRequest> =
-  S.lazy((): S.Codec<V02HostSignPayloadRequest> => V02SigningPayload);
-
-export type V02HostSignRawRequest = V02SigningRawPayload;
-
-export const V02HostSignRawRequest: S.Codec<V02HostSignRawRequest> = S.lazy(
-  (): S.Codec<V02HostSignRawRequest> => V02SigningRawPayload,
-);
-
-export type V02RemotePermissionRequest = Array<RemotePermission>;
-
-export const V02RemotePermissionRequest: S.Codec<V02RemotePermissionRequest> =
-  S.lazy((): S.Codec<V02RemotePermissionRequest> => S.vec(RemotePermission));
-
-export type V02RemoteStatementStoreSubscribeItem = Array<SignedStatement>;
-
-export const V02RemoteStatementStoreSubscribeItem: S.Codec<V02RemoteStatementStoreSubscribeItem> =
   S.lazy(
-    (): S.Codec<V02RemoteStatementStoreSubscribeItem> => S.vec(SignedStatement),
+    (): S.Codec<V02HostPaymentBalanceSubscribeItem> =>
+      S.struct({
+        available: Balance,
+        pending: Balance,
+      }) as S.Codec<V02HostPaymentBalanceSubscribeItem>,
   );
 
-export type V02RemoteStatementStoreSubscribeRequest = TopicFilter;
+/**
+ * Error from [`crate::api::Payment::host_payment_request`].
+ *
+ * See [RFC 0006].
+ *
+ * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+ */
+export type V02HostPaymentRequestError =
+  /** User denied the payment request. */
+  | { tag: "Denied"; value: undefined }
+  /** User's available balance is not sufficient for the requested amount. */
+  | { tag: "InsufficientBalance"; value: undefined }
+  /** Catch-all. */
+  | { tag: "Unknown"; value: { reason: string } };
 
-export const V02RemoteStatementStoreSubscribeRequest: S.Codec<V02RemoteStatementStoreSubscribeRequest> =
-  S.lazy((): S.Codec<V02RemoteStatementStoreSubscribeRequest> => TopicFilter);
+export const V02HostPaymentRequestError: S.Codec<V02HostPaymentRequestError> =
+  S.lazy(
+    (): S.Codec<V02HostPaymentRequestError> =>
+      S.taggedUnion({
+        Denied: S.unit,
+        InsufficientBalance: S.unit,
+        Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
+      }),
+  );
+
+/** Request to initiate a payment to another account. */
+export interface V02HostPaymentRequestRequest {
+  /** Amount to pay. */
+  amount: Balance;
+  /** Destination account. */
+  destination: Uint8Array;
+}
+
+export const V02HostPaymentRequestRequest: S.Codec<V02HostPaymentRequestRequest> =
+  S.lazy(
+    (): S.Codec<V02HostPaymentRequestRequest> =>
+      S.struct({
+        amount: Balance,
+        destination: S.byteArray(32),
+      }) as S.Codec<V02HostPaymentRequestRequest>,
+  );
+
+/**
+ * Receipt returned after a successful payment request.
+ *
+ * See [RFC 0006].
+ *
+ * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+ */
+export interface V02HostPaymentRequestResponse {
+  /** The assigned payment identifier. */
+  id: string;
+}
+
+export const V02HostPaymentRequestResponse: S.Codec<V02HostPaymentRequestResponse> =
+  S.lazy(
+    (): S.Codec<V02HostPaymentRequestResponse> =>
+      S.struct({ id: S.str }) as S.Codec<V02HostPaymentRequestResponse>,
+  );
+
+/**
+ * Error from [`crate::api::Payment::host_payment_status_subscribe`].
+ *
+ * See [RFC 0006].
+ *
+ * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+ */
+export type V02HostPaymentStatusSubscribeError =
+  /** Payment ID was not found or does not belong to the current product. */
+  | { tag: "PaymentNotFound"; value: undefined }
+  /** Catch-all. */
+  | { tag: "Unknown"; value: { reason: string } };
+
+export const V02HostPaymentStatusSubscribeError: S.Codec<V02HostPaymentStatusSubscribeError> =
+  S.lazy(
+    (): S.Codec<V02HostPaymentStatusSubscribeError> =>
+      S.taggedUnion({
+        PaymentNotFound: S.unit,
+        Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
+      }),
+  );
+
+/**
+ * Payment lifecycle status pushed to subscribers.
+ *
+ * Once a terminal state (`Completed` or `Failed`) is reached, the host
+ * delivers it and may close the subscription.
+ *
+ * See [RFC 0006].
+ *
+ * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+ */
+export type V02HostPaymentStatusSubscribeItem =
+  /** Payment is being processed. */
+  | { tag: "Processing"; value: undefined }
+  /** Payment has been settled successfully. */
+  | { tag: "Completed"; value: undefined }
+  /** Payment has failed. */
+  | { tag: "Failed"; value: { reason: string } };
+
+export const V02HostPaymentStatusSubscribeItem: S.Codec<V02HostPaymentStatusSubscribeItem> =
+  S.lazy(
+    (): S.Codec<V02HostPaymentStatusSubscribeItem> =>
+      S.taggedUnion({
+        Processing: S.unit,
+        Completed: S.unit,
+        Failed: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
+      }),
+  );
+
+/** Request to subscribe to a payment status. */
+export interface V02HostPaymentStatusSubscribeRequest {
+  /** Payment identifier to watch. */
+  paymentId: string;
+}
+
+export const V02HostPaymentStatusSubscribeRequest: S.Codec<V02HostPaymentStatusSubscribeRequest> =
+  S.lazy(
+    (): S.Codec<V02HostPaymentStatusSubscribeRequest> =>
+      S.struct({
+        paymentId: S.str,
+      }) as S.Codec<V02HostPaymentStatusSubscribeRequest>,
+  );
+
+/**
+ * Error from [`crate::api::Payment::host_payment_top_up`].
+ *
+ * See [RFC 0006].
+ *
+ * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+ */
+export type V02HostPaymentTopUpError =
+  /** The source account does not hold sufficient funds. */
+  | { tag: "InsufficientFunds"; value: undefined }
+  /** The source account was not found or is invalid. */
+  | { tag: "InvalidSource"; value: undefined }
+  /** Catch-all. */
+  | { tag: "Unknown"; value: { reason: string } };
+
+export const V02HostPaymentTopUpError: S.Codec<V02HostPaymentTopUpError> =
+  S.lazy(
+    (): S.Codec<V02HostPaymentTopUpError> =>
+      S.taggedUnion({
+        InsufficientFunds: S.unit,
+        InvalidSource: S.unit,
+        Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
+      }),
+  );
+
+/** Request to top up the product payment balance. */
+export interface V02HostPaymentTopUpRequest {
+  /** Amount to top up. */
+  amount: Balance;
+  /** Funding source for the top-up. */
+  source: PaymentTopUpSource;
+}
+
+export const V02HostPaymentTopUpRequest: S.Codec<V02HostPaymentTopUpRequest> =
+  S.lazy(
+    (): S.Codec<V02HostPaymentTopUpRequest> =>
+      S.struct({
+        amount: Balance,
+        source: PaymentTopUpSource,
+      }) as S.Codec<V02HostPaymentTopUpRequest>,
+  );
 
 /**
  * Full Substrate extrinsic signing payload with all fields needed for signature
  * generation.
  */
-export interface V02SigningPayload {
+export interface V02HostSignPayloadRequest {
   /**
    * Product account that will sign this payload.
    *
@@ -4851,58 +4562,59 @@ export interface V02SigningPayload {
    */
   account: ProductAccountId;
   /** Reference block hash. */
-  blockHash: Hex;
+  blockHash: Uint8Array;
   /** Reference block number. */
-  blockNumber: Hex;
+  blockNumber: Uint8Array;
   /** Mortality era encoding. */
-  era: Hex;
+  era: Uint8Array;
   /** Chain genesis hash. */
-  genesisHash: GenesisHash;
+  genesisHash: Uint8Array;
   /** SCALE-encoded call data. */
-  method: Hex;
+  method: Uint8Array;
   /** Account nonce. */
-  nonce: Hex;
+  nonce: Uint8Array;
   /** Runtime spec version. */
-  specVersion: Hex;
+  specVersion: Uint8Array;
   /** Transaction tip. */
-  tip: Hex;
+  tip: Uint8Array;
   /** Transaction format version. */
-  transactionVersion: Hex;
+  transactionVersion: Uint8Array;
   /** Extension identifiers. */
   signedExtensions: Array<string>;
   /** Extrinsic version. */
   version: number;
   /** For multi-asset tips. */
-  assetId?: Hex;
+  assetId?: Uint8Array;
   /** CheckMetadataHash extension. */
-  metadataHash?: Hex;
+  metadataHash?: Uint8Array;
   /** Metadata mode. */
   mode?: number;
   /** Request signed transaction back. */
   withSignedTransaction?: boolean;
 }
 
-export const V02SigningPayload: S.Codec<V02SigningPayload> = S.lazy(
-  (): S.Codec<V02SigningPayload> =>
-    S.struct({
-      account: ProductAccountId,
-      blockHash: Hex,
-      blockNumber: Hex,
-      era: Hex,
-      genesisHash: GenesisHash,
-      method: Hex,
-      nonce: Hex,
-      specVersion: Hex,
-      tip: Hex,
-      transactionVersion: Hex,
-      signedExtensions: S.vec(S.str),
-      version: S.u32,
-      assetId: S.option(Hex),
-      metadataHash: S.option(Hex),
-      mode: S.option(S.u32),
-      withSignedTransaction: S.option(S.bool),
-    }) as S.Codec<V02SigningPayload>,
-);
+export const V02HostSignPayloadRequest: S.Codec<V02HostSignPayloadRequest> =
+  S.lazy(
+    (): S.Codec<V02HostSignPayloadRequest> =>
+      S.struct({
+        account: ProductAccountId,
+        blockHash: S.bytes,
+        blockNumber: S.bytes,
+        era: S.bytes,
+        genesisHash: S.bytes,
+        method: S.bytes,
+        nonce: S.bytes,
+        specVersion: S.bytes,
+        tip: S.bytes,
+        transactionVersion: S.bytes,
+        signedExtensions: S.vec(S.str),
+        version: S.u32,
+        assetId: S.option(S.bytes),
+        metadataHash: S.option(S.bytes),
+        mode: S.option(S.u32),
+        withSignedTransaction: S.option(S.bool),
+      }) as S.Codec<V02HostSignPayloadRequest>,
+  );
 
 /**
  * A raw signing request pairing an account with raw data.
@@ -4911,20 +4623,66 @@ export const V02SigningPayload: S.Codec<V02SigningPayload> = S.lazy(
  *
  * [RFC 0005]: https://github.com/paritytech/triangle-js-sdks/pull/82
  */
-export interface V02SigningRawPayload {
+export interface V02HostSignRawRequest {
   /** Product account that will sign this data. */
   account: ProductAccountId;
   /** The data to sign. */
   data: RawPayload;
 }
 
-export const V02SigningRawPayload: S.Codec<V02SigningRawPayload> = S.lazy(
-  (): S.Codec<V02SigningRawPayload> =>
+export const V02HostSignRawRequest: S.Codec<V02HostSignRawRequest> = S.lazy(
+  (): S.Codec<V02HostSignRawRequest> =>
     S.struct({
       account: ProductAccountId,
       data: RawPayload,
-    }) as S.Codec<V02SigningRawPayload>,
+    }) as S.Codec<V02HostSignRawRequest>,
 );
+
+/** Request containing batched remote-operation permissions. */
+export interface V02RemotePermissionRequest {
+  /** Permissions requested by the product. */
+  permissions: Array<RemotePermission>;
+}
+
+export const V02RemotePermissionRequest: S.Codec<V02RemotePermissionRequest> =
+  S.lazy(
+    (): S.Codec<V02RemotePermissionRequest> =>
+      S.struct({
+        permissions: S.vec(RemotePermission),
+      }) as S.Codec<V02RemotePermissionRequest>,
+  );
+
+/** Item containing statements delivered by the statement store subscription. */
+export interface V02RemoteStatementStoreSubscribeItem {
+  /** Signed statements matching the subscription. */
+  statements: Array<SignedStatement>;
+}
+
+export const V02RemoteStatementStoreSubscribeItem: S.Codec<V02RemoteStatementStoreSubscribeItem> =
+  S.lazy(
+    (): S.Codec<V02RemoteStatementStoreSubscribeItem> =>
+      S.struct({
+        statements: S.vec(SignedStatement),
+      }) as S.Codec<V02RemoteStatementStoreSubscribeItem>,
+  );
+
+/**
+ * Request to subscribe to statements, allowing richer topic matching than
+ * plain topic vectors. Each position in the filter can be `Some(topic)` to
+ * require an exact match or `None` to act as a wildcard.
+ */
+export interface V02RemoteStatementStoreSubscribeRequest {
+  /** Positional topic matchers. `None` entries act as wildcards. */
+  topics: Array<Uint8Array | undefined>;
+}
+
+export const V02RemoteStatementStoreSubscribeRequest: S.Codec<V02RemoteStatementStoreSubscribeRequest> =
+  S.lazy(
+    (): S.Codec<V02RemoteStatementStoreSubscribeRequest> =>
+      S.struct({
+        topics: S.vec(S.option(S.byteArray(32))),
+      }) as S.Codec<V02RemoteStatementStoreSubscribeRequest>,
+  );
 
 /**
  * Protocol version identifier. Each variant matches a `V<N>(..)` arm of the

@@ -3716,7 +3716,6 @@ dependencies = [
  "futures",
  "hex",
  "parity-scale-codec",
- "serde",
  "sp-statement-store",
  "truapi-macros",
 ]
