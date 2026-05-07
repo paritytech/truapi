@@ -111,7 +111,7 @@ export function createTransport(
     string,
     {
       onData: (payload: Uint8Array) => void;
-      onInterruptPayload?: (payload: Uint8Array) => void;
+      onInterrupt?: () => void;
       onClose?: (error: Error) => void;
     }
   >();
@@ -173,7 +173,7 @@ export function createTransport(
     } else if (payload.tag.endsWith("_interrupt")) {
       const subscription = subscriptions.get(requestId);
       subscriptions.delete(requestId);
-      subscription?.onInterruptPayload?.(payload.value);
+      subscription?.onInterrupt?.();
     } else if (payload.tag === "host_handshake_request") {
       // Auto-respond to inbound `host_handshake_request` frames.
       //
@@ -259,7 +259,7 @@ export function createTransport(
         }
       });
     },
-    subscribe<Item, Interrupt = never>({
+    subscribe<Item>({
       method,
       payload,
       onData,
@@ -274,7 +274,7 @@ export function createTransport(
       const requestId = `p:${++idCounter}`;
       subscriptions.set(requestId, {
         onData,
-        onInterruptPayload: onInterrupt,
+        onInterrupt,
         onClose,
       });
       try {

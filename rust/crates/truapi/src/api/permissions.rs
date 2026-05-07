@@ -5,7 +5,7 @@ use crate::versioned::permissions::{
     RemotePermissionError, RemotePermissionRequest, RemotePermissionResponse,
 };
 use crate::wire;
-use crate::CallContext;
+use crate::{CallContext, CallError};
 
 /// Device and remote permission prompts.
 #[async_trait::async_trait]
@@ -16,7 +16,7 @@ pub trait Permissions: Send + Sync {
         &self,
         cx: &CallContext,
         request: HostDevicePermissionRequest,
-    ) -> Result<HostDevicePermissionResponse, HostDevicePermissionError>;
+    ) -> Result<HostDevicePermissionResponse, CallError<HostDevicePermissionError>>;
 
     /// Request one or more remote-operation permissions.
     #[wire(id = 10)]
@@ -24,5 +24,5 @@ pub trait Permissions: Send + Sync {
         &self,
         cx: &CallContext,
         request: RemotePermissionRequest,
-    ) -> Result<RemotePermissionResponse, RemotePermissionError>;
+    ) -> Result<RemotePermissionResponse, CallError<RemotePermissionError>>;
 }

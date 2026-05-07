@@ -19,7 +19,7 @@ pub mod v01;
 pub mod v02;
 pub mod versioned;
 
-pub use failure::{CallContext, RuntimeFailure, RuntimeFailureKind};
+pub use failure::{CallContext, CallError, CancellationToken, FrameworkOnlyError, RequestId};
 pub use truapi_macros::wire;
 
 /// Handle to an active subscription. Implements [`Stream`] to yield values

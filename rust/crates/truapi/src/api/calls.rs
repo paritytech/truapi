@@ -1,6 +1,5 @@
 //! Unified [`TrUApiCalls`] trait.
 
-use crate::v02::HandshakeError;
 use crate::versioned::calls::{
     HostFeatureSupportedError, HostFeatureSupportedRequest, HostFeatureSupportedResponse,
     HostHandshakeError, HostHandshakeRequest, HostHandshakeResponse, HostNavigateToError,
@@ -8,7 +7,7 @@ use crate::versioned::calls::{
     HostPushNotificationRequest, HostPushNotificationResponse,
 };
 use crate::wire;
-use crate::CallContext;
+use crate::{CallContext, CallError};
 
 /// General-purpose TrUAPI methods for feature detection, navigation, and
 /// notifications.
@@ -36,14 +35,14 @@ pub trait TrUApiCalls: Send + Sync {
         &self,
         _cx: &CallContext,
         request: HostHandshakeRequest,
-    ) -> Result<HostHandshakeResponse, HostHandshakeError> {
+    ) -> Result<HostHandshakeResponse, CallError<HostHandshakeError>> {
         let HostHandshakeRequest::V1(version) = request;
         if version == 1 {
             Ok(HostHandshakeResponse::V1)
         } else {
-            Err(HostHandshakeError::V1(
-                HandshakeError::UnsupportedProtocolVersion,
-            ))
+            Err(CallError::Domain(HostHandshakeError::V1(
+                crate::v02::HandshakeError::UnsupportedProtocolVersion,
+            )))
         }
     }
 
@@ -53,7 +52,7 @@ pub trait TrUApiCalls: Send + Sync {
         &self,
         cx: &CallContext,
         request: HostFeatureSupportedRequest,
-    ) -> Result<HostFeatureSupportedResponse, HostFeatureSupportedError>;
+    ) -> Result<HostFeatureSupportedResponse, CallError<HostFeatureSupportedError>>;
 
     /// Sends a push notification to the user.
     #[wire(id = 4)]
@@ -61,7 +60,7 @@ pub trait TrUApiCalls: Send + Sync {
         &self,
         cx: &CallContext,
         request: HostPushNotificationRequest,
-    ) -> Result<HostPushNotificationResponse, HostPushNotificationError>;
+    ) -> Result<HostPushNotificationResponse, CallError<HostPushNotificationError>>;
 
     /// Requests the host to open a URL.
     #[wire(id = 6)]
@@ -69,5 +68,5 @@ pub trait TrUApiCalls: Send + Sync {
         &self,
         cx: &CallContext,
         request: HostNavigateToRequest,
-    ) -> Result<HostNavigateToResponse, HostNavigateToError>;
+    ) -> Result<HostNavigateToResponse, CallError<HostNavigateToError>>;
 }

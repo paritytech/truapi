@@ -1,177 +1,104 @@
-//! Framework-level call outcomes that live alongside domain errors.
+//! Framework-level call outcomes and per-call lifecycle context.
 //!
-//! [`CallContext`] is passed to every unified trait method. Implementations
-//! signal non-domain outcomes (unsupported, unavailable, denied, host-failure)
-//! by calling `cx.fail_*()`. The dispatcher inspects [`CallContext::take_failure`]
-//! after the method returns and encodes an `Interrupt` frame if one was
-//! recorded, otherwise it encodes the method's `Result` normally.
+//! Handlers return [`CallError`] for framework outcomes instead of recording
+//! side effects on [`CallContext`]. Existing per-method wire error enums remain
+//! wire/client DTOs; handler authors should put method-specific failures in the
+//! `Domain` variant and use top-level variants for framework outcomes.
 
-use std::sync::Mutex;
+use std::convert::Infallible;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
-const RUNTIME_ERROR_PREFIX: &str = "truapi-runtime";
+/// Per-message id carried from the transport frame.
+pub type RequestId = String;
 
-/// Classification of framework-level failures separate from domain errors.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RuntimeFailureKind {
-    Unsupported,
-    Unavailable,
-    Denied,
-    HostFailure,
-    MalformedFrame,
-}
-
-impl RuntimeFailureKind {
-    pub fn label(self) -> &'static str {
-        match self {
-            RuntimeFailureKind::Unsupported => "unsupported",
-            RuntimeFailureKind::Unavailable => "unavailable",
-            RuntimeFailureKind::Denied => "denied",
-            RuntimeFailureKind::HostFailure => "host-failure",
-            RuntimeFailureKind::MalformedFrame => "malformed-frame",
-        }
-    }
-}
-
-/// A framework-level failure tagged with the method it originated from.
+/// Framework-level outcomes shared by API methods.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RuntimeFailure {
-    kind: RuntimeFailureKind,
-    method: &'static str,
-    reason: Option<String>,
+pub enum CallError<D> {
+    /// Method-specific failure.
+    Domain(D),
+    /// The caller is not allowed to perform this operation.
+    Denied,
+    /// The host does not support this operation.
+    Unsupported,
+    /// The incoming request payload could not be decoded or validated.
+    MalformedFrame { reason: String },
+    /// Host-side failure with a diagnostic reason.
+    HostFailure { reason: String },
 }
 
-impl RuntimeFailure {
-    pub fn unsupported(method: &'static str) -> Self {
-        Self {
-            kind: RuntimeFailureKind::Unsupported,
-            method,
-            reason: None,
-        }
-    }
-
-    pub fn unavailable(method: &'static str) -> Self {
-        Self {
-            kind: RuntimeFailureKind::Unavailable,
-            method,
-            reason: None,
-        }
-    }
-
-    pub fn denied(method: &'static str) -> Self {
-        Self {
-            kind: RuntimeFailureKind::Denied,
-            method,
-            reason: None,
-        }
-    }
-
-    pub fn host_failure(method: &'static str, reason: impl Into<String>) -> Self {
-        Self {
-            kind: RuntimeFailureKind::HostFailure,
-            method,
-            reason: Some(reason.into()),
-        }
-    }
-
-    pub fn malformed_frame(method: &'static str, reason: impl Into<String>) -> Self {
-        Self {
-            kind: RuntimeFailureKind::MalformedFrame,
-            method,
-            reason: Some(reason.into()),
-        }
-    }
-
-    pub fn kind(&self) -> RuntimeFailureKind {
-        self.kind
-    }
-
-    pub fn method(&self) -> &'static str {
-        self.method
-    }
-
-    pub fn reason(&self) -> String {
-        match &self.reason {
-            Some(reason) => format!(
-                "{RUNTIME_ERROR_PREFIX}:{}:{}: {reason}",
-                self.kind.label(),
-                self.method,
-            ),
-            None => format!(
-                "{RUNTIME_ERROR_PREFIX}:{}:{}",
-                self.kind.label(),
-                self.method
-            ),
+impl<D> CallError<D> {
+    /// Convenience for default handlers whose implementation is not wired.
+    pub fn unavailable() -> Self {
+        Self::HostFailure {
+            reason: "unavailable".into(),
         }
     }
 }
 
-/// Ambient context passed to every trait method. Implementations call
-/// `fail_*()` to signal a framework outcome; the dispatcher consumes the
-/// recorded failure via [`Self::take_failure`] after the method returns.
+/// Error type for methods with no domain-specific failures.
+pub type FrameworkOnlyError = CallError<Infallible>;
+
+/// Cooperative cancellation token exposed to handlers.
+///
+/// Current one-shot request frames have no cancel control message, so request
+/// tokens only fire when a future runtime explicitly cancels them. Subscription
+/// runtimes can cancel this token when the peer sends `_stop` or disconnects.
+#[derive(Debug, Clone, Default)]
+pub struct CancellationToken {
+    cancelled: Arc<AtomicBool>,
+}
+
+impl CancellationToken {
+    /// Create a token in the non-cancelled state.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Mark the token as cancelled.
+    pub fn cancel(&self) {
+        self.cancelled.store(true, Ordering::SeqCst);
+    }
+
+    /// Returns whether cancellation has been requested.
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(Ordering::SeqCst)
+    }
+}
+
+/// Ambient context passed to every trait method.
 pub struct CallContext {
-    method: &'static str,
-    request_id: String,
-    failure: Mutex<Option<RuntimeFailure>>,
+    request_id: RequestId,
+    cancel: CancellationToken,
 }
 
 impl CallContext {
-    pub fn new(method: &'static str) -> Self {
-        Self::with_request_id(method, String::new())
+    pub fn new() -> Self {
+        Self::with_request_id(String::new())
     }
 
-    pub fn with_request_id(method: &'static str, request_id: String) -> Self {
+    pub fn with_request_id(request_id: RequestId) -> Self {
         Self {
-            method,
             request_id,
-            failure: Mutex::new(None),
+            cancel: CancellationToken::new(),
         }
     }
 
-    pub fn method(&self) -> &'static str {
-        self.method
+    pub fn with_parts(request_id: RequestId, cancel: CancellationToken) -> Self {
+        Self { request_id, cancel }
     }
 
-    /// Per-message id carried from the transport frame. For subscription
-    /// starts this doubles as the follow-subscription-id.
     pub fn request_id(&self) -> &str {
         &self.request_id
     }
 
-    pub fn fail_unsupported(&self) {
-        self.record(RuntimeFailure::unsupported(self.method));
+    pub fn cancel(&self) -> &CancellationToken {
+        &self.cancel
     }
+}
 
-    pub fn fail_unavailable(&self) {
-        self.record(RuntimeFailure::unavailable(self.method));
-    }
-
-    pub fn fail_denied(&self) {
-        self.record(RuntimeFailure::denied(self.method));
-    }
-
-    pub fn fail_host_failure(&self, detail: impl Into<String>) {
-        self.record(RuntimeFailure::host_failure(self.method, detail));
-    }
-
-    /// Record an externally-constructed [`RuntimeFailure`]. Used when a lower
-    /// layer (e.g. the chain runtime) already produced one.
-    pub fn fail_from(&self, failure: RuntimeFailure) {
-        self.record(failure);
-    }
-
-    /// Removes and returns the recorded failure, if any. Intended for the
-    /// dispatcher to call once after the trait method resolves.
-    pub fn take_failure(&self) -> Option<RuntimeFailure> {
-        self.failure
-            .lock()
-            .expect("CallContext mutex poisoned")
-            .take()
-    }
-
-    fn record(&self, failure: RuntimeFailure) {
-        let mut slot = self.failure.lock().expect("CallContext mutex poisoned");
-        if slot.is_none() {
-            *slot = Some(failure);
-        }
+impl Default for CallContext {
+    fn default() -> Self {
+        Self::new()
     }
 }

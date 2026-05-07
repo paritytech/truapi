@@ -6,7 +6,7 @@ use crate::versioned::local_storage::{
     HostLocalStorageWriteError, HostLocalStorageWriteRequest, HostLocalStorageWriteResponse,
 };
 use crate::wire;
-use crate::CallContext;
+use crate::{CallContext, CallError};
 
 /// Local key/value storage scoped to the calling product.
 #[async_trait::async_trait]
@@ -17,7 +17,7 @@ pub trait LocalStorage: Send + Sync {
         &self,
         cx: &CallContext,
         request: HostLocalStorageReadRequest,
-    ) -> Result<HostLocalStorageReadResponse, HostLocalStorageReadError>;
+    ) -> Result<HostLocalStorageReadResponse, CallError<HostLocalStorageReadError>>;
 
     /// Write a value to a key.
     #[wire(id = 14)]
@@ -25,7 +25,7 @@ pub trait LocalStorage: Send + Sync {
         &self,
         cx: &CallContext,
         request: HostLocalStorageWriteRequest,
-    ) -> Result<HostLocalStorageWriteResponse, HostLocalStorageWriteError>;
+    ) -> Result<HostLocalStorageWriteResponse, CallError<HostLocalStorageWriteError>>;
 
     /// Clear a value by key.
     #[wire(id = 16)]
@@ -33,5 +33,5 @@ pub trait LocalStorage: Send + Sync {
         &self,
         cx: &CallContext,
         request: HostLocalStorageClearRequest,
-    ) -> Result<HostLocalStorageClearResponse, HostLocalStorageClearError>;
+    ) -> Result<HostLocalStorageClearResponse, CallError<HostLocalStorageClearError>>;
 }

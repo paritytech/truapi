@@ -273,10 +273,7 @@ const ZERO_HASH =
 //   - Subscribe: `methodName({ request?, onData, onInterrupt? })` — a
 //     single options object combining the request value with the
 //     callbacks. No-input subscribes drop the `request` field.
-function buildArgs(
-  req: unknown,
-  onData?: (data: unknown) => void,
-): unknown[] {
+function buildArgs(req: unknown, onData?: (data: unknown) => void): unknown[] {
   const noParams = req === null || req === undefined;
   if (onData) {
     return [noParams ? { onData } : { request: req, onData }];

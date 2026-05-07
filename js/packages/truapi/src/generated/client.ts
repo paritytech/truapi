@@ -17,13 +17,36 @@ export const TRUAPI_CODEC_VERSION = 1 as const;
 /**
  * Account lookup, aliasing, and proof generation.
  *
- * Every method has a default body that flags the call as unavailable through
- * [`CallContext::fail_unavailable`] and returns a placeholder value. Hosts
- * override only the methods they actually support; unimplemented methods
- * surface as Interrupt frames at the wire level.
+ * Default methods return [`CallError::HostFailure`] with an `unavailable`
+ * reason. Hosts override only the methods they actually support.
  */
 export class AccountManagementClient {
   constructor(private readonly transport: TrUApiTransport) {}
+
+  /** Subscribe to account connection status changes. */
+  accountConnectionStatusSubscribe({
+    onData,
+    onInterrupt,
+  }: Pick<
+    SubscribeCallbacks<T.AccountConnectionStatus>,
+    "onData" | "onInterrupt"
+  >): Subscription {
+    return this.transport.subscribe<T.AccountConnectionStatus>({
+      method: "host_account_connection_status_subscribe",
+      payload: S.unit.enc(undefined),
+      onData: (payload) =>
+        onData(
+          (
+            T.HostAccountConnectionStatusItem.dec(payload) as {
+              tag: "V1";
+              value: T.AccountConnectionStatus;
+            } & T.HostAccountConnectionStatusItem
+          ).value,
+        ),
+      onInterrupt,
+      onClose: onInterrupt,
+    });
+  }
 
   /** Retrieve a product-scoped account. */
   async accountGet(
@@ -105,30 +128,6 @@ export class AccountManagementClient {
     return result.success ? ok(result.value) : err(result.value);
   }
 
-  /** Subscribe to account connection status changes. */
-  accountConnectionStatusSubscribe({
-    onData,
-    onInterrupt,
-  }: Pick<
-    SubscribeCallbacks<T.AccountConnectionStatus>,
-    "onData" | "onInterrupt"
-  >): Subscription {
-    return this.transport.subscribe<T.AccountConnectionStatus, never>({
-      method: "host_account_connection_status_subscribe",
-      payload: S.unit.enc(undefined),
-      onData: (payload) =>
-        onData(
-          (
-            T.HostAccountConnectionStatusItem.dec(payload) as {
-              tag: "V1";
-              value: T.AccountConnectionStatus;
-            } & T.HostAccountConnectionStatusItem
-          ).value,
-        ),
-      onClose: onInterrupt ? (error) => onInterrupt(error as never) : undefined,
-    });
-  }
-
   /** Fetch the user's primary identity (V0.2+). */
   async getUserId(): Promise<Result<T.UserIdentity, T.UserIdentityError>> {
     const result = await this.transport.request<
@@ -148,10 +147,8 @@ export class AccountManagementClient {
 /**
  * Chain head and transaction interactions.
  *
- * Every method has a default body that flags the call as unavailable through
- * [`CallContext::fail_unavailable`] and returns a placeholder value. Hosts
- * override only the methods they can actually service against a chain
- * provider.
+ * Default methods return [`CallError::HostFailure`] with an `unavailable`
+ * reason. Hosts override only the methods they can actually service.
  */
 export class ChainInteractionClient {
   constructor(private readonly transport: TrUApiTransport) {}
@@ -165,7 +162,7 @@ export class ChainInteractionClient {
     SubscribeCallbacks<T.ChainHeadEvent>,
     "onData" | "onInterrupt"
   >): Subscription {
-    return this.transport.subscribe<T.ChainHeadEvent, never>({
+    return this.transport.subscribe<T.ChainHeadEvent>({
       method: "remote_chain_head_follow",
       payload: T.RemoteChainHeadFollowRequest.enc({
         tag: "V1",
@@ -180,7 +177,8 @@ export class ChainInteractionClient {
             } & T.RemoteChainHeadFollowItem
           ).value,
         ),
-      onClose: onInterrupt ? (error) => onInterrupt(error as never) : undefined,
+      onInterrupt,
+      onClose: onInterrupt,
     });
   }
 
@@ -419,9 +417,8 @@ export class ChainInteractionClient {
 /**
  * Chat room, bot, and message APIs.
  *
- * Every method has a default body that flags the call as unavailable through
- * [`CallContext::fail_unavailable`] and returns a placeholder value. Hosts
- * override only the methods they actually support.
+ * Default methods return [`CallError::HostFailure`] with an `unavailable`
+ * reason. Hosts override only the methods they actually support.
  */
 export class ChatClient {
   constructor(private readonly transport: TrUApiTransport) {}
@@ -448,29 +445,6 @@ export class ChatClient {
     return result.success ? ok(result.value) : err(result.value);
   }
 
-  /** Create a simple group chat room (V0.2+). */
-  async chatCreateSimpleGroup(
-    request: T.SimpleGroupChatRequest,
-  ): Promise<Result<T.SimpleGroupChatResult, T.ChatRoomRegistrationError>> {
-    const result = await this.transport.request<
-      S.ResultPayload<T.SimpleGroupChatResult, T.ChatRoomRegistrationError>
-    >({
-      method: "host_chat_create_simple_group",
-      payload: T.HostChatCreateSimpleGroupRequest.enc({
-        tag: "V2",
-        value: request,
-      }),
-      decodeResponse: (payload) =>
-        S.indexedTaggedUnion({
-          V2: [
-            1,
-            S.result(T.SimpleGroupChatResult, T.ChatRoomRegistrationError),
-          ] as const,
-        }).dec(payload).value,
-    });
-    return result.success ? ok(result.value) : err(result.value);
-  }
-
   /** Register a chat bot. */
   async chatRegisterBot(
     request: T.ChatBotRequest,
@@ -489,6 +463,31 @@ export class ChatClient {
         }).dec(payload).value,
     });
     return result.success ? ok(result.value) : err(result.value);
+  }
+
+  /** Subscribe to the list of chat rooms. */
+  chatListSubscribe({
+    onData,
+    onInterrupt,
+  }: Pick<
+    SubscribeCallbacks<Array<T.ChatRoom>>,
+    "onData" | "onInterrupt"
+  >): Subscription {
+    return this.transport.subscribe<Array<T.ChatRoom>>({
+      method: "host_chat_list_subscribe",
+      payload: S.unit.enc(undefined),
+      onData: (payload) =>
+        onData(
+          (
+            T.HostChatListItem.dec(payload) as {
+              tag: "V1";
+              value: Array<T.ChatRoom>;
+            } & T.HostChatListItem
+          ).value,
+        ),
+      onInterrupt,
+      onClose: onInterrupt,
+    });
   }
 
   /** Post a message to a chat room. */
@@ -511,30 +510,6 @@ export class ChatClient {
     return result.success ? ok(result.value) : err(result.value);
   }
 
-  /** Subscribe to the list of chat rooms. */
-  chatListSubscribe({
-    onData,
-    onInterrupt,
-  }: Pick<
-    SubscribeCallbacks<Array<T.ChatRoom>>,
-    "onData" | "onInterrupt"
-  >): Subscription {
-    return this.transport.subscribe<Array<T.ChatRoom>, never>({
-      method: "host_chat_list_subscribe",
-      payload: S.unit.enc(undefined),
-      onData: (payload) =>
-        onData(
-          (
-            T.HostChatListItem.dec(payload) as {
-              tag: "V1";
-              value: Array<T.ChatRoom>;
-            } & T.HostChatListItem
-          ).value,
-        ),
-      onClose: onInterrupt ? (error) => onInterrupt(error as never) : undefined,
-    });
-  }
-
   /** Subscribe to received chat actions. */
   chatActionSubscribe({
     onData,
@@ -543,7 +518,7 @@ export class ChatClient {
     SubscribeCallbacks<T.ReceivedChatAction>,
     "onData" | "onInterrupt"
   >): Subscription {
-    return this.transport.subscribe<T.ReceivedChatAction, never>({
+    return this.transport.subscribe<T.ReceivedChatAction>({
       method: "host_chat_action_subscribe",
       payload: S.unit.enc(undefined),
       onData: (payload) =>
@@ -555,7 +530,8 @@ export class ChatClient {
             } & T.HostChatActionItem
           ).value,
         ),
-      onClose: onInterrupt ? (error) => onInterrupt(error as never) : undefined,
+      onInterrupt,
+      onClose: onInterrupt,
     });
   }
 
@@ -567,7 +543,7 @@ export class ChatClient {
     SubscribeCallbacks<T.CustomMessageRenderRequest>,
     "onData" | "onInterrupt"
   >): Subscription {
-    return this.transport.subscribe<T.CustomMessageRenderRequest, never>({
+    return this.transport.subscribe<T.CustomMessageRenderRequest>({
       method: "product_chat_custom_message_render_subscribe",
       payload: S.unit.enc(undefined),
       onData: (payload) =>
@@ -579,17 +555,40 @@ export class ChatClient {
             } & T.ProductChatCustomMessageRenderItem
           ).value,
         ),
-      onClose: onInterrupt ? (error) => onInterrupt(error as never) : undefined,
+      onInterrupt,
+      onClose: onInterrupt,
     });
+  }
+
+  /** Create a simple group chat room (V0.2+). */
+  async chatCreateSimpleGroup(
+    request: T.SimpleGroupChatRequest,
+  ): Promise<Result<T.SimpleGroupChatResult, T.ChatRoomRegistrationError>> {
+    const result = await this.transport.request<
+      S.ResultPayload<T.SimpleGroupChatResult, T.ChatRoomRegistrationError>
+    >({
+      method: "host_chat_create_simple_group",
+      payload: T.HostChatCreateSimpleGroupRequest.enc({
+        tag: "V2",
+        value: request,
+      }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V2: [
+            1,
+            S.result(T.SimpleGroupChatResult, T.ChatRoomRegistrationError),
+          ] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
   }
 }
 
 /**
  * Deterministic entropy derivation.
  *
- * The default body flags the call as unavailable through
- * [`CallContext::fail_unavailable`]; hosts override only if they can derive
- * entropy.
+ * The default body returns [`CallError::HostFailure`] with an `unavailable`
+ * reason; hosts override only if they can derive entropy.
  */
 export class EntropyDerivationClient {
   constructor(private readonly transport: TrUApiTransport) {}
@@ -680,9 +679,8 @@ export class LocalStorageClient {
 /**
  * Payment operations.
  *
- * Every method has a default body that flags the call as unavailable through
- * [`CallContext::fail_unavailable`] and returns a placeholder value. Hosts
- * override only the methods they actually support.
+ * Default methods return [`CallError::HostFailure`] with an `unavailable`
+ * reason. Hosts override only the methods they actually support.
  */
 export class PaymentClient {
   constructor(private readonly transport: TrUApiTransport) {}
@@ -692,10 +690,10 @@ export class PaymentClient {
     onData,
     onInterrupt,
   }: Pick<
-    SubscribeCallbacks<T.PaymentBalance, T.PaymentBalanceError>,
+    SubscribeCallbacks<T.PaymentBalance>,
     "onData" | "onInterrupt"
   >): Subscription {
-    return this.transport.subscribe<T.PaymentBalance, T.PaymentBalanceError>({
+    return this.transport.subscribe<T.PaymentBalance>({
       method: "host_payment_balance_subscribe",
       payload: T.HostPaymentBalanceSubscribeRequest.enc({
         tag: "V2",
@@ -710,38 +708,9 @@ export class PaymentClient {
             } & T.HostPaymentBalanceItem
           ).value,
         ),
-      onInterrupt: onInterrupt
-        ? (payload) =>
-            onInterrupt(
-              (
-                T.HostPaymentBalanceError.dec(payload) as {
-                  tag: "V2";
-                  value: T.PaymentBalanceError;
-                } & T.HostPaymentBalanceError
-              ).value,
-            )
-        : undefined,
-      onClose: onInterrupt
-        ? (error) => onInterrupt(error as unknown as T.PaymentBalanceError)
-        : undefined,
+      onInterrupt,
+      onClose: onInterrupt,
     });
-  }
-
-  /** Top up the user's payment balance. */
-  async paymentTopUp(
-    request: T.PaymentTopUpRequest,
-  ): Promise<Result<undefined, T.PaymentTopUpError>> {
-    const result = await this.transport.request<
-      S.ResultPayload<undefined, T.PaymentTopUpError>
-    >({
-      method: "host_payment_top_up",
-      payload: T.HostPaymentTopUpRequest.enc({ tag: "V2", value: request }),
-      decodeResponse: (payload) =>
-        S.indexedTaggedUnion({
-          V2: [1, S.result(S.unit, T.PaymentTopUpError)] as const,
-        }).dec(payload).value,
-    });
-    return result.success ? ok(result.value) : err(result.value);
   }
 
   /** Request a payment from the user. */
@@ -767,10 +736,10 @@ export class PaymentClient {
     onInterrupt,
     request,
   }: { request: T.PaymentId } & Pick<
-    SubscribeCallbacks<T.PaymentStatus, T.PaymentStatusError>,
+    SubscribeCallbacks<T.PaymentStatus>,
     "onData" | "onInterrupt"
   >): Subscription {
-    return this.transport.subscribe<T.PaymentStatus, T.PaymentStatusError>({
+    return this.transport.subscribe<T.PaymentStatus>({
       method: "host_payment_status_subscribe",
       payload: T.HostPaymentStatusSubscribeRequest.enc({
         tag: "V2",
@@ -785,21 +754,26 @@ export class PaymentClient {
             } & T.HostPaymentStatusItem
           ).value,
         ),
-      onInterrupt: onInterrupt
-        ? (payload) =>
-            onInterrupt(
-              (
-                T.HostPaymentStatusError.dec(payload) as {
-                  tag: "V2";
-                  value: T.PaymentStatusError;
-                } & T.HostPaymentStatusError
-              ).value,
-            )
-        : undefined,
-      onClose: onInterrupt
-        ? (error) => onInterrupt(error as unknown as T.PaymentStatusError)
-        : undefined,
+      onInterrupt,
+      onClose: onInterrupt,
     });
+  }
+
+  /** Top up the user's payment balance. */
+  async paymentTopUp(
+    request: T.PaymentTopUpRequest,
+  ): Promise<Result<undefined, T.PaymentTopUpError>> {
+    const result = await this.transport.request<
+      S.ResultPayload<undefined, T.PaymentTopUpError>
+    >({
+      method: "host_payment_top_up",
+      payload: T.HostPaymentTopUpRequest.enc({ tag: "V2", value: request }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V2: [1, S.result(S.unit, T.PaymentTopUpError)] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
   }
 }
 
@@ -848,9 +822,7 @@ export class PermissionsClient {
  * The v01 `remote_preimage_submit` method is intentionally not carried into
  * the unified contract because v02 removed it.
  *
- * The default body flags the call as unavailable through
- * [`CallContext::fail_unavailable`]; hosts override only if they actually
- * support preimage lookup.
+ * Hosts override only if they actually support preimage lookup.
  */
 export class PreimageClient {
   constructor(private readonly transport: TrUApiTransport) {}
@@ -864,7 +836,7 @@ export class PreimageClient {
     SubscribeCallbacks<T.PreimageValue | undefined>,
     "onData" | "onInterrupt"
   >): Subscription {
-    return this.transport.subscribe<T.PreimageValue | undefined, never>({
+    return this.transport.subscribe<T.PreimageValue | undefined>({
       method: "remote_preimage_lookup_subscribe",
       payload: T.RemotePreimageLookupSubscribeRequest.enc({
         tag: "V1",
@@ -879,7 +851,8 @@ export class PreimageClient {
             } & T.RemotePreimageLookupSubscribeItem
           ).value,
         ),
-      onClose: onInterrupt ? (error) => onInterrupt(error as never) : undefined,
+      onInterrupt,
+      onClose: onInterrupt,
     });
   }
 }
@@ -887,46 +860,11 @@ export class PreimageClient {
 /**
  * Signing and transaction construction.
  *
- * Every method has a default body that flags the call as unavailable through
- * [`CallContext::fail_unavailable`] and returns a placeholder value. Hosts
- * override only the methods they actually support.
+ * Default methods return [`CallError::HostFailure`] with an `unavailable`
+ * reason. Hosts override only the methods they actually support.
  */
 export class SigningClient {
   constructor(private readonly transport: TrUApiTransport) {}
-
-  /** Sign a Substrate extrinsic payload. */
-  async signPayload(
-    request: T.SigningPayload,
-  ): Promise<Result<T.SigningResult, T.SigningError>> {
-    const result = await this.transport.request<
-      S.ResultPayload<T.SigningResult, T.SigningError>
-    >({
-      method: "host_sign_payload",
-      payload: T.HostSignPayloadRequest.enc({ tag: "V2", value: request }),
-      decodeResponse: (payload) =>
-        S.indexedTaggedUnion({
-          V2: [1, S.result(T.SigningResult, T.SigningError)] as const,
-        }).dec(payload).value,
-    });
-    return result.success ? ok(result.value) : err(result.value);
-  }
-
-  /** Sign raw bytes or a message. */
-  async signRaw(
-    request: T.SigningRawPayload,
-  ): Promise<Result<T.SigningResult, T.SigningError>> {
-    const result = await this.transport.request<
-      S.ResultPayload<T.SigningResult, T.SigningError>
-    >({
-      method: "host_sign_raw",
-      payload: T.HostSignRawRequest.enc({ tag: "V2", value: request }),
-      decodeResponse: (payload) =>
-        S.indexedTaggedUnion({
-          V2: [1, S.result(T.SigningResult, T.SigningError)] as const,
-        }).dec(payload).value,
-    });
-    return result.success ? ok(result.value) : err(result.value);
-  }
 
   /** Construct a signed extrinsic for a product account. */
   async createTransaction(
@@ -967,14 +905,47 @@ export class SigningClient {
     });
     return result.success ? ok(result.value) : err(result.value);
   }
+
+  /** Sign raw bytes or a message. */
+  async signRaw(
+    request: T.SigningRawPayload,
+  ): Promise<Result<T.SigningResult, T.SigningError>> {
+    const result = await this.transport.request<
+      S.ResultPayload<T.SigningResult, T.SigningError>
+    >({
+      method: "host_sign_raw",
+      payload: T.HostSignRawRequest.enc({ tag: "V2", value: request }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V2: [1, S.result(T.SigningResult, T.SigningError)] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
+  }
+
+  /** Sign a Substrate extrinsic payload. */
+  async signPayload(
+    request: T.SigningPayload,
+  ): Promise<Result<T.SigningResult, T.SigningError>> {
+    const result = await this.transport.request<
+      S.ResultPayload<T.SigningResult, T.SigningError>
+    >({
+      method: "host_sign_payload",
+      payload: T.HostSignPayloadRequest.enc({ tag: "V2", value: request }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V2: [1, S.result(T.SigningResult, T.SigningError)] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
+  }
 }
 
 /**
  * Statement store operations.
  *
- * Every method has a default body that flags the call as unavailable through
- * [`CallContext::fail_unavailable`] and returns a placeholder value. Hosts
- * override only the methods they actually support.
+ * Default request methods return [`CallError::HostFailure`] with an
+ * `unavailable` reason. Hosts override only the methods they actually support.
  */
 export class StatementStoreClient {
   constructor(private readonly transport: TrUApiTransport) {}
@@ -988,7 +959,7 @@ export class StatementStoreClient {
     SubscribeCallbacks<Array<T.SignedStatement>>,
     "onData" | "onInterrupt"
   >): Subscription {
-    return this.transport.subscribe<Array<T.SignedStatement>, never>({
+    return this.transport.subscribe<Array<T.SignedStatement>>({
       method: "remote_statement_store_subscribe",
       payload: T.RemoteStatementStoreSubscribeRequest.enc({
         tag: "V2",
@@ -1003,7 +974,8 @@ export class StatementStoreClient {
             } & T.RemoteStatementStoreSubscribeItem
           ).value,
         ),
-      onClose: onInterrupt ? (error) => onInterrupt(error as never) : undefined,
+      onInterrupt,
+      onClose: onInterrupt,
     });
   }
 

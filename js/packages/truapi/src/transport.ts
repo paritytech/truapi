@@ -20,11 +20,10 @@ export interface RequestParams<Response> {
   decodeResponse: (payload: Uint8Array) => Response;
 }
 
-/** Options object accepted by `TrUApiTransport.subscribe`. Generated client
- * methods supply encoded payload bytes and own item/interrupt decoding. */
-export interface SubscribeCallbacks<Item, Interrupt = never> {
+/** Options object accepted by generated subscription methods. */
+export interface SubscribeCallbacks<Item> {
   onData: (data: Item) => void;
-  onInterrupt?: (data: Interrupt) => void;
+  onInterrupt?: () => void;
 }
 
 /** Options object accepted by `TrUApiTransport.subscribe`. Generated client
@@ -34,7 +33,7 @@ export interface SubscribeParams {
   method: string;
   payload: Uint8Array;
   onData: (payload: Uint8Array) => void;
-  onInterrupt?: (payload: Uint8Array) => void;
+  onInterrupt?: () => void;
   onClose?: (error: Error) => void;
 }
 
@@ -45,9 +44,7 @@ export interface TrUApiTransport {
   readonly truapiVersion: number;
   readonly codecVersion: number;
   request<Response>(params: RequestParams<Response>): Promise<Response>;
-  subscribe<Item = unknown, Interrupt = never>(
-    params: SubscribeParams,
-  ): Subscription;
+  subscribe<Item = unknown>(params: SubscribeParams): Subscription;
 }
 
 /** Tagged payload on the wire. */

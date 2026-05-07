@@ -184,4 +184,32 @@ function handshakeResponsePayload(value) {
   assert.deepEqual(events, [{ tag: "Connected", value: undefined }]);
 }
 
+// Interrupt frames are payloadless terminators. Generated callbacks receive no
+// typed error payload.
+{
+  const fixture = providerFixture();
+  const transport = createTransport(fixture.provider);
+  const client = createClient(transport);
+  const interrupts = [];
+
+  const sub = client.accountManagement.accountConnectionStatusSubscribe({
+    onData: () => {},
+    onInterrupt: (...args) => interrupts.push(args),
+  });
+
+  const frame = unwrap(
+    encodeWireMessage({
+      requestId: sub.subscriptionId,
+      payload: {
+        tag: "host_account_connection_status_subscribe_interrupt",
+        value: unit.enc(undefined),
+      },
+    }),
+    "encode interrupt",
+  );
+  fixture.receive(frame);
+
+  assert.deepEqual(interrupts, [[]]);
+}
+
 console.log("transport version wrapping tests passed");

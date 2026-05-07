@@ -168,7 +168,15 @@ pub fn extract_api(krate: &Crate) -> Result<ApiDefinition> {
     for (name, candidates) in type_candidates {
         if matches!(
             name.as_str(),
-            "Subscription" | "CallContext" | "RuntimeFailure" | "RuntimeFailureKind"
+            "Subscription"
+                | "CallContext"
+                | "CallError"
+                | "CancellationToken"
+                | "FrameworkOnlyError"
+                | "Infallible"
+                | "RequestId"
+                | "RuntimeFailure"
+                | "RuntimeFailureKind"
         ) {
             continue;
         }

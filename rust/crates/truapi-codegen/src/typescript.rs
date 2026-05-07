@@ -351,19 +351,29 @@ fn method_versioned_wrappers(
     match &method.return_type {
         ReturnType::Result { ok, err } => {
             collect_type_versioned_wrappers(ok, wrappers, &mut names);
-            collect_type_versioned_wrappers(err, wrappers, &mut names);
+            collect_type_versioned_wrappers(
+                call_error_inner(err).unwrap_or(err),
+                wrappers,
+                &mut names,
+            );
         }
         ReturnType::Subscription(item) => {
             collect_type_versioned_wrappers(item, wrappers, &mut names);
         }
-        ReturnType::ResultSubscription { item, err } => {
+        ReturnType::ResultSubscription { item, err: _ } => {
             collect_type_versioned_wrappers(item, wrappers, &mut names);
-            collect_type_versioned_wrappers(err, wrappers, &mut names);
         }
     }
     names.sort();
     names.dedup();
     names
+}
+
+fn call_error_inner(ty: &TypeRef) -> Option<&TypeRef> {
+    match ty {
+        TypeRef::Named { name, args } if name == "CallError" && args.len() == 1 => Some(&args[0]),
+        _ => None,
+    }
 }
 
 fn collect_type_versioned_wrappers(
@@ -712,6 +722,20 @@ fn emit_response(
     })
 }
 
+fn emit_error_response(
+    ty: &TypeRef,
+    wrappers: &HashMap<String, VersionedWrapper>,
+    ctx: &CodecContext,
+    wire_version: Option<u32>,
+) -> Result<ResponseEmission> {
+    emit_response(
+        call_error_inner(ty).unwrap_or(ty),
+        wrappers,
+        ctx,
+        wire_version,
+    )
+}
+
 fn versioned_kind_codec_expr(
     kind: &VersionedKind,
     qualified: bool,
@@ -756,7 +780,7 @@ fn emit_method(
         (MethodKind::Request, ReturnType::Result { ok, err }) => {
             let is_handshake = method.name == "host_handshake";
             let response = emit_response(ok, wrappers, ctx, wire_version)?;
-            let error = emit_response(err, wrappers, ctx, wire_version)?;
+            let error = emit_error_response(err, wrappers, ctx, wire_version)?;
             let response_codec = match wire_version {
                 Some(version) => versioned_result_codec_expr(
                     version,
@@ -838,9 +862,8 @@ fn emit_method(
                 wire_version,
             )?;
         }
-        (MethodKind::ResultSubscription, ReturnType::ResultSubscription { item, err }) => {
+        (MethodKind::ResultSubscription, ReturnType::ResultSubscription { item, err: _ }) => {
             let response = emit_response(item, wrappers, ctx, wire_version)?;
-            let error = emit_response(err, wrappers, ctx, wire_version)?;
             emit_subscribe_method(
                 out,
                 &ts_method_name,
@@ -848,7 +871,7 @@ fn emit_method(
                 &payload,
                 &response,
                 response.inner_type_ts.clone(),
-                Some(error),
+                None,
                 wire_version,
             )?;
         }
@@ -867,9 +890,8 @@ fn emit_method(
 
 /// Emits a subscribe method body that takes a single object combining the
 /// method-specific input fields with the universal `onData`/`onInterrupt`
-/// callbacks. The callback subset is typed via
-/// `Pick<SubscribeCallbacks<…>, 'onData' | 'onInterrupt'>` so generated methods
-/// expose typed user callbacks while the transport still carries bytes.
+/// callbacks. `_interrupt` is payloadless for compatibility, so generated
+/// methods decode only `_receive` payloads.
 #[allow(clippy::too_many_arguments)]
 fn emit_subscribe_method(
     out: &mut String,
@@ -881,21 +903,10 @@ fn emit_subscribe_method(
     err: Option<ResponseEmission>,
     wire_version: Option<u32>,
 ) -> Result<()> {
-    let interrupt_type = match &err {
-        Some(err) => err.inner_type_ts.clone(),
-        None => "never".to_string(),
-    };
-    let wire_interrupt_type = match &err {
-        Some(err) => err.wire_type_ts.clone(),
-        None => "never".to_string(),
-    };
-    let interrupt_arg = match &err {
-        Some(_) => format!(", {}", interrupt_type),
-        None => String::new(),
-    };
+    let _ = err;
     let pick = format!(
-        "Pick<SubscribeCallbacks<{}{}>, 'onData' | 'onInterrupt'>",
-        item_type_ts, interrupt_arg
+        "Pick<SubscribeCallbacks<{}>, 'onData' | 'onInterrupt'>",
+        item_type_ts
     );
     let args_type = if payload.param_list.is_empty() {
         pick
@@ -915,10 +926,12 @@ fn emit_subscribe_method(
     )
     .unwrap();
 
-    writeln!(out, "    return this.transport.subscribe<").unwrap();
-    writeln!(out, "      {},", item_type_ts).unwrap();
-    writeln!(out, "      {}", interrupt_type).unwrap();
-    writeln!(out, "    >({{").unwrap();
+    writeln!(
+        out,
+        "    return this.transport.subscribe<{}>({{",
+        item_type_ts
+    )
+    .unwrap();
     writeln!(out, "      method: \"{}\",", wire_method_name).unwrap();
     write_payload_field(
         out,
@@ -938,38 +951,8 @@ fn emit_subscribe_method(
         format!("{}.dec(payload)", response.wire_codec_expr)
     };
     writeln!(out, "      onData: (payload) => onData({}),", item_value).unwrap();
-    if let Some(err) = err {
-        let interrupt_value = if let Some(version) = wire_version {
-            versioned_value_expr(
-                &format!("{}.dec(payload)", err.wire_codec_expr),
-                &wire_interrupt_type,
-                &interrupt_type,
-                version,
-            )
-        } else {
-            format!("{}.dec(payload)", err.wire_codec_expr)
-        };
-        writeln!(out, "      onInterrupt: onInterrupt").unwrap();
-        writeln!(
-            out,
-            "        ? (payload) => onInterrupt({})",
-            interrupt_value
-        )
-        .unwrap();
-        writeln!(out, "        : undefined,").unwrap();
-        writeln!(out, "      onClose: onInterrupt").unwrap();
-        writeln!(
-            out,
-            "        ? (error) => onInterrupt(error as unknown as {})",
-            interrupt_type
-        )
-        .unwrap();
-        writeln!(out, "        : undefined,").unwrap();
-    } else {
-        writeln!(out, "      onClose: onInterrupt").unwrap();
-        writeln!(out, "        ? (error) => onInterrupt(error as never)").unwrap();
-        writeln!(out, "        : undefined,").unwrap();
-    }
+    writeln!(out, "      onInterrupt,").unwrap();
+    writeln!(out, "      onClose: onInterrupt,").unwrap();
     writeln!(out, "    }});").unwrap();
     writeln!(out, "  }}").unwrap();
 

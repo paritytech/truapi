@@ -4,13 +4,12 @@ use crate::versioned::entropy::{
     HostDeriveEntropyError, HostDeriveEntropyRequest, HostDeriveEntropyResponse,
 };
 use crate::wire;
-use crate::CallContext;
+use crate::{CallContext, CallError};
 
 /// Deterministic entropy derivation.
 ///
-/// The default body flags the call as unavailable through
-/// [`CallContext::fail_unavailable`]; hosts override only if they can derive
-/// entropy.
+/// The default body returns [`CallError::HostFailure`] with an `unavailable`
+/// reason; hosts override only if they can derive entropy.
 #[async_trait::async_trait]
 pub trait EntropyDerivation: Send + Sync {
     /// Derive 32 bytes of entropy from the user's root BIP-39 entropy for the
@@ -18,10 +17,9 @@ pub trait EntropyDerivation: Send + Sync {
     #[wire(id = 108)]
     async fn host_derive_entropy(
         &self,
-        cx: &CallContext,
+        _cx: &CallContext,
         _request: HostDeriveEntropyRequest,
-    ) -> Result<HostDeriveEntropyResponse, HostDeriveEntropyError> {
-        cx.fail_unavailable();
-        Ok(HostDeriveEntropyResponse::V2([0u8; 32]))
+    ) -> Result<HostDeriveEntropyResponse, CallError<HostDeriveEntropyError>> {
+        Err(CallError::unavailable())
     }
 }

@@ -1,7 +1,5 @@
 //! Unified [`AccountManagement`] trait.
 
-use crate::v01::{Account, ContextualAlias};
-use crate::v02::UserIdentity;
 use crate::versioned::account::{
     HostAccountConnectionStatusItem, HostAccountCreateProofError, HostAccountCreateProofRequest,
     HostAccountCreateProofResponse, HostAccountGetAliasError, HostAccountGetAliasRequest,
@@ -11,87 +9,70 @@ use crate::versioned::account::{
     HostGetUserIdResponse,
 };
 use crate::wire;
-use crate::{CallContext, Subscription};
+use crate::{CallContext, CallError, Subscription};
 
 /// Account lookup, aliasing, and proof generation.
 ///
-/// Every method has a default body that flags the call as unavailable through
-/// [`CallContext::fail_unavailable`] and returns a placeholder value. Hosts
-/// override only the methods they actually support; unimplemented methods
-/// surface as Interrupt frames at the wire level.
+/// Default methods return [`CallError::HostFailure`] with an `unavailable`
+/// reason. Hosts override only the methods they actually support.
 #[async_trait::async_trait]
 pub trait AccountManagement: Send + Sync {
+    /// Subscribe to account connection status changes.
+    #[wire(id = 18)]
+    async fn host_account_connection_status_subscribe(
+        &self,
+        _cx: &CallContext,
+    ) -> Subscription<HostAccountConnectionStatusItem> {
+        Subscription::empty()
+    }
+
     /// Retrieve a product-scoped account.
     #[wire(id = 22)]
     async fn host_account_get(
         &self,
-        cx: &CallContext,
+        _cx: &CallContext,
         _request: HostAccountGetRequest,
-    ) -> Result<HostAccountGetResponse, HostAccountGetError> {
-        cx.fail_unavailable();
-        Ok(HostAccountGetResponse::V1(Account {
-            public_key: Vec::new(),
-            name: None,
-        }))
+    ) -> Result<HostAccountGetResponse, CallError<HostAccountGetError>> {
+        Err(CallError::unavailable())
     }
 
     /// Retrieve a contextual alias for a product account.
     #[wire(id = 24)]
     async fn host_account_get_alias(
         &self,
-        cx: &CallContext,
+        _cx: &CallContext,
         _request: HostAccountGetAliasRequest,
-    ) -> Result<HostAccountGetAliasResponse, HostAccountGetAliasError> {
-        cx.fail_unavailable();
-        Ok(HostAccountGetAliasResponse::V1(ContextualAlias {
-            context: [0u8; 32],
-            alias: Vec::new(),
-        }))
+    ) -> Result<HostAccountGetAliasResponse, CallError<HostAccountGetAliasError>> {
+        Err(CallError::unavailable())
     }
 
     /// Generate a ring VRF proof for a product account.
     #[wire(id = 26)]
     async fn host_account_create_proof(
         &self,
-        cx: &CallContext,
+        _cx: &CallContext,
         _request: HostAccountCreateProofRequest,
-    ) -> Result<HostAccountCreateProofResponse, HostAccountCreateProofError> {
-        cx.fail_unavailable();
-        Ok(HostAccountCreateProofResponse::V1(Vec::new()))
+    ) -> Result<HostAccountCreateProofResponse, CallError<HostAccountCreateProofError>> {
+        Err(CallError::unavailable())
     }
 
     /// List non-product accounts the user owns.
     #[wire(id = 28)]
     async fn host_get_non_product_accounts(
         &self,
-        cx: &CallContext,
+        _cx: &CallContext,
         _request: HostGetNonProductAccountsRequest,
-    ) -> Result<HostGetNonProductAccountsResponse, HostGetNonProductAccountsError> {
-        cx.fail_unavailable();
-        Ok(HostGetNonProductAccountsResponse::V1(Vec::new()))
-    }
-
-    /// Subscribe to account connection status changes.
-    #[wire(id = 18)]
-    async fn host_account_connection_status_subscribe(
-        &self,
-        cx: &CallContext,
-    ) -> Subscription<HostAccountConnectionStatusItem> {
-        cx.fail_unavailable();
-        Subscription::empty()
+    ) -> Result<HostGetNonProductAccountsResponse, CallError<HostGetNonProductAccountsError>> {
+        Err(CallError::unavailable())
     }
 
     /// Fetch the user's primary identity (V0.2+).
     #[wire(id = 104)]
     async fn host_get_user_id(
         &self,
-        cx: &CallContext,
+        _cx: &CallContext,
         _request: HostGetUserIdRequest,
-    ) -> Result<HostGetUserIdResponse, HostGetUserIdError> {
-        cx.fail_unavailable();
-        Ok(HostGetUserIdResponse::V2(UserIdentity {
-            dot_ns_identifier: String::new(),
-            public_key: Vec::new(),
-        }))
+    ) -> Result<HostGetUserIdResponse, CallError<HostGetUserIdError>> {
+        Err(CallError::unavailable())
     }
 }

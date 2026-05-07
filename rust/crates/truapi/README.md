@@ -12,7 +12,7 @@ It defines:
 - domain API traits under `api/`
 - per-method `#[wire(id = N)]` annotations that define the byte-level method table
 - `Subscription<T>` for streamed host responses
-- shared failure types like `CallContext` and `RuntimeFailure`
+- shared authoring types like `CallContext`, `CallError<D>`, and `CancellationToken`
 
 If you change API shape, start here.
 
@@ -21,7 +21,7 @@ If you change API shape, start here.
 This crate has two layers:
 
 1. **Protocol types** under `v01` and `v02`
-2. **Unified host contract** under `api`, where each method takes a `CallContext`, a versioned request type, and returns a versioned response or `Subscription<T>`
+2. **Unified host contract** under `api`, where each method takes a `CallContext`, a versioned request type, and returns a versioned response with `CallError<D>` or a `Subscription<T>`
 
 Codegen reuses the shared types from this crate.
 
@@ -34,21 +34,22 @@ tables must stay byte-compatible with deployed products.
 - `v02` - current protocol-facing types
 - `versioned` - request, response, and subscription item wrappers used by the unified trait surface
 - `api` - unified domain traits such as `AccountManagement`, `ChainInteraction`, and `Chat`, plus the composed `TrUApi` trait
-- `failure` - runtime failure markers shared by generated dispatchers and host implementations
+- `failure` - framework-level `CallError<D>` and lifecycle context types
 
 ## Example
 
 Implement one or more unified sub-traits. `TrUApi` is a blanket trait over the full set:
 
 ```rust
-use truapi::{CallContext, Subscription};
+use truapi::{CallContext, CallError, Subscription};
 use truapi::api::{AccountManagement, TrUApi};
 use truapi::versioned::account::{
     HostAccountConnectionStatusItem,
+    HostAccountGetError,
     HostAccountGetRequest,
     HostAccountGetResponse,
 };
-use truapi::v02::{Account, RequestCredentialsError};
+use truapi::v01::Account;
 
 struct MyHost;
 
@@ -58,8 +59,8 @@ impl AccountManagement for MyHost {
         &self,
         _cx: &CallContext,
         _request: HostAccountGetRequest,
-    ) -> Result<HostAccountGetResponse, RequestCredentialsError> {
-        Ok(HostAccountGetResponse::V2(Account {
+    ) -> Result<HostAccountGetResponse, CallError<HostAccountGetError>> {
+        Ok(HostAccountGetResponse::V1(Account {
             public_key: Vec::new(),
             name: None,
         }))
