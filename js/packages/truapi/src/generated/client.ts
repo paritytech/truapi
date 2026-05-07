@@ -40,7 +40,10 @@ export class AccountManagementClient {
     return this.transport.subscribe<T.V01HostAccountConnectionStatusSubscribeItem>(
       {
         method: "host_account_connection_status_subscribe",
-        payload: S.unit.enc(undefined),
+        payload: S.indexedTaggedUnion({ V1: [0, S.unit] as const }).enc({
+          tag: "V1",
+          value: undefined,
+        }),
         onData: (payload) => {
           let item: T.V01HostAccountConnectionStatusSubscribeItem;
           try {
@@ -145,17 +148,17 @@ export class AccountManagementClient {
   }
 
   /** List non-product accounts the user owns. */
-  async getNonProductAccounts(): Promise<
-    Result<T.V01HostGetNonProductAccountsResponse, T.V01HostAccountGetError>
+  async getLegacyAccounts(): Promise<
+    Result<T.V01HostGetLegacyAccountsResponse, T.V01HostAccountGetError>
   > {
     const result = await this.transport.request<
       S.ResultPayload<
-        T.V01HostGetNonProductAccountsResponse,
+        T.V01HostGetLegacyAccountsResponse,
         T.V01HostAccountGetError
       >
     >({
-      method: "host_get_non_product_accounts",
-      payload: T.HostGetNonProductAccountsRequest.enc({
+      method: "host_get_legacy_accounts",
+      payload: T.HostGetLegacyAccountsRequest.enc({
         tag: "V1",
         value: undefined,
       }),
@@ -164,7 +167,7 @@ export class AccountManagementClient {
           V1: [
             0,
             S.result(
-              T.V01HostGetNonProductAccountsResponse,
+              T.V01HostGetLegacyAccountsResponse,
               T.V01HostAccountGetError,
             ),
           ] as const,
@@ -185,7 +188,7 @@ export class AccountManagementClient {
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
           V2: [
-            1,
+            0,
             S.result(T.V02HostGetUserIdResponse, T.V02HostGetUserIdError),
           ] as const,
         }).dec(payload).value,
@@ -581,7 +584,10 @@ export class ChatClient {
   >): Subscription {
     return this.transport.subscribe<T.V01HostChatListSubscribeItem>({
       method: "host_chat_list_subscribe",
-      payload: S.unit.enc(undefined),
+      payload: S.indexedTaggedUnion({ V1: [0, S.unit] as const }).enc({
+        tag: "V1",
+        value: undefined,
+      }),
       onData: (payload) => {
         let item: T.V01HostChatListSubscribeItem;
         try {
@@ -642,7 +648,10 @@ export class ChatClient {
   >): Subscription {
     return this.transport.subscribe<T.V01HostChatActionSubscribeItem>({
       method: "host_chat_action_subscribe",
-      payload: S.unit.enc(undefined),
+      payload: S.indexedTaggedUnion({ V1: [0, S.unit] as const }).enc({
+        tag: "V1",
+        value: undefined,
+      }),
       onData: (payload) => {
         let item: T.V01HostChatActionSubscribeItem;
         try {
@@ -663,39 +672,45 @@ export class ChatClient {
     });
   }
 
-  /** Subscribe to custom message render requests from the host. */
+  /**
+   * Subscribe to custom message render requests from the host. Each
+   * emitted item is a [`CustomRendererNode`](crate::v01::CustomRendererNode)
+   * tree describing the rendered UI.
+   */
   chatCustomMessageRenderSubscribe({
     onData,
     onInterrupt,
     onError,
     onClose,
-  }: Pick<
-    SubscribeCallbacks<T.V01ProductChatCustomMessageRenderSubscribeItem>,
+    request,
+  }: { request: T.V01ProductChatCustomMessageRenderSubscribeRequest } & Pick<
+    SubscribeCallbacks<T.CustomRendererNode>,
     "onData" | "onInterrupt" | "onError" | "onClose"
   >): Subscription {
-    return this.transport.subscribe<T.V01ProductChatCustomMessageRenderSubscribeItem>(
-      {
-        method: "product_chat_custom_message_render_subscribe",
-        payload: S.unit.enc(undefined),
-        onData: (payload) => {
-          let item: T.V01ProductChatCustomMessageRenderSubscribeItem;
-          try {
-            item = (
-              T.ProductChatCustomMessageRenderSubscribeItem.dec(payload) as {
-                tag: "V1";
-                value: T.V01ProductChatCustomMessageRenderSubscribeItem;
-              } & T.ProductChatCustomMessageRenderSubscribeItem
-            ).value;
-          } catch (error) {
-            onError?.(toError(error));
-            return;
-          }
-          onData(item);
-        },
-        onInterrupt,
-        onClose,
+    return this.transport.subscribe<T.CustomRendererNode>({
+      method: "product_chat_custom_message_render_subscribe",
+      payload: T.ProductChatCustomMessageRenderSubscribeRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      onData: (payload) => {
+        let item: T.CustomRendererNode;
+        try {
+          item = (
+            T.ProductChatCustomMessageRenderSubscribeItem.dec(payload) as {
+              tag: "V1";
+              value: T.CustomRendererNode;
+            } & T.ProductChatCustomMessageRenderSubscribeItem
+          ).value;
+        } catch (error) {
+          onError?.(toError(error));
+          return;
+        }
+        onData(item);
       },
-    );
+      onInterrupt,
+      onClose,
+    });
   }
 
   /** Create a simple group chat room (V0.2+). */
@@ -718,7 +733,7 @@ export class ChatClient {
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
           V2: [
-            1,
+            0,
             S.result(
               T.V02HostChatCreateSimpleGroupResponse,
               T.V01HostChatCreateRoomError,
@@ -759,7 +774,7 @@ export class EntropyDerivationClient {
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
           V2: [
-            1,
+            0,
             S.result(
               T.V02HostDeriveEntropyResponse,
               T.V02HostDeriveEntropyError,
@@ -906,7 +921,7 @@ export class PaymentClient {
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
           V2: [
-            1,
+            0,
             S.result(
               T.V02HostPaymentRequestResponse,
               T.V02HostPaymentRequestError,
@@ -965,7 +980,7 @@ export class PaymentClient {
       payload: T.HostPaymentTopUpRequest.enc({ tag: "V2", value: request }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V2: [1, S.result(S.unit, T.V02HostPaymentTopUpError)] as const,
+          V2: [0, S.result(S.unit, T.V02HostPaymentTopUpError)] as const,
         }).dec(payload).value,
     });
     return result.success ? ok(result.value) : err(result.value);
@@ -978,16 +993,16 @@ export class PermissionsClient {
 
   /** Request a device-capability permission from the user. */
   async devicePermission(
-    request: T.V01HostDevicePermissionRequest,
+    request: T.V02HostDevicePermissionRequest,
   ): Promise<Result<T.V01HostDevicePermissionResponse, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<T.V01HostDevicePermissionResponse, T.GenericError>
     >({
       method: "host_device_permission",
-      payload: T.HostDevicePermissionRequest.enc({ tag: "V1", value: request }),
+      payload: T.HostDevicePermissionRequest.enc({ tag: "V2", value: request }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V1: [
+          V2: [
             0,
             S.result(T.V01HostDevicePermissionResponse, T.GenericError),
           ] as const,
@@ -998,16 +1013,16 @@ export class PermissionsClient {
 
   /** Request one or more remote-operation permissions. */
   async permission(
-    request: T.V01RemotePermissionRequest,
+    request: T.V02RemotePermissionRequest,
   ): Promise<Result<T.V01RemotePermissionResponse, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<T.V01RemotePermissionResponse, T.GenericError>
     >({
       method: "remote_permission",
-      payload: T.RemotePermissionRequest.enc({ tag: "V1", value: request }),
+      payload: T.RemotePermissionRequest.enc({ tag: "V2", value: request }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V1: [
+          V2: [
             0,
             S.result(T.V01RemotePermissionResponse, T.GenericError),
           ] as const,
@@ -1107,22 +1122,22 @@ export class SigningClient {
   }
 
   /** Construct a signed extrinsic for a non-product account. */
-  async createTransactionWithNonProductAccount(
-    request: T.V01HostCreateTransactionWithNonProductAccountRequest,
+  async createTransactionWithLegacyAccount(
+    request: T.V01HostCreateTransactionWithLegacyAccountRequest,
   ): Promise<
     Result<
-      T.V01HostCreateTransactionWithNonProductAccountResponse,
+      T.V01HostCreateTransactionWithLegacyAccountResponse,
       T.V01HostCreateTransactionError
     >
   > {
     const result = await this.transport.request<
       S.ResultPayload<
-        T.V01HostCreateTransactionWithNonProductAccountResponse,
+        T.V01HostCreateTransactionWithLegacyAccountResponse,
         T.V01HostCreateTransactionError
       >
     >({
-      method: "host_create_transaction_with_non_product_account",
-      payload: T.HostCreateTransactionWithNonProductAccountRequest.enc({
+      method: "host_create_transaction_with_legacy_account",
+      payload: T.HostCreateTransactionWithLegacyAccountRequest.enc({
         tag: "V1",
         value: request,
       }),
@@ -1131,7 +1146,7 @@ export class SigningClient {
           V1: [
             0,
             S.result(
-              T.V01HostCreateTransactionWithNonProductAccountResponse,
+              T.V01HostCreateTransactionWithLegacyAccountResponse,
               T.V01HostCreateTransactionError,
             ),
           ] as const,
@@ -1142,16 +1157,16 @@ export class SigningClient {
 
   /** Sign raw bytes or a message. */
   async signRaw(
-    request: T.V01HostSignRawRequest,
+    request: T.V02HostSignRawRequest,
   ): Promise<Result<T.V01HostSignPayloadResponse, T.V01HostSignPayloadError>> {
     const result = await this.transport.request<
       S.ResultPayload<T.V01HostSignPayloadResponse, T.V01HostSignPayloadError>
     >({
       method: "host_sign_raw",
-      payload: T.HostSignRawRequest.enc({ tag: "V1", value: request }),
+      payload: T.HostSignRawRequest.enc({ tag: "V2", value: request }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V1: [
+          V2: [
             0,
             S.result(T.V01HostSignPayloadResponse, T.V01HostSignPayloadError),
           ] as const,
@@ -1162,16 +1177,16 @@ export class SigningClient {
 
   /** Sign a Substrate extrinsic payload. */
   async signPayload(
-    request: T.V01HostSignPayloadRequest,
+    request: T.V02HostSignPayloadRequest,
   ): Promise<Result<T.V01HostSignPayloadResponse, T.V01HostSignPayloadError>> {
     const result = await this.transport.request<
       S.ResultPayload<T.V01HostSignPayloadResponse, T.V01HostSignPayloadError>
     >({
       method: "host_sign_payload",
-      payload: T.HostSignPayloadRequest.enc({ tag: "V1", value: request }),
+      payload: T.HostSignPayloadRequest.enc({ tag: "V2", value: request }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V1: [
+          V2: [
             0,
             S.result(T.V01HostSignPayloadResponse, T.V01HostSignPayloadError),
           ] as const,
@@ -1197,23 +1212,23 @@ export class StatementStoreClient {
     onError,
     onClose,
     request,
-  }: { request: T.V01RemoteStatementStoreSubscribeRequest } & Pick<
-    SubscribeCallbacks<T.V01RemoteStatementStoreSubscribeItem>,
+  }: { request: T.V02RemoteStatementStoreSubscribeRequest } & Pick<
+    SubscribeCallbacks<T.V02RemoteStatementStoreSubscribeItem>,
     "onData" | "onInterrupt" | "onError" | "onClose"
   >): Subscription {
-    return this.transport.subscribe<T.V01RemoteStatementStoreSubscribeItem>({
+    return this.transport.subscribe<T.V02RemoteStatementStoreSubscribeItem>({
       method: "remote_statement_store_subscribe",
       payload: T.RemoteStatementStoreSubscribeRequest.enc({
-        tag: "V1",
+        tag: "V2",
         value: request,
       }),
       onData: (payload) => {
-        let item: T.V01RemoteStatementStoreSubscribeItem;
+        let item: T.V02RemoteStatementStoreSubscribeItem;
         try {
           item = (
             T.RemoteStatementStoreSubscribeItem.dec(payload) as {
-              tag: "V1";
-              value: T.V01RemoteStatementStoreSubscribeItem;
+              tag: "V2";
+              value: T.V02RemoteStatementStoreSubscribeItem;
             } & T.RemoteStatementStoreSubscribeItem
           ).value;
         } catch (error) {
@@ -1261,12 +1276,16 @@ export class StatementStoreClient {
     return result.success ? ok(result.value) : err(result.value);
   }
 
-  /** Submit an encoded signed statement to the network. */
+  /**
+   * Submit a signed statement to the network. The request body is the
+   * [`SignedStatement`](crate::v01::SignedStatement) directly (no wrapping
+   * struct), matching upstream `triangle-js-sdks`.
+   */
   async statementStoreSubmit(
-    request: T.V01RemoteStatementStoreSubmitRequest,
-  ): Promise<Result<T.V01RemoteStatementStoreSubmitResponse, T.GenericError>> {
+    request: T.SignedStatement,
+  ): Promise<Result<undefined, T.GenericError>> {
     const result = await this.transport.request<
-      S.ResultPayload<T.V01RemoteStatementStoreSubmitResponse, T.GenericError>
+      S.ResultPayload<undefined, T.GenericError>
     >({
       method: "remote_statement_store_submit",
       payload: T.RemoteStatementStoreSubmitRequest.enc({
@@ -1275,10 +1294,7 @@ export class StatementStoreClient {
       }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V1: [
-            0,
-            S.result(T.V01RemoteStatementStoreSubmitResponse, T.GenericError),
-          ] as const,
+          V1: [0, S.result(S.unit, T.GenericError)] as const,
         }).dec(payload).value,
     });
     return result.success ? ok(result.value) : err(result.value);
@@ -1291,13 +1307,19 @@ export class StatementStoreClient {
  *
  * # Wire id reservations
  *
- * Slots 68-75 are reserved for legacy Novasama methods TrUAPI does not
- * implement; if we ever need them, annotate the trait method with
- * `#[wire(id = ...)]` matching the slot below.
+ * Some slots are reserved for upstream `triangle-js-sdks` methods that
+ * TrUAPI does not implement, but whose discriminants must remain free to
+ * keep our wire-table positionally aligned with the canonical host
+ * `MessagePayload` enum. If we ever need them, annotate the trait method
+ * with `#[wire(id = ...)]` matching the slot below.
  *
+ * - 34-35: `host_sign_raw_with_legacy_account` (request, response)
+ * - 36-37: `host_sign_payload_with_legacy_account` (request, response)
  * - 68-69: `remote_preimage_submit` (request, response)
  * - 70-71: `host_jsonrpc_message_send` (request, response)
  * - 72-75: `host_jsonrpc_message_subscribe` (start, stop, interrupt, receive)
+ * - 104-107: `host_theme_subscribe` (start, stop, interrupt, receive)
+ * - 112-113: `host_request_login` (request, response)
  */
 export class TrUApiCallsClient {
   constructor(private readonly transport: TrUApiTransport) {}

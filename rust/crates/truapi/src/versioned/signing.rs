@@ -21,10 +21,10 @@ versioned_type! {
     pub enum HostCreateTransactionResponse { V1 => v01::HostCreateTransactionResponse }
     /// Versioned wrapper for [`v01::HostCreateTransactionError`] and older versions.
     pub enum HostCreateTransactionError { V1 => v01::HostCreateTransactionError }
-    /// Versioned wrapper for [`v01::HostCreateTransactionWithNonProductAccountRequest`] and older versions.
-    pub enum HostCreateTransactionWithNonProductAccountRequest { V1 => v01::HostCreateTransactionWithNonProductAccountRequest }
-    /// Versioned wrapper for [`v01::HostCreateTransactionWithNonProductAccountResponse`] and older versions.
-    pub enum HostCreateTransactionWithNonProductAccountResponse { V1 => v01::HostCreateTransactionWithNonProductAccountResponse }
+    /// Versioned wrapper for [`v01::HostCreateTransactionWithLegacyAccountRequest`] and older versions.
+    pub enum HostCreateTransactionWithLegacyAccountRequest { V1 => v01::HostCreateTransactionWithLegacyAccountRequest }
+    /// Versioned wrapper for [`v01::HostCreateTransactionWithLegacyAccountResponse`] and older versions.
+    pub enum HostCreateTransactionWithLegacyAccountResponse { V1 => v01::HostCreateTransactionWithLegacyAccountResponse }
     /// Versioned wrapper for [`v01::HostCreateTransactionError`] and older versions.
-    pub enum HostCreateTransactionWithNonProductAccountError { V1 => v01::HostCreateTransactionError }
+    pub enum HostCreateTransactionWithLegacyAccountError { V1 => v01::HostCreateTransactionError }
 }

@@ -31,6 +31,8 @@ versioned_type! {
     pub enum HostChatListSubscribeItem { V1 => v01::HostChatListSubscribeItem }
     /// Versioned wrapper for [`v01::HostChatActionSubscribeItem`] and older versions.
     pub enum HostChatActionSubscribeItem { V1 => v01::HostChatActionSubscribeItem }
-    /// Versioned wrapper for [`v01::ProductChatCustomMessageRenderSubscribeItem`] and older versions.
-    pub enum ProductChatCustomMessageRenderSubscribeItem { V1 => v01::ProductChatCustomMessageRenderSubscribeItem }
+    /// Versioned wrapper for [`v01::ProductChatCustomMessageRenderSubscribeRequest`] and older versions.
+    pub enum ProductChatCustomMessageRenderSubscribeRequest { V1 => v01::ProductChatCustomMessageRenderSubscribeRequest }
+    /// Versioned wrapper for [`v01::CustomRendererNode`] and older versions.
+    pub enum ProductChatCustomMessageRenderSubscribeItem { V1 => v01::CustomRendererNode }
 }

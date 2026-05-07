@@ -93,14 +93,14 @@ pub struct HostCreateTransactionResponse {
 
 /// Request to create a transaction with a non-product account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct HostCreateTransactionWithNonProductAccountRequest {
+pub struct HostCreateTransactionWithLegacyAccountRequest {
     /// Versioned transaction payload to sign.
     pub payload: super::VersionedTxPayload,
 }
 
 /// Response containing a transaction created with a non-product account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct HostCreateTransactionWithNonProductAccountResponse {
+pub struct HostCreateTransactionWithLegacyAccountResponse {
     /// SCALE-encoded signed transaction.
     pub transaction: Vec<u8>,
 }

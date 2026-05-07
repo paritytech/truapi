@@ -5,6 +5,16 @@
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./playground/services": {
+      "types": "./dist/playground/services.d.ts",
+      "import": "./dist/playground/services.js"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "prepare": "npm run build",

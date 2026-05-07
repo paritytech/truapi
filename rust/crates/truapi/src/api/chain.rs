@@ -28,6 +28,10 @@ use crate::{CallContext, CallError, Subscription};
 #[async_trait::async_trait]
 pub trait ChainInteraction: Send + Sync {
     /// Follow the chain head and receive block events.
+    ///
+    /// ```truapi-playground-request
+    /// { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2", "withRuntime": false }
+    /// ```
     #[wire(id = 76)]
     async fn remote_chain_head_follow(
         &self,
@@ -38,6 +42,10 @@ pub trait ChainInteraction: Send + Sync {
     }
 
     /// Fetch a block header.
+    ///
+    /// ```truapi-playground-request
+    /// { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2", "followSubscriptionId": "", "hash": "0x0000000000000000000000000000000000000000000000000000000000000000" }
+    /// ```
     #[wire(id = 80)]
     async fn remote_chain_head_header(
         &self,
@@ -48,6 +56,10 @@ pub trait ChainInteraction: Send + Sync {
     }
 
     /// Fetch a block body.
+    ///
+    /// ```truapi-playground-request
+    /// { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2", "followSubscriptionId": "", "hash": "0x0000000000000000000000000000000000000000000000000000000000000000" }
+    /// ```
     #[wire(id = 82)]
     async fn remote_chain_head_body(
         &self,
@@ -58,6 +70,10 @@ pub trait ChainInteraction: Send + Sync {
     }
 
     /// Query runtime storage at a specific block.
+    ///
+    /// ```truapi-playground-request
+    /// { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2", "followSubscriptionId": "", "hash": "0x0000000000000000000000000000000000000000000000000000000000000000", "items": [{ "key": "0x26aa394eea5630e07c48ae0c9558cef7", "queryType": { "tag": "Value" } }], "childTrie": null }
+    /// ```
     #[wire(id = 84)]
     async fn remote_chain_head_storage(
         &self,
@@ -68,6 +84,10 @@ pub trait ChainInteraction: Send + Sync {
     }
 
     /// Invoke a runtime call at a specific block.
+    ///
+    /// ```truapi-playground-request
+    /// { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2", "followSubscriptionId": "", "hash": "0x0000000000000000000000000000000000000000000000000000000000000000", "function": "Core_version", "callParameters": "0x" }
+    /// ```
     #[wire(id = 86)]
     async fn remote_chain_head_call(
         &self,
@@ -78,6 +98,10 @@ pub trait ChainInteraction: Send + Sync {
     }
 
     /// Release pinned blocks.
+    ///
+    /// ```truapi-playground-request
+    /// { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2", "followSubscriptionId": "", "hashes": ["0x0000000000000000000000000000000000000000000000000000000000000000"] }
+    /// ```
     #[wire(id = 88)]
     async fn remote_chain_head_unpin(
         &self,
@@ -88,6 +112,10 @@ pub trait ChainInteraction: Send + Sync {
     }
 
     /// Continue a paused chain-head operation.
+    ///
+    /// ```truapi-playground-request
+    /// { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2", "followSubscriptionId": "", "operationId": "op-id" }
+    /// ```
     #[wire(id = 90)]
     async fn remote_chain_head_continue(
         &self,
@@ -98,6 +126,10 @@ pub trait ChainInteraction: Send + Sync {
     }
 
     /// Stop a chain-head operation.
+    ///
+    /// ```truapi-playground-request
+    /// { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2", "followSubscriptionId": "", "operationId": "op-id" }
+    /// ```
     #[wire(id = 92)]
     async fn remote_chain_head_stop_operation(
         &self,
@@ -109,6 +141,10 @@ pub trait ChainInteraction: Send + Sync {
     }
 
     /// Fetch the canonical genesis hash for a chain.
+    ///
+    /// ```truapi-playground-request
+    /// { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2" }
+    /// ```
     #[wire(id = 94)]
     async fn remote_chain_spec_genesis_hash(
         &self,
@@ -120,6 +156,10 @@ pub trait ChainInteraction: Send + Sync {
     }
 
     /// Fetch the display name of a chain.
+    ///
+    /// ```truapi-playground-request
+    /// { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2" }
+    /// ```
     #[wire(id = 96)]
     async fn remote_chain_spec_chain_name(
         &self,
@@ -130,6 +170,10 @@ pub trait ChainInteraction: Send + Sync {
     }
 
     /// Fetch the JSON-encoded properties of a chain.
+    ///
+    /// ```truapi-playground-request
+    /// { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2" }
+    /// ```
     #[wire(id = 98)]
     async fn remote_chain_spec_properties(
         &self,
@@ -140,6 +184,10 @@ pub trait ChainInteraction: Send + Sync {
     }
 
     /// Broadcast a signed transaction.
+    ///
+    /// ```truapi-playground-request
+    /// { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2", "transaction": "0x" }
+    /// ```
     #[wire(id = 100)]
     async fn remote_chain_transaction_broadcast(
         &self,
@@ -153,6 +201,10 @@ pub trait ChainInteraction: Send + Sync {
     }
 
     /// Stop a transaction broadcast.
+    ///
+    /// ```truapi-playground-request
+    /// { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2", "operationId": "op-id" }
+    /// ```
     #[wire(id = 102)]
     async fn remote_chain_transaction_stop(
         &self,

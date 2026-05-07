@@ -1,44 +1,28 @@
 use parity_scale_codec::{Decode, Encode};
 
-#[cfg(feature = "sp-compat")]
-mod sp_compat;
+/// 32-byte statement topic.
+pub type Topic = [u8; 32];
 
-/// Request to subscribe to statements, allowing richer topic matching than
-/// plain topic vectors. Each position in the filter can be `Some(topic)` to
-/// require an exact match or `None` to act as a wildcard.
+/// Request to subscribe to statements via a topic filter (RFC 0008).
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct RemoteStatementStoreSubscribeRequest {
-    /// Positional topic matchers. `None` entries act as wildcards.
-    pub topics: Vec<Option<[u8; 32]>>,
+pub enum RemoteStatementStoreSubscribeRequest {
+    /// AND: statement must contain every listed topic.
+    MatchAll(Vec<Topic>),
+    /// OR: statement must contain at least one listed topic.
+    MatchAny(Vec<Topic>),
 }
 
-/// Item containing statements delivered by the statement store subscription.
+/// Page of signed statements delivered by the statement store subscription
+/// (RFC 0008). The `is_complete` flag distinguishes the historical-dump phase
+/// (`false`) from the live-update phase (`true`).
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct RemoteStatementStoreSubscribeItem {
     /// Signed statements matching the subscription.
     pub statements: Vec<crate::v01::SignedStatement>,
-}
-
-impl TryFrom<Vec<[u8; 32]>> for RemoteStatementStoreSubscribeRequest {
-    type Error = ();
-
-    fn try_from(value: Vec<[u8; 32]>) -> Result<Self, Self::Error> {
-        Ok(Self {
-            topics: value.into_iter().map(Some).collect(),
-        })
-    }
-}
-
-impl TryFrom<RemoteStatementStoreSubscribeRequest> for Vec<[u8; 32]> {
-    type Error = ();
-
-    fn try_from(value: RemoteStatementStoreSubscribeRequest) -> Result<Self, Self::Error> {
-        value
-            .topics
-            .into_iter()
-            .collect::<Option<Vec<_>>>()
-            .ok_or(())
-    }
+    /// `false` while the host is still streaming the historical dump (more
+    /// pages to follow). `true` once the dump is complete; all subsequent
+    /// pages are also `true` and carry only newly-arrived statements.
+    pub is_complete: bool,
 }
 
 impl TryFrom<crate::v01::RemoteStatementStoreSubscribeRequest>
@@ -49,7 +33,7 @@ impl TryFrom<crate::v01::RemoteStatementStoreSubscribeRequest>
     fn try_from(
         value: crate::v01::RemoteStatementStoreSubscribeRequest,
     ) -> Result<Self, Self::Error> {
-        Self::try_from(value.topics)
+        Ok(Self::MatchAll(value.topics))
     }
 }
 
@@ -59,9 +43,11 @@ impl TryFrom<RemoteStatementStoreSubscribeRequest>
     type Error = ();
 
     fn try_from(value: RemoteStatementStoreSubscribeRequest) -> Result<Self, Self::Error> {
-        Ok(Self {
-            topics: Vec::<[u8; 32]>::try_from(value)?,
-        })
+        match value {
+            RemoteStatementStoreSubscribeRequest::MatchAll(topics) => Ok(Self { topics }),
+            // V0.1 only carries MatchAll semantics; MatchAny cannot round-trip.
+            RemoteStatementStoreSubscribeRequest::MatchAny(_) => Err(()),
+        }
     }
 }
 
@@ -69,8 +55,11 @@ impl TryFrom<crate::v01::RemoteStatementStoreSubscribeItem> for RemoteStatementS
     type Error = ();
 
     fn try_from(value: crate::v01::RemoteStatementStoreSubscribeItem) -> Result<Self, Self::Error> {
+        // Lifting V0.1 → V0.2: we don't know if the historical dump is complete,
+        // so report the conservative `true` (live updates only).
         Ok(Self {
             statements: value.statements,
+            is_complete: true,
         })
     }
 }
@@ -79,6 +68,7 @@ impl TryFrom<RemoteStatementStoreSubscribeItem> for crate::v01::RemoteStatementS
     type Error = ();
 
     fn try_from(value: RemoteStatementStoreSubscribeItem) -> Result<Self, Self::Error> {
+        // V0.1 has no `is_complete` flag; drop it on the way down.
         Ok(Self {
             statements: value.statements,
         })

@@ -89,9 +89,9 @@ const methodMap: Record<string, [keyof TrUApiClient, string, boolean]> = {
     "accountCreateProof",
     false,
   ],
-  "Account Management/host_get_non_product_accounts": [
+  "Account Management/host_get_legacy_accounts": [
     "accountManagement",
-    "getNonProductAccounts",
+    "getLegacyAccounts",
     false,
   ],
   "Account Management/host_account_connection_status_subscribe": [
@@ -109,9 +109,9 @@ const methodMap: Record<string, [keyof TrUApiClient, string, boolean]> = {
   "Signing/host_sign_payload": ["signing", "signPayload", false],
   "Signing/host_sign_raw": ["signing", "signRaw", false],
   "Signing/host_create_transaction": ["signing", "createTransaction", false],
-  "Signing/host_create_transaction_with_non_product_account": [
+  "Signing/host_create_transaction_with_legacy_account": [
     "signing",
-    "createTransactionWithNonProductAccount",
+    "createTransactionWithLegacyAccount",
     false,
   ],
 

@@ -4,8 +4,8 @@ use crate::versioned::account::{
     HostAccountConnectionStatusSubscribeItem, HostAccountCreateProofError,
     HostAccountCreateProofRequest, HostAccountCreateProofResponse, HostAccountGetAliasError,
     HostAccountGetAliasRequest, HostAccountGetAliasResponse, HostAccountGetError,
-    HostAccountGetRequest, HostAccountGetResponse, HostGetNonProductAccountsError,
-    HostGetNonProductAccountsRequest, HostGetNonProductAccountsResponse, HostGetUserIdError,
+    HostAccountGetRequest, HostAccountGetResponse, HostGetLegacyAccountsError,
+    HostGetLegacyAccountsRequest, HostGetLegacyAccountsResponse, HostGetUserIdError,
     HostGetUserIdRequest, HostGetUserIdResponse,
 };
 use crate::wire;
@@ -27,6 +27,10 @@ pub trait AccountManagement: Send + Sync {
     }
 
     /// Retrieve a product-scoped account.
+    ///
+    /// ```truapi-playground-request
+    /// { "productAccountId": { "dotNsIdentifier": "truapi-playground.dot", "derivationIndex": 0 } }
+    /// ```
     #[wire(id = 22)]
     async fn host_account_get(
         &self,
@@ -37,6 +41,10 @@ pub trait AccountManagement: Send + Sync {
     }
 
     /// Retrieve a contextual alias for a product account.
+    ///
+    /// ```truapi-playground-request
+    /// { "productAccountId": { "dotNsIdentifier": "truapi-playground.dot", "derivationIndex": 0 } }
+    /// ```
     #[wire(id = 24)]
     async fn host_account_get_alias(
         &self,
@@ -47,6 +55,10 @@ pub trait AccountManagement: Send + Sync {
     }
 
     /// Generate a ring VRF proof for a product account.
+    ///
+    /// ```truapi-playground-request
+    /// { "productAccountId": { "dotNsIdentifier": "truapi-playground.dot", "derivationIndex": 0 }, "ringLocation": { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2", "ringRootHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2", "hints": { "palletInstance": 42 } }, "context": "0x" }
+    /// ```
     #[wire(id = 26)]
     async fn host_account_create_proof(
         &self,
@@ -58,16 +70,16 @@ pub trait AccountManagement: Send + Sync {
 
     /// List non-product accounts the user owns.
     #[wire(id = 28)]
-    async fn host_get_non_product_accounts(
+    async fn host_get_legacy_accounts(
         &self,
         _cx: &CallContext,
-        _request: HostGetNonProductAccountsRequest,
-    ) -> Result<HostGetNonProductAccountsResponse, CallError<HostGetNonProductAccountsError>> {
+        _request: HostGetLegacyAccountsRequest,
+    ) -> Result<HostGetLegacyAccountsResponse, CallError<HostGetLegacyAccountsError>> {
         Err(CallError::unavailable())
     }
 
     /// Fetch the user's primary identity (V0.2+).
-    #[wire(id = 104)]
+    #[wire(id = 110)]
     async fn host_get_user_id(
         &self,
         _cx: &CallContext,

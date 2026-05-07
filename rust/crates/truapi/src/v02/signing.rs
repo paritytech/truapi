@@ -61,17 +61,18 @@ impl TryFrom<HostSignPayloadRequest> for crate::v01::HostSignPayloadRequest {
     }
 }
 
-/// A raw signing request pairing an account with raw data.
+/// A raw signing request pairing an account with the payload to sign.
 ///
-/// V0.2: `address` replaced with `account: ProductAccountId` per [RFC 0005].
+/// V0.2: `address` replaced with `account: ProductAccountId` per [RFC 0005];
+/// the `data` field was also renamed to `payload`.
 ///
 /// [RFC 0005]: https://github.com/paritytech/triangle-js-sdks/pull/82
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostSignRawRequest {
-    /// Product account that will sign this data.
+    /// Product account that will sign this payload.
     pub account: ProductAccountId,
-    /// The data to sign.
-    pub data: RawPayload,
+    /// The payload to sign.
+    pub payload: RawPayload,
 }
 
 impl TryFrom<crate::v01::HostSignRawRequest> for HostSignRawRequest {

@@ -14,6 +14,10 @@ use crate::{CallContext, CallError};
 pub trait EntropyDerivation: Send + Sync {
     /// Derive 32 bytes of entropy from the user's root BIP-39 entropy for the
     /// given key.
+    ///
+    /// ```truapi-playground-request
+    /// { "context": "0x" }
+    /// ```
     #[wire(id = 108)]
     async fn host_derive_entropy(
         &self,

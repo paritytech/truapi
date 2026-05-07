@@ -33,6 +33,10 @@ struct Cli {
     /// Output directory for the generated Rust dispatcher (optional).
     #[arg(long)]
     rust_output: Option<String>,
+
+    /// Output directory for generated playground metadata (optional).
+    #[arg(long)]
+    playground_output: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -77,6 +81,11 @@ fn main() -> Result<()> {
         cli.version.number(),
         cli.codec_version
     );
+    if let Some(path) = &cli.playground_output {
+        typescript::generate_playground_services(&api, path, cli.version.number())
+            .with_context(|| format!("writing playground metadata to {path}"))?;
+        println!("Generated playground metadata in {path}");
+    }
     if let Some(path) = &cli.rust_output {
         rust_dispatcher::generate(&api, path)
             .with_context(|| format!("writing Rust dispatcher to {path}"))?;

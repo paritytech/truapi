@@ -15,6 +15,10 @@ use crate::{CallContext, Subscription};
 #[async_trait::async_trait]
 pub trait Preimage: Send + Sync {
     /// Subscribe to preimage lookups for a given key.
+    ///
+    /// ```truapi-playground-request
+    /// { "key": "0x0000000000000000000000000000000000000000000000000000000000000000" }
+    /// ```
     #[wire(id = 64)]
     async fn remote_preimage_lookup_subscribe(
         &self,

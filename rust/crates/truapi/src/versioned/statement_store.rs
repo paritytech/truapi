@@ -13,10 +13,12 @@ versioned_type! {
     pub enum RemoteStatementStoreCreateProofResponse { V1 => v01::RemoteStatementStoreCreateProofResponse }
     /// Versioned wrapper for [`v01::RemoteStatementStoreCreateProofError`] and older versions.
     pub enum RemoteStatementStoreCreateProofError { V1 => v01::RemoteStatementStoreCreateProofError }
-    /// Versioned wrapper for [`v01::RemoteStatementStoreSubmitRequest`] and older versions.
-    pub enum RemoteStatementStoreSubmitRequest { V1 => v01::RemoteStatementStoreSubmitRequest }
-    /// Versioned wrapper for [`v01::RemoteStatementStoreSubmitResponse`] and older versions.
-    pub enum RemoteStatementStoreSubmitResponse { V1 => v01::RemoteStatementStoreSubmitResponse }
-    /// Versioned wrapper for [`v01::GenericError`] and older versions.
+    /// Versioned wrapper for [`v01::SignedStatement`] and older versions.
+    /// The submit request is the signed statement itself; the host SCALE-decodes
+    /// it directly without a wrapping field, matching the upstream
+    /// `triangle-js-sdks` `StatementStoreSubmitV1_request = SignedStatement`.
+    pub enum RemoteStatementStoreSubmitRequest { V1 => v01::SignedStatement }
+    /// Versioned wrapper for [`v01::GenericError`] and older versions. Submit
+    /// has no success payload (`Result<(), GenericError>`), matching upstream.
     pub enum RemoteStatementStoreSubmitError { V1 => v01::GenericError }
 }

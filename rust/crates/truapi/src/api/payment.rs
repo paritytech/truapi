@@ -16,7 +16,7 @@ use crate::{CallContext, CallError, Subscription};
 #[async_trait::async_trait]
 pub trait Payment: Send + Sync {
     /// Subscribe to payment balance updates.
-    #[wire(id = 110)]
+    #[wire(id = 118)]
     async fn host_payment_balance_subscribe(
         &self,
         _cx: &CallContext,
@@ -26,7 +26,11 @@ pub trait Payment: Send + Sync {
     }
 
     /// Request a payment from the user.
-    #[wire(id = 114)]
+    ///
+    /// ```truapi-playground-request
+    /// { "amount": "0n", "destination": "0x0000000000000000000000000000000000000000000000000000000000000000" }
+    /// ```
+    #[wire(id = 124)]
     async fn host_payment_request(
         &self,
         _cx: &CallContext,
@@ -36,7 +40,11 @@ pub trait Payment: Send + Sync {
     }
 
     /// Subscribe to payment lifecycle updates for a specific payment.
-    #[wire(id = 116)]
+    ///
+    /// ```truapi-playground-request
+    /// { "paymentId": "payment-id" }
+    /// ```
+    #[wire(id = 126)]
     async fn host_payment_status_subscribe(
         &self,
         _cx: &CallContext,
@@ -46,7 +54,11 @@ pub trait Payment: Send + Sync {
     }
 
     /// Top up the user's payment balance.
-    #[wire(id = 120)]
+    ///
+    /// ```truapi-playground-request
+    /// { "amount": "0n", "source": { "tag": "ProductAccount", "value": { "derivationIndex": 0 } } }
+    /// ```
+    #[wire(id = 122)]
     async fn host_payment_top_up(
         &self,
         _cx: &CallContext,

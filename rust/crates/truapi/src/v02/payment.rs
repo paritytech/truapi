@@ -6,16 +6,14 @@ pub type Balance = u128;
 
 /// Current payment balance state pushed to subscribers.
 ///
-/// See [RFC 0006].
+/// See [RFC 0006]. V0.2: the `pending` field was removed; only `available`
+/// remains.
 ///
 /// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostPaymentBalanceSubscribeItem {
     /// Balance that can be spent right now.
     pub available: Balance,
-    /// Balance the user possesses but cannot spend yet (e.g. in recycling
-    /// stage).
-    pub pending: Balance,
 }
 
 /// Source for a payment top-up operation.
@@ -123,8 +121,8 @@ pub enum HostPaymentTopUpError {
 /// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum HostPaymentRequestError {
-    /// User denied the payment request.
-    Denied,
+    /// User rejected the payment request.
+    Rejected,
     /// User's available balance is not sufficient for the requested amount.
     InsufficientBalance,
     /// Catch-all.

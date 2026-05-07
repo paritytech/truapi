@@ -12,6 +12,10 @@ use crate::{CallContext, CallError};
 #[async_trait::async_trait]
 pub trait LocalStorage: Send + Sync {
     /// Read a value by key.
+    ///
+    /// ```truapi-playground-request
+    /// { "key": "test-key" }
+    /// ```
     #[wire(id = 12)]
     async fn host_local_storage_read(
         &self,
@@ -20,6 +24,10 @@ pub trait LocalStorage: Send + Sync {
     ) -> Result<HostLocalStorageReadResponse, CallError<HostLocalStorageReadError>>;
 
     /// Write a value to a key.
+    ///
+    /// ```truapi-playground-request
+    /// { "key": "test-key", "value": "0x48656c6c6f" }
+    /// ```
     #[wire(id = 14)]
     async fn host_local_storage_write(
         &self,
@@ -28,6 +36,10 @@ pub trait LocalStorage: Send + Sync {
     ) -> Result<HostLocalStorageWriteResponse, CallError<HostLocalStorageWriteError>>;
 
     /// Clear a value by key.
+    ///
+    /// ```truapi-playground-request
+    /// { "key": "test-key" }
+    /// ```
     #[wire(id = 16)]
     async fn host_local_storage_clear(
         &self,

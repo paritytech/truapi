@@ -118,7 +118,7 @@ pub struct HostAccountCreateProofResponse {
 
 /// Response containing all non-product accounts owned by the user.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct HostGetNonProductAccountsResponse {
+pub struct HostGetLegacyAccountsResponse {
     /// Non-product accounts.
     pub accounts: Vec<Account>,
 }

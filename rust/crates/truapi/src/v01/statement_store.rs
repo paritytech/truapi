@@ -102,17 +102,3 @@ pub struct RemoteStatementStoreCreateProofResponse {
     /// Created statement proof.
     pub proof: StatementProof,
 }
-
-/// Request to submit a statement.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct RemoteStatementStoreSubmitRequest {
-    /// SCALE-encoded statement payload.
-    pub statement: Vec<u8>,
-}
-
-/// Response containing the submitted statement identifier.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct RemoteStatementStoreSubmitResponse {
-    /// Statement identifier assigned by the host.
-    pub statement_id: String,
-}

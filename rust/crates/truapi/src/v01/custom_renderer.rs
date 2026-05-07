@@ -257,9 +257,10 @@ pub enum CustomRendererNode {
     TextField(Component<TextFieldProps>),
 }
 
-/// Request from the host asking the product to render a custom chat message.
+/// Subscribe payload identifying the chat message to render. The host responds
+/// with a stream of [`CustomRendererNode`] trees describing the rendered UI.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct ProductChatCustomMessageRenderSubscribeItem {
+pub struct ProductChatCustomMessageRenderSubscribeRequest {
     /// Message identifier.
     pub message_id: String,
     /// Application-defined message type.

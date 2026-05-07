@@ -6,7 +6,7 @@ use crate::versioned::chat::{
     HostChatCreateSimpleGroupResponse, HostChatListSubscribeItem, HostChatPostMessageError,
     HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotError,
     HostChatRegisterBotRequest, HostChatRegisterBotResponse,
-    ProductChatCustomMessageRenderSubscribeItem,
+    ProductChatCustomMessageRenderSubscribeItem, ProductChatCustomMessageRenderSubscribeRequest,
 };
 use crate::wire;
 use crate::{CallContext, CallError, Subscription};
@@ -18,6 +18,10 @@ use crate::{CallContext, CallError, Subscription};
 #[async_trait::async_trait]
 pub trait Chat: Send + Sync {
     /// Create a chat room.
+    ///
+    /// ```truapi-playground-request
+    /// { "roomId": "test-room", "name": "Test Room", "icon": "" }
+    /// ```
     #[wire(id = 38)]
     async fn host_chat_create_room(
         &self,
@@ -28,6 +32,10 @@ pub trait Chat: Send + Sync {
     }
 
     /// Register a chat bot.
+    ///
+    /// ```truapi-playground-request
+    /// { "botId": "test-bot", "name": "Test Bot", "icon": "" }
+    /// ```
     #[wire(id = 40)]
     async fn host_chat_register_bot(
         &self,
@@ -47,6 +55,10 @@ pub trait Chat: Send + Sync {
     }
 
     /// Post a message to a chat room.
+    ///
+    /// ```truapi-playground-request
+    /// { "roomId": "test-room", "payload": { "tag": "Text", "value": "Hello from playground!" } }
+    /// ```
     #[wire(id = 46)]
     async fn host_chat_post_message(
         &self,
@@ -65,17 +77,28 @@ pub trait Chat: Send + Sync {
         Subscription::empty()
     }
 
-    /// Subscribe to custom message render requests from the host.
+    /// Subscribe to custom message render requests from the host. Each
+    /// emitted item is a [`CustomRendererNode`](crate::v01::CustomRendererNode)
+    /// tree describing the rendered UI.
+    ///
+    /// ```truapi-playground-request
+    /// { "messageId": "msg-1", "messageType": "custom-render-demo", "payload": { "bytes": "0x" } }
+    /// ```
     #[wire(id = 52)]
     async fn product_chat_custom_message_render_subscribe(
         &self,
         _cx: &CallContext,
+        _request: ProductChatCustomMessageRenderSubscribeRequest,
     ) -> Subscription<ProductChatCustomMessageRenderSubscribeItem> {
         Subscription::empty()
     }
 
     /// Create a simple group chat room (V0.2+).
-    #[wire(id = 106)]
+    ///
+    /// ```truapi-playground-request
+    /// { "roomId": "test-simple-group", "name": "Test Group", "icon": "" }
+    /// ```
+    #[wire(id = 130)]
     async fn host_chat_create_simple_group(
         &self,
         _cx: &CallContext,

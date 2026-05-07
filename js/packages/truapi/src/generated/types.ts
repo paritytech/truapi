@@ -675,7 +675,11 @@ export const HostAccountGetRequest: S.Codec<HostAccountGetRequest> = S.lazy(
     S.indexedTaggedUnion({ V1: [0, V01HostAccountGetRequest] as const }),
 );
 
-/** Versioned wrapper for [`v01::HostAccountGetResponse`] and older versions. */
+/**
+ * Versioned wrapper for [`v02::HostAccountGetResponse`] and older versions.
+ * V0.2 returns [`v02::ProductAccount`] (public key only); V0.1 returned
+ * [`v01::Account`] (with optional display name).
+ */
 export type HostAccountGetResponse = {
   tag: "V1";
   value: V01HostAccountGetResponse;
@@ -744,7 +748,7 @@ export type HostChatCreateSimpleGroupError = {
 export const HostChatCreateSimpleGroupError: S.Codec<HostChatCreateSimpleGroupError> =
   S.lazy(
     (): S.Codec<HostChatCreateSimpleGroupError> =>
-      S.indexedTaggedUnion({ V2: [1, V01HostChatCreateRoomError] as const }),
+      S.indexedTaggedUnion({ V2: [0, V01HostChatCreateRoomError] as const }),
   );
 
 /** Versioned wrapper for [`v02::HostChatCreateSimpleGroupRequest`] and older versions. */
@@ -757,7 +761,7 @@ export const HostChatCreateSimpleGroupRequest: S.Codec<HostChatCreateSimpleGroup
   S.lazy(
     (): S.Codec<HostChatCreateSimpleGroupRequest> =>
       S.indexedTaggedUnion({
-        V2: [1, V02HostChatCreateSimpleGroupRequest] as const,
+        V2: [0, V02HostChatCreateSimpleGroupRequest] as const,
       }),
   );
 
@@ -771,7 +775,7 @@ export const HostChatCreateSimpleGroupResponse: S.Codec<HostChatCreateSimpleGrou
   S.lazy(
     (): S.Codec<HostChatCreateSimpleGroupResponse> =>
       S.indexedTaggedUnion({
-        V2: [1, V02HostChatCreateSimpleGroupResponse] as const,
+        V2: [0, V02HostChatCreateSimpleGroupResponse] as const,
       }),
   );
 
@@ -904,42 +908,42 @@ export const HostCreateTransactionResponse: S.Codec<HostCreateTransactionRespons
   );
 
 /** Versioned wrapper for [`v01::HostCreateTransactionError`] and older versions. */
-export type HostCreateTransactionWithNonProductAccountError = {
+export type HostCreateTransactionWithLegacyAccountError = {
   tag: "V1";
   value: V01HostCreateTransactionError;
 };
 
-export const HostCreateTransactionWithNonProductAccountError: S.Codec<HostCreateTransactionWithNonProductAccountError> =
+export const HostCreateTransactionWithLegacyAccountError: S.Codec<HostCreateTransactionWithLegacyAccountError> =
   S.lazy(
-    (): S.Codec<HostCreateTransactionWithNonProductAccountError> =>
+    (): S.Codec<HostCreateTransactionWithLegacyAccountError> =>
       S.indexedTaggedUnion({ V1: [0, V01HostCreateTransactionError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostCreateTransactionWithNonProductAccountRequest`] and older versions. */
-export type HostCreateTransactionWithNonProductAccountRequest = {
+/** Versioned wrapper for [`v01::HostCreateTransactionWithLegacyAccountRequest`] and older versions. */
+export type HostCreateTransactionWithLegacyAccountRequest = {
   tag: "V1";
-  value: V01HostCreateTransactionWithNonProductAccountRequest;
+  value: V01HostCreateTransactionWithLegacyAccountRequest;
 };
 
-export const HostCreateTransactionWithNonProductAccountRequest: S.Codec<HostCreateTransactionWithNonProductAccountRequest> =
+export const HostCreateTransactionWithLegacyAccountRequest: S.Codec<HostCreateTransactionWithLegacyAccountRequest> =
   S.lazy(
-    (): S.Codec<HostCreateTransactionWithNonProductAccountRequest> =>
+    (): S.Codec<HostCreateTransactionWithLegacyAccountRequest> =>
       S.indexedTaggedUnion({
-        V1: [0, V01HostCreateTransactionWithNonProductAccountRequest] as const,
+        V1: [0, V01HostCreateTransactionWithLegacyAccountRequest] as const,
       }),
   );
 
-/** Versioned wrapper for [`v01::HostCreateTransactionWithNonProductAccountResponse`] and older versions. */
-export type HostCreateTransactionWithNonProductAccountResponse = {
+/** Versioned wrapper for [`v01::HostCreateTransactionWithLegacyAccountResponse`] and older versions. */
+export type HostCreateTransactionWithLegacyAccountResponse = {
   tag: "V1";
-  value: V01HostCreateTransactionWithNonProductAccountResponse;
+  value: V01HostCreateTransactionWithLegacyAccountResponse;
 };
 
-export const HostCreateTransactionWithNonProductAccountResponse: S.Codec<HostCreateTransactionWithNonProductAccountResponse> =
+export const HostCreateTransactionWithLegacyAccountResponse: S.Codec<HostCreateTransactionWithLegacyAccountResponse> =
   S.lazy(
-    (): S.Codec<HostCreateTransactionWithNonProductAccountResponse> =>
+    (): S.Codec<HostCreateTransactionWithLegacyAccountResponse> =>
       S.indexedTaggedUnion({
-        V1: [0, V01HostCreateTransactionWithNonProductAccountResponse] as const,
+        V1: [0, V01HostCreateTransactionWithLegacyAccountResponse] as const,
       }),
   );
 
@@ -951,7 +955,7 @@ export type HostDeriveEntropyError = {
 
 export const HostDeriveEntropyError: S.Codec<HostDeriveEntropyError> = S.lazy(
   (): S.Codec<HostDeriveEntropyError> =>
-    S.indexedTaggedUnion({ V2: [1, V02HostDeriveEntropyError] as const }),
+    S.indexedTaggedUnion({ V2: [0, V02HostDeriveEntropyError] as const }),
 );
 
 /** Versioned wrapper for [`v02::HostDeriveEntropyRequest`] and older versions. */
@@ -963,7 +967,7 @@ export type HostDeriveEntropyRequest = {
 export const HostDeriveEntropyRequest: S.Codec<HostDeriveEntropyRequest> =
   S.lazy(
     (): S.Codec<HostDeriveEntropyRequest> =>
-      S.indexedTaggedUnion({ V2: [1, V02HostDeriveEntropyRequest] as const }),
+      S.indexedTaggedUnion({ V2: [0, V02HostDeriveEntropyRequest] as const }),
   );
 
 /** Versioned wrapper for [`v02::HostDeriveEntropyResponse`] and older versions. */
@@ -975,48 +979,43 @@ export type HostDeriveEntropyResponse = {
 export const HostDeriveEntropyResponse: S.Codec<HostDeriveEntropyResponse> =
   S.lazy(
     (): S.Codec<HostDeriveEntropyResponse> =>
-      S.indexedTaggedUnion({ V2: [1, V02HostDeriveEntropyResponse] as const }),
+      S.indexedTaggedUnion({ V2: [0, V02HostDeriveEntropyResponse] as const }),
   );
 
 /** Versioned wrapper for [`v01::GenericError`] and older versions. */
-export type HostDevicePermissionError =
-  | { tag: "V1"; value: GenericError }
-  | { tag: "V2"; value: GenericError };
+export type HostDevicePermissionError = { tag: "V2"; value: GenericError };
 
 export const HostDevicePermissionError: S.Codec<HostDevicePermissionError> =
   S.lazy(
     (): S.Codec<HostDevicePermissionError> =>
-      S.indexedTaggedUnion({
-        V1: [0, GenericError] as const,
-        V2: [1, GenericError] as const,
-      }),
+      S.indexedTaggedUnion({ V2: [0, GenericError] as const }),
   );
 
 /** Versioned wrapper for [`v02::HostDevicePermissionRequest`] and older versions. */
-export type HostDevicePermissionRequest =
-  | { tag: "V1"; value: V01HostDevicePermissionRequest }
-  | { tag: "V2"; value: V02HostDevicePermissionRequest };
+export type HostDevicePermissionRequest = {
+  tag: "V2";
+  value: V02HostDevicePermissionRequest;
+};
 
 export const HostDevicePermissionRequest: S.Codec<HostDevicePermissionRequest> =
   S.lazy(
     (): S.Codec<HostDevicePermissionRequest> =>
       S.indexedTaggedUnion({
-        V1: [0, V01HostDevicePermissionRequest] as const,
-        V2: [1, V02HostDevicePermissionRequest] as const,
+        V2: [0, V02HostDevicePermissionRequest] as const,
       }),
   );
 
 /** Versioned wrapper for [`v01::HostDevicePermissionResponse`] and older versions. */
-export type HostDevicePermissionResponse =
-  | { tag: "V1"; value: V01HostDevicePermissionResponse }
-  | { tag: "V2"; value: V01HostDevicePermissionResponse };
+export type HostDevicePermissionResponse = {
+  tag: "V2";
+  value: V01HostDevicePermissionResponse;
+};
 
 export const HostDevicePermissionResponse: S.Codec<HostDevicePermissionResponse> =
   S.lazy(
     (): S.Codec<HostDevicePermissionResponse> =>
       S.indexedTaggedUnion({
-        V1: [0, V01HostDevicePermissionResponse] as const,
-        V2: [1, V01HostDevicePermissionResponse] as const,
+        V2: [0, V01HostDevicePermissionResponse] as const,
       }),
   );
 
@@ -1058,37 +1057,37 @@ export const HostFeatureSupportedResponse: S.Codec<HostFeatureSupportedResponse>
   );
 
 /** Versioned wrapper for [`v01::HostAccountGetError`] and older versions. */
-export type HostGetNonProductAccountsError = {
+export type HostGetLegacyAccountsError = {
   tag: "V1";
   value: V01HostAccountGetError;
 };
 
-export const HostGetNonProductAccountsError: S.Codec<HostGetNonProductAccountsError> =
+export const HostGetLegacyAccountsError: S.Codec<HostGetLegacyAccountsError> =
   S.lazy(
-    (): S.Codec<HostGetNonProductAccountsError> =>
+    (): S.Codec<HostGetLegacyAccountsError> =>
       S.indexedTaggedUnion({ V1: [0, V01HostAccountGetError] as const }),
   );
 
 /** Versioned wrapper for unit and older versions. */
-export type HostGetNonProductAccountsRequest = { tag: "V1"; value: undefined };
+export type HostGetLegacyAccountsRequest = { tag: "V1"; value: undefined };
 
-export const HostGetNonProductAccountsRequest: S.Codec<HostGetNonProductAccountsRequest> =
+export const HostGetLegacyAccountsRequest: S.Codec<HostGetLegacyAccountsRequest> =
   S.lazy(
-    (): S.Codec<HostGetNonProductAccountsRequest> =>
+    (): S.Codec<HostGetLegacyAccountsRequest> =>
       S.indexedTaggedUnion({ V1: [0, S.unit] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostGetNonProductAccountsResponse`] and older versions. */
-export type HostGetNonProductAccountsResponse = {
+/** Versioned wrapper for [`v01::HostGetLegacyAccountsResponse`] and older versions. */
+export type HostGetLegacyAccountsResponse = {
   tag: "V1";
-  value: V01HostGetNonProductAccountsResponse;
+  value: V01HostGetLegacyAccountsResponse;
 };
 
-export const HostGetNonProductAccountsResponse: S.Codec<HostGetNonProductAccountsResponse> =
+export const HostGetLegacyAccountsResponse: S.Codec<HostGetLegacyAccountsResponse> =
   S.lazy(
-    (): S.Codec<HostGetNonProductAccountsResponse> =>
+    (): S.Codec<HostGetLegacyAccountsResponse> =>
       S.indexedTaggedUnion({
-        V1: [0, V01HostGetNonProductAccountsResponse] as const,
+        V1: [0, V01HostGetLegacyAccountsResponse] as const,
       }),
   );
 
@@ -1097,7 +1096,7 @@ export type HostGetUserIdError = { tag: "V2"; value: V02HostGetUserIdError };
 
 export const HostGetUserIdError: S.Codec<HostGetUserIdError> = S.lazy(
   (): S.Codec<HostGetUserIdError> =>
-    S.indexedTaggedUnion({ V2: [1, V02HostGetUserIdError] as const }),
+    S.indexedTaggedUnion({ V2: [0, V02HostGetUserIdError] as const }),
 );
 
 /** Versioned wrapper for unit and older versions. */
@@ -1105,7 +1104,7 @@ export type HostGetUserIdRequest = { tag: "V2"; value: undefined };
 
 export const HostGetUserIdRequest: S.Codec<HostGetUserIdRequest> = S.lazy(
   (): S.Codec<HostGetUserIdRequest> =>
-    S.indexedTaggedUnion({ V2: [1, S.unit] as const }),
+    S.indexedTaggedUnion({ V2: [0, S.unit] as const }),
 );
 
 /** Versioned wrapper for [`v02::HostGetUserIdResponse`] and older versions. */
@@ -1116,7 +1115,7 @@ export type HostGetUserIdResponse = {
 
 export const HostGetUserIdResponse: S.Codec<HostGetUserIdResponse> = S.lazy(
   (): S.Codec<HostGetUserIdResponse> =>
-    S.indexedTaggedUnion({ V2: [1, V02HostGetUserIdResponse] as const }),
+    S.indexedTaggedUnion({ V2: [0, V02HostGetUserIdResponse] as const }),
 );
 
 /** Versioned wrapper for [`v02::HostHandshakeError`] and older versions. */
@@ -1293,7 +1292,7 @@ export const HostPaymentBalanceSubscribeError: S.Codec<HostPaymentBalanceSubscri
   S.lazy(
     (): S.Codec<HostPaymentBalanceSubscribeError> =>
       S.indexedTaggedUnion({
-        V2: [1, V02HostPaymentBalanceSubscribeError] as const,
+        V2: [0, V02HostPaymentBalanceSubscribeError] as const,
       }),
   );
 
@@ -1307,7 +1306,7 @@ export const HostPaymentBalanceSubscribeItem: S.Codec<HostPaymentBalanceSubscrib
   S.lazy(
     (): S.Codec<HostPaymentBalanceSubscribeItem> =>
       S.indexedTaggedUnion({
-        V2: [1, V02HostPaymentBalanceSubscribeItem] as const,
+        V2: [0, V02HostPaymentBalanceSubscribeItem] as const,
       }),
   );
 
@@ -1320,7 +1319,7 @@ export type HostPaymentBalanceSubscribeRequest = {
 export const HostPaymentBalanceSubscribeRequest: S.Codec<HostPaymentBalanceSubscribeRequest> =
   S.lazy(
     (): S.Codec<HostPaymentBalanceSubscribeRequest> =>
-      S.indexedTaggedUnion({ V2: [1, S.unit] as const }),
+      S.indexedTaggedUnion({ V2: [0, S.unit] as const }),
   );
 
 /** Versioned wrapper for [`v02::HostPaymentRequestError`] and older versions. */
@@ -1331,7 +1330,7 @@ export type HostPaymentRequestError = {
 
 export const HostPaymentRequestError: S.Codec<HostPaymentRequestError> = S.lazy(
   (): S.Codec<HostPaymentRequestError> =>
-    S.indexedTaggedUnion({ V2: [1, V02HostPaymentRequestError] as const }),
+    S.indexedTaggedUnion({ V2: [0, V02HostPaymentRequestError] as const }),
 );
 
 /** Versioned wrapper for [`v02::HostPaymentRequestRequest`] and older versions. */
@@ -1343,7 +1342,7 @@ export type HostPaymentRequestRequest = {
 export const HostPaymentRequestRequest: S.Codec<HostPaymentRequestRequest> =
   S.lazy(
     (): S.Codec<HostPaymentRequestRequest> =>
-      S.indexedTaggedUnion({ V2: [1, V02HostPaymentRequestRequest] as const }),
+      S.indexedTaggedUnion({ V2: [0, V02HostPaymentRequestRequest] as const }),
   );
 
 /** Versioned wrapper for [`v02::HostPaymentRequestResponse`] and older versions. */
@@ -1355,7 +1354,7 @@ export type HostPaymentRequestResponse = {
 export const HostPaymentRequestResponse: S.Codec<HostPaymentRequestResponse> =
   S.lazy(
     (): S.Codec<HostPaymentRequestResponse> =>
-      S.indexedTaggedUnion({ V2: [1, V02HostPaymentRequestResponse] as const }),
+      S.indexedTaggedUnion({ V2: [0, V02HostPaymentRequestResponse] as const }),
   );
 
 /** Versioned wrapper for [`v02::HostPaymentStatusSubscribeError`] and older versions. */
@@ -1368,7 +1367,7 @@ export const HostPaymentStatusSubscribeError: S.Codec<HostPaymentStatusSubscribe
   S.lazy(
     (): S.Codec<HostPaymentStatusSubscribeError> =>
       S.indexedTaggedUnion({
-        V2: [1, V02HostPaymentStatusSubscribeError] as const,
+        V2: [0, V02HostPaymentStatusSubscribeError] as const,
       }),
   );
 
@@ -1382,7 +1381,7 @@ export const HostPaymentStatusSubscribeItem: S.Codec<HostPaymentStatusSubscribeI
   S.lazy(
     (): S.Codec<HostPaymentStatusSubscribeItem> =>
       S.indexedTaggedUnion({
-        V2: [1, V02HostPaymentStatusSubscribeItem] as const,
+        V2: [0, V02HostPaymentStatusSubscribeItem] as const,
       }),
   );
 
@@ -1396,7 +1395,7 @@ export const HostPaymentStatusSubscribeRequest: S.Codec<HostPaymentStatusSubscri
   S.lazy(
     (): S.Codec<HostPaymentStatusSubscribeRequest> =>
       S.indexedTaggedUnion({
-        V2: [1, V02HostPaymentStatusSubscribeRequest] as const,
+        V2: [0, V02HostPaymentStatusSubscribeRequest] as const,
       }),
   );
 
@@ -1408,7 +1407,7 @@ export type HostPaymentTopUpError = {
 
 export const HostPaymentTopUpError: S.Codec<HostPaymentTopUpError> = S.lazy(
   (): S.Codec<HostPaymentTopUpError> =>
-    S.indexedTaggedUnion({ V2: [1, V02HostPaymentTopUpError] as const }),
+    S.indexedTaggedUnion({ V2: [0, V02HostPaymentTopUpError] as const }),
 );
 
 /** Versioned wrapper for [`v02::HostPaymentTopUpRequest`] and older versions. */
@@ -1419,7 +1418,7 @@ export type HostPaymentTopUpRequest = {
 
 export const HostPaymentTopUpRequest: S.Codec<HostPaymentTopUpRequest> = S.lazy(
   (): S.Codec<HostPaymentTopUpRequest> =>
-    S.indexedTaggedUnion({ V2: [1, V02HostPaymentTopUpRequest] as const }),
+    S.indexedTaggedUnion({ V2: [0, V02HostPaymentTopUpRequest] as const }),
 );
 
 /** Versioned wrapper for unit and older versions. */
@@ -1428,7 +1427,7 @@ export type HostPaymentTopUpResponse = { tag: "V2"; value: undefined };
 export const HostPaymentTopUpResponse: S.Codec<HostPaymentTopUpResponse> =
   S.lazy(
     (): S.Codec<HostPaymentTopUpResponse> =>
-      S.indexedTaggedUnion({ V2: [1, S.unit] as const }),
+      S.indexedTaggedUnion({ V2: [0, S.unit] as const }),
   );
 
 /** Versioned wrapper for [`v01::GenericError`] and older versions. */
@@ -1464,81 +1463,63 @@ export const HostPushNotificationResponse: S.Codec<HostPushNotificationResponse>
   );
 
 /** Versioned wrapper for [`v01::HostSignPayloadError`] and older versions. */
-export type HostSignPayloadError =
-  | { tag: "V1"; value: V01HostSignPayloadError }
-  | { tag: "V2"; value: V01HostSignPayloadError };
+export type HostSignPayloadError = {
+  tag: "V2";
+  value: V01HostSignPayloadError;
+};
 
 export const HostSignPayloadError: S.Codec<HostSignPayloadError> = S.lazy(
   (): S.Codec<HostSignPayloadError> =>
-    S.indexedTaggedUnion({
-      V1: [0, V01HostSignPayloadError] as const,
-      V2: [1, V01HostSignPayloadError] as const,
-    }),
+    S.indexedTaggedUnion({ V2: [0, V01HostSignPayloadError] as const }),
 );
 
 /** Versioned wrapper for [`v02::HostSignPayloadRequest`] and older versions. */
-export type HostSignPayloadRequest =
-  | { tag: "V1"; value: V01HostSignPayloadRequest }
-  | { tag: "V2"; value: V02HostSignPayloadRequest };
+export type HostSignPayloadRequest = {
+  tag: "V2";
+  value: V02HostSignPayloadRequest;
+};
 
 export const HostSignPayloadRequest: S.Codec<HostSignPayloadRequest> = S.lazy(
   (): S.Codec<HostSignPayloadRequest> =>
-    S.indexedTaggedUnion({
-      V1: [0, V01HostSignPayloadRequest] as const,
-      V2: [1, V02HostSignPayloadRequest] as const,
-    }),
+    S.indexedTaggedUnion({ V2: [0, V02HostSignPayloadRequest] as const }),
 );
 
 /** Versioned wrapper for [`v01::HostSignPayloadResponse`] and older versions. */
-export type HostSignPayloadResponse =
-  | { tag: "V1"; value: V01HostSignPayloadResponse }
-  | { tag: "V2"; value: V01HostSignPayloadResponse };
+export type HostSignPayloadResponse = {
+  tag: "V2";
+  value: V01HostSignPayloadResponse;
+};
 
 export const HostSignPayloadResponse: S.Codec<HostSignPayloadResponse> = S.lazy(
   (): S.Codec<HostSignPayloadResponse> =>
-    S.indexedTaggedUnion({
-      V1: [0, V01HostSignPayloadResponse] as const,
-      V2: [1, V01HostSignPayloadResponse] as const,
-    }),
+    S.indexedTaggedUnion({ V2: [0, V01HostSignPayloadResponse] as const }),
 );
 
 /** Versioned wrapper for [`v01::HostSignPayloadError`] and older versions. */
-export type HostSignRawError =
-  | { tag: "V1"; value: V01HostSignPayloadError }
-  | { tag: "V2"; value: V01HostSignPayloadError };
+export type HostSignRawError = { tag: "V2"; value: V01HostSignPayloadError };
 
 export const HostSignRawError: S.Codec<HostSignRawError> = S.lazy(
   (): S.Codec<HostSignRawError> =>
-    S.indexedTaggedUnion({
-      V1: [0, V01HostSignPayloadError] as const,
-      V2: [1, V01HostSignPayloadError] as const,
-    }),
+    S.indexedTaggedUnion({ V2: [0, V01HostSignPayloadError] as const }),
 );
 
 /** Versioned wrapper for [`v02::HostSignRawRequest`] and older versions. */
-export type HostSignRawRequest =
-  | { tag: "V1"; value: V01HostSignRawRequest }
-  | { tag: "V2"; value: V02HostSignRawRequest };
+export type HostSignRawRequest = { tag: "V2"; value: V02HostSignRawRequest };
 
 export const HostSignRawRequest: S.Codec<HostSignRawRequest> = S.lazy(
   (): S.Codec<HostSignRawRequest> =>
-    S.indexedTaggedUnion({
-      V1: [0, V01HostSignRawRequest] as const,
-      V2: [1, V02HostSignRawRequest] as const,
-    }),
+    S.indexedTaggedUnion({ V2: [0, V02HostSignRawRequest] as const }),
 );
 
 /** Versioned wrapper for [`v01::HostSignPayloadResponse`] and older versions. */
-export type HostSignRawResponse =
-  | { tag: "V1"; value: V01HostSignPayloadResponse }
-  | { tag: "V2"; value: V01HostSignPayloadResponse };
+export type HostSignRawResponse = {
+  tag: "V2";
+  value: V01HostSignPayloadResponse;
+};
 
 export const HostSignRawResponse: S.Codec<HostSignRawResponse> = S.lazy(
   (): S.Codec<HostSignRawResponse> =>
-    S.indexedTaggedUnion({
-      V1: [0, V01HostSignPayloadResponse] as const,
-      V2: [1, V01HostSignPayloadResponse] as const,
-    }),
+    S.indexedTaggedUnion({ V2: [0, V01HostSignPayloadResponse] as const }),
 );
 
 /** Layout and styling modifiers applied to custom renderer components. */
@@ -1640,6 +1621,23 @@ export const PreimageSubmitError: S.Codec<PreimageSubmitError> = S.lazy(
 );
 
 /**
+ * V0.2 product account: a public key only, no display name.
+ *
+ * V0.2 replaces V0.1's [`crate::v01::Account`] (which carries `name:
+ * Option<String>`) for `host_account_get` responses; the name is no longer
+ * returned because it's not bound to the account derivation.
+ */
+export interface ProductAccount {
+  /** The account public key (variable-length bytes). */
+  publicKey: Uint8Array;
+}
+
+export const ProductAccount: S.Codec<ProductAccount> = S.lazy(
+  (): S.Codec<ProductAccount> =>
+    S.struct({ publicKey: S.bytes }) as S.Codec<ProductAccount>,
+);
+
+/**
  * Identifies a product-specific account by combining a dotNS domain name with a
  * derivation index.
  */
@@ -1658,17 +1656,29 @@ export const ProductAccountId: S.Codec<ProductAccountId> = S.lazy(
     }) as S.Codec<ProductAccountId>,
 );
 
-/** Versioned wrapper for [`v01::ProductChatCustomMessageRenderSubscribeItem`] and older versions. */
+/** Versioned wrapper for [`v01::CustomRendererNode`] and older versions. */
 export type ProductChatCustomMessageRenderSubscribeItem = {
   tag: "V1";
-  value: V01ProductChatCustomMessageRenderSubscribeItem;
+  value: CustomRendererNode;
 };
 
 export const ProductChatCustomMessageRenderSubscribeItem: S.Codec<ProductChatCustomMessageRenderSubscribeItem> =
   S.lazy(
     (): S.Codec<ProductChatCustomMessageRenderSubscribeItem> =>
+      S.indexedTaggedUnion({ V1: [0, CustomRendererNode] as const }),
+  );
+
+/** Versioned wrapper for [`v01::ProductChatCustomMessageRenderSubscribeRequest`] and older versions. */
+export type ProductChatCustomMessageRenderSubscribeRequest = {
+  tag: "V1";
+  value: V01ProductChatCustomMessageRenderSubscribeRequest;
+};
+
+export const ProductChatCustomMessageRenderSubscribeRequest: S.Codec<ProductChatCustomMessageRenderSubscribeRequest> =
+  S.lazy(
+    (): S.Codec<ProductChatCustomMessageRenderSubscribeRequest> =>
       S.indexedTaggedUnion({
-        V1: [0, V01ProductChatCustomMessageRenderSubscribeItem] as const,
+        V1: [0, V01ProductChatCustomMessageRenderSubscribeRequest] as const,
       }),
   );
 
@@ -2193,43 +2203,34 @@ export const RemotePermission: S.Codec<RemotePermission> = S.lazy(
 );
 
 /** Versioned wrapper for [`v01::GenericError`] and older versions. */
-export type RemotePermissionError =
-  | { tag: "V1"; value: GenericError }
-  | { tag: "V2"; value: GenericError };
+export type RemotePermissionError = { tag: "V2"; value: GenericError };
 
 export const RemotePermissionError: S.Codec<RemotePermissionError> = S.lazy(
   (): S.Codec<RemotePermissionError> =>
-    S.indexedTaggedUnion({
-      V1: [0, GenericError] as const,
-      V2: [1, GenericError] as const,
-    }),
+    S.indexedTaggedUnion({ V2: [0, GenericError] as const }),
 );
 
 /** Versioned wrapper for [`v02::RemotePermissionRequest`] and older versions. */
-export type RemotePermissionRequest =
-  | { tag: "V1"; value: V01RemotePermissionRequest }
-  | { tag: "V2"; value: V02RemotePermissionRequest };
+export type RemotePermissionRequest = {
+  tag: "V2";
+  value: V02RemotePermissionRequest;
+};
 
 export const RemotePermissionRequest: S.Codec<RemotePermissionRequest> = S.lazy(
   (): S.Codec<RemotePermissionRequest> =>
-    S.indexedTaggedUnion({
-      V1: [0, V01RemotePermissionRequest] as const,
-      V2: [1, V02RemotePermissionRequest] as const,
-    }),
+    S.indexedTaggedUnion({ V2: [0, V02RemotePermissionRequest] as const }),
 );
 
 /** Versioned wrapper for [`v01::RemotePermissionResponse`] and older versions. */
-export type RemotePermissionResponse =
-  | { tag: "V1"; value: V01RemotePermissionResponse }
-  | { tag: "V2"; value: V01RemotePermissionResponse };
+export type RemotePermissionResponse = {
+  tag: "V2";
+  value: V01RemotePermissionResponse;
+};
 
 export const RemotePermissionResponse: S.Codec<RemotePermissionResponse> =
   S.lazy(
     (): S.Codec<RemotePermissionResponse> =>
-      S.indexedTaggedUnion({
-        V1: [0, V01RemotePermissionResponse] as const,
-        V2: [1, V01RemotePermissionResponse] as const,
-      }),
+      S.indexedTaggedUnion({ V2: [0, V01RemotePermissionResponse] as const }),
   );
 
 /** Versioned wrapper for [`v01::RemotePreimageLookupSubscribeItem`] and older versions. */
@@ -2302,7 +2303,10 @@ export const RemoteStatementStoreCreateProofResponse: S.Codec<RemoteStatementSto
       }),
   );
 
-/** Versioned wrapper for [`v01::GenericError`] and older versions. */
+/**
+ * Versioned wrapper for [`v01::GenericError`] and older versions. Submit
+ * has no success payload (`Result<(), GenericError>`), matching upstream.
+ */
 export type RemoteStatementStoreSubmitError = {
   tag: "V1";
   value: GenericError;
@@ -2314,59 +2318,48 @@ export const RemoteStatementStoreSubmitError: S.Codec<RemoteStatementStoreSubmit
       S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
-/** Versioned wrapper for [`v01::RemoteStatementStoreSubmitRequest`] and older versions. */
+/**
+ * Versioned wrapper for [`v01::SignedStatement`] and older versions.
+ * The submit request is the signed statement itself; the host SCALE-decodes
+ * it directly without a wrapping field, matching the upstream
+ * `triangle-js-sdks` `StatementStoreSubmitV1_request = SignedStatement`.
+ */
 export type RemoteStatementStoreSubmitRequest = {
   tag: "V1";
-  value: V01RemoteStatementStoreSubmitRequest;
+  value: SignedStatement;
 };
 
 export const RemoteStatementStoreSubmitRequest: S.Codec<RemoteStatementStoreSubmitRequest> =
   S.lazy(
     (): S.Codec<RemoteStatementStoreSubmitRequest> =>
-      S.indexedTaggedUnion({
-        V1: [0, V01RemoteStatementStoreSubmitRequest] as const,
-      }),
-  );
-
-/** Versioned wrapper for [`v01::RemoteStatementStoreSubmitResponse`] and older versions. */
-export type RemoteStatementStoreSubmitResponse = {
-  tag: "V1";
-  value: V01RemoteStatementStoreSubmitResponse;
-};
-
-export const RemoteStatementStoreSubmitResponse: S.Codec<RemoteStatementStoreSubmitResponse> =
-  S.lazy(
-    (): S.Codec<RemoteStatementStoreSubmitResponse> =>
-      S.indexedTaggedUnion({
-        V1: [0, V01RemoteStatementStoreSubmitResponse] as const,
-      }),
+      S.indexedTaggedUnion({ V1: [0, SignedStatement] as const }),
   );
 
 /** Versioned wrapper for [`v02::RemoteStatementStoreSubscribeItem`] and older versions. */
-export type RemoteStatementStoreSubscribeItem =
-  | { tag: "V1"; value: V01RemoteStatementStoreSubscribeItem }
-  | { tag: "V2"; value: V02RemoteStatementStoreSubscribeItem };
+export type RemoteStatementStoreSubscribeItem = {
+  tag: "V2";
+  value: V02RemoteStatementStoreSubscribeItem;
+};
 
 export const RemoteStatementStoreSubscribeItem: S.Codec<RemoteStatementStoreSubscribeItem> =
   S.lazy(
     (): S.Codec<RemoteStatementStoreSubscribeItem> =>
       S.indexedTaggedUnion({
-        V1: [0, V01RemoteStatementStoreSubscribeItem] as const,
-        V2: [1, V02RemoteStatementStoreSubscribeItem] as const,
+        V2: [0, V02RemoteStatementStoreSubscribeItem] as const,
       }),
   );
 
 /** Versioned wrapper for [`v02::RemoteStatementStoreSubscribeRequest`] and older versions. */
-export type RemoteStatementStoreSubscribeRequest =
-  | { tag: "V1"; value: V01RemoteStatementStoreSubscribeRequest }
-  | { tag: "V2"; value: V02RemoteStatementStoreSubscribeRequest };
+export type RemoteStatementStoreSubscribeRequest = {
+  tag: "V2";
+  value: V02RemoteStatementStoreSubscribeRequest;
+};
 
 export const RemoteStatementStoreSubscribeRequest: S.Codec<RemoteStatementStoreSubscribeRequest> =
   S.lazy(
     (): S.Codec<RemoteStatementStoreSubscribeRequest> =>
       S.indexedTaggedUnion({
-        V1: [0, V01RemoteStatementStoreSubscribeRequest] as const,
-        V2: [1, V02RemoteStatementStoreSubscribeRequest] as const,
+        V2: [0, V02RemoteStatementStoreSubscribeRequest] as const,
       }),
   );
 
@@ -2670,6 +2663,13 @@ export const TextProps: S.Codec<TextProps> = S.lazy(
       style: S.option(TypographyStyle),
       color: S.option(ColorToken),
     }) as S.Codec<TextProps>,
+);
+
+/** 32-byte statement topic. */
+export type Topic = Uint8Array;
+
+export const Topic: S.Codec<Topic> = S.lazy(
+  (): S.Codec<Topic> => S.byteArray(32),
 );
 
 /** Context information for transaction construction. */
@@ -3140,31 +3140,31 @@ export const V01HostCreateTransactionResponse: S.Codec<V01HostCreateTransactionR
   );
 
 /** Request to create a transaction with a non-product account. */
-export interface V01HostCreateTransactionWithNonProductAccountRequest {
+export interface V01HostCreateTransactionWithLegacyAccountRequest {
   /** Versioned transaction payload to sign. */
   payload: VersionedTxPayload;
 }
 
-export const V01HostCreateTransactionWithNonProductAccountRequest: S.Codec<V01HostCreateTransactionWithNonProductAccountRequest> =
+export const V01HostCreateTransactionWithLegacyAccountRequest: S.Codec<V01HostCreateTransactionWithLegacyAccountRequest> =
   S.lazy(
-    (): S.Codec<V01HostCreateTransactionWithNonProductAccountRequest> =>
+    (): S.Codec<V01HostCreateTransactionWithLegacyAccountRequest> =>
       S.struct({
         payload: VersionedTxPayload,
-      }) as S.Codec<V01HostCreateTransactionWithNonProductAccountRequest>,
+      }) as S.Codec<V01HostCreateTransactionWithLegacyAccountRequest>,
   );
 
 /** Response containing a transaction created with a non-product account. */
-export interface V01HostCreateTransactionWithNonProductAccountResponse {
+export interface V01HostCreateTransactionWithLegacyAccountResponse {
   /** SCALE-encoded signed transaction. */
   transaction: Uint8Array;
 }
 
-export const V01HostCreateTransactionWithNonProductAccountResponse: S.Codec<V01HostCreateTransactionWithNonProductAccountResponse> =
+export const V01HostCreateTransactionWithLegacyAccountResponse: S.Codec<V01HostCreateTransactionWithLegacyAccountResponse> =
   S.lazy(
-    (): S.Codec<V01HostCreateTransactionWithNonProductAccountResponse> =>
+    (): S.Codec<V01HostCreateTransactionWithLegacyAccountResponse> =>
       S.struct({
         transaction: S.bytes,
-      }) as S.Codec<V01HostCreateTransactionWithNonProductAccountResponse>,
+      }) as S.Codec<V01HostCreateTransactionWithLegacyAccountResponse>,
   );
 
 /** Device capability to request access to. */
@@ -3227,17 +3227,17 @@ export const V01HostFeatureSupportedResponse: S.Codec<V01HostFeatureSupportedRes
   );
 
 /** Response containing all non-product accounts owned by the user. */
-export interface V01HostGetNonProductAccountsResponse {
+export interface V01HostGetLegacyAccountsResponse {
   /** Non-product accounts. */
   accounts: Array<Account>;
 }
 
-export const V01HostGetNonProductAccountsResponse: S.Codec<V01HostGetNonProductAccountsResponse> =
+export const V01HostGetLegacyAccountsResponse: S.Codec<V01HostGetLegacyAccountsResponse> =
   S.lazy(
-    (): S.Codec<V01HostGetNonProductAccountsResponse> =>
+    (): S.Codec<V01HostGetLegacyAccountsResponse> =>
       S.struct({
         accounts: S.vec(Account),
-      }) as S.Codec<V01HostGetNonProductAccountsResponse>,
+      }) as S.Codec<V01HostGetLegacyAccountsResponse>,
   );
 
 /** Request to negotiate the wire codec version. */
@@ -3482,8 +3482,11 @@ export const V01HostSignRawRequest: S.Codec<V01HostSignRawRequest> = S.lazy(
     }) as S.Codec<V01HostSignRawRequest>,
 );
 
-/** Request from the host asking the product to render a custom chat message. */
-export interface V01ProductChatCustomMessageRenderSubscribeItem {
+/**
+ * Subscribe payload identifying the chat message to render. The host responds
+ * with a stream of [`CustomRendererNode`] trees describing the rendered UI.
+ */
+export interface V01ProductChatCustomMessageRenderSubscribeRequest {
   /** Message identifier. */
   messageId: string;
   /** Application-defined message type. */
@@ -3492,14 +3495,14 @@ export interface V01ProductChatCustomMessageRenderSubscribeItem {
   payload: Uint8Array;
 }
 
-export const V01ProductChatCustomMessageRenderSubscribeItem: S.Codec<V01ProductChatCustomMessageRenderSubscribeItem> =
+export const V01ProductChatCustomMessageRenderSubscribeRequest: S.Codec<V01ProductChatCustomMessageRenderSubscribeRequest> =
   S.lazy(
-    (): S.Codec<V01ProductChatCustomMessageRenderSubscribeItem> =>
+    (): S.Codec<V01ProductChatCustomMessageRenderSubscribeRequest> =>
       S.struct({
         messageId: S.str,
         messageType: S.str,
         payload: S.bytes,
-      }) as S.Codec<V01ProductChatCustomMessageRenderSubscribeItem>,
+      }) as S.Codec<V01ProductChatCustomMessageRenderSubscribeRequest>,
   );
 
 /** Parameters for [`crate::api::ChainInteraction::remote_chain_head_body`]. */
@@ -4082,34 +4085,6 @@ export const V01RemoteStatementStoreCreateProofResponse: S.Codec<V01RemoteStatem
       }) as S.Codec<V01RemoteStatementStoreCreateProofResponse>,
   );
 
-/** Request to submit a statement. */
-export interface V01RemoteStatementStoreSubmitRequest {
-  /** SCALE-encoded statement payload. */
-  statement: Uint8Array;
-}
-
-export const V01RemoteStatementStoreSubmitRequest: S.Codec<V01RemoteStatementStoreSubmitRequest> =
-  S.lazy(
-    (): S.Codec<V01RemoteStatementStoreSubmitRequest> =>
-      S.struct({
-        statement: S.bytes,
-      }) as S.Codec<V01RemoteStatementStoreSubmitRequest>,
-  );
-
-/** Response containing the submitted statement identifier. */
-export interface V01RemoteStatementStoreSubmitResponse {
-  /** Statement identifier assigned by the host. */
-  statementId: string;
-}
-
-export const V01RemoteStatementStoreSubmitResponse: S.Codec<V01RemoteStatementStoreSubmitResponse> =
-  S.lazy(
-    (): S.Codec<V01RemoteStatementStoreSubmitResponse> =>
-      S.struct({
-        statementId: S.str,
-      }) as S.Codec<V01RemoteStatementStoreSubmitResponse>,
-  );
-
 /** Item containing statements delivered by the statement store subscription. */
 export interface V01RemoteStatementStoreSubscribeItem {
   /** Signed statements matching the subscription. */
@@ -4136,6 +4111,23 @@ export const V01RemoteStatementStoreSubscribeRequest: S.Codec<V01RemoteStatement
       S.struct({
         topics: S.vec(S.byteArray(32)),
       }) as S.Codec<V01RemoteStatementStoreSubscribeRequest>,
+  );
+
+/**
+ * V0.2 response for [`crate::api::AccountManagement::host_account_get`].
+ * Wraps a [`ProductAccount`] (no name field).
+ */
+export interface V02HostAccountGetResponse {
+  /** Retrieved product account. */
+  account: ProductAccount;
+}
+
+export const V02HostAccountGetResponse: S.Codec<V02HostAccountGetResponse> =
+  S.lazy(
+    (): S.Codec<V02HostAccountGetResponse> =>
+      S.struct({
+        account: ProductAccount,
+      }) as S.Codec<V02HostAccountGetResponse>,
   );
 
 /**
@@ -4278,7 +4270,7 @@ export const V02HostDevicePermissionRequest: S.Codec<V02HostDevicePermissionRequ
  */
 export type V02HostGetUserIdError =
   /** User denied the identity disclosure request. */
-  | { tag: "Rejected"; value: undefined }
+  | { tag: "PermissionDenied"; value: undefined }
   /** User is not logged in. */
   | { tag: "NotConnected"; value: undefined }
   /** Catch-all. */
@@ -4287,7 +4279,7 @@ export type V02HostGetUserIdError =
 export const V02HostGetUserIdError: S.Codec<V02HostGetUserIdError> = S.lazy(
   (): S.Codec<V02HostGetUserIdError> =>
     S.taggedUnion({
-      Rejected: S.unit,
+      PermissionDenied: S.unit,
       NotConnected: S.unit,
       Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
     }),
@@ -4299,8 +4291,8 @@ export const V02HostGetUserIdError: S.Codec<V02HostGetUserIdError> = S.lazy(
  * V0.2.
  */
 export interface V02HostGetUserIdResponse {
-  /** The user's primary DotNS identifier. */
-  dotNsIdentifier: string;
+  /** The user's primary DotNS username. */
+  primaryUsername: string;
   /** The user's primary public key. */
   publicKey: Uint8Array;
 }
@@ -4309,7 +4301,7 @@ export const V02HostGetUserIdResponse: S.Codec<V02HostGetUserIdResponse> =
   S.lazy(
     (): S.Codec<V02HostGetUserIdResponse> =>
       S.struct({
-        dotNsIdentifier: S.str,
+        primaryUsername: S.str,
         publicKey: S.bytes,
       }) as S.Codec<V02HostGetUserIdResponse>,
   );
@@ -4358,18 +4350,14 @@ export const V02HostPaymentBalanceSubscribeError: S.Codec<V02HostPaymentBalanceS
 /**
  * Current payment balance state pushed to subscribers.
  *
- * See [RFC 0006].
+ * See [RFC 0006]. V0.2: the `pending` field was removed; only `available`
+ * remains.
  *
  * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
  */
 export interface V02HostPaymentBalanceSubscribeItem {
   /** Balance that can be spent right now. */
   available: Balance;
-  /**
-   * Balance the user possesses but cannot spend yet (e.g. in recycling
-   * stage).
-   */
-  pending: Balance;
 }
 
 export const V02HostPaymentBalanceSubscribeItem: S.Codec<V02HostPaymentBalanceSubscribeItem> =
@@ -4377,7 +4365,6 @@ export const V02HostPaymentBalanceSubscribeItem: S.Codec<V02HostPaymentBalanceSu
     (): S.Codec<V02HostPaymentBalanceSubscribeItem> =>
       S.struct({
         available: Balance,
-        pending: Balance,
       }) as S.Codec<V02HostPaymentBalanceSubscribeItem>,
   );
 
@@ -4389,8 +4376,8 @@ export const V02HostPaymentBalanceSubscribeItem: S.Codec<V02HostPaymentBalanceSu
  * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
  */
 export type V02HostPaymentRequestError =
-  /** User denied the payment request. */
-  | { tag: "Denied"; value: undefined }
+  /** User rejected the payment request. */
+  | { tag: "Rejected"; value: undefined }
   /** User's available balance is not sufficient for the requested amount. */
   | { tag: "InsufficientBalance"; value: undefined }
   /** Catch-all. */
@@ -4400,7 +4387,7 @@ export const V02HostPaymentRequestError: S.Codec<V02HostPaymentRequestError> =
   S.lazy(
     (): S.Codec<V02HostPaymentRequestError> =>
       S.taggedUnion({
-        Denied: S.unit,
+        Rejected: S.unit,
         InsufficientBalance: S.unit,
         Unknown: S.struct({ reason: S.str }) as S.Codec<{ reason: string }>,
       }),
@@ -4617,24 +4604,25 @@ export const V02HostSignPayloadRequest: S.Codec<V02HostSignPayloadRequest> =
   );
 
 /**
- * A raw signing request pairing an account with raw data.
+ * A raw signing request pairing an account with the payload to sign.
  *
- * V0.2: `address` replaced with `account: ProductAccountId` per [RFC 0005].
+ * V0.2: `address` replaced with `account: ProductAccountId` per [RFC 0005];
+ * the `data` field was also renamed to `payload`.
  *
  * [RFC 0005]: https://github.com/paritytech/triangle-js-sdks/pull/82
  */
 export interface V02HostSignRawRequest {
-  /** Product account that will sign this data. */
+  /** Product account that will sign this payload. */
   account: ProductAccountId;
-  /** The data to sign. */
-  data: RawPayload;
+  /** The payload to sign. */
+  payload: RawPayload;
 }
 
 export const V02HostSignRawRequest: S.Codec<V02HostSignRawRequest> = S.lazy(
   (): S.Codec<V02HostSignRawRequest> =>
     S.struct({
       account: ProductAccountId,
-      data: RawPayload,
+      payload: RawPayload,
     }) as S.Codec<V02HostSignRawRequest>,
 );
 
@@ -4652,10 +4640,20 @@ export const V02RemotePermissionRequest: S.Codec<V02RemotePermissionRequest> =
       }) as S.Codec<V02RemotePermissionRequest>,
   );
 
-/** Item containing statements delivered by the statement store subscription. */
+/**
+ * Page of signed statements delivered by the statement store subscription
+ * (RFC 0008). The `is_complete` flag distinguishes the historical-dump phase
+ * (`false`) from the live-update phase (`true`).
+ */
 export interface V02RemoteStatementStoreSubscribeItem {
   /** Signed statements matching the subscription. */
   statements: Array<SignedStatement>;
+  /**
+   * `false` while the host is still streaming the historical dump (more
+   * pages to follow). `true` once the dump is complete; all subsequent
+   * pages are also `true` and carry only newly-arrived statements.
+   */
+  isComplete: boolean;
 }
 
 export const V02RemoteStatementStoreSubscribeItem: S.Codec<V02RemoteStatementStoreSubscribeItem> =
@@ -4663,25 +4661,21 @@ export const V02RemoteStatementStoreSubscribeItem: S.Codec<V02RemoteStatementSto
     (): S.Codec<V02RemoteStatementStoreSubscribeItem> =>
       S.struct({
         statements: S.vec(SignedStatement),
+        isComplete: S.bool,
       }) as S.Codec<V02RemoteStatementStoreSubscribeItem>,
   );
 
-/**
- * Request to subscribe to statements, allowing richer topic matching than
- * plain topic vectors. Each position in the filter can be `Some(topic)` to
- * require an exact match or `None` to act as a wildcard.
- */
-export interface V02RemoteStatementStoreSubscribeRequest {
-  /** Positional topic matchers. `None` entries act as wildcards. */
-  topics: Array<Uint8Array | undefined>;
-}
+/** Request to subscribe to statements via a topic filter (RFC 0008). */
+export type V02RemoteStatementStoreSubscribeRequest =
+  /** AND: statement must contain every listed topic. */
+  | { tag: "MatchAll"; value: Array<Topic> }
+  /** OR: statement must contain at least one listed topic. */
+  | { tag: "MatchAny"; value: Array<Topic> };
 
 export const V02RemoteStatementStoreSubscribeRequest: S.Codec<V02RemoteStatementStoreSubscribeRequest> =
   S.lazy(
     (): S.Codec<V02RemoteStatementStoreSubscribeRequest> =>
-      S.struct({
-        topics: S.vec(S.option(S.byteArray(32))),
-      }) as S.Codec<V02RemoteStatementStoreSubscribeRequest>,
+      S.taggedUnion({ MatchAll: S.vec(Topic), MatchAny: S.vec(Topic) }),
   );
 
 /**
@@ -4698,7 +4692,7 @@ export const Version: S.Codec<Version> = S.lazy(
   (): S.Codec<Version> =>
     S.indexedTaggedUnion({
       V1: [0, S.unit] as const,
-      V2: [1, S.unit] as const,
+      V2: [0, S.unit] as const,
     }),
 );
 
