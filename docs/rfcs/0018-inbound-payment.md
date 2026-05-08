@@ -40,6 +40,32 @@ A neutral receiver-side surface lets all of these be built directly on TrUAPI wi
 4. **Distribution is product-chosen.** The host produces an opaque pay-code blob; the product decides how to deliver it (QR, NFC, statement store, deep link, custom transport).
 5. **Funds are scoped per-product.** Holdings are partitioned by a product-supplied opaque tag so the host can derivation-namespace receiving keys and the product can build its own views. Funds in any of these buckets are nothing more than ordinary coins in the underlying private payment system, distinguished only by the seed-derivation namespace under which their public keys were generated.
 
+### Actors and Flows
+
+Every flow this RFC describes involves **four actors**: two products (the calling SPAs) and the TrUAPI host running in each product's user agent. A host owns its user's keys, chain connection, scoped holdings, and durable records. Hosts never speak to each other directly — the only substrate they share is the chain, plus a small host-mediated out-of-band channel for opaque payload delivery. Products see only opaque blobs; keys, derivation paths, and raw chain material stay inside the host they belong to.
+
+A typical interaction has a **receiver** side (a product that wants to be paid) and a **payer** side (a product whose user is paying). The same product plays either role on different occasions, and the spending primitive is the same whether the funds come from the user's general balance or from holdings the product previously accumulated.
+
+#### Receiving a payment
+
+1. The receiver product asks its host to allocate an **inbound code** representing "pay me X". The host derives fresh receiving keys, plans which denominations they will hold, and returns an opaque integrity-protected blob.
+2. The receiver product distributes that blob through any channel it chooses — QR on screen, NFC tap, statement-store post, deep link, custom relay. The host has no opinion about distribution.
+3. The payer product picks the inbound code up (its user scans the QR, its product fetches it from a statement-store topic, etc.) and asks its own host to pay it. The payer's host decodes and validates the code (integrity envelope, expiry against local clock), authorises with the user per host policy, draws funds from the chosen source, and submits the on-chain transfers. It MAY also carry a small opaque **attached** byte blob to the receiver side via a host-mediated out-of-band channel; products use this for refund channels, order references, encrypted memos, or anything they like.
+4. The receiver's host is watching the chain for the receiving keys it allocated. Once the transfers finalise, it emits `Received(evidence)` to the receiver product. The evidence carries the actual amount, a chain-anchor commitment, the `attached` payload (if any), and a record id.
+5. The payer's host sees the outbound payment progress to `Completed` (via RFC 0006's `host_payment_status_subscribe`).
+
+#### Spending product holdings
+
+When a product later wants to **send** funds it has accumulated — refund a payer, transfer to a sister product, settle out — it issues the same outbound primitive with `source = ProductHoldings(scope)`. The destination is again an inbound code: for refunds, that code typically arrived earlier as the `attached` payload of the original inbound payment, so the spender already has a refund channel without any further coordination with the original payer's product. Withdrawing to a regular blockchain account (offload) instead uses RFC 0006's `host_payment_request(amount, AccountId)`.
+
+#### Reserves
+
+A product can place a logical **reserve** on a portion of its scoped holdings to cover a future obligation — a refund window, a planned offload, a marketplace escrow. Reserves do not move coins; they only adjust how the host labels existing funds (`available` decreases, `reserved` increases). When the obligation resolves the product either consumes the reserve atomically by passing its id in the eventual outbound payment, or releases it back to `available` if no payment is needed.
+
+#### Records
+
+Every completed operation — inbound receipt, outbound settlement, reserve creation, reserve termination — produces exactly one durable **record** on the host that performed it. The record's id is always equal to the originating operation's id, so a product never maintains a parallel id space. Records are the recovery path: after a host restart or a device migration the product persists only its operation ids and calls `host_payment_record_get(id)` for any whose terminal state it had not already observed.
+
 ### API Calls
 
 #### 1. Allocate a receiving target
