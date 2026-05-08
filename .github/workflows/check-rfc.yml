@@ -1,0 +1,29 @@
+name: Check RFC
+
+on:
+  pull_request:
+    paths:
+      - 'docs/rfcs/**'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-rfc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── Check that the RFC document exists and index is updated ──
+      - name: Require RFC document
+        run: |
+          BASE=${{ github.event.pull_request.base.sha }}
+          CHANGED=$(git diff --name-only "$BASE"...HEAD -- docs/rfcs/)
+          if [ -z "$CHANGED" ]; then
+            echo "::error::RFC PRs must include an RFC document in docs/rfcs/."
+            exit 1
+          fi
+          echo "RFC changes detected:"
+          echo "$CHANGED"
