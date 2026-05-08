@@ -20,14 +20,20 @@ The interactive playground lets you browse every method, edit request payloads, 
 
 **Live:** [truapi-playground.dot.li](https://truapi-playground.dot.li/) (open from inside the Polkadot Desktop Browser)
 
-## Use it from a product
+## Usage
+
+`@parity/truapi` is the low-level generated protocol client. Product apps should normally use a higher-level product SDK, such as [`paritytech/product-sdk`](https://github.com/paritytech/product-sdk), while SDK and host-integration layers can depend on this package directly.
 
 ```bash
 npm install @parity/truapi
 ```
 
 ```ts
-import { createClient, createMessagePortProvider, createTransport } from "@parity/truapi";
+import {
+  createClient,
+  createMessagePortProvider,
+  createTransport,
+} from "@parity/truapi";
 
 const transport = createTransport(createMessagePortProvider(port));
 const truapi = createClient(transport);
@@ -59,10 +65,10 @@ scripts/codegen.sh       Regenerate the TS client from the Rust source
 
 1. The protocol is defined as Rust traits in [`rust/crates/truapi/`](rust/crates/truapi/), with each method tagged `#[wire(id = N)]` for a stable byte-level dispatch table.
 2. `truapi-codegen` reads rustdoc JSON for that crate and generates the TypeScript client in `js/packages/truapi/src/generated/`.
-3. Products call the typed client; the transport encodes SCALE frames and ships them over `MessagePort` (or `postMessage` in iframe mode) to the host.
+3. Higher-level SDKs wrap the typed client; the transport encodes SCALE frames and ships them over `MessagePort` (or `postMessage` in iframe mode) to the host.
 4. The host decodes the frame, dispatches to the matching trait method, encodes the response, and ships it back.
 
-Wire ids are append-only after F1: existing ids never change, so deployed products stay compatible across protocol revisions.
+Wire ids are append-only: existing ids never change, so deployed products stay compatible across protocol revisions.
 
 ## Develop
 

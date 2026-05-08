@@ -400,7 +400,6 @@ export function getMethodBinding(
             } catch {
               /* benign */
             }
-            onEnd();
           },
         };
       },
