@@ -18,11 +18,9 @@ pub trait Payment: Send + Sync {
     /// Subscribe to payment balance updates.
     ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export function watchPaymentBalance(provider: Provider) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export function watchPaymentBalance(truapi: Client) {
     ///   return truapi.payment.paymentBalanceSubscribe({
     ///     onData: (balance) => console.log(balance),
     ///     onError: console.error,
@@ -42,23 +40,13 @@ pub trait Payment: Send + Sync {
 
     /// Request a payment from the user.
     ///
-    /// ```truapi-playground-request
-    /// { "amount": "0n", "destination": "0x0000000000000000000000000000000000000000000000000000000000000000" }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function requestPayment(
-    ///   provider: Provider,
-    ///   amount: bigint,
-    ///   destination: Uint8Array,
-    /// ) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export async function requestPayment(truapi: Client) {
     ///   const result = await truapi.payment.paymentRequest({
-    ///     amount,
-    ///     destination,
+    ///     amount: 0n,
+    ///     destination: new Uint8Array(),
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;
@@ -76,18 +64,12 @@ pub trait Payment: Send + Sync {
 
     /// Subscribe to payment lifecycle updates for a specific payment.
     ///
-    /// ```truapi-playground-request
-    /// { "paymentId": "payment-id" }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export function watchPaymentStatus(provider: Provider, paymentId: string) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export function watchPaymentStatus(truapi: Client) {
     ///   return truapi.payment.paymentStatusSubscribe({
-    ///     request: { paymentId },
+    ///     request: { paymentId: "payment-id" },
     ///     onData: (status) => console.log(status),
     ///     onError: console.error,
     ///     onInterrupt: () => console.log("interrupted"),
@@ -106,22 +88,13 @@ pub trait Payment: Send + Sync {
 
     /// Top up the user's payment balance.
     ///
-    /// ```truapi-playground-request
-    /// { "amount": "0n", "source": { "tag": "ProductAccount", "value": { "derivationIndex": 0 } } }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function topUpPaymentBalance(provider: Provider, amount: bigint) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export async function topUpPaymentBalance(truapi: Client) {
     ///   const result = await truapi.payment.paymentTopUp({
-    ///     amount,
-    ///     source: {
-    ///       tag: "ProductAccount",
-    ///       value: { derivationIndex: 0 },
-    ///     },
+    ///     amount: 0n,
+    ///     source: { tag: "ProductAccount", value: { derivationIndex: 0 } },
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;

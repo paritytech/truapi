@@ -9,7 +9,10 @@
     "build": "next build",
     "lint": "next lint",
     "deploy:test": "yarn build && bulletin-deploy ./out truapi-playground.dot && rm out.car",
-    "lint:fix": "next lint --fix"
+    "lint:fix": "next lint --fix",
+    "e2e": "playwright test",
+    "e2e:headed": "playwright test --headed",
+    "e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@parity/truapi": "file:../js/packages/truapi",
@@ -18,6 +21,7 @@
     "react-dom": "^19.2.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.49.1",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",

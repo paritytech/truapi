@@ -3,75 +3,182 @@ import { err, ok, type Result } from "neverthrow";
 import { str, u8 } from "./scale.js";
 import { idForTag, tagForId } from "./generated/wire-table.js";
 
-/** Handle returned by `subscribe`. `unsubscribe` is idempotent;
- * `subscriptionId` is the transport-assigned id for the subscribe frame, which
- * methods that take a `followSubscriptionId` need to scope their request to
- * this subscription. */
+/**
+ * Handle returned by `TrUApiTransport.subscribe`.
+ **/
 export interface Subscription {
+  /**
+   * Stop the subscription. Calling this more than once has no additional effect.
+   **/
   unsubscribe: () => void;
+
+  /**
+   * Transport-assigned request id for the subscription start frame.
+   *
+   * Methods that accept a `followSubscriptionId` use this value to scope
+   * follow-up requests to a specific active subscription.
+   **/
   subscriptionId: string;
 }
 
-/** Options object accepted by `TrUApiTransport.request`. Generated client
- * methods supply encoded payload bytes and own response decoding. */
+/**
+ * Options accepted by `TrUApiTransport.request`.
+ **/
 export interface RequestParams<Response> {
+  /**
+   * Canonical TrUAPI method name, without the frame suffix.
+   **/
   method: string;
+
+  /**
+   * SCALE-encoded request payload bytes.
+   **/
   payload: Uint8Array;
+
+  /**
+   * Decode SCALE response payload bytes into the generated client return type.
+   **/
   decodeResponse: (payload: Uint8Array) => Response;
 }
 
-/** Options object accepted by generated subscription methods. */
+/**
+ * Typed callbacks accepted by generated subscription methods.
+ **/
 export interface SubscribeCallbacks<Item> {
+  /**
+   * Called with each successfully decoded subscription item.
+   **/
   onData: (data: Item) => void;
+
+  /**
+   * Called when the peer sends an interrupt frame for the subscription.
+   **/
   onInterrupt?: () => void;
+
+  /**
+   * Called when a received item cannot be decoded by the generated client.
+   **/
   onError?: (error: Error) => void;
+
+  /**
+   * Called when the underlying provider closes while the subscription is active.
+   **/
   onClose?: (error: Error) => void;
 }
 
-/** Options object accepted by `TrUApiTransport.subscribe`. Generated client
- * methods supply encoded payload bytes and decode receive/interrupt payloads in
- * their callbacks. */
+/**
+ * Options accepted by `TrUApiTransport.subscribe`.
+ **/
 export interface SubscribeParams {
+  /**
+   * Canonical TrUAPI method name, without the frame suffix.
+   **/
   method: string;
+
+  /**
+   * SCALE-encoded subscription start payload bytes.
+   **/
   payload: Uint8Array;
+
+  /**
+   * Called with raw SCALE receive payload bytes.
+   **/
   onData: (payload: Uint8Array) => void;
+
+  /**
+   * Called when the peer sends an interrupt frame for the subscription.
+   **/
   onInterrupt?: () => void;
+
+  /**
+   * Called when the underlying provider closes while the subscription is active.
+   **/
   onClose?: (error: Error) => void;
 }
 
-/** Transport used by generated client stubs. Typed values exist only at the
- * generated client boundary; everything that crosses the wire is SCALE-encoded
- * bytes. */
+/**
+ * Byte-level transport used by generated client stubs.
+ **/
 export interface TrUApiTransport {
+  /**
+   * Highest TrUAPI protocol version supported by this generated client.
+   **/
   readonly truapiVersion: number;
+
+  /**
+   * SCALE codec version negotiated through the handshake.
+   **/
   readonly codecVersion: number;
+
+  /**
+   * Send a one-shot request and resolve with the decoded response payload.
+   **/
   request<Response>(params: RequestParams<Response>): Promise<Response>;
+
+  /**
+   * Start a subscription and return a handle that can stop it.
+   **/
   subscribe<Item = unknown>(params: SubscribeParams): Subscription;
 }
 
-/** Tagged payload on the wire. */
+/**
+ * Tagged payload inside a TrUAPI wire frame.
+ **/
 export interface Payload {
+  /**
+   * Wire-table tag, such as `host_account_get_request`.
+   **/
   tag: string;
+
+  /**
+   * SCALE-encoded payload body.
+   **/
   value: Uint8Array;
 }
 
-/** Top-level wire message. Wire format:
- *   [requestId: SCALE str][discriminant: u8][payload bytes...]
- * The discriminant maps to method/kind tag via the auto-generated wire table.
- */
+/**
+ * Top-level TrUAPI wire message.
+ **/
 export interface ProtocolMessage {
+  /**
+   * Request id used to correlate request/response and subscription frames.
+   **/
   requestId: string;
+
+  /**
+   * Tagged SCALE payload carried by this frame.
+   **/
   payload: Payload;
 }
 
-/** Raw message pipe abstraction. Frames are always SCALE-encoded bytes. */
+/**
+ * Raw message pipe abstraction used by the transport.
+ **/
 export interface Provider {
+  /**
+   * Send a complete SCALE-encoded wire frame to the peer.
+   **/
   postMessage(message: Uint8Array): void;
+
+  /**
+   * Register a callback for inbound SCALE-encoded wire frames.
+   **/
   subscribe(callback: (message: Uint8Array) => void): () => void;
+
+  /**
+   * Register a callback for provider-level close or failure events.
+   **/
   subscribeClose?(callback: (error: Error) => void): () => void;
+
+  /**
+   * Release provider resources and close the underlying pipe.
+   **/
   dispose(): void;
 }
 
+/**
+ * Concatenate byte arrays without mutating the source arrays.
+ **/
 function concatBytes(parts: Uint8Array[]): Uint8Array {
   let total = 0;
   for (const p of parts) total += p.length;
@@ -84,8 +191,9 @@ function concatBytes(parts: Uint8Array[]): Uint8Array {
   return out;
 }
 
-/** Encode a `ProtocolMessage` into the SCALE wire frame. Returns `Err` when
- * the payload tag is not in the wire table. */
+/**
+ * Encode a `ProtocolMessage` into a SCALE wire frame.
+ **/
 export function encodeWireMessage(
   message: ProtocolMessage,
 ): Result<Uint8Array, Error> {
@@ -102,8 +210,9 @@ export function encodeWireMessage(
   );
 }
 
-/** Decode a SCALE wire frame back into a `ProtocolMessage`. Returns `Err` for
- * truncated frames or unknown discriminants. */
+/**
+ * Decode a SCALE wire frame into a `ProtocolMessage`.
+ **/
 export function decodeWireMessage(
   message: Uint8Array,
 ): Result<ProtocolMessage, Error> {
@@ -134,9 +243,9 @@ export function decodeWireMessage(
   return ok({ requestId, payload: { tag, value: valueCopy } });
 }
 
-/** Returns the byte offset just past the SCALE-encoded compact-length-prefixed
- * string at the start of `bytes`. Mirrors what `str.dec` consumes. Bounds-checks
- * each mode so a truncated frame errors instead of silently reading `undefined`. */
+/**
+ * Return the byte offset just past the leading SCALE-encoded string.
+ **/
 function scanStrEnd(bytes: Uint8Array): Result<number, Error> {
   if (bytes.length < 1) {
     return err(new Error("compact-len: empty buffer"));
@@ -175,7 +284,9 @@ function scanStrEnd(bytes: Uint8Array): Result<number, Error> {
   return ok(total);
 }
 
-/** Create a provider from a MessagePort (web/electron). */
+/**
+ * Create a provider from a web or Electron `MessagePort`.
+ **/
 export function createMessagePortProvider(
   port: MessagePort | Promise<MessagePort>,
 ): Provider {
@@ -185,6 +296,9 @@ export function createMessagePortProvider(
   const listeners: Array<(message: Uint8Array) => void> = [];
   const closeListeners: Array<(error: Error) => void> = [];
 
+  /**
+   * Notify close listeners once and drop queued outbound messages.
+   **/
   function notifyClose(error: unknown) {
     const nextError = error instanceof Error ? error : new Error(String(error));
     if (closedError) {
@@ -229,6 +343,9 @@ export function createMessagePortProvider(
     });
 
   return {
+    /**
+     * Send bytes through the resolved port or queue them until it resolves.
+     **/
     postMessage(message) {
       if (closedError) {
         throw closedError;
@@ -245,6 +362,10 @@ export function createMessagePortProvider(
         pending.push(message);
       }
     },
+
+    /**
+     * Register an inbound message listener.
+     **/
     subscribe(callback) {
       listeners.push(callback);
       return () => {
@@ -252,6 +373,10 @@ export function createMessagePortProvider(
         if (idx >= 0) listeners.splice(idx, 1);
       };
     },
+
+    /**
+     * Register a close listener.
+     **/
     subscribeClose(callback) {
       if (closedError) {
         callback(closedError);
@@ -264,127 +389,14 @@ export function createMessagePortProvider(
         if (idx >= 0) closeListeners.splice(idx, 1);
       };
     },
+
+    /**
+     * Dispose the provider and close the port if it has resolved.
+     **/
     dispose() {
       notifyClose(new Error("message port provider disposed"));
       try {
         resolvedPort?.close();
-      } catch {
-        // ignore duplicate close during shutdown
-      }
-      listeners.length = 0;
-      closeListeners.length = 0;
-    },
-  };
-}
-
-export interface WebSocketProviderOptions {
-  /** Override WebSocket constructor (tests / non-browser runtimes). */
-  WebSocket?: typeof WebSocket;
-}
-
-/** Create a provider backed by a binary WebSocket (localhost bridge). */
-export function createWebSocketProvider(
-  url: string,
-  options: WebSocketProviderOptions = {},
-): Provider {
-  const WebSocketCtor = options.WebSocket ?? globalThis.WebSocket;
-  if (!WebSocketCtor) {
-    throw new Error("WebSocket constructor not available in this environment");
-  }
-
-  const socket = new WebSocketCtor(url);
-  socket.binaryType = "arraybuffer";
-
-  let closedError: Error | null = null;
-  const pending: Uint8Array[] = [];
-  const listeners: Array<(message: Uint8Array) => void> = [];
-  const closeListeners: Array<(error: Error) => void> = [];
-
-  function notifyClose(error: unknown) {
-    const nextError = error instanceof Error ? error : new Error(String(error));
-    if (closedError) {
-      return;
-    }
-    closedError = nextError;
-    pending.length = 0;
-    for (const listener of [...closeListeners]) {
-      listener(nextError);
-    }
-  }
-
-  socket.onopen = () => {
-    for (const msg of pending) {
-      try {
-        socket.send(msg);
-      } catch (error) {
-        notifyClose(error);
-        return;
-      }
-    }
-    pending.length = 0;
-  };
-
-  socket.onmessage = (event: MessageEvent) => {
-    const data = event.data;
-    if (!(data instanceof ArrayBuffer)) {
-      return;
-    }
-    const bytes = new Uint8Array(data);
-    for (const listener of listeners) listener(bytes);
-  };
-
-  socket.onerror = () => {
-    notifyClose(new Error("websocket error"));
-  };
-
-  socket.onclose = (event: CloseEvent) => {
-    notifyClose(
-      new Error(
-        `websocket closed (code=${event.code}, reason=${event.reason || "unknown"})`,
-      ),
-    );
-  };
-
-  return {
-    postMessage(message) {
-      if (closedError) {
-        throw closedError;
-      }
-      if (socket.readyState === WebSocketCtor.OPEN) {
-        try {
-          socket.send(message);
-        } catch (error) {
-          notifyClose(error);
-          throw error instanceof Error ? error : new Error(String(error));
-        }
-      } else if (socket.readyState === WebSocketCtor.CONNECTING) {
-        pending.push(message);
-      } else {
-        throw new Error("websocket not open");
-      }
-    },
-    subscribe(callback) {
-      listeners.push(callback);
-      return () => {
-        const idx = listeners.indexOf(callback);
-        if (idx >= 0) listeners.splice(idx, 1);
-      };
-    },
-    subscribeClose(callback) {
-      if (closedError) {
-        callback(closedError);
-        return () => {};
-      }
-      closeListeners.push(callback);
-      return () => {
-        const idx = closeListeners.indexOf(callback);
-        if (idx >= 0) closeListeners.splice(idx, 1);
-      };
-    },
-    dispose() {
-      notifyClose(new Error("websocket provider disposed"));
-      try {
-        socket.close();
       } catch {
         // ignore duplicate close during shutdown
       }

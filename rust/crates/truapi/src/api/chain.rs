@@ -29,21 +29,12 @@ use crate::{CallContext, CallError, Subscription};
 pub trait ChainInteraction: Send + Sync {
     /// Follow the chain head and receive block events.
     ///
-    /// ```truapi-playground-request
-    /// { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2", "withRuntime": false }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export function followChainHead(
-    ///   provider: Provider,
-    ///   request: T.V01RemoteChainHeadFollowRequest,
-    /// ) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export function followChainHead(truapi: Client) {
     ///   return truapi.chainInteraction.chainHeadFollow({
-    ///     request,
+    ///     request: { genesisHash: new Uint8Array(), withRuntime: false },
     ///     onData: (item) => console.log(item),
     ///     onError: console.error,
     ///     onInterrupt: () => console.log("interrupted"),
@@ -62,20 +53,15 @@ pub trait ChainInteraction: Send + Sync {
 
     /// Fetch a block header.
     ///
-    /// ```truapi-playground-request
-    /// { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2", "followSubscriptionId": "", "hash": "0x0000000000000000000000000000000000000000000000000000000000000000" }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function getChainHeadHeader(
-    ///   provider: Provider,
-    ///   request: T.V01RemoteChainHeadHeaderRequest,
-    /// ) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
-    ///   const result = await truapi.chainInteraction.chainHeadHeader(request);
+    /// export async function getChainHeadHeader(truapi: Client) {
+    ///   const result = await truapi.chainInteraction.chainHeadHeader({
+    ///     genesisHash: new Uint8Array(),
+    ///     followSubscriptionId: "",
+    ///     hash: new Uint8Array(),
+    ///   });
     ///
     ///   if (result.isErr()) throw result.error;
     ///   return result.value;
@@ -92,20 +78,15 @@ pub trait ChainInteraction: Send + Sync {
 
     /// Fetch a block body.
     ///
-    /// ```truapi-playground-request
-    /// { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2", "followSubscriptionId": "", "hash": "0x0000000000000000000000000000000000000000000000000000000000000000" }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function getChainHeadBody(
-    ///   provider: Provider,
-    ///   request: T.V01RemoteChainHeadBodyRequest,
-    /// ) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
-    ///   const result = await truapi.chainInteraction.chainHeadBody(request);
+    /// export async function getChainHeadBody(truapi: Client) {
+    ///   const result = await truapi.chainInteraction.chainHeadBody({
+    ///     genesisHash: new Uint8Array(),
+    ///     followSubscriptionId: "",
+    ///     hash: new Uint8Array(),
+    ///   });
     ///
     ///   if (result.isErr()) throw result.error;
     ///   return result.value;
@@ -122,20 +103,18 @@ pub trait ChainInteraction: Send + Sync {
 
     /// Query runtime storage at a specific block.
     ///
-    /// ```truapi-playground-request
-    /// { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2", "followSubscriptionId": "", "hash": "0x0000000000000000000000000000000000000000000000000000000000000000", "items": [{ "key": "0x26aa394eea5630e07c48ae0c9558cef7", "queryType": { "tag": "Value" } }], "childTrie": null }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function getChainHeadStorage(
-    ///   provider: Provider,
-    ///   request: T.V01RemoteChainHeadStorageRequest,
-    /// ) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
-    ///   const result = await truapi.chainInteraction.chainHeadStorage(request);
+    /// export async function getChainHeadStorage(truapi: Client) {
+    ///   const result = await truapi.chainInteraction.chainHeadStorage({
+    ///     genesisHash: new Uint8Array(),
+    ///     followSubscriptionId: "",
+    ///     hash: new Uint8Array(),
+    ///     items: [
+    ///       { key: new Uint8Array(), queryType: { tag: "Value", value: undefined } },
+    ///     ],
+    ///   });
     ///
     ///   if (result.isErr()) throw result.error;
     ///   return result.value;
@@ -152,20 +131,17 @@ pub trait ChainInteraction: Send + Sync {
 
     /// Invoke a runtime call at a specific block.
     ///
-    /// ```truapi-playground-request
-    /// { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2", "followSubscriptionId": "", "hash": "0x0000000000000000000000000000000000000000000000000000000000000000", "function": "Core_version", "callParameters": "0x" }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function callChainHeadRuntime(
-    ///   provider: Provider,
-    ///   request: T.V01RemoteChainHeadCallRequest,
-    /// ) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
-    ///   const result = await truapi.chainInteraction.chainHeadCall(request);
+    /// export async function callChainHeadRuntime(truapi: Client) {
+    ///   const result = await truapi.chainInteraction.chainHeadCall({
+    ///     genesisHash: new Uint8Array(),
+    ///     followSubscriptionId: "",
+    ///     hash: new Uint8Array(),
+    ///     function: "Core_version",
+    ///     callParameters: new Uint8Array(),
+    ///   });
     ///
     ///   if (result.isErr()) throw result.error;
     ///   return result.value;
@@ -182,20 +158,15 @@ pub trait ChainInteraction: Send + Sync {
 
     /// Release pinned blocks.
     ///
-    /// ```truapi-playground-request
-    /// { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2", "followSubscriptionId": "", "hashes": ["0x0000000000000000000000000000000000000000000000000000000000000000"] }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function unpinChainHead(
-    ///   provider: Provider,
-    ///   request: T.V01RemoteChainHeadUnpinRequest,
-    /// ) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
-    ///   const result = await truapi.chainInteraction.chainHeadUnpin(request);
+    /// export async function unpinChainHead(truapi: Client) {
+    ///   const result = await truapi.chainInteraction.chainHeadUnpin({
+    ///     genesisHash: new Uint8Array(),
+    ///     followSubscriptionId: "",
+    ///     hashes: [new Uint8Array()],
+    ///   });
     ///
     ///   if (result.isErr()) throw result.error;
     /// }
@@ -211,20 +182,15 @@ pub trait ChainInteraction: Send + Sync {
 
     /// Continue a paused chain-head operation.
     ///
-    /// ```truapi-playground-request
-    /// { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2", "followSubscriptionId": "", "operationId": "op-id" }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function continueChainHeadOperation(
-    ///   provider: Provider,
-    ///   request: T.V01RemoteChainHeadContinueRequest,
-    /// ) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
-    ///   const result = await truapi.chainInteraction.chainHeadContinue(request);
+    /// export async function continueChainHeadOperation(truapi: Client) {
+    ///   const result = await truapi.chainInteraction.chainHeadContinue({
+    ///     genesisHash: new Uint8Array(),
+    ///     followSubscriptionId: "",
+    ///     operationId: "op-id",
+    ///   });
     ///
     ///   if (result.isErr()) throw result.error;
     /// }
@@ -240,20 +206,15 @@ pub trait ChainInteraction: Send + Sync {
 
     /// Stop a chain-head operation.
     ///
-    /// ```truapi-playground-request
-    /// { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2", "followSubscriptionId": "", "operationId": "op-id" }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function stopChainHeadOperation(
-    ///   provider: Provider,
-    ///   request: T.V01RemoteChainHeadStopOperationRequest,
-    /// ) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
-    ///   const result = await truapi.chainInteraction.chainHeadStopOperation(request);
+    /// export async function stopChainHeadOperation(truapi: Client) {
+    ///   const result = await truapi.chainInteraction.chainHeadStopOperation({
+    ///     genesisHash: new Uint8Array(),
+    ///     followSubscriptionId: "",
+    ///     operationId: "op-id",
+    ///   });
     ///
     ///   if (result.isErr()) throw result.error;
     /// }
@@ -270,18 +231,12 @@ pub trait ChainInteraction: Send + Sync {
 
     /// Fetch the canonical genesis hash for a chain.
     ///
-    /// ```truapi-playground-request
-    /// { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2" }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function getChainGenesisHash(provider: Provider, genesisHash: Uint8Array) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export async function getChainGenesisHash(truapi: Client) {
     ///   const result = await truapi.chainInteraction.chainSpecGenesisHash({
-    ///     genesisHash,
+    ///     genesisHash: new Uint8Array(),
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;
@@ -300,18 +255,12 @@ pub trait ChainInteraction: Send + Sync {
 
     /// Fetch the display name of a chain.
     ///
-    /// ```truapi-playground-request
-    /// { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2" }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function getChainName(provider: Provider, genesisHash: Uint8Array) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export async function getChainName(truapi: Client) {
     ///   const result = await truapi.chainInteraction.chainSpecChainName({
-    ///     genesisHash,
+    ///     genesisHash: new Uint8Array(),
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;
@@ -329,18 +278,12 @@ pub trait ChainInteraction: Send + Sync {
 
     /// Fetch the JSON-encoded properties of a chain.
     ///
-    /// ```truapi-playground-request
-    /// { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2" }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function getChainProperties(provider: Provider, genesisHash: Uint8Array) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export async function getChainProperties(truapi: Client) {
     ///   const result = await truapi.chainInteraction.chainSpecProperties({
-    ///     genesisHash,
+    ///     genesisHash: new Uint8Array(),
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;
@@ -358,23 +301,13 @@ pub trait ChainInteraction: Send + Sync {
 
     /// Broadcast a signed transaction.
     ///
-    /// ```truapi-playground-request
-    /// { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2", "transaction": "0x" }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function broadcastTransaction(
-    ///   provider: Provider,
-    ///   genesisHash: Uint8Array,
-    ///   transaction: Uint8Array,
-    /// ) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export async function broadcastTransaction(truapi: Client) {
     ///   const result = await truapi.chainInteraction.chainTransactionBroadcast({
-    ///     genesisHash,
-    ///     transaction,
+    ///     genesisHash: new Uint8Array(),
+    ///     transaction: new Uint8Array(),
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;
@@ -395,23 +328,13 @@ pub trait ChainInteraction: Send + Sync {
 
     /// Stop a transaction broadcast.
     ///
-    /// ```truapi-playground-request
-    /// { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2", "operationId": "op-id" }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function stopTransactionBroadcast(
-    ///   provider: Provider,
-    ///   genesisHash: Uint8Array,
-    ///   operationId: string,
-    /// ) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export async function stopTransactionBroadcast(truapi: Client) {
     ///   const result = await truapi.chainInteraction.chainTransactionStop({
-    ///     genesisHash,
-    ///     operationId,
+    ///     genesisHash: new Uint8Array(),
+    ///     operationId: "op-id",
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;

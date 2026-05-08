@@ -19,16 +19,10 @@ use crate::{CallContext, CallError, Subscription};
 pub trait Chat: Send + Sync {
     /// Create a chat room.
     ///
-    /// ```truapi-playground-request
-    /// { "roomId": "test-room", "name": "Test Room", "icon": "" }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function createRoom(provider: Provider) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export async function createRoom(truapi: Client) {
     ///   const result = await truapi.chat.chatCreateRoom({
     ///     roomId: "test-room",
     ///     name: "Test Room",
@@ -50,16 +44,10 @@ pub trait Chat: Send + Sync {
 
     /// Register a chat bot.
     ///
-    /// ```truapi-playground-request
-    /// { "botId": "test-bot", "name": "Test Bot", "icon": "" }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function registerBot(provider: Provider) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export async function registerBot(truapi: Client) {
     ///   const result = await truapi.chat.chatRegisterBot({
     ///     botId: "test-bot",
     ///     name: "Test Bot",
@@ -82,11 +70,9 @@ pub trait Chat: Send + Sync {
     /// Subscribe to the list of chat rooms.
     ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export function watchChatRooms(provider: Provider) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export function watchChatRooms(truapi: Client) {
     ///   return truapi.chat.chatListSubscribe({
     ///     onData: (rooms) => console.log(rooms),
     ///     onError: console.error,
@@ -105,19 +91,13 @@ pub trait Chat: Send + Sync {
 
     /// Post a message to a chat room.
     ///
-    /// ```truapi-playground-request
-    /// { "roomId": "test-room", "payload": { "tag": "Text", "value": "Hello from playground!" } }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function postChatMessage(provider: Provider) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export async function postChatMessage(truapi: Client) {
     ///   const result = await truapi.chat.chatPostMessage({
     ///     roomId: "test-room",
-    ///     payload: { tag: "Text", value: "Hello from product!" },
+    ///     payload: { tag: "Text", value: { text: "Hello from playground!" } },
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;
@@ -136,11 +116,9 @@ pub trait Chat: Send + Sync {
     /// Subscribe to received chat actions.
     ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export function watchChatActions(provider: Provider) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export function watchChatActions(truapi: Client) {
     ///   return truapi.chat.chatActionSubscribe({
     ///     onData: (action) => console.log(action),
     ///     onError: console.error,
@@ -161,21 +139,15 @@ pub trait Chat: Send + Sync {
     /// emitted item is a [`CustomRendererNode`](crate::v01::CustomRendererNode)
     /// tree describing the rendered UI.
     ///
-    /// ```truapi-playground-request
-    /// { "messageId": "msg-1", "messageType": "custom-render-demo", "payload": { "bytes": "0x" } }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export function renderCustomChatMessage(provider: Provider) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export function renderCustomChatMessage(truapi: Client) {
     ///   return truapi.chat.chatCustomMessageRenderSubscribe({
     ///     request: {
     ///       messageId: "msg-1",
     ///       messageType: "custom-render-demo",
-    ///       payload: { bytes: new Uint8Array() },
+    ///       payload: new Uint8Array(),
     ///     },
     ///     onData: (node) => console.log(node),
     ///     onError: console.error,
@@ -195,16 +167,10 @@ pub trait Chat: Send + Sync {
 
     /// Create a simple group chat room (V0.2+).
     ///
-    /// ```truapi-playground-request
-    /// { "roomId": "test-simple-group", "name": "Test Group", "icon": "" }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function createSimpleGroup(provider: Provider) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export async function createSimpleGroup(truapi: Client) {
     ///   const result = await truapi.chat.chatCreateSimpleGroup({
     ///     roomId: "test-simple-group",
     ///     name: "Test Group",

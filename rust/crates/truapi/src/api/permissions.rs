@@ -12,18 +12,13 @@ use crate::{CallContext, CallError};
 pub trait Permissions: Send + Sync {
     /// Request a device-capability permission from the user.
     ///
-    /// ```truapi-playground-request
-    /// { "tag": "Camera" }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function requestCameraPermission(provider: Provider) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export async function requestCameraPermission(truapi: Client) {
     ///   const result = await truapi.permissions.devicePermission({
     ///     tag: "Camera",
+    ///     value: undefined,
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;
@@ -39,20 +34,12 @@ pub trait Permissions: Send + Sync {
 
     /// Request one or more remote-operation permissions.
     ///
-    /// ```truapi-playground-request
-    /// { "permissions": [{ "tag": "Remote", "value": { "domains": ["api.example.com"] } }] }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function requestRemotePermission(provider: Provider) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export async function requestRemotePermission(truapi: Client) {
     ///   const result = await truapi.permissions.permission({
-    ///     permissions: [
-    ///       { tag: "Remote", value: { domains: ["api.example.com"] } },
-    ///     ],
+    ///     permissions: [{ tag: "Remote", value: { domains: ["api.example.com"] } }],
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;

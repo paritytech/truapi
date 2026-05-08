@@ -183,7 +183,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V02HostHandshakeError",
         description: "Negotiates the wire codec version with the product.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function handshake(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.trUApiCalls.handshake();\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function handshake(truapi: Client) {\n  const result = await truapi.trUApiCalls.handshake();\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_feature_supported",
@@ -197,7 +197,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Queries whether the host supports a specific feature.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function supportsChain(provider: Provider, genesisHash: Uint8Array) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.trUApiCalls.featureSupported({\n    tag: "Chain",\n    value: { genesisHash },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value.supported;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function supportsChain(truapi: Client) {\n  const result = await truapi.trUApiCalls.featureSupported({\n    tag: "Chain",\n    value: { genesisHash: new Uint8Array() },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value.supported;\n}',
       },
       {
         id: "host_push_notification",
@@ -211,7 +211,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Sends a push notification to the user.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function pushNotification(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.trUApiCalls.pushNotification({\n    text: "Hello!",\n    deeplink: null,\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function pushNotification(truapi: Client) {\n  const result = await truapi.trUApiCalls.pushNotification({\n    text: "Hello!",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_navigate_to",
@@ -225,7 +225,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostNavigateToError",
         description: "Requests the host to open a URL.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function navigateToDocs(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.trUApiCalls.navigateTo({\n    url: "https://example.com",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function navigateToDocs(truapi: Client) {\n  const result = await truapi.trUApiCalls.navigateTo({\n    url: "https://example.com",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_device_permission",
@@ -239,7 +239,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Request a device-capability permission from the user.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function requestCameraPermission(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.permissions.devicePermission({\n    tag: "Camera",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function requestCameraPermission(truapi: Client) {\n  const result = await truapi.permissions.devicePermission({\n    tag: "Camera",\n    value: undefined,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_permission",
@@ -253,7 +253,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Request one or more remote-operation permissions.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function requestRemotePermission(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.permissions.permission({\n    permissions: [\n      { tag: "Remote", value: { domains: ["api.example.com"] } },\n    ],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function requestRemotePermission(truapi: Client) {\n  const result = await truapi.permissions.permission({\n    permissions: [{ tag: "Remote", value: { domains: ["api.example.com"] } }],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_local_storage_read",
@@ -267,7 +267,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostLocalStorageReadError",
         description: "Read a value by key.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function readLocalValue(provider: Provider, key: string) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.localStorage.localStorageRead({ key });\n\n  if (result.isErr()) throw result.error;\n  return result.value.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function readLocalValue(truapi: Client) {\n  const result = await truapi.localStorage.localStorageRead({ key: "test-key" });\n\n  if (result.isErr()) throw result.error;\n  return result.value.value;\n}',
       },
       {
         id: "host_local_storage_write",
@@ -281,7 +281,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostLocalStorageReadError",
         description: "Write a value to a key.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function writeLocalValue(\n  provider: Provider,\n  key: string,\n  value: Uint8Array,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.localStorage.localStorageWrite({ key, value });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function writeLocalValue(truapi: Client) {\n  const result = await truapi.localStorage.localStorageWrite({\n    key: "test-key",\n    value: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_local_storage_clear",
@@ -295,7 +295,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostLocalStorageReadError",
         description: "Clear a value by key.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function clearLocalValue(provider: Provider, key: string) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.localStorage.localStorageClear({ key });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function clearLocalValue(truapi: Client) {\n  const result = await truapi.localStorage.localStorageClear({ key: "test-key" });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_account_connection_status_subscribe",
@@ -308,7 +308,7 @@ export const versions: ExplorerVersion[] = [
         response: "V01HostAccountConnectionStatusSubscribeItem",
         description: "Subscribe to account connection status changes.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport function watchAccountConnection(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  return truapi.accountManagement.accountConnectionStatusSubscribe({\n    onData: (status) => console.log(status),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport function watchAccountConnection(truapi: Client) {\n  return truapi.accountManagement.accountConnectionStatusSubscribe({\n    onData: (status) => console.log(status),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
       },
       {
         id: "host_account_get",
@@ -322,7 +322,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostAccountGetError",
         description: "Retrieve a product-scoped account.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function getAccount(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.accountManagement.accountGet({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function getAccount(truapi: Client) {\n  const result = await truapi.accountManagement.accountGet({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_account_get_alias",
@@ -336,7 +336,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostAccountGetError",
         description: "Retrieve a contextual alias for a product account.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function getAccountAlias(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.accountManagement.accountGetAlias({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function getAccountAlias(truapi: Client) {\n  const result = await truapi.accountManagement.accountGetAlias({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_account_create_proof",
@@ -350,7 +350,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostAccountCreateProofError",
         description: "Generate a ring VRF proof for a product account.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function createAccountProof(\n  provider: Provider,\n  genesisHash: Uint8Array,\n  ringRootHash: Uint8Array,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.accountManagement.accountCreateProof({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    ringLocation: {\n      genesisHash,\n      ringRootHash,\n      hints: { palletInstance: 42 },\n    },\n    context: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function createAccountProof(truapi: Client) {\n  const result = await truapi.accountManagement.accountCreateProof({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    ringLocation: {\n      genesisHash: new Uint8Array(),\n      ringRootHash: new Uint8Array(),\n      hints: { palletInstance: 42 },\n    },\n    context: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_get_legacy_accounts",
@@ -364,7 +364,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostAccountGetError",
         description: "List non-product accounts the user owns.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function getLegacyAccounts(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.accountManagement.getLegacyAccounts();\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function getLegacyAccounts(truapi: Client) {\n  const result = await truapi.accountManagement.getLegacyAccounts();\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_create_transaction",
@@ -378,7 +378,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostCreateTransactionError",
         description: "Construct a signed extrinsic for a product account.",
         usageExample:
-          'import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";\n\nexport async function createTransaction(\n  provider: Provider,\n  request: T.V01HostCreateTransactionRequest,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.signing.createTransaction(request);\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function createTransaction(truapi: Client) {\n  const result = await truapi.signing.createTransaction({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    payload: {\n      tag: "V1",\n      value: {\n        callData: new Uint8Array(),\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: new Uint8Array(),\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_create_transaction_with_legacy_account",
@@ -392,7 +392,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostCreateTransactionError",
         description: "Construct a signed extrinsic for a non-product account.",
         usageExample:
-          'import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";\n\nexport async function createTransactionWithLegacyAccount(\n  provider: Provider,\n  request: T.V01HostCreateTransactionWithLegacyAccountRequest,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result =\n    await truapi.signing.createTransactionWithLegacyAccount(request);\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function createTransactionWithLegacyAccount(truapi: Client) {\n  const result = await truapi.signing.createTransactionWithLegacyAccount({\n    payload: {\n      tag: "V1",\n      value: {\n        callData: new Uint8Array(),\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: new Uint8Array(),\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_create_room",
@@ -406,7 +406,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostChatCreateRoomError",
         description: "Create a chat room.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function createRoom(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chat.chatCreateRoom({\n    roomId: "test-room",\n    name: "Test Room",\n    icon: "",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function createRoom(truapi: Client) {\n  const result = await truapi.chat.chatCreateRoom({\n    roomId: "test-room",\n    name: "Test Room",\n    icon: "",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_register_bot",
@@ -420,7 +420,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostChatRegisterBotError",
         description: "Register a chat bot.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function registerBot(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chat.chatRegisterBot({\n    botId: "test-bot",\n    name: "Test Bot",\n    icon: "",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function registerBot(truapi: Client) {\n  const result = await truapi.chat.chatRegisterBot({\n    botId: "test-bot",\n    name: "Test Bot",\n    icon: "",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_list_subscribe",
@@ -433,7 +433,7 @@ export const versions: ExplorerVersion[] = [
         response: "V01HostChatListSubscribeItem",
         description: "Subscribe to the list of chat rooms.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport function watchChatRooms(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  return truapi.chat.chatListSubscribe({\n    onData: (rooms) => console.log(rooms),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport function watchChatRooms(truapi: Client) {\n  return truapi.chat.chatListSubscribe({\n    onData: (rooms) => console.log(rooms),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
       },
       {
         id: "host_chat_post_message",
@@ -447,7 +447,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostChatPostMessageError",
         description: "Post a message to a chat room.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function postChatMessage(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chat.chatPostMessage({\n    roomId: "test-room",\n    payload: { tag: "Text", value: "Hello from product!" },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function postChatMessage(truapi: Client) {\n  const result = await truapi.chat.chatPostMessage({\n    roomId: "test-room",\n    payload: { tag: "Text", value: { text: "Hello from playground!" } },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_action_subscribe",
@@ -460,7 +460,7 @@ export const versions: ExplorerVersion[] = [
         response: "V01HostChatActionSubscribeItem",
         description: "Subscribe to received chat actions.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport function watchChatActions(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  return truapi.chat.chatActionSubscribe({\n    onData: (action) => console.log(action),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport function watchChatActions(truapi: Client) {\n  return truapi.chat.chatActionSubscribe({\n    onData: (action) => console.log(action),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
       },
       {
         id: "product_chat_custom_message_render_subscribe",
@@ -474,7 +474,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Subscribe to custom message render requests from the host. Each\nemitted item is a [`CustomRendererNode`](crate::v01::CustomRendererNode)\ntree describing the rendered UI.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport function renderCustomChatMessage(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  return truapi.chat.chatCustomMessageRenderSubscribe({\n    request: {\n      messageId: "msg-1",\n      messageType: "custom-render-demo",\n      payload: { bytes: new Uint8Array() },\n    },\n    onData: (node) => console.log(node),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport function renderCustomChatMessage(truapi: Client) {\n  return truapi.chat.chatCustomMessageRenderSubscribe({\n    request: {\n      messageId: "msg-1",\n      messageType: "custom-render-demo",\n      payload: new Uint8Array(),\n    },\n    onData: (node) => console.log(node),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
       },
       {
         id: "remote_statement_store_subscribe",
@@ -487,7 +487,7 @@ export const versions: ExplorerVersion[] = [
         response: "V01RemoteStatementStoreSubscribeItem",
         description: "Subscribe to statements matching a topic filter.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport function subscribeStatements(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  return truapi.statementStore.statementStoreSubscribe({\n    request: { tag: "MatchAll", value: [] },\n    onData: (statements) => console.log(statements),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport function subscribeStatements(truapi: Client) {\n  return truapi.statementStore.statementStoreSubscribe({\n    request: { tag: "MatchAll", value: [] },\n    onData: (statements) => console.log(statements),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
       },
       {
         id: "remote_statement_store_create_proof",
@@ -501,7 +501,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01RemoteStatementStoreCreateProofError",
         description: "Create a proof for a statement.",
         usageExample:
-          'import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";\n\nexport async function createStatementProof(\n  provider: Provider,\n  request: T.V01RemoteStatementStoreCreateProofRequest,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result =\n    await truapi.statementStore.statementStoreCreateProof(request);\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function createStatementProof(truapi: Client) {\n  const result = await truapi.statementStore.statementStoreCreateProof({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    statement: {\n      expiry: 9999999999999n,\n      topics: [],\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_statement_store_submit",
@@ -516,7 +516,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Submit a signed statement to the network. The request body is the\n[`SignedStatement`](crate::v01::SignedStatement) directly (no wrapping\nstruct), matching upstream `triangle-js-sdks`.",
         usageExample:
-          'import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";\n\nexport async function submitStatement(\n  provider: Provider,\n  statement: T.SignedStatement,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.statementStore.statementStoreSubmit(statement);\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function submitStatement(truapi: Client) {\n  const result = await truapi.statementStore.statementStoreSubmit({\n    proof: {\n      tag: "Sr25519",\n      value: { signature: new Uint8Array(), signer: new Uint8Array() },\n    },\n    topics: [],\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_preimage_lookup_subscribe",
@@ -529,7 +529,7 @@ export const versions: ExplorerVersion[] = [
         response: "V01RemotePreimageLookupSubscribeItem",
         description: "Subscribe to preimage lookups for a given key.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport function lookupPreimage(provider: Provider, key: Uint8Array) {\n  const truapi = createClient(createTransport(provider));\n\n  return truapi.preimage.preimageLookupSubscribe({\n    request: { key },\n    onData: (item) => console.log(item),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport function lookupPreimage(truapi: Client) {\n  return truapi.preimage.preimageLookupSubscribe({\n    request: { key: new Uint8Array() },\n    onData: (item) => console.log(item),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
       },
       {
         id: "remote_chain_head_follow",
@@ -542,7 +542,7 @@ export const versions: ExplorerVersion[] = [
         response: "V01RemoteChainHeadFollowItem",
         description: "Follow the chain head and receive block events.",
         usageExample:
-          'import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";\n\nexport function followChainHead(\n  provider: Provider,\n  request: T.V01RemoteChainHeadFollowRequest,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  return truapi.chainInteraction.chainHeadFollow({\n    request,\n    onData: (item) => console.log(item),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport function followChainHead(truapi: Client) {\n  return truapi.chainInteraction.chainHeadFollow({\n    request: { genesisHash: new Uint8Array(), withRuntime: false },\n    onData: (item) => console.log(item),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
       },
       {
         id: "remote_chain_head_header",
@@ -556,7 +556,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Fetch a block header.",
         usageExample:
-          'import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";\n\nexport async function getChainHeadHeader(\n  provider: Provider,\n  request: T.V01RemoteChainHeadHeaderRequest,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chainInteraction.chainHeadHeader(request);\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function getChainHeadHeader(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadHeader({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_body",
@@ -570,7 +570,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Fetch a block body.",
         usageExample:
-          'import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";\n\nexport async function getChainHeadBody(\n  provider: Provider,\n  request: T.V01RemoteChainHeadBodyRequest,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chainInteraction.chainHeadBody(request);\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function getChainHeadBody(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadBody({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_storage",
@@ -584,7 +584,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Query runtime storage at a specific block.",
         usageExample:
-          'import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";\n\nexport async function getChainHeadStorage(\n  provider: Provider,\n  request: T.V01RemoteChainHeadStorageRequest,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chainInteraction.chainHeadStorage(request);\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function getChainHeadStorage(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadStorage({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n    items: [\n      { key: new Uint8Array(), queryType: { tag: "Value", value: undefined } },\n    ],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_call",
@@ -598,7 +598,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Invoke a runtime call at a specific block.",
         usageExample:
-          'import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";\n\nexport async function callChainHeadRuntime(\n  provider: Provider,\n  request: T.V01RemoteChainHeadCallRequest,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chainInteraction.chainHeadCall(request);\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function callChainHeadRuntime(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadCall({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n    function: "Core_version",\n    callParameters: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_unpin",
@@ -612,7 +612,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Release pinned blocks.",
         usageExample:
-          'import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";\n\nexport async function unpinChainHead(\n  provider: Provider,\n  request: T.V01RemoteChainHeadUnpinRequest,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chainInteraction.chainHeadUnpin(request);\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function unpinChainHead(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadUnpin({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hashes: [new Uint8Array()],\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_chain_head_continue",
@@ -626,7 +626,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Continue a paused chain-head operation.",
         usageExample:
-          'import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";\n\nexport async function continueChainHeadOperation(\n  provider: Provider,\n  request: T.V01RemoteChainHeadContinueRequest,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chainInteraction.chainHeadContinue(request);\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function continueChainHeadOperation(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadContinue({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_chain_head_stop_operation",
@@ -640,7 +640,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Stop a chain-head operation.",
         usageExample:
-          'import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";\n\nexport async function stopChainHeadOperation(\n  provider: Provider,\n  request: T.V01RemoteChainHeadStopOperationRequest,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chainInteraction.chainHeadStopOperation(request);\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function stopChainHeadOperation(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadStopOperation({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_chain_spec_genesis_hash",
@@ -654,7 +654,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Fetch the canonical genesis hash for a chain.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function getChainGenesisHash(provider: Provider, genesisHash: Uint8Array) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chainInteraction.chainSpecGenesisHash({\n    genesisHash,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function getChainGenesisHash(truapi: Client) {\n  const result = await truapi.chainInteraction.chainSpecGenesisHash({\n    genesisHash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_spec_chain_name",
@@ -668,7 +668,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Fetch the display name of a chain.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function getChainName(provider: Provider, genesisHash: Uint8Array) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chainInteraction.chainSpecChainName({\n    genesisHash,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function getChainName(truapi: Client) {\n  const result = await truapi.chainInteraction.chainSpecChainName({\n    genesisHash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_spec_properties",
@@ -682,7 +682,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Fetch the JSON-encoded properties of a chain.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function getChainProperties(provider: Provider, genesisHash: Uint8Array) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chainInteraction.chainSpecProperties({\n    genesisHash,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function getChainProperties(truapi: Client) {\n  const result = await truapi.chainInteraction.chainSpecProperties({\n    genesisHash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_transaction_broadcast",
@@ -696,7 +696,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Broadcast a signed transaction.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function broadcastTransaction(\n  provider: Provider,\n  genesisHash: Uint8Array,\n  transaction: Uint8Array,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chainInteraction.chainTransactionBroadcast({\n    genesisHash,\n    transaction,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function broadcastTransaction(truapi: Client) {\n  const result = await truapi.chainInteraction.chainTransactionBroadcast({\n    genesisHash: new Uint8Array(),\n    transaction: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_transaction_stop",
@@ -710,7 +710,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Stop a transaction broadcast.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function stopTransactionBroadcast(\n  provider: Provider,\n  genesisHash: Uint8Array,\n  operationId: string,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chainInteraction.chainTransactionStop({\n    genesisHash,\n    operationId,\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function stopTransactionBroadcast(truapi: Client) {\n  const result = await truapi.chainInteraction.chainTransactionStop({\n    genesisHash: new Uint8Array(),\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_sign_raw",
@@ -724,7 +724,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostSignPayloadError",
         description: "Sign raw bytes or a message.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function signRawBytes(provider: Provider, bytes: Uint8Array) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.signing.signRaw({\n    account: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    data: { tag: "Bytes", value: { bytes } },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function signRawBytes(truapi: Client) {\n  const result = await truapi.signing.signRaw({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    payload: { tag: "Bytes", value: { bytes: new Uint8Array() } },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_sign_payload",
@@ -738,7 +738,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostSignPayloadError",
         description: "Sign a Substrate extrinsic payload.",
         usageExample:
-          'import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";\n\nexport async function signPayload(\n  provider: Provider,\n  request: T.V02HostSignPayloadRequest,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.signing.signPayload(request);\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function signPayload(truapi: Client) {\n  const result = await truapi.signing.signPayload({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    blockHash: new Uint8Array(),\n    blockNumber: new Uint8Array(),\n    era: new Uint8Array(),\n    genesisHash: new Uint8Array(),\n    method: new Uint8Array(),\n    nonce: new Uint8Array(),\n    signedExtensions: [],\n    specVersion: new Uint8Array(),\n    tip: new Uint8Array(),\n    transactionVersion: new Uint8Array(),\n    version: 4,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
     ],
     dataTypes: [
@@ -1643,7 +1643,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostAccountGetAliasError = { tag: "V1"; value: V01HostAccountGetError }',
         description:
-          "Versioned wrapper for [`v01::HostAccountGetError`] and older versions.",
+          "Versioned wrapper around the alias-lookup error path; reuses [`v01::HostAccountGetError`].",
         source: "shared",
         variants: [
           {
@@ -1915,7 +1915,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostCreateTransactionError = { tag: "V1"; value: V01HostCreateTransactionError }',
         description:
-          "Versioned wrapper for [`v01::HostCreateTransactionError`] and older versions.",
+          "Versioned wrapper for [`v01::HostCreateTransactionError`].",
         source: "shared",
         variants: [
           {
@@ -1931,7 +1931,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostCreateTransactionRequest = { tag: "V1"; value: V01HostCreateTransactionRequest }',
         description:
-          "Versioned wrapper for [`v01::HostCreateTransactionRequest`] and older versions.",
+          "Versioned wrapper for [`v01::HostCreateTransactionRequest`].",
         source: "shared",
         variants: [
           {
@@ -1947,7 +1947,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostCreateTransactionResponse = { tag: "V1"; value: V01HostCreateTransactionResponse }',
         description:
-          "Versioned wrapper for [`v01::HostCreateTransactionResponse`] and older versions.",
+          "Versioned wrapper for [`v01::HostCreateTransactionResponse`].",
         source: "shared",
         variants: [
           {
@@ -1963,7 +1963,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostCreateTransactionWithLegacyAccountError = { tag: "V1"; value: V01HostCreateTransactionError }',
         description:
-          "Versioned wrapper for [`v01::HostCreateTransactionError`] and older versions.",
+          "Versioned wrapper for the legacy-account create-transaction error path; reuses [`v01::HostCreateTransactionError`].",
         source: "shared",
         variants: [
           {
@@ -1979,7 +1979,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostCreateTransactionWithLegacyAccountRequest = { tag: "V1"; value: V01HostCreateTransactionWithLegacyAccountRequest }',
         description:
-          "Versioned wrapper for [`v01::HostCreateTransactionWithLegacyAccountRequest`] and older versions.",
+          "Versioned wrapper for [`v01::HostCreateTransactionWithLegacyAccountRequest`].",
         source: "shared",
         variants: [
           {
@@ -1995,7 +1995,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostCreateTransactionWithLegacyAccountResponse = { tag: "V1"; value: V01HostCreateTransactionWithLegacyAccountResponse }',
         description:
-          "Versioned wrapper for [`v01::HostCreateTransactionWithLegacyAccountResponse`] and older versions.",
+          "Versioned wrapper for [`v01::HostCreateTransactionWithLegacyAccountResponse`].",
         source: "shared",
         variants: [
           {
@@ -2107,7 +2107,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostGetLegacyAccountsError = { tag: "V1"; value: V01HostAccountGetError }',
         description:
-          "Versioned wrapper for [`v01::HostAccountGetError`] and older versions.",
+          "Versioned wrapper around the legacy-accounts error path; reuses [`v01::HostAccountGetError`].",
         source: "shared",
         variants: [
           {
@@ -2437,7 +2437,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostSignPayloadError = { tag: "V1"; value: V01HostSignPayloadError }',
         description:
-          "Versioned wrapper for [`v01::HostSignPayloadError`] and older versions.",
+          "Versioned wrapper for the sign-payload error (shared across v0.1/v0.2).",
         source: "shared",
         variants: [
           {
@@ -2453,7 +2453,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostSignPayloadRequest = { tag: "V1"; value: V01HostSignPayloadRequest }',
         description:
-          "Versioned wrapper for [`v02::HostSignPayloadRequest`] and older versions.",
+          "Versioned wrapper covering both v0.1 and v0.2 sign-payload requests.",
         source: "shared",
         variants: [
           {
@@ -2469,7 +2469,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostSignPayloadResponse = { tag: "V1"; value: V01HostSignPayloadResponse }',
         description:
-          "Versioned wrapper for [`v01::HostSignPayloadResponse`] and older versions.",
+          "Versioned wrapper for the sign-payload response (shared across v0.1/v0.2).",
         source: "shared",
         variants: [
           {
@@ -2485,7 +2485,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostSignRawError = { tag: "V1"; value: V01HostSignPayloadError }',
         description:
-          "Versioned wrapper for [`v01::HostSignPayloadError`] and older versions.",
+          "Versioned wrapper for the sign-raw error; reuses [`v01::HostSignPayloadError`].",
         source: "shared",
         variants: [
           {
@@ -2501,7 +2501,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostSignRawRequest = { tag: "V1"; value: V01HostSignRawRequest }',
         description:
-          "Versioned wrapper for [`v02::HostSignRawRequest`] and older versions.",
+          "Versioned wrapper covering both v0.1 and v0.2 sign-raw requests.",
         source: "shared",
         variants: [
           {
@@ -2517,7 +2517,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostSignRawResponse = { tag: "V1"; value: V01HostSignPayloadResponse }',
         description:
-          "Versioned wrapper for [`v01::HostSignPayloadResponse`] and older versions.",
+          "Versioned wrapper for the sign-raw response; reuses [`v01::HostSignPayloadResponse`].",
         source: "shared",
         variants: [
           {
@@ -5890,7 +5890,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V02HostHandshakeError",
         description: "Negotiates the wire codec version with the product.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function handshake(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.trUApiCalls.handshake();\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function handshake(truapi: Client) {\n  const result = await truapi.trUApiCalls.handshake();\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_feature_supported",
@@ -5904,7 +5904,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Queries whether the host supports a specific feature.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function supportsChain(provider: Provider, genesisHash: Uint8Array) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.trUApiCalls.featureSupported({\n    tag: "Chain",\n    value: { genesisHash },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value.supported;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function supportsChain(truapi: Client) {\n  const result = await truapi.trUApiCalls.featureSupported({\n    tag: "Chain",\n    value: { genesisHash: new Uint8Array() },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value.supported;\n}',
       },
       {
         id: "host_push_notification",
@@ -5918,7 +5918,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Sends a push notification to the user.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function pushNotification(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.trUApiCalls.pushNotification({\n    text: "Hello!",\n    deeplink: null,\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function pushNotification(truapi: Client) {\n  const result = await truapi.trUApiCalls.pushNotification({\n    text: "Hello!",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_navigate_to",
@@ -5932,7 +5932,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostNavigateToError",
         description: "Requests the host to open a URL.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function navigateToDocs(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.trUApiCalls.navigateTo({\n    url: "https://example.com",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function navigateToDocs(truapi: Client) {\n  const result = await truapi.trUApiCalls.navigateTo({\n    url: "https://example.com",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_device_permission",
@@ -5946,7 +5946,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Request a device-capability permission from the user.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function requestCameraPermission(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.permissions.devicePermission({\n    tag: "Camera",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function requestCameraPermission(truapi: Client) {\n  const result = await truapi.permissions.devicePermission({\n    tag: "Camera",\n    value: undefined,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_permission",
@@ -5960,7 +5960,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Request one or more remote-operation permissions.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function requestRemotePermission(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.permissions.permission({\n    permissions: [\n      { tag: "Remote", value: { domains: ["api.example.com"] } },\n    ],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function requestRemotePermission(truapi: Client) {\n  const result = await truapi.permissions.permission({\n    permissions: [{ tag: "Remote", value: { domains: ["api.example.com"] } }],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_local_storage_read",
@@ -5974,7 +5974,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostLocalStorageReadError",
         description: "Read a value by key.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function readLocalValue(provider: Provider, key: string) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.localStorage.localStorageRead({ key });\n\n  if (result.isErr()) throw result.error;\n  return result.value.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function readLocalValue(truapi: Client) {\n  const result = await truapi.localStorage.localStorageRead({ key: "test-key" });\n\n  if (result.isErr()) throw result.error;\n  return result.value.value;\n}',
       },
       {
         id: "host_local_storage_write",
@@ -5988,7 +5988,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostLocalStorageReadError",
         description: "Write a value to a key.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function writeLocalValue(\n  provider: Provider,\n  key: string,\n  value: Uint8Array,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.localStorage.localStorageWrite({ key, value });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function writeLocalValue(truapi: Client) {\n  const result = await truapi.localStorage.localStorageWrite({\n    key: "test-key",\n    value: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_local_storage_clear",
@@ -6002,7 +6002,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostLocalStorageReadError",
         description: "Clear a value by key.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function clearLocalValue(provider: Provider, key: string) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.localStorage.localStorageClear({ key });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function clearLocalValue(truapi: Client) {\n  const result = await truapi.localStorage.localStorageClear({ key: "test-key" });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_account_connection_status_subscribe",
@@ -6015,7 +6015,7 @@ export const versions: ExplorerVersion[] = [
         response: "V01HostAccountConnectionStatusSubscribeItem",
         description: "Subscribe to account connection status changes.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport function watchAccountConnection(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  return truapi.accountManagement.accountConnectionStatusSubscribe({\n    onData: (status) => console.log(status),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport function watchAccountConnection(truapi: Client) {\n  return truapi.accountManagement.accountConnectionStatusSubscribe({\n    onData: (status) => console.log(status),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
       },
       {
         id: "host_account_get",
@@ -6029,7 +6029,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostAccountGetError",
         description: "Retrieve a product-scoped account.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function getAccount(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.accountManagement.accountGet({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function getAccount(truapi: Client) {\n  const result = await truapi.accountManagement.accountGet({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_account_get_alias",
@@ -6043,7 +6043,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostAccountGetError",
         description: "Retrieve a contextual alias for a product account.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function getAccountAlias(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.accountManagement.accountGetAlias({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function getAccountAlias(truapi: Client) {\n  const result = await truapi.accountManagement.accountGetAlias({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_account_create_proof",
@@ -6057,7 +6057,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostAccountCreateProofError",
         description: "Generate a ring VRF proof for a product account.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function createAccountProof(\n  provider: Provider,\n  genesisHash: Uint8Array,\n  ringRootHash: Uint8Array,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.accountManagement.accountCreateProof({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    ringLocation: {\n      genesisHash,\n      ringRootHash,\n      hints: { palletInstance: 42 },\n    },\n    context: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function createAccountProof(truapi: Client) {\n  const result = await truapi.accountManagement.accountCreateProof({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    ringLocation: {\n      genesisHash: new Uint8Array(),\n      ringRootHash: new Uint8Array(),\n      hints: { palletInstance: 42 },\n    },\n    context: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_get_legacy_accounts",
@@ -6071,7 +6071,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostAccountGetError",
         description: "List non-product accounts the user owns.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function getLegacyAccounts(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.accountManagement.getLegacyAccounts();\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function getLegacyAccounts(truapi: Client) {\n  const result = await truapi.accountManagement.getLegacyAccounts();\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_create_transaction",
@@ -6085,7 +6085,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostCreateTransactionError",
         description: "Construct a signed extrinsic for a product account.",
         usageExample:
-          'import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";\n\nexport async function createTransaction(\n  provider: Provider,\n  request: T.V01HostCreateTransactionRequest,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.signing.createTransaction(request);\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function createTransaction(truapi: Client) {\n  const result = await truapi.signing.createTransaction({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    payload: {\n      tag: "V1",\n      value: {\n        callData: new Uint8Array(),\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: new Uint8Array(),\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_create_transaction_with_legacy_account",
@@ -6099,7 +6099,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostCreateTransactionError",
         description: "Construct a signed extrinsic for a non-product account.",
         usageExample:
-          'import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";\n\nexport async function createTransactionWithLegacyAccount(\n  provider: Provider,\n  request: T.V01HostCreateTransactionWithLegacyAccountRequest,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result =\n    await truapi.signing.createTransactionWithLegacyAccount(request);\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function createTransactionWithLegacyAccount(truapi: Client) {\n  const result = await truapi.signing.createTransactionWithLegacyAccount({\n    payload: {\n      tag: "V1",\n      value: {\n        callData: new Uint8Array(),\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: new Uint8Array(),\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_create_room",
@@ -6113,7 +6113,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostChatCreateRoomError",
         description: "Create a chat room.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function createRoom(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chat.chatCreateRoom({\n    roomId: "test-room",\n    name: "Test Room",\n    icon: "",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function createRoom(truapi: Client) {\n  const result = await truapi.chat.chatCreateRoom({\n    roomId: "test-room",\n    name: "Test Room",\n    icon: "",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_register_bot",
@@ -6127,7 +6127,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostChatRegisterBotError",
         description: "Register a chat bot.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function registerBot(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chat.chatRegisterBot({\n    botId: "test-bot",\n    name: "Test Bot",\n    icon: "",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function registerBot(truapi: Client) {\n  const result = await truapi.chat.chatRegisterBot({\n    botId: "test-bot",\n    name: "Test Bot",\n    icon: "",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_list_subscribe",
@@ -6140,7 +6140,7 @@ export const versions: ExplorerVersion[] = [
         response: "V01HostChatListSubscribeItem",
         description: "Subscribe to the list of chat rooms.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport function watchChatRooms(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  return truapi.chat.chatListSubscribe({\n    onData: (rooms) => console.log(rooms),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport function watchChatRooms(truapi: Client) {\n  return truapi.chat.chatListSubscribe({\n    onData: (rooms) => console.log(rooms),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
       },
       {
         id: "host_chat_post_message",
@@ -6154,7 +6154,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostChatPostMessageError",
         description: "Post a message to a chat room.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function postChatMessage(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chat.chatPostMessage({\n    roomId: "test-room",\n    payload: { tag: "Text", value: "Hello from product!" },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function postChatMessage(truapi: Client) {\n  const result = await truapi.chat.chatPostMessage({\n    roomId: "test-room",\n    payload: { tag: "Text", value: { text: "Hello from playground!" } },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_action_subscribe",
@@ -6167,7 +6167,7 @@ export const versions: ExplorerVersion[] = [
         response: "V01HostChatActionSubscribeItem",
         description: "Subscribe to received chat actions.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport function watchChatActions(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  return truapi.chat.chatActionSubscribe({\n    onData: (action) => console.log(action),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport function watchChatActions(truapi: Client) {\n  return truapi.chat.chatActionSubscribe({\n    onData: (action) => console.log(action),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
       },
       {
         id: "product_chat_custom_message_render_subscribe",
@@ -6181,7 +6181,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Subscribe to custom message render requests from the host. Each\nemitted item is a [`CustomRendererNode`](crate::v01::CustomRendererNode)\ntree describing the rendered UI.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport function renderCustomChatMessage(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  return truapi.chat.chatCustomMessageRenderSubscribe({\n    request: {\n      messageId: "msg-1",\n      messageType: "custom-render-demo",\n      payload: { bytes: new Uint8Array() },\n    },\n    onData: (node) => console.log(node),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport function renderCustomChatMessage(truapi: Client) {\n  return truapi.chat.chatCustomMessageRenderSubscribe({\n    request: {\n      messageId: "msg-1",\n      messageType: "custom-render-demo",\n      payload: new Uint8Array(),\n    },\n    onData: (node) => console.log(node),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
       },
       {
         id: "remote_statement_store_subscribe",
@@ -6194,7 +6194,7 @@ export const versions: ExplorerVersion[] = [
         response: "V02RemoteStatementStoreSubscribeItem",
         description: "Subscribe to statements matching a topic filter.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport function subscribeStatements(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  return truapi.statementStore.statementStoreSubscribe({\n    request: { tag: "MatchAll", value: [] },\n    onData: (statements) => console.log(statements),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport function subscribeStatements(truapi: Client) {\n  return truapi.statementStore.statementStoreSubscribe({\n    request: { tag: "MatchAll", value: [] },\n    onData: (statements) => console.log(statements),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
       },
       {
         id: "remote_statement_store_create_proof",
@@ -6208,7 +6208,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01RemoteStatementStoreCreateProofError",
         description: "Create a proof for a statement.",
         usageExample:
-          'import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";\n\nexport async function createStatementProof(\n  provider: Provider,\n  request: T.V01RemoteStatementStoreCreateProofRequest,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result =\n    await truapi.statementStore.statementStoreCreateProof(request);\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function createStatementProof(truapi: Client) {\n  const result = await truapi.statementStore.statementStoreCreateProof({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    statement: {\n      expiry: 9999999999999n,\n      topics: [],\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_statement_store_submit",
@@ -6223,7 +6223,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Submit a signed statement to the network. The request body is the\n[`SignedStatement`](crate::v01::SignedStatement) directly (no wrapping\nstruct), matching upstream `triangle-js-sdks`.",
         usageExample:
-          'import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";\n\nexport async function submitStatement(\n  provider: Provider,\n  statement: T.SignedStatement,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.statementStore.statementStoreSubmit(statement);\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function submitStatement(truapi: Client) {\n  const result = await truapi.statementStore.statementStoreSubmit({\n    proof: {\n      tag: "Sr25519",\n      value: { signature: new Uint8Array(), signer: new Uint8Array() },\n    },\n    topics: [],\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_preimage_lookup_subscribe",
@@ -6236,7 +6236,7 @@ export const versions: ExplorerVersion[] = [
         response: "V01RemotePreimageLookupSubscribeItem",
         description: "Subscribe to preimage lookups for a given key.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport function lookupPreimage(provider: Provider, key: Uint8Array) {\n  const truapi = createClient(createTransport(provider));\n\n  return truapi.preimage.preimageLookupSubscribe({\n    request: { key },\n    onData: (item) => console.log(item),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport function lookupPreimage(truapi: Client) {\n  return truapi.preimage.preimageLookupSubscribe({\n    request: { key: new Uint8Array() },\n    onData: (item) => console.log(item),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
       },
       {
         id: "remote_chain_head_follow",
@@ -6249,7 +6249,7 @@ export const versions: ExplorerVersion[] = [
         response: "V01RemoteChainHeadFollowItem",
         description: "Follow the chain head and receive block events.",
         usageExample:
-          'import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";\n\nexport function followChainHead(\n  provider: Provider,\n  request: T.V01RemoteChainHeadFollowRequest,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  return truapi.chainInteraction.chainHeadFollow({\n    request,\n    onData: (item) => console.log(item),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport function followChainHead(truapi: Client) {\n  return truapi.chainInteraction.chainHeadFollow({\n    request: { genesisHash: new Uint8Array(), withRuntime: false },\n    onData: (item) => console.log(item),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
       },
       {
         id: "remote_chain_head_header",
@@ -6263,7 +6263,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Fetch a block header.",
         usageExample:
-          'import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";\n\nexport async function getChainHeadHeader(\n  provider: Provider,\n  request: T.V01RemoteChainHeadHeaderRequest,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chainInteraction.chainHeadHeader(request);\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function getChainHeadHeader(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadHeader({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_body",
@@ -6277,7 +6277,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Fetch a block body.",
         usageExample:
-          'import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";\n\nexport async function getChainHeadBody(\n  provider: Provider,\n  request: T.V01RemoteChainHeadBodyRequest,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chainInteraction.chainHeadBody(request);\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function getChainHeadBody(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadBody({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_storage",
@@ -6291,7 +6291,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Query runtime storage at a specific block.",
         usageExample:
-          'import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";\n\nexport async function getChainHeadStorage(\n  provider: Provider,\n  request: T.V01RemoteChainHeadStorageRequest,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chainInteraction.chainHeadStorage(request);\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function getChainHeadStorage(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadStorage({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n    items: [\n      { key: new Uint8Array(), queryType: { tag: "Value", value: undefined } },\n    ],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_call",
@@ -6305,7 +6305,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Invoke a runtime call at a specific block.",
         usageExample:
-          'import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";\n\nexport async function callChainHeadRuntime(\n  provider: Provider,\n  request: T.V01RemoteChainHeadCallRequest,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chainInteraction.chainHeadCall(request);\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function callChainHeadRuntime(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadCall({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n    function: "Core_version",\n    callParameters: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_unpin",
@@ -6319,7 +6319,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Release pinned blocks.",
         usageExample:
-          'import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";\n\nexport async function unpinChainHead(\n  provider: Provider,\n  request: T.V01RemoteChainHeadUnpinRequest,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chainInteraction.chainHeadUnpin(request);\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function unpinChainHead(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadUnpin({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hashes: [new Uint8Array()],\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_chain_head_continue",
@@ -6333,7 +6333,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Continue a paused chain-head operation.",
         usageExample:
-          'import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";\n\nexport async function continueChainHeadOperation(\n  provider: Provider,\n  request: T.V01RemoteChainHeadContinueRequest,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chainInteraction.chainHeadContinue(request);\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function continueChainHeadOperation(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadContinue({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_chain_head_stop_operation",
@@ -6347,7 +6347,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Stop a chain-head operation.",
         usageExample:
-          'import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";\n\nexport async function stopChainHeadOperation(\n  provider: Provider,\n  request: T.V01RemoteChainHeadStopOperationRequest,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chainInteraction.chainHeadStopOperation(request);\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function stopChainHeadOperation(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadStopOperation({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_chain_spec_genesis_hash",
@@ -6361,7 +6361,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Fetch the canonical genesis hash for a chain.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function getChainGenesisHash(provider: Provider, genesisHash: Uint8Array) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chainInteraction.chainSpecGenesisHash({\n    genesisHash,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function getChainGenesisHash(truapi: Client) {\n  const result = await truapi.chainInteraction.chainSpecGenesisHash({\n    genesisHash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_spec_chain_name",
@@ -6375,7 +6375,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Fetch the display name of a chain.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function getChainName(provider: Provider, genesisHash: Uint8Array) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chainInteraction.chainSpecChainName({\n    genesisHash,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function getChainName(truapi: Client) {\n  const result = await truapi.chainInteraction.chainSpecChainName({\n    genesisHash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_spec_properties",
@@ -6389,7 +6389,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Fetch the JSON-encoded properties of a chain.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function getChainProperties(provider: Provider, genesisHash: Uint8Array) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chainInteraction.chainSpecProperties({\n    genesisHash,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function getChainProperties(truapi: Client) {\n  const result = await truapi.chainInteraction.chainSpecProperties({\n    genesisHash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_transaction_broadcast",
@@ -6403,7 +6403,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Broadcast a signed transaction.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function broadcastTransaction(\n  provider: Provider,\n  genesisHash: Uint8Array,\n  transaction: Uint8Array,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chainInteraction.chainTransactionBroadcast({\n    genesisHash,\n    transaction,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function broadcastTransaction(truapi: Client) {\n  const result = await truapi.chainInteraction.chainTransactionBroadcast({\n    genesisHash: new Uint8Array(),\n    transaction: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_transaction_stop",
@@ -6417,7 +6417,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Stop a transaction broadcast.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function stopTransactionBroadcast(\n  provider: Provider,\n  genesisHash: Uint8Array,\n  operationId: string,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chainInteraction.chainTransactionStop({\n    genesisHash,\n    operationId,\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function stopTransactionBroadcast(truapi: Client) {\n  const result = await truapi.chainInteraction.chainTransactionStop({\n    genesisHash: new Uint8Array(),\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_derive_entropy",
@@ -6432,7 +6432,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Derive 32 bytes of entropy from the user's root BIP-39 entropy for the\ngiven key.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function deriveEntropy(provider: Provider, context: Uint8Array) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.entropyDerivation.deriveEntropy({\n    context,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function deriveEntropy(truapi: Client) {\n  const result = await truapi.entropyDerivation.deriveEntropy({\n    context: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_get_user_id",
@@ -6446,7 +6446,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V02HostGetUserIdError",
         description: "Fetch the user's primary identity (V0.2+).",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function getUserId(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.accountManagement.getUserId();\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function getUserId(truapi: Client) {\n  const result = await truapi.accountManagement.getUserId();\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_sign_raw",
@@ -6460,7 +6460,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostSignPayloadError",
         description: "Sign raw bytes or a message.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function signRawBytes(provider: Provider, bytes: Uint8Array) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.signing.signRaw({\n    account: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    data: { tag: "Bytes", value: { bytes } },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function signRawBytes(truapi: Client) {\n  const result = await truapi.signing.signRaw({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    payload: { tag: "Bytes", value: { bytes: new Uint8Array() } },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_sign_payload",
@@ -6474,7 +6474,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostSignPayloadError",
         description: "Sign a Substrate extrinsic payload.",
         usageExample:
-          'import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";\n\nexport async function signPayload(\n  provider: Provider,\n  request: T.V02HostSignPayloadRequest,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.signing.signPayload(request);\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function signPayload(truapi: Client) {\n  const result = await truapi.signing.signPayload({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    blockHash: new Uint8Array(),\n    blockNumber: new Uint8Array(),\n    era: new Uint8Array(),\n    genesisHash: new Uint8Array(),\n    method: new Uint8Array(),\n    nonce: new Uint8Array(),\n    signedExtensions: [],\n    specVersion: new Uint8Array(),\n    tip: new Uint8Array(),\n    transactionVersion: new Uint8Array(),\n    version: 4,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_payment_balance_subscribe",
@@ -6487,7 +6487,7 @@ export const versions: ExplorerVersion[] = [
         response: "V02HostPaymentBalanceSubscribeItem",
         description: "Subscribe to payment balance updates.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport function watchPaymentBalance(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  return truapi.payment.paymentBalanceSubscribe({\n    onData: (balance) => console.log(balance),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport function watchPaymentBalance(truapi: Client) {\n  return truapi.payment.paymentBalanceSubscribe({\n    onData: (balance) => console.log(balance),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
       },
       {
         id: "host_payment_top_up",
@@ -6501,7 +6501,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V02HostPaymentTopUpError",
         description: "Top up the user's payment balance.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function topUpPaymentBalance(provider: Provider, amount: bigint) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.payment.paymentTopUp({\n    amount,\n    source: {\n      tag: "ProductAccount",\n      value: { derivationIndex: 0 },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function topUpPaymentBalance(truapi: Client) {\n  const result = await truapi.payment.paymentTopUp({\n    amount: 0n,\n    source: { tag: "ProductAccount", value: { derivationIndex: 0 } },\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_payment_request",
@@ -6515,7 +6515,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V02HostPaymentRequestError",
         description: "Request a payment from the user.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function requestPayment(\n  provider: Provider,\n  amount: bigint,\n  destination: Uint8Array,\n) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.payment.paymentRequest({\n    amount,\n    destination,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function requestPayment(truapi: Client) {\n  const result = await truapi.payment.paymentRequest({\n    amount: 0n,\n    destination: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_payment_status_subscribe",
@@ -6529,7 +6529,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Subscribe to payment lifecycle updates for a specific payment.",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport function watchPaymentStatus(provider: Provider, paymentId: string) {\n  const truapi = createClient(createTransport(provider));\n\n  return truapi.payment.paymentStatusSubscribe({\n    request: { paymentId },\n    onData: (status) => console.log(status),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport function watchPaymentStatus(truapi: Client) {\n  return truapi.payment.paymentStatusSubscribe({\n    request: { paymentId: "payment-id" },\n    onData: (status) => console.log(status),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
       },
       {
         id: "host_chat_create_simple_group",
@@ -6543,7 +6543,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "V01HostChatCreateRoomError",
         description: "Create a simple group chat room (V0.2+).",
         usageExample:
-          'import { createClient, createTransport, type Provider } from "@parity/truapi";\n\nexport async function createSimpleGroup(provider: Provider) {\n  const truapi = createClient(createTransport(provider));\n\n  const result = await truapi.chat.chatCreateSimpleGroup({\n    roomId: "test-simple-group",\n    name: "Test Group",\n    icon: "",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function createSimpleGroup(truapi: Client) {\n  const result = await truapi.chat.chatCreateSimpleGroup({\n    roomId: "test-simple-group",\n    name: "Test Group",\n    icon: "",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
     ],
     dataTypes: [
@@ -7457,7 +7457,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostAccountGetAliasError = { tag: "V1"; value: V01HostAccountGetError }',
         description:
-          "Versioned wrapper for [`v01::HostAccountGetError`] and older versions.",
+          "Versioned wrapper around the alias-lookup error path; reuses [`v01::HostAccountGetError`].",
         source: "shared",
         variants: [
           {
@@ -7781,7 +7781,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostCreateTransactionError = { tag: "V1"; value: V01HostCreateTransactionError }',
         description:
-          "Versioned wrapper for [`v01::HostCreateTransactionError`] and older versions.",
+          "Versioned wrapper for [`v01::HostCreateTransactionError`].",
         source: "shared",
         variants: [
           {
@@ -7797,7 +7797,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostCreateTransactionRequest = { tag: "V1"; value: V01HostCreateTransactionRequest }',
         description:
-          "Versioned wrapper for [`v01::HostCreateTransactionRequest`] and older versions.",
+          "Versioned wrapper for [`v01::HostCreateTransactionRequest`].",
         source: "shared",
         variants: [
           {
@@ -7813,7 +7813,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostCreateTransactionResponse = { tag: "V1"; value: V01HostCreateTransactionResponse }',
         description:
-          "Versioned wrapper for [`v01::HostCreateTransactionResponse`] and older versions.",
+          "Versioned wrapper for [`v01::HostCreateTransactionResponse`].",
         source: "shared",
         variants: [
           {
@@ -7829,7 +7829,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostCreateTransactionWithLegacyAccountError = { tag: "V1"; value: V01HostCreateTransactionError }',
         description:
-          "Versioned wrapper for [`v01::HostCreateTransactionError`] and older versions.",
+          "Versioned wrapper for the legacy-account create-transaction error path; reuses [`v01::HostCreateTransactionError`].",
         source: "shared",
         variants: [
           {
@@ -7845,7 +7845,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostCreateTransactionWithLegacyAccountRequest = { tag: "V1"; value: V01HostCreateTransactionWithLegacyAccountRequest }',
         description:
-          "Versioned wrapper for [`v01::HostCreateTransactionWithLegacyAccountRequest`] and older versions.",
+          "Versioned wrapper for [`v01::HostCreateTransactionWithLegacyAccountRequest`].",
         source: "shared",
         variants: [
           {
@@ -7861,7 +7861,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostCreateTransactionWithLegacyAccountResponse = { tag: "V1"; value: V01HostCreateTransactionWithLegacyAccountResponse }',
         description:
-          "Versioned wrapper for [`v01::HostCreateTransactionWithLegacyAccountResponse`] and older versions.",
+          "Versioned wrapper for [`v01::HostCreateTransactionWithLegacyAccountResponse`].",
         source: "shared",
         variants: [
           {
@@ -8033,7 +8033,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostGetLegacyAccountsError = { tag: "V1"; value: V01HostAccountGetError }',
         description:
-          "Versioned wrapper for [`v01::HostAccountGetError`] and older versions.",
+          "Versioned wrapper around the legacy-accounts error path; reuses [`v01::HostAccountGetError`].",
         source: "shared",
         variants: [
           {
@@ -8568,7 +8568,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostSignPayloadError = { tag: "V1"; value: V01HostSignPayloadError } | { tag: "V2"; value: V01HostSignPayloadError }',
         description:
-          "Versioned wrapper for [`v01::HostSignPayloadError`] and older versions.",
+          "Versioned wrapper for the sign-payload error (shared across v0.1/v0.2).",
         source: "shared",
         variants: [
           {
@@ -8588,7 +8588,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostSignPayloadRequest = { tag: "V1"; value: V01HostSignPayloadRequest } | { tag: "V2"; value: V02HostSignPayloadRequest }',
         description:
-          "Versioned wrapper for [`v02::HostSignPayloadRequest`] and older versions.",
+          "Versioned wrapper covering both v0.1 and v0.2 sign-payload requests.",
         source: "shared",
         variants: [
           {
@@ -8608,7 +8608,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostSignPayloadResponse = { tag: "V1"; value: V01HostSignPayloadResponse } | { tag: "V2"; value: V01HostSignPayloadResponse }',
         description:
-          "Versioned wrapper for [`v01::HostSignPayloadResponse`] and older versions.",
+          "Versioned wrapper for the sign-payload response (shared across v0.1/v0.2).",
         source: "shared",
         variants: [
           {
@@ -8628,7 +8628,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostSignRawError = { tag: "V1"; value: V01HostSignPayloadError } | { tag: "V2"; value: V01HostSignPayloadError }',
         description:
-          "Versioned wrapper for [`v01::HostSignPayloadError`] and older versions.",
+          "Versioned wrapper for the sign-raw error; reuses [`v01::HostSignPayloadError`].",
         source: "shared",
         variants: [
           {
@@ -8648,7 +8648,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostSignRawRequest = { tag: "V1"; value: V01HostSignRawRequest } | { tag: "V2"; value: V02HostSignRawRequest }',
         description:
-          "Versioned wrapper for [`v02::HostSignRawRequest`] and older versions.",
+          "Versioned wrapper covering both v0.1 and v0.2 sign-raw requests.",
         source: "shared",
         variants: [
           {
@@ -8668,7 +8668,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostSignRawResponse = { tag: "V1"; value: V01HostSignPayloadResponse } | { tag: "V2"; value: V01HostSignPayloadResponse }',
         description:
-          "Versioned wrapper for [`v01::HostSignPayloadResponse`] and older versions.",
+          "Versioned wrapper for the sign-raw response; reuses [`v01::HostSignPayloadResponse`].",
         source: "shared",
         variants: [
           {

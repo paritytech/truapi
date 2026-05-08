@@ -23,6 +23,8 @@
     "build": "tsc",
     "prepare": "npm run build",
     "codegen": "cargo run -p truapi-codegen -- --input ../../../target/doc/truapi.json --output src/generated",
+    "typecheck": "npm run build && npm run typecheck:examples",
+    "typecheck:examples": "tsc -p tsconfig.examples.json",
     "test": "for f in test/*.test.mjs; do echo \"=== $f ===\" && bun \"$f\" || exit 1; done"
   },
   "devDependencies": {

@@ -20,11 +20,9 @@ pub trait AccountManagement: Send + Sync {
     /// Subscribe to account connection status changes.
     ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export function watchAccountConnection(provider: Provider) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export function watchAccountConnection(truapi: Client) {
     ///   return truapi.accountManagement.accountConnectionStatusSubscribe({
     ///     onData: (status) => console.log(status),
     ///     onError: console.error,
@@ -43,16 +41,10 @@ pub trait AccountManagement: Send + Sync {
 
     /// Retrieve a product-scoped account.
     ///
-    /// ```truapi-playground-request
-    /// { "productAccountId": { "dotNsIdentifier": "truapi-playground.dot", "derivationIndex": 0 } }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function getAccount(provider: Provider) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export async function getAccount(truapi: Client) {
     ///   const result = await truapi.accountManagement.accountGet({
     ///     productAccountId: {
     ///       dotNsIdentifier: "truapi-playground.dot",
@@ -75,16 +67,10 @@ pub trait AccountManagement: Send + Sync {
 
     /// Retrieve a contextual alias for a product account.
     ///
-    /// ```truapi-playground-request
-    /// { "productAccountId": { "dotNsIdentifier": "truapi-playground.dot", "derivationIndex": 0 } }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function getAccountAlias(provider: Provider) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export async function getAccountAlias(truapi: Client) {
     ///   const result = await truapi.accountManagement.accountGetAlias({
     ///     productAccountId: {
     ///       dotNsIdentifier: "truapi-playground.dot",
@@ -107,28 +93,18 @@ pub trait AccountManagement: Send + Sync {
 
     /// Generate a ring VRF proof for a product account.
     ///
-    /// ```truapi-playground-request
-    /// { "productAccountId": { "dotNsIdentifier": "truapi-playground.dot", "derivationIndex": 0 }, "ringLocation": { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2", "ringRootHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2", "hints": { "palletInstance": 42 } }, "context": "0x" }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function createAccountProof(
-    ///   provider: Provider,
-    ///   genesisHash: Uint8Array,
-    ///   ringRootHash: Uint8Array,
-    /// ) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export async function createAccountProof(truapi: Client) {
     ///   const result = await truapi.accountManagement.accountCreateProof({
     ///     productAccountId: {
     ///       dotNsIdentifier: "truapi-playground.dot",
     ///       derivationIndex: 0,
     ///     },
     ///     ringLocation: {
-    ///       genesisHash,
-    ///       ringRootHash,
+    ///       genesisHash: new Uint8Array(),
+    ///       ringRootHash: new Uint8Array(),
     ///       hints: { palletInstance: 42 },
     ///     },
     ///     context: new Uint8Array(),
@@ -150,11 +126,9 @@ pub trait AccountManagement: Send + Sync {
     /// List non-product accounts the user owns.
     ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function getLegacyAccounts(provider: Provider) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export async function getLegacyAccounts(truapi: Client) {
     ///   const result = await truapi.accountManagement.getLegacyAccounts();
     ///
     ///   if (result.isErr()) throw result.error;
@@ -173,11 +147,9 @@ pub trait AccountManagement: Send + Sync {
     /// Fetch the user's primary identity (V0.2+).
     ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function getUserId(provider: Provider) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export async function getUserId(truapi: Client) {
     ///   const result = await truapi.accountManagement.getUserId();
     ///
     ///   if (result.isErr()) throw result.error;

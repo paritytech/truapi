@@ -21,4 +21,5 @@ target
 *.njsproj
 *.sln
 *.sw?
-.claude
+.claude/*
+!.claude/skills/

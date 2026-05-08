@@ -1411,6 +1411,8 @@ export interface TrUApiClient {
   readonly trUApiCalls: TrUApiCallsClient;
 }
 
+export type Client = TrUApiClient;
+
 /** Creates the generated client facade by binding each service namespace to the
  * shared transport instance. */
 export function createClient(transport: TrUApiTransport): TrUApiClient {

@@ -17,16 +17,10 @@ use crate::{CallContext, CallError, Subscription};
 pub trait StatementStore: Send + Sync {
     /// Subscribe to statements matching a topic filter.
     ///
-    /// ```truapi-playground-request
-    /// { "tag": "MatchAll", "value": [] }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export function subscribeStatements(provider: Provider) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export function subscribeStatements(truapi: Client) {
     ///   return truapi.statementStore.statementStoreSubscribe({
     ///     request: { tag: "MatchAll", value: [] },
     ///     onData: (statements) => console.log(statements),
@@ -47,21 +41,20 @@ pub trait StatementStore: Send + Sync {
 
     /// Create a proof for a statement.
     ///
-    /// ```truapi-playground-request
-    /// { "productAccountId": { "dotNsIdentifier": "truapi-playground.dot", "derivationIndex": 0 }, "statement": { "proof": null, "decryptionKey": null, "expiry": "9999999999999n", "channel": null, "topics": [], "data": null } }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function createStatementProof(
-    ///   provider: Provider,
-    ///   request: T.V01RemoteStatementStoreCreateProofRequest,
-    /// ) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
-    ///   const result =
-    ///     await truapi.statementStore.statementStoreCreateProof(request);
+    /// export async function createStatementProof(truapi: Client) {
+    ///   const result = await truapi.statementStore.statementStoreCreateProof({
+    ///     productAccountId: {
+    ///       dotNsIdentifier: "truapi-playground.dot",
+    ///       derivationIndex: 0,
+    ///     },
+    ///     statement: {
+    ///       expiry: 9999999999999n,
+    ///       topics: [],
+    ///     },
+    ///   });
     ///
     ///   if (result.isErr()) throw result.error;
     ///   return result.value;
@@ -83,20 +76,17 @@ pub trait StatementStore: Send + Sync {
     /// [`SignedStatement`](crate::v01::SignedStatement) directly (no wrapping
     /// struct), matching upstream `triangle-js-sdks`.
     ///
-    /// ```truapi-playground-request
-    /// { "proof": { "tag": "Sr25519", "value": { "signature": "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", "signer": "0x0000000000000000000000000000000000000000000000000000000000000000" } }, "decryptionKey": null, "expiry": null, "channel": null, "topics": [], "data": null }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function submitStatement(
-    ///   provider: Provider,
-    ///   statement: T.SignedStatement,
-    /// ) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
-    ///   const result = await truapi.statementStore.statementStoreSubmit(statement);
+    /// export async function submitStatement(truapi: Client) {
+    ///   const result = await truapi.statementStore.statementStoreSubmit({
+    ///     proof: {
+    ///       tag: "Sr25519",
+    ///       value: { signature: new Uint8Array(), signer: new Uint8Array() },
+    ///     },
+    ///     topics: [],
+    ///   });
     ///
     ///   if (result.isErr()) throw result.error;
     /// }

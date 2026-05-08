@@ -15,18 +15,12 @@ pub trait EntropyDerivation: Send + Sync {
     /// Derive 32 bytes of entropy from the user's root BIP-39 entropy for the
     /// given key.
     ///
-    /// ```truapi-playground-request
-    /// { "context": "0x" }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function deriveEntropy(provider: Provider, context: Uint8Array) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export async function deriveEntropy(truapi: Client) {
     ///   const result = await truapi.entropyDerivation.deriveEntropy({
-    ///     context,
+    ///     context: new Uint8Array(),
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;

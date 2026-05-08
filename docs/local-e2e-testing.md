@@ -6,6 +6,25 @@ end on a single workstation. Written for both humans and agents — every
 step has an exact command, an expected outcome, and the failure mode that
 would prompt a re-run or rollback.
 
+## Automation
+
+The chain below is also automated:
+
+- **Claude skills** under `.claude/skills/` mirror each layer:
+  `rust-checks`, `regen-codegen`, `ts-client-checks`,
+  `refresh-playground-snapshot`, `playground-checks`, `e2e-dotli`, and
+  the umbrella `truapi-definition-of-done`. Invoke them when working in
+  the repo with Claude Code; each is a small, command-first runbook.
+- **CI workflow** `.github/workflows/ci.yml` runs the same chain on every
+  PR. The static jobs (`rust`, `codegen-drift`, `ts-client`,
+  `playground`, `explorer`) are fast; the `e2e` job builds dotli and
+  drives the playground inside its iframe via Playwright (specs in
+  `playground/tests/e2e/`). Failed e2e runs upload the Playwright HTML
+  report as an artifact.
+
+The doc below is still the canonical narrative and the source of truth
+for failure modes — both the skills and CI cite it.
+
 The order matters: each layer assumes the layer below it builds clean.
 Skip a step only if you are certain the change cannot affect that layer.
 

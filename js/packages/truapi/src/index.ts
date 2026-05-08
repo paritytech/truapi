@@ -7,12 +7,10 @@ export type {
   Subscription,
   SubscribeParams,
   TrUApiTransport,
-  WebSocketProviderOptions,
 } from "./transport.js";
 export type { CreateTransportOptions } from "./client.js";
 export {
   createMessagePortProvider,
-  createWebSocketProvider,
   decodeWireMessage,
   encodeWireMessage,
 } from "./transport.js";

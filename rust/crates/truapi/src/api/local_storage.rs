@@ -13,17 +13,11 @@ use crate::{CallContext, CallError};
 pub trait LocalStorage: Send + Sync {
     /// Read a value by key.
     ///
-    /// ```truapi-playground-request
-    /// { "key": "test-key" }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function readLocalValue(provider: Provider, key: string) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
-    ///   const result = await truapi.localStorage.localStorageRead({ key });
+    /// export async function readLocalValue(truapi: Client) {
+    ///   const result = await truapi.localStorage.localStorageRead({ key: "test-key" });
     ///
     ///   if (result.isErr()) throw result.error;
     ///   return result.value.value;
@@ -38,21 +32,14 @@ pub trait LocalStorage: Send + Sync {
 
     /// Write a value to a key.
     ///
-    /// ```truapi-playground-request
-    /// { "key": "test-key", "value": "0x48656c6c6f" }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function writeLocalValue(
-    ///   provider: Provider,
-    ///   key: string,
-    ///   value: Uint8Array,
-    /// ) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
-    ///   const result = await truapi.localStorage.localStorageWrite({ key, value });
+    /// export async function writeLocalValue(truapi: Client) {
+    ///   const result = await truapi.localStorage.localStorageWrite({
+    ///     key: "test-key",
+    ///     value: new Uint8Array(),
+    ///   });
     ///
     ///   if (result.isErr()) throw result.error;
     /// }
@@ -66,17 +53,11 @@ pub trait LocalStorage: Send + Sync {
 
     /// Clear a value by key.
     ///
-    /// ```truapi-playground-request
-    /// { "key": "test-key" }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function clearLocalValue(provider: Provider, key: string) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
-    ///   const result = await truapi.localStorage.localStorageClear({ key });
+    /// export async function clearLocalValue(truapi: Client) {
+    ///   const result = await truapi.localStorage.localStorageClear({ key: "test-key" });
     ///
     ///   if (result.isErr()) throw result.error;
     /// }

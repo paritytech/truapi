@@ -4,7 +4,7 @@ TypeScript package for products that talk to a TrUAPI host.
 
 It contains:
 
-- transport providers for `MessagePort` and WebSocket pipes
+- transport providers for `MessagePort` pipes
 - the TrUAPI request, response, subscription, and handshake transport
 - generated domain clients and protocol types from the Rust API contract
 - SCALE codec helpers used by the generated code

@@ -16,18 +16,12 @@ use crate::{CallContext, Subscription};
 pub trait Preimage: Send + Sync {
     /// Subscribe to preimage lookups for a given key.
     ///
-    /// ```truapi-playground-request
-    /// { "key": "0x0000000000000000000000000000000000000000000000000000000000000000" }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export function lookupPreimage(provider: Provider, key: Uint8Array) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export function lookupPreimage(truapi: Client) {
     ///   return truapi.preimage.preimageLookupSubscribe({
-    ///     request: { key },
+    ///     request: { key: new Uint8Array() },
     ///     onData: (item) => console.log(item),
     ///     onError: console.error,
     ///     onInterrupt: () => console.log("interrupted"),

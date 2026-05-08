@@ -17,20 +17,30 @@ use crate::{CallContext, CallError};
 pub trait Signing: Send + Sync {
     /// Construct a signed extrinsic for a product account.
     ///
-    /// ```truapi-playground-request
-    /// { "productAccountId": { "dotNsIdentifier": "truapi-playground.dot", "derivationIndex": 0 }, "payload": { "tag": "V1", "value": { "signer": null, "callData": "0x0000", "extensions": [], "txExtVersion": 0, "context": { "metadata": "0x", "tokenSymbol": "DOT", "tokenDecimals": 10, "bestBlockHeight": 0 } } } }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function createTransaction(
-    ///   provider: Provider,
-    ///   request: T.V01HostCreateTransactionRequest,
-    /// ) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
-    ///   const result = await truapi.signing.createTransaction(request);
+    /// export async function createTransaction(truapi: Client) {
+    ///   const result = await truapi.signing.createTransaction({
+    ///     productAccountId: {
+    ///       dotNsIdentifier: "truapi-playground.dot",
+    ///       derivationIndex: 0,
+    ///     },
+    ///     payload: {
+    ///       tag: "V1",
+    ///       value: {
+    ///         callData: new Uint8Array(),
+    ///         extensions: [],
+    ///         txExtVersion: 0,
+    ///         context: {
+    ///           metadata: new Uint8Array(),
+    ///           tokenSymbol: "DOT",
+    ///           tokenDecimals: 10,
+    ///           bestBlockHeight: 0,
+    ///         },
+    ///       },
+    ///     },
+    ///   });
     ///
     ///   if (result.isErr()) throw result.error;
     ///   return result.value;
@@ -47,21 +57,26 @@ pub trait Signing: Send + Sync {
 
     /// Construct a signed extrinsic for a non-product account.
     ///
-    /// ```truapi-playground-request
-    /// { "payload": { "tag": "V1", "value": { "signer": null, "callData": "0x0000", "extensions": [], "txExtVersion": 0, "context": { "metadata": "0x", "tokenSymbol": "DOT", "tokenDecimals": 10, "bestBlockHeight": 0 } } } }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function createTransactionWithLegacyAccount(
-    ///   provider: Provider,
-    ///   request: T.V01HostCreateTransactionWithLegacyAccountRequest,
-    /// ) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
-    ///   const result =
-    ///     await truapi.signing.createTransactionWithLegacyAccount(request);
+    /// export async function createTransactionWithLegacyAccount(truapi: Client) {
+    ///   const result = await truapi.signing.createTransactionWithLegacyAccount({
+    ///     payload: {
+    ///       tag: "V1",
+    ///       value: {
+    ///         callData: new Uint8Array(),
+    ///         extensions: [],
+    ///         txExtVersion: 0,
+    ///         context: {
+    ///           metadata: new Uint8Array(),
+    ///           tokenSymbol: "DOT",
+    ///           tokenDecimals: 10,
+    ///           bestBlockHeight: 0,
+    ///         },
+    ///       },
+    ///     },
+    ///   });
     ///
     ///   if (result.isErr()) throw result.error;
     ///   return result.value;
@@ -81,22 +96,13 @@ pub trait Signing: Send + Sync {
 
     /// Sign raw bytes or a message.
     ///
-    /// ```truapi-playground-request
-    /// { "account": { "dotNsIdentifier": "truapi-playground.dot", "derivationIndex": 0 }, "data": { "tag": "Bytes", "value": { "bytes": "0x48656c6c6f" } } }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function signRawBytes(provider: Provider, bytes: Uint8Array) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
+    /// export async function signRawBytes(truapi: Client) {
     ///   const result = await truapi.signing.signRaw({
-    ///     account: {
-    ///       dotNsIdentifier: "truapi-playground.dot",
-    ///       derivationIndex: 0,
-    ///     },
-    ///     data: { tag: "Bytes", value: { bytes } },
+    ///     account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },
+    ///     payload: { tag: "Bytes", value: { bytes: new Uint8Array() } },
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;
@@ -114,20 +120,24 @@ pub trait Signing: Send + Sync {
 
     /// Sign a Substrate extrinsic payload.
     ///
-    /// ```truapi-playground-request
-    /// { "account": { "dotNsIdentifier": "truapi-playground.dot", "derivationIndex": 0 }, "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000000", "blockNumber": "0x00000000", "era": "0x00", "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2", "method": "0x00000000", "nonce": "0x00000000", "signedExtensions": [], "specVersion": "0x00000000", "tip": "0x00000000000000000000000000000000", "transactionVersion": "0x00000000", "version": 4 }
-    /// ```
-    ///
     /// ```truapi-client-example
-    /// import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function signPayload(
-    ///   provider: Provider,
-    ///   request: T.V02HostSignPayloadRequest,
-    /// ) {
-    ///   const truapi = createClient(createTransport(provider));
-    ///
-    ///   const result = await truapi.signing.signPayload(request);
+    /// export async function signPayload(truapi: Client) {
+    ///   const result = await truapi.signing.signPayload({
+    ///     account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },
+    ///     blockHash: new Uint8Array(),
+    ///     blockNumber: new Uint8Array(),
+    ///     era: new Uint8Array(),
+    ///     genesisHash: new Uint8Array(),
+    ///     method: new Uint8Array(),
+    ///     nonce: new Uint8Array(),
+    ///     signedExtensions: [],
+    ///     specVersion: new Uint8Array(),
+    ///     tip: new Uint8Array(),
+    ///     transactionVersion: new Uint8Array(),
+    ///     version: 4,
+    ///   });
     ///
     ///   if (result.isErr()) throw result.error;
     ///   return result.value;

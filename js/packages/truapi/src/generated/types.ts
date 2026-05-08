@@ -618,7 +618,7 @@ export const HostAccountCreateProofResponse: S.Codec<HostAccountCreateProofRespo
       }),
   );
 
-/** Versioned wrapper for [`v01::HostAccountGetError`] and older versions. */
+/** Versioned wrapper around the alias-lookup error path; reuses [`v01::HostAccountGetError`]. */
 export type HostAccountGetAliasError = {
   tag: "V1";
   value: V01HostAccountGetError;
@@ -867,7 +867,7 @@ export const HostChatRegisterBotResponse: S.Codec<HostChatRegisterBotResponse> =
       }),
   );
 
-/** Versioned wrapper for [`v01::HostCreateTransactionError`] and older versions. */
+/** Versioned wrapper for [`v01::HostCreateTransactionError`]. */
 export type HostCreateTransactionError = {
   tag: "V1";
   value: V01HostCreateTransactionError;
@@ -879,7 +879,7 @@ export const HostCreateTransactionError: S.Codec<HostCreateTransactionError> =
       S.indexedTaggedUnion({ V1: [0, V01HostCreateTransactionError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostCreateTransactionRequest`] and older versions. */
+/** Versioned wrapper for [`v01::HostCreateTransactionRequest`]. */
 export type HostCreateTransactionRequest = {
   tag: "V1";
   value: V01HostCreateTransactionRequest;
@@ -893,7 +893,7 @@ export const HostCreateTransactionRequest: S.Codec<HostCreateTransactionRequest>
       }),
   );
 
-/** Versioned wrapper for [`v01::HostCreateTransactionResponse`] and older versions. */
+/** Versioned wrapper for [`v01::HostCreateTransactionResponse`]. */
 export type HostCreateTransactionResponse = {
   tag: "V1";
   value: V01HostCreateTransactionResponse;
@@ -907,7 +907,7 @@ export const HostCreateTransactionResponse: S.Codec<HostCreateTransactionRespons
       }),
   );
 
-/** Versioned wrapper for [`v01::HostCreateTransactionError`] and older versions. */
+/** Versioned wrapper for the legacy-account create-transaction error path; reuses [`v01::HostCreateTransactionError`]. */
 export type HostCreateTransactionWithLegacyAccountError = {
   tag: "V1";
   value: V01HostCreateTransactionError;
@@ -919,7 +919,7 @@ export const HostCreateTransactionWithLegacyAccountError: S.Codec<HostCreateTran
       S.indexedTaggedUnion({ V1: [0, V01HostCreateTransactionError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostCreateTransactionWithLegacyAccountRequest`] and older versions. */
+/** Versioned wrapper for [`v01::HostCreateTransactionWithLegacyAccountRequest`]. */
 export type HostCreateTransactionWithLegacyAccountRequest = {
   tag: "V1";
   value: V01HostCreateTransactionWithLegacyAccountRequest;
@@ -933,7 +933,7 @@ export const HostCreateTransactionWithLegacyAccountRequest: S.Codec<HostCreateTr
       }),
   );
 
-/** Versioned wrapper for [`v01::HostCreateTransactionWithLegacyAccountResponse`] and older versions. */
+/** Versioned wrapper for [`v01::HostCreateTransactionWithLegacyAccountResponse`]. */
 export type HostCreateTransactionWithLegacyAccountResponse = {
   tag: "V1";
   value: V01HostCreateTransactionWithLegacyAccountResponse;
@@ -1056,7 +1056,7 @@ export const HostFeatureSupportedResponse: S.Codec<HostFeatureSupportedResponse>
       }),
   );
 
-/** Versioned wrapper for [`v01::HostAccountGetError`] and older versions. */
+/** Versioned wrapper around the legacy-accounts error path; reuses [`v01::HostAccountGetError`]. */
 export type HostGetLegacyAccountsError = {
   tag: "V1";
   value: V01HostAccountGetError;
@@ -1462,7 +1462,7 @@ export const HostPushNotificationResponse: S.Codec<HostPushNotificationResponse>
       S.indexedTaggedUnion({ V1: [0, S.unit] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostSignPayloadError`] and older versions. */
+/** Versioned wrapper for the sign-payload error (shared across v0.1/v0.2). */
 export type HostSignPayloadError = {
   tag: "V2";
   value: V01HostSignPayloadError;
@@ -1473,7 +1473,7 @@ export const HostSignPayloadError: S.Codec<HostSignPayloadError> = S.lazy(
     S.indexedTaggedUnion({ V2: [0, V01HostSignPayloadError] as const }),
 );
 
-/** Versioned wrapper for [`v02::HostSignPayloadRequest`] and older versions. */
+/** Versioned wrapper covering both v0.1 and v0.2 sign-payload requests. */
 export type HostSignPayloadRequest = {
   tag: "V2";
   value: V02HostSignPayloadRequest;
@@ -1484,7 +1484,7 @@ export const HostSignPayloadRequest: S.Codec<HostSignPayloadRequest> = S.lazy(
     S.indexedTaggedUnion({ V2: [0, V02HostSignPayloadRequest] as const }),
 );
 
-/** Versioned wrapper for [`v01::HostSignPayloadResponse`] and older versions. */
+/** Versioned wrapper for the sign-payload response (shared across v0.1/v0.2). */
 export type HostSignPayloadResponse = {
   tag: "V2";
   value: V01HostSignPayloadResponse;
@@ -1495,7 +1495,7 @@ export const HostSignPayloadResponse: S.Codec<HostSignPayloadResponse> = S.lazy(
     S.indexedTaggedUnion({ V2: [0, V01HostSignPayloadResponse] as const }),
 );
 
-/** Versioned wrapper for [`v01::HostSignPayloadError`] and older versions. */
+/** Versioned wrapper for the sign-raw error; reuses [`v01::HostSignPayloadError`]. */
 export type HostSignRawError = { tag: "V2"; value: V01HostSignPayloadError };
 
 export const HostSignRawError: S.Codec<HostSignRawError> = S.lazy(
@@ -1503,7 +1503,7 @@ export const HostSignRawError: S.Codec<HostSignRawError> = S.lazy(
     S.indexedTaggedUnion({ V2: [0, V01HostSignPayloadError] as const }),
 );
 
-/** Versioned wrapper for [`v02::HostSignRawRequest`] and older versions. */
+/** Versioned wrapper covering both v0.1 and v0.2 sign-raw requests. */
 export type HostSignRawRequest = { tag: "V2"; value: V02HostSignRawRequest };
 
 export const HostSignRawRequest: S.Codec<HostSignRawRequest> = S.lazy(
@@ -1511,7 +1511,7 @@ export const HostSignRawRequest: S.Codec<HostSignRawRequest> = S.lazy(
     S.indexedTaggedUnion({ V2: [0, V02HostSignRawRequest] as const }),
 );
 
-/** Versioned wrapper for [`v01::HostSignPayloadResponse`] and older versions. */
+/** Versioned wrapper for the sign-raw response; reuses [`v01::HostSignPayloadResponse`]. */
 export type HostSignRawResponse = {
   tag: "V2";
   value: V01HostSignPayloadResponse;
