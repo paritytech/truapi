@@ -5,14 +5,14 @@ import {
   type Provider,
   type TrUApiClient,
   type TrUApiTransport,
-  type V01RemoteChainHeadFollowItem,
+  type RemoteChainHeadFollowItem,
 } from "@parity/truapi";
 
 // `Hex` was a Vec<u8> alias in earlier generated TS; the new codegen
 // inlines the underlying type, so we keep a local alias to avoid churning
 // the rest of this module.
 type Hex = Uint8Array;
-type ChainHeadEvent = V01RemoteChainHeadFollowItem;
+type ChainHeadEvent = RemoteChainHeadFollowItem;
 
 export type ConnectionStatus = "disconnected" | "connecting" | "connected";
 

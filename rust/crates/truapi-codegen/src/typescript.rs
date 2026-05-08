@@ -723,7 +723,7 @@ fn explorer_types(
 ) -> Result<Vec<ExplorerTypeRecord>> {
     let visible = explorer_visible_type_names(api, wrappers, target_version)?;
     let emit_versions = versioned_wrapper_emit_versions(api, wrappers, target_version)?;
-    let aliases = selected_public_aliases(api, &wrappers, &emit_versions, target_version);
+    let aliases = selected_public_aliases(api, wrappers, &emit_versions, target_version);
     let mut types = Vec::new();
     for ty in &api.types {
         if !visible.contains(&ty.name) {
