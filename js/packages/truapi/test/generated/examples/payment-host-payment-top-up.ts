@@ -2,7 +2,7 @@
 
 import { type Client } from "@parity/truapi";
 
-export async function topUpPaymentBalance(truapi: Client) {
+export async function topUpPaymentBalance(truapi: Client): Promise<void> {
   const result = await truapi.payment.paymentTopUp({
     amount: 0n,
     source: { tag: "ProductAccount", value: { derivationIndex: 0 } },

@@ -4,7 +4,7 @@ import { str, u8 } from "./scale.js";
 import { idForTag, tagForId } from "./generated/wire-table.js";
 
 /**
- * Handle returned by `TrUApiTransport.subscribe`.
+ * Handle returned by TrUAPI subscription APIs.
  **/
 export interface Subscription {
   /**
@@ -19,6 +19,37 @@ export interface Subscription {
    * follow-up requests to a specific active subscription.
    **/
   subscriptionId: string;
+}
+
+/**
+ * Minimal Observable-compatible observer shape used by generated subscription
+ * APIs without depending on RxJS.
+ **/
+export interface Observer<Item> {
+  /**
+   * Called with each successfully decoded subscription item.
+   **/
+  next(value: Item): void;
+
+  /**
+   * Called once when the stream terminates with an error.
+   **/
+  error(error: Error): void;
+
+  /**
+   * Called once when the peer normally completes the stream.
+   **/
+  complete(): void;
+}
+
+/**
+ * Minimal Observable-compatible object returned by generated subscription APIs.
+ **/
+export interface ObservableLike<Item> {
+  /**
+   * Start the stream and receive `next`, `error`, and `complete` callbacks.
+   **/
+  subscribe(observer?: Partial<Observer<Item>>): Subscription;
 }
 
 /**
@@ -42,34 +73,9 @@ export interface RequestParams<Response> {
 }
 
 /**
- * Typed callbacks accepted by generated subscription methods.
+ * Options accepted by `TrUApiTransport.subscribeRaw`.
  **/
-export interface SubscribeCallbacks<Item> {
-  /**
-   * Called with each successfully decoded subscription item.
-   **/
-  onData: (data: Item) => void;
-
-  /**
-   * Called when the peer sends an interrupt frame for the subscription.
-   **/
-  onInterrupt?: () => void;
-
-  /**
-   * Called when a received item cannot be decoded by the generated client.
-   **/
-  onError?: (error: Error) => void;
-
-  /**
-   * Called when the underlying provider closes while the subscription is active.
-   **/
-  onClose?: (error: Error) => void;
-}
-
-/**
- * Options accepted by `TrUApiTransport.subscribe`.
- **/
-export interface SubscribeParams {
+export interface SubscribeRawParams {
   /**
    * Canonical TrUAPI method name, without the frame suffix.
    **/
@@ -83,7 +89,7 @@ export interface SubscribeParams {
   /**
    * Called with raw SCALE receive payload bytes.
    **/
-  onData: (payload: Uint8Array) => void;
+  onReceive: (payload: Uint8Array) => void;
 
   /**
    * Called when the peer sends an interrupt frame for the subscription.
@@ -118,7 +124,7 @@ export interface TrUApiTransport {
   /**
    * Start a subscription and return a handle that can stop it.
    **/
-  subscribe<Item = unknown>(params: SubscribeParams): Subscription;
+  subscribeRaw(params: SubscribeRawParams): Subscription;
 }
 
 /**

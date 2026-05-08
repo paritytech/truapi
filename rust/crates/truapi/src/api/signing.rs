@@ -18,9 +18,14 @@ pub trait Signing: Send + Sync {
     /// Construct a signed extrinsic for a product account.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type HostCreateTransactionResponse,
+    /// } from "@parity/truapi";
     ///
-    /// export async function createTransaction(truapi: Client) {
+    /// export async function createTransaction(
+    ///   truapi: Client,
+    /// ): Promise<HostCreateTransactionResponse> {
     ///   const result = await truapi.signing.createTransaction({
     ///     productAccountId: {
     ///       dotNsIdentifier: "truapi-playground.dot",
@@ -58,9 +63,14 @@ pub trait Signing: Send + Sync {
     /// Construct a signed extrinsic for a non-product account.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type HostCreateTransactionWithLegacyAccountResponse,
+    /// } from "@parity/truapi";
     ///
-    /// export async function createTransactionWithLegacyAccount(truapi: Client) {
+    /// export async function createTransactionWithLegacyAccount(
+    ///   truapi: Client,
+    /// ): Promise<HostCreateTransactionWithLegacyAccountResponse> {
     ///   const result = await truapi.signing.createTransactionWithLegacyAccount({
     ///     payload: {
     ///       tag: "V1",
@@ -97,9 +107,14 @@ pub trait Signing: Send + Sync {
     /// Sign raw bytes or a message.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type HostSignPayloadResponse,
+    /// } from "@parity/truapi";
     ///
-    /// export async function signRawBytes(truapi: Client) {
+    /// export async function signRawBytes(
+    ///   truapi: Client,
+    /// ): Promise<HostSignPayloadResponse> {
     ///   const result = await truapi.signing.signRaw({
     ///     account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },
     ///     payload: { tag: "Bytes", value: { bytes: new Uint8Array() } },
@@ -121,9 +136,14 @@ pub trait Signing: Send + Sync {
     /// Sign a Substrate extrinsic payload.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type HostSignPayloadResponse,
+    /// } from "@parity/truapi";
     ///
-    /// export async function signPayload(truapi: Client) {
+    /// export async function signPayload(
+    ///   truapi: Client,
+    /// ): Promise<HostSignPayloadResponse> {
     ///   const result = await truapi.signing.signPayload({
     ///     account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },
     ///     blockHash: new Uint8Array(),

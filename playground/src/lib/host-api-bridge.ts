@@ -1,4 +1,4 @@
-import type { Result, Subscription, TrUApiClient } from "@parity/truapi";
+import type { ObservableLike, Result, TrUApiClient } from "@parity/truapi";
 import {
   awaitChainHeadOperation,
   awaitChainHeadStorage,
@@ -22,7 +22,7 @@ export type MethodBinding =
       subscribe: (
         req: unknown,
         onEvent: (data: unknown) => void,
-        onEnd: () => void,
+        onEnd: (error?: Error) => void,
       ) => SubscriptionHandle;
     };
 
@@ -30,8 +30,8 @@ export type MethodBinding =
 // [serviceField on TrUApiClient, methodName on the service class, isStream].
 //
 // The generated client encodes requests with the selected versioned envelope.
-// Callers pass the inner request value directly; subscriptions take a callback
-// and return a `Subscription` object that exposes the transport-assigned
+// Callers pass the inner request value directly; subscriptions return an
+// Observable-like object whose `subscribe` call returns the transport-assigned
 // subscription id.
 const methodMap: Record<string, [keyof TrUApiClient, string, boolean]> = {
   // TrUAPI Calls
@@ -270,14 +270,10 @@ const ZERO_HASH =
 //   - Unary: `methodName(request: T)` — a single positional arg, where `T`
 //     is either an inner enum/value type or a struct-shaped versioned
 //     wrapper. The bridge passes the user-typed JSON straight through.
-//   - Subscribe: `methodName({ request?, onData, onInterrupt? })` — a
-//     single options object combining the request value with the
-//     callbacks. No-input subscribes drop the `request` field.
-function buildArgs(req: unknown, onData?: (data: unknown) => void): unknown[] {
+//   - Subscribe: `methodName({ request? }).subscribe({ next, error, complete })`
+//     No-input subscribes drop the `request` argument.
+function buildArgs(req: unknown): unknown[] {
   const noParams = req === null || req === undefined;
-  if (onData) {
-    return [noParams ? { onData } : { request: req, onData }];
-  }
   return noParams ? [] : [req];
 }
 
@@ -384,8 +380,13 @@ export function getMethodBinding(
     return {
       isStream: true,
       subscribe(req, onEvent, onEnd) {
-        const args = buildArgs(normalizeForScale(req), onEvent);
-        const sub = fn.apply(thisArg, args) as Subscription;
+        const args = buildArgs(normalizeForScale(req));
+        const observable = fn.apply(thisArg, args) as ObservableLike<unknown>;
+        const sub = observable.subscribe({
+          next: onEvent,
+          error: onEnd,
+          complete: () => onEnd(),
+        });
         return {
           subscriptionId: sub.subscriptionId,
           unsubscribe: () => {

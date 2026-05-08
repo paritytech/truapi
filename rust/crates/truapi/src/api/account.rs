@@ -20,14 +20,18 @@ pub trait AccountManagement: Send + Sync {
     /// Subscribe to account connection status changes.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type Subscription,
+    ///   type HostAccountConnectionStatusSubscribeItem,
+    /// } from "@parity/truapi";
     ///
-    /// export function watchAccountConnection(truapi: Client) {
-    ///   return truapi.accountManagement.accountConnectionStatusSubscribe({
-    ///     onData: (status) => console.log(status),
-    ///     onError: console.error,
-    ///     onInterrupt: () => console.log("interrupted"),
-    ///     onClose: console.error,
+    /// export function watchAccountConnection(truapi: Client): Subscription {
+    ///   return truapi.accountManagement.accountConnectionStatusSubscribe().subscribe({
+    ///     next: (status: HostAccountConnectionStatusSubscribeItem) =>
+    ///       console.log(status),
+    ///     error: (error: Error) => console.error(error),
+    ///     complete: () => console.log("completed"),
     ///   });
     /// }
     /// ```
@@ -42,9 +46,14 @@ pub trait AccountManagement: Send + Sync {
     /// Retrieve a product-scoped account.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type HostAccountGetResponse,
+    /// } from "@parity/truapi";
     ///
-    /// export async function getAccount(truapi: Client) {
+    /// export async function getAccount(
+    ///   truapi: Client,
+    /// ): Promise<HostAccountGetResponse> {
     ///   const result = await truapi.accountManagement.accountGet({
     ///     productAccountId: {
     ///       dotNsIdentifier: "truapi-playground.dot",
@@ -68,9 +77,14 @@ pub trait AccountManagement: Send + Sync {
     /// Retrieve a contextual alias for a product account.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type HostAccountGetAliasResponse,
+    /// } from "@parity/truapi";
     ///
-    /// export async function getAccountAlias(truapi: Client) {
+    /// export async function getAccountAlias(
+    ///   truapi: Client,
+    /// ): Promise<HostAccountGetAliasResponse> {
     ///   const result = await truapi.accountManagement.accountGetAlias({
     ///     productAccountId: {
     ///       dotNsIdentifier: "truapi-playground.dot",
@@ -94,9 +108,14 @@ pub trait AccountManagement: Send + Sync {
     /// Generate a ring VRF proof for a product account.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type HostAccountCreateProofResponse,
+    /// } from "@parity/truapi";
     ///
-    /// export async function createAccountProof(truapi: Client) {
+    /// export async function createAccountProof(
+    ///   truapi: Client,
+    /// ): Promise<HostAccountCreateProofResponse> {
     ///   const result = await truapi.accountManagement.accountCreateProof({
     ///     productAccountId: {
     ///       dotNsIdentifier: "truapi-playground.dot",
@@ -126,9 +145,14 @@ pub trait AccountManagement: Send + Sync {
     /// List non-product accounts the user owns.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type HostGetLegacyAccountsResponse,
+    /// } from "@parity/truapi";
     ///
-    /// export async function getLegacyAccounts(truapi: Client) {
+    /// export async function getLegacyAccounts(
+    ///   truapi: Client,
+    /// ): Promise<HostGetLegacyAccountsResponse> {
     ///   const result = await truapi.accountManagement.getLegacyAccounts();
     ///
     ///   if (result.isErr()) throw result.error;
@@ -147,9 +171,14 @@ pub trait AccountManagement: Send + Sync {
     /// Fetch the user's primary identity (V0.2+).
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type HostGetUserIdResponse,
+    /// } from "@parity/truapi";
     ///
-    /// export async function getUserId(truapi: Client) {
+    /// export async function getUserId(
+    ///   truapi: Client,
+    /// ): Promise<HostGetUserIdResponse> {
     ///   const result = await truapi.accountManagement.getUserId();
     ///
     ///   if (result.isErr()) throw result.error;

@@ -2,7 +2,7 @@
 
 import { type Client } from "@parity/truapi";
 
-export async function handshake(truapi: Client) {
+export async function handshake(truapi: Client): Promise<void> {
   const result = await truapi.trUApiCalls.handshake();
 
   if (result.isErr()) throw result.error;

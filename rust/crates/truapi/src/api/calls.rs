@@ -35,7 +35,7 @@ pub trait TrUApiCalls: Send + Sync {
     /// ```truapi-client-example
     /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function handshake(truapi: Client) {
+    /// export async function handshake(truapi: Client): Promise<void> {
     ///   const result = await truapi.trUApiCalls.handshake();
     ///
     ///   if (result.isErr()) throw result.error;
@@ -62,7 +62,7 @@ pub trait TrUApiCalls: Send + Sync {
     /// ```truapi-client-example
     /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function supportsChain(truapi: Client) {
+    /// export async function supportsChain(truapi: Client): Promise<boolean> {
     ///   const result = await truapi.trUApiCalls.featureSupported({
     ///     tag: "Chain",
     ///     value: { genesisHash: new Uint8Array() },
@@ -84,7 +84,7 @@ pub trait TrUApiCalls: Send + Sync {
     /// ```truapi-client-example
     /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function pushNotification(truapi: Client) {
+    /// export async function pushNotification(truapi: Client): Promise<void> {
     ///   const result = await truapi.trUApiCalls.pushNotification({
     ///     text: "Hello!",
     ///   });
@@ -104,7 +104,7 @@ pub trait TrUApiCalls: Send + Sync {
     /// ```truapi-client-example
     /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function navigateToDocs(truapi: Client) {
+    /// export async function navigateToDocs(truapi: Client): Promise<void> {
     ///   const result = await truapi.trUApiCalls.navigateTo({
     ///     url: "https://example.com",
     ///   });

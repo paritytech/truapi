@@ -2,7 +2,7 @@
 
 import { type Client } from "@parity/truapi";
 
-export async function stopTransactionBroadcast(truapi: Client) {
+export async function stopTransactionBroadcast(truapi: Client): Promise<void> {
   const result = await truapi.chainInteraction.chainTransactionStop({
     genesisHash: new Uint8Array(),
     operationId: "op-id",

@@ -16,7 +16,9 @@ pub trait LocalStorage: Send + Sync {
     /// ```truapi-client-example
     /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function readLocalValue(truapi: Client) {
+    /// export async function readLocalValue(
+    ///   truapi: Client,
+    /// ): Promise<Uint8Array | undefined> {
     ///   const result = await truapi.localStorage.localStorageRead({ key: "test-key" });
     ///
     ///   if (result.isErr()) throw result.error;
@@ -35,7 +37,7 @@ pub trait LocalStorage: Send + Sync {
     /// ```truapi-client-example
     /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function writeLocalValue(truapi: Client) {
+    /// export async function writeLocalValue(truapi: Client): Promise<void> {
     ///   const result = await truapi.localStorage.localStorageWrite({
     ///     key: "test-key",
     ///     value: new Uint8Array(),
@@ -56,7 +58,7 @@ pub trait LocalStorage: Send + Sync {
     /// ```truapi-client-example
     /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function clearLocalValue(truapi: Client) {
+    /// export async function clearLocalValue(truapi: Client): Promise<void> {
     ///   const result = await truapi.localStorage.localStorageClear({ key: "test-key" });
     ///
     ///   if (result.isErr()) throw result.error;

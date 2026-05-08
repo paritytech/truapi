@@ -17,16 +17,23 @@ pub trait Preimage: Send + Sync {
     /// Subscribe to preimage lookups for a given key.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type Subscription,
+    ///   type RemotePreimageLookupSubscribeItem,
+    /// } from "@parity/truapi";
     ///
-    /// export function lookupPreimage(truapi: Client) {
-    ///   return truapi.preimage.preimageLookupSubscribe({
-    ///     request: { key: new Uint8Array() },
-    ///     onData: (item) => console.log(item),
-    ///     onError: console.error,
-    ///     onInterrupt: () => console.log("interrupted"),
-    ///     onClose: console.error,
-    ///   });
+    /// export function lookupPreimage(truapi: Client): Subscription {
+    ///   return truapi.preimage
+    ///     .preimageLookupSubscribe({
+    ///       request: { key: new Uint8Array() },
+    ///     })
+    ///     .subscribe({
+    ///       next: (item: RemotePreimageLookupSubscribeItem) =>
+    ///         console.log(item),
+    ///       error: (error: Error) => console.error(error),
+    ///       complete: () => console.log("completed"),
+    ///     });
     /// }
     /// ```
     #[wire(start_id = 64)]

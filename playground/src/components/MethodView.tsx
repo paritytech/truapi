@@ -128,8 +128,13 @@ export function MethodView({
         (event) => {
           setStreamLog((prev) => [...prev, stringify(event)]);
         },
-        () => {
-          setStreamLog((prev) => [...prev, "--- stream ended ---"]);
+        (error) => {
+          setStreamLog((prev) => [
+            ...prev,
+            error
+              ? `--- stream error: ${error.message} ---`
+              : "--- stream ended ---",
+          ]);
           setStreamActive(false);
           setActiveSub(null);
         },

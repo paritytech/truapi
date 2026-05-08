@@ -13,9 +13,14 @@ pub trait Permissions: Send + Sync {
     /// Request a device-capability permission from the user.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type HostDevicePermissionResponse,
+    /// } from "@parity/truapi";
     ///
-    /// export async function requestCameraPermission(truapi: Client) {
+    /// export async function requestCameraPermission(
+    ///   truapi: Client,
+    /// ): Promise<HostDevicePermissionResponse> {
     ///   const result = await truapi.permissions.devicePermission({
     ///     tag: "Camera",
     ///     value: undefined,
@@ -35,9 +40,14 @@ pub trait Permissions: Send + Sync {
     /// Request one or more remote-operation permissions.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type RemotePermissionResponse,
+    /// } from "@parity/truapi";
     ///
-    /// export async function requestRemotePermission(truapi: Client) {
+    /// export async function requestRemotePermission(
+    ///   truapi: Client,
+    /// ): Promise<RemotePermissionResponse> {
     ///   const result = await truapi.permissions.permission({
     ///     permissions: [{ tag: "Remote", value: { domains: ["api.example.com"] } }],
     ///   });

@@ -3,19 +3,79 @@
 import { err, ok, type Result } from "neverthrow";
 import * as S from "../scale.js";
 import type {
-  SubscribeCallbacks,
+  ObservableLike,
+  Observer,
   Subscription,
   TrUApiTransport,
 } from "../transport.js";
 import * as T from "./types.js";
 
 export { Result };
-export type { Subscription, TrUApiTransport };
+export type { ObservableLike, Observer, Subscription, TrUApiTransport };
 export const TRUAPI_VERSION = 2 as const;
 export const TRUAPI_CODEC_VERSION = 1 as const;
 
 function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
+}
+
+function createObservable<Item>({
+  transport,
+  method,
+  payload,
+  decodeItem,
+}: {
+  transport: TrUApiTransport;
+  method: string;
+  payload: Uint8Array;
+  decodeItem: (payload: Uint8Array) => Item;
+}): ObservableLike<Item> {
+  return {
+    subscribe(observer: Partial<Observer<Item>> = {}): Subscription {
+      let closed = false;
+      let raw: Subscription | undefined;
+
+      const fail = (error: unknown) => {
+        if (closed) return;
+        closed = true;
+        try {
+          raw?.unsubscribe();
+        } finally {
+          observer.error?.(toError(error));
+        }
+      };
+
+      raw = transport.subscribeRaw({
+        method,
+        payload,
+        onReceive: (payload) => {
+          if (closed) return;
+          try {
+            observer.next?.(decodeItem(payload));
+          } catch (error) {
+            fail(error);
+          }
+        },
+        onInterrupt: () => {
+          if (closed) return;
+          closed = true;
+          observer.complete?.();
+        },
+        onClose: fail,
+      });
+
+      return {
+        get subscriptionId() {
+          return raw?.subscriptionId ?? "";
+        },
+        unsubscribe: () => {
+          if (closed) return;
+          closed = true;
+          raw?.unsubscribe();
+        },
+      };
+    },
+  };
 }
 
 /**
@@ -28,57 +88,41 @@ export class AccountManagementClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
   /** Subscribe to account connection status changes. */
-  accountConnectionStatusSubscribe({
-    onData,
-    onInterrupt,
-    onError,
-    onClose,
-  }: Pick<
-    SubscribeCallbacks<T.V01HostAccountConnectionStatusSubscribeItem>,
-    "onData" | "onInterrupt" | "onError" | "onClose"
-  >): Subscription {
-    return this.transport.subscribe<T.V01HostAccountConnectionStatusSubscribeItem>(
-      {
-        method: "host_account_connection_status_subscribe",
-        payload: S.indexedTaggedUnion({ V1: [0, S.unit] as const }).enc({
-          tag: "V1",
-          value: undefined,
-        }),
-        onData: (payload) => {
-          let item: T.V01HostAccountConnectionStatusSubscribeItem;
-          try {
-            item = (
-              T.HostAccountConnectionStatusSubscribeItem.dec(payload) as {
-                tag: "V1";
-                value: T.V01HostAccountConnectionStatusSubscribeItem;
-              } & T.HostAccountConnectionStatusSubscribeItem
-            ).value;
-          } catch (error) {
-            onError?.(toError(error));
-            return;
-          }
-          onData(item);
-        },
-        onInterrupt,
-        onClose,
-      },
-    );
+  accountConnectionStatusSubscribe(): ObservableLike<T.HostAccountConnectionStatusSubscribeItem> {
+    return createObservable<T.HostAccountConnectionStatusSubscribeItem>({
+      transport: this.transport,
+      method: "host_account_connection_status_subscribe",
+      payload: S.indexedTaggedUnion({ V1: [0, S.unit] as const }).enc({
+        tag: "V1",
+        value: undefined,
+      }),
+      decodeItem: (payload) =>
+        (
+          T.VersionedHostAccountConnectionStatusSubscribeItem.dec(payload) as {
+            tag: "V1";
+            value: T.HostAccountConnectionStatusSubscribeItem;
+          } & T.VersionedHostAccountConnectionStatusSubscribeItem
+        ).value,
+    });
   }
 
   /** Retrieve a product-scoped account. */
   async accountGet(
-    request: T.V01HostAccountGetRequest,
-  ): Promise<Result<T.V01HostAccountGetResponse, T.V01HostAccountGetError>> {
+    request: T.HostAccountGetRequest,
+  ): Promise<Result<T.HostAccountGetResponse, T.HostAccountGetError>> {
     const result = await this.transport.request<
-      S.ResultPayload<T.V01HostAccountGetResponse, T.V01HostAccountGetError>
+      S.ResultPayload<T.HostAccountGetResponse, T.HostAccountGetError>
     >({
       method: "host_account_get",
-      payload: T.HostAccountGetRequest.enc({ tag: "V1", value: request }),
+      payload: T.VersionedHostAccountGetRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(T.V01HostAccountGetResponse, T.V01HostAccountGetError),
+            S.result(T.HostAccountGetResponse, T.HostAccountGetError),
           ] as const,
         }).dec(payload).value,
     });
@@ -87,26 +131,21 @@ export class AccountManagementClient {
 
   /** Retrieve a contextual alias for a product account. */
   async accountGetAlias(
-    request: T.V01HostAccountGetAliasRequest,
-  ): Promise<
-    Result<T.V01HostAccountGetAliasResponse, T.V01HostAccountGetError>
-  > {
+    request: T.HostAccountGetAliasRequest,
+  ): Promise<Result<T.HostAccountGetAliasResponse, T.HostAccountGetError>> {
     const result = await this.transport.request<
-      S.ResultPayload<
-        T.V01HostAccountGetAliasResponse,
-        T.V01HostAccountGetError
-      >
+      S.ResultPayload<T.HostAccountGetAliasResponse, T.HostAccountGetError>
     >({
       method: "host_account_get_alias",
-      payload: T.HostAccountGetAliasRequest.enc({ tag: "V1", value: request }),
+      payload: T.VersionedHostAccountGetAliasRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(
-              T.V01HostAccountGetAliasResponse,
-              T.V01HostAccountGetError,
-            ),
+            S.result(T.HostAccountGetAliasResponse, T.HostAccountGetError),
           ] as const,
         }).dec(payload).value,
     });
@@ -115,21 +154,18 @@ export class AccountManagementClient {
 
   /** Generate a ring VRF proof for a product account. */
   async accountCreateProof(
-    request: T.V01HostAccountCreateProofRequest,
+    request: T.HostAccountCreateProofRequest,
   ): Promise<
-    Result<
-      T.V01HostAccountCreateProofResponse,
-      T.V01HostAccountCreateProofError
-    >
+    Result<T.HostAccountCreateProofResponse, T.HostAccountCreateProofError>
   > {
     const result = await this.transport.request<
       S.ResultPayload<
-        T.V01HostAccountCreateProofResponse,
-        T.V01HostAccountCreateProofError
+        T.HostAccountCreateProofResponse,
+        T.HostAccountCreateProofError
       >
     >({
       method: "host_account_create_proof",
-      payload: T.HostAccountCreateProofRequest.enc({
+      payload: T.VersionedHostAccountCreateProofRequest.enc({
         tag: "V1",
         value: request,
       }),
@@ -138,8 +174,8 @@ export class AccountManagementClient {
           V1: [
             0,
             S.result(
-              T.V01HostAccountCreateProofResponse,
-              T.V01HostAccountCreateProofError,
+              T.HostAccountCreateProofResponse,
+              T.HostAccountCreateProofError,
             ),
           ] as const,
         }).dec(payload).value,
@@ -149,16 +185,13 @@ export class AccountManagementClient {
 
   /** List non-product accounts the user owns. */
   async getLegacyAccounts(): Promise<
-    Result<T.V01HostGetLegacyAccountsResponse, T.V01HostAccountGetError>
+    Result<T.HostGetLegacyAccountsResponse, T.HostAccountGetError>
   > {
     const result = await this.transport.request<
-      S.ResultPayload<
-        T.V01HostGetLegacyAccountsResponse,
-        T.V01HostAccountGetError
-      >
+      S.ResultPayload<T.HostGetLegacyAccountsResponse, T.HostAccountGetError>
     >({
       method: "host_get_legacy_accounts",
-      payload: T.HostGetLegacyAccountsRequest.enc({
+      payload: T.VersionedHostGetLegacyAccountsRequest.enc({
         tag: "V1",
         value: undefined,
       }),
@@ -166,10 +199,7 @@ export class AccountManagementClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(
-              T.V01HostGetLegacyAccountsResponse,
-              T.V01HostAccountGetError,
-            ),
+            S.result(T.HostGetLegacyAccountsResponse, T.HostAccountGetError),
           ] as const,
         }).dec(payload).value,
     });
@@ -178,18 +208,21 @@ export class AccountManagementClient {
 
   /** Fetch the user's primary identity (V0.2+). */
   async getUserId(): Promise<
-    Result<T.V02HostGetUserIdResponse, T.V02HostGetUserIdError>
+    Result<T.HostGetUserIdResponse, T.HostGetUserIdError>
   > {
     const result = await this.transport.request<
-      S.ResultPayload<T.V02HostGetUserIdResponse, T.V02HostGetUserIdError>
+      S.ResultPayload<T.HostGetUserIdResponse, T.HostGetUserIdError>
     >({
       method: "host_get_user_id",
-      payload: T.HostGetUserIdRequest.enc({ tag: "V2", value: undefined }),
+      payload: T.VersionedHostGetUserIdRequest.enc({
+        tag: "V2",
+        value: undefined,
+      }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
           V2: [
             0,
-            S.result(T.V02HostGetUserIdResponse, T.V02HostGetUserIdError),
+            S.result(T.HostGetUserIdResponse, T.HostGetUserIdError),
           ] as const,
         }).dec(payload).value,
     });
@@ -208,50 +241,36 @@ export class ChainInteractionClient {
 
   /** Follow the chain head and receive block events. */
   chainHeadFollow({
-    onData,
-    onInterrupt,
-    onError,
-    onClose,
     request,
-  }: { request: T.V01RemoteChainHeadFollowRequest } & Pick<
-    SubscribeCallbacks<T.V01RemoteChainHeadFollowItem>,
-    "onData" | "onInterrupt" | "onError" | "onClose"
-  >): Subscription {
-    return this.transport.subscribe<T.V01RemoteChainHeadFollowItem>({
+  }: {
+    request: T.RemoteChainHeadFollowRequest;
+  }): ObservableLike<T.RemoteChainHeadFollowItem> {
+    return createObservable<T.RemoteChainHeadFollowItem>({
+      transport: this.transport,
       method: "remote_chain_head_follow",
-      payload: T.RemoteChainHeadFollowRequest.enc({
+      payload: T.VersionedRemoteChainHeadFollowRequest.enc({
         tag: "V1",
         value: request,
       }),
-      onData: (payload) => {
-        let item: T.V01RemoteChainHeadFollowItem;
-        try {
-          item = (
-            T.RemoteChainHeadFollowItem.dec(payload) as {
-              tag: "V1";
-              value: T.V01RemoteChainHeadFollowItem;
-            } & T.RemoteChainHeadFollowItem
-          ).value;
-        } catch (error) {
-          onError?.(toError(error));
-          return;
-        }
-        onData(item);
-      },
-      onInterrupt,
-      onClose,
+      decodeItem: (payload) =>
+        (
+          T.VersionedRemoteChainHeadFollowItem.dec(payload) as {
+            tag: "V1";
+            value: T.RemoteChainHeadFollowItem;
+          } & T.VersionedRemoteChainHeadFollowItem
+        ).value,
     });
   }
 
   /** Fetch a block header. */
   async chainHeadHeader(
-    request: T.V01RemoteChainHeadHeaderRequest,
-  ): Promise<Result<T.V01RemoteChainHeadHeaderResponse, T.GenericError>> {
+    request: T.RemoteChainHeadHeaderRequest,
+  ): Promise<Result<T.RemoteChainHeadHeaderResponse, T.GenericError>> {
     const result = await this.transport.request<
-      S.ResultPayload<T.V01RemoteChainHeadHeaderResponse, T.GenericError>
+      S.ResultPayload<T.RemoteChainHeadHeaderResponse, T.GenericError>
     >({
       method: "remote_chain_head_header",
-      payload: T.RemoteChainHeadHeaderRequest.enc({
+      payload: T.VersionedRemoteChainHeadHeaderRequest.enc({
         tag: "V1",
         value: request,
       }),
@@ -259,7 +278,7 @@ export class ChainInteractionClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(T.V01RemoteChainHeadHeaderResponse, T.GenericError),
+            S.result(T.RemoteChainHeadHeaderResponse, T.GenericError),
           ] as const,
         }).dec(payload).value,
     });
@@ -268,18 +287,21 @@ export class ChainInteractionClient {
 
   /** Fetch a block body. */
   async chainHeadBody(
-    request: T.V01RemoteChainHeadBodyRequest,
-  ): Promise<Result<T.V01RemoteChainHeadBodyResponse, T.GenericError>> {
+    request: T.RemoteChainHeadBodyRequest,
+  ): Promise<Result<T.RemoteChainHeadBodyResponse, T.GenericError>> {
     const result = await this.transport.request<
-      S.ResultPayload<T.V01RemoteChainHeadBodyResponse, T.GenericError>
+      S.ResultPayload<T.RemoteChainHeadBodyResponse, T.GenericError>
     >({
       method: "remote_chain_head_body",
-      payload: T.RemoteChainHeadBodyRequest.enc({ tag: "V1", value: request }),
+      payload: T.VersionedRemoteChainHeadBodyRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(T.V01RemoteChainHeadBodyResponse, T.GenericError),
+            S.result(T.RemoteChainHeadBodyResponse, T.GenericError),
           ] as const,
         }).dec(payload).value,
     });
@@ -288,13 +310,13 @@ export class ChainInteractionClient {
 
   /** Query runtime storage at a specific block. */
   async chainHeadStorage(
-    request: T.V01RemoteChainHeadStorageRequest,
-  ): Promise<Result<T.V01RemoteChainHeadStorageResponse, T.GenericError>> {
+    request: T.RemoteChainHeadStorageRequest,
+  ): Promise<Result<T.RemoteChainHeadStorageResponse, T.GenericError>> {
     const result = await this.transport.request<
-      S.ResultPayload<T.V01RemoteChainHeadStorageResponse, T.GenericError>
+      S.ResultPayload<T.RemoteChainHeadStorageResponse, T.GenericError>
     >({
       method: "remote_chain_head_storage",
-      payload: T.RemoteChainHeadStorageRequest.enc({
+      payload: T.VersionedRemoteChainHeadStorageRequest.enc({
         tag: "V1",
         value: request,
       }),
@@ -302,7 +324,7 @@ export class ChainInteractionClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(T.V01RemoteChainHeadStorageResponse, T.GenericError),
+            S.result(T.RemoteChainHeadStorageResponse, T.GenericError),
           ] as const,
         }).dec(payload).value,
     });
@@ -311,18 +333,21 @@ export class ChainInteractionClient {
 
   /** Invoke a runtime call at a specific block. */
   async chainHeadCall(
-    request: T.V01RemoteChainHeadCallRequest,
-  ): Promise<Result<T.V01RemoteChainHeadCallResponse, T.GenericError>> {
+    request: T.RemoteChainHeadCallRequest,
+  ): Promise<Result<T.RemoteChainHeadCallResponse, T.GenericError>> {
     const result = await this.transport.request<
-      S.ResultPayload<T.V01RemoteChainHeadCallResponse, T.GenericError>
+      S.ResultPayload<T.RemoteChainHeadCallResponse, T.GenericError>
     >({
       method: "remote_chain_head_call",
-      payload: T.RemoteChainHeadCallRequest.enc({ tag: "V1", value: request }),
+      payload: T.VersionedRemoteChainHeadCallRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(T.V01RemoteChainHeadCallResponse, T.GenericError),
+            S.result(T.RemoteChainHeadCallResponse, T.GenericError),
           ] as const,
         }).dec(payload).value,
     });
@@ -331,13 +356,16 @@ export class ChainInteractionClient {
 
   /** Release pinned blocks. */
   async chainHeadUnpin(
-    request: T.V01RemoteChainHeadUnpinRequest,
+    request: T.RemoteChainHeadUnpinRequest,
   ): Promise<Result<undefined, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.GenericError>
     >({
       method: "remote_chain_head_unpin",
-      payload: T.RemoteChainHeadUnpinRequest.enc({ tag: "V1", value: request }),
+      payload: T.VersionedRemoteChainHeadUnpinRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
           V1: [0, S.result(S.unit, T.GenericError)] as const,
@@ -348,13 +376,13 @@ export class ChainInteractionClient {
 
   /** Continue a paused chain-head operation. */
   async chainHeadContinue(
-    request: T.V01RemoteChainHeadContinueRequest,
+    request: T.RemoteChainHeadContinueRequest,
   ): Promise<Result<undefined, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.GenericError>
     >({
       method: "remote_chain_head_continue",
-      payload: T.RemoteChainHeadContinueRequest.enc({
+      payload: T.VersionedRemoteChainHeadContinueRequest.enc({
         tag: "V1",
         value: request,
       }),
@@ -368,13 +396,13 @@ export class ChainInteractionClient {
 
   /** Stop a chain-head operation. */
   async chainHeadStopOperation(
-    request: T.V01RemoteChainHeadStopOperationRequest,
+    request: T.RemoteChainHeadStopOperationRequest,
   ): Promise<Result<undefined, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.GenericError>
     >({
       method: "remote_chain_head_stop_operation",
-      payload: T.RemoteChainHeadStopOperationRequest.enc({
+      payload: T.VersionedRemoteChainHeadStopOperationRequest.enc({
         tag: "V1",
         value: request,
       }),
@@ -388,13 +416,13 @@ export class ChainInteractionClient {
 
   /** Fetch the canonical genesis hash for a chain. */
   async chainSpecGenesisHash(
-    request: T.V01RemoteChainSpecGenesisHashRequest,
-  ): Promise<Result<T.V01RemoteChainSpecGenesisHashResponse, T.GenericError>> {
+    request: T.RemoteChainSpecGenesisHashRequest,
+  ): Promise<Result<T.RemoteChainSpecGenesisHashResponse, T.GenericError>> {
     const result = await this.transport.request<
-      S.ResultPayload<T.V01RemoteChainSpecGenesisHashResponse, T.GenericError>
+      S.ResultPayload<T.RemoteChainSpecGenesisHashResponse, T.GenericError>
     >({
       method: "remote_chain_spec_genesis_hash",
-      payload: T.RemoteChainSpecGenesisHashRequest.enc({
+      payload: T.VersionedRemoteChainSpecGenesisHashRequest.enc({
         tag: "V1",
         value: request,
       }),
@@ -402,7 +430,7 @@ export class ChainInteractionClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(T.V01RemoteChainSpecGenesisHashResponse, T.GenericError),
+            S.result(T.RemoteChainSpecGenesisHashResponse, T.GenericError),
           ] as const,
         }).dec(payload).value,
     });
@@ -411,13 +439,13 @@ export class ChainInteractionClient {
 
   /** Fetch the display name of a chain. */
   async chainSpecChainName(
-    request: T.V01RemoteChainSpecChainNameRequest,
-  ): Promise<Result<T.V01RemoteChainSpecChainNameResponse, T.GenericError>> {
+    request: T.RemoteChainSpecChainNameRequest,
+  ): Promise<Result<T.RemoteChainSpecChainNameResponse, T.GenericError>> {
     const result = await this.transport.request<
-      S.ResultPayload<T.V01RemoteChainSpecChainNameResponse, T.GenericError>
+      S.ResultPayload<T.RemoteChainSpecChainNameResponse, T.GenericError>
     >({
       method: "remote_chain_spec_chain_name",
-      payload: T.RemoteChainSpecChainNameRequest.enc({
+      payload: T.VersionedRemoteChainSpecChainNameRequest.enc({
         tag: "V1",
         value: request,
       }),
@@ -425,7 +453,7 @@ export class ChainInteractionClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(T.V01RemoteChainSpecChainNameResponse, T.GenericError),
+            S.result(T.RemoteChainSpecChainNameResponse, T.GenericError),
           ] as const,
         }).dec(payload).value,
     });
@@ -434,13 +462,13 @@ export class ChainInteractionClient {
 
   /** Fetch the JSON-encoded properties of a chain. */
   async chainSpecProperties(
-    request: T.V01RemoteChainSpecPropertiesRequest,
-  ): Promise<Result<T.V01RemoteChainSpecPropertiesResponse, T.GenericError>> {
+    request: T.RemoteChainSpecPropertiesRequest,
+  ): Promise<Result<T.RemoteChainSpecPropertiesResponse, T.GenericError>> {
     const result = await this.transport.request<
-      S.ResultPayload<T.V01RemoteChainSpecPropertiesResponse, T.GenericError>
+      S.ResultPayload<T.RemoteChainSpecPropertiesResponse, T.GenericError>
     >({
       method: "remote_chain_spec_properties",
-      payload: T.RemoteChainSpecPropertiesRequest.enc({
+      payload: T.VersionedRemoteChainSpecPropertiesRequest.enc({
         tag: "V1",
         value: request,
       }),
@@ -448,7 +476,7 @@ export class ChainInteractionClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(T.V01RemoteChainSpecPropertiesResponse, T.GenericError),
+            S.result(T.RemoteChainSpecPropertiesResponse, T.GenericError),
           ] as const,
         }).dec(payload).value,
     });
@@ -457,18 +485,15 @@ export class ChainInteractionClient {
 
   /** Broadcast a signed transaction. */
   async chainTransactionBroadcast(
-    request: T.V01RemoteChainTransactionBroadcastRequest,
+    request: T.RemoteChainTransactionBroadcastRequest,
   ): Promise<
-    Result<T.V01RemoteChainTransactionBroadcastResponse, T.GenericError>
+    Result<T.RemoteChainTransactionBroadcastResponse, T.GenericError>
   > {
     const result = await this.transport.request<
-      S.ResultPayload<
-        T.V01RemoteChainTransactionBroadcastResponse,
-        T.GenericError
-      >
+      S.ResultPayload<T.RemoteChainTransactionBroadcastResponse, T.GenericError>
     >({
       method: "remote_chain_transaction_broadcast",
-      payload: T.RemoteChainTransactionBroadcastRequest.enc({
+      payload: T.VersionedRemoteChainTransactionBroadcastRequest.enc({
         tag: "V1",
         value: request,
       }),
@@ -476,10 +501,7 @@ export class ChainInteractionClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(
-              T.V01RemoteChainTransactionBroadcastResponse,
-              T.GenericError,
-            ),
+            S.result(T.RemoteChainTransactionBroadcastResponse, T.GenericError),
           ] as const,
         }).dec(payload).value,
     });
@@ -488,13 +510,13 @@ export class ChainInteractionClient {
 
   /** Stop a transaction broadcast. */
   async chainTransactionStop(
-    request: T.V01RemoteChainTransactionStopRequest,
+    request: T.RemoteChainTransactionStopRequest,
   ): Promise<Result<undefined, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.GenericError>
     >({
       method: "remote_chain_transaction_stop",
-      payload: T.RemoteChainTransactionStopRequest.enc({
+      payload: T.VersionedRemoteChainTransactionStopRequest.enc({
         tag: "V1",
         value: request,
       }),
@@ -518,26 +540,21 @@ export class ChatClient {
 
   /** Create a chat room. */
   async chatCreateRoom(
-    request: T.V01HostChatCreateRoomRequest,
-  ): Promise<
-    Result<T.V01HostChatCreateRoomResponse, T.V01HostChatCreateRoomError>
-  > {
+    request: T.HostChatCreateRoomRequest,
+  ): Promise<Result<T.HostChatCreateRoomResponse, T.HostChatCreateRoomError>> {
     const result = await this.transport.request<
-      S.ResultPayload<
-        T.V01HostChatCreateRoomResponse,
-        T.V01HostChatCreateRoomError
-      >
+      S.ResultPayload<T.HostChatCreateRoomResponse, T.HostChatCreateRoomError>
     >({
       method: "host_chat_create_room",
-      payload: T.HostChatCreateRoomRequest.enc({ tag: "V1", value: request }),
+      payload: T.VersionedHostChatCreateRoomRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(
-              T.V01HostChatCreateRoomResponse,
-              T.V01HostChatCreateRoomError,
-            ),
+            S.result(T.HostChatCreateRoomResponse, T.HostChatCreateRoomError),
           ] as const,
         }).dec(payload).value,
     });
@@ -546,26 +563,23 @@ export class ChatClient {
 
   /** Register a chat bot. */
   async chatRegisterBot(
-    request: T.V01HostChatRegisterBotRequest,
+    request: T.HostChatRegisterBotRequest,
   ): Promise<
-    Result<T.V01HostChatRegisterBotResponse, T.V01HostChatRegisterBotError>
+    Result<T.HostChatRegisterBotResponse, T.HostChatRegisterBotError>
   > {
     const result = await this.transport.request<
-      S.ResultPayload<
-        T.V01HostChatRegisterBotResponse,
-        T.V01HostChatRegisterBotError
-      >
+      S.ResultPayload<T.HostChatRegisterBotResponse, T.HostChatRegisterBotError>
     >({
       method: "host_chat_register_bot",
-      payload: T.HostChatRegisterBotRequest.enc({ tag: "V1", value: request }),
+      payload: T.VersionedHostChatRegisterBotRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(
-              T.V01HostChatRegisterBotResponse,
-              T.V01HostChatRegisterBotError,
-            ),
+            S.result(T.HostChatRegisterBotResponse, T.HostChatRegisterBotError),
           ] as const,
         }).dec(payload).value,
     });
@@ -573,63 +587,43 @@ export class ChatClient {
   }
 
   /** Subscribe to the list of chat rooms. */
-  chatListSubscribe({
-    onData,
-    onInterrupt,
-    onError,
-    onClose,
-  }: Pick<
-    SubscribeCallbacks<T.V01HostChatListSubscribeItem>,
-    "onData" | "onInterrupt" | "onError" | "onClose"
-  >): Subscription {
-    return this.transport.subscribe<T.V01HostChatListSubscribeItem>({
+  chatListSubscribe(): ObservableLike<T.HostChatListSubscribeItem> {
+    return createObservable<T.HostChatListSubscribeItem>({
+      transport: this.transport,
       method: "host_chat_list_subscribe",
       payload: S.indexedTaggedUnion({ V1: [0, S.unit] as const }).enc({
         tag: "V1",
         value: undefined,
       }),
-      onData: (payload) => {
-        let item: T.V01HostChatListSubscribeItem;
-        try {
-          item = (
-            T.HostChatListSubscribeItem.dec(payload) as {
-              tag: "V1";
-              value: T.V01HostChatListSubscribeItem;
-            } & T.HostChatListSubscribeItem
-          ).value;
-        } catch (error) {
-          onError?.(toError(error));
-          return;
-        }
-        onData(item);
-      },
-      onInterrupt,
-      onClose,
+      decodeItem: (payload) =>
+        (
+          T.VersionedHostChatListSubscribeItem.dec(payload) as {
+            tag: "V1";
+            value: T.HostChatListSubscribeItem;
+          } & T.VersionedHostChatListSubscribeItem
+        ).value,
     });
   }
 
   /** Post a message to a chat room. */
   async chatPostMessage(
-    request: T.V01HostChatPostMessageRequest,
+    request: T.HostChatPostMessageRequest,
   ): Promise<
-    Result<T.V01HostChatPostMessageResponse, T.V01HostChatPostMessageError>
+    Result<T.HostChatPostMessageResponse, T.HostChatPostMessageError>
   > {
     const result = await this.transport.request<
-      S.ResultPayload<
-        T.V01HostChatPostMessageResponse,
-        T.V01HostChatPostMessageError
-      >
+      S.ResultPayload<T.HostChatPostMessageResponse, T.HostChatPostMessageError>
     >({
       method: "host_chat_post_message",
-      payload: T.HostChatPostMessageRequest.enc({ tag: "V1", value: request }),
+      payload: T.VersionedHostChatPostMessageRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(
-              T.V01HostChatPostMessageResponse,
-              T.V01HostChatPostMessageError,
-            ),
+            S.result(T.HostChatPostMessageResponse, T.HostChatPostMessageError),
           ] as const,
         }).dec(payload).value,
     });
@@ -637,38 +631,21 @@ export class ChatClient {
   }
 
   /** Subscribe to received chat actions. */
-  chatActionSubscribe({
-    onData,
-    onInterrupt,
-    onError,
-    onClose,
-  }: Pick<
-    SubscribeCallbacks<T.V01HostChatActionSubscribeItem>,
-    "onData" | "onInterrupt" | "onError" | "onClose"
-  >): Subscription {
-    return this.transport.subscribe<T.V01HostChatActionSubscribeItem>({
+  chatActionSubscribe(): ObservableLike<T.HostChatActionSubscribeItem> {
+    return createObservable<T.HostChatActionSubscribeItem>({
+      transport: this.transport,
       method: "host_chat_action_subscribe",
       payload: S.indexedTaggedUnion({ V1: [0, S.unit] as const }).enc({
         tag: "V1",
         value: undefined,
       }),
-      onData: (payload) => {
-        let item: T.V01HostChatActionSubscribeItem;
-        try {
-          item = (
-            T.HostChatActionSubscribeItem.dec(payload) as {
-              tag: "V1";
-              value: T.V01HostChatActionSubscribeItem;
-            } & T.HostChatActionSubscribeItem
-          ).value;
-        } catch (error) {
-          onError?.(toError(error));
-          return;
-        }
-        onData(item);
-      },
-      onInterrupt,
-      onClose,
+      decodeItem: (payload) =>
+        (
+          T.VersionedHostChatActionSubscribeItem.dec(payload) as {
+            tag: "V1";
+            value: T.HostChatActionSubscribeItem;
+          } & T.VersionedHostChatActionSubscribeItem
+        ).value,
     });
   }
 
@@ -678,55 +655,43 @@ export class ChatClient {
    * tree describing the rendered UI.
    */
   chatCustomMessageRenderSubscribe({
-    onData,
-    onInterrupt,
-    onError,
-    onClose,
     request,
-  }: { request: T.V01ProductChatCustomMessageRenderSubscribeRequest } & Pick<
-    SubscribeCallbacks<T.CustomRendererNode>,
-    "onData" | "onInterrupt" | "onError" | "onClose"
-  >): Subscription {
-    return this.transport.subscribe<T.CustomRendererNode>({
+  }: {
+    request: T.ProductChatCustomMessageRenderSubscribeRequest;
+  }): ObservableLike<T.CustomRendererNode> {
+    return createObservable<T.CustomRendererNode>({
+      transport: this.transport,
       method: "product_chat_custom_message_render_subscribe",
-      payload: T.ProductChatCustomMessageRenderSubscribeRequest.enc({
+      payload: T.VersionedProductChatCustomMessageRenderSubscribeRequest.enc({
         tag: "V1",
         value: request,
       }),
-      onData: (payload) => {
-        let item: T.CustomRendererNode;
-        try {
-          item = (
-            T.ProductChatCustomMessageRenderSubscribeItem.dec(payload) as {
-              tag: "V1";
-              value: T.CustomRendererNode;
-            } & T.ProductChatCustomMessageRenderSubscribeItem
-          ).value;
-        } catch (error) {
-          onError?.(toError(error));
-          return;
-        }
-        onData(item);
-      },
-      onInterrupt,
-      onClose,
+      decodeItem: (payload) =>
+        (
+          T.VersionedProductChatCustomMessageRenderSubscribeItem.dec(
+            payload,
+          ) as {
+            tag: "V1";
+            value: T.CustomRendererNode;
+          } & T.VersionedProductChatCustomMessageRenderSubscribeItem
+        ).value,
     });
   }
 
   /** Create a simple group chat room (V0.2+). */
   async chatCreateSimpleGroup(
-    request: T.V02HostChatCreateSimpleGroupRequest,
+    request: T.HostChatCreateSimpleGroupRequest,
   ): Promise<
-    Result<T.V02HostChatCreateSimpleGroupResponse, T.V01HostChatCreateRoomError>
+    Result<T.HostChatCreateSimpleGroupResponse, T.HostChatCreateRoomError>
   > {
     const result = await this.transport.request<
       S.ResultPayload<
-        T.V02HostChatCreateSimpleGroupResponse,
-        T.V01HostChatCreateRoomError
+        T.HostChatCreateSimpleGroupResponse,
+        T.HostChatCreateRoomError
       >
     >({
       method: "host_chat_create_simple_group",
-      payload: T.HostChatCreateSimpleGroupRequest.enc({
+      payload: T.VersionedHostChatCreateSimpleGroupRequest.enc({
         tag: "V2",
         value: request,
       }),
@@ -735,8 +700,8 @@ export class ChatClient {
           V2: [
             0,
             S.result(
-              T.V02HostChatCreateSimpleGroupResponse,
-              T.V01HostChatCreateRoomError,
+              T.HostChatCreateSimpleGroupResponse,
+              T.HostChatCreateRoomError,
             ),
           ] as const,
         }).dec(payload).value,
@@ -759,26 +724,21 @@ export class EntropyDerivationClient {
    * given key.
    */
   async deriveEntropy(
-    request: T.V02HostDeriveEntropyRequest,
-  ): Promise<
-    Result<T.V02HostDeriveEntropyResponse, T.V02HostDeriveEntropyError>
-  > {
+    request: T.HostDeriveEntropyRequest,
+  ): Promise<Result<T.HostDeriveEntropyResponse, T.HostDeriveEntropyError>> {
     const result = await this.transport.request<
-      S.ResultPayload<
-        T.V02HostDeriveEntropyResponse,
-        T.V02HostDeriveEntropyError
-      >
+      S.ResultPayload<T.HostDeriveEntropyResponse, T.HostDeriveEntropyError>
     >({
       method: "host_derive_entropy",
-      payload: T.HostDeriveEntropyRequest.enc({ tag: "V2", value: request }),
+      payload: T.VersionedHostDeriveEntropyRequest.enc({
+        tag: "V2",
+        value: request,
+      }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
           V2: [
             0,
-            S.result(
-              T.V02HostDeriveEntropyResponse,
-              T.V02HostDeriveEntropyError,
-            ),
+            S.result(T.HostDeriveEntropyResponse, T.HostDeriveEntropyError),
           ] as const,
         }).dec(payload).value,
     });
@@ -792,25 +752,28 @@ export class LocalStorageClient {
 
   /** Read a value by key. */
   async localStorageRead(
-    request: T.V01HostLocalStorageReadRequest,
+    request: T.HostLocalStorageReadRequest,
   ): Promise<
-    Result<T.V01HostLocalStorageReadResponse, T.V01HostLocalStorageReadError>
+    Result<T.HostLocalStorageReadResponse, T.HostLocalStorageReadError>
   > {
     const result = await this.transport.request<
       S.ResultPayload<
-        T.V01HostLocalStorageReadResponse,
-        T.V01HostLocalStorageReadError
+        T.HostLocalStorageReadResponse,
+        T.HostLocalStorageReadError
       >
     >({
       method: "host_local_storage_read",
-      payload: T.HostLocalStorageReadRequest.enc({ tag: "V1", value: request }),
+      payload: T.VersionedHostLocalStorageReadRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
           V1: [
             0,
             S.result(
-              T.V01HostLocalStorageReadResponse,
-              T.V01HostLocalStorageReadError,
+              T.HostLocalStorageReadResponse,
+              T.HostLocalStorageReadError,
             ),
           ] as const,
         }).dec(payload).value,
@@ -820,19 +783,19 @@ export class LocalStorageClient {
 
   /** Write a value to a key. */
   async localStorageWrite(
-    request: T.V01HostLocalStorageWriteRequest,
-  ): Promise<Result<undefined, T.V01HostLocalStorageReadError>> {
+    request: T.HostLocalStorageWriteRequest,
+  ): Promise<Result<undefined, T.HostLocalStorageReadError>> {
     const result = await this.transport.request<
-      S.ResultPayload<undefined, T.V01HostLocalStorageReadError>
+      S.ResultPayload<undefined, T.HostLocalStorageReadError>
     >({
       method: "host_local_storage_write",
-      payload: T.HostLocalStorageWriteRequest.enc({
+      payload: T.VersionedHostLocalStorageWriteRequest.enc({
         tag: "V1",
         value: request,
       }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V1: [0, S.result(S.unit, T.V01HostLocalStorageReadError)] as const,
+          V1: [0, S.result(S.unit, T.HostLocalStorageReadError)] as const,
         }).dec(payload).value,
     });
     return result.success ? ok(result.value) : err(result.value);
@@ -840,19 +803,19 @@ export class LocalStorageClient {
 
   /** Clear a value by key. */
   async localStorageClear(
-    request: T.V01HostLocalStorageClearRequest,
-  ): Promise<Result<undefined, T.V01HostLocalStorageReadError>> {
+    request: T.HostLocalStorageClearRequest,
+  ): Promise<Result<undefined, T.HostLocalStorageReadError>> {
     const result = await this.transport.request<
-      S.ResultPayload<undefined, T.V01HostLocalStorageReadError>
+      S.ResultPayload<undefined, T.HostLocalStorageReadError>
     >({
       method: "host_local_storage_clear",
-      payload: T.HostLocalStorageClearRequest.enc({
+      payload: T.VersionedHostLocalStorageClearRequest.enc({
         tag: "V1",
         value: request,
       }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V1: [0, S.result(S.unit, T.V01HostLocalStorageReadError)] as const,
+          V1: [0, S.result(S.unit, T.HostLocalStorageReadError)] as const,
         }).dec(payload).value,
     });
     return result.success ? ok(result.value) : err(result.value);
@@ -869,63 +832,41 @@ export class PaymentClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
   /** Subscribe to payment balance updates. */
-  paymentBalanceSubscribe({
-    onData,
-    onInterrupt,
-    onError,
-    onClose,
-  }: Pick<
-    SubscribeCallbacks<T.V02HostPaymentBalanceSubscribeItem>,
-    "onData" | "onInterrupt" | "onError" | "onClose"
-  >): Subscription {
-    return this.transport.subscribe<T.V02HostPaymentBalanceSubscribeItem>({
+  paymentBalanceSubscribe(): ObservableLike<T.HostPaymentBalanceSubscribeItem> {
+    return createObservable<T.HostPaymentBalanceSubscribeItem>({
+      transport: this.transport,
       method: "host_payment_balance_subscribe",
-      payload: T.HostPaymentBalanceSubscribeRequest.enc({
+      payload: T.VersionedHostPaymentBalanceSubscribeRequest.enc({
         tag: "V2",
         value: undefined,
       }),
-      onData: (payload) => {
-        let item: T.V02HostPaymentBalanceSubscribeItem;
-        try {
-          item = (
-            T.HostPaymentBalanceSubscribeItem.dec(payload) as {
-              tag: "V2";
-              value: T.V02HostPaymentBalanceSubscribeItem;
-            } & T.HostPaymentBalanceSubscribeItem
-          ).value;
-        } catch (error) {
-          onError?.(toError(error));
-          return;
-        }
-        onData(item);
-      },
-      onInterrupt,
-      onClose,
+      decodeItem: (payload) =>
+        (
+          T.VersionedHostPaymentBalanceSubscribeItem.dec(payload) as {
+            tag: "V2";
+            value: T.HostPaymentBalanceSubscribeItem;
+          } & T.VersionedHostPaymentBalanceSubscribeItem
+        ).value,
     });
   }
 
   /** Request a payment from the user. */
   async paymentRequest(
-    request: T.V02HostPaymentRequestRequest,
-  ): Promise<
-    Result<T.V02HostPaymentRequestResponse, T.V02HostPaymentRequestError>
-  > {
+    request: T.HostPaymentRequestRequest,
+  ): Promise<Result<T.HostPaymentRequestResponse, T.HostPaymentRequestError>> {
     const result = await this.transport.request<
-      S.ResultPayload<
-        T.V02HostPaymentRequestResponse,
-        T.V02HostPaymentRequestError
-      >
+      S.ResultPayload<T.HostPaymentRequestResponse, T.HostPaymentRequestError>
     >({
       method: "host_payment_request",
-      payload: T.HostPaymentRequestRequest.enc({ tag: "V2", value: request }),
+      payload: T.VersionedHostPaymentRequestRequest.enc({
+        tag: "V2",
+        value: request,
+      }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
           V2: [
             0,
-            S.result(
-              T.V02HostPaymentRequestResponse,
-              T.V02HostPaymentRequestError,
-            ),
+            S.result(T.HostPaymentRequestResponse, T.HostPaymentRequestError),
           ] as const,
         }).dec(payload).value,
     });
@@ -934,53 +875,42 @@ export class PaymentClient {
 
   /** Subscribe to payment lifecycle updates for a specific payment. */
   paymentStatusSubscribe({
-    onData,
-    onInterrupt,
-    onError,
-    onClose,
     request,
-  }: { request: T.V02HostPaymentStatusSubscribeRequest } & Pick<
-    SubscribeCallbacks<T.V02HostPaymentStatusSubscribeItem>,
-    "onData" | "onInterrupt" | "onError" | "onClose"
-  >): Subscription {
-    return this.transport.subscribe<T.V02HostPaymentStatusSubscribeItem>({
+  }: {
+    request: T.HostPaymentStatusSubscribeRequest;
+  }): ObservableLike<T.HostPaymentStatusSubscribeItem> {
+    return createObservable<T.HostPaymentStatusSubscribeItem>({
+      transport: this.transport,
       method: "host_payment_status_subscribe",
-      payload: T.HostPaymentStatusSubscribeRequest.enc({
+      payload: T.VersionedHostPaymentStatusSubscribeRequest.enc({
         tag: "V2",
         value: request,
       }),
-      onData: (payload) => {
-        let item: T.V02HostPaymentStatusSubscribeItem;
-        try {
-          item = (
-            T.HostPaymentStatusSubscribeItem.dec(payload) as {
-              tag: "V2";
-              value: T.V02HostPaymentStatusSubscribeItem;
-            } & T.HostPaymentStatusSubscribeItem
-          ).value;
-        } catch (error) {
-          onError?.(toError(error));
-          return;
-        }
-        onData(item);
-      },
-      onInterrupt,
-      onClose,
+      decodeItem: (payload) =>
+        (
+          T.VersionedHostPaymentStatusSubscribeItem.dec(payload) as {
+            tag: "V2";
+            value: T.HostPaymentStatusSubscribeItem;
+          } & T.VersionedHostPaymentStatusSubscribeItem
+        ).value,
     });
   }
 
   /** Top up the user's payment balance. */
   async paymentTopUp(
-    request: T.V02HostPaymentTopUpRequest,
-  ): Promise<Result<undefined, T.V02HostPaymentTopUpError>> {
+    request: T.HostPaymentTopUpRequest,
+  ): Promise<Result<undefined, T.HostPaymentTopUpError>> {
     const result = await this.transport.request<
-      S.ResultPayload<undefined, T.V02HostPaymentTopUpError>
+      S.ResultPayload<undefined, T.HostPaymentTopUpError>
     >({
       method: "host_payment_top_up",
-      payload: T.HostPaymentTopUpRequest.enc({ tag: "V2", value: request }),
+      payload: T.VersionedHostPaymentTopUpRequest.enc({
+        tag: "V2",
+        value: request,
+      }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V2: [0, S.result(S.unit, T.V02HostPaymentTopUpError)] as const,
+          V2: [0, S.result(S.unit, T.HostPaymentTopUpError)] as const,
         }).dec(payload).value,
     });
     return result.success ? ok(result.value) : err(result.value);
@@ -993,18 +923,21 @@ export class PermissionsClient {
 
   /** Request a device-capability permission from the user. */
   async devicePermission(
-    request: T.V02HostDevicePermissionRequest,
-  ): Promise<Result<T.V01HostDevicePermissionResponse, T.GenericError>> {
+    request: T.HostDevicePermissionRequest,
+  ): Promise<Result<T.HostDevicePermissionResponse, T.GenericError>> {
     const result = await this.transport.request<
-      S.ResultPayload<T.V01HostDevicePermissionResponse, T.GenericError>
+      S.ResultPayload<T.HostDevicePermissionResponse, T.GenericError>
     >({
       method: "host_device_permission",
-      payload: T.HostDevicePermissionRequest.enc({ tag: "V2", value: request }),
+      payload: T.VersionedHostDevicePermissionRequest.enc({
+        tag: "V2",
+        value: request,
+      }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
           V2: [
             0,
-            S.result(T.V01HostDevicePermissionResponse, T.GenericError),
+            S.result(T.HostDevicePermissionResponse, T.GenericError),
           ] as const,
         }).dec(payload).value,
     });
@@ -1013,18 +946,21 @@ export class PermissionsClient {
 
   /** Request one or more remote-operation permissions. */
   async permission(
-    request: T.V02RemotePermissionRequest,
-  ): Promise<Result<T.V01RemotePermissionResponse, T.GenericError>> {
+    request: T.RemotePermissionRequest,
+  ): Promise<Result<T.RemotePermissionResponse, T.GenericError>> {
     const result = await this.transport.request<
-      S.ResultPayload<T.V01RemotePermissionResponse, T.GenericError>
+      S.ResultPayload<T.RemotePermissionResponse, T.GenericError>
     >({
       method: "remote_permission",
-      payload: T.RemotePermissionRequest.enc({ tag: "V2", value: request }),
+      payload: T.VersionedRemotePermissionRequest.enc({
+        tag: "V2",
+        value: request,
+      }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
           V2: [
             0,
-            S.result(T.V01RemotePermissionResponse, T.GenericError),
+            S.result(T.RemotePermissionResponse, T.GenericError),
           ] as const,
         }).dec(payload).value,
     });
@@ -1045,38 +981,24 @@ export class PreimageClient {
 
   /** Subscribe to preimage lookups for a given key. */
   preimageLookupSubscribe({
-    onData,
-    onInterrupt,
-    onError,
-    onClose,
     request,
-  }: { request: T.V01RemotePreimageLookupSubscribeRequest } & Pick<
-    SubscribeCallbacks<T.V01RemotePreimageLookupSubscribeItem>,
-    "onData" | "onInterrupt" | "onError" | "onClose"
-  >): Subscription {
-    return this.transport.subscribe<T.V01RemotePreimageLookupSubscribeItem>({
+  }: {
+    request: T.RemotePreimageLookupSubscribeRequest;
+  }): ObservableLike<T.RemotePreimageLookupSubscribeItem> {
+    return createObservable<T.RemotePreimageLookupSubscribeItem>({
+      transport: this.transport,
       method: "remote_preimage_lookup_subscribe",
-      payload: T.RemotePreimageLookupSubscribeRequest.enc({
+      payload: T.VersionedRemotePreimageLookupSubscribeRequest.enc({
         tag: "V1",
         value: request,
       }),
-      onData: (payload) => {
-        let item: T.V01RemotePreimageLookupSubscribeItem;
-        try {
-          item = (
-            T.RemotePreimageLookupSubscribeItem.dec(payload) as {
-              tag: "V1";
-              value: T.V01RemotePreimageLookupSubscribeItem;
-            } & T.RemotePreimageLookupSubscribeItem
-          ).value;
-        } catch (error) {
-          onError?.(toError(error));
-          return;
-        }
-        onData(item);
-      },
-      onInterrupt,
-      onClose,
+      decodeItem: (payload) =>
+        (
+          T.VersionedRemotePreimageLookupSubscribeItem.dec(payload) as {
+            tag: "V1";
+            value: T.RemotePreimageLookupSubscribeItem;
+          } & T.VersionedRemotePreimageLookupSubscribeItem
+        ).value,
     });
   }
 }
@@ -1092,18 +1014,18 @@ export class SigningClient {
 
   /** Construct a signed extrinsic for a product account. */
   async createTransaction(
-    request: T.V01HostCreateTransactionRequest,
+    request: T.HostCreateTransactionRequest,
   ): Promise<
-    Result<T.V01HostCreateTransactionResponse, T.V01HostCreateTransactionError>
+    Result<T.HostCreateTransactionResponse, T.HostCreateTransactionError>
   > {
     const result = await this.transport.request<
       S.ResultPayload<
-        T.V01HostCreateTransactionResponse,
-        T.V01HostCreateTransactionError
+        T.HostCreateTransactionResponse,
+        T.HostCreateTransactionError
       >
     >({
       method: "host_create_transaction",
-      payload: T.HostCreateTransactionRequest.enc({
+      payload: T.VersionedHostCreateTransactionRequest.enc({
         tag: "V1",
         value: request,
       }),
@@ -1112,8 +1034,8 @@ export class SigningClient {
           V1: [
             0,
             S.result(
-              T.V01HostCreateTransactionResponse,
-              T.V01HostCreateTransactionError,
+              T.HostCreateTransactionResponse,
+              T.HostCreateTransactionError,
             ),
           ] as const,
         }).dec(payload).value,
@@ -1123,21 +1045,21 @@ export class SigningClient {
 
   /** Construct a signed extrinsic for a non-product account. */
   async createTransactionWithLegacyAccount(
-    request: T.V01HostCreateTransactionWithLegacyAccountRequest,
+    request: T.HostCreateTransactionWithLegacyAccountRequest,
   ): Promise<
     Result<
-      T.V01HostCreateTransactionWithLegacyAccountResponse,
-      T.V01HostCreateTransactionError
+      T.HostCreateTransactionWithLegacyAccountResponse,
+      T.HostCreateTransactionError
     >
   > {
     const result = await this.transport.request<
       S.ResultPayload<
-        T.V01HostCreateTransactionWithLegacyAccountResponse,
-        T.V01HostCreateTransactionError
+        T.HostCreateTransactionWithLegacyAccountResponse,
+        T.HostCreateTransactionError
       >
     >({
       method: "host_create_transaction_with_legacy_account",
-      payload: T.HostCreateTransactionWithLegacyAccountRequest.enc({
+      payload: T.VersionedHostCreateTransactionWithLegacyAccountRequest.enc({
         tag: "V1",
         value: request,
       }),
@@ -1146,8 +1068,8 @@ export class SigningClient {
           V1: [
             0,
             S.result(
-              T.V01HostCreateTransactionWithLegacyAccountResponse,
-              T.V01HostCreateTransactionError,
+              T.HostCreateTransactionWithLegacyAccountResponse,
+              T.HostCreateTransactionError,
             ),
           ] as const,
         }).dec(payload).value,
@@ -1157,18 +1079,18 @@ export class SigningClient {
 
   /** Sign raw bytes or a message. */
   async signRaw(
-    request: T.V02HostSignRawRequest,
-  ): Promise<Result<T.V01HostSignPayloadResponse, T.V01HostSignPayloadError>> {
+    request: T.HostSignRawRequest,
+  ): Promise<Result<T.HostSignPayloadResponse, T.HostSignPayloadError>> {
     const result = await this.transport.request<
-      S.ResultPayload<T.V01HostSignPayloadResponse, T.V01HostSignPayloadError>
+      S.ResultPayload<T.HostSignPayloadResponse, T.HostSignPayloadError>
     >({
       method: "host_sign_raw",
-      payload: T.HostSignRawRequest.enc({ tag: "V2", value: request }),
+      payload: T.VersionedHostSignRawRequest.enc({ tag: "V2", value: request }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
           V2: [
             0,
-            S.result(T.V01HostSignPayloadResponse, T.V01HostSignPayloadError),
+            S.result(T.HostSignPayloadResponse, T.HostSignPayloadError),
           ] as const,
         }).dec(payload).value,
     });
@@ -1177,18 +1099,21 @@ export class SigningClient {
 
   /** Sign a Substrate extrinsic payload. */
   async signPayload(
-    request: T.V02HostSignPayloadRequest,
-  ): Promise<Result<T.V01HostSignPayloadResponse, T.V01HostSignPayloadError>> {
+    request: T.HostSignPayloadRequest,
+  ): Promise<Result<T.HostSignPayloadResponse, T.HostSignPayloadError>> {
     const result = await this.transport.request<
-      S.ResultPayload<T.V01HostSignPayloadResponse, T.V01HostSignPayloadError>
+      S.ResultPayload<T.HostSignPayloadResponse, T.HostSignPayloadError>
     >({
       method: "host_sign_payload",
-      payload: T.HostSignPayloadRequest.enc({ tag: "V2", value: request }),
+      payload: T.VersionedHostSignPayloadRequest.enc({
+        tag: "V2",
+        value: request,
+      }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
           V2: [
             0,
-            S.result(T.V01HostSignPayloadResponse, T.V01HostSignPayloadError),
+            S.result(T.HostSignPayloadResponse, T.HostSignPayloadError),
           ] as const,
         }).dec(payload).value,
     });
@@ -1207,58 +1132,44 @@ export class StatementStoreClient {
 
   /** Subscribe to statements matching a topic filter. */
   statementStoreSubscribe({
-    onData,
-    onInterrupt,
-    onError,
-    onClose,
     request,
-  }: { request: T.V02RemoteStatementStoreSubscribeRequest } & Pick<
-    SubscribeCallbacks<T.V02RemoteStatementStoreSubscribeItem>,
-    "onData" | "onInterrupt" | "onError" | "onClose"
-  >): Subscription {
-    return this.transport.subscribe<T.V02RemoteStatementStoreSubscribeItem>({
+  }: {
+    request: T.RemoteStatementStoreSubscribeRequest;
+  }): ObservableLike<T.RemoteStatementStoreSubscribeItem> {
+    return createObservable<T.RemoteStatementStoreSubscribeItem>({
+      transport: this.transport,
       method: "remote_statement_store_subscribe",
-      payload: T.RemoteStatementStoreSubscribeRequest.enc({
+      payload: T.VersionedRemoteStatementStoreSubscribeRequest.enc({
         tag: "V2",
         value: request,
       }),
-      onData: (payload) => {
-        let item: T.V02RemoteStatementStoreSubscribeItem;
-        try {
-          item = (
-            T.RemoteStatementStoreSubscribeItem.dec(payload) as {
-              tag: "V2";
-              value: T.V02RemoteStatementStoreSubscribeItem;
-            } & T.RemoteStatementStoreSubscribeItem
-          ).value;
-        } catch (error) {
-          onError?.(toError(error));
-          return;
-        }
-        onData(item);
-      },
-      onInterrupt,
-      onClose,
+      decodeItem: (payload) =>
+        (
+          T.VersionedRemoteStatementStoreSubscribeItem.dec(payload) as {
+            tag: "V2";
+            value: T.RemoteStatementStoreSubscribeItem;
+          } & T.VersionedRemoteStatementStoreSubscribeItem
+        ).value,
     });
   }
 
   /** Create a proof for a statement. */
   async statementStoreCreateProof(
-    request: T.V01RemoteStatementStoreCreateProofRequest,
+    request: T.RemoteStatementStoreCreateProofRequest,
   ): Promise<
     Result<
-      T.V01RemoteStatementStoreCreateProofResponse,
-      T.V01RemoteStatementStoreCreateProofError
+      T.RemoteStatementStoreCreateProofResponse,
+      T.RemoteStatementStoreCreateProofError
     >
   > {
     const result = await this.transport.request<
       S.ResultPayload<
-        T.V01RemoteStatementStoreCreateProofResponse,
-        T.V01RemoteStatementStoreCreateProofError
+        T.RemoteStatementStoreCreateProofResponse,
+        T.RemoteStatementStoreCreateProofError
       >
     >({
       method: "remote_statement_store_create_proof",
-      payload: T.RemoteStatementStoreCreateProofRequest.enc({
+      payload: T.VersionedRemoteStatementStoreCreateProofRequest.enc({
         tag: "V1",
         value: request,
       }),
@@ -1267,8 +1178,8 @@ export class StatementStoreClient {
           V1: [
             0,
             S.result(
-              T.V01RemoteStatementStoreCreateProofResponse,
-              T.V01RemoteStatementStoreCreateProofError,
+              T.RemoteStatementStoreCreateProofResponse,
+              T.RemoteStatementStoreCreateProofError,
             ),
           ] as const,
         }).dec(payload).value,
@@ -1288,7 +1199,7 @@ export class StatementStoreClient {
       S.ResultPayload<undefined, T.GenericError>
     >({
       method: "remote_statement_store_submit",
-      payload: T.RemoteStatementStoreSubmitRequest.enc({
+      payload: T.VersionedRemoteStatementStoreSubmitRequest.enc({
         tag: "V1",
         value: request,
       }),
@@ -1326,18 +1237,18 @@ export class TrUApiCallsClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
   /** Negotiates the wire codec version with the product. */
-  async handshake(): Promise<Result<undefined, T.V02HostHandshakeError>> {
+  async handshake(): Promise<Result<undefined, T.HostHandshakeError>> {
     const result = await this.transport.request<
-      S.ResultPayload<undefined, T.V02HostHandshakeError>
+      S.ResultPayload<undefined, T.HostHandshakeError>
     >({
       method: "host_handshake",
-      payload: T.HostHandshakeRequest.enc({
+      payload: T.VersionedHostHandshakeRequest.enc({
         tag: "V1",
         value: { codecVersion: this.transport.codecVersion },
       }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V1: [0, S.result(S.unit, T.V02HostHandshakeError)] as const,
+          V1: [0, S.result(S.unit, T.HostHandshakeError)] as const,
         }).dec(payload).value,
     });
     return result.success ? ok(result.value) : err(result.value);
@@ -1345,18 +1256,21 @@ export class TrUApiCallsClient {
 
   /** Queries whether the host supports a specific feature. */
   async featureSupported(
-    request: T.V01HostFeatureSupportedRequest,
-  ): Promise<Result<T.V01HostFeatureSupportedResponse, T.GenericError>> {
+    request: T.HostFeatureSupportedRequest,
+  ): Promise<Result<T.HostFeatureSupportedResponse, T.GenericError>> {
     const result = await this.transport.request<
-      S.ResultPayload<T.V01HostFeatureSupportedResponse, T.GenericError>
+      S.ResultPayload<T.HostFeatureSupportedResponse, T.GenericError>
     >({
       method: "host_feature_supported",
-      payload: T.HostFeatureSupportedRequest.enc({ tag: "V1", value: request }),
+      payload: T.VersionedHostFeatureSupportedRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(T.V01HostFeatureSupportedResponse, T.GenericError),
+            S.result(T.HostFeatureSupportedResponse, T.GenericError),
           ] as const,
         }).dec(payload).value,
     });
@@ -1365,13 +1279,16 @@ export class TrUApiCallsClient {
 
   /** Sends a push notification to the user. */
   async pushNotification(
-    request: T.V01HostPushNotificationRequest,
+    request: T.HostPushNotificationRequest,
   ): Promise<Result<undefined, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.GenericError>
     >({
       method: "host_push_notification",
-      payload: T.HostPushNotificationRequest.enc({ tag: "V1", value: request }),
+      payload: T.VersionedHostPushNotificationRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
           V1: [0, S.result(S.unit, T.GenericError)] as const,
@@ -1382,16 +1299,19 @@ export class TrUApiCallsClient {
 
   /** Requests the host to open a URL. */
   async navigateTo(
-    request: T.V01HostNavigateToRequest,
-  ): Promise<Result<undefined, T.V01HostNavigateToError>> {
+    request: T.HostNavigateToRequest,
+  ): Promise<Result<undefined, T.HostNavigateToError>> {
     const result = await this.transport.request<
-      S.ResultPayload<undefined, T.V01HostNavigateToError>
+      S.ResultPayload<undefined, T.HostNavigateToError>
     >({
       method: "host_navigate_to",
-      payload: T.HostNavigateToRequest.enc({ tag: "V1", value: request }),
+      payload: T.VersionedHostNavigateToRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V1: [0, S.result(S.unit, T.V01HostNavigateToError)] as const,
+          V1: [0, S.result(S.unit, T.HostNavigateToError)] as const,
         }).dec(payload).value,
     });
     return result.success ? ok(result.value) : err(result.value);

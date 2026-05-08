@@ -2,7 +2,7 @@
 
 import { type Client } from "@parity/truapi";
 
-export async function supportsChain(truapi: Client) {
+export async function supportsChain(truapi: Client): Promise<boolean> {
   const result = await truapi.trUApiCalls.featureSupported({
     tag: "Chain",
     value: { genesisHash: new Uint8Array() },

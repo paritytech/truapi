@@ -2,7 +2,7 @@
 
 import { type Client } from "@parity/truapi";
 
-export async function pushNotification(truapi: Client) {
+export async function pushNotification(truapi: Client): Promise<void> {
   const result = await truapi.trUApiCalls.pushNotification({
     text: "Hello!",
   });

@@ -13,13 +13,15 @@
 //
 // Run via: `bun run test`.
 
-import assert from 'node:assert/strict';
-import { decodeWireMessage, encodeWireMessage } from '../src/transport.ts';
-import { WIRE_TABLE } from '../src/generated/wire-table.ts';
-import { str } from '../src/scale.ts';
+import assert from "node:assert/strict";
+import { decodeWireMessage, encodeWireMessage } from "../src/transport.ts";
+import { WIRE_TABLE } from "../src/generated/wire-table.ts";
+import { str } from "../src/scale.ts";
 
 function toHex(u) {
-  return Array.from(u).map((b) => b.toString(16).padStart(2, '0')).join('');
+  return Array.from(u)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 function expectedWire(reqId, tagId, valueBytes) {
@@ -31,7 +33,7 @@ function expectedWire(reqId, tagId, valueBytes) {
   return out;
 }
 
-assert.ok(WIRE_TABLE.length > 0, 'WIRE_TABLE must not be empty');
+assert.ok(WIRE_TABLE.length > 0, "WIRE_TABLE must not be empty");
 
 function unwrap(result, message) {
   if (result.isErr()) throw new Error(`${message}: ${result.error.message}`);
@@ -66,4 +68,6 @@ for (const [id, tag] of WIRE_TABLE) {
   checked++;
 }
 
-console.log(`programmatic wire-table loop: ${checked} (id, tag) pairs round-tripped`);
+console.log(
+  `programmatic wire-table loop: ${checked} (id, tag) pairs round-tripped`,
+);

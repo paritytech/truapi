@@ -1,11 +1,12 @@
 export type {
+  ObservableLike,
+  Observer,
   Payload,
   Provider,
   ProtocolMessage,
   RequestParams,
-  SubscribeCallbacks,
   Subscription,
-  SubscribeParams,
+  SubscribeRawParams,
   TrUApiTransport,
 } from "./transport.js";
 export type { CreateTransportOptions } from "./client.js";

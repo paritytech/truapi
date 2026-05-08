@@ -2,7 +2,7 @@
 
 import { type Client } from "@parity/truapi";
 
-export async function writeLocalValue(truapi: Client) {
+export async function writeLocalValue(truapi: Client): Promise<void> {
   const result = await truapi.localStorage.localStorageWrite({
     key: "test-key",
     value: new Uint8Array(),

@@ -2,7 +2,7 @@
 
 import { type Client } from "@parity/truapi";
 
-export async function clearLocalValue(truapi: Client) {
+export async function clearLocalValue(truapi: Client): Promise<void> {
   const result = await truapi.localStorage.localStorageClear({
     key: "test-key",
   });

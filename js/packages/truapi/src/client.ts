@@ -4,7 +4,7 @@ import {
   type Provider,
   type ProtocolMessage,
   type RequestParams,
-  type SubscribeParams,
+  type SubscribeRawParams,
   type Subscription,
   type TrUApiTransport,
 } from "./transport.js";
@@ -62,11 +62,8 @@ function encodeUnsupportedHandshakeResponse(version: number): Uint8Array {
     value: {
       success: false,
       value: {
-        tag: "V1",
-        value: {
-          tag: "UnsupportedProtocolVersion",
-          value: undefined,
-        },
+        tag: "UnsupportedProtocolVersion",
+        value: undefined,
       },
     },
   });
@@ -113,7 +110,7 @@ export function createTransport(
   const subscriptions = new Map<
     string,
     {
-      onData: (payload: Uint8Array) => void;
+      onReceive: (payload: Uint8Array) => void;
       onInterrupt?: () => void;
       onClose?: (error: Error) => void;
     }
@@ -172,7 +169,7 @@ export function createTransport(
       const subscription = subscriptions.get(requestId);
       if (subscription) {
         try {
-          subscription.onData(payload.value);
+          subscription.onReceive(payload.value);
         } catch (error) {
           // A consumer-side decode/handler error must not tear down the
           // provider's message loop and silently break every other
@@ -201,8 +198,8 @@ export function createTransport(
       let response: Uint8Array;
       try {
         const request = unwrapVersionedWireValue(
-          T.HostHandshakeRequest.dec(payload.value),
-        ) as T.V01HostHandshakeRequest;
+          T.VersionedHostHandshakeRequest.dec(payload.value),
+        ) as T.HostHandshakeRequest;
         const requestedCodecVersion = request.codecVersion;
         response =
           requestedCodecVersion === codecVersion
@@ -278,13 +275,13 @@ export function createTransport(
         }
       });
     },
-    subscribe({
+    subscribeRaw({
       method,
       payload,
-      onData,
+      onReceive,
       onInterrupt,
       onClose,
-    }: SubscribeParams) {
+    }: SubscribeRawParams) {
       if (closedError) {
         onClose?.(closedError);
         return { unsubscribe: () => {}, subscriptionId: "" };
@@ -292,7 +289,7 @@ export function createTransport(
 
       const requestId = `p:${++idCounter}`;
       subscriptions.set(requestId, {
-        onData,
+        onReceive,
         onInterrupt,
         onClose,
       });

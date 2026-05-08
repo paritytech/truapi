@@ -30,16 +30,22 @@ pub trait ChainInteraction: Send + Sync {
     /// Follow the chain head and receive block events.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type Subscription,
+    ///   type RemoteChainHeadFollowItem,
+    /// } from "@parity/truapi";
     ///
-    /// export function followChainHead(truapi: Client) {
-    ///   return truapi.chainInteraction.chainHeadFollow({
-    ///     request: { genesisHash: new Uint8Array(), withRuntime: false },
-    ///     onData: (item) => console.log(item),
-    ///     onError: console.error,
-    ///     onInterrupt: () => console.log("interrupted"),
-    ///     onClose: console.error,
-    ///   });
+    /// export function followChainHead(truapi: Client): Subscription {
+    ///   return truapi.chainInteraction
+    ///     .chainHeadFollow({
+    ///       request: { genesisHash: new Uint8Array(), withRuntime: false },
+    ///     })
+    ///     .subscribe({
+    ///       next: (item: RemoteChainHeadFollowItem) => console.log(item),
+    ///       error: (error: Error) => console.error(error),
+    ///       complete: () => console.log("completed"),
+    ///     });
     /// }
     /// ```
     #[wire(start_id = 76)]
@@ -54,9 +60,14 @@ pub trait ChainInteraction: Send + Sync {
     /// Fetch a block header.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type RemoteChainHeadHeaderResponse,
+    /// } from "@parity/truapi";
     ///
-    /// export async function getChainHeadHeader(truapi: Client) {
+    /// export async function getChainHeadHeader(
+    ///   truapi: Client,
+    /// ): Promise<RemoteChainHeadHeaderResponse> {
     ///   const result = await truapi.chainInteraction.chainHeadHeader({
     ///     genesisHash: new Uint8Array(),
     ///     followSubscriptionId: "",
@@ -79,9 +90,14 @@ pub trait ChainInteraction: Send + Sync {
     /// Fetch a block body.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type RemoteChainHeadBodyResponse,
+    /// } from "@parity/truapi";
     ///
-    /// export async function getChainHeadBody(truapi: Client) {
+    /// export async function getChainHeadBody(
+    ///   truapi: Client,
+    /// ): Promise<RemoteChainHeadBodyResponse> {
     ///   const result = await truapi.chainInteraction.chainHeadBody({
     ///     genesisHash: new Uint8Array(),
     ///     followSubscriptionId: "",
@@ -104,9 +120,14 @@ pub trait ChainInteraction: Send + Sync {
     /// Query runtime storage at a specific block.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type RemoteChainHeadStorageResponse,
+    /// } from "@parity/truapi";
     ///
-    /// export async function getChainHeadStorage(truapi: Client) {
+    /// export async function getChainHeadStorage(
+    ///   truapi: Client,
+    /// ): Promise<RemoteChainHeadStorageResponse> {
     ///   const result = await truapi.chainInteraction.chainHeadStorage({
     ///     genesisHash: new Uint8Array(),
     ///     followSubscriptionId: "",
@@ -132,9 +153,14 @@ pub trait ChainInteraction: Send + Sync {
     /// Invoke a runtime call at a specific block.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type RemoteChainHeadCallResponse,
+    /// } from "@parity/truapi";
     ///
-    /// export async function callChainHeadRuntime(truapi: Client) {
+    /// export async function callChainHeadRuntime(
+    ///   truapi: Client,
+    /// ): Promise<RemoteChainHeadCallResponse> {
     ///   const result = await truapi.chainInteraction.chainHeadCall({
     ///     genesisHash: new Uint8Array(),
     ///     followSubscriptionId: "",
@@ -161,7 +187,7 @@ pub trait ChainInteraction: Send + Sync {
     /// ```truapi-client-example
     /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function unpinChainHead(truapi: Client) {
+    /// export async function unpinChainHead(truapi: Client): Promise<void> {
     ///   const result = await truapi.chainInteraction.chainHeadUnpin({
     ///     genesisHash: new Uint8Array(),
     ///     followSubscriptionId: "",
@@ -185,7 +211,9 @@ pub trait ChainInteraction: Send + Sync {
     /// ```truapi-client-example
     /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function continueChainHeadOperation(truapi: Client) {
+    /// export async function continueChainHeadOperation(
+    ///   truapi: Client,
+    /// ): Promise<void> {
     ///   const result = await truapi.chainInteraction.chainHeadContinue({
     ///     genesisHash: new Uint8Array(),
     ///     followSubscriptionId: "",
@@ -209,7 +237,9 @@ pub trait ChainInteraction: Send + Sync {
     /// ```truapi-client-example
     /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function stopChainHeadOperation(truapi: Client) {
+    /// export async function stopChainHeadOperation(
+    ///   truapi: Client,
+    /// ): Promise<void> {
     ///   const result = await truapi.chainInteraction.chainHeadStopOperation({
     ///     genesisHash: new Uint8Array(),
     ///     followSubscriptionId: "",
@@ -232,9 +262,14 @@ pub trait ChainInteraction: Send + Sync {
     /// Fetch the canonical genesis hash for a chain.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type RemoteChainSpecGenesisHashResponse,
+    /// } from "@parity/truapi";
     ///
-    /// export async function getChainGenesisHash(truapi: Client) {
+    /// export async function getChainGenesisHash(
+    ///   truapi: Client,
+    /// ): Promise<RemoteChainSpecGenesisHashResponse> {
     ///   const result = await truapi.chainInteraction.chainSpecGenesisHash({
     ///     genesisHash: new Uint8Array(),
     ///   });
@@ -256,9 +291,14 @@ pub trait ChainInteraction: Send + Sync {
     /// Fetch the display name of a chain.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type RemoteChainSpecChainNameResponse,
+    /// } from "@parity/truapi";
     ///
-    /// export async function getChainName(truapi: Client) {
+    /// export async function getChainName(
+    ///   truapi: Client,
+    /// ): Promise<RemoteChainSpecChainNameResponse> {
     ///   const result = await truapi.chainInteraction.chainSpecChainName({
     ///     genesisHash: new Uint8Array(),
     ///   });
@@ -279,9 +319,14 @@ pub trait ChainInteraction: Send + Sync {
     /// Fetch the JSON-encoded properties of a chain.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type RemoteChainSpecPropertiesResponse,
+    /// } from "@parity/truapi";
     ///
-    /// export async function getChainProperties(truapi: Client) {
+    /// export async function getChainProperties(
+    ///   truapi: Client,
+    /// ): Promise<RemoteChainSpecPropertiesResponse> {
     ///   const result = await truapi.chainInteraction.chainSpecProperties({
     ///     genesisHash: new Uint8Array(),
     ///   });
@@ -302,9 +347,14 @@ pub trait ChainInteraction: Send + Sync {
     /// Broadcast a signed transaction.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type RemoteChainTransactionBroadcastResponse,
+    /// } from "@parity/truapi";
     ///
-    /// export async function broadcastTransaction(truapi: Client) {
+    /// export async function broadcastTransaction(
+    ///   truapi: Client,
+    /// ): Promise<RemoteChainTransactionBroadcastResponse> {
     ///   const result = await truapi.chainInteraction.chainTransactionBroadcast({
     ///     genesisHash: new Uint8Array(),
     ///     transaction: new Uint8Array(),
@@ -331,7 +381,9 @@ pub trait ChainInteraction: Send + Sync {
     /// ```truapi-client-example
     /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function stopTransactionBroadcast(truapi: Client) {
+    /// export async function stopTransactionBroadcast(
+    ///   truapi: Client,
+    /// ): Promise<void> {
     ///   const result = await truapi.chainInteraction.chainTransactionStop({
     ///     genesisHash: new Uint8Array(),
     ///     operationId: "op-id",

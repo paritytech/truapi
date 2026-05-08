@@ -18,14 +18,18 @@ pub trait Payment: Send + Sync {
     /// Subscribe to payment balance updates.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type Subscription,
+    ///   type HostPaymentBalanceSubscribeItem,
+    /// } from "@parity/truapi";
     ///
-    /// export function watchPaymentBalance(truapi: Client) {
-    ///   return truapi.payment.paymentBalanceSubscribe({
-    ///     onData: (balance) => console.log(balance),
-    ///     onError: console.error,
-    ///     onInterrupt: () => console.log("interrupted"),
-    ///     onClose: console.error,
+    /// export function watchPaymentBalance(truapi: Client): Subscription {
+    ///   return truapi.payment.paymentBalanceSubscribe().subscribe({
+    ///     next: (balance: HostPaymentBalanceSubscribeItem) =>
+    ///       console.log(balance),
+    ///     error: (error: Error) => console.error(error),
+    ///     complete: () => console.log("completed"),
     ///   });
     /// }
     /// ```
@@ -41,9 +45,14 @@ pub trait Payment: Send + Sync {
     /// Request a payment from the user.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type HostPaymentRequestResponse,
+    /// } from "@parity/truapi";
     ///
-    /// export async function requestPayment(truapi: Client) {
+    /// export async function requestPayment(
+    ///   truapi: Client,
+    /// ): Promise<HostPaymentRequestResponse> {
     ///   const result = await truapi.payment.paymentRequest({
     ///     amount: 0n,
     ///     destination: new Uint8Array(),
@@ -65,16 +74,23 @@ pub trait Payment: Send + Sync {
     /// Subscribe to payment lifecycle updates for a specific payment.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type Subscription,
+    ///   type HostPaymentStatusSubscribeItem,
+    /// } from "@parity/truapi";
     ///
-    /// export function watchPaymentStatus(truapi: Client) {
-    ///   return truapi.payment.paymentStatusSubscribe({
-    ///     request: { paymentId: "payment-id" },
-    ///     onData: (status) => console.log(status),
-    ///     onError: console.error,
-    ///     onInterrupt: () => console.log("interrupted"),
-    ///     onClose: console.error,
-    ///   });
+    /// export function watchPaymentStatus(truapi: Client): Subscription {
+    ///   return truapi.payment
+    ///     .paymentStatusSubscribe({
+    ///       request: { paymentId: "payment-id" },
+    ///     })
+    ///     .subscribe({
+    ///       next: (status: HostPaymentStatusSubscribeItem) =>
+    ///         console.log(status),
+    ///       error: (error: Error) => console.error(error),
+    ///       complete: () => console.log("completed"),
+    ///     });
     /// }
     /// ```
     #[wire(start_id = 126)]
@@ -91,7 +107,7 @@ pub trait Payment: Send + Sync {
     /// ```truapi-client-example
     /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function topUpPaymentBalance(truapi: Client) {
+    /// export async function topUpPaymentBalance(truapi: Client): Promise<void> {
     ///   const result = await truapi.payment.paymentTopUp({
     ///     amount: 0n,
     ///     source: { tag: "ProductAccount", value: { derivationIndex: 0 } },

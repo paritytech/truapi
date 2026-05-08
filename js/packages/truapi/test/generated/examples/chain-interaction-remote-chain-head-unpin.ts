@@ -2,7 +2,7 @@
 
 import { type Client } from "@parity/truapi";
 
-export async function unpinChainHead(truapi: Client) {
+export async function unpinChainHead(truapi: Client): Promise<void> {
   const result = await truapi.chainInteraction.chainHeadUnpin({
     genesisHash: new Uint8Array(),
     followSubscriptionId: "",

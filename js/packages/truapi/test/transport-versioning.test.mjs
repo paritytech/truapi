@@ -48,7 +48,7 @@ function providerFixture() {
 
 function handshakeResponsePayload(value) {
   return indexedTaggedUnion({
-    V1: [0, result(unit, T.V02HostHandshakeError)],
+    V1: [0, result(unit, T.HostHandshakeError)],
   }).enc({ tag: "V1", value });
 }
 
@@ -68,7 +68,7 @@ function handshakeResponsePayload(value) {
 
   void client.accountManagement.accountGet(request);
 
-  const expectedPayload = T.HostAccountGetRequest.enc({
+  const expectedPayload = T.VersionedHostAccountGetRequest.enc({
     tag: "V1",
     value: request,
   });
@@ -93,7 +93,7 @@ function handshakeResponsePayload(value) {
 
   void client.trUApiCalls.handshake();
 
-  const expectedPayload = T.HostHandshakeRequest.enc({
+  const expectedPayload = T.VersionedHostHandshakeRequest.enc({
     tag: "V1",
     value: { codecVersion: 1 },
   });
@@ -135,7 +135,7 @@ function handshakeResponsePayload(value) {
   const fixture = providerFixture();
   createTransport(fixture.provider);
 
-  const requestPayload = T.HostHandshakeRequest.enc({
+  const requestPayload = T.VersionedHostHandshakeRequest.enc({
     tag: "V1",
     value: { codecVersion: 1 },
   });
@@ -169,24 +169,26 @@ function handshakeResponsePayload(value) {
   assert.equal(toHex(fixture.sent[0]), toHex(expectedFrame));
 }
 
-// Receive frames are decoded as wire wrappers by the transport, then delivered
-// to generated callbacks as inner values.
+// Receive frames are decoded as wire wrappers by the generated observable, then
+// delivered as inner values.
 {
   const fixture = providerFixture();
   const transport = createTransport(fixture.provider);
   const client = createClient(transport);
   const events = [];
 
-  const sub = client.accountManagement.accountConnectionStatusSubscribe({
-    onData: (value) => events.push(value),
-  });
+  const sub = client.accountManagement
+    .accountConnectionStatusSubscribe()
+    .subscribe({
+      next: (value) => events.push(value),
+    });
 
   const frame = unwrap(
     encodeWireMessage({
       requestId: sub.subscriptionId,
       payload: {
         tag: "host_account_connection_status_subscribe_receive",
-        value: T.HostAccountConnectionStatusSubscribeItem.enc({
+        value: T.VersionedHostAccountConnectionStatusSubscribeItem.enc({
           tag: "V1",
           value: { tag: "Connected", value: undefined },
         }),
@@ -199,18 +201,18 @@ function handshakeResponsePayload(value) {
   assert.deepEqual(events, [{ tag: "Connected", value: undefined }]);
 }
 
-// Interrupt frames are payloadless terminators. Generated callbacks receive no
-// typed error payload.
+// Interrupt frames are payloadless terminators and complete the observable.
 {
   const fixture = providerFixture();
   const transport = createTransport(fixture.provider);
   const client = createClient(transport);
-  const interrupts = [];
+  const completions = [];
 
-  const sub = client.accountManagement.accountConnectionStatusSubscribe({
-    onData: () => {},
-    onInterrupt: (...args) => interrupts.push(args),
-  });
+  const sub = client.accountManagement
+    .accountConnectionStatusSubscribe()
+    .subscribe({
+      complete: (...args) => completions.push(args),
+    });
 
   const frame = unwrap(
     encodeWireMessage({
@@ -224,27 +226,24 @@ function handshakeResponsePayload(value) {
   );
   fixture.receive(frame);
 
-  assert.deepEqual(interrupts, [[]]);
+  assert.deepEqual(completions, [[]]);
 }
 
-// Malformed receive payloads are local decode failures, not protocol
-// interrupts or transport closes. Generated subscriptions surface them through
-// onError and keep the subscription alive for later receive frames.
+// Malformed receive payloads are terminal observable errors. The generated
+// wrapper sends `_stop` and ignores later receive frames for that subscription.
 {
   const fixture = providerFixture();
   const transport = createTransport(fixture.provider);
   const client = createClient(transport);
   const events = [];
-  const interrupts = [];
   const errors = [];
-  const closes = [];
 
-  const sub = client.accountManagement.accountConnectionStatusSubscribe({
-    onData: (value) => events.push(value),
-    onInterrupt: (...args) => interrupts.push(args),
-    onError: (error) => errors.push(error),
-    onClose: (error) => closes.push(error),
-  });
+  const sub = client.accountManagement
+    .accountConnectionStatusSubscribe()
+    .subscribe({
+      next: (value) => events.push(value),
+      error: (error) => errors.push(error),
+    });
 
   const malformedFrame = unwrap(
     encodeWireMessage({
@@ -259,17 +258,27 @@ function handshakeResponsePayload(value) {
   fixture.receive(malformedFrame);
 
   assert.deepEqual(events, []);
-  assert.deepEqual(interrupts, []);
-  assert.deepEqual(closes, []);
   assert.equal(errors.length, 1);
   assert.ok(errors[0] instanceof Error);
+  assert.equal(fixture.sent.length, 2);
+  const expectedStop = unwrap(
+    encodeWireMessage({
+      requestId: sub.subscriptionId,
+      payload: {
+        tag: "host_account_connection_status_subscribe_stop",
+        value: unit.enc(undefined),
+      },
+    }),
+    "encode stop after malformed receive",
+  );
+  assert.equal(toHex(fixture.sent[1]), toHex(expectedStop));
 
   const validFrame = unwrap(
     encodeWireMessage({
       requestId: sub.subscriptionId,
       payload: {
         tag: "host_account_connection_status_subscribe_receive",
-        value: T.HostAccountConnectionStatusSubscribeItem.enc({
+        value: T.VersionedHostAccountConnectionStatusSubscribeItem.enc({
           tag: "V1",
           value: { tag: "Connected", value: undefined },
         }),
@@ -279,29 +288,56 @@ function handshakeResponsePayload(value) {
   );
   fixture.receive(validFrame);
 
-  assert.deepEqual(events, [{ tag: "Connected", value: undefined }]);
+  assert.deepEqual(events, []);
 }
 
-// Provider close/error is a transport lifecycle event, surfaced separately via
-// onClose.
+// Unsubscribe sends the protocol `_stop` frame and does not call terminal
+// observer callbacks locally.
+{
+  const fixture = providerFixture();
+  const transport = createTransport(fixture.provider);
+  const client = createClient(transport);
+  const completions = [];
+  const errors = [];
+
+  const sub = client.accountManagement
+    .accountConnectionStatusSubscribe()
+    .subscribe({
+      complete: () => completions.push(true),
+      error: (error) => errors.push(error),
+    });
+  sub.unsubscribe();
+
+  const expectedStop = unwrap(
+    encodeWireMessage({
+      requestId: sub.subscriptionId,
+      payload: {
+        tag: "host_account_connection_status_subscribe_stop",
+        value: unit.enc(undefined),
+      },
+    }),
+    "encode explicit unsubscribe stop",
+  );
+  assert.equal(toHex(fixture.sent[1]), toHex(expectedStop));
+  assert.deepEqual(completions, []);
+  assert.deepEqual(errors, []);
+}
+
+// Provider close/error is a terminal observable error.
 {
   const fixture = providerFixture();
   const transport = createTransport(fixture.provider);
   const client = createClient(transport);
   const errors = [];
-  const closes = [];
 
-  client.accountManagement.accountConnectionStatusSubscribe({
-    onData: () => {},
-    onError: (error) => errors.push(error),
-    onClose: (error) => closes.push(error),
+  client.accountManagement.accountConnectionStatusSubscribe().subscribe({
+    error: (error) => errors.push(error),
   });
 
   fixture.close(new Error("provider closed"));
 
-  assert.deepEqual(errors, []);
-  assert.equal(closes.length, 1);
-  assert.equal(closes[0].message, "provider closed");
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0].message, "provider closed");
 }
 
 console.log("transport version wrapping tests passed");

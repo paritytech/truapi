@@ -76,7 +76,7 @@ async function testSubscription(
   subscribe: (
     req: unknown,
     onEvent: (data: unknown) => void,
-    onEnd: () => void,
+    onEnd: (error?: Error) => void,
   ) => { unsubscribe: () => void },
   req: unknown,
 ): Promise<{ result: "pass" | "fail"; output: string }> {
@@ -105,7 +105,8 @@ async function testSubscription(
     sub = subscribe(
       req,
       (event) => settle("pass", stringify(event) ?? "null"),
-      () => settle("fail", "stream ended without events"),
+      (error) =>
+        settle("fail", error ? error.message : "stream ended without events"),
     );
   });
 }

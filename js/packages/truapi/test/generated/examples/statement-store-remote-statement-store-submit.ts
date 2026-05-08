@@ -2,7 +2,7 @@
 
 import { type Client } from "@parity/truapi";
 
-export async function submitStatement(truapi: Client) {
+export async function submitStatement(truapi: Client): Promise<void> {
   const result = await truapi.statementStore.statementStoreSubmit({
     proof: {
       tag: "Sr25519",

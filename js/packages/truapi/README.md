@@ -16,35 +16,49 @@ import {
   createClient,
   createMessagePortProvider,
   createTransport,
+  type Client,
+  type Subscription,
+  type HostAccountGetResponse,
+  type RemoteChainHeadFollowItem,
 } from "@parity/truapi";
 
 const provider = createMessagePortProvider(port);
 const transport = createTransport(provider);
-const truapi = createClient(transport);
+const truapi: Client = createClient(transport);
 
-const account = await truapi.accountManagement.accountGet([
-  "my-product.dot",
-  0,
-]);
+const result = await truapi.accountManagement.accountGet({
+  productAccountId: {
+    dotNsIdentifier: "my-product.dot",
+    derivationIndex: 0,
+  },
+});
+
+if (result.isErr()) throw result.error;
+const account: HostAccountGetResponse = result.value;
 ```
 
 Request methods take the inner request value directly. The transport handles the
 wire-level version wrapper and unwraps versioned responses before generated
 methods return.
 
-Subscription methods take an object because they need both request data and
-callbacks:
+Subscription methods return a small Observable-compatible object:
 
 ```ts
-const sub = truapi.chainInteraction.chainHeadFollow({
-  request: { genesisHash, withRuntime: false },
-  onData(event) {
-    console.log(event);
-  },
-  onInterrupt(error) {
-    console.error(error);
-  },
-});
+const sub: Subscription = truapi.chainInteraction
+  .chainHeadFollow({
+    request: { genesisHash, withRuntime: false },
+  })
+  .subscribe({
+    next(event: RemoteChainHeadFollowItem) {
+      console.log(event);
+    },
+    error(error: Error) {
+      console.error(error);
+    },
+    complete() {
+      console.log("stream ended");
+    },
+  });
 
 sub.unsubscribe();
 ```
@@ -57,8 +71,8 @@ Frames are SCALE encoded:
 [requestId: SCALE str][discriminant: u8][payload bytes...]
 ```
 
-The discriminant table is generated from Rust `#[wire(id = N, introduced =
-V<N>)]` annotations and lives in `src/generated/wire-table.ts`.
+The discriminant table is generated from Rust `#[wire(request_id = N)]` and
+`#[wire(start_id = N)]` annotations and lives in `src/generated/wire-table.ts`.
 
 ## Generated Files
 

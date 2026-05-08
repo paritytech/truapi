@@ -16,9 +16,14 @@ pub trait EntropyDerivation: Send + Sync {
     /// given key.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type HostDeriveEntropyResponse,
+    /// } from "@parity/truapi";
     ///
-    /// export async function deriveEntropy(truapi: Client) {
+    /// export async function deriveEntropy(
+    ///   truapi: Client,
+    /// ): Promise<HostDeriveEntropyResponse> {
     ///   const result = await truapi.entropyDerivation.deriveEntropy({
     ///     context: new Uint8Array(),
     ///   });

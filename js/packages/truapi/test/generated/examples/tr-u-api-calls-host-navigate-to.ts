@@ -2,7 +2,7 @@
 
 import { type Client } from "@parity/truapi";
 
-export async function navigateToDocs(truapi: Client) {
+export async function navigateToDocs(truapi: Client): Promise<void> {
   const result = await truapi.trUApiCalls.navigateTo({
     url: "https://example.com",
   });

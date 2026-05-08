@@ -18,16 +18,23 @@ pub trait StatementStore: Send + Sync {
     /// Subscribe to statements matching a topic filter.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type Subscription,
+    ///   type RemoteStatementStoreSubscribeItem,
+    /// } from "@parity/truapi";
     ///
-    /// export function subscribeStatements(truapi: Client) {
-    ///   return truapi.statementStore.statementStoreSubscribe({
-    ///     request: { tag: "MatchAll", value: [] },
-    ///     onData: (statements) => console.log(statements),
-    ///     onError: console.error,
-    ///     onInterrupt: () => console.log("interrupted"),
-    ///     onClose: console.error,
-    ///   });
+    /// export function subscribeStatements(truapi: Client): Subscription {
+    ///   return truapi.statementStore
+    ///     .statementStoreSubscribe({
+    ///       request: { tag: "MatchAll", value: [] },
+    ///     })
+    ///     .subscribe({
+    ///       next: (statements: RemoteStatementStoreSubscribeItem) =>
+    ///         console.log(statements),
+    ///       error: (error: Error) => console.error(error),
+    ///       complete: () => console.log("completed"),
+    ///     });
     /// }
     /// ```
     #[wire(start_id = 56)]
@@ -42,9 +49,14 @@ pub trait StatementStore: Send + Sync {
     /// Create a proof for a statement.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import {
+    ///   type Client,
+    ///   type RemoteStatementStoreCreateProofResponse,
+    /// } from "@parity/truapi";
     ///
-    /// export async function createStatementProof(truapi: Client) {
+    /// export async function createStatementProof(
+    ///   truapi: Client,
+    /// ): Promise<RemoteStatementStoreCreateProofResponse> {
     ///   const result = await truapi.statementStore.statementStoreCreateProof({
     ///     productAccountId: {
     ///       dotNsIdentifier: "truapi-playground.dot",
@@ -79,7 +91,7 @@ pub trait StatementStore: Send + Sync {
     /// ```truapi-client-example
     /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function submitStatement(truapi: Client) {
+    /// export async function submitStatement(truapi: Client): Promise<void> {
     ///   const result = await truapi.statementStore.statementStoreSubmit({
     ///     proof: {
     ///       tag: "Sr25519",

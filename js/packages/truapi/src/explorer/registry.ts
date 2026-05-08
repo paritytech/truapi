@@ -180,10 +180,10 @@ export const versions: ExplorerVersion[] = [
         pattern: "unary",
         request: "undefined",
         response: "undefined",
-        errorType: "V02HostHandshakeError",
+        errorType: "HostHandshakeError",
         description: "Negotiates the wire codec version with the product.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function handshake(truapi: Client) {\n  const result = await truapi.trUApiCalls.handshake();\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function handshake(truapi: Client): Promise<void> {\n  const result = await truapi.trUApiCalls.handshake();\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_feature_supported",
@@ -192,12 +192,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "TrUAPI Calls",
         wireId: 2,
         pattern: "unary",
-        request: "V01HostFeatureSupportedRequest",
-        response: "V01HostFeatureSupportedResponse",
+        request: "HostFeatureSupportedRequest",
+        response: "HostFeatureSupportedResponse",
         errorType: "GenericError",
         description: "Queries whether the host supports a specific feature.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function supportsChain(truapi: Client) {\n  const result = await truapi.trUApiCalls.featureSupported({\n    tag: "Chain",\n    value: { genesisHash: new Uint8Array() },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value.supported;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function supportsChain(truapi: Client): Promise<boolean> {\n  const result = await truapi.trUApiCalls.featureSupported({\n    tag: "Chain",\n    value: { genesisHash: new Uint8Array() },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value.supported;\n}',
       },
       {
         id: "host_push_notification",
@@ -206,12 +206,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "TrUAPI Calls",
         wireId: 4,
         pattern: "unary",
-        request: "V01HostPushNotificationRequest",
+        request: "HostPushNotificationRequest",
         response: "undefined",
         errorType: "GenericError",
         description: "Sends a push notification to the user.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function pushNotification(truapi: Client) {\n  const result = await truapi.trUApiCalls.pushNotification({\n    text: "Hello!",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function pushNotification(truapi: Client): Promise<void> {\n  const result = await truapi.trUApiCalls.pushNotification({\n    text: "Hello!",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_navigate_to",
@@ -220,12 +220,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "TrUAPI Calls",
         wireId: 6,
         pattern: "unary",
-        request: "V01HostNavigateToRequest",
+        request: "HostNavigateToRequest",
         response: "undefined",
-        errorType: "V01HostNavigateToError",
+        errorType: "HostNavigateToError",
         description: "Requests the host to open a URL.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function navigateToDocs(truapi: Client) {\n  const result = await truapi.trUApiCalls.navigateTo({\n    url: "https://example.com",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function navigateToDocs(truapi: Client): Promise<void> {\n  const result = await truapi.trUApiCalls.navigateTo({\n    url: "https://example.com",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_device_permission",
@@ -234,12 +234,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Permissions",
         wireId: 8,
         pattern: "unary",
-        request: "V01HostDevicePermissionRequest",
-        response: "V01HostDevicePermissionResponse",
+        request: "HostDevicePermissionRequest",
+        response: "HostDevicePermissionResponse",
         errorType: "GenericError",
         description: "Request a device-capability permission from the user.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function requestCameraPermission(truapi: Client) {\n  const result = await truapi.permissions.devicePermission({\n    tag: "Camera",\n    value: undefined,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostDevicePermissionResponse,\n} from "@parity/truapi";\n\nexport async function requestCameraPermission(\n  truapi: Client,\n): Promise<HostDevicePermissionResponse> {\n  const result = await truapi.permissions.devicePermission({\n    tag: "Camera",\n    value: undefined,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_permission",
@@ -248,12 +248,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Permissions",
         wireId: 10,
         pattern: "unary",
-        request: "V01RemotePermissionRequest",
-        response: "V01RemotePermissionResponse",
+        request: "RemotePermissionRequest",
+        response: "RemotePermissionResponse",
         errorType: "GenericError",
         description: "Request one or more remote-operation permissions.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function requestRemotePermission(truapi: Client) {\n  const result = await truapi.permissions.permission({\n    permissions: [{ tag: "Remote", value: { domains: ["api.example.com"] } }],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemotePermissionResponse,\n} from "@parity/truapi";\n\nexport async function requestRemotePermission(\n  truapi: Client,\n): Promise<RemotePermissionResponse> {\n  const result = await truapi.permissions.permission({\n    permissions: [{ tag: "Remote", value: { domains: ["api.example.com"] } }],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_local_storage_read",
@@ -262,12 +262,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Local Storage",
         wireId: 12,
         pattern: "unary",
-        request: "V01HostLocalStorageReadRequest",
-        response: "V01HostLocalStorageReadResponse",
-        errorType: "V01HostLocalStorageReadError",
+        request: "HostLocalStorageReadRequest",
+        response: "HostLocalStorageReadResponse",
+        errorType: "HostLocalStorageReadError",
         description: "Read a value by key.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function readLocalValue(truapi: Client) {\n  const result = await truapi.localStorage.localStorageRead({ key: "test-key" });\n\n  if (result.isErr()) throw result.error;\n  return result.value.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function readLocalValue(\n  truapi: Client,\n): Promise<Uint8Array | undefined> {\n  const result = await truapi.localStorage.localStorageRead({ key: "test-key" });\n\n  if (result.isErr()) throw result.error;\n  return result.value.value;\n}',
       },
       {
         id: "host_local_storage_write",
@@ -276,12 +276,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Local Storage",
         wireId: 14,
         pattern: "unary",
-        request: "V01HostLocalStorageWriteRequest",
+        request: "HostLocalStorageWriteRequest",
         response: "undefined",
-        errorType: "V01HostLocalStorageReadError",
+        errorType: "HostLocalStorageReadError",
         description: "Write a value to a key.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function writeLocalValue(truapi: Client) {\n  const result = await truapi.localStorage.localStorageWrite({\n    key: "test-key",\n    value: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function writeLocalValue(truapi: Client): Promise<void> {\n  const result = await truapi.localStorage.localStorageWrite({\n    key: "test-key",\n    value: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_local_storage_clear",
@@ -290,12 +290,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Local Storage",
         wireId: 16,
         pattern: "unary",
-        request: "V01HostLocalStorageClearRequest",
+        request: "HostLocalStorageClearRequest",
         response: "undefined",
-        errorType: "V01HostLocalStorageReadError",
+        errorType: "HostLocalStorageReadError",
         description: "Clear a value by key.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function clearLocalValue(truapi: Client) {\n  const result = await truapi.localStorage.localStorageClear({ key: "test-key" });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function clearLocalValue(truapi: Client): Promise<void> {\n  const result = await truapi.localStorage.localStorageClear({ key: "test-key" });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_account_connection_status_subscribe",
@@ -305,10 +305,10 @@ export const versions: ExplorerVersion[] = [
         wireId: 18,
         pattern: "subscription",
         request: "undefined",
-        response: "V01HostAccountConnectionStatusSubscribeItem",
+        response: "HostAccountConnectionStatusSubscribeItem",
         description: "Subscribe to account connection status changes.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport function watchAccountConnection(truapi: Client) {\n  return truapi.accountManagement.accountConnectionStatusSubscribe({\n    onData: (status) => console.log(status),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import {\n  type Client,\n  type Subscription,\n  type HostAccountConnectionStatusSubscribeItem,\n} from "@parity/truapi";\n\nexport function watchAccountConnection(truapi: Client): Subscription {\n  return truapi.accountManagement.accountConnectionStatusSubscribe().subscribe({\n    next: (status: HostAccountConnectionStatusSubscribeItem) =>\n      console.log(status),\n    error: (error: Error) => console.error(error),\n    complete: () => console.log("completed"),\n  });\n}',
       },
       {
         id: "host_account_get",
@@ -317,12 +317,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Account Management",
         wireId: 22,
         pattern: "unary",
-        request: "V01HostAccountGetRequest",
-        response: "V01HostAccountGetResponse",
-        errorType: "V01HostAccountGetError",
+        request: "HostAccountGetRequest",
+        response: "HostAccountGetResponse",
+        errorType: "HostAccountGetError",
         description: "Retrieve a product-scoped account.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function getAccount(truapi: Client) {\n  const result = await truapi.accountManagement.accountGet({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostAccountGetResponse,\n} from "@parity/truapi";\n\nexport async function getAccount(\n  truapi: Client,\n): Promise<HostAccountGetResponse> {\n  const result = await truapi.accountManagement.accountGet({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_account_get_alias",
@@ -331,12 +331,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Account Management",
         wireId: 24,
         pattern: "unary",
-        request: "V01HostAccountGetAliasRequest",
-        response: "V01HostAccountGetAliasResponse",
-        errorType: "V01HostAccountGetError",
+        request: "HostAccountGetAliasRequest",
+        response: "HostAccountGetAliasResponse",
+        errorType: "HostAccountGetError",
         description: "Retrieve a contextual alias for a product account.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function getAccountAlias(truapi: Client) {\n  const result = await truapi.accountManagement.accountGetAlias({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostAccountGetAliasResponse,\n} from "@parity/truapi";\n\nexport async function getAccountAlias(\n  truapi: Client,\n): Promise<HostAccountGetAliasResponse> {\n  const result = await truapi.accountManagement.accountGetAlias({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_account_create_proof",
@@ -345,12 +345,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Account Management",
         wireId: 26,
         pattern: "unary",
-        request: "V01HostAccountCreateProofRequest",
-        response: "V01HostAccountCreateProofResponse",
-        errorType: "V01HostAccountCreateProofError",
+        request: "HostAccountCreateProofRequest",
+        response: "HostAccountCreateProofResponse",
+        errorType: "HostAccountCreateProofError",
         description: "Generate a ring VRF proof for a product account.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function createAccountProof(truapi: Client) {\n  const result = await truapi.accountManagement.accountCreateProof({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    ringLocation: {\n      genesisHash: new Uint8Array(),\n      ringRootHash: new Uint8Array(),\n      hints: { palletInstance: 42 },\n    },\n    context: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostAccountCreateProofResponse,\n} from "@parity/truapi";\n\nexport async function createAccountProof(\n  truapi: Client,\n): Promise<HostAccountCreateProofResponse> {\n  const result = await truapi.accountManagement.accountCreateProof({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    ringLocation: {\n      genesisHash: new Uint8Array(),\n      ringRootHash: new Uint8Array(),\n      hints: { palletInstance: 42 },\n    },\n    context: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_get_legacy_accounts",
@@ -360,11 +360,11 @@ export const versions: ExplorerVersion[] = [
         wireId: 28,
         pattern: "unary",
         request: "undefined",
-        response: "V01HostGetLegacyAccountsResponse",
-        errorType: "V01HostAccountGetError",
+        response: "HostGetLegacyAccountsResponse",
+        errorType: "HostAccountGetError",
         description: "List non-product accounts the user owns.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function getLegacyAccounts(truapi: Client) {\n  const result = await truapi.accountManagement.getLegacyAccounts();\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostGetLegacyAccountsResponse,\n} from "@parity/truapi";\n\nexport async function getLegacyAccounts(\n  truapi: Client,\n): Promise<HostGetLegacyAccountsResponse> {\n  const result = await truapi.accountManagement.getLegacyAccounts();\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_create_transaction",
@@ -373,12 +373,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Signing",
         wireId: 30,
         pattern: "unary",
-        request: "V01HostCreateTransactionRequest",
-        response: "V01HostCreateTransactionResponse",
-        errorType: "V01HostCreateTransactionError",
+        request: "HostCreateTransactionRequest",
+        response: "HostCreateTransactionResponse",
+        errorType: "HostCreateTransactionError",
         description: "Construct a signed extrinsic for a product account.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function createTransaction(truapi: Client) {\n  const result = await truapi.signing.createTransaction({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    payload: {\n      tag: "V1",\n      value: {\n        callData: new Uint8Array(),\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: new Uint8Array(),\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostCreateTransactionResponse,\n} from "@parity/truapi";\n\nexport async function createTransaction(\n  truapi: Client,\n): Promise<HostCreateTransactionResponse> {\n  const result = await truapi.signing.createTransaction({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    payload: {\n      tag: "V1",\n      value: {\n        callData: new Uint8Array(),\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: new Uint8Array(),\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_create_transaction_with_legacy_account",
@@ -387,12 +387,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Signing",
         wireId: 32,
         pattern: "unary",
-        request: "V01HostCreateTransactionWithLegacyAccountRequest",
-        response: "V01HostCreateTransactionWithLegacyAccountResponse",
-        errorType: "V01HostCreateTransactionError",
+        request: "HostCreateTransactionWithLegacyAccountRequest",
+        response: "HostCreateTransactionWithLegacyAccountResponse",
+        errorType: "HostCreateTransactionError",
         description: "Construct a signed extrinsic for a non-product account.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function createTransactionWithLegacyAccount(truapi: Client) {\n  const result = await truapi.signing.createTransactionWithLegacyAccount({\n    payload: {\n      tag: "V1",\n      value: {\n        callData: new Uint8Array(),\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: new Uint8Array(),\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostCreateTransactionWithLegacyAccountResponse,\n} from "@parity/truapi";\n\nexport async function createTransactionWithLegacyAccount(\n  truapi: Client,\n): Promise<HostCreateTransactionWithLegacyAccountResponse> {\n  const result = await truapi.signing.createTransactionWithLegacyAccount({\n    payload: {\n      tag: "V1",\n      value: {\n        callData: new Uint8Array(),\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: new Uint8Array(),\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_create_room",
@@ -401,12 +401,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chat",
         wireId: 38,
         pattern: "unary",
-        request: "V01HostChatCreateRoomRequest",
-        response: "V01HostChatCreateRoomResponse",
-        errorType: "V01HostChatCreateRoomError",
+        request: "HostChatCreateRoomRequest",
+        response: "HostChatCreateRoomResponse",
+        errorType: "HostChatCreateRoomError",
         description: "Create a chat room.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function createRoom(truapi: Client) {\n  const result = await truapi.chat.chatCreateRoom({\n    roomId: "test-room",\n    name: "Test Room",\n    icon: "",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostChatCreateRoomResponse,\n} from "@parity/truapi";\n\nexport async function createRoom(\n  truapi: Client,\n): Promise<HostChatCreateRoomResponse> {\n  const result = await truapi.chat.chatCreateRoom({\n    roomId: "test-room",\n    name: "Test Room",\n    icon: "",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_register_bot",
@@ -415,12 +415,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chat",
         wireId: 40,
         pattern: "unary",
-        request: "V01HostChatRegisterBotRequest",
-        response: "V01HostChatRegisterBotResponse",
-        errorType: "V01HostChatRegisterBotError",
+        request: "HostChatRegisterBotRequest",
+        response: "HostChatRegisterBotResponse",
+        errorType: "HostChatRegisterBotError",
         description: "Register a chat bot.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function registerBot(truapi: Client) {\n  const result = await truapi.chat.chatRegisterBot({\n    botId: "test-bot",\n    name: "Test Bot",\n    icon: "",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostChatRegisterBotResponse,\n} from "@parity/truapi";\n\nexport async function registerBot(\n  truapi: Client,\n): Promise<HostChatRegisterBotResponse> {\n  const result = await truapi.chat.chatRegisterBot({\n    botId: "test-bot",\n    name: "Test Bot",\n    icon: "",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_list_subscribe",
@@ -430,10 +430,10 @@ export const versions: ExplorerVersion[] = [
         wireId: 42,
         pattern: "subscription",
         request: "undefined",
-        response: "V01HostChatListSubscribeItem",
+        response: "HostChatListSubscribeItem",
         description: "Subscribe to the list of chat rooms.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport function watchChatRooms(truapi: Client) {\n  return truapi.chat.chatListSubscribe({\n    onData: (rooms) => console.log(rooms),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import {\n  type Client,\n  type Subscription,\n  type HostChatListSubscribeItem,\n} from "@parity/truapi";\n\nexport function watchChatRooms(truapi: Client): Subscription {\n  return truapi.chat.chatListSubscribe().subscribe({\n    next: (rooms: HostChatListSubscribeItem) => console.log(rooms),\n    error: (error: Error) => console.error(error),\n    complete: () => console.log("completed"),\n  });\n}',
       },
       {
         id: "host_chat_post_message",
@@ -442,12 +442,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chat",
         wireId: 46,
         pattern: "unary",
-        request: "V01HostChatPostMessageRequest",
-        response: "V01HostChatPostMessageResponse",
-        errorType: "V01HostChatPostMessageError",
+        request: "HostChatPostMessageRequest",
+        response: "HostChatPostMessageResponse",
+        errorType: "HostChatPostMessageError",
         description: "Post a message to a chat room.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function postChatMessage(truapi: Client) {\n  const result = await truapi.chat.chatPostMessage({\n    roomId: "test-room",\n    payload: { tag: "Text", value: { text: "Hello from playground!" } },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostChatPostMessageResponse,\n} from "@parity/truapi";\n\nexport async function postChatMessage(\n  truapi: Client,\n): Promise<HostChatPostMessageResponse> {\n  const result = await truapi.chat.chatPostMessage({\n    roomId: "test-room",\n    payload: { tag: "Text", value: { text: "Hello from playground!" } },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_action_subscribe",
@@ -457,10 +457,10 @@ export const versions: ExplorerVersion[] = [
         wireId: 48,
         pattern: "subscription",
         request: "undefined",
-        response: "V01HostChatActionSubscribeItem",
+        response: "HostChatActionSubscribeItem",
         description: "Subscribe to received chat actions.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport function watchChatActions(truapi: Client) {\n  return truapi.chat.chatActionSubscribe({\n    onData: (action) => console.log(action),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import {\n  type Client,\n  type Subscription,\n  type HostChatActionSubscribeItem,\n} from "@parity/truapi";\n\nexport function watchChatActions(truapi: Client): Subscription {\n  return truapi.chat.chatActionSubscribe().subscribe({\n    next: (action: HostChatActionSubscribeItem) =>\n      console.log(action),\n    error: (error: Error) => console.error(error),\n    complete: () => console.log("completed"),\n  });\n}',
       },
       {
         id: "product_chat_custom_message_render_subscribe",
@@ -469,12 +469,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chat",
         wireId: 52,
         pattern: "subscription",
-        request: "V01ProductChatCustomMessageRenderSubscribeRequest",
+        request: "ProductChatCustomMessageRenderSubscribeRequest",
         response: "CustomRendererNode",
         description:
           "Subscribe to custom message render requests from the host. Each\nemitted item is a [`CustomRendererNode`](crate::v01::CustomRendererNode)\ntree describing the rendered UI.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport function renderCustomChatMessage(truapi: Client) {\n  return truapi.chat.chatCustomMessageRenderSubscribe({\n    request: {\n      messageId: "msg-1",\n      messageType: "custom-render-demo",\n      payload: new Uint8Array(),\n    },\n    onData: (node) => console.log(node),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import {\n  type Client,\n  type CustomRendererNode,\n  type Subscription,\n} from "@parity/truapi";\n\nexport function renderCustomChatMessage(truapi: Client): Subscription {\n  return truapi.chat\n    .chatCustomMessageRenderSubscribe({\n      request: {\n        messageId: "msg-1",\n        messageType: "custom-render-demo",\n        payload: new Uint8Array(),\n      },\n    })\n    .subscribe({\n      next: (node: CustomRendererNode) => console.log(node),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_statement_store_subscribe",
@@ -483,11 +483,11 @@ export const versions: ExplorerVersion[] = [
         groupName: "Statement Store",
         wireId: 56,
         pattern: "subscription",
-        request: "V01RemoteStatementStoreSubscribeRequest",
-        response: "V01RemoteStatementStoreSubscribeItem",
+        request: "RemoteStatementStoreSubscribeRequest",
+        response: "RemoteStatementStoreSubscribeItem",
         description: "Subscribe to statements matching a topic filter.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport function subscribeStatements(truapi: Client) {\n  return truapi.statementStore.statementStoreSubscribe({\n    request: { tag: "MatchAll", value: [] },\n    onData: (statements) => console.log(statements),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import {\n  type Client,\n  type Subscription,\n  type RemoteStatementStoreSubscribeItem,\n} from "@parity/truapi";\n\nexport function subscribeStatements(truapi: Client): Subscription {\n  return truapi.statementStore\n    .statementStoreSubscribe({\n      request: { tag: "MatchAll", value: [] },\n    })\n    .subscribe({\n      next: (statements: RemoteStatementStoreSubscribeItem) =>\n        console.log(statements),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_statement_store_create_proof",
@@ -496,12 +496,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Statement Store",
         wireId: 60,
         pattern: "unary",
-        request: "V01RemoteStatementStoreCreateProofRequest",
-        response: "V01RemoteStatementStoreCreateProofResponse",
-        errorType: "V01RemoteStatementStoreCreateProofError",
+        request: "RemoteStatementStoreCreateProofRequest",
+        response: "RemoteStatementStoreCreateProofResponse",
+        errorType: "RemoteStatementStoreCreateProofError",
         description: "Create a proof for a statement.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function createStatementProof(truapi: Client) {\n  const result = await truapi.statementStore.statementStoreCreateProof({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    statement: {\n      expiry: 9999999999999n,\n      topics: [],\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteStatementStoreCreateProofResponse,\n} from "@parity/truapi";\n\nexport async function createStatementProof(\n  truapi: Client,\n): Promise<RemoteStatementStoreCreateProofResponse> {\n  const result = await truapi.statementStore.statementStoreCreateProof({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    statement: {\n      expiry: 9999999999999n,\n      topics: [],\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_statement_store_submit",
@@ -516,7 +516,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Submit a signed statement to the network. The request body is the\n[`SignedStatement`](crate::v01::SignedStatement) directly (no wrapping\nstruct), matching upstream `triangle-js-sdks`.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function submitStatement(truapi: Client) {\n  const result = await truapi.statementStore.statementStoreSubmit({\n    proof: {\n      tag: "Sr25519",\n      value: { signature: new Uint8Array(), signer: new Uint8Array() },\n    },\n    topics: [],\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function submitStatement(truapi: Client): Promise<void> {\n  const result = await truapi.statementStore.statementStoreSubmit({\n    proof: {\n      tag: "Sr25519",\n      value: { signature: new Uint8Array(), signer: new Uint8Array() },\n    },\n    topics: [],\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_preimage_lookup_subscribe",
@@ -525,11 +525,11 @@ export const versions: ExplorerVersion[] = [
         groupName: "Preimage",
         wireId: 64,
         pattern: "subscription",
-        request: "V01RemotePreimageLookupSubscribeRequest",
-        response: "V01RemotePreimageLookupSubscribeItem",
+        request: "RemotePreimageLookupSubscribeRequest",
+        response: "RemotePreimageLookupSubscribeItem",
         description: "Subscribe to preimage lookups for a given key.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport function lookupPreimage(truapi: Client) {\n  return truapi.preimage.preimageLookupSubscribe({\n    request: { key: new Uint8Array() },\n    onData: (item) => console.log(item),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import {\n  type Client,\n  type Subscription,\n  type RemotePreimageLookupSubscribeItem,\n} from "@parity/truapi";\n\nexport function lookupPreimage(truapi: Client): Subscription {\n  return truapi.preimage\n    .preimageLookupSubscribe({\n      request: { key: new Uint8Array() },\n    })\n    .subscribe({\n      next: (item: RemotePreimageLookupSubscribeItem) =>\n        console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_chain_head_follow",
@@ -538,11 +538,11 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chain Interaction",
         wireId: 76,
         pattern: "subscription",
-        request: "V01RemoteChainHeadFollowRequest",
-        response: "V01RemoteChainHeadFollowItem",
+        request: "RemoteChainHeadFollowRequest",
+        response: "RemoteChainHeadFollowItem",
         description: "Follow the chain head and receive block events.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport function followChainHead(truapi: Client) {\n  return truapi.chainInteraction.chainHeadFollow({\n    request: { genesisHash: new Uint8Array(), withRuntime: false },\n    onData: (item) => console.log(item),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import {\n  type Client,\n  type Subscription,\n  type RemoteChainHeadFollowItem,\n} from "@parity/truapi";\n\nexport function followChainHead(truapi: Client): Subscription {\n  return truapi.chainInteraction\n    .chainHeadFollow({\n      request: { genesisHash: new Uint8Array(), withRuntime: false },\n    })\n    .subscribe({\n      next: (item: RemoteChainHeadFollowItem) => console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_chain_head_header",
@@ -551,12 +551,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chain Interaction",
         wireId: 80,
         pattern: "unary",
-        request: "V01RemoteChainHeadHeaderRequest",
-        response: "V01RemoteChainHeadHeaderResponse",
+        request: "RemoteChainHeadHeaderRequest",
+        response: "RemoteChainHeadHeaderResponse",
         errorType: "GenericError",
         description: "Fetch a block header.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function getChainHeadHeader(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadHeader({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainHeadHeaderResponse,\n} from "@parity/truapi";\n\nexport async function getChainHeadHeader(\n  truapi: Client,\n): Promise<RemoteChainHeadHeaderResponse> {\n  const result = await truapi.chainInteraction.chainHeadHeader({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_body",
@@ -565,12 +565,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chain Interaction",
         wireId: 82,
         pattern: "unary",
-        request: "V01RemoteChainHeadBodyRequest",
-        response: "V01RemoteChainHeadBodyResponse",
+        request: "RemoteChainHeadBodyRequest",
+        response: "RemoteChainHeadBodyResponse",
         errorType: "GenericError",
         description: "Fetch a block body.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function getChainHeadBody(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadBody({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainHeadBodyResponse,\n} from "@parity/truapi";\n\nexport async function getChainHeadBody(\n  truapi: Client,\n): Promise<RemoteChainHeadBodyResponse> {\n  const result = await truapi.chainInteraction.chainHeadBody({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_storage",
@@ -579,12 +579,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chain Interaction",
         wireId: 84,
         pattern: "unary",
-        request: "V01RemoteChainHeadStorageRequest",
-        response: "V01RemoteChainHeadStorageResponse",
+        request: "RemoteChainHeadStorageRequest",
+        response: "RemoteChainHeadStorageResponse",
         errorType: "GenericError",
         description: "Query runtime storage at a specific block.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function getChainHeadStorage(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadStorage({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n    items: [\n      { key: new Uint8Array(), queryType: { tag: "Value", value: undefined } },\n    ],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainHeadStorageResponse,\n} from "@parity/truapi";\n\nexport async function getChainHeadStorage(\n  truapi: Client,\n): Promise<RemoteChainHeadStorageResponse> {\n  const result = await truapi.chainInteraction.chainHeadStorage({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n    items: [\n      { key: new Uint8Array(), queryType: { tag: "Value", value: undefined } },\n    ],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_call",
@@ -593,12 +593,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chain Interaction",
         wireId: 86,
         pattern: "unary",
-        request: "V01RemoteChainHeadCallRequest",
-        response: "V01RemoteChainHeadCallResponse",
+        request: "RemoteChainHeadCallRequest",
+        response: "RemoteChainHeadCallResponse",
         errorType: "GenericError",
         description: "Invoke a runtime call at a specific block.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function callChainHeadRuntime(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadCall({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n    function: "Core_version",\n    callParameters: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainHeadCallResponse,\n} from "@parity/truapi";\n\nexport async function callChainHeadRuntime(\n  truapi: Client,\n): Promise<RemoteChainHeadCallResponse> {\n  const result = await truapi.chainInteraction.chainHeadCall({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n    function: "Core_version",\n    callParameters: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_unpin",
@@ -607,12 +607,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chain Interaction",
         wireId: 88,
         pattern: "unary",
-        request: "V01RemoteChainHeadUnpinRequest",
+        request: "RemoteChainHeadUnpinRequest",
         response: "undefined",
         errorType: "GenericError",
         description: "Release pinned blocks.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function unpinChainHead(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadUnpin({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hashes: [new Uint8Array()],\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function unpinChainHead(truapi: Client): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadUnpin({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hashes: [new Uint8Array()],\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_chain_head_continue",
@@ -621,12 +621,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chain Interaction",
         wireId: 90,
         pattern: "unary",
-        request: "V01RemoteChainHeadContinueRequest",
+        request: "RemoteChainHeadContinueRequest",
         response: "undefined",
         errorType: "GenericError",
         description: "Continue a paused chain-head operation.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function continueChainHeadOperation(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadContinue({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function continueChainHeadOperation(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadContinue({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_chain_head_stop_operation",
@@ -635,12 +635,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chain Interaction",
         wireId: 92,
         pattern: "unary",
-        request: "V01RemoteChainHeadStopOperationRequest",
+        request: "RemoteChainHeadStopOperationRequest",
         response: "undefined",
         errorType: "GenericError",
         description: "Stop a chain-head operation.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function stopChainHeadOperation(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadStopOperation({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function stopChainHeadOperation(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadStopOperation({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_chain_spec_genesis_hash",
@@ -649,12 +649,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chain Interaction",
         wireId: 94,
         pattern: "unary",
-        request: "V01RemoteChainSpecGenesisHashRequest",
-        response: "V01RemoteChainSpecGenesisHashResponse",
+        request: "RemoteChainSpecGenesisHashRequest",
+        response: "RemoteChainSpecGenesisHashResponse",
         errorType: "GenericError",
         description: "Fetch the canonical genesis hash for a chain.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function getChainGenesisHash(truapi: Client) {\n  const result = await truapi.chainInteraction.chainSpecGenesisHash({\n    genesisHash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainSpecGenesisHashResponse,\n} from "@parity/truapi";\n\nexport async function getChainGenesisHash(\n  truapi: Client,\n): Promise<RemoteChainSpecGenesisHashResponse> {\n  const result = await truapi.chainInteraction.chainSpecGenesisHash({\n    genesisHash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_spec_chain_name",
@@ -663,12 +663,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chain Interaction",
         wireId: 96,
         pattern: "unary",
-        request: "V01RemoteChainSpecChainNameRequest",
-        response: "V01RemoteChainSpecChainNameResponse",
+        request: "RemoteChainSpecChainNameRequest",
+        response: "RemoteChainSpecChainNameResponse",
         errorType: "GenericError",
         description: "Fetch the display name of a chain.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function getChainName(truapi: Client) {\n  const result = await truapi.chainInteraction.chainSpecChainName({\n    genesisHash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainSpecChainNameResponse,\n} from "@parity/truapi";\n\nexport async function getChainName(\n  truapi: Client,\n): Promise<RemoteChainSpecChainNameResponse> {\n  const result = await truapi.chainInteraction.chainSpecChainName({\n    genesisHash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_spec_properties",
@@ -677,12 +677,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chain Interaction",
         wireId: 98,
         pattern: "unary",
-        request: "V01RemoteChainSpecPropertiesRequest",
-        response: "V01RemoteChainSpecPropertiesResponse",
+        request: "RemoteChainSpecPropertiesRequest",
+        response: "RemoteChainSpecPropertiesResponse",
         errorType: "GenericError",
         description: "Fetch the JSON-encoded properties of a chain.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function getChainProperties(truapi: Client) {\n  const result = await truapi.chainInteraction.chainSpecProperties({\n    genesisHash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainSpecPropertiesResponse,\n} from "@parity/truapi";\n\nexport async function getChainProperties(\n  truapi: Client,\n): Promise<RemoteChainSpecPropertiesResponse> {\n  const result = await truapi.chainInteraction.chainSpecProperties({\n    genesisHash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_transaction_broadcast",
@@ -691,12 +691,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chain Interaction",
         wireId: 100,
         pattern: "unary",
-        request: "V01RemoteChainTransactionBroadcastRequest",
-        response: "V01RemoteChainTransactionBroadcastResponse",
+        request: "RemoteChainTransactionBroadcastRequest",
+        response: "RemoteChainTransactionBroadcastResponse",
         errorType: "GenericError",
         description: "Broadcast a signed transaction.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function broadcastTransaction(truapi: Client) {\n  const result = await truapi.chainInteraction.chainTransactionBroadcast({\n    genesisHash: new Uint8Array(),\n    transaction: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainTransactionBroadcastResponse,\n} from "@parity/truapi";\n\nexport async function broadcastTransaction(\n  truapi: Client,\n): Promise<RemoteChainTransactionBroadcastResponse> {\n  const result = await truapi.chainInteraction.chainTransactionBroadcast({\n    genesisHash: new Uint8Array(),\n    transaction: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_transaction_stop",
@@ -705,12 +705,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chain Interaction",
         wireId: 102,
         pattern: "unary",
-        request: "V01RemoteChainTransactionStopRequest",
+        request: "RemoteChainTransactionStopRequest",
         response: "undefined",
         errorType: "GenericError",
         description: "Stop a transaction broadcast.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function stopTransactionBroadcast(truapi: Client) {\n  const result = await truapi.chainInteraction.chainTransactionStop({\n    genesisHash: new Uint8Array(),\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function stopTransactionBroadcast(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainTransactionStop({\n    genesisHash: new Uint8Array(),\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_sign_raw",
@@ -719,12 +719,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Signing",
         wireId: 114,
         pattern: "unary",
-        request: "V01HostSignRawRequest",
-        response: "V01HostSignPayloadResponse",
-        errorType: "V01HostSignPayloadError",
+        request: "HostSignRawRequest",
+        response: "HostSignPayloadResponse",
+        errorType: "HostSignPayloadError",
         description: "Sign raw bytes or a message.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function signRawBytes(truapi: Client) {\n  const result = await truapi.signing.signRaw({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    payload: { tag: "Bytes", value: { bytes: new Uint8Array() } },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signRawBytes(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signRaw({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    payload: { tag: "Bytes", value: { bytes: new Uint8Array() } },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_sign_payload",
@@ -733,12 +733,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Signing",
         wireId: 116,
         pattern: "unary",
-        request: "V01HostSignPayloadRequest",
-        response: "V01HostSignPayloadResponse",
-        errorType: "V01HostSignPayloadError",
+        request: "HostSignPayloadRequest",
+        response: "HostSignPayloadResponse",
+        errorType: "HostSignPayloadError",
         description: "Sign a Substrate extrinsic payload.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function signPayload(truapi: Client) {\n  const result = await truapi.signing.signPayload({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    blockHash: new Uint8Array(),\n    blockNumber: new Uint8Array(),\n    era: new Uint8Array(),\n    genesisHash: new Uint8Array(),\n    method: new Uint8Array(),\n    nonce: new Uint8Array(),\n    signedExtensions: [],\n    specVersion: new Uint8Array(),\n    tip: new Uint8Array(),\n    transactionVersion: new Uint8Array(),\n    version: 4,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signPayload(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signPayload({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    blockHash: new Uint8Array(),\n    blockNumber: new Uint8Array(),\n    era: new Uint8Array(),\n    genesisHash: new Uint8Array(),\n    method: new Uint8Array(),\n    nonce: new Uint8Array(),\n    signedExtensions: [],\n    specVersion: new Uint8Array(),\n    tip: new Uint8Array(),\n    transactionVersion: new Uint8Array(),\n    version: 4,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
     ],
     dataTypes: [
@@ -1575,954 +1575,964 @@ export const versions: ExplorerVersion[] = [
       {
         id: "HostAccountConnectionStatusSubscribeItem",
         name: "HostAccountConnectionStatusSubscribeItem",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostAccountConnectionStatusSubscribeItem = { tag: "V1"; value: V01HostAccountConnectionStatusSubscribeItem }',
-        description:
-          "Versioned wrapper for [`v01::HostAccountConnectionStatusSubscribeItem`] and older versions.",
-        source: "shared",
+          'type HostAccountConnectionStatusSubscribeItem = { tag: "Disconnected"; value: undefined } | { tag: "Connected"; value: undefined }',
+        description: "User's authentication state.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01HostAccountConnectionStatusSubscribeItem",
+            name: "Disconnected",
+            type: "undefined",
+          },
+          {
+            name: "Connected",
+            type: "undefined",
           },
         ],
       },
       {
         id: "HostAccountCreateProofError",
         name: "HostAccountCreateProofError",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostAccountCreateProofError = { tag: "V1"; value: V01HostAccountCreateProofError }',
-        description:
-          "Versioned wrapper for [`v01::HostAccountCreateProofError`] and older versions.",
-        source: "shared",
+          'type HostAccountCreateProofError = { tag: "RingNotFound"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description: "Error returned when ring VRF proof creation fails.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01HostAccountCreateProofError",
+            name: "RingNotFound",
+            type: "undefined",
+            description: "Ring not available at the specified location.",
+          },
+          {
+            name: "Rejected",
+            type: "undefined",
+            description: "User or host rejected.",
+          },
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
           },
         ],
       },
       {
         id: "HostAccountCreateProofRequest",
         name: "HostAccountCreateProofRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostAccountCreateProofRequest = { tag: "V1"; value: V01HostAccountCreateProofRequest }',
+          "interface HostAccountCreateProofRequest { productAccountId: ProductAccountId; ringLocation: RingLocation; context: Uint8Array }",
         description:
-          "Versioned wrapper for [`v01::HostAccountCreateProofRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Request to create a ring VRF proof for a product account.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostAccountCreateProofRequest",
+            name: "productAccountId",
+            type: "ProductAccountId",
+            description: "Product account that should create the proof.",
+          },
+          {
+            name: "ringLocation",
+            type: "RingLocation",
+            description: "Ring location to use for proof generation.",
+          },
+          {
+            name: "context",
+            type: "Uint8Array",
+            description: "Context bytes bound to the proof.",
           },
         ],
       },
       {
         id: "HostAccountCreateProofResponse",
         name: "HostAccountCreateProofResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostAccountCreateProofResponse = { tag: "V1"; value: V01HostAccountCreateProofResponse }',
-        description:
-          "Versioned wrapper for [`v01::HostAccountCreateProofResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostAccountCreateProofResponse { proof: Uint8Array }",
+        description: "Response containing a ring VRF proof.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostAccountCreateProofResponse",
-          },
-        ],
-      },
-      {
-        id: "HostAccountGetAliasError",
-        name: "HostAccountGetAliasError",
-        category: "versioned",
-        definition:
-          'type HostAccountGetAliasError = { tag: "V1"; value: V01HostAccountGetError }',
-        description:
-          "Versioned wrapper around the alias-lookup error path; reuses [`v01::HostAccountGetError`].",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "V01HostAccountGetError",
+            name: "proof",
+            type: "Uint8Array",
+            description: "Variable-length ring VRF proof bytes.",
           },
         ],
       },
       {
         id: "HostAccountGetAliasRequest",
         name: "HostAccountGetAliasRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostAccountGetAliasRequest = { tag: "V1"; value: V01HostAccountGetAliasRequest }',
+          "interface HostAccountGetAliasRequest { productAccountId: ProductAccountId }",
         description:
-          "Versioned wrapper for [`v01::HostAccountGetAliasRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Request to retrieve a contextual alias for a product account.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostAccountGetAliasRequest",
+            name: "productAccountId",
+            type: "ProductAccountId",
+            description: "Product account to derive the alias for.",
           },
         ],
       },
       {
         id: "HostAccountGetAliasResponse",
         name: "HostAccountGetAliasResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostAccountGetAliasResponse = { tag: "V1"; value: V01HostAccountGetAliasResponse }',
+          "interface HostAccountGetAliasResponse { context: Uint8Array; alias: Uint8Array }",
         description:
-          "Versioned wrapper for [`v01::HostAccountGetAliasResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "A privacy-preserving alias derived via ring VRF, bound to a specific context.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostAccountGetAliasResponse",
+            name: "context",
+            type: "Uint8Array",
+            description: "32-byte context identifier.",
+          },
+          {
+            name: "alias",
+            type: "Uint8Array",
+            description: "Ring VRF alias (variable length).",
           },
         ],
       },
       {
         id: "HostAccountGetError",
         name: "HostAccountGetError",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostAccountGetError = { tag: "V1"; value: V01HostAccountGetError }',
-        description:
-          "Versioned wrapper for [`v01::HostAccountGetError`] and older versions.",
-        source: "shared",
+          'type HostAccountGetError = { tag: "NotConnected"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "DomainNotValid"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description: "Error returned when credential/account requests fail.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01HostAccountGetError",
+            name: "NotConnected",
+            type: "undefined",
+            description: "User is not logged in.",
+          },
+          {
+            name: "Rejected",
+            type: "undefined",
+            description: "User or host rejected the request.",
+          },
+          {
+            name: "DomainNotValid",
+            type: "undefined",
+            description: "Domain identifier is invalid.",
+          },
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all error with reason.",
           },
         ],
       },
       {
         id: "HostAccountGetRequest",
         name: "HostAccountGetRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostAccountGetRequest = { tag: "V1"; value: V01HostAccountGetRequest }',
-        description:
-          "Versioned wrapper for [`v01::HostAccountGetRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostAccountGetRequest { productAccountId: ProductAccountId }",
+        description: "Request to retrieve a product-scoped account.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostAccountGetRequest",
+            name: "productAccountId",
+            type: "ProductAccountId",
+            description: "Product account to retrieve.",
           },
         ],
       },
       {
         id: "HostAccountGetResponse",
         name: "HostAccountGetResponse",
-        category: "versioned",
-        definition:
-          'type HostAccountGetResponse = { tag: "V1"; value: V01HostAccountGetResponse }',
-        description:
-          "Versioned wrapper for [`v02::HostAccountGetResponse`] and older versions.\nV0.2 returns [`v02::ProductAccount`] (public key only); V0.1 returned\n[`v01::Account`] (with optional display name).",
-        source: "shared",
-        variants: [
+        category: "struct",
+        definition: "interface HostAccountGetResponse { account: Account }",
+        description: "Response containing a product-scoped account.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostAccountGetResponse",
+            name: "account",
+            type: "Account",
+            description: "Retrieved account.",
           },
         ],
       },
       {
         id: "HostChatActionSubscribeItem",
         name: "HostChatActionSubscribeItem",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostChatActionSubscribeItem = { tag: "V1"; value: V01HostChatActionSubscribeItem }',
-        description:
-          "Versioned wrapper for [`v01::HostChatActionSubscribeItem`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostChatActionSubscribeItem { roomId: string; peer: string; payload: ChatActionPayload }",
+        description: "A chat action received from the host.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostChatActionSubscribeItem",
+            name: "roomId",
+            type: "string",
+            description: "Room where the action occurred.",
+          },
+          {
+            name: "peer",
+            type: "string",
+            description: "Peer who initiated the action.",
+          },
+          {
+            name: "payload",
+            type: "ChatActionPayload",
+            description: "The action payload.",
           },
         ],
       },
       {
         id: "HostChatCreateRoomError",
         name: "HostChatCreateRoomError",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostChatCreateRoomError = { tag: "V1"; value: V01HostChatCreateRoomError }',
-        description:
-          "Versioned wrapper for [`v01::HostChatCreateRoomError`] and older versions.",
-        source: "shared",
+          'type HostChatCreateRoomError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description: "Chat room registration error.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01HostChatCreateRoomError",
+            name: "PermissionDenied",
+            type: "undefined",
+            description: "Not allowed.",
+          },
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
           },
         ],
       },
       {
         id: "HostChatCreateRoomRequest",
         name: "HostChatCreateRoomRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostChatCreateRoomRequest = { tag: "V1"; value: V01HostChatCreateRoomRequest }',
-        description:
-          "Versioned wrapper for [`v01::HostChatCreateRoomRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostChatCreateRoomRequest { roomId: string; name: string; icon: string }",
+        description: "Request to create a chat room.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostChatCreateRoomRequest",
+            name: "roomId",
+            type: "string",
+            description: "Unique room identifier.",
+          },
+          {
+            name: "name",
+            type: "string",
+            description: "Room display name.",
+          },
+          {
+            name: "icon",
+            type: "string",
+            description: "URL or base64 image.",
           },
         ],
       },
       {
         id: "HostChatCreateRoomResponse",
         name: "HostChatCreateRoomResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostChatCreateRoomResponse = { tag: "V1"; value: V01HostChatCreateRoomResponse }',
-        description:
-          "Versioned wrapper for [`v01::HostChatCreateRoomResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostChatCreateRoomResponse { status: ChatRoomRegistrationStatus }",
+        description: "Result of a room registration.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostChatCreateRoomResponse",
+            name: "status",
+            type: "ChatRoomRegistrationStatus",
+            description: "`New` or `Exists`.",
           },
         ],
       },
       {
         id: "HostChatListSubscribeItem",
         name: "HostChatListSubscribeItem",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostChatListSubscribeItem = { tag: "V1"; value: V01HostChatListSubscribeItem }',
-        description:
-          "Versioned wrapper for [`v01::HostChatListSubscribeItem`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostChatListSubscribeItem { rooms: Array<ChatRoom> }",
+        description: "Item containing the current chat rooms.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostChatListSubscribeItem",
+            name: "rooms",
+            type: "Array<ChatRoom>",
+            description: "Chat rooms the product participates in.",
           },
         ],
       },
       {
         id: "HostChatPostMessageError",
         name: "HostChatPostMessageError",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostChatPostMessageError = { tag: "V1"; value: V01HostChatPostMessageError }',
-        description:
-          "Versioned wrapper for [`v01::HostChatPostMessageError`] and older versions.",
-        source: "shared",
+          'type HostChatPostMessageError = { tag: "MessageTooLarge"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description: "Chat message posting error.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01HostChatPostMessageError",
+            name: "MessageTooLarge",
+            type: "undefined",
+            description: "Message exceeded size limit.",
+          },
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
           },
         ],
       },
       {
         id: "HostChatPostMessageRequest",
         name: "HostChatPostMessageRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostChatPostMessageRequest = { tag: "V1"; value: V01HostChatPostMessageRequest }',
-        description:
-          "Versioned wrapper for [`v01::HostChatPostMessageRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostChatPostMessageRequest { roomId: string; payload: ChatMessageContent }",
+        description: "Request to post a message to a chat room.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostChatPostMessageRequest",
+            name: "roomId",
+            type: "string",
+            description: "Room to post to.",
+          },
+          {
+            name: "payload",
+            type: "ChatMessageContent",
+            description: "Message content.",
           },
         ],
       },
       {
         id: "HostChatPostMessageResponse",
         name: "HostChatPostMessageResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostChatPostMessageResponse = { tag: "V1"; value: V01HostChatPostMessageResponse }',
-        description:
-          "Versioned wrapper for [`v01::HostChatPostMessageResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostChatPostMessageResponse { messageId: string }",
+        description: "Result of posting a message.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostChatPostMessageResponse",
+            name: "messageId",
+            type: "string",
+            description: "Assigned message ID.",
           },
         ],
       },
       {
         id: "HostChatRegisterBotError",
         name: "HostChatRegisterBotError",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostChatRegisterBotError = { tag: "V1"; value: V01HostChatRegisterBotError }',
-        description:
-          "Versioned wrapper for [`v01::HostChatRegisterBotError`] and older versions.",
-        source: "shared",
+          'type HostChatRegisterBotError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description: "Chat bot registration error.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01HostChatRegisterBotError",
+            name: "PermissionDenied",
+            type: "undefined",
+            description: "Not allowed.",
+          },
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
           },
         ],
       },
       {
         id: "HostChatRegisterBotRequest",
         name: "HostChatRegisterBotRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostChatRegisterBotRequest = { tag: "V1"; value: V01HostChatRegisterBotRequest }',
-        description:
-          "Versioned wrapper for [`v01::HostChatRegisterBotRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostChatRegisterBotRequest { botId: string; name: string; icon: string }",
+        description: "Request to register a chat bot.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostChatRegisterBotRequest",
+            name: "botId",
+            type: "string",
+            description: "Unique bot identifier.",
+          },
+          {
+            name: "name",
+            type: "string",
+            description: "Bot display name.",
+          },
+          {
+            name: "icon",
+            type: "string",
+            description: "URL or base64 image.",
           },
         ],
       },
       {
         id: "HostChatRegisterBotResponse",
         name: "HostChatRegisterBotResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostChatRegisterBotResponse = { tag: "V1"; value: V01HostChatRegisterBotResponse }',
-        description:
-          "Versioned wrapper for [`v01::HostChatRegisterBotResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostChatRegisterBotResponse { status: ChatBotRegistrationStatus }",
+        description: "Result of a bot registration.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostChatRegisterBotResponse",
+            name: "status",
+            type: "ChatBotRegistrationStatus",
+            description: "`New` or `Exists`.",
           },
         ],
       },
       {
         id: "HostCreateTransactionError",
         name: "HostCreateTransactionError",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostCreateTransactionError = { tag: "V1"; value: V01HostCreateTransactionError }',
-        description:
-          "Versioned wrapper for [`v01::HostCreateTransactionError`].",
-        source: "shared",
+          'type HostCreateTransactionError = { tag: "FailedToDecode"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "NotSupported"; value: { reason: string } } | { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description: "Transaction creation error.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01HostCreateTransactionError",
+            name: "FailedToDecode",
+            type: "undefined",
+            description: "Payload could not be deserialized.",
+          },
+          {
+            name: "Rejected",
+            type: "undefined",
+            description: "User rejected.",
+          },
+          {
+            name: "NotSupported",
+            type: "{ reason: string }",
+            description: "Unsupported payload version or extension.",
+          },
+          {
+            name: "PermissionDenied",
+            type: "undefined",
+            description: "Not authenticated.",
+          },
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
           },
         ],
       },
       {
         id: "HostCreateTransactionRequest",
         name: "HostCreateTransactionRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostCreateTransactionRequest = { tag: "V1"; value: V01HostCreateTransactionRequest }',
-        description:
-          "Versioned wrapper for [`v01::HostCreateTransactionRequest`].",
-        source: "shared",
-        variants: [
+          "interface HostCreateTransactionRequest { productAccountId: ProductAccountId; payload: VersionedTxPayload }",
+        description: "Request to create a transaction for a product account.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostCreateTransactionRequest",
+            name: "productAccountId",
+            type: "ProductAccountId",
+            description: "Product account that will sign the transaction.",
+          },
+          {
+            name: "payload",
+            type: "VersionedTxPayload",
+            description: "Versioned transaction payload.",
           },
         ],
       },
       {
         id: "HostCreateTransactionResponse",
         name: "HostCreateTransactionResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostCreateTransactionResponse = { tag: "V1"; value: V01HostCreateTransactionResponse }',
-        description:
-          "Versioned wrapper for [`v01::HostCreateTransactionResponse`].",
-        source: "shared",
-        variants: [
+          "interface HostCreateTransactionResponse { transaction: Uint8Array }",
+        description: "Response containing a created transaction.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostCreateTransactionResponse",
-          },
-        ],
-      },
-      {
-        id: "HostCreateTransactionWithLegacyAccountError",
-        name: "HostCreateTransactionWithLegacyAccountError",
-        category: "versioned",
-        definition:
-          'type HostCreateTransactionWithLegacyAccountError = { tag: "V1"; value: V01HostCreateTransactionError }',
-        description:
-          "Versioned wrapper for the legacy-account create-transaction error path; reuses [`v01::HostCreateTransactionError`].",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "V01HostCreateTransactionError",
+            name: "transaction",
+            type: "Uint8Array",
+            description: "SCALE-encoded signed transaction.",
           },
         ],
       },
       {
         id: "HostCreateTransactionWithLegacyAccountRequest",
         name: "HostCreateTransactionWithLegacyAccountRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostCreateTransactionWithLegacyAccountRequest = { tag: "V1"; value: V01HostCreateTransactionWithLegacyAccountRequest }',
+          "interface HostCreateTransactionWithLegacyAccountRequest { payload: VersionedTxPayload }",
         description:
-          "Versioned wrapper for [`v01::HostCreateTransactionWithLegacyAccountRequest`].",
-        source: "shared",
-        variants: [
+          "Request to create a transaction with a non-product account.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostCreateTransactionWithLegacyAccountRequest",
+            name: "payload",
+            type: "VersionedTxPayload",
+            description: "Versioned transaction payload to sign.",
           },
         ],
       },
       {
         id: "HostCreateTransactionWithLegacyAccountResponse",
         name: "HostCreateTransactionWithLegacyAccountResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostCreateTransactionWithLegacyAccountResponse = { tag: "V1"; value: V01HostCreateTransactionWithLegacyAccountResponse }',
+          "interface HostCreateTransactionWithLegacyAccountResponse { transaction: Uint8Array }",
         description:
-          "Versioned wrapper for [`v01::HostCreateTransactionWithLegacyAccountResponse`].",
-        source: "shared",
-        variants: [
+          "Response containing a transaction created with a non-product account.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostCreateTransactionWithLegacyAccountResponse",
-          },
-        ],
-      },
-      {
-        id: "HostDevicePermissionError",
-        name: "HostDevicePermissionError",
-        category: "versioned",
-        definition:
-          'type HostDevicePermissionError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
+            name: "transaction",
+            type: "Uint8Array",
+            description: "SCALE-encoded signed transaction.",
           },
         ],
       },
       {
         id: "HostDevicePermissionRequest",
         name: "HostDevicePermissionRequest",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostDevicePermissionRequest = { tag: "V1"; value: V01HostDevicePermissionRequest }',
-        description:
-          "Versioned wrapper for [`v02::HostDevicePermissionRequest`] and older versions.",
-        source: "shared",
+          'type HostDevicePermissionRequest = { tag: "Camera"; value: undefined } | { tag: "Microphone"; value: undefined } | { tag: "Bluetooth"; value: undefined } | { tag: "Location"; value: undefined }',
+        description: "Device capability to request access to.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01HostDevicePermissionRequest",
+            name: "Camera",
+            type: "undefined",
+          },
+          {
+            name: "Microphone",
+            type: "undefined",
+          },
+          {
+            name: "Bluetooth",
+            type: "undefined",
+          },
+          {
+            name: "Location",
+            type: "undefined",
           },
         ],
       },
       {
         id: "HostDevicePermissionResponse",
         name: "HostDevicePermissionResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostDevicePermissionResponse = { tag: "V1"; value: V01HostDevicePermissionResponse }',
+          "interface HostDevicePermissionResponse { granted: boolean }",
         description:
-          "Versioned wrapper for [`v01::HostDevicePermissionResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "Response indicating whether a device permission was granted.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostDevicePermissionResponse",
-          },
-        ],
-      },
-      {
-        id: "HostFeatureSupportedError",
-        name: "HostFeatureSupportedError",
-        category: "versioned",
-        definition:
-          'type HostFeatureSupportedError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
+            name: "granted",
+            type: "boolean",
+            description: "Whether the permission was granted.",
           },
         ],
       },
       {
         id: "HostFeatureSupportedRequest",
         name: "HostFeatureSupportedRequest",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostFeatureSupportedRequest = { tag: "V1"; value: V01HostFeatureSupportedRequest }',
-        description:
-          "Versioned wrapper for [`v01::HostFeatureSupportedRequest`] and older versions.",
-        source: "shared",
+          'type HostFeatureSupportedRequest = { tag: "Chain"; value: { genesisHash: Uint8Array } }',
+        description: "Feature to check for host support.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01HostFeatureSupportedRequest",
+            name: "Chain",
+            type: "{ genesisHash: Uint8Array }",
+            description: "Is this blockchain supported?",
           },
         ],
       },
       {
         id: "HostFeatureSupportedResponse",
         name: "HostFeatureSupportedResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostFeatureSupportedResponse = { tag: "V1"; value: V01HostFeatureSupportedResponse }',
-        description:
-          "Versioned wrapper for [`v01::HostFeatureSupportedResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostFeatureSupportedResponse { supported: boolean }",
+        description: "Response indicating whether a host feature is supported.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostFeatureSupportedResponse",
-          },
-        ],
-      },
-      {
-        id: "HostGetLegacyAccountsError",
-        name: "HostGetLegacyAccountsError",
-        category: "versioned",
-        definition:
-          'type HostGetLegacyAccountsError = { tag: "V1"; value: V01HostAccountGetError }',
-        description:
-          "Versioned wrapper around the legacy-accounts error path; reuses [`v01::HostAccountGetError`].",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "V01HostAccountGetError",
-          },
-        ],
-      },
-      {
-        id: "HostGetLegacyAccountsRequest",
-        name: "HostGetLegacyAccountsRequest",
-        category: "versioned",
-        definition:
-          'type HostGetLegacyAccountsRequest = { tag: "V1"; value: undefined }',
-        description: "Versioned wrapper for unit and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "undefined",
+            name: "supported",
+            type: "boolean",
+            description: "Whether the feature is supported.",
           },
         ],
       },
       {
         id: "HostGetLegacyAccountsResponse",
         name: "HostGetLegacyAccountsResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostGetLegacyAccountsResponse = { tag: "V1"; value: V01HostGetLegacyAccountsResponse }',
+          "interface HostGetLegacyAccountsResponse { accounts: Array<Account> }",
         description:
-          "Versioned wrapper for [`v01::HostGetLegacyAccountsResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "Response containing all non-product accounts owned by the user.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostGetLegacyAccountsResponse",
+            name: "accounts",
+            type: "Array<Account>",
+            description: "Non-product accounts.",
           },
         ],
       },
       {
         id: "HostHandshakeError",
         name: "HostHandshakeError",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostHandshakeError = { tag: "V1"; value: V02HostHandshakeError }',
+          'type HostHandshakeError = { tag: "Timeout"; value: undefined } | { tag: "UnsupportedProtocolVersion"; value: undefined } | { tag: "Unknown"; value: GenericErr }',
         description:
-          "Versioned wrapper for [`v02::HostHandshakeError`] and older versions.",
-        source: "shared",
+          "Handshake error. Mirrors Novasama's `HandshakeErr` byte-for-byte so that\npre-codegen products (built against `@novasamatech/host-api`) can decode\n`host_handshake_response` frames produced by this host.",
+        source: "v0.2",
         variants: [
           {
-            name: "V1",
-            type: "V02HostHandshakeError",
+            name: "Timeout",
+            type: "undefined",
+          },
+          {
+            name: "UnsupportedProtocolVersion",
+            type: "undefined",
+          },
+          {
+            name: "Unknown",
+            type: "GenericErr",
           },
         ],
       },
       {
         id: "HostHandshakeRequest",
         name: "HostHandshakeRequest",
-        category: "versioned",
-        definition:
-          'type HostHandshakeRequest = { tag: "V1"; value: V01HostHandshakeRequest }',
-        description:
-          "Versioned wrapper for [`v01::HostHandshakeRequest`] and older versions.",
-        source: "shared",
-        variants: [
+        category: "struct",
+        definition: "interface HostHandshakeRequest { codecVersion: number }",
+        description: "Request to negotiate the wire codec version.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostHandshakeRequest",
-          },
-        ],
-      },
-      {
-        id: "HostHandshakeResponse",
-        name: "HostHandshakeResponse",
-        category: "versioned",
-        definition:
-          'type HostHandshakeResponse = { tag: "V1"; value: undefined }',
-        description: "Versioned wrapper for unit and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "undefined",
-          },
-        ],
-      },
-      {
-        id: "HostLocalStorageClearError",
-        name: "HostLocalStorageClearError",
-        category: "versioned",
-        definition:
-          'type HostLocalStorageClearError = { tag: "V1"; value: V01HostLocalStorageReadError }',
-        description:
-          "Versioned wrapper for [`v01::HostLocalStorageReadError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "V01HostLocalStorageReadError",
+            name: "codecVersion",
+            type: "number",
+            description: "Wire codec version requested by the peer.",
           },
         ],
       },
       {
         id: "HostLocalStorageClearRequest",
         name: "HostLocalStorageClearRequest",
-        category: "versioned",
-        definition:
-          'type HostLocalStorageClearRequest = { tag: "V1"; value: V01HostLocalStorageClearRequest }',
-        description:
-          "Versioned wrapper for [`v01::HostLocalStorageClearRequest`] and older versions.",
-        source: "shared",
-        variants: [
+        category: "struct",
+        definition: "interface HostLocalStorageClearRequest { key: string }",
+        description: "Request to clear a local storage key.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostLocalStorageClearRequest",
-          },
-        ],
-      },
-      {
-        id: "HostLocalStorageClearResponse",
-        name: "HostLocalStorageClearResponse",
-        category: "versioned",
-        definition:
-          'type HostLocalStorageClearResponse = { tag: "V1"; value: undefined }',
-        description: "Versioned wrapper for unit and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "undefined",
+            name: "key",
+            type: "string",
+            description: "Storage key to clear.",
           },
         ],
       },
       {
         id: "HostLocalStorageReadError",
         name: "HostLocalStorageReadError",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostLocalStorageReadError = { tag: "V1"; value: V01HostLocalStorageReadError }',
-        description:
-          "Versioned wrapper for [`v01::HostLocalStorageReadError`] and older versions.",
-        source: "shared",
+          'type HostLocalStorageReadError = { tag: "Full"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description: "Local storage operation error.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01HostLocalStorageReadError",
+            name: "Full",
+            type: "undefined",
+            description: "Storage quota exceeded.",
+          },
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
           },
         ],
       },
       {
         id: "HostLocalStorageReadRequest",
         name: "HostLocalStorageReadRequest",
-        category: "versioned",
-        definition:
-          'type HostLocalStorageReadRequest = { tag: "V1"; value: V01HostLocalStorageReadRequest }',
-        description:
-          "Versioned wrapper for [`v01::HostLocalStorageReadRequest`] and older versions.",
-        source: "shared",
-        variants: [
+        category: "struct",
+        definition: "interface HostLocalStorageReadRequest { key: string }",
+        description: "Request to read a local storage value.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostLocalStorageReadRequest",
+            name: "key",
+            type: "string",
+            description: "Storage key to read.",
           },
         ],
       },
       {
         id: "HostLocalStorageReadResponse",
         name: "HostLocalStorageReadResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostLocalStorageReadResponse = { tag: "V1"; value: V01HostLocalStorageReadResponse }',
-        description:
-          "Versioned wrapper for [`v01::HostLocalStorageReadResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostLocalStorageReadResponse { value?: Uint8Array }",
+        description: "Response containing an optional local storage value.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostLocalStorageReadResponse",
-          },
-        ],
-      },
-      {
-        id: "HostLocalStorageWriteError",
-        name: "HostLocalStorageWriteError",
-        category: "versioned",
-        definition:
-          'type HostLocalStorageWriteError = { tag: "V1"; value: V01HostLocalStorageReadError }',
-        description:
-          "Versioned wrapper for [`v01::HostLocalStorageReadError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "V01HostLocalStorageReadError",
+            name: "value",
+            type: "Uint8Array",
+            description: "Stored value, if present.",
           },
         ],
       },
       {
         id: "HostLocalStorageWriteRequest",
         name: "HostLocalStorageWriteRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostLocalStorageWriteRequest = { tag: "V1"; value: V01HostLocalStorageWriteRequest }',
-        description:
-          "Versioned wrapper for [`v01::HostLocalStorageWriteRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostLocalStorageWriteRequest { key: string; value: Uint8Array }",
+        description: "Request to write a value into local storage.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostLocalStorageWriteRequest",
+            name: "key",
+            type: "string",
+            description: "Storage key to write.",
           },
-        ],
-      },
-      {
-        id: "HostLocalStorageWriteResponse",
-        name: "HostLocalStorageWriteResponse",
-        category: "versioned",
-        definition:
-          'type HostLocalStorageWriteResponse = { tag: "V1"; value: undefined }',
-        description: "Versioned wrapper for unit and older versions.",
-        source: "shared",
-        variants: [
           {
-            name: "V1",
-            type: "undefined",
+            name: "value",
+            type: "Uint8Array",
+            description: "Value to store at the key.",
           },
         ],
       },
       {
         id: "HostNavigateToError",
         name: "HostNavigateToError",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostNavigateToError = { tag: "V1"; value: V01HostNavigateToError }',
-        description:
-          "Versioned wrapper for [`v01::HostNavigateToError`] and older versions.",
-        source: "shared",
+          'type HostNavigateToError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description: "Navigation error.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01HostNavigateToError",
+            name: "PermissionDenied",
+            type: "undefined",
+            description: "Navigation not allowed.",
+          },
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
           },
         ],
       },
       {
         id: "HostNavigateToRequest",
         name: "HostNavigateToRequest",
-        category: "versioned",
-        definition:
-          'type HostNavigateToRequest = { tag: "V1"; value: V01HostNavigateToRequest }',
-        description:
-          "Versioned wrapper for [`v01::HostNavigateToRequest`] and older versions.",
-        source: "shared",
-        variants: [
+        category: "struct",
+        definition: "interface HostNavigateToRequest { url: string }",
+        description: "Request to navigate to a URL.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostNavigateToRequest",
-          },
-        ],
-      },
-      {
-        id: "HostNavigateToResponse",
-        name: "HostNavigateToResponse",
-        category: "versioned",
-        definition:
-          'type HostNavigateToResponse = { tag: "V1"; value: undefined }',
-        description: "Versioned wrapper for unit and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "undefined",
-          },
-        ],
-      },
-      {
-        id: "HostPushNotificationError",
-        name: "HostPushNotificationError",
-        category: "versioned",
-        definition:
-          'type HostPushNotificationError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
+            name: "url",
+            type: "string",
+            description: "URL to open.",
           },
         ],
       },
       {
         id: "HostPushNotificationRequest",
         name: "HostPushNotificationRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostPushNotificationRequest = { tag: "V1"; value: V01HostPushNotificationRequest }',
-        description:
-          "Versioned wrapper for [`v01::HostPushNotificationRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostPushNotificationRequest { text: string; deeplink?: string }",
+        description: "Push notification payload.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostPushNotificationRequest",
+            name: "text",
+            type: "string",
+            description: "Notification text.",
           },
-        ],
-      },
-      {
-        id: "HostPushNotificationResponse",
-        name: "HostPushNotificationResponse",
-        category: "versioned",
-        definition:
-          'type HostPushNotificationResponse = { tag: "V1"; value: undefined }',
-        description: "Versioned wrapper for unit and older versions.",
-        source: "shared",
-        variants: [
           {
-            name: "V1",
-            type: "undefined",
+            name: "deeplink",
+            type: "string",
+            description: "Optional URL to open on tap.",
           },
         ],
       },
       {
         id: "HostSignPayloadError",
         name: "HostSignPayloadError",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostSignPayloadError = { tag: "V1"; value: V01HostSignPayloadError }',
-        description:
-          "Versioned wrapper for the sign-payload error (shared across v0.1/v0.2).",
-        source: "shared",
+          'type HostSignPayloadError = { tag: "FailedToDecode"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description: "Signing operation error.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01HostSignPayloadError",
+            name: "FailedToDecode",
+            type: "undefined",
+            description: "Payload could not be deserialized.",
+          },
+          {
+            name: "Rejected",
+            type: "undefined",
+            description: "User rejected signing.",
+          },
+          {
+            name: "PermissionDenied",
+            type: "undefined",
+            description: "Not authenticated.",
+          },
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
           },
         ],
       },
       {
         id: "HostSignPayloadRequest",
         name: "HostSignPayloadRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostSignPayloadRequest = { tag: "V1"; value: V01HostSignPayloadRequest }',
+          "interface HostSignPayloadRequest { address: string; blockHash: Uint8Array; blockNumber: Uint8Array; era: Uint8Array; genesisHash: Uint8Array; method: Uint8Array; nonce: Uint8Array; specVersion: Uint8Array; tip: Uint8Array; transactionVersion: Uint8Array; signedExtensions: Array<string>; version: number; assetId?: Uint8Array; metadataHash?: Uint8Array; mode?: number; withSignedTransaction?: boolean }",
         description:
-          "Versioned wrapper covering both v0.1 and v0.2 sign-payload requests.",
-        source: "shared",
-        variants: [
+          "Full Substrate extrinsic signing payload with all fields needed for signature\ngeneration.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostSignPayloadRequest",
+            name: "address",
+            type: "string",
+            description: "Signer address (SS58 or hex).",
+          },
+          {
+            name: "blockHash",
+            type: "Uint8Array",
+            description: "Reference block hash.",
+          },
+          {
+            name: "blockNumber",
+            type: "Uint8Array",
+            description: "Reference block number.",
+          },
+          {
+            name: "era",
+            type: "Uint8Array",
+            description: "Mortality era encoding.",
+          },
+          {
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
+          },
+          {
+            name: "method",
+            type: "Uint8Array",
+            description: "SCALE-encoded call data.",
+          },
+          {
+            name: "nonce",
+            type: "Uint8Array",
+            description: "Account nonce.",
+          },
+          {
+            name: "specVersion",
+            type: "Uint8Array",
+            description: "Runtime spec version.",
+          },
+          {
+            name: "tip",
+            type: "Uint8Array",
+            description: "Transaction tip.",
+          },
+          {
+            name: "transactionVersion",
+            type: "Uint8Array",
+            description: "Transaction format version.",
+          },
+          {
+            name: "signedExtensions",
+            type: "Array<string>",
+            description: "Extension identifiers.",
+          },
+          {
+            name: "version",
+            type: "number",
+            description: "Extrinsic version.",
+          },
+          {
+            name: "assetId",
+            type: "Uint8Array",
+            description: "For multi-asset tips.",
+          },
+          {
+            name: "metadataHash",
+            type: "Uint8Array",
+            description: "CheckMetadataHash extension.",
+          },
+          {
+            name: "mode",
+            type: "number",
+            description: "Metadata mode.",
+          },
+          {
+            name: "withSignedTransaction",
+            type: "boolean",
+            description: "Request signed transaction back.",
           },
         ],
       },
       {
         id: "HostSignPayloadResponse",
         name: "HostSignPayloadResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostSignPayloadResponse = { tag: "V1"; value: V01HostSignPayloadResponse }',
-        description:
-          "Versioned wrapper for the sign-payload response (shared across v0.1/v0.2).",
-        source: "shared",
-        variants: [
+          "interface HostSignPayloadResponse { signature: Uint8Array; signedTransaction?: Uint8Array }",
+        description: "Result of a signing operation.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostSignPayloadResponse",
+            name: "signature",
+            type: "Uint8Array",
+            description: "The cryptographic signature.",
           },
-        ],
-      },
-      {
-        id: "HostSignRawError",
-        name: "HostSignRawError",
-        category: "versioned",
-        definition:
-          'type HostSignRawError = { tag: "V1"; value: V01HostSignPayloadError }',
-        description:
-          "Versioned wrapper for the sign-raw error; reuses [`v01::HostSignPayloadError`].",
-        source: "shared",
-        variants: [
           {
-            name: "V1",
-            type: "V01HostSignPayloadError",
+            name: "signedTransaction",
+            type: "Uint8Array",
+            description: "Full signed transaction, if requested.",
           },
         ],
       },
       {
         id: "HostSignRawRequest",
         name: "HostSignRawRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostSignRawRequest = { tag: "V1"; value: V01HostSignRawRequest }',
-        description:
-          "Versioned wrapper covering both v0.1 and v0.2 sign-raw requests.",
-        source: "shared",
-        variants: [
+          "interface HostSignRawRequest { address: string; data: RawPayload }",
+        description: "A raw signing request pairing an address with raw data.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostSignRawRequest",
+            name: "address",
+            type: "string",
+            description: "Signer address.",
           },
-        ],
-      },
-      {
-        id: "HostSignRawResponse",
-        name: "HostSignRawResponse",
-        category: "versioned",
-        definition:
-          'type HostSignRawResponse = { tag: "V1"; value: V01HostSignPayloadResponse }',
-        description:
-          "Versioned wrapper for the sign-raw response; reuses [`v01::HostSignPayloadResponse`].",
-        source: "shared",
-        variants: [
           {
-            name: "V1",
-            type: "V01HostSignPayloadResponse",
+            name: "data",
+            type: "RawPayload",
+            description: "The data to sign.",
           },
         ],
       },
@@ -2634,34 +2644,29 @@ export const versions: ExplorerVersion[] = [
         ],
       },
       {
-        id: "ProductChatCustomMessageRenderSubscribeItem",
-        name: "ProductChatCustomMessageRenderSubscribeItem",
-        category: "versioned",
-        definition:
-          'type ProductChatCustomMessageRenderSubscribeItem = { tag: "V1"; value: CustomRendererNode }',
-        description:
-          "Versioned wrapper for [`v01::CustomRendererNode`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "CustomRendererNode",
-          },
-        ],
-      },
-      {
         id: "ProductChatCustomMessageRenderSubscribeRequest",
         name: "ProductChatCustomMessageRenderSubscribeRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type ProductChatCustomMessageRenderSubscribeRequest = { tag: "V1"; value: V01ProductChatCustomMessageRenderSubscribeRequest }',
+          "interface ProductChatCustomMessageRenderSubscribeRequest { messageId: string; messageType: string; payload: Uint8Array }",
         description:
-          "Versioned wrapper for [`v01::ProductChatCustomMessageRenderSubscribeRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Subscribe payload identifying the chat message to render. The host responds\nwith a stream of [`CustomRendererNode`] trees describing the rendered UI.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01ProductChatCustomMessageRenderSubscribeRequest",
+            name: "messageId",
+            type: "string",
+            description: "Message identifier.",
+          },
+          {
+            name: "messageType",
+            type: "string",
+            description: "Application-defined message type.",
+          },
+          {
+            name: "payload",
+            type: "Uint8Array",
+            description: "Binary payload.",
           },
         ],
       },
@@ -2688,798 +2693,694 @@ export const versions: ExplorerVersion[] = [
         ],
       },
       {
-        id: "RemoteChainHeadBodyError",
-        name: "RemoteChainHeadBodyError",
-        category: "versioned",
-        definition:
-          'type RemoteChainHeadBodyError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
-          },
-        ],
-      },
-      {
         id: "RemoteChainHeadBodyRequest",
         name: "RemoteChainHeadBodyRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainHeadBodyRequest = { tag: "V1"; value: V01RemoteChainHeadBodyRequest }',
+          "interface RemoteChainHeadBodyRequest { genesisHash: Uint8Array; followSubscriptionId: string; hash: Uint8Array }",
         description:
-          "Versioned wrapper for [`v01::RemoteChainHeadBodyRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_body`].",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainHeadBodyRequest",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
+          },
+          {
+            name: "followSubscriptionId",
+            type: "string",
+            description: "Follow subscription identifier.",
+          },
+          {
+            name: "hash",
+            type: "Uint8Array",
+            description: "Block hash.",
           },
         ],
       },
       {
         id: "RemoteChainHeadBodyResponse",
         name: "RemoteChainHeadBodyResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainHeadBodyResponse = { tag: "V1"; value: V01RemoteChainHeadBodyResponse }',
-        description:
-          "Versioned wrapper for [`v01::RemoteChainHeadBodyResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface RemoteChainHeadBodyResponse { operation: OperationStartedResult }",
+        description: "Response indicating a block body operation was started.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainHeadBodyResponse",
-          },
-        ],
-      },
-      {
-        id: "RemoteChainHeadCallError",
-        name: "RemoteChainHeadCallError",
-        category: "versioned",
-        definition:
-          'type RemoteChainHeadCallError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
+            name: "operation",
+            type: "OperationStartedResult",
+            description: "Started operation result.",
           },
         ],
       },
       {
         id: "RemoteChainHeadCallRequest",
         name: "RemoteChainHeadCallRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainHeadCallRequest = { tag: "V1"; value: V01RemoteChainHeadCallRequest }',
+          "interface RemoteChainHeadCallRequest { genesisHash: Uint8Array; followSubscriptionId: string; hash: Uint8Array; function: string; callParameters: Uint8Array }",
         description:
-          "Versioned wrapper for [`v01::RemoteChainHeadCallRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_call`].",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainHeadCallRequest",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
+          },
+          {
+            name: "followSubscriptionId",
+            type: "string",
+            description: "Follow subscription identifier.",
+          },
+          {
+            name: "hash",
+            type: "Uint8Array",
+            description: "Block hash.",
+          },
+          {
+            name: "function",
+            type: "string",
+            description: "Runtime API function name.",
+          },
+          {
+            name: "callParameters",
+            type: "Uint8Array",
+            description: "SCALE-encoded call parameters.",
           },
         ],
       },
       {
         id: "RemoteChainHeadCallResponse",
         name: "RemoteChainHeadCallResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainHeadCallResponse = { tag: "V1"; value: V01RemoteChainHeadCallResponse }',
+          "interface RemoteChainHeadCallResponse { operation: OperationStartedResult }",
         description:
-          "Versioned wrapper for [`v01::RemoteChainHeadCallResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "Response indicating a runtime call operation was started.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainHeadCallResponse",
-          },
-        ],
-      },
-      {
-        id: "RemoteChainHeadContinueError",
-        name: "RemoteChainHeadContinueError",
-        category: "versioned",
-        definition:
-          'type RemoteChainHeadContinueError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
+            name: "operation",
+            type: "OperationStartedResult",
+            description: "Started operation result.",
           },
         ],
       },
       {
         id: "RemoteChainHeadContinueRequest",
         name: "RemoteChainHeadContinueRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainHeadContinueRequest = { tag: "V1"; value: V01RemoteChainHeadContinueRequest }',
+          "interface RemoteChainHeadContinueRequest { genesisHash: Uint8Array; followSubscriptionId: string; operationId: string }",
         description:
-          "Versioned wrapper for [`v01::RemoteChainHeadContinueRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_continue`].",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainHeadContinueRequest",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
           },
-        ],
-      },
-      {
-        id: "RemoteChainHeadContinueResponse",
-        name: "RemoteChainHeadContinueResponse",
-        category: "versioned",
-        definition:
-          'type RemoteChainHeadContinueResponse = { tag: "V1"; value: undefined }',
-        description: "Versioned wrapper for unit and older versions.",
-        source: "shared",
-        variants: [
           {
-            name: "V1",
-            type: "undefined",
+            name: "followSubscriptionId",
+            type: "string",
+            description: "Follow subscription identifier.",
+          },
+          {
+            name: "operationId",
+            type: "string",
+            description: "Operation identifier.",
           },
         ],
       },
       {
         id: "RemoteChainHeadFollowItem",
         name: "RemoteChainHeadFollowItem",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type RemoteChainHeadFollowItem = { tag: "V1"; value: V01RemoteChainHeadFollowItem }',
-        description:
-          "Versioned wrapper for [`v01::RemoteChainHeadFollowItem`] and older versions.",
-        source: "shared",
+          'type RemoteChainHeadFollowItem = { tag: "Initialized"; value: { finalizedBlockHashes: Array<Uint8Array>; finalizedBlockRuntime?: RuntimeType } } | { tag: "NewBlock"; value: { blockHash: Uint8Array; parentBlockHash: Uint8Array; newRuntime?: RuntimeType } } | { tag: "BestBlockChanged"; value: { bestBlockHash: Uint8Array } } | { tag: "Finalized"; value: { finalizedBlockHashes: Array<Uint8Array>; prunedBlockHashes: Array<Uint8Array> } } | { tag: "OperationBodyDone"; value: { operationId: string; value: Array<Uint8Array> } } | { tag: "OperationCallDone"; value: { operationId: string; output: Uint8Array } } | { tag: "OperationStorageItems"; value: { operationId: string; items: Array<StorageResultItem> } } | { tag: "OperationStorageDone"; value: { operationId: string } } | { tag: "OperationWaitingForContinue"; value: { operationId: string } } | { tag: "OperationInaccessible"; value: { operationId: string } } | { tag: "OperationError"; value: { operationId: string; error: string } } | { tag: "Stop"; value: undefined }',
+        description: "Events received when following the chain head.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01RemoteChainHeadFollowItem",
+            name: "Initialized",
+            type: "{ finalizedBlockHashes: Array<Uint8Array>; finalizedBlockRuntime?: RuntimeType }",
+            description: "Initial state with finalized blocks.",
+          },
+          {
+            name: "NewBlock",
+            type: "{ blockHash: Uint8Array; parentBlockHash: Uint8Array; newRuntime?: RuntimeType }",
+            description: "A new block was produced.",
+          },
+          {
+            name: "BestBlockChanged",
+            type: "{ bestBlockHash: Uint8Array }",
+            description: "Best block changed.",
+          },
+          {
+            name: "Finalized",
+            type: "{ finalizedBlockHashes: Array<Uint8Array>; prunedBlockHashes: Array<Uint8Array> }",
+            description: "Blocks were finalized.",
+          },
+          {
+            name: "OperationBodyDone",
+            type: "{ operationId: string; value: Array<Uint8Array> }",
+            description: "Body fetch completed.",
+          },
+          {
+            name: "OperationCallDone",
+            type: "{ operationId: string; output: Uint8Array }",
+            description: "Runtime call completed.",
+          },
+          {
+            name: "OperationStorageItems",
+            type: "{ operationId: string; items: Array<StorageResultItem> }",
+            description: "Storage results batch.",
+          },
+          {
+            name: "OperationStorageDone",
+            type: "{ operationId: string }",
+            description: "Storage query completed.",
+          },
+          {
+            name: "OperationWaitingForContinue",
+            type: "{ operationId: string }",
+            description:
+              "Operation paused, needs [`crate::api::ChainInteraction::remote_chain_head_continue`].",
+          },
+          {
+            name: "OperationInaccessible",
+            type: "{ operationId: string }",
+            description: "Block became inaccessible.",
+          },
+          {
+            name: "OperationError",
+            type: "{ operationId: string; error: string }",
+            description: "Operation failed.",
+          },
+          {
+            name: "Stop",
+            type: "undefined",
+            description: "Subscription terminated by server.",
           },
         ],
       },
       {
         id: "RemoteChainHeadFollowRequest",
         name: "RemoteChainHeadFollowRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainHeadFollowRequest = { tag: "V1"; value: V01RemoteChainHeadFollowRequest }',
+          "interface RemoteChainHeadFollowRequest { genesisHash: Uint8Array; withRuntime: boolean }",
         description:
-          "Versioned wrapper for [`v01::RemoteChainHeadFollowRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_follow`].",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainHeadFollowRequest",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
           },
-        ],
-      },
-      {
-        id: "RemoteChainHeadHeaderError",
-        name: "RemoteChainHeadHeaderError",
-        category: "versioned",
-        definition:
-          'type RemoteChainHeadHeaderError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
           {
-            name: "V1",
-            type: "GenericError",
+            name: "withRuntime",
+            type: "boolean",
+            description: "Whether to include runtime information in events.",
           },
         ],
       },
       {
         id: "RemoteChainHeadHeaderRequest",
         name: "RemoteChainHeadHeaderRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainHeadHeaderRequest = { tag: "V1"; value: V01RemoteChainHeadHeaderRequest }',
+          "interface RemoteChainHeadHeaderRequest { genesisHash: Uint8Array; followSubscriptionId: string; hash: Uint8Array }",
         description:
-          "Versioned wrapper for [`v01::RemoteChainHeadHeaderRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_header`].",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainHeadHeaderRequest",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
+          },
+          {
+            name: "followSubscriptionId",
+            type: "string",
+            description: "Follow subscription identifier.",
+          },
+          {
+            name: "hash",
+            type: "Uint8Array",
+            description: "Block hash.",
           },
         ],
       },
       {
         id: "RemoteChainHeadHeaderResponse",
         name: "RemoteChainHeadHeaderResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainHeadHeaderResponse = { tag: "V1"; value: V01RemoteChainHeadHeaderResponse }',
-        description:
-          "Versioned wrapper for [`v01::RemoteChainHeadHeaderResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface RemoteChainHeadHeaderResponse { header?: Uint8Array }",
+        description: "Response containing a block header, if available.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainHeadHeaderResponse",
-          },
-        ],
-      },
-      {
-        id: "RemoteChainHeadStopOperationError",
-        name: "RemoteChainHeadStopOperationError",
-        category: "versioned",
-        definition:
-          'type RemoteChainHeadStopOperationError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
+            name: "header",
+            type: "Uint8Array",
+            description: "SCALE-encoded block header.",
           },
         ],
       },
       {
         id: "RemoteChainHeadStopOperationRequest",
         name: "RemoteChainHeadStopOperationRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainHeadStopOperationRequest = { tag: "V1"; value: V01RemoteChainHeadStopOperationRequest }',
+          "interface RemoteChainHeadStopOperationRequest { genesisHash: Uint8Array; followSubscriptionId: string; operationId: string }",
         description:
-          "Versioned wrapper for [`v01::RemoteChainHeadStopOperationRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_stop_operation`].",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainHeadStopOperationRequest",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
           },
-        ],
-      },
-      {
-        id: "RemoteChainHeadStopOperationResponse",
-        name: "RemoteChainHeadStopOperationResponse",
-        category: "versioned",
-        definition:
-          'type RemoteChainHeadStopOperationResponse = { tag: "V1"; value: undefined }',
-        description: "Versioned wrapper for unit and older versions.",
-        source: "shared",
-        variants: [
           {
-            name: "V1",
-            type: "undefined",
+            name: "followSubscriptionId",
+            type: "string",
+            description: "Follow subscription identifier.",
           },
-        ],
-      },
-      {
-        id: "RemoteChainHeadStorageError",
-        name: "RemoteChainHeadStorageError",
-        category: "versioned",
-        definition:
-          'type RemoteChainHeadStorageError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
           {
-            name: "V1",
-            type: "GenericError",
+            name: "operationId",
+            type: "string",
+            description: "Operation identifier.",
           },
         ],
       },
       {
         id: "RemoteChainHeadStorageRequest",
         name: "RemoteChainHeadStorageRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainHeadStorageRequest = { tag: "V1"; value: V01RemoteChainHeadStorageRequest }',
+          "interface RemoteChainHeadStorageRequest { genesisHash: Uint8Array; followSubscriptionId: string; hash: Uint8Array; items: Array<StorageQueryItem>; childTrie?: Uint8Array }",
         description:
-          "Versioned wrapper for [`v01::RemoteChainHeadStorageRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_storage`].",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainHeadStorageRequest",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
+          },
+          {
+            name: "followSubscriptionId",
+            type: "string",
+            description: "Follow subscription identifier.",
+          },
+          {
+            name: "hash",
+            type: "Uint8Array",
+            description: "Block hash.",
+          },
+          {
+            name: "items",
+            type: "Array<StorageQueryItem>",
+            description: "Storage items to query.",
+          },
+          {
+            name: "childTrie",
+            type: "Uint8Array",
+            description: "Optional child trie.",
           },
         ],
       },
       {
         id: "RemoteChainHeadStorageResponse",
         name: "RemoteChainHeadStorageResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainHeadStorageResponse = { tag: "V1"; value: V01RemoteChainHeadStorageResponse }',
+          "interface RemoteChainHeadStorageResponse { operation: OperationStartedResult }",
         description:
-          "Versioned wrapper for [`v01::RemoteChainHeadStorageResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "Response indicating a storage query operation was started.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainHeadStorageResponse",
-          },
-        ],
-      },
-      {
-        id: "RemoteChainHeadUnpinError",
-        name: "RemoteChainHeadUnpinError",
-        category: "versioned",
-        definition:
-          'type RemoteChainHeadUnpinError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
+            name: "operation",
+            type: "OperationStartedResult",
+            description: "Started operation result.",
           },
         ],
       },
       {
         id: "RemoteChainHeadUnpinRequest",
         name: "RemoteChainHeadUnpinRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainHeadUnpinRequest = { tag: "V1"; value: V01RemoteChainHeadUnpinRequest }',
+          "interface RemoteChainHeadUnpinRequest { genesisHash: Uint8Array; followSubscriptionId: string; hashes: Array<Uint8Array> }",
         description:
-          "Versioned wrapper for [`v01::RemoteChainHeadUnpinRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_unpin`].",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainHeadUnpinRequest",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
           },
-        ],
-      },
-      {
-        id: "RemoteChainHeadUnpinResponse",
-        name: "RemoteChainHeadUnpinResponse",
-        category: "versioned",
-        definition:
-          'type RemoteChainHeadUnpinResponse = { tag: "V1"; value: undefined }',
-        description: "Versioned wrapper for unit and older versions.",
-        source: "shared",
-        variants: [
           {
-            name: "V1",
-            type: "undefined",
+            name: "followSubscriptionId",
+            type: "string",
+            description: "Follow subscription identifier.",
           },
-        ],
-      },
-      {
-        id: "RemoteChainSpecChainNameError",
-        name: "RemoteChainSpecChainNameError",
-        category: "versioned",
-        definition:
-          'type RemoteChainSpecChainNameError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
           {
-            name: "V1",
-            type: "GenericError",
+            name: "hashes",
+            type: "Array<Uint8Array>",
+            description: "Block hashes to unpin.",
           },
         ],
       },
       {
         id: "RemoteChainSpecChainNameRequest",
         name: "RemoteChainSpecChainNameRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainSpecChainNameRequest = { tag: "V1"; value: V01RemoteChainSpecChainNameRequest }',
-        description:
-          "Versioned wrapper for [`v01::RemoteChainSpecChainNameRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface RemoteChainSpecChainNameRequest { genesisHash: Uint8Array }",
+        description: "Request to fetch a chain display name.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainSpecChainNameRequest",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
           },
         ],
       },
       {
         id: "RemoteChainSpecChainNameResponse",
         name: "RemoteChainSpecChainNameResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainSpecChainNameResponse = { tag: "V1"; value: V01RemoteChainSpecChainNameResponse }',
-        description:
-          "Versioned wrapper for [`v01::RemoteChainSpecChainNameResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface RemoteChainSpecChainNameResponse { chainName: string }",
+        description: "Response containing a chain display name.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainSpecChainNameResponse",
-          },
-        ],
-      },
-      {
-        id: "RemoteChainSpecGenesisHashError",
-        name: "RemoteChainSpecGenesisHashError",
-        category: "versioned",
-        definition:
-          'type RemoteChainSpecGenesisHashError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
+            name: "chainName",
+            type: "string",
+            description: "Chain display name.",
           },
         ],
       },
       {
         id: "RemoteChainSpecGenesisHashRequest",
         name: "RemoteChainSpecGenesisHashRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainSpecGenesisHashRequest = { tag: "V1"; value: V01RemoteChainSpecGenesisHashRequest }',
-        description:
-          "Versioned wrapper for [`v01::RemoteChainSpecGenesisHashRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface RemoteChainSpecGenesisHashRequest { genesisHash: Uint8Array }",
+        description: "Request to fetch a chain genesis hash.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainSpecGenesisHashRequest",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash requested by the product.",
           },
         ],
       },
       {
         id: "RemoteChainSpecGenesisHashResponse",
         name: "RemoteChainSpecGenesisHashResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainSpecGenesisHashResponse = { tag: "V1"; value: V01RemoteChainSpecGenesisHashResponse }',
-        description:
-          "Versioned wrapper for [`v01::RemoteChainSpecGenesisHashResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface RemoteChainSpecGenesisHashResponse { genesisHash: Uint8Array }",
+        description: "Response containing a chain genesis hash.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainSpecGenesisHashResponse",
-          },
-        ],
-      },
-      {
-        id: "RemoteChainSpecPropertiesError",
-        name: "RemoteChainSpecPropertiesError",
-        category: "versioned",
-        definition:
-          'type RemoteChainSpecPropertiesError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
           },
         ],
       },
       {
         id: "RemoteChainSpecPropertiesRequest",
         name: "RemoteChainSpecPropertiesRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainSpecPropertiesRequest = { tag: "V1"; value: V01RemoteChainSpecPropertiesRequest }',
-        description:
-          "Versioned wrapper for [`v01::RemoteChainSpecPropertiesRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface RemoteChainSpecPropertiesRequest { genesisHash: Uint8Array }",
+        description: "Request to fetch chain properties.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainSpecPropertiesRequest",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
           },
         ],
       },
       {
         id: "RemoteChainSpecPropertiesResponse",
         name: "RemoteChainSpecPropertiesResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainSpecPropertiesResponse = { tag: "V1"; value: V01RemoteChainSpecPropertiesResponse }',
-        description:
-          "Versioned wrapper for [`v01::RemoteChainSpecPropertiesResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface RemoteChainSpecPropertiesResponse { properties: string }",
+        description: "Response containing JSON-encoded chain properties.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainSpecPropertiesResponse",
-          },
-        ],
-      },
-      {
-        id: "RemoteChainTransactionBroadcastError",
-        name: "RemoteChainTransactionBroadcastError",
-        category: "versioned",
-        definition:
-          'type RemoteChainTransactionBroadcastError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
+            name: "properties",
+            type: "string",
+            description: "JSON-encoded properties.",
           },
         ],
       },
       {
         id: "RemoteChainTransactionBroadcastRequest",
         name: "RemoteChainTransactionBroadcastRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainTransactionBroadcastRequest = { tag: "V1"; value: V01RemoteChainTransactionBroadcastRequest }',
+          "interface RemoteChainTransactionBroadcastRequest { genesisHash: Uint8Array; transaction: Uint8Array }",
         description:
-          "Versioned wrapper for [`v01::RemoteChainTransactionBroadcastRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_broadcast`].",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainTransactionBroadcastRequest",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
+          },
+          {
+            name: "transaction",
+            type: "Uint8Array",
+            description: "Signed transaction bytes.",
           },
         ],
       },
       {
         id: "RemoteChainTransactionBroadcastResponse",
         name: "RemoteChainTransactionBroadcastResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainTransactionBroadcastResponse = { tag: "V1"; value: V01RemoteChainTransactionBroadcastResponse }',
+          "interface RemoteChainTransactionBroadcastResponse { operationId?: string }",
         description:
-          "Versioned wrapper for [`v01::RemoteChainTransactionBroadcastResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "Response containing a transaction broadcast operation identifier.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainTransactionBroadcastResponse",
-          },
-        ],
-      },
-      {
-        id: "RemoteChainTransactionStopError",
-        name: "RemoteChainTransactionStopError",
-        category: "versioned",
-        definition:
-          'type RemoteChainTransactionStopError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
+            name: "operationId",
+            type: "string",
+            description: "Broadcast operation identifier, if available.",
           },
         ],
       },
       {
         id: "RemoteChainTransactionStopRequest",
         name: "RemoteChainTransactionStopRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainTransactionStopRequest = { tag: "V1"; value: V01RemoteChainTransactionStopRequest }',
+          "interface RemoteChainTransactionStopRequest { genesisHash: Uint8Array; operationId: string }",
         description:
-          "Versioned wrapper for [`v01::RemoteChainTransactionStopRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_stop`].",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainTransactionStopRequest",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
           },
-        ],
-      },
-      {
-        id: "RemoteChainTransactionStopResponse",
-        name: "RemoteChainTransactionStopResponse",
-        category: "versioned",
-        definition:
-          'type RemoteChainTransactionStopResponse = { tag: "V1"; value: undefined }',
-        description: "Versioned wrapper for unit and older versions.",
-        source: "shared",
-        variants: [
           {
-            name: "V1",
-            type: "undefined",
-          },
-        ],
-      },
-      {
-        id: "RemotePermissionError",
-        name: "RemotePermissionError",
-        category: "versioned",
-        definition:
-          'type RemotePermissionError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
+            name: "operationId",
+            type: "string",
+            description: "Operation identifier of the broadcast to stop.",
           },
         ],
       },
       {
         id: "RemotePermissionRequest",
         name: "RemotePermissionRequest",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type RemotePermissionRequest = { tag: "V1"; value: V01RemotePermissionRequest }',
+          'type RemotePermissionRequest = { tag: "ExternalRequest"; value: { url: string } } | { tag: "TransactionSubmit"; value: undefined }',
         description:
-          "Versioned wrapper for [`v02::RemotePermissionRequest`] and older versions.",
-        source: "shared",
+          "Pre-RFC-0001 remote operation permission, as shipped by\n`@novasamatech/host-api@0.6.x`.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01RemotePermissionRequest",
+            name: "ExternalRequest",
+            type: "{ url: string }",
+            description: "URL the product wants to fetch.",
+          },
+          {
+            name: "TransactionSubmit",
+            type: "undefined",
+            description: "Product wants to submit a transaction.",
           },
         ],
       },
       {
         id: "RemotePermissionResponse",
         name: "RemotePermissionResponse",
-        category: "versioned",
-        definition:
-          'type RemotePermissionResponse = { tag: "V1"; value: V01RemotePermissionResponse }',
+        category: "struct",
+        definition: "interface RemotePermissionResponse { granted: boolean }",
         description:
-          "Versioned wrapper for [`v01::RemotePermissionResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "Response indicating whether a remote permission was granted.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemotePermissionResponse",
+            name: "granted",
+            type: "boolean",
+            description: "Whether the permission was granted.",
           },
         ],
       },
       {
         id: "RemotePreimageLookupSubscribeItem",
         name: "RemotePreimageLookupSubscribeItem",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemotePreimageLookupSubscribeItem = { tag: "V1"; value: V01RemotePreimageLookupSubscribeItem }',
-        description:
-          "Versioned wrapper for [`v01::RemotePreimageLookupSubscribeItem`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface RemotePreimageLookupSubscribeItem { value?: Uint8Array }",
+        description: "Item containing an optional preimage lookup result.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemotePreimageLookupSubscribeItem",
+            name: "value",
+            type: "Uint8Array",
+            description: "Preimage data, if found.",
           },
         ],
       },
       {
         id: "RemotePreimageLookupSubscribeRequest",
         name: "RemotePreimageLookupSubscribeRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemotePreimageLookupSubscribeRequest = { tag: "V1"; value: V01RemotePreimageLookupSubscribeRequest }',
-        description:
-          "Versioned wrapper for [`v01::RemotePreimageLookupSubscribeRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface RemotePreimageLookupSubscribeRequest { key: Uint8Array }",
+        description: "Request to subscribe to preimage lookup results.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemotePreimageLookupSubscribeRequest",
+            name: "key",
+            type: "Uint8Array",
+            description: "Hash of the preimage.",
           },
         ],
       },
       {
         id: "RemoteStatementStoreCreateProofError",
         name: "RemoteStatementStoreCreateProofError",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type RemoteStatementStoreCreateProofError = { tag: "V1"; value: V01RemoteStatementStoreCreateProofError }',
-        description:
-          "Versioned wrapper for [`v01::RemoteStatementStoreCreateProofError`] and older versions.",
-        source: "shared",
+          'type RemoteStatementStoreCreateProofError = { tag: "UnableToSign"; value: undefined } | { tag: "UnknownAccount"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description: "Statement proof creation error.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01RemoteStatementStoreCreateProofError",
+            name: "UnableToSign",
+            type: "undefined",
+            description: "Signing operation failed.",
+          },
+          {
+            name: "UnknownAccount",
+            type: "undefined",
+            description: "Account not recognized.",
+          },
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
           },
         ],
       },
       {
         id: "RemoteStatementStoreCreateProofRequest",
         name: "RemoteStatementStoreCreateProofRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteStatementStoreCreateProofRequest = { tag: "V1"; value: V01RemoteStatementStoreCreateProofRequest }',
-        description:
-          "Versioned wrapper for [`v01::RemoteStatementStoreCreateProofRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface RemoteStatementStoreCreateProofRequest { productAccountId: ProductAccountId; statement: Statement }",
+        description: "Request to create a cryptographic proof for a statement.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteStatementStoreCreateProofRequest",
+            name: "productAccountId",
+            type: "ProductAccountId",
+            description: "Product account that should create the proof.",
+          },
+          {
+            name: "statement",
+            type: "Statement",
+            description: "Statement to prove.",
           },
         ],
       },
       {
         id: "RemoteStatementStoreCreateProofResponse",
         name: "RemoteStatementStoreCreateProofResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteStatementStoreCreateProofResponse = { tag: "V1"; value: V01RemoteStatementStoreCreateProofResponse }',
-        description:
-          "Versioned wrapper for [`v01::RemoteStatementStoreCreateProofResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface RemoteStatementStoreCreateProofResponse { proof: StatementProof }",
+        description: "Response containing a statement proof.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteStatementStoreCreateProofResponse",
-          },
-        ],
-      },
-      {
-        id: "RemoteStatementStoreSubmitError",
-        name: "RemoteStatementStoreSubmitError",
-        category: "versioned",
-        definition:
-          'type RemoteStatementStoreSubmitError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions. Submit\nhas no success payload (`Result<(), GenericError>`), matching upstream.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
-          },
-        ],
-      },
-      {
-        id: "RemoteStatementStoreSubmitRequest",
-        name: "RemoteStatementStoreSubmitRequest",
-        category: "versioned",
-        definition:
-          'type RemoteStatementStoreSubmitRequest = { tag: "V1"; value: SignedStatement }',
-        description:
-          "Versioned wrapper for [`v01::SignedStatement`] and older versions.\nThe submit request is the signed statement itself; the host SCALE-decodes\nit directly without a wrapping field, matching the upstream\n`triangle-js-sdks` `StatementStoreSubmitV1_request = SignedStatement`.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "SignedStatement",
+            name: "proof",
+            type: "StatementProof",
+            description: "Created statement proof.",
           },
         ],
       },
       {
         id: "RemoteStatementStoreSubscribeItem",
         name: "RemoteStatementStoreSubscribeItem",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteStatementStoreSubscribeItem = { tag: "V1"; value: V01RemoteStatementStoreSubscribeItem }',
+          "interface RemoteStatementStoreSubscribeItem { statements: Array<SignedStatement> }",
         description:
-          "Versioned wrapper for [`v02::RemoteStatementStoreSubscribeItem`] and older versions.",
-        source: "shared",
-        variants: [
+          "Item containing statements delivered by the statement store subscription.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteStatementStoreSubscribeItem",
+            name: "statements",
+            type: "Array<SignedStatement>",
+            description: "Signed statements matching the subscription.",
           },
         ],
       },
       {
         id: "RemoteStatementStoreSubscribeRequest",
         name: "RemoteStatementStoreSubscribeRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteStatementStoreSubscribeRequest = { tag: "V1"; value: V01RemoteStatementStoreSubscribeRequest }',
-        description:
-          "Versioned wrapper for [`v02::RemoteStatementStoreSubscribeRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface RemoteStatementStoreSubscribeRequest { topics: Array<Uint8Array> }",
+        description: "Request to subscribe to statements matching topics.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteStatementStoreSubscribeRequest",
+            name: "topics",
+            type: "Array<Uint8Array>",
+            description: "Required topics.",
           },
         ],
       },
@@ -4018,1691 +3919,6 @@ export const versions: ExplorerVersion[] = [
         ],
       },
       {
-        id: "V01HostAccountConnectionStatusSubscribeItem",
-        name: "V01HostAccountConnectionStatusSubscribeItem",
-        category: "enum",
-        definition:
-          'type V01HostAccountConnectionStatusSubscribeItem = { tag: "Disconnected"; value: undefined } | { tag: "Connected"; value: undefined }',
-        description: "User's authentication state.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "Disconnected",
-            type: "undefined",
-          },
-          {
-            name: "Connected",
-            type: "undefined",
-          },
-        ],
-      },
-      {
-        id: "V01HostAccountCreateProofError",
-        name: "V01HostAccountCreateProofError",
-        category: "enum",
-        definition:
-          'type V01HostAccountCreateProofError = { tag: "RingNotFound"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
-        description: "Error returned when ring VRF proof creation fails.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "RingNotFound",
-            type: "undefined",
-            description: "Ring not available at the specified location.",
-          },
-          {
-            name: "Rejected",
-            type: "undefined",
-            description: "User or host rejected.",
-          },
-          {
-            name: "Unknown",
-            type: "{ reason: string }",
-            description: "Catch-all.",
-          },
-        ],
-      },
-      {
-        id: "V01HostAccountCreateProofRequest",
-        name: "V01HostAccountCreateProofRequest",
-        category: "struct",
-        definition:
-          "interface V01HostAccountCreateProofRequest { productAccountId: ProductAccountId; ringLocation: RingLocation; context: Uint8Array }",
-        description:
-          "Request to create a ring VRF proof for a product account.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "productAccountId",
-            type: "ProductAccountId",
-            description: "Product account that should create the proof.",
-          },
-          {
-            name: "ringLocation",
-            type: "RingLocation",
-            description: "Ring location to use for proof generation.",
-          },
-          {
-            name: "context",
-            type: "Uint8Array",
-            description: "Context bytes bound to the proof.",
-          },
-        ],
-      },
-      {
-        id: "V01HostAccountCreateProofResponse",
-        name: "V01HostAccountCreateProofResponse",
-        category: "struct",
-        definition:
-          "interface V01HostAccountCreateProofResponse { proof: Uint8Array }",
-        description: "Response containing a ring VRF proof.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "proof",
-            type: "Uint8Array",
-            description: "Variable-length ring VRF proof bytes.",
-          },
-        ],
-      },
-      {
-        id: "V01HostAccountGetAliasRequest",
-        name: "V01HostAccountGetAliasRequest",
-        category: "struct",
-        definition:
-          "interface V01HostAccountGetAliasRequest { productAccountId: ProductAccountId }",
-        description:
-          "Request to retrieve a contextual alias for a product account.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "productAccountId",
-            type: "ProductAccountId",
-            description: "Product account to derive the alias for.",
-          },
-        ],
-      },
-      {
-        id: "V01HostAccountGetAliasResponse",
-        name: "V01HostAccountGetAliasResponse",
-        category: "struct",
-        definition:
-          "interface V01HostAccountGetAliasResponse { context: Uint8Array; alias: Uint8Array }",
-        description:
-          "A privacy-preserving alias derived via ring VRF, bound to a specific context.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "context",
-            type: "Uint8Array",
-            description: "32-byte context identifier.",
-          },
-          {
-            name: "alias",
-            type: "Uint8Array",
-            description: "Ring VRF alias (variable length).",
-          },
-        ],
-      },
-      {
-        id: "V01HostAccountGetError",
-        name: "V01HostAccountGetError",
-        category: "enum",
-        definition:
-          'type V01HostAccountGetError = { tag: "NotConnected"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "DomainNotValid"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
-        description: "Error returned when credential/account requests fail.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "NotConnected",
-            type: "undefined",
-            description: "User is not logged in.",
-          },
-          {
-            name: "Rejected",
-            type: "undefined",
-            description: "User or host rejected the request.",
-          },
-          {
-            name: "DomainNotValid",
-            type: "undefined",
-            description: "Domain identifier is invalid.",
-          },
-          {
-            name: "Unknown",
-            type: "{ reason: string }",
-            description: "Catch-all error with reason.",
-          },
-        ],
-      },
-      {
-        id: "V01HostAccountGetRequest",
-        name: "V01HostAccountGetRequest",
-        category: "struct",
-        definition:
-          "interface V01HostAccountGetRequest { productAccountId: ProductAccountId }",
-        description: "Request to retrieve a product-scoped account.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "productAccountId",
-            type: "ProductAccountId",
-            description: "Product account to retrieve.",
-          },
-        ],
-      },
-      {
-        id: "V01HostAccountGetResponse",
-        name: "V01HostAccountGetResponse",
-        category: "struct",
-        definition: "interface V01HostAccountGetResponse { account: Account }",
-        description: "Response containing a product-scoped account.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "account",
-            type: "Account",
-            description: "Retrieved account.",
-          },
-        ],
-      },
-      {
-        id: "V01HostChatActionSubscribeItem",
-        name: "V01HostChatActionSubscribeItem",
-        category: "struct",
-        definition:
-          "interface V01HostChatActionSubscribeItem { roomId: string; peer: string; payload: ChatActionPayload }",
-        description: "A chat action received from the host.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "roomId",
-            type: "string",
-            description: "Room where the action occurred.",
-          },
-          {
-            name: "peer",
-            type: "string",
-            description: "Peer who initiated the action.",
-          },
-          {
-            name: "payload",
-            type: "ChatActionPayload",
-            description: "The action payload.",
-          },
-        ],
-      },
-      {
-        id: "V01HostChatCreateRoomError",
-        name: "V01HostChatCreateRoomError",
-        category: "enum",
-        definition:
-          'type V01HostChatCreateRoomError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
-        description: "Chat room registration error.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "PermissionDenied",
-            type: "undefined",
-            description: "Not allowed.",
-          },
-          {
-            name: "Unknown",
-            type: "{ reason: string }",
-            description: "Catch-all.",
-          },
-        ],
-      },
-      {
-        id: "V01HostChatCreateRoomRequest",
-        name: "V01HostChatCreateRoomRequest",
-        category: "struct",
-        definition:
-          "interface V01HostChatCreateRoomRequest { roomId: string; name: string; icon: string }",
-        description: "Request to create a chat room.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "roomId",
-            type: "string",
-            description: "Unique room identifier.",
-          },
-          {
-            name: "name",
-            type: "string",
-            description: "Room display name.",
-          },
-          {
-            name: "icon",
-            type: "string",
-            description: "URL or base64 image.",
-          },
-        ],
-      },
-      {
-        id: "V01HostChatCreateRoomResponse",
-        name: "V01HostChatCreateRoomResponse",
-        category: "struct",
-        definition:
-          "interface V01HostChatCreateRoomResponse { status: ChatRoomRegistrationStatus }",
-        description: "Result of a room registration.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "status",
-            type: "ChatRoomRegistrationStatus",
-            description: "`New` or `Exists`.",
-          },
-        ],
-      },
-      {
-        id: "V01HostChatListSubscribeItem",
-        name: "V01HostChatListSubscribeItem",
-        category: "struct",
-        definition:
-          "interface V01HostChatListSubscribeItem { rooms: Array<ChatRoom> }",
-        description: "Item containing the current chat rooms.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "rooms",
-            type: "Array<ChatRoom>",
-            description: "Chat rooms the product participates in.",
-          },
-        ],
-      },
-      {
-        id: "V01HostChatPostMessageError",
-        name: "V01HostChatPostMessageError",
-        category: "enum",
-        definition:
-          'type V01HostChatPostMessageError = { tag: "MessageTooLarge"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
-        description: "Chat message posting error.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "MessageTooLarge",
-            type: "undefined",
-            description: "Message exceeded size limit.",
-          },
-          {
-            name: "Unknown",
-            type: "{ reason: string }",
-            description: "Catch-all.",
-          },
-        ],
-      },
-      {
-        id: "V01HostChatPostMessageRequest",
-        name: "V01HostChatPostMessageRequest",
-        category: "struct",
-        definition:
-          "interface V01HostChatPostMessageRequest { roomId: string; payload: ChatMessageContent }",
-        description: "Request to post a message to a chat room.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "roomId",
-            type: "string",
-            description: "Room to post to.",
-          },
-          {
-            name: "payload",
-            type: "ChatMessageContent",
-            description: "Message content.",
-          },
-        ],
-      },
-      {
-        id: "V01HostChatPostMessageResponse",
-        name: "V01HostChatPostMessageResponse",
-        category: "struct",
-        definition:
-          "interface V01HostChatPostMessageResponse { messageId: string }",
-        description: "Result of posting a message.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "messageId",
-            type: "string",
-            description: "Assigned message ID.",
-          },
-        ],
-      },
-      {
-        id: "V01HostChatRegisterBotError",
-        name: "V01HostChatRegisterBotError",
-        category: "enum",
-        definition:
-          'type V01HostChatRegisterBotError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
-        description: "Chat bot registration error.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "PermissionDenied",
-            type: "undefined",
-            description: "Not allowed.",
-          },
-          {
-            name: "Unknown",
-            type: "{ reason: string }",
-            description: "Catch-all.",
-          },
-        ],
-      },
-      {
-        id: "V01HostChatRegisterBotRequest",
-        name: "V01HostChatRegisterBotRequest",
-        category: "struct",
-        definition:
-          "interface V01HostChatRegisterBotRequest { botId: string; name: string; icon: string }",
-        description: "Request to register a chat bot.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "botId",
-            type: "string",
-            description: "Unique bot identifier.",
-          },
-          {
-            name: "name",
-            type: "string",
-            description: "Bot display name.",
-          },
-          {
-            name: "icon",
-            type: "string",
-            description: "URL or base64 image.",
-          },
-        ],
-      },
-      {
-        id: "V01HostChatRegisterBotResponse",
-        name: "V01HostChatRegisterBotResponse",
-        category: "struct",
-        definition:
-          "interface V01HostChatRegisterBotResponse { status: ChatBotRegistrationStatus }",
-        description: "Result of a bot registration.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "status",
-            type: "ChatBotRegistrationStatus",
-            description: "`New` or `Exists`.",
-          },
-        ],
-      },
-      {
-        id: "V01HostCreateTransactionError",
-        name: "V01HostCreateTransactionError",
-        category: "enum",
-        definition:
-          'type V01HostCreateTransactionError = { tag: "FailedToDecode"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "NotSupported"; value: { reason: string } } | { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
-        description: "Transaction creation error.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "FailedToDecode",
-            type: "undefined",
-            description: "Payload could not be deserialized.",
-          },
-          {
-            name: "Rejected",
-            type: "undefined",
-            description: "User rejected.",
-          },
-          {
-            name: "NotSupported",
-            type: "{ reason: string }",
-            description: "Unsupported payload version or extension.",
-          },
-          {
-            name: "PermissionDenied",
-            type: "undefined",
-            description: "Not authenticated.",
-          },
-          {
-            name: "Unknown",
-            type: "{ reason: string }",
-            description: "Catch-all.",
-          },
-        ],
-      },
-      {
-        id: "V01HostCreateTransactionRequest",
-        name: "V01HostCreateTransactionRequest",
-        category: "struct",
-        definition:
-          "interface V01HostCreateTransactionRequest { productAccountId: ProductAccountId; payload: VersionedTxPayload }",
-        description: "Request to create a transaction for a product account.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "productAccountId",
-            type: "ProductAccountId",
-            description: "Product account that will sign the transaction.",
-          },
-          {
-            name: "payload",
-            type: "VersionedTxPayload",
-            description: "Versioned transaction payload.",
-          },
-        ],
-      },
-      {
-        id: "V01HostCreateTransactionResponse",
-        name: "V01HostCreateTransactionResponse",
-        category: "struct",
-        definition:
-          "interface V01HostCreateTransactionResponse { transaction: Uint8Array }",
-        description: "Response containing a created transaction.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "transaction",
-            type: "Uint8Array",
-            description: "SCALE-encoded signed transaction.",
-          },
-        ],
-      },
-      {
-        id: "V01HostCreateTransactionWithLegacyAccountRequest",
-        name: "V01HostCreateTransactionWithLegacyAccountRequest",
-        category: "struct",
-        definition:
-          "interface V01HostCreateTransactionWithLegacyAccountRequest { payload: VersionedTxPayload }",
-        description:
-          "Request to create a transaction with a non-product account.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "payload",
-            type: "VersionedTxPayload",
-            description: "Versioned transaction payload to sign.",
-          },
-        ],
-      },
-      {
-        id: "V01HostCreateTransactionWithLegacyAccountResponse",
-        name: "V01HostCreateTransactionWithLegacyAccountResponse",
-        category: "struct",
-        definition:
-          "interface V01HostCreateTransactionWithLegacyAccountResponse { transaction: Uint8Array }",
-        description:
-          "Response containing a transaction created with a non-product account.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "transaction",
-            type: "Uint8Array",
-            description: "SCALE-encoded signed transaction.",
-          },
-        ],
-      },
-      {
-        id: "V01HostDevicePermissionRequest",
-        name: "V01HostDevicePermissionRequest",
-        category: "enum",
-        definition:
-          'type V01HostDevicePermissionRequest = { tag: "Camera"; value: undefined } | { tag: "Microphone"; value: undefined } | { tag: "Bluetooth"; value: undefined } | { tag: "Location"; value: undefined }',
-        description: "Device capability to request access to.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "Camera",
-            type: "undefined",
-          },
-          {
-            name: "Microphone",
-            type: "undefined",
-          },
-          {
-            name: "Bluetooth",
-            type: "undefined",
-          },
-          {
-            name: "Location",
-            type: "undefined",
-          },
-        ],
-      },
-      {
-        id: "V01HostDevicePermissionResponse",
-        name: "V01HostDevicePermissionResponse",
-        category: "struct",
-        definition:
-          "interface V01HostDevicePermissionResponse { granted: boolean }",
-        description:
-          "Response indicating whether a device permission was granted.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "granted",
-            type: "boolean",
-            description: "Whether the permission was granted.",
-          },
-        ],
-      },
-      {
-        id: "V01HostFeatureSupportedRequest",
-        name: "V01HostFeatureSupportedRequest",
-        category: "enum",
-        definition:
-          'type V01HostFeatureSupportedRequest = { tag: "Chain"; value: { genesisHash: Uint8Array } }',
-        description: "Feature to check for host support.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "Chain",
-            type: "{ genesisHash: Uint8Array }",
-            description: "Is this blockchain supported?",
-          },
-        ],
-      },
-      {
-        id: "V01HostFeatureSupportedResponse",
-        name: "V01HostFeatureSupportedResponse",
-        category: "struct",
-        definition:
-          "interface V01HostFeatureSupportedResponse { supported: boolean }",
-        description: "Response indicating whether a host feature is supported.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "supported",
-            type: "boolean",
-            description: "Whether the feature is supported.",
-          },
-        ],
-      },
-      {
-        id: "V01HostGetLegacyAccountsResponse",
-        name: "V01HostGetLegacyAccountsResponse",
-        category: "struct",
-        definition:
-          "interface V01HostGetLegacyAccountsResponse { accounts: Array<Account> }",
-        description:
-          "Response containing all non-product accounts owned by the user.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "accounts",
-            type: "Array<Account>",
-            description: "Non-product accounts.",
-          },
-        ],
-      },
-      {
-        id: "V01HostHandshakeRequest",
-        name: "V01HostHandshakeRequest",
-        category: "struct",
-        definition:
-          "interface V01HostHandshakeRequest { codecVersion: number }",
-        description: "Request to negotiate the wire codec version.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "codecVersion",
-            type: "number",
-            description: "Wire codec version requested by the peer.",
-          },
-        ],
-      },
-      {
-        id: "V01HostLocalStorageClearRequest",
-        name: "V01HostLocalStorageClearRequest",
-        category: "struct",
-        definition: "interface V01HostLocalStorageClearRequest { key: string }",
-        description: "Request to clear a local storage key.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "key",
-            type: "string",
-            description: "Storage key to clear.",
-          },
-        ],
-      },
-      {
-        id: "V01HostLocalStorageReadError",
-        name: "V01HostLocalStorageReadError",
-        category: "enum",
-        definition:
-          'type V01HostLocalStorageReadError = { tag: "Full"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
-        description: "Local storage operation error.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "Full",
-            type: "undefined",
-            description: "Storage quota exceeded.",
-          },
-          {
-            name: "Unknown",
-            type: "{ reason: string }",
-            description: "Catch-all.",
-          },
-        ],
-      },
-      {
-        id: "V01HostLocalStorageReadRequest",
-        name: "V01HostLocalStorageReadRequest",
-        category: "struct",
-        definition: "interface V01HostLocalStorageReadRequest { key: string }",
-        description: "Request to read a local storage value.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "key",
-            type: "string",
-            description: "Storage key to read.",
-          },
-        ],
-      },
-      {
-        id: "V01HostLocalStorageReadResponse",
-        name: "V01HostLocalStorageReadResponse",
-        category: "struct",
-        definition:
-          "interface V01HostLocalStorageReadResponse { value?: Uint8Array }",
-        description: "Response containing an optional local storage value.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "value",
-            type: "Uint8Array",
-            description: "Stored value, if present.",
-          },
-        ],
-      },
-      {
-        id: "V01HostLocalStorageWriteRequest",
-        name: "V01HostLocalStorageWriteRequest",
-        category: "struct",
-        definition:
-          "interface V01HostLocalStorageWriteRequest { key: string; value: Uint8Array }",
-        description: "Request to write a value into local storage.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "key",
-            type: "string",
-            description: "Storage key to write.",
-          },
-          {
-            name: "value",
-            type: "Uint8Array",
-            description: "Value to store at the key.",
-          },
-        ],
-      },
-      {
-        id: "V01HostNavigateToError",
-        name: "V01HostNavigateToError",
-        category: "enum",
-        definition:
-          'type V01HostNavigateToError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
-        description: "Navigation error.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "PermissionDenied",
-            type: "undefined",
-            description: "Navigation not allowed.",
-          },
-          {
-            name: "Unknown",
-            type: "{ reason: string }",
-            description: "Catch-all.",
-          },
-        ],
-      },
-      {
-        id: "V01HostNavigateToRequest",
-        name: "V01HostNavigateToRequest",
-        category: "struct",
-        definition: "interface V01HostNavigateToRequest { url: string }",
-        description: "Request to navigate to a URL.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "url",
-            type: "string",
-            description: "URL to open.",
-          },
-        ],
-      },
-      {
-        id: "V01HostPushNotificationRequest",
-        name: "V01HostPushNotificationRequest",
-        category: "struct",
-        definition:
-          "interface V01HostPushNotificationRequest { text: string; deeplink?: string }",
-        description: "Push notification payload.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "text",
-            type: "string",
-            description: "Notification text.",
-          },
-          {
-            name: "deeplink",
-            type: "string",
-            description: "Optional URL to open on tap.",
-          },
-        ],
-      },
-      {
-        id: "V01HostSignPayloadError",
-        name: "V01HostSignPayloadError",
-        category: "enum",
-        definition:
-          'type V01HostSignPayloadError = { tag: "FailedToDecode"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
-        description: "Signing operation error.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "FailedToDecode",
-            type: "undefined",
-            description: "Payload could not be deserialized.",
-          },
-          {
-            name: "Rejected",
-            type: "undefined",
-            description: "User rejected signing.",
-          },
-          {
-            name: "PermissionDenied",
-            type: "undefined",
-            description: "Not authenticated.",
-          },
-          {
-            name: "Unknown",
-            type: "{ reason: string }",
-            description: "Catch-all.",
-          },
-        ],
-      },
-      {
-        id: "V01HostSignPayloadRequest",
-        name: "V01HostSignPayloadRequest",
-        category: "struct",
-        definition:
-          "interface V01HostSignPayloadRequest { address: string; blockHash: Uint8Array; blockNumber: Uint8Array; era: Uint8Array; genesisHash: Uint8Array; method: Uint8Array; nonce: Uint8Array; specVersion: Uint8Array; tip: Uint8Array; transactionVersion: Uint8Array; signedExtensions: Array<string>; version: number; assetId?: Uint8Array; metadataHash?: Uint8Array; mode?: number; withSignedTransaction?: boolean }",
-        description:
-          "Full Substrate extrinsic signing payload with all fields needed for signature\ngeneration.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "address",
-            type: "string",
-            description: "Signer address (SS58 or hex).",
-          },
-          {
-            name: "blockHash",
-            type: "Uint8Array",
-            description: "Reference block hash.",
-          },
-          {
-            name: "blockNumber",
-            type: "Uint8Array",
-            description: "Reference block number.",
-          },
-          {
-            name: "era",
-            type: "Uint8Array",
-            description: "Mortality era encoding.",
-          },
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-          {
-            name: "method",
-            type: "Uint8Array",
-            description: "SCALE-encoded call data.",
-          },
-          {
-            name: "nonce",
-            type: "Uint8Array",
-            description: "Account nonce.",
-          },
-          {
-            name: "specVersion",
-            type: "Uint8Array",
-            description: "Runtime spec version.",
-          },
-          {
-            name: "tip",
-            type: "Uint8Array",
-            description: "Transaction tip.",
-          },
-          {
-            name: "transactionVersion",
-            type: "Uint8Array",
-            description: "Transaction format version.",
-          },
-          {
-            name: "signedExtensions",
-            type: "Array<string>",
-            description: "Extension identifiers.",
-          },
-          {
-            name: "version",
-            type: "number",
-            description: "Extrinsic version.",
-          },
-          {
-            name: "assetId",
-            type: "Uint8Array",
-            description: "For multi-asset tips.",
-          },
-          {
-            name: "metadataHash",
-            type: "Uint8Array",
-            description: "CheckMetadataHash extension.",
-          },
-          {
-            name: "mode",
-            type: "number",
-            description: "Metadata mode.",
-          },
-          {
-            name: "withSignedTransaction",
-            type: "boolean",
-            description: "Request signed transaction back.",
-          },
-        ],
-      },
-      {
-        id: "V01HostSignPayloadResponse",
-        name: "V01HostSignPayloadResponse",
-        category: "struct",
-        definition:
-          "interface V01HostSignPayloadResponse { signature: Uint8Array; signedTransaction?: Uint8Array }",
-        description: "Result of a signing operation.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "signature",
-            type: "Uint8Array",
-            description: "The cryptographic signature.",
-          },
-          {
-            name: "signedTransaction",
-            type: "Uint8Array",
-            description: "Full signed transaction, if requested.",
-          },
-        ],
-      },
-      {
-        id: "V01HostSignRawRequest",
-        name: "V01HostSignRawRequest",
-        category: "struct",
-        definition:
-          "interface V01HostSignRawRequest { address: string; data: RawPayload }",
-        description: "A raw signing request pairing an address with raw data.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "address",
-            type: "string",
-            description: "Signer address.",
-          },
-          {
-            name: "data",
-            type: "RawPayload",
-            description: "The data to sign.",
-          },
-        ],
-      },
-      {
-        id: "V01ProductChatCustomMessageRenderSubscribeRequest",
-        name: "V01ProductChatCustomMessageRenderSubscribeRequest",
-        category: "struct",
-        definition:
-          "interface V01ProductChatCustomMessageRenderSubscribeRequest { messageId: string; messageType: string; payload: Uint8Array }",
-        description:
-          "Subscribe payload identifying the chat message to render. The host responds\nwith a stream of [`CustomRendererNode`] trees describing the rendered UI.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "messageId",
-            type: "string",
-            description: "Message identifier.",
-          },
-          {
-            name: "messageType",
-            type: "string",
-            description: "Application-defined message type.",
-          },
-          {
-            name: "payload",
-            type: "Uint8Array",
-            description: "Binary payload.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainHeadBodyRequest",
-        name: "V01RemoteChainHeadBodyRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainHeadBodyRequest { genesisHash: Uint8Array; followSubscriptionId: string; hash: Uint8Array }",
-        description:
-          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_body`].",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-          {
-            name: "followSubscriptionId",
-            type: "string",
-            description: "Follow subscription identifier.",
-          },
-          {
-            name: "hash",
-            type: "Uint8Array",
-            description: "Block hash.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainHeadBodyResponse",
-        name: "V01RemoteChainHeadBodyResponse",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainHeadBodyResponse { operation: OperationStartedResult }",
-        description: "Response indicating a block body operation was started.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "operation",
-            type: "OperationStartedResult",
-            description: "Started operation result.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainHeadCallRequest",
-        name: "V01RemoteChainHeadCallRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainHeadCallRequest { genesisHash: Uint8Array; followSubscriptionId: string; hash: Uint8Array; function: string; callParameters: Uint8Array }",
-        description:
-          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_call`].",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-          {
-            name: "followSubscriptionId",
-            type: "string",
-            description: "Follow subscription identifier.",
-          },
-          {
-            name: "hash",
-            type: "Uint8Array",
-            description: "Block hash.",
-          },
-          {
-            name: "function",
-            type: "string",
-            description: "Runtime API function name.",
-          },
-          {
-            name: "callParameters",
-            type: "Uint8Array",
-            description: "SCALE-encoded call parameters.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainHeadCallResponse",
-        name: "V01RemoteChainHeadCallResponse",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainHeadCallResponse { operation: OperationStartedResult }",
-        description:
-          "Response indicating a runtime call operation was started.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "operation",
-            type: "OperationStartedResult",
-            description: "Started operation result.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainHeadContinueRequest",
-        name: "V01RemoteChainHeadContinueRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainHeadContinueRequest { genesisHash: Uint8Array; followSubscriptionId: string; operationId: string }",
-        description:
-          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_continue`].",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-          {
-            name: "followSubscriptionId",
-            type: "string",
-            description: "Follow subscription identifier.",
-          },
-          {
-            name: "operationId",
-            type: "string",
-            description: "Operation identifier.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainHeadFollowItem",
-        name: "V01RemoteChainHeadFollowItem",
-        category: "enum",
-        definition:
-          'type V01RemoteChainHeadFollowItem = { tag: "Initialized"; value: { finalizedBlockHashes: Array<Uint8Array>; finalizedBlockRuntime?: RuntimeType } } | { tag: "NewBlock"; value: { blockHash: Uint8Array; parentBlockHash: Uint8Array; newRuntime?: RuntimeType } } | { tag: "BestBlockChanged"; value: { bestBlockHash: Uint8Array } } | { tag: "Finalized"; value: { finalizedBlockHashes: Array<Uint8Array>; prunedBlockHashes: Array<Uint8Array> } } | { tag: "OperationBodyDone"; value: { operationId: string; value: Array<Uint8Array> } } | { tag: "OperationCallDone"; value: { operationId: string; output: Uint8Array } } | { tag: "OperationStorageItems"; value: { operationId: string; items: Array<StorageResultItem> } } | { tag: "OperationStorageDone"; value: { operationId: string } } | { tag: "OperationWaitingForContinue"; value: { operationId: string } } | { tag: "OperationInaccessible"; value: { operationId: string } } | { tag: "OperationError"; value: { operationId: string; error: string } } | { tag: "Stop"; value: undefined }',
-        description: "Events received when following the chain head.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "Initialized",
-            type: "{ finalizedBlockHashes: Array<Uint8Array>; finalizedBlockRuntime?: RuntimeType }",
-            description: "Initial state with finalized blocks.",
-          },
-          {
-            name: "NewBlock",
-            type: "{ blockHash: Uint8Array; parentBlockHash: Uint8Array; newRuntime?: RuntimeType }",
-            description: "A new block was produced.",
-          },
-          {
-            name: "BestBlockChanged",
-            type: "{ bestBlockHash: Uint8Array }",
-            description: "Best block changed.",
-          },
-          {
-            name: "Finalized",
-            type: "{ finalizedBlockHashes: Array<Uint8Array>; prunedBlockHashes: Array<Uint8Array> }",
-            description: "Blocks were finalized.",
-          },
-          {
-            name: "OperationBodyDone",
-            type: "{ operationId: string; value: Array<Uint8Array> }",
-            description: "Body fetch completed.",
-          },
-          {
-            name: "OperationCallDone",
-            type: "{ operationId: string; output: Uint8Array }",
-            description: "Runtime call completed.",
-          },
-          {
-            name: "OperationStorageItems",
-            type: "{ operationId: string; items: Array<StorageResultItem> }",
-            description: "Storage results batch.",
-          },
-          {
-            name: "OperationStorageDone",
-            type: "{ operationId: string }",
-            description: "Storage query completed.",
-          },
-          {
-            name: "OperationWaitingForContinue",
-            type: "{ operationId: string }",
-            description:
-              "Operation paused, needs [`crate::api::ChainInteraction::remote_chain_head_continue`].",
-          },
-          {
-            name: "OperationInaccessible",
-            type: "{ operationId: string }",
-            description: "Block became inaccessible.",
-          },
-          {
-            name: "OperationError",
-            type: "{ operationId: string; error: string }",
-            description: "Operation failed.",
-          },
-          {
-            name: "Stop",
-            type: "undefined",
-            description: "Subscription terminated by server.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainHeadFollowRequest",
-        name: "V01RemoteChainHeadFollowRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainHeadFollowRequest { genesisHash: Uint8Array; withRuntime: boolean }",
-        description:
-          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_follow`].",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-          {
-            name: "withRuntime",
-            type: "boolean",
-            description: "Whether to include runtime information in events.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainHeadHeaderRequest",
-        name: "V01RemoteChainHeadHeaderRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainHeadHeaderRequest { genesisHash: Uint8Array; followSubscriptionId: string; hash: Uint8Array }",
-        description:
-          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_header`].",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-          {
-            name: "followSubscriptionId",
-            type: "string",
-            description: "Follow subscription identifier.",
-          },
-          {
-            name: "hash",
-            type: "Uint8Array",
-            description: "Block hash.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainHeadHeaderResponse",
-        name: "V01RemoteChainHeadHeaderResponse",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainHeadHeaderResponse { header?: Uint8Array }",
-        description: "Response containing a block header, if available.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "header",
-            type: "Uint8Array",
-            description: "SCALE-encoded block header.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainHeadStopOperationRequest",
-        name: "V01RemoteChainHeadStopOperationRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainHeadStopOperationRequest { genesisHash: Uint8Array; followSubscriptionId: string; operationId: string }",
-        description:
-          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_stop_operation`].",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-          {
-            name: "followSubscriptionId",
-            type: "string",
-            description: "Follow subscription identifier.",
-          },
-          {
-            name: "operationId",
-            type: "string",
-            description: "Operation identifier.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainHeadStorageRequest",
-        name: "V01RemoteChainHeadStorageRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainHeadStorageRequest { genesisHash: Uint8Array; followSubscriptionId: string; hash: Uint8Array; items: Array<StorageQueryItem>; childTrie?: Uint8Array }",
-        description:
-          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_storage`].",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-          {
-            name: "followSubscriptionId",
-            type: "string",
-            description: "Follow subscription identifier.",
-          },
-          {
-            name: "hash",
-            type: "Uint8Array",
-            description: "Block hash.",
-          },
-          {
-            name: "items",
-            type: "Array<StorageQueryItem>",
-            description: "Storage items to query.",
-          },
-          {
-            name: "childTrie",
-            type: "Uint8Array",
-            description: "Optional child trie.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainHeadStorageResponse",
-        name: "V01RemoteChainHeadStorageResponse",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainHeadStorageResponse { operation: OperationStartedResult }",
-        description:
-          "Response indicating a storage query operation was started.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "operation",
-            type: "OperationStartedResult",
-            description: "Started operation result.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainHeadUnpinRequest",
-        name: "V01RemoteChainHeadUnpinRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainHeadUnpinRequest { genesisHash: Uint8Array; followSubscriptionId: string; hashes: Array<Uint8Array> }",
-        description:
-          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_unpin`].",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-          {
-            name: "followSubscriptionId",
-            type: "string",
-            description: "Follow subscription identifier.",
-          },
-          {
-            name: "hashes",
-            type: "Array<Uint8Array>",
-            description: "Block hashes to unpin.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainSpecChainNameRequest",
-        name: "V01RemoteChainSpecChainNameRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainSpecChainNameRequest { genesisHash: Uint8Array }",
-        description: "Request to fetch a chain display name.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainSpecChainNameResponse",
-        name: "V01RemoteChainSpecChainNameResponse",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainSpecChainNameResponse { chainName: string }",
-        description: "Response containing a chain display name.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "chainName",
-            type: "string",
-            description: "Chain display name.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainSpecGenesisHashRequest",
-        name: "V01RemoteChainSpecGenesisHashRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainSpecGenesisHashRequest { genesisHash: Uint8Array }",
-        description: "Request to fetch a chain genesis hash.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash requested by the product.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainSpecGenesisHashResponse",
-        name: "V01RemoteChainSpecGenesisHashResponse",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainSpecGenesisHashResponse { genesisHash: Uint8Array }",
-        description: "Response containing a chain genesis hash.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainSpecPropertiesRequest",
-        name: "V01RemoteChainSpecPropertiesRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainSpecPropertiesRequest { genesisHash: Uint8Array }",
-        description: "Request to fetch chain properties.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainSpecPropertiesResponse",
-        name: "V01RemoteChainSpecPropertiesResponse",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainSpecPropertiesResponse { properties: string }",
-        description: "Response containing JSON-encoded chain properties.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "properties",
-            type: "string",
-            description: "JSON-encoded properties.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainTransactionBroadcastRequest",
-        name: "V01RemoteChainTransactionBroadcastRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainTransactionBroadcastRequest { genesisHash: Uint8Array; transaction: Uint8Array }",
-        description:
-          "Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_broadcast`].",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-          {
-            name: "transaction",
-            type: "Uint8Array",
-            description: "Signed transaction bytes.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainTransactionBroadcastResponse",
-        name: "V01RemoteChainTransactionBroadcastResponse",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainTransactionBroadcastResponse { operationId?: string }",
-        description:
-          "Response containing a transaction broadcast operation identifier.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "operationId",
-            type: "string",
-            description: "Broadcast operation identifier, if available.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainTransactionStopRequest",
-        name: "V01RemoteChainTransactionStopRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainTransactionStopRequest { genesisHash: Uint8Array; operationId: string }",
-        description:
-          "Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_stop`].",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-          {
-            name: "operationId",
-            type: "string",
-            description: "Operation identifier of the broadcast to stop.",
-          },
-        ],
-      },
-      {
-        id: "V01RemotePermissionRequest",
-        name: "V01RemotePermissionRequest",
-        category: "enum",
-        definition:
-          'type V01RemotePermissionRequest = { tag: "ExternalRequest"; value: { url: string } } | { tag: "TransactionSubmit"; value: undefined }',
-        description:
-          "Pre-RFC-0001 remote operation permission, as shipped by\n`@novasamatech/host-api@0.6.x`.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "ExternalRequest",
-            type: "{ url: string }",
-            description: "URL the product wants to fetch.",
-          },
-          {
-            name: "TransactionSubmit",
-            type: "undefined",
-            description: "Product wants to submit a transaction.",
-          },
-        ],
-      },
-      {
-        id: "V01RemotePermissionResponse",
-        name: "V01RemotePermissionResponse",
-        category: "struct",
-        definition:
-          "interface V01RemotePermissionResponse { granted: boolean }",
-        description:
-          "Response indicating whether a remote permission was granted.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "granted",
-            type: "boolean",
-            description: "Whether the permission was granted.",
-          },
-        ],
-      },
-      {
-        id: "V01RemotePreimageLookupSubscribeItem",
-        name: "V01RemotePreimageLookupSubscribeItem",
-        category: "struct",
-        definition:
-          "interface V01RemotePreimageLookupSubscribeItem { value?: Uint8Array }",
-        description: "Item containing an optional preimage lookup result.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "value",
-            type: "Uint8Array",
-            description: "Preimage data, if found.",
-          },
-        ],
-      },
-      {
-        id: "V01RemotePreimageLookupSubscribeRequest",
-        name: "V01RemotePreimageLookupSubscribeRequest",
-        category: "struct",
-        definition:
-          "interface V01RemotePreimageLookupSubscribeRequest { key: Uint8Array }",
-        description: "Request to subscribe to preimage lookup results.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "key",
-            type: "Uint8Array",
-            description: "Hash of the preimage.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteStatementStoreCreateProofError",
-        name: "V01RemoteStatementStoreCreateProofError",
-        category: "enum",
-        definition:
-          'type V01RemoteStatementStoreCreateProofError = { tag: "UnableToSign"; value: undefined } | { tag: "UnknownAccount"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
-        description: "Statement proof creation error.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "UnableToSign",
-            type: "undefined",
-            description: "Signing operation failed.",
-          },
-          {
-            name: "UnknownAccount",
-            type: "undefined",
-            description: "Account not recognized.",
-          },
-          {
-            name: "Unknown",
-            type: "{ reason: string }",
-            description: "Catch-all.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteStatementStoreCreateProofRequest",
-        name: "V01RemoteStatementStoreCreateProofRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteStatementStoreCreateProofRequest { productAccountId: ProductAccountId; statement: Statement }",
-        description: "Request to create a cryptographic proof for a statement.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "productAccountId",
-            type: "ProductAccountId",
-            description: "Product account that should create the proof.",
-          },
-          {
-            name: "statement",
-            type: "Statement",
-            description: "Statement to prove.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteStatementStoreCreateProofResponse",
-        name: "V01RemoteStatementStoreCreateProofResponse",
-        category: "struct",
-        definition:
-          "interface V01RemoteStatementStoreCreateProofResponse { proof: StatementProof }",
-        description: "Response containing a statement proof.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "proof",
-            type: "StatementProof",
-            description: "Created statement proof.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteStatementStoreSubscribeItem",
-        name: "V01RemoteStatementStoreSubscribeItem",
-        category: "struct",
-        definition:
-          "interface V01RemoteStatementStoreSubscribeItem { statements: Array<SignedStatement> }",
-        description:
-          "Item containing statements delivered by the statement store subscription.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "statements",
-            type: "Array<SignedStatement>",
-            description: "Signed statements matching the subscription.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteStatementStoreSubscribeRequest",
-        name: "V01RemoteStatementStoreSubscribeRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteStatementStoreSubscribeRequest { topics: Array<Uint8Array> }",
-        description: "Request to subscribe to statements matching topics.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "topics",
-            type: "Array<Uint8Array>",
-            description: "Required topics.",
-          },
-        ],
-      },
-      {
-        id: "V02HostHandshakeError",
-        name: "V02HostHandshakeError",
-        category: "enum",
-        definition:
-          'type V02HostHandshakeError = { tag: "Timeout"; value: undefined } | { tag: "UnsupportedProtocolVersion"; value: undefined } | { tag: "Unknown"; value: GenericErr }',
-        description:
-          "Handshake error. Mirrors Novasama's `HandshakeErr` byte-for-byte so that\npre-codegen products (built against `@novasamatech/host-api`) can decode\n`host_handshake_response` frames produced by this host.",
-        source: "v0.2",
-        variants: [
-          {
-            name: "Timeout",
-            type: "undefined",
-          },
-          {
-            name: "UnsupportedProtocolVersion",
-            type: "undefined",
-          },
-          {
-            name: "Unknown",
-            type: "GenericErr",
-          },
-        ],
-      },
-      {
         id: "VersionedTxPayload",
         name: "VersionedTxPayload",
         category: "versioned",
@@ -5887,10 +4103,10 @@ export const versions: ExplorerVersion[] = [
         pattern: "unary",
         request: "undefined",
         response: "undefined",
-        errorType: "V02HostHandshakeError",
+        errorType: "HostHandshakeError",
         description: "Negotiates the wire codec version with the product.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function handshake(truapi: Client) {\n  const result = await truapi.trUApiCalls.handshake();\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function handshake(truapi: Client): Promise<void> {\n  const result = await truapi.trUApiCalls.handshake();\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_feature_supported",
@@ -5899,12 +4115,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "TrUAPI Calls",
         wireId: 2,
         pattern: "unary",
-        request: "V01HostFeatureSupportedRequest",
-        response: "V01HostFeatureSupportedResponse",
+        request: "HostFeatureSupportedRequest",
+        response: "HostFeatureSupportedResponse",
         errorType: "GenericError",
         description: "Queries whether the host supports a specific feature.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function supportsChain(truapi: Client) {\n  const result = await truapi.trUApiCalls.featureSupported({\n    tag: "Chain",\n    value: { genesisHash: new Uint8Array() },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value.supported;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function supportsChain(truapi: Client): Promise<boolean> {\n  const result = await truapi.trUApiCalls.featureSupported({\n    tag: "Chain",\n    value: { genesisHash: new Uint8Array() },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value.supported;\n}',
       },
       {
         id: "host_push_notification",
@@ -5913,12 +4129,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "TrUAPI Calls",
         wireId: 4,
         pattern: "unary",
-        request: "V01HostPushNotificationRequest",
+        request: "HostPushNotificationRequest",
         response: "undefined",
         errorType: "GenericError",
         description: "Sends a push notification to the user.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function pushNotification(truapi: Client) {\n  const result = await truapi.trUApiCalls.pushNotification({\n    text: "Hello!",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function pushNotification(truapi: Client): Promise<void> {\n  const result = await truapi.trUApiCalls.pushNotification({\n    text: "Hello!",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_navigate_to",
@@ -5927,12 +4143,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "TrUAPI Calls",
         wireId: 6,
         pattern: "unary",
-        request: "V01HostNavigateToRequest",
+        request: "HostNavigateToRequest",
         response: "undefined",
-        errorType: "V01HostNavigateToError",
+        errorType: "HostNavigateToError",
         description: "Requests the host to open a URL.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function navigateToDocs(truapi: Client) {\n  const result = await truapi.trUApiCalls.navigateTo({\n    url: "https://example.com",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function navigateToDocs(truapi: Client): Promise<void> {\n  const result = await truapi.trUApiCalls.navigateTo({\n    url: "https://example.com",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_device_permission",
@@ -5941,12 +4157,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Permissions",
         wireId: 8,
         pattern: "unary",
-        request: "V02HostDevicePermissionRequest",
-        response: "V01HostDevicePermissionResponse",
+        request: "HostDevicePermissionRequest",
+        response: "HostDevicePermissionResponse",
         errorType: "GenericError",
         description: "Request a device-capability permission from the user.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function requestCameraPermission(truapi: Client) {\n  const result = await truapi.permissions.devicePermission({\n    tag: "Camera",\n    value: undefined,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostDevicePermissionResponse,\n} from "@parity/truapi";\n\nexport async function requestCameraPermission(\n  truapi: Client,\n): Promise<HostDevicePermissionResponse> {\n  const result = await truapi.permissions.devicePermission({\n    tag: "Camera",\n    value: undefined,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_permission",
@@ -5955,12 +4171,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Permissions",
         wireId: 10,
         pattern: "unary",
-        request: "V02RemotePermissionRequest",
-        response: "V01RemotePermissionResponse",
+        request: "RemotePermissionRequest",
+        response: "RemotePermissionResponse",
         errorType: "GenericError",
         description: "Request one or more remote-operation permissions.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function requestRemotePermission(truapi: Client) {\n  const result = await truapi.permissions.permission({\n    permissions: [{ tag: "Remote", value: { domains: ["api.example.com"] } }],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemotePermissionResponse,\n} from "@parity/truapi";\n\nexport async function requestRemotePermission(\n  truapi: Client,\n): Promise<RemotePermissionResponse> {\n  const result = await truapi.permissions.permission({\n    permissions: [{ tag: "Remote", value: { domains: ["api.example.com"] } }],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_local_storage_read",
@@ -5969,12 +4185,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Local Storage",
         wireId: 12,
         pattern: "unary",
-        request: "V01HostLocalStorageReadRequest",
-        response: "V01HostLocalStorageReadResponse",
-        errorType: "V01HostLocalStorageReadError",
+        request: "HostLocalStorageReadRequest",
+        response: "HostLocalStorageReadResponse",
+        errorType: "HostLocalStorageReadError",
         description: "Read a value by key.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function readLocalValue(truapi: Client) {\n  const result = await truapi.localStorage.localStorageRead({ key: "test-key" });\n\n  if (result.isErr()) throw result.error;\n  return result.value.value;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function readLocalValue(\n  truapi: Client,\n): Promise<Uint8Array | undefined> {\n  const result = await truapi.localStorage.localStorageRead({ key: "test-key" });\n\n  if (result.isErr()) throw result.error;\n  return result.value.value;\n}',
       },
       {
         id: "host_local_storage_write",
@@ -5983,12 +4199,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Local Storage",
         wireId: 14,
         pattern: "unary",
-        request: "V01HostLocalStorageWriteRequest",
+        request: "HostLocalStorageWriteRequest",
         response: "undefined",
-        errorType: "V01HostLocalStorageReadError",
+        errorType: "HostLocalStorageReadError",
         description: "Write a value to a key.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function writeLocalValue(truapi: Client) {\n  const result = await truapi.localStorage.localStorageWrite({\n    key: "test-key",\n    value: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function writeLocalValue(truapi: Client): Promise<void> {\n  const result = await truapi.localStorage.localStorageWrite({\n    key: "test-key",\n    value: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_local_storage_clear",
@@ -5997,12 +4213,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Local Storage",
         wireId: 16,
         pattern: "unary",
-        request: "V01HostLocalStorageClearRequest",
+        request: "HostLocalStorageClearRequest",
         response: "undefined",
-        errorType: "V01HostLocalStorageReadError",
+        errorType: "HostLocalStorageReadError",
         description: "Clear a value by key.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function clearLocalValue(truapi: Client) {\n  const result = await truapi.localStorage.localStorageClear({ key: "test-key" });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function clearLocalValue(truapi: Client): Promise<void> {\n  const result = await truapi.localStorage.localStorageClear({ key: "test-key" });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_account_connection_status_subscribe",
@@ -6012,10 +4228,10 @@ export const versions: ExplorerVersion[] = [
         wireId: 18,
         pattern: "subscription",
         request: "undefined",
-        response: "V01HostAccountConnectionStatusSubscribeItem",
+        response: "HostAccountConnectionStatusSubscribeItem",
         description: "Subscribe to account connection status changes.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport function watchAccountConnection(truapi: Client) {\n  return truapi.accountManagement.accountConnectionStatusSubscribe({\n    onData: (status) => console.log(status),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import {\n  type Client,\n  type Subscription,\n  type HostAccountConnectionStatusSubscribeItem,\n} from "@parity/truapi";\n\nexport function watchAccountConnection(truapi: Client): Subscription {\n  return truapi.accountManagement.accountConnectionStatusSubscribe().subscribe({\n    next: (status: HostAccountConnectionStatusSubscribeItem) =>\n      console.log(status),\n    error: (error: Error) => console.error(error),\n    complete: () => console.log("completed"),\n  });\n}',
       },
       {
         id: "host_account_get",
@@ -6024,12 +4240,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Account Management",
         wireId: 22,
         pattern: "unary",
-        request: "V01HostAccountGetRequest",
-        response: "V01HostAccountGetResponse",
-        errorType: "V01HostAccountGetError",
+        request: "HostAccountGetRequest",
+        response: "HostAccountGetResponse",
+        errorType: "HostAccountGetError",
         description: "Retrieve a product-scoped account.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function getAccount(truapi: Client) {\n  const result = await truapi.accountManagement.accountGet({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostAccountGetResponse,\n} from "@parity/truapi";\n\nexport async function getAccount(\n  truapi: Client,\n): Promise<HostAccountGetResponse> {\n  const result = await truapi.accountManagement.accountGet({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_account_get_alias",
@@ -6038,12 +4254,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Account Management",
         wireId: 24,
         pattern: "unary",
-        request: "V01HostAccountGetAliasRequest",
-        response: "V01HostAccountGetAliasResponse",
-        errorType: "V01HostAccountGetError",
+        request: "HostAccountGetAliasRequest",
+        response: "HostAccountGetAliasResponse",
+        errorType: "HostAccountGetError",
         description: "Retrieve a contextual alias for a product account.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function getAccountAlias(truapi: Client) {\n  const result = await truapi.accountManagement.accountGetAlias({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostAccountGetAliasResponse,\n} from "@parity/truapi";\n\nexport async function getAccountAlias(\n  truapi: Client,\n): Promise<HostAccountGetAliasResponse> {\n  const result = await truapi.accountManagement.accountGetAlias({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_account_create_proof",
@@ -6052,12 +4268,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Account Management",
         wireId: 26,
         pattern: "unary",
-        request: "V01HostAccountCreateProofRequest",
-        response: "V01HostAccountCreateProofResponse",
-        errorType: "V01HostAccountCreateProofError",
+        request: "HostAccountCreateProofRequest",
+        response: "HostAccountCreateProofResponse",
+        errorType: "HostAccountCreateProofError",
         description: "Generate a ring VRF proof for a product account.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function createAccountProof(truapi: Client) {\n  const result = await truapi.accountManagement.accountCreateProof({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    ringLocation: {\n      genesisHash: new Uint8Array(),\n      ringRootHash: new Uint8Array(),\n      hints: { palletInstance: 42 },\n    },\n    context: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostAccountCreateProofResponse,\n} from "@parity/truapi";\n\nexport async function createAccountProof(\n  truapi: Client,\n): Promise<HostAccountCreateProofResponse> {\n  const result = await truapi.accountManagement.accountCreateProof({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    ringLocation: {\n      genesisHash: new Uint8Array(),\n      ringRootHash: new Uint8Array(),\n      hints: { palletInstance: 42 },\n    },\n    context: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_get_legacy_accounts",
@@ -6067,11 +4283,11 @@ export const versions: ExplorerVersion[] = [
         wireId: 28,
         pattern: "unary",
         request: "undefined",
-        response: "V01HostGetLegacyAccountsResponse",
-        errorType: "V01HostAccountGetError",
+        response: "HostGetLegacyAccountsResponse",
+        errorType: "HostAccountGetError",
         description: "List non-product accounts the user owns.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function getLegacyAccounts(truapi: Client) {\n  const result = await truapi.accountManagement.getLegacyAccounts();\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostGetLegacyAccountsResponse,\n} from "@parity/truapi";\n\nexport async function getLegacyAccounts(\n  truapi: Client,\n): Promise<HostGetLegacyAccountsResponse> {\n  const result = await truapi.accountManagement.getLegacyAccounts();\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_create_transaction",
@@ -6080,12 +4296,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Signing",
         wireId: 30,
         pattern: "unary",
-        request: "V01HostCreateTransactionRequest",
-        response: "V01HostCreateTransactionResponse",
-        errorType: "V01HostCreateTransactionError",
+        request: "HostCreateTransactionRequest",
+        response: "HostCreateTransactionResponse",
+        errorType: "HostCreateTransactionError",
         description: "Construct a signed extrinsic for a product account.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function createTransaction(truapi: Client) {\n  const result = await truapi.signing.createTransaction({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    payload: {\n      tag: "V1",\n      value: {\n        callData: new Uint8Array(),\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: new Uint8Array(),\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostCreateTransactionResponse,\n} from "@parity/truapi";\n\nexport async function createTransaction(\n  truapi: Client,\n): Promise<HostCreateTransactionResponse> {\n  const result = await truapi.signing.createTransaction({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    payload: {\n      tag: "V1",\n      value: {\n        callData: new Uint8Array(),\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: new Uint8Array(),\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_create_transaction_with_legacy_account",
@@ -6094,12 +4310,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Signing",
         wireId: 32,
         pattern: "unary",
-        request: "V01HostCreateTransactionWithLegacyAccountRequest",
-        response: "V01HostCreateTransactionWithLegacyAccountResponse",
-        errorType: "V01HostCreateTransactionError",
+        request: "HostCreateTransactionWithLegacyAccountRequest",
+        response: "HostCreateTransactionWithLegacyAccountResponse",
+        errorType: "HostCreateTransactionError",
         description: "Construct a signed extrinsic for a non-product account.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function createTransactionWithLegacyAccount(truapi: Client) {\n  const result = await truapi.signing.createTransactionWithLegacyAccount({\n    payload: {\n      tag: "V1",\n      value: {\n        callData: new Uint8Array(),\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: new Uint8Array(),\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostCreateTransactionWithLegacyAccountResponse,\n} from "@parity/truapi";\n\nexport async function createTransactionWithLegacyAccount(\n  truapi: Client,\n): Promise<HostCreateTransactionWithLegacyAccountResponse> {\n  const result = await truapi.signing.createTransactionWithLegacyAccount({\n    payload: {\n      tag: "V1",\n      value: {\n        callData: new Uint8Array(),\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: new Uint8Array(),\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_create_room",
@@ -6108,12 +4324,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chat",
         wireId: 38,
         pattern: "unary",
-        request: "V01HostChatCreateRoomRequest",
-        response: "V01HostChatCreateRoomResponse",
-        errorType: "V01HostChatCreateRoomError",
+        request: "HostChatCreateRoomRequest",
+        response: "HostChatCreateRoomResponse",
+        errorType: "HostChatCreateRoomError",
         description: "Create a chat room.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function createRoom(truapi: Client) {\n  const result = await truapi.chat.chatCreateRoom({\n    roomId: "test-room",\n    name: "Test Room",\n    icon: "",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostChatCreateRoomResponse,\n} from "@parity/truapi";\n\nexport async function createRoom(\n  truapi: Client,\n): Promise<HostChatCreateRoomResponse> {\n  const result = await truapi.chat.chatCreateRoom({\n    roomId: "test-room",\n    name: "Test Room",\n    icon: "",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_register_bot",
@@ -6122,12 +4338,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chat",
         wireId: 40,
         pattern: "unary",
-        request: "V01HostChatRegisterBotRequest",
-        response: "V01HostChatRegisterBotResponse",
-        errorType: "V01HostChatRegisterBotError",
+        request: "HostChatRegisterBotRequest",
+        response: "HostChatRegisterBotResponse",
+        errorType: "HostChatRegisterBotError",
         description: "Register a chat bot.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function registerBot(truapi: Client) {\n  const result = await truapi.chat.chatRegisterBot({\n    botId: "test-bot",\n    name: "Test Bot",\n    icon: "",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostChatRegisterBotResponse,\n} from "@parity/truapi";\n\nexport async function registerBot(\n  truapi: Client,\n): Promise<HostChatRegisterBotResponse> {\n  const result = await truapi.chat.chatRegisterBot({\n    botId: "test-bot",\n    name: "Test Bot",\n    icon: "",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_list_subscribe",
@@ -6137,10 +4353,10 @@ export const versions: ExplorerVersion[] = [
         wireId: 42,
         pattern: "subscription",
         request: "undefined",
-        response: "V01HostChatListSubscribeItem",
+        response: "HostChatListSubscribeItem",
         description: "Subscribe to the list of chat rooms.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport function watchChatRooms(truapi: Client) {\n  return truapi.chat.chatListSubscribe({\n    onData: (rooms) => console.log(rooms),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import {\n  type Client,\n  type Subscription,\n  type HostChatListSubscribeItem,\n} from "@parity/truapi";\n\nexport function watchChatRooms(truapi: Client): Subscription {\n  return truapi.chat.chatListSubscribe().subscribe({\n    next: (rooms: HostChatListSubscribeItem) => console.log(rooms),\n    error: (error: Error) => console.error(error),\n    complete: () => console.log("completed"),\n  });\n}',
       },
       {
         id: "host_chat_post_message",
@@ -6149,12 +4365,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chat",
         wireId: 46,
         pattern: "unary",
-        request: "V01HostChatPostMessageRequest",
-        response: "V01HostChatPostMessageResponse",
-        errorType: "V01HostChatPostMessageError",
+        request: "HostChatPostMessageRequest",
+        response: "HostChatPostMessageResponse",
+        errorType: "HostChatPostMessageError",
         description: "Post a message to a chat room.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function postChatMessage(truapi: Client) {\n  const result = await truapi.chat.chatPostMessage({\n    roomId: "test-room",\n    payload: { tag: "Text", value: { text: "Hello from playground!" } },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostChatPostMessageResponse,\n} from "@parity/truapi";\n\nexport async function postChatMessage(\n  truapi: Client,\n): Promise<HostChatPostMessageResponse> {\n  const result = await truapi.chat.chatPostMessage({\n    roomId: "test-room",\n    payload: { tag: "Text", value: { text: "Hello from playground!" } },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_action_subscribe",
@@ -6164,10 +4380,10 @@ export const versions: ExplorerVersion[] = [
         wireId: 48,
         pattern: "subscription",
         request: "undefined",
-        response: "V01HostChatActionSubscribeItem",
+        response: "HostChatActionSubscribeItem",
         description: "Subscribe to received chat actions.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport function watchChatActions(truapi: Client) {\n  return truapi.chat.chatActionSubscribe({\n    onData: (action) => console.log(action),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import {\n  type Client,\n  type Subscription,\n  type HostChatActionSubscribeItem,\n} from "@parity/truapi";\n\nexport function watchChatActions(truapi: Client): Subscription {\n  return truapi.chat.chatActionSubscribe().subscribe({\n    next: (action: HostChatActionSubscribeItem) =>\n      console.log(action),\n    error: (error: Error) => console.error(error),\n    complete: () => console.log("completed"),\n  });\n}',
       },
       {
         id: "product_chat_custom_message_render_subscribe",
@@ -6176,12 +4392,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chat",
         wireId: 52,
         pattern: "subscription",
-        request: "V01ProductChatCustomMessageRenderSubscribeRequest",
+        request: "ProductChatCustomMessageRenderSubscribeRequest",
         response: "CustomRendererNode",
         description:
           "Subscribe to custom message render requests from the host. Each\nemitted item is a [`CustomRendererNode`](crate::v01::CustomRendererNode)\ntree describing the rendered UI.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport function renderCustomChatMessage(truapi: Client) {\n  return truapi.chat.chatCustomMessageRenderSubscribe({\n    request: {\n      messageId: "msg-1",\n      messageType: "custom-render-demo",\n      payload: new Uint8Array(),\n    },\n    onData: (node) => console.log(node),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import {\n  type Client,\n  type CustomRendererNode,\n  type Subscription,\n} from "@parity/truapi";\n\nexport function renderCustomChatMessage(truapi: Client): Subscription {\n  return truapi.chat\n    .chatCustomMessageRenderSubscribe({\n      request: {\n        messageId: "msg-1",\n        messageType: "custom-render-demo",\n        payload: new Uint8Array(),\n      },\n    })\n    .subscribe({\n      next: (node: CustomRendererNode) => console.log(node),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_statement_store_subscribe",
@@ -6190,11 +4406,11 @@ export const versions: ExplorerVersion[] = [
         groupName: "Statement Store",
         wireId: 56,
         pattern: "subscription",
-        request: "V02RemoteStatementStoreSubscribeRequest",
-        response: "V02RemoteStatementStoreSubscribeItem",
+        request: "RemoteStatementStoreSubscribeRequest",
+        response: "RemoteStatementStoreSubscribeItem",
         description: "Subscribe to statements matching a topic filter.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport function subscribeStatements(truapi: Client) {\n  return truapi.statementStore.statementStoreSubscribe({\n    request: { tag: "MatchAll", value: [] },\n    onData: (statements) => console.log(statements),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import {\n  type Client,\n  type Subscription,\n  type RemoteStatementStoreSubscribeItem,\n} from "@parity/truapi";\n\nexport function subscribeStatements(truapi: Client): Subscription {\n  return truapi.statementStore\n    .statementStoreSubscribe({\n      request: { tag: "MatchAll", value: [] },\n    })\n    .subscribe({\n      next: (statements: RemoteStatementStoreSubscribeItem) =>\n        console.log(statements),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_statement_store_create_proof",
@@ -6203,12 +4419,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Statement Store",
         wireId: 60,
         pattern: "unary",
-        request: "V01RemoteStatementStoreCreateProofRequest",
-        response: "V01RemoteStatementStoreCreateProofResponse",
-        errorType: "V01RemoteStatementStoreCreateProofError",
+        request: "RemoteStatementStoreCreateProofRequest",
+        response: "RemoteStatementStoreCreateProofResponse",
+        errorType: "RemoteStatementStoreCreateProofError",
         description: "Create a proof for a statement.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function createStatementProof(truapi: Client) {\n  const result = await truapi.statementStore.statementStoreCreateProof({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    statement: {\n      expiry: 9999999999999n,\n      topics: [],\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteStatementStoreCreateProofResponse,\n} from "@parity/truapi";\n\nexport async function createStatementProof(\n  truapi: Client,\n): Promise<RemoteStatementStoreCreateProofResponse> {\n  const result = await truapi.statementStore.statementStoreCreateProof({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    statement: {\n      expiry: 9999999999999n,\n      topics: [],\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_statement_store_submit",
@@ -6223,7 +4439,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Submit a signed statement to the network. The request body is the\n[`SignedStatement`](crate::v01::SignedStatement) directly (no wrapping\nstruct), matching upstream `triangle-js-sdks`.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function submitStatement(truapi: Client) {\n  const result = await truapi.statementStore.statementStoreSubmit({\n    proof: {\n      tag: "Sr25519",\n      value: { signature: new Uint8Array(), signer: new Uint8Array() },\n    },\n    topics: [],\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function submitStatement(truapi: Client): Promise<void> {\n  const result = await truapi.statementStore.statementStoreSubmit({\n    proof: {\n      tag: "Sr25519",\n      value: { signature: new Uint8Array(), signer: new Uint8Array() },\n    },\n    topics: [],\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_preimage_lookup_subscribe",
@@ -6232,11 +4448,11 @@ export const versions: ExplorerVersion[] = [
         groupName: "Preimage",
         wireId: 64,
         pattern: "subscription",
-        request: "V01RemotePreimageLookupSubscribeRequest",
-        response: "V01RemotePreimageLookupSubscribeItem",
+        request: "RemotePreimageLookupSubscribeRequest",
+        response: "RemotePreimageLookupSubscribeItem",
         description: "Subscribe to preimage lookups for a given key.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport function lookupPreimage(truapi: Client) {\n  return truapi.preimage.preimageLookupSubscribe({\n    request: { key: new Uint8Array() },\n    onData: (item) => console.log(item),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import {\n  type Client,\n  type Subscription,\n  type RemotePreimageLookupSubscribeItem,\n} from "@parity/truapi";\n\nexport function lookupPreimage(truapi: Client): Subscription {\n  return truapi.preimage\n    .preimageLookupSubscribe({\n      request: { key: new Uint8Array() },\n    })\n    .subscribe({\n      next: (item: RemotePreimageLookupSubscribeItem) =>\n        console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_chain_head_follow",
@@ -6245,11 +4461,11 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chain Interaction",
         wireId: 76,
         pattern: "subscription",
-        request: "V01RemoteChainHeadFollowRequest",
-        response: "V01RemoteChainHeadFollowItem",
+        request: "RemoteChainHeadFollowRequest",
+        response: "RemoteChainHeadFollowItem",
         description: "Follow the chain head and receive block events.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport function followChainHead(truapi: Client) {\n  return truapi.chainInteraction.chainHeadFollow({\n    request: { genesisHash: new Uint8Array(), withRuntime: false },\n    onData: (item) => console.log(item),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import {\n  type Client,\n  type Subscription,\n  type RemoteChainHeadFollowItem,\n} from "@parity/truapi";\n\nexport function followChainHead(truapi: Client): Subscription {\n  return truapi.chainInteraction\n    .chainHeadFollow({\n      request: { genesisHash: new Uint8Array(), withRuntime: false },\n    })\n    .subscribe({\n      next: (item: RemoteChainHeadFollowItem) => console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_chain_head_header",
@@ -6258,12 +4474,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chain Interaction",
         wireId: 80,
         pattern: "unary",
-        request: "V01RemoteChainHeadHeaderRequest",
-        response: "V01RemoteChainHeadHeaderResponse",
+        request: "RemoteChainHeadHeaderRequest",
+        response: "RemoteChainHeadHeaderResponse",
         errorType: "GenericError",
         description: "Fetch a block header.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function getChainHeadHeader(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadHeader({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainHeadHeaderResponse,\n} from "@parity/truapi";\n\nexport async function getChainHeadHeader(\n  truapi: Client,\n): Promise<RemoteChainHeadHeaderResponse> {\n  const result = await truapi.chainInteraction.chainHeadHeader({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_body",
@@ -6272,12 +4488,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chain Interaction",
         wireId: 82,
         pattern: "unary",
-        request: "V01RemoteChainHeadBodyRequest",
-        response: "V01RemoteChainHeadBodyResponse",
+        request: "RemoteChainHeadBodyRequest",
+        response: "RemoteChainHeadBodyResponse",
         errorType: "GenericError",
         description: "Fetch a block body.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function getChainHeadBody(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadBody({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainHeadBodyResponse,\n} from "@parity/truapi";\n\nexport async function getChainHeadBody(\n  truapi: Client,\n): Promise<RemoteChainHeadBodyResponse> {\n  const result = await truapi.chainInteraction.chainHeadBody({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_storage",
@@ -6286,12 +4502,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chain Interaction",
         wireId: 84,
         pattern: "unary",
-        request: "V01RemoteChainHeadStorageRequest",
-        response: "V01RemoteChainHeadStorageResponse",
+        request: "RemoteChainHeadStorageRequest",
+        response: "RemoteChainHeadStorageResponse",
         errorType: "GenericError",
         description: "Query runtime storage at a specific block.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function getChainHeadStorage(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadStorage({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n    items: [\n      { key: new Uint8Array(), queryType: { tag: "Value", value: undefined } },\n    ],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainHeadStorageResponse,\n} from "@parity/truapi";\n\nexport async function getChainHeadStorage(\n  truapi: Client,\n): Promise<RemoteChainHeadStorageResponse> {\n  const result = await truapi.chainInteraction.chainHeadStorage({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n    items: [\n      { key: new Uint8Array(), queryType: { tag: "Value", value: undefined } },\n    ],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_call",
@@ -6300,12 +4516,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chain Interaction",
         wireId: 86,
         pattern: "unary",
-        request: "V01RemoteChainHeadCallRequest",
-        response: "V01RemoteChainHeadCallResponse",
+        request: "RemoteChainHeadCallRequest",
+        response: "RemoteChainHeadCallResponse",
         errorType: "GenericError",
         description: "Invoke a runtime call at a specific block.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function callChainHeadRuntime(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadCall({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n    function: "Core_version",\n    callParameters: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainHeadCallResponse,\n} from "@parity/truapi";\n\nexport async function callChainHeadRuntime(\n  truapi: Client,\n): Promise<RemoteChainHeadCallResponse> {\n  const result = await truapi.chainInteraction.chainHeadCall({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n    function: "Core_version",\n    callParameters: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_unpin",
@@ -6314,12 +4530,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chain Interaction",
         wireId: 88,
         pattern: "unary",
-        request: "V01RemoteChainHeadUnpinRequest",
+        request: "RemoteChainHeadUnpinRequest",
         response: "undefined",
         errorType: "GenericError",
         description: "Release pinned blocks.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function unpinChainHead(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadUnpin({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hashes: [new Uint8Array()],\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function unpinChainHead(truapi: Client): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadUnpin({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hashes: [new Uint8Array()],\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_chain_head_continue",
@@ -6328,12 +4544,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chain Interaction",
         wireId: 90,
         pattern: "unary",
-        request: "V01RemoteChainHeadContinueRequest",
+        request: "RemoteChainHeadContinueRequest",
         response: "undefined",
         errorType: "GenericError",
         description: "Continue a paused chain-head operation.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function continueChainHeadOperation(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadContinue({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function continueChainHeadOperation(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadContinue({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_chain_head_stop_operation",
@@ -6342,12 +4558,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chain Interaction",
         wireId: 92,
         pattern: "unary",
-        request: "V01RemoteChainHeadStopOperationRequest",
+        request: "RemoteChainHeadStopOperationRequest",
         response: "undefined",
         errorType: "GenericError",
         description: "Stop a chain-head operation.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function stopChainHeadOperation(truapi: Client) {\n  const result = await truapi.chainInteraction.chainHeadStopOperation({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function stopChainHeadOperation(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadStopOperation({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_chain_spec_genesis_hash",
@@ -6356,12 +4572,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chain Interaction",
         wireId: 94,
         pattern: "unary",
-        request: "V01RemoteChainSpecGenesisHashRequest",
-        response: "V01RemoteChainSpecGenesisHashResponse",
+        request: "RemoteChainSpecGenesisHashRequest",
+        response: "RemoteChainSpecGenesisHashResponse",
         errorType: "GenericError",
         description: "Fetch the canonical genesis hash for a chain.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function getChainGenesisHash(truapi: Client) {\n  const result = await truapi.chainInteraction.chainSpecGenesisHash({\n    genesisHash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainSpecGenesisHashResponse,\n} from "@parity/truapi";\n\nexport async function getChainGenesisHash(\n  truapi: Client,\n): Promise<RemoteChainSpecGenesisHashResponse> {\n  const result = await truapi.chainInteraction.chainSpecGenesisHash({\n    genesisHash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_spec_chain_name",
@@ -6370,12 +4586,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chain Interaction",
         wireId: 96,
         pattern: "unary",
-        request: "V01RemoteChainSpecChainNameRequest",
-        response: "V01RemoteChainSpecChainNameResponse",
+        request: "RemoteChainSpecChainNameRequest",
+        response: "RemoteChainSpecChainNameResponse",
         errorType: "GenericError",
         description: "Fetch the display name of a chain.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function getChainName(truapi: Client) {\n  const result = await truapi.chainInteraction.chainSpecChainName({\n    genesisHash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainSpecChainNameResponse,\n} from "@parity/truapi";\n\nexport async function getChainName(\n  truapi: Client,\n): Promise<RemoteChainSpecChainNameResponse> {\n  const result = await truapi.chainInteraction.chainSpecChainName({\n    genesisHash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_spec_properties",
@@ -6384,12 +4600,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chain Interaction",
         wireId: 98,
         pattern: "unary",
-        request: "V01RemoteChainSpecPropertiesRequest",
-        response: "V01RemoteChainSpecPropertiesResponse",
+        request: "RemoteChainSpecPropertiesRequest",
+        response: "RemoteChainSpecPropertiesResponse",
         errorType: "GenericError",
         description: "Fetch the JSON-encoded properties of a chain.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function getChainProperties(truapi: Client) {\n  const result = await truapi.chainInteraction.chainSpecProperties({\n    genesisHash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainSpecPropertiesResponse,\n} from "@parity/truapi";\n\nexport async function getChainProperties(\n  truapi: Client,\n): Promise<RemoteChainSpecPropertiesResponse> {\n  const result = await truapi.chainInteraction.chainSpecProperties({\n    genesisHash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_transaction_broadcast",
@@ -6398,12 +4614,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chain Interaction",
         wireId: 100,
         pattern: "unary",
-        request: "V01RemoteChainTransactionBroadcastRequest",
-        response: "V01RemoteChainTransactionBroadcastResponse",
+        request: "RemoteChainTransactionBroadcastRequest",
+        response: "RemoteChainTransactionBroadcastResponse",
         errorType: "GenericError",
         description: "Broadcast a signed transaction.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function broadcastTransaction(truapi: Client) {\n  const result = await truapi.chainInteraction.chainTransactionBroadcast({\n    genesisHash: new Uint8Array(),\n    transaction: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainTransactionBroadcastResponse,\n} from "@parity/truapi";\n\nexport async function broadcastTransaction(\n  truapi: Client,\n): Promise<RemoteChainTransactionBroadcastResponse> {\n  const result = await truapi.chainInteraction.chainTransactionBroadcast({\n    genesisHash: new Uint8Array(),\n    transaction: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_transaction_stop",
@@ -6412,12 +4628,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chain Interaction",
         wireId: 102,
         pattern: "unary",
-        request: "V01RemoteChainTransactionStopRequest",
+        request: "RemoteChainTransactionStopRequest",
         response: "undefined",
         errorType: "GenericError",
         description: "Stop a transaction broadcast.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function stopTransactionBroadcast(truapi: Client) {\n  const result = await truapi.chainInteraction.chainTransactionStop({\n    genesisHash: new Uint8Array(),\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function stopTransactionBroadcast(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainTransactionStop({\n    genesisHash: new Uint8Array(),\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_derive_entropy",
@@ -6426,13 +4642,13 @@ export const versions: ExplorerVersion[] = [
         groupName: "Entropy Derivation",
         wireId: 108,
         pattern: "unary",
-        request: "V02HostDeriveEntropyRequest",
-        response: "V02HostDeriveEntropyResponse",
-        errorType: "V02HostDeriveEntropyError",
+        request: "HostDeriveEntropyRequest",
+        response: "HostDeriveEntropyResponse",
+        errorType: "HostDeriveEntropyError",
         description:
           "Derive 32 bytes of entropy from the user's root BIP-39 entropy for the\ngiven key.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function deriveEntropy(truapi: Client) {\n  const result = await truapi.entropyDerivation.deriveEntropy({\n    context: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostDeriveEntropyResponse,\n} from "@parity/truapi";\n\nexport async function deriveEntropy(\n  truapi: Client,\n): Promise<HostDeriveEntropyResponse> {\n  const result = await truapi.entropyDerivation.deriveEntropy({\n    context: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_get_user_id",
@@ -6442,11 +4658,11 @@ export const versions: ExplorerVersion[] = [
         wireId: 110,
         pattern: "unary",
         request: "undefined",
-        response: "V02HostGetUserIdResponse",
-        errorType: "V02HostGetUserIdError",
+        response: "HostGetUserIdResponse",
+        errorType: "HostGetUserIdError",
         description: "Fetch the user's primary identity (V0.2+).",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function getUserId(truapi: Client) {\n  const result = await truapi.accountManagement.getUserId();\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostGetUserIdResponse,\n} from "@parity/truapi";\n\nexport async function getUserId(\n  truapi: Client,\n): Promise<HostGetUserIdResponse> {\n  const result = await truapi.accountManagement.getUserId();\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_sign_raw",
@@ -6455,12 +4671,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Signing",
         wireId: 114,
         pattern: "unary",
-        request: "V02HostSignRawRequest",
-        response: "V01HostSignPayloadResponse",
-        errorType: "V01HostSignPayloadError",
+        request: "HostSignRawRequest",
+        response: "HostSignPayloadResponse",
+        errorType: "HostSignPayloadError",
         description: "Sign raw bytes or a message.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function signRawBytes(truapi: Client) {\n  const result = await truapi.signing.signRaw({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    payload: { tag: "Bytes", value: { bytes: new Uint8Array() } },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signRawBytes(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signRaw({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    payload: { tag: "Bytes", value: { bytes: new Uint8Array() } },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_sign_payload",
@@ -6469,12 +4685,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Signing",
         wireId: 116,
         pattern: "unary",
-        request: "V02HostSignPayloadRequest",
-        response: "V01HostSignPayloadResponse",
-        errorType: "V01HostSignPayloadError",
+        request: "HostSignPayloadRequest",
+        response: "HostSignPayloadResponse",
+        errorType: "HostSignPayloadError",
         description: "Sign a Substrate extrinsic payload.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function signPayload(truapi: Client) {\n  const result = await truapi.signing.signPayload({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    blockHash: new Uint8Array(),\n    blockNumber: new Uint8Array(),\n    era: new Uint8Array(),\n    genesisHash: new Uint8Array(),\n    method: new Uint8Array(),\n    nonce: new Uint8Array(),\n    signedExtensions: [],\n    specVersion: new Uint8Array(),\n    tip: new Uint8Array(),\n    transactionVersion: new Uint8Array(),\n    version: 4,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signPayload(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signPayload({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    blockHash: new Uint8Array(),\n    blockNumber: new Uint8Array(),\n    era: new Uint8Array(),\n    genesisHash: new Uint8Array(),\n    method: new Uint8Array(),\n    nonce: new Uint8Array(),\n    signedExtensions: [],\n    specVersion: new Uint8Array(),\n    tip: new Uint8Array(),\n    transactionVersion: new Uint8Array(),\n    version: 4,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_payment_balance_subscribe",
@@ -6484,10 +4700,10 @@ export const versions: ExplorerVersion[] = [
         wireId: 118,
         pattern: "subscription",
         request: "undefined",
-        response: "V02HostPaymentBalanceSubscribeItem",
+        response: "HostPaymentBalanceSubscribeItem",
         description: "Subscribe to payment balance updates.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport function watchPaymentBalance(truapi: Client) {\n  return truapi.payment.paymentBalanceSubscribe({\n    onData: (balance) => console.log(balance),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import {\n  type Client,\n  type Subscription,\n  type HostPaymentBalanceSubscribeItem,\n} from "@parity/truapi";\n\nexport function watchPaymentBalance(truapi: Client): Subscription {\n  return truapi.payment.paymentBalanceSubscribe().subscribe({\n    next: (balance: HostPaymentBalanceSubscribeItem) =>\n      console.log(balance),\n    error: (error: Error) => console.error(error),\n    complete: () => console.log("completed"),\n  });\n}',
       },
       {
         id: "host_payment_top_up",
@@ -6496,12 +4712,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Payment",
         wireId: 122,
         pattern: "unary",
-        request: "V02HostPaymentTopUpRequest",
+        request: "HostPaymentTopUpRequest",
         response: "undefined",
-        errorType: "V02HostPaymentTopUpError",
+        errorType: "HostPaymentTopUpError",
         description: "Top up the user's payment balance.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function topUpPaymentBalance(truapi: Client) {\n  const result = await truapi.payment.paymentTopUp({\n    amount: 0n,\n    source: { tag: "ProductAccount", value: { derivationIndex: 0 } },\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function topUpPaymentBalance(truapi: Client): Promise<void> {\n  const result = await truapi.payment.paymentTopUp({\n    amount: 0n,\n    source: { tag: "ProductAccount", value: { derivationIndex: 0 } },\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_payment_request",
@@ -6510,12 +4726,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Payment",
         wireId: 124,
         pattern: "unary",
-        request: "V02HostPaymentRequestRequest",
-        response: "V02HostPaymentRequestResponse",
-        errorType: "V02HostPaymentRequestError",
+        request: "HostPaymentRequestRequest",
+        response: "HostPaymentRequestResponse",
+        errorType: "HostPaymentRequestError",
         description: "Request a payment from the user.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function requestPayment(truapi: Client) {\n  const result = await truapi.payment.paymentRequest({\n    amount: 0n,\n    destination: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostPaymentRequestResponse,\n} from "@parity/truapi";\n\nexport async function requestPayment(\n  truapi: Client,\n): Promise<HostPaymentRequestResponse> {\n  const result = await truapi.payment.paymentRequest({\n    amount: 0n,\n    destination: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_payment_status_subscribe",
@@ -6524,12 +4740,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Payment",
         wireId: 126,
         pattern: "subscription",
-        request: "V02HostPaymentStatusSubscribeRequest",
-        response: "V02HostPaymentStatusSubscribeItem",
+        request: "HostPaymentStatusSubscribeRequest",
+        response: "HostPaymentStatusSubscribeItem",
         description:
           "Subscribe to payment lifecycle updates for a specific payment.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport function watchPaymentStatus(truapi: Client) {\n  return truapi.payment.paymentStatusSubscribe({\n    request: { paymentId: "payment-id" },\n    onData: (status) => console.log(status),\n    onError: console.error,\n    onInterrupt: () => console.log("interrupted"),\n    onClose: console.error,\n  });\n}',
+          'import {\n  type Client,\n  type Subscription,\n  type HostPaymentStatusSubscribeItem,\n} from "@parity/truapi";\n\nexport function watchPaymentStatus(truapi: Client): Subscription {\n  return truapi.payment\n    .paymentStatusSubscribe({\n      request: { paymentId: "payment-id" },\n    })\n    .subscribe({\n      next: (status: HostPaymentStatusSubscribeItem) =>\n        console.log(status),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "host_chat_create_simple_group",
@@ -6538,12 +4754,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Chat",
         wireId: 130,
         pattern: "unary",
-        request: "V02HostChatCreateSimpleGroupRequest",
-        response: "V02HostChatCreateSimpleGroupResponse",
-        errorType: "V01HostChatCreateRoomError",
+        request: "HostChatCreateSimpleGroupRequest",
+        response: "HostChatCreateSimpleGroupResponse",
+        errorType: "HostChatCreateRoomError",
         description: "Create a simple group chat room (V0.2+).",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function createSimpleGroup(truapi: Client) {\n  const result = await truapi.chat.chatCreateSimpleGroup({\n    roomId: "test-simple-group",\n    name: "Test Group",\n    icon: "",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostChatCreateSimpleGroupResponse,\n} from "@parity/truapi";\n\nexport async function createSimpleGroup(\n  truapi: Client,\n): Promise<HostChatCreateSimpleGroupResponse> {\n  const result = await truapi.chat.chatCreateSimpleGroup({\n    roomId: "test-simple-group",\n    name: "Test Group",\n    icon: "",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
     ],
     dataTypes: [
@@ -7389,1295 +5605,1312 @@ export const versions: ExplorerVersion[] = [
       {
         id: "HostAccountConnectionStatusSubscribeItem",
         name: "HostAccountConnectionStatusSubscribeItem",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostAccountConnectionStatusSubscribeItem = { tag: "V1"; value: V01HostAccountConnectionStatusSubscribeItem }',
-        description:
-          "Versioned wrapper for [`v01::HostAccountConnectionStatusSubscribeItem`] and older versions.",
-        source: "shared",
+          'type HostAccountConnectionStatusSubscribeItem = { tag: "Disconnected"; value: undefined } | { tag: "Connected"; value: undefined }',
+        description: "User's authentication state.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01HostAccountConnectionStatusSubscribeItem",
+            name: "Disconnected",
+            type: "undefined",
+          },
+          {
+            name: "Connected",
+            type: "undefined",
           },
         ],
       },
       {
         id: "HostAccountCreateProofError",
         name: "HostAccountCreateProofError",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostAccountCreateProofError = { tag: "V1"; value: V01HostAccountCreateProofError }',
-        description:
-          "Versioned wrapper for [`v01::HostAccountCreateProofError`] and older versions.",
-        source: "shared",
+          'type HostAccountCreateProofError = { tag: "RingNotFound"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description: "Error returned when ring VRF proof creation fails.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01HostAccountCreateProofError",
+            name: "RingNotFound",
+            type: "undefined",
+            description: "Ring not available at the specified location.",
+          },
+          {
+            name: "Rejected",
+            type: "undefined",
+            description: "User or host rejected.",
+          },
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
           },
         ],
       },
       {
         id: "HostAccountCreateProofRequest",
         name: "HostAccountCreateProofRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostAccountCreateProofRequest = { tag: "V1"; value: V01HostAccountCreateProofRequest }',
+          "interface HostAccountCreateProofRequest { productAccountId: ProductAccountId; ringLocation: RingLocation; context: Uint8Array }",
         description:
-          "Versioned wrapper for [`v01::HostAccountCreateProofRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Request to create a ring VRF proof for a product account.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostAccountCreateProofRequest",
+            name: "productAccountId",
+            type: "ProductAccountId",
+            description: "Product account that should create the proof.",
+          },
+          {
+            name: "ringLocation",
+            type: "RingLocation",
+            description: "Ring location to use for proof generation.",
+          },
+          {
+            name: "context",
+            type: "Uint8Array",
+            description: "Context bytes bound to the proof.",
           },
         ],
       },
       {
         id: "HostAccountCreateProofResponse",
         name: "HostAccountCreateProofResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostAccountCreateProofResponse = { tag: "V1"; value: V01HostAccountCreateProofResponse }',
-        description:
-          "Versioned wrapper for [`v01::HostAccountCreateProofResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostAccountCreateProofResponse { proof: Uint8Array }",
+        description: "Response containing a ring VRF proof.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostAccountCreateProofResponse",
-          },
-        ],
-      },
-      {
-        id: "HostAccountGetAliasError",
-        name: "HostAccountGetAliasError",
-        category: "versioned",
-        definition:
-          'type HostAccountGetAliasError = { tag: "V1"; value: V01HostAccountGetError }',
-        description:
-          "Versioned wrapper around the alias-lookup error path; reuses [`v01::HostAccountGetError`].",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "V01HostAccountGetError",
+            name: "proof",
+            type: "Uint8Array",
+            description: "Variable-length ring VRF proof bytes.",
           },
         ],
       },
       {
         id: "HostAccountGetAliasRequest",
         name: "HostAccountGetAliasRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostAccountGetAliasRequest = { tag: "V1"; value: V01HostAccountGetAliasRequest }',
+          "interface HostAccountGetAliasRequest { productAccountId: ProductAccountId }",
         description:
-          "Versioned wrapper for [`v01::HostAccountGetAliasRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Request to retrieve a contextual alias for a product account.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostAccountGetAliasRequest",
+            name: "productAccountId",
+            type: "ProductAccountId",
+            description: "Product account to derive the alias for.",
           },
         ],
       },
       {
         id: "HostAccountGetAliasResponse",
         name: "HostAccountGetAliasResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostAccountGetAliasResponse = { tag: "V1"; value: V01HostAccountGetAliasResponse }',
+          "interface HostAccountGetAliasResponse { context: Uint8Array; alias: Uint8Array }",
         description:
-          "Versioned wrapper for [`v01::HostAccountGetAliasResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "A privacy-preserving alias derived via ring VRF, bound to a specific context.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostAccountGetAliasResponse",
+            name: "context",
+            type: "Uint8Array",
+            description: "32-byte context identifier.",
+          },
+          {
+            name: "alias",
+            type: "Uint8Array",
+            description: "Ring VRF alias (variable length).",
           },
         ],
       },
       {
         id: "HostAccountGetError",
         name: "HostAccountGetError",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostAccountGetError = { tag: "V1"; value: V01HostAccountGetError }',
-        description:
-          "Versioned wrapper for [`v01::HostAccountGetError`] and older versions.",
-        source: "shared",
+          'type HostAccountGetError = { tag: "NotConnected"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "DomainNotValid"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description: "Error returned when credential/account requests fail.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01HostAccountGetError",
+            name: "NotConnected",
+            type: "undefined",
+            description: "User is not logged in.",
+          },
+          {
+            name: "Rejected",
+            type: "undefined",
+            description: "User or host rejected the request.",
+          },
+          {
+            name: "DomainNotValid",
+            type: "undefined",
+            description: "Domain identifier is invalid.",
+          },
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all error with reason.",
           },
         ],
       },
       {
         id: "HostAccountGetRequest",
         name: "HostAccountGetRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostAccountGetRequest = { tag: "V1"; value: V01HostAccountGetRequest }',
-        description:
-          "Versioned wrapper for [`v01::HostAccountGetRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostAccountGetRequest { productAccountId: ProductAccountId }",
+        description: "Request to retrieve a product-scoped account.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostAccountGetRequest",
+            name: "productAccountId",
+            type: "ProductAccountId",
+            description: "Product account to retrieve.",
           },
         ],
       },
       {
         id: "HostAccountGetResponse",
         name: "HostAccountGetResponse",
-        category: "versioned",
-        definition:
-          'type HostAccountGetResponse = { tag: "V1"; value: V01HostAccountGetResponse } | { tag: "V2"; value: V02HostAccountGetResponse }',
-        description:
-          "Versioned wrapper for [`v02::HostAccountGetResponse`] and older versions.\nV0.2 returns [`v02::ProductAccount`] (public key only); V0.1 returned\n[`v01::Account`] (with optional display name).",
-        source: "shared",
-        variants: [
+        category: "struct",
+        definition: "interface HostAccountGetResponse { account: Account }",
+        description: "Response containing a product-scoped account.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostAccountGetResponse",
-          },
-          {
-            name: "V2",
-            type: "V02HostAccountGetResponse",
+            name: "account",
+            type: "Account",
+            description: "Retrieved account.",
           },
         ],
       },
       {
         id: "HostChatActionSubscribeItem",
         name: "HostChatActionSubscribeItem",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostChatActionSubscribeItem = { tag: "V1"; value: V01HostChatActionSubscribeItem }',
-        description:
-          "Versioned wrapper for [`v01::HostChatActionSubscribeItem`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostChatActionSubscribeItem { roomId: string; peer: string; payload: ChatActionPayload }",
+        description: "A chat action received from the host.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostChatActionSubscribeItem",
+            name: "roomId",
+            type: "string",
+            description: "Room where the action occurred.",
+          },
+          {
+            name: "peer",
+            type: "string",
+            description: "Peer who initiated the action.",
+          },
+          {
+            name: "payload",
+            type: "ChatActionPayload",
+            description: "The action payload.",
           },
         ],
       },
       {
         id: "HostChatCreateRoomError",
         name: "HostChatCreateRoomError",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostChatCreateRoomError = { tag: "V1"; value: V01HostChatCreateRoomError }',
-        description:
-          "Versioned wrapper for [`v01::HostChatCreateRoomError`] and older versions.",
-        source: "shared",
+          'type HostChatCreateRoomError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description: "Chat room registration error.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01HostChatCreateRoomError",
+            name: "PermissionDenied",
+            type: "undefined",
+            description: "Not allowed.",
+          },
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
           },
         ],
       },
       {
         id: "HostChatCreateRoomRequest",
         name: "HostChatCreateRoomRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostChatCreateRoomRequest = { tag: "V1"; value: V01HostChatCreateRoomRequest }',
-        description:
-          "Versioned wrapper for [`v01::HostChatCreateRoomRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostChatCreateRoomRequest { roomId: string; name: string; icon: string }",
+        description: "Request to create a chat room.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostChatCreateRoomRequest",
+            name: "roomId",
+            type: "string",
+            description: "Unique room identifier.",
+          },
+          {
+            name: "name",
+            type: "string",
+            description: "Room display name.",
+          },
+          {
+            name: "icon",
+            type: "string",
+            description: "URL or base64 image.",
           },
         ],
       },
       {
         id: "HostChatCreateRoomResponse",
         name: "HostChatCreateRoomResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostChatCreateRoomResponse = { tag: "V1"; value: V01HostChatCreateRoomResponse }',
-        description:
-          "Versioned wrapper for [`v01::HostChatCreateRoomResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostChatCreateRoomResponse { status: ChatRoomRegistrationStatus }",
+        description: "Result of a room registration.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostChatCreateRoomResponse",
-          },
-        ],
-      },
-      {
-        id: "HostChatCreateSimpleGroupError",
-        name: "HostChatCreateSimpleGroupError",
-        category: "versioned",
-        definition:
-          'type HostChatCreateSimpleGroupError = { tag: "V2"; value: V01HostChatCreateRoomError }',
-        description:
-          "Versioned wrapper for [`v01::HostChatCreateRoomError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V2",
-            type: "V01HostChatCreateRoomError",
+            name: "status",
+            type: "ChatRoomRegistrationStatus",
+            description: "`New` or `Exists`.",
           },
         ],
       },
       {
         id: "HostChatCreateSimpleGroupRequest",
         name: "HostChatCreateSimpleGroupRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostChatCreateSimpleGroupRequest = { tag: "V2"; value: V02HostChatCreateSimpleGroupRequest }',
+          "interface HostChatCreateSimpleGroupRequest { roomId: string; name: string; icon: string }",
         description:
-          "Versioned wrapper for [`v02::HostChatCreateSimpleGroupRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Request to create a simple group chat room.\n\nV0.2: lightweight group chat that avoids the full Chat Extension v2\ncomplexity. Participants join via deep link; the host handles the UI\nwith default rendering (no custom elements).",
+        source: "v0.2",
+        fields: [
           {
-            name: "V2",
-            type: "V02HostChatCreateSimpleGroupRequest",
+            name: "roomId",
+            type: "string",
+            description: "Unique room identifier source.",
+          },
+          {
+            name: "name",
+            type: "string",
+            description: "Room display name.",
+          },
+          {
+            name: "icon",
+            type: "string",
+            description: "URL or base64 image for the room avatar.",
           },
         ],
       },
       {
         id: "HostChatCreateSimpleGroupResponse",
         name: "HostChatCreateSimpleGroupResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostChatCreateSimpleGroupResponse = { tag: "V2"; value: V02HostChatCreateSimpleGroupResponse }',
-        description:
-          "Versioned wrapper for [`v02::HostChatCreateSimpleGroupResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostChatCreateSimpleGroupResponse { status: ChatRoomRegistrationStatus; joinLink: string }",
+        description: "Result of creating a simple group chat room.\n\nV0.2.",
+        source: "v0.2",
+        fields: [
           {
-            name: "V2",
-            type: "V02HostChatCreateSimpleGroupResponse",
+            name: "status",
+            type: "ChatRoomRegistrationStatus",
+            description:
+              "Whether the room was newly created or already existed.",
+          },
+          {
+            name: "joinLink",
+            type: "string",
+            description:
+              "Deep link that participants can use to join the room.",
           },
         ],
       },
       {
         id: "HostChatListSubscribeItem",
         name: "HostChatListSubscribeItem",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostChatListSubscribeItem = { tag: "V1"; value: V01HostChatListSubscribeItem }',
-        description:
-          "Versioned wrapper for [`v01::HostChatListSubscribeItem`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostChatListSubscribeItem { rooms: Array<ChatRoom> }",
+        description: "Item containing the current chat rooms.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostChatListSubscribeItem",
+            name: "rooms",
+            type: "Array<ChatRoom>",
+            description: "Chat rooms the product participates in.",
           },
         ],
       },
       {
         id: "HostChatPostMessageError",
         name: "HostChatPostMessageError",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostChatPostMessageError = { tag: "V1"; value: V01HostChatPostMessageError }',
-        description:
-          "Versioned wrapper for [`v01::HostChatPostMessageError`] and older versions.",
-        source: "shared",
+          'type HostChatPostMessageError = { tag: "MessageTooLarge"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description: "Chat message posting error.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01HostChatPostMessageError",
+            name: "MessageTooLarge",
+            type: "undefined",
+            description: "Message exceeded size limit.",
+          },
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
           },
         ],
       },
       {
         id: "HostChatPostMessageRequest",
         name: "HostChatPostMessageRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostChatPostMessageRequest = { tag: "V1"; value: V01HostChatPostMessageRequest }',
-        description:
-          "Versioned wrapper for [`v01::HostChatPostMessageRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostChatPostMessageRequest { roomId: string; payload: ChatMessageContent }",
+        description: "Request to post a message to a chat room.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostChatPostMessageRequest",
+            name: "roomId",
+            type: "string",
+            description: "Room to post to.",
+          },
+          {
+            name: "payload",
+            type: "ChatMessageContent",
+            description: "Message content.",
           },
         ],
       },
       {
         id: "HostChatPostMessageResponse",
         name: "HostChatPostMessageResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostChatPostMessageResponse = { tag: "V1"; value: V01HostChatPostMessageResponse }',
-        description:
-          "Versioned wrapper for [`v01::HostChatPostMessageResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostChatPostMessageResponse { messageId: string }",
+        description: "Result of posting a message.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostChatPostMessageResponse",
+            name: "messageId",
+            type: "string",
+            description: "Assigned message ID.",
           },
         ],
       },
       {
         id: "HostChatRegisterBotError",
         name: "HostChatRegisterBotError",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostChatRegisterBotError = { tag: "V1"; value: V01HostChatRegisterBotError }',
-        description:
-          "Versioned wrapper for [`v01::HostChatRegisterBotError`] and older versions.",
-        source: "shared",
+          'type HostChatRegisterBotError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description: "Chat bot registration error.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01HostChatRegisterBotError",
+            name: "PermissionDenied",
+            type: "undefined",
+            description: "Not allowed.",
+          },
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
           },
         ],
       },
       {
         id: "HostChatRegisterBotRequest",
         name: "HostChatRegisterBotRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostChatRegisterBotRequest = { tag: "V1"; value: V01HostChatRegisterBotRequest }',
-        description:
-          "Versioned wrapper for [`v01::HostChatRegisterBotRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostChatRegisterBotRequest { botId: string; name: string; icon: string }",
+        description: "Request to register a chat bot.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostChatRegisterBotRequest",
+            name: "botId",
+            type: "string",
+            description: "Unique bot identifier.",
+          },
+          {
+            name: "name",
+            type: "string",
+            description: "Bot display name.",
+          },
+          {
+            name: "icon",
+            type: "string",
+            description: "URL or base64 image.",
           },
         ],
       },
       {
         id: "HostChatRegisterBotResponse",
         name: "HostChatRegisterBotResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostChatRegisterBotResponse = { tag: "V1"; value: V01HostChatRegisterBotResponse }',
-        description:
-          "Versioned wrapper for [`v01::HostChatRegisterBotResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostChatRegisterBotResponse { status: ChatBotRegistrationStatus }",
+        description: "Result of a bot registration.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostChatRegisterBotResponse",
+            name: "status",
+            type: "ChatBotRegistrationStatus",
+            description: "`New` or `Exists`.",
           },
         ],
       },
       {
         id: "HostCreateTransactionError",
         name: "HostCreateTransactionError",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostCreateTransactionError = { tag: "V1"; value: V01HostCreateTransactionError }',
-        description:
-          "Versioned wrapper for [`v01::HostCreateTransactionError`].",
-        source: "shared",
+          'type HostCreateTransactionError = { tag: "FailedToDecode"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "NotSupported"; value: { reason: string } } | { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description: "Transaction creation error.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01HostCreateTransactionError",
+            name: "FailedToDecode",
+            type: "undefined",
+            description: "Payload could not be deserialized.",
+          },
+          {
+            name: "Rejected",
+            type: "undefined",
+            description: "User rejected.",
+          },
+          {
+            name: "NotSupported",
+            type: "{ reason: string }",
+            description: "Unsupported payload version or extension.",
+          },
+          {
+            name: "PermissionDenied",
+            type: "undefined",
+            description: "Not authenticated.",
+          },
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
           },
         ],
       },
       {
         id: "HostCreateTransactionRequest",
         name: "HostCreateTransactionRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostCreateTransactionRequest = { tag: "V1"; value: V01HostCreateTransactionRequest }',
-        description:
-          "Versioned wrapper for [`v01::HostCreateTransactionRequest`].",
-        source: "shared",
-        variants: [
+          "interface HostCreateTransactionRequest { productAccountId: ProductAccountId; payload: VersionedTxPayload }",
+        description: "Request to create a transaction for a product account.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostCreateTransactionRequest",
+            name: "productAccountId",
+            type: "ProductAccountId",
+            description: "Product account that will sign the transaction.",
+          },
+          {
+            name: "payload",
+            type: "VersionedTxPayload",
+            description: "Versioned transaction payload.",
           },
         ],
       },
       {
         id: "HostCreateTransactionResponse",
         name: "HostCreateTransactionResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostCreateTransactionResponse = { tag: "V1"; value: V01HostCreateTransactionResponse }',
-        description:
-          "Versioned wrapper for [`v01::HostCreateTransactionResponse`].",
-        source: "shared",
-        variants: [
+          "interface HostCreateTransactionResponse { transaction: Uint8Array }",
+        description: "Response containing a created transaction.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostCreateTransactionResponse",
-          },
-        ],
-      },
-      {
-        id: "HostCreateTransactionWithLegacyAccountError",
-        name: "HostCreateTransactionWithLegacyAccountError",
-        category: "versioned",
-        definition:
-          'type HostCreateTransactionWithLegacyAccountError = { tag: "V1"; value: V01HostCreateTransactionError }',
-        description:
-          "Versioned wrapper for the legacy-account create-transaction error path; reuses [`v01::HostCreateTransactionError`].",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "V01HostCreateTransactionError",
+            name: "transaction",
+            type: "Uint8Array",
+            description: "SCALE-encoded signed transaction.",
           },
         ],
       },
       {
         id: "HostCreateTransactionWithLegacyAccountRequest",
         name: "HostCreateTransactionWithLegacyAccountRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostCreateTransactionWithLegacyAccountRequest = { tag: "V1"; value: V01HostCreateTransactionWithLegacyAccountRequest }',
+          "interface HostCreateTransactionWithLegacyAccountRequest { payload: VersionedTxPayload }",
         description:
-          "Versioned wrapper for [`v01::HostCreateTransactionWithLegacyAccountRequest`].",
-        source: "shared",
-        variants: [
+          "Request to create a transaction with a non-product account.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostCreateTransactionWithLegacyAccountRequest",
+            name: "payload",
+            type: "VersionedTxPayload",
+            description: "Versioned transaction payload to sign.",
           },
         ],
       },
       {
         id: "HostCreateTransactionWithLegacyAccountResponse",
         name: "HostCreateTransactionWithLegacyAccountResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostCreateTransactionWithLegacyAccountResponse = { tag: "V1"; value: V01HostCreateTransactionWithLegacyAccountResponse }',
+          "interface HostCreateTransactionWithLegacyAccountResponse { transaction: Uint8Array }",
         description:
-          "Versioned wrapper for [`v01::HostCreateTransactionWithLegacyAccountResponse`].",
-        source: "shared",
-        variants: [
+          "Response containing a transaction created with a non-product account.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostCreateTransactionWithLegacyAccountResponse",
+            name: "transaction",
+            type: "Uint8Array",
+            description: "SCALE-encoded signed transaction.",
           },
         ],
       },
       {
         id: "HostDeriveEntropyError",
         name: "HostDeriveEntropyError",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostDeriveEntropyError = { tag: "V2"; value: V02HostDeriveEntropyError }',
+          'type HostDeriveEntropyError = { tag: "Unknown"; value: undefined }',
         description:
-          "Versioned wrapper for [`v02::HostDeriveEntropyError`] and older versions.",
-        source: "shared",
+          "Error from [`crate::api::EntropyDerivation::host_derive_entropy`].\n\nUnder normal operation the function always succeeds; `Unknown` indicates an\nunrecoverable internal host error.\n\nSee [RFC 0007].\n\n[RFC 0007]: https://github.com/paritytech/triangle-js-sdks/pull/95",
+        source: "v0.2",
         variants: [
           {
-            name: "V2",
-            type: "V02HostDeriveEntropyError",
+            name: "Unknown",
+            type: "undefined",
+            description: "An unexpected error occurred in the host.",
           },
         ],
       },
       {
         id: "HostDeriveEntropyRequest",
         name: "HostDeriveEntropyRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostDeriveEntropyRequest = { tag: "V2"; value: V02HostDeriveEntropyRequest }',
-        description:
-          "Versioned wrapper for [`v02::HostDeriveEntropyRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostDeriveEntropyRequest { context: Uint8Array }",
+        description: "Request to derive deterministic entropy.",
+        source: "v0.2",
+        fields: [
           {
-            name: "V2",
-            type: "V02HostDeriveEntropyRequest",
+            name: "context",
+            type: "Uint8Array",
+            description: "Domain-separated derivation context.",
           },
         ],
       },
       {
         id: "HostDeriveEntropyResponse",
         name: "HostDeriveEntropyResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostDeriveEntropyResponse = { tag: "V2"; value: V02HostDeriveEntropyResponse }',
-        description:
-          "Versioned wrapper for [`v02::HostDeriveEntropyResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostDeriveEntropyResponse { entropy: Uint8Array }",
+        description: "Response containing derived deterministic entropy.",
+        source: "v0.2",
+        fields: [
           {
-            name: "V2",
-            type: "V02HostDeriveEntropyResponse",
-          },
-        ],
-      },
-      {
-        id: "HostDevicePermissionError",
-        name: "HostDevicePermissionError",
-        category: "versioned",
-        definition:
-          'type HostDevicePermissionError = { tag: "V1"; value: GenericError } | { tag: "V2"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
-          },
-          {
-            name: "V2",
-            type: "GenericError",
+            name: "entropy",
+            type: "Uint8Array",
+            description: "32 bytes of derived entropy.",
           },
         ],
       },
       {
         id: "HostDevicePermissionRequest",
         name: "HostDevicePermissionRequest",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostDevicePermissionRequest = { tag: "V1"; value: V01HostDevicePermissionRequest } | { tag: "V2"; value: V02HostDevicePermissionRequest }',
+          'type HostDevicePermissionRequest = { tag: "Notifications"; value: undefined } | { tag: "Camera"; value: undefined } | { tag: "Microphone"; value: undefined } | { tag: "Bluetooth"; value: undefined } | { tag: "NFC"; value: undefined } | { tag: "Location"; value: undefined } | { tag: "Clipboard"; value: undefined } | { tag: "OpenUrl"; value: undefined } | { tag: "Biometrics"; value: undefined }',
         description:
-          "Versioned wrapper for [`v02::HostDevicePermissionRequest`] and older versions.",
-        source: "shared",
+          "Device capability to request access to.\n\nV0.2: extended with `Notifications`, `NFC`, `Clipboard`, `OpenUrl`, and\n`Biometrics` per [RFC 0001] (JIT permissions).\n\n[RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66",
+        source: "v0.2",
         variants: [
           {
-            name: "V1",
-            type: "V01HostDevicePermissionRequest",
+            name: "Notifications",
+            type: "undefined",
+            description: "Push notification delivery permission.",
           },
           {
-            name: "V2",
-            type: "V02HostDevicePermissionRequest",
+            name: "Camera",
+            type: "undefined",
+          },
+          {
+            name: "Microphone",
+            type: "undefined",
+          },
+          {
+            name: "Bluetooth",
+            type: "undefined",
+          },
+          {
+            name: "NFC",
+            type: "undefined",
+            description: "Near-field communication access.",
+          },
+          {
+            name: "Location",
+            type: "undefined",
+          },
+          {
+            name: "Clipboard",
+            type: "undefined",
+            description: "System clipboard access.",
+          },
+          {
+            name: "OpenUrl",
+            type: "undefined",
+            description: "Open a URL in an external browser.",
+          },
+          {
+            name: "Biometrics",
+            type: "undefined",
+            description: "Biometric authentication (fingerprint, face ID).",
           },
         ],
       },
       {
         id: "HostDevicePermissionResponse",
         name: "HostDevicePermissionResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostDevicePermissionResponse = { tag: "V1"; value: V01HostDevicePermissionResponse } | { tag: "V2"; value: V01HostDevicePermissionResponse }',
+          "interface HostDevicePermissionResponse { granted: boolean }",
         description:
-          "Versioned wrapper for [`v01::HostDevicePermissionResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "Response indicating whether a device permission was granted.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostDevicePermissionResponse",
-          },
-          {
-            name: "V2",
-            type: "V01HostDevicePermissionResponse",
-          },
-        ],
-      },
-      {
-        id: "HostFeatureSupportedError",
-        name: "HostFeatureSupportedError",
-        category: "versioned",
-        definition:
-          'type HostFeatureSupportedError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
+            name: "granted",
+            type: "boolean",
+            description: "Whether the permission was granted.",
           },
         ],
       },
       {
         id: "HostFeatureSupportedRequest",
         name: "HostFeatureSupportedRequest",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostFeatureSupportedRequest = { tag: "V1"; value: V01HostFeatureSupportedRequest }',
-        description:
-          "Versioned wrapper for [`v01::HostFeatureSupportedRequest`] and older versions.",
-        source: "shared",
+          'type HostFeatureSupportedRequest = { tag: "Chain"; value: { genesisHash: Uint8Array } }',
+        description: "Feature to check for host support.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01HostFeatureSupportedRequest",
+            name: "Chain",
+            type: "{ genesisHash: Uint8Array }",
+            description: "Is this blockchain supported?",
           },
         ],
       },
       {
         id: "HostFeatureSupportedResponse",
         name: "HostFeatureSupportedResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostFeatureSupportedResponse = { tag: "V1"; value: V01HostFeatureSupportedResponse }',
-        description:
-          "Versioned wrapper for [`v01::HostFeatureSupportedResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostFeatureSupportedResponse { supported: boolean }",
+        description: "Response indicating whether a host feature is supported.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostFeatureSupportedResponse",
-          },
-        ],
-      },
-      {
-        id: "HostGetLegacyAccountsError",
-        name: "HostGetLegacyAccountsError",
-        category: "versioned",
-        definition:
-          'type HostGetLegacyAccountsError = { tag: "V1"; value: V01HostAccountGetError }',
-        description:
-          "Versioned wrapper around the legacy-accounts error path; reuses [`v01::HostAccountGetError`].",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "V01HostAccountGetError",
-          },
-        ],
-      },
-      {
-        id: "HostGetLegacyAccountsRequest",
-        name: "HostGetLegacyAccountsRequest",
-        category: "versioned",
-        definition:
-          'type HostGetLegacyAccountsRequest = { tag: "V1"; value: undefined }',
-        description: "Versioned wrapper for unit and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "undefined",
+            name: "supported",
+            type: "boolean",
+            description: "Whether the feature is supported.",
           },
         ],
       },
       {
         id: "HostGetLegacyAccountsResponse",
         name: "HostGetLegacyAccountsResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostGetLegacyAccountsResponse = { tag: "V1"; value: V01HostGetLegacyAccountsResponse }',
+          "interface HostGetLegacyAccountsResponse { accounts: Array<Account> }",
         description:
-          "Versioned wrapper for [`v01::HostGetLegacyAccountsResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "Response containing all non-product accounts owned by the user.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostGetLegacyAccountsResponse",
+            name: "accounts",
+            type: "Array<Account>",
+            description: "Non-product accounts.",
           },
         ],
       },
       {
         id: "HostGetUserIdError",
         name: "HostGetUserIdError",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostGetUserIdError = { tag: "V2"; value: V02HostGetUserIdError }',
+          'type HostGetUserIdError = { tag: "PermissionDenied"; value: undefined } | { tag: "NotConnected"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description:
-          "Versioned wrapper for [`v02::HostGetUserIdError`] and older versions.",
-        source: "shared",
+          "Error from [`crate::api::AccountManagement::host_get_user_id`].\n\nV0.2.",
+        source: "v0.2",
         variants: [
           {
-            name: "V2",
-            type: "V02HostGetUserIdError",
-          },
-        ],
-      },
-      {
-        id: "HostGetUserIdRequest",
-        name: "HostGetUserIdRequest",
-        category: "versioned",
-        definition:
-          'type HostGetUserIdRequest = { tag: "V2"; value: undefined }',
-        description: "Versioned wrapper for unit and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V2",
+            name: "PermissionDenied",
             type: "undefined",
+            description: "User denied the identity disclosure request.",
+          },
+          {
+            name: "NotConnected",
+            type: "undefined",
+            description: "User is not logged in.",
+          },
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
           },
         ],
       },
       {
         id: "HostGetUserIdResponse",
         name: "HostGetUserIdResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostGetUserIdResponse = { tag: "V2"; value: V02HostGetUserIdResponse }',
-        description:
-          "Versioned wrapper for [`v02::HostGetUserIdResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostGetUserIdResponse { primaryUsername: string; publicKey: Uint8Array }",
+        description: "The user's primary DotNS account identity.\n\nV0.2.",
+        source: "v0.2",
+        fields: [
           {
-            name: "V2",
-            type: "V02HostGetUserIdResponse",
+            name: "primaryUsername",
+            type: "string",
+            description: "The user's primary DotNS username.",
+          },
+          {
+            name: "publicKey",
+            type: "Uint8Array",
+            description: "The user's primary public key.",
           },
         ],
       },
       {
         id: "HostHandshakeError",
         name: "HostHandshakeError",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostHandshakeError = { tag: "V1"; value: V02HostHandshakeError }',
+          'type HostHandshakeError = { tag: "Timeout"; value: undefined } | { tag: "UnsupportedProtocolVersion"; value: undefined } | { tag: "Unknown"; value: GenericErr }',
         description:
-          "Versioned wrapper for [`v02::HostHandshakeError`] and older versions.",
-        source: "shared",
+          "Handshake error. Mirrors Novasama's `HandshakeErr` byte-for-byte so that\npre-codegen products (built against `@novasamatech/host-api`) can decode\n`host_handshake_response` frames produced by this host.",
+        source: "v0.2",
         variants: [
           {
-            name: "V1",
-            type: "V02HostHandshakeError",
+            name: "Timeout",
+            type: "undefined",
+          },
+          {
+            name: "UnsupportedProtocolVersion",
+            type: "undefined",
+          },
+          {
+            name: "Unknown",
+            type: "GenericErr",
           },
         ],
       },
       {
         id: "HostHandshakeRequest",
         name: "HostHandshakeRequest",
-        category: "versioned",
-        definition:
-          'type HostHandshakeRequest = { tag: "V1"; value: V01HostHandshakeRequest }',
-        description:
-          "Versioned wrapper for [`v01::HostHandshakeRequest`] and older versions.",
-        source: "shared",
-        variants: [
+        category: "struct",
+        definition: "interface HostHandshakeRequest { codecVersion: number }",
+        description: "Request to negotiate the wire codec version.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostHandshakeRequest",
-          },
-        ],
-      },
-      {
-        id: "HostHandshakeResponse",
-        name: "HostHandshakeResponse",
-        category: "versioned",
-        definition:
-          'type HostHandshakeResponse = { tag: "V1"; value: undefined }',
-        description: "Versioned wrapper for unit and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "undefined",
-          },
-        ],
-      },
-      {
-        id: "HostLocalStorageClearError",
-        name: "HostLocalStorageClearError",
-        category: "versioned",
-        definition:
-          'type HostLocalStorageClearError = { tag: "V1"; value: V01HostLocalStorageReadError }',
-        description:
-          "Versioned wrapper for [`v01::HostLocalStorageReadError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "V01HostLocalStorageReadError",
+            name: "codecVersion",
+            type: "number",
+            description: "Wire codec version requested by the peer.",
           },
         ],
       },
       {
         id: "HostLocalStorageClearRequest",
         name: "HostLocalStorageClearRequest",
-        category: "versioned",
-        definition:
-          'type HostLocalStorageClearRequest = { tag: "V1"; value: V01HostLocalStorageClearRequest }',
-        description:
-          "Versioned wrapper for [`v01::HostLocalStorageClearRequest`] and older versions.",
-        source: "shared",
-        variants: [
+        category: "struct",
+        definition: "interface HostLocalStorageClearRequest { key: string }",
+        description: "Request to clear a local storage key.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostLocalStorageClearRequest",
-          },
-        ],
-      },
-      {
-        id: "HostLocalStorageClearResponse",
-        name: "HostLocalStorageClearResponse",
-        category: "versioned",
-        definition:
-          'type HostLocalStorageClearResponse = { tag: "V1"; value: undefined }',
-        description: "Versioned wrapper for unit and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "undefined",
+            name: "key",
+            type: "string",
+            description: "Storage key to clear.",
           },
         ],
       },
       {
         id: "HostLocalStorageReadError",
         name: "HostLocalStorageReadError",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostLocalStorageReadError = { tag: "V1"; value: V01HostLocalStorageReadError }',
-        description:
-          "Versioned wrapper for [`v01::HostLocalStorageReadError`] and older versions.",
-        source: "shared",
+          'type HostLocalStorageReadError = { tag: "Full"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description: "Local storage operation error.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01HostLocalStorageReadError",
+            name: "Full",
+            type: "undefined",
+            description: "Storage quota exceeded.",
+          },
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
           },
         ],
       },
       {
         id: "HostLocalStorageReadRequest",
         name: "HostLocalStorageReadRequest",
-        category: "versioned",
-        definition:
-          'type HostLocalStorageReadRequest = { tag: "V1"; value: V01HostLocalStorageReadRequest }',
-        description:
-          "Versioned wrapper for [`v01::HostLocalStorageReadRequest`] and older versions.",
-        source: "shared",
-        variants: [
+        category: "struct",
+        definition: "interface HostLocalStorageReadRequest { key: string }",
+        description: "Request to read a local storage value.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostLocalStorageReadRequest",
+            name: "key",
+            type: "string",
+            description: "Storage key to read.",
           },
         ],
       },
       {
         id: "HostLocalStorageReadResponse",
         name: "HostLocalStorageReadResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostLocalStorageReadResponse = { tag: "V1"; value: V01HostLocalStorageReadResponse }',
-        description:
-          "Versioned wrapper for [`v01::HostLocalStorageReadResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostLocalStorageReadResponse { value?: Uint8Array }",
+        description: "Response containing an optional local storage value.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostLocalStorageReadResponse",
-          },
-        ],
-      },
-      {
-        id: "HostLocalStorageWriteError",
-        name: "HostLocalStorageWriteError",
-        category: "versioned",
-        definition:
-          'type HostLocalStorageWriteError = { tag: "V1"; value: V01HostLocalStorageReadError }',
-        description:
-          "Versioned wrapper for [`v01::HostLocalStorageReadError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "V01HostLocalStorageReadError",
+            name: "value",
+            type: "Uint8Array",
+            description: "Stored value, if present.",
           },
         ],
       },
       {
         id: "HostLocalStorageWriteRequest",
         name: "HostLocalStorageWriteRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostLocalStorageWriteRequest = { tag: "V1"; value: V01HostLocalStorageWriteRequest }',
-        description:
-          "Versioned wrapper for [`v01::HostLocalStorageWriteRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostLocalStorageWriteRequest { key: string; value: Uint8Array }",
+        description: "Request to write a value into local storage.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostLocalStorageWriteRequest",
+            name: "key",
+            type: "string",
+            description: "Storage key to write.",
           },
-        ],
-      },
-      {
-        id: "HostLocalStorageWriteResponse",
-        name: "HostLocalStorageWriteResponse",
-        category: "versioned",
-        definition:
-          'type HostLocalStorageWriteResponse = { tag: "V1"; value: undefined }',
-        description: "Versioned wrapper for unit and older versions.",
-        source: "shared",
-        variants: [
           {
-            name: "V1",
-            type: "undefined",
+            name: "value",
+            type: "Uint8Array",
+            description: "Value to store at the key.",
           },
         ],
       },
       {
         id: "HostNavigateToError",
         name: "HostNavigateToError",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostNavigateToError = { tag: "V1"; value: V01HostNavigateToError }',
-        description:
-          "Versioned wrapper for [`v01::HostNavigateToError`] and older versions.",
-        source: "shared",
+          'type HostNavigateToError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description: "Navigation error.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01HostNavigateToError",
+            name: "PermissionDenied",
+            type: "undefined",
+            description: "Navigation not allowed.",
+          },
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
           },
         ],
       },
       {
         id: "HostNavigateToRequest",
         name: "HostNavigateToRequest",
-        category: "versioned",
-        definition:
-          'type HostNavigateToRequest = { tag: "V1"; value: V01HostNavigateToRequest }',
-        description:
-          "Versioned wrapper for [`v01::HostNavigateToRequest`] and older versions.",
-        source: "shared",
-        variants: [
+        category: "struct",
+        definition: "interface HostNavigateToRequest { url: string }",
+        description: "Request to navigate to a URL.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostNavigateToRequest",
-          },
-        ],
-      },
-      {
-        id: "HostNavigateToResponse",
-        name: "HostNavigateToResponse",
-        category: "versioned",
-        definition:
-          'type HostNavigateToResponse = { tag: "V1"; value: undefined }',
-        description: "Versioned wrapper for unit and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "undefined",
+            name: "url",
+            type: "string",
+            description: "URL to open.",
           },
         ],
       },
       {
         id: "HostPaymentBalanceSubscribeItem",
         name: "HostPaymentBalanceSubscribeItem",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostPaymentBalanceSubscribeItem = { tag: "V2"; value: V02HostPaymentBalanceSubscribeItem }',
+          "interface HostPaymentBalanceSubscribeItem { available: Balance }",
         description:
-          "Versioned wrapper for [`v02::HostPaymentBalanceSubscribeItem`] and older versions.",
-        source: "shared",
-        variants: [
+          "Current payment balance state pushed to subscribers.\n\nSee [RFC 0006]. V0.2: the `pending` field was removed; only `available`\nremains.\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
+        source: "v0.2",
+        fields: [
           {
-            name: "V2",
-            type: "V02HostPaymentBalanceSubscribeItem",
-          },
-        ],
-      },
-      {
-        id: "HostPaymentBalanceSubscribeRequest",
-        name: "HostPaymentBalanceSubscribeRequest",
-        category: "versioned",
-        definition:
-          'type HostPaymentBalanceSubscribeRequest = { tag: "V2"; value: undefined }',
-        description: "Versioned wrapper for unit and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V2",
-            type: "undefined",
+            name: "available",
+            type: "Balance",
+            description: "Balance that can be spent right now.",
           },
         ],
       },
       {
         id: "HostPaymentRequestError",
         name: "HostPaymentRequestError",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostPaymentRequestError = { tag: "V2"; value: V02HostPaymentRequestError }',
+          'type HostPaymentRequestError = { tag: "Rejected"; value: undefined } | { tag: "InsufficientBalance"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description:
-          "Versioned wrapper for [`v02::HostPaymentRequestError`] and older versions.",
-        source: "shared",
+          "Error from [`crate::api::Payment::host_payment_request`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
+        source: "v0.2",
         variants: [
           {
-            name: "V2",
-            type: "V02HostPaymentRequestError",
+            name: "Rejected",
+            type: "undefined",
+            description: "User rejected the payment request.",
+          },
+          {
+            name: "InsufficientBalance",
+            type: "undefined",
+            description:
+              "User's available balance is not sufficient for the requested amount.",
+          },
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
           },
         ],
       },
       {
         id: "HostPaymentRequestRequest",
         name: "HostPaymentRequestRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostPaymentRequestRequest = { tag: "V2"; value: V02HostPaymentRequestRequest }',
-        description:
-          "Versioned wrapper for [`v02::HostPaymentRequestRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostPaymentRequestRequest { amount: Balance; destination: Uint8Array }",
+        description: "Request to initiate a payment to another account.",
+        source: "v0.2",
+        fields: [
           {
-            name: "V2",
-            type: "V02HostPaymentRequestRequest",
+            name: "amount",
+            type: "Balance",
+            description: "Amount to pay.",
+          },
+          {
+            name: "destination",
+            type: "Uint8Array",
+            description: "Destination account.",
           },
         ],
       },
       {
         id: "HostPaymentRequestResponse",
         name: "HostPaymentRequestResponse",
-        category: "versioned",
-        definition:
-          'type HostPaymentRequestResponse = { tag: "V2"; value: V02HostPaymentRequestResponse }',
+        category: "struct",
+        definition: "interface HostPaymentRequestResponse { id: string }",
         description:
-          "Versioned wrapper for [`v02::HostPaymentRequestResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "Receipt returned after a successful payment request.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
+        source: "v0.2",
+        fields: [
           {
-            name: "V2",
-            type: "V02HostPaymentRequestResponse",
+            name: "id",
+            type: "string",
+            description: "The assigned payment identifier.",
           },
         ],
       },
       {
         id: "HostPaymentStatusSubscribeItem",
         name: "HostPaymentStatusSubscribeItem",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostPaymentStatusSubscribeItem = { tag: "V2"; value: V02HostPaymentStatusSubscribeItem }',
+          'type HostPaymentStatusSubscribeItem = { tag: "Processing"; value: undefined } | { tag: "Completed"; value: undefined } | { tag: "Failed"; value: { reason: string } }',
         description:
-          "Versioned wrapper for [`v02::HostPaymentStatusSubscribeItem`] and older versions.",
-        source: "shared",
+          "Payment lifecycle status pushed to subscribers.\n\nOnce a terminal state (`Completed` or `Failed`) is reached, the host\ndelivers it and may close the subscription.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
+        source: "v0.2",
         variants: [
           {
-            name: "V2",
-            type: "V02HostPaymentStatusSubscribeItem",
+            name: "Processing",
+            type: "undefined",
+            description: "Payment is being processed.",
+          },
+          {
+            name: "Completed",
+            type: "undefined",
+            description: "Payment has been settled successfully.",
+          },
+          {
+            name: "Failed",
+            type: "{ reason: string }",
+            description: "Payment has failed.",
           },
         ],
       },
       {
         id: "HostPaymentStatusSubscribeRequest",
         name: "HostPaymentStatusSubscribeRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostPaymentStatusSubscribeRequest = { tag: "V2"; value: V02HostPaymentStatusSubscribeRequest }',
-        description:
-          "Versioned wrapper for [`v02::HostPaymentStatusSubscribeRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostPaymentStatusSubscribeRequest { paymentId: string }",
+        description: "Request to subscribe to a payment status.",
+        source: "v0.2",
+        fields: [
           {
-            name: "V2",
-            type: "V02HostPaymentStatusSubscribeRequest",
+            name: "paymentId",
+            type: "string",
+            description: "Payment identifier to watch.",
           },
         ],
       },
       {
         id: "HostPaymentTopUpError",
         name: "HostPaymentTopUpError",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostPaymentTopUpError = { tag: "V2"; value: V02HostPaymentTopUpError }',
+          'type HostPaymentTopUpError = { tag: "InsufficientFunds"; value: undefined } | { tag: "InvalidSource"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description:
-          "Versioned wrapper for [`v02::HostPaymentTopUpError`] and older versions.",
-        source: "shared",
+          "Error from [`crate::api::Payment::host_payment_top_up`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
+        source: "v0.2",
         variants: [
           {
-            name: "V2",
-            type: "V02HostPaymentTopUpError",
+            name: "InsufficientFunds",
+            type: "undefined",
+            description: "The source account does not hold sufficient funds.",
+          },
+          {
+            name: "InvalidSource",
+            type: "undefined",
+            description: "The source account was not found or is invalid.",
+          },
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
           },
         ],
       },
       {
         id: "HostPaymentTopUpRequest",
         name: "HostPaymentTopUpRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostPaymentTopUpRequest = { tag: "V2"; value: V02HostPaymentTopUpRequest }',
-        description:
-          "Versioned wrapper for [`v02::HostPaymentTopUpRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostPaymentTopUpRequest { amount: Balance; source: PaymentTopUpSource }",
+        description: "Request to top up the product payment balance.",
+        source: "v0.2",
+        fields: [
           {
-            name: "V2",
-            type: "V02HostPaymentTopUpRequest",
+            name: "amount",
+            type: "Balance",
+            description: "Amount to top up.",
           },
-        ],
-      },
-      {
-        id: "HostPaymentTopUpResponse",
-        name: "HostPaymentTopUpResponse",
-        category: "versioned",
-        definition:
-          'type HostPaymentTopUpResponse = { tag: "V2"; value: undefined }',
-        description: "Versioned wrapper for unit and older versions.",
-        source: "shared",
-        variants: [
           {
-            name: "V2",
-            type: "undefined",
-          },
-        ],
-      },
-      {
-        id: "HostPushNotificationError",
-        name: "HostPushNotificationError",
-        category: "versioned",
-        definition:
-          'type HostPushNotificationError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
+            name: "source",
+            type: "PaymentTopUpSource",
+            description: "Funding source for the top-up.",
           },
         ],
       },
       {
         id: "HostPushNotificationRequest",
         name: "HostPushNotificationRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostPushNotificationRequest = { tag: "V1"; value: V01HostPushNotificationRequest }',
-        description:
-          "Versioned wrapper for [`v01::HostPushNotificationRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface HostPushNotificationRequest { text: string; deeplink?: string }",
+        description: "Push notification payload.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostPushNotificationRequest",
+            name: "text",
+            type: "string",
+            description: "Notification text.",
           },
-        ],
-      },
-      {
-        id: "HostPushNotificationResponse",
-        name: "HostPushNotificationResponse",
-        category: "versioned",
-        definition:
-          'type HostPushNotificationResponse = { tag: "V1"; value: undefined }',
-        description: "Versioned wrapper for unit and older versions.",
-        source: "shared",
-        variants: [
           {
-            name: "V1",
-            type: "undefined",
+            name: "deeplink",
+            type: "string",
+            description: "Optional URL to open on tap.",
           },
         ],
       },
       {
         id: "HostSignPayloadError",
         name: "HostSignPayloadError",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type HostSignPayloadError = { tag: "V1"; value: V01HostSignPayloadError } | { tag: "V2"; value: V01HostSignPayloadError }',
-        description:
-          "Versioned wrapper for the sign-payload error (shared across v0.1/v0.2).",
-        source: "shared",
+          'type HostSignPayloadError = { tag: "FailedToDecode"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description: "Signing operation error.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01HostSignPayloadError",
+            name: "FailedToDecode",
+            type: "undefined",
+            description: "Payload could not be deserialized.",
           },
           {
-            name: "V2",
-            type: "V01HostSignPayloadError",
+            name: "Rejected",
+            type: "undefined",
+            description: "User rejected signing.",
+          },
+          {
+            name: "PermissionDenied",
+            type: "undefined",
+            description: "Not authenticated.",
+          },
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
           },
         ],
       },
       {
         id: "HostSignPayloadRequest",
         name: "HostSignPayloadRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostSignPayloadRequest = { tag: "V1"; value: V01HostSignPayloadRequest } | { tag: "V2"; value: V02HostSignPayloadRequest }',
+          "interface HostSignPayloadRequest { account: ProductAccountId; blockHash: Uint8Array; blockNumber: Uint8Array; era: Uint8Array; genesisHash: Uint8Array; method: Uint8Array; nonce: Uint8Array; specVersion: Uint8Array; tip: Uint8Array; transactionVersion: Uint8Array; signedExtensions: Array<string>; version: number; assetId?: Uint8Array; metadataHash?: Uint8Array; mode?: number; withSignedTransaction?: boolean }",
         description:
-          "Versioned wrapper covering both v0.1 and v0.2 sign-payload requests.",
-        source: "shared",
-        variants: [
+          "Full Substrate extrinsic signing payload with all fields needed for signature\ngeneration.",
+        source: "v0.2",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostSignPayloadRequest",
+            name: "account",
+            type: "ProductAccountId",
+            description:
+              "Product account that will sign this payload.\n\nV0.2: replaces the previous `address: String` field per [RFC 0005],\naligning with all other TrUAPI account-related methods.\n\n[RFC 0005]: https://github.com/paritytech/triangle-js-sdks/pull/82",
           },
           {
-            name: "V2",
-            type: "V02HostSignPayloadRequest",
+            name: "blockHash",
+            type: "Uint8Array",
+            description: "Reference block hash.",
+          },
+          {
+            name: "blockNumber",
+            type: "Uint8Array",
+            description: "Reference block number.",
+          },
+          {
+            name: "era",
+            type: "Uint8Array",
+            description: "Mortality era encoding.",
+          },
+          {
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
+          },
+          {
+            name: "method",
+            type: "Uint8Array",
+            description: "SCALE-encoded call data.",
+          },
+          {
+            name: "nonce",
+            type: "Uint8Array",
+            description: "Account nonce.",
+          },
+          {
+            name: "specVersion",
+            type: "Uint8Array",
+            description: "Runtime spec version.",
+          },
+          {
+            name: "tip",
+            type: "Uint8Array",
+            description: "Transaction tip.",
+          },
+          {
+            name: "transactionVersion",
+            type: "Uint8Array",
+            description: "Transaction format version.",
+          },
+          {
+            name: "signedExtensions",
+            type: "Array<string>",
+            description: "Extension identifiers.",
+          },
+          {
+            name: "version",
+            type: "number",
+            description: "Extrinsic version.",
+          },
+          {
+            name: "assetId",
+            type: "Uint8Array",
+            description: "For multi-asset tips.",
+          },
+          {
+            name: "metadataHash",
+            type: "Uint8Array",
+            description: "CheckMetadataHash extension.",
+          },
+          {
+            name: "mode",
+            type: "number",
+            description: "Metadata mode.",
+          },
+          {
+            name: "withSignedTransaction",
+            type: "boolean",
+            description: "Request signed transaction back.",
           },
         ],
       },
       {
         id: "HostSignPayloadResponse",
         name: "HostSignPayloadResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostSignPayloadResponse = { tag: "V1"; value: V01HostSignPayloadResponse } | { tag: "V2"; value: V01HostSignPayloadResponse }',
-        description:
-          "Versioned wrapper for the sign-payload response (shared across v0.1/v0.2).",
-        source: "shared",
-        variants: [
+          "interface HostSignPayloadResponse { signature: Uint8Array; signedTransaction?: Uint8Array }",
+        description: "Result of a signing operation.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostSignPayloadResponse",
+            name: "signature",
+            type: "Uint8Array",
+            description: "The cryptographic signature.",
           },
           {
-            name: "V2",
-            type: "V01HostSignPayloadResponse",
-          },
-        ],
-      },
-      {
-        id: "HostSignRawError",
-        name: "HostSignRawError",
-        category: "versioned",
-        definition:
-          'type HostSignRawError = { tag: "V1"; value: V01HostSignPayloadError } | { tag: "V2"; value: V01HostSignPayloadError }',
-        description:
-          "Versioned wrapper for the sign-raw error; reuses [`v01::HostSignPayloadError`].",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "V01HostSignPayloadError",
-          },
-          {
-            name: "V2",
-            type: "V01HostSignPayloadError",
+            name: "signedTransaction",
+            type: "Uint8Array",
+            description: "Full signed transaction, if requested.",
           },
         ],
       },
       {
         id: "HostSignRawRequest",
         name: "HostSignRawRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type HostSignRawRequest = { tag: "V1"; value: V01HostSignRawRequest } | { tag: "V2"; value: V02HostSignRawRequest }',
+          "interface HostSignRawRequest { account: ProductAccountId; payload: RawPayload }",
         description:
-          "Versioned wrapper covering both v0.1 and v0.2 sign-raw requests.",
-        source: "shared",
-        variants: [
+          "A raw signing request pairing an account with the payload to sign.\n\nV0.2: `address` replaced with `account: ProductAccountId` per [RFC 0005];\nthe `data` field was also renamed to `payload`.\n\n[RFC 0005]: https://github.com/paritytech/triangle-js-sdks/pull/82",
+        source: "v0.2",
+        fields: [
           {
-            name: "V1",
-            type: "V01HostSignRawRequest",
+            name: "account",
+            type: "ProductAccountId",
+            description: "Product account that will sign this payload.",
           },
           {
-            name: "V2",
-            type: "V02HostSignRawRequest",
-          },
-        ],
-      },
-      {
-        id: "HostSignRawResponse",
-        name: "HostSignRawResponse",
-        category: "versioned",
-        definition:
-          'type HostSignRawResponse = { tag: "V1"; value: V01HostSignPayloadResponse } | { tag: "V2"; value: V01HostSignPayloadResponse }',
-        description:
-          "Versioned wrapper for the sign-raw response; reuses [`v01::HostSignPayloadResponse`].",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "V01HostSignPayloadResponse",
-          },
-          {
-            name: "V2",
-            type: "V01HostSignPayloadResponse",
+            name: "payload",
+            type: "RawPayload",
+            description: "The payload to sign.",
           },
         ],
       },
@@ -8829,34 +7062,29 @@ export const versions: ExplorerVersion[] = [
         ],
       },
       {
-        id: "ProductChatCustomMessageRenderSubscribeItem",
-        name: "ProductChatCustomMessageRenderSubscribeItem",
-        category: "versioned",
-        definition:
-          'type ProductChatCustomMessageRenderSubscribeItem = { tag: "V1"; value: CustomRendererNode }',
-        description:
-          "Versioned wrapper for [`v01::CustomRendererNode`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "CustomRendererNode",
-          },
-        ],
-      },
-      {
         id: "ProductChatCustomMessageRenderSubscribeRequest",
         name: "ProductChatCustomMessageRenderSubscribeRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type ProductChatCustomMessageRenderSubscribeRequest = { tag: "V1"; value: V01ProductChatCustomMessageRenderSubscribeRequest }',
+          "interface ProductChatCustomMessageRenderSubscribeRequest { messageId: string; messageType: string; payload: Uint8Array }",
         description:
-          "Versioned wrapper for [`v01::ProductChatCustomMessageRenderSubscribeRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Subscribe payload identifying the chat message to render. The host responds\nwith a stream of [`CustomRendererNode`] trees describing the rendered UI.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01ProductChatCustomMessageRenderSubscribeRequest",
+            name: "messageId",
+            type: "string",
+            description: "Message identifier.",
+          },
+          {
+            name: "messageType",
+            type: "string",
+            description: "Application-defined message type.",
+          },
+          {
+            name: "payload",
+            type: "Uint8Array",
+            description: "Binary payload.",
           },
         ],
       },
@@ -8883,606 +7111,528 @@ export const versions: ExplorerVersion[] = [
         ],
       },
       {
-        id: "RemoteChainHeadBodyError",
-        name: "RemoteChainHeadBodyError",
-        category: "versioned",
-        definition:
-          'type RemoteChainHeadBodyError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
-          },
-        ],
-      },
-      {
         id: "RemoteChainHeadBodyRequest",
         name: "RemoteChainHeadBodyRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainHeadBodyRequest = { tag: "V1"; value: V01RemoteChainHeadBodyRequest }',
+          "interface RemoteChainHeadBodyRequest { genesisHash: Uint8Array; followSubscriptionId: string; hash: Uint8Array }",
         description:
-          "Versioned wrapper for [`v01::RemoteChainHeadBodyRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_body`].",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainHeadBodyRequest",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
+          },
+          {
+            name: "followSubscriptionId",
+            type: "string",
+            description: "Follow subscription identifier.",
+          },
+          {
+            name: "hash",
+            type: "Uint8Array",
+            description: "Block hash.",
           },
         ],
       },
       {
         id: "RemoteChainHeadBodyResponse",
         name: "RemoteChainHeadBodyResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainHeadBodyResponse = { tag: "V1"; value: V01RemoteChainHeadBodyResponse }',
-        description:
-          "Versioned wrapper for [`v01::RemoteChainHeadBodyResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface RemoteChainHeadBodyResponse { operation: OperationStartedResult }",
+        description: "Response indicating a block body operation was started.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainHeadBodyResponse",
-          },
-        ],
-      },
-      {
-        id: "RemoteChainHeadCallError",
-        name: "RemoteChainHeadCallError",
-        category: "versioned",
-        definition:
-          'type RemoteChainHeadCallError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
+            name: "operation",
+            type: "OperationStartedResult",
+            description: "Started operation result.",
           },
         ],
       },
       {
         id: "RemoteChainHeadCallRequest",
         name: "RemoteChainHeadCallRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainHeadCallRequest = { tag: "V1"; value: V01RemoteChainHeadCallRequest }',
+          "interface RemoteChainHeadCallRequest { genesisHash: Uint8Array; followSubscriptionId: string; hash: Uint8Array; function: string; callParameters: Uint8Array }",
         description:
-          "Versioned wrapper for [`v01::RemoteChainHeadCallRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_call`].",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainHeadCallRequest",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
+          },
+          {
+            name: "followSubscriptionId",
+            type: "string",
+            description: "Follow subscription identifier.",
+          },
+          {
+            name: "hash",
+            type: "Uint8Array",
+            description: "Block hash.",
+          },
+          {
+            name: "function",
+            type: "string",
+            description: "Runtime API function name.",
+          },
+          {
+            name: "callParameters",
+            type: "Uint8Array",
+            description: "SCALE-encoded call parameters.",
           },
         ],
       },
       {
         id: "RemoteChainHeadCallResponse",
         name: "RemoteChainHeadCallResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainHeadCallResponse = { tag: "V1"; value: V01RemoteChainHeadCallResponse }',
+          "interface RemoteChainHeadCallResponse { operation: OperationStartedResult }",
         description:
-          "Versioned wrapper for [`v01::RemoteChainHeadCallResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "Response indicating a runtime call operation was started.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainHeadCallResponse",
-          },
-        ],
-      },
-      {
-        id: "RemoteChainHeadContinueError",
-        name: "RemoteChainHeadContinueError",
-        category: "versioned",
-        definition:
-          'type RemoteChainHeadContinueError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
+            name: "operation",
+            type: "OperationStartedResult",
+            description: "Started operation result.",
           },
         ],
       },
       {
         id: "RemoteChainHeadContinueRequest",
         name: "RemoteChainHeadContinueRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainHeadContinueRequest = { tag: "V1"; value: V01RemoteChainHeadContinueRequest }',
+          "interface RemoteChainHeadContinueRequest { genesisHash: Uint8Array; followSubscriptionId: string; operationId: string }",
         description:
-          "Versioned wrapper for [`v01::RemoteChainHeadContinueRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_continue`].",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainHeadContinueRequest",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
           },
-        ],
-      },
-      {
-        id: "RemoteChainHeadContinueResponse",
-        name: "RemoteChainHeadContinueResponse",
-        category: "versioned",
-        definition:
-          'type RemoteChainHeadContinueResponse = { tag: "V1"; value: undefined }',
-        description: "Versioned wrapper for unit and older versions.",
-        source: "shared",
-        variants: [
           {
-            name: "V1",
-            type: "undefined",
+            name: "followSubscriptionId",
+            type: "string",
+            description: "Follow subscription identifier.",
+          },
+          {
+            name: "operationId",
+            type: "string",
+            description: "Operation identifier.",
           },
         ],
       },
       {
         id: "RemoteChainHeadFollowItem",
         name: "RemoteChainHeadFollowItem",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type RemoteChainHeadFollowItem = { tag: "V1"; value: V01RemoteChainHeadFollowItem }',
-        description:
-          "Versioned wrapper for [`v01::RemoteChainHeadFollowItem`] and older versions.",
-        source: "shared",
+          'type RemoteChainHeadFollowItem = { tag: "Initialized"; value: { finalizedBlockHashes: Array<Uint8Array>; finalizedBlockRuntime?: RuntimeType } } | { tag: "NewBlock"; value: { blockHash: Uint8Array; parentBlockHash: Uint8Array; newRuntime?: RuntimeType } } | { tag: "BestBlockChanged"; value: { bestBlockHash: Uint8Array } } | { tag: "Finalized"; value: { finalizedBlockHashes: Array<Uint8Array>; prunedBlockHashes: Array<Uint8Array> } } | { tag: "OperationBodyDone"; value: { operationId: string; value: Array<Uint8Array> } } | { tag: "OperationCallDone"; value: { operationId: string; output: Uint8Array } } | { tag: "OperationStorageItems"; value: { operationId: string; items: Array<StorageResultItem> } } | { tag: "OperationStorageDone"; value: { operationId: string } } | { tag: "OperationWaitingForContinue"; value: { operationId: string } } | { tag: "OperationInaccessible"; value: { operationId: string } } | { tag: "OperationError"; value: { operationId: string; error: string } } | { tag: "Stop"; value: undefined }',
+        description: "Events received when following the chain head.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01RemoteChainHeadFollowItem",
+            name: "Initialized",
+            type: "{ finalizedBlockHashes: Array<Uint8Array>; finalizedBlockRuntime?: RuntimeType }",
+            description: "Initial state with finalized blocks.",
+          },
+          {
+            name: "NewBlock",
+            type: "{ blockHash: Uint8Array; parentBlockHash: Uint8Array; newRuntime?: RuntimeType }",
+            description: "A new block was produced.",
+          },
+          {
+            name: "BestBlockChanged",
+            type: "{ bestBlockHash: Uint8Array }",
+            description: "Best block changed.",
+          },
+          {
+            name: "Finalized",
+            type: "{ finalizedBlockHashes: Array<Uint8Array>; prunedBlockHashes: Array<Uint8Array> }",
+            description: "Blocks were finalized.",
+          },
+          {
+            name: "OperationBodyDone",
+            type: "{ operationId: string; value: Array<Uint8Array> }",
+            description: "Body fetch completed.",
+          },
+          {
+            name: "OperationCallDone",
+            type: "{ operationId: string; output: Uint8Array }",
+            description: "Runtime call completed.",
+          },
+          {
+            name: "OperationStorageItems",
+            type: "{ operationId: string; items: Array<StorageResultItem> }",
+            description: "Storage results batch.",
+          },
+          {
+            name: "OperationStorageDone",
+            type: "{ operationId: string }",
+            description: "Storage query completed.",
+          },
+          {
+            name: "OperationWaitingForContinue",
+            type: "{ operationId: string }",
+            description:
+              "Operation paused, needs [`crate::api::ChainInteraction::remote_chain_head_continue`].",
+          },
+          {
+            name: "OperationInaccessible",
+            type: "{ operationId: string }",
+            description: "Block became inaccessible.",
+          },
+          {
+            name: "OperationError",
+            type: "{ operationId: string; error: string }",
+            description: "Operation failed.",
+          },
+          {
+            name: "Stop",
+            type: "undefined",
+            description: "Subscription terminated by server.",
           },
         ],
       },
       {
         id: "RemoteChainHeadFollowRequest",
         name: "RemoteChainHeadFollowRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainHeadFollowRequest = { tag: "V1"; value: V01RemoteChainHeadFollowRequest }',
+          "interface RemoteChainHeadFollowRequest { genesisHash: Uint8Array; withRuntime: boolean }",
         description:
-          "Versioned wrapper for [`v01::RemoteChainHeadFollowRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_follow`].",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainHeadFollowRequest",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
           },
-        ],
-      },
-      {
-        id: "RemoteChainHeadHeaderError",
-        name: "RemoteChainHeadHeaderError",
-        category: "versioned",
-        definition:
-          'type RemoteChainHeadHeaderError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
           {
-            name: "V1",
-            type: "GenericError",
+            name: "withRuntime",
+            type: "boolean",
+            description: "Whether to include runtime information in events.",
           },
         ],
       },
       {
         id: "RemoteChainHeadHeaderRequest",
         name: "RemoteChainHeadHeaderRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainHeadHeaderRequest = { tag: "V1"; value: V01RemoteChainHeadHeaderRequest }',
+          "interface RemoteChainHeadHeaderRequest { genesisHash: Uint8Array; followSubscriptionId: string; hash: Uint8Array }",
         description:
-          "Versioned wrapper for [`v01::RemoteChainHeadHeaderRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_header`].",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainHeadHeaderRequest",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
+          },
+          {
+            name: "followSubscriptionId",
+            type: "string",
+            description: "Follow subscription identifier.",
+          },
+          {
+            name: "hash",
+            type: "Uint8Array",
+            description: "Block hash.",
           },
         ],
       },
       {
         id: "RemoteChainHeadHeaderResponse",
         name: "RemoteChainHeadHeaderResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainHeadHeaderResponse = { tag: "V1"; value: V01RemoteChainHeadHeaderResponse }',
-        description:
-          "Versioned wrapper for [`v01::RemoteChainHeadHeaderResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface RemoteChainHeadHeaderResponse { header?: Uint8Array }",
+        description: "Response containing a block header, if available.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainHeadHeaderResponse",
-          },
-        ],
-      },
-      {
-        id: "RemoteChainHeadStopOperationError",
-        name: "RemoteChainHeadStopOperationError",
-        category: "versioned",
-        definition:
-          'type RemoteChainHeadStopOperationError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
+            name: "header",
+            type: "Uint8Array",
+            description: "SCALE-encoded block header.",
           },
         ],
       },
       {
         id: "RemoteChainHeadStopOperationRequest",
         name: "RemoteChainHeadStopOperationRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainHeadStopOperationRequest = { tag: "V1"; value: V01RemoteChainHeadStopOperationRequest }',
+          "interface RemoteChainHeadStopOperationRequest { genesisHash: Uint8Array; followSubscriptionId: string; operationId: string }",
         description:
-          "Versioned wrapper for [`v01::RemoteChainHeadStopOperationRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_stop_operation`].",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainHeadStopOperationRequest",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
           },
-        ],
-      },
-      {
-        id: "RemoteChainHeadStopOperationResponse",
-        name: "RemoteChainHeadStopOperationResponse",
-        category: "versioned",
-        definition:
-          'type RemoteChainHeadStopOperationResponse = { tag: "V1"; value: undefined }',
-        description: "Versioned wrapper for unit and older versions.",
-        source: "shared",
-        variants: [
           {
-            name: "V1",
-            type: "undefined",
+            name: "followSubscriptionId",
+            type: "string",
+            description: "Follow subscription identifier.",
           },
-        ],
-      },
-      {
-        id: "RemoteChainHeadStorageError",
-        name: "RemoteChainHeadStorageError",
-        category: "versioned",
-        definition:
-          'type RemoteChainHeadStorageError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
           {
-            name: "V1",
-            type: "GenericError",
+            name: "operationId",
+            type: "string",
+            description: "Operation identifier.",
           },
         ],
       },
       {
         id: "RemoteChainHeadStorageRequest",
         name: "RemoteChainHeadStorageRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainHeadStorageRequest = { tag: "V1"; value: V01RemoteChainHeadStorageRequest }',
+          "interface RemoteChainHeadStorageRequest { genesisHash: Uint8Array; followSubscriptionId: string; hash: Uint8Array; items: Array<StorageQueryItem>; childTrie?: Uint8Array }",
         description:
-          "Versioned wrapper for [`v01::RemoteChainHeadStorageRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_storage`].",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainHeadStorageRequest",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
+          },
+          {
+            name: "followSubscriptionId",
+            type: "string",
+            description: "Follow subscription identifier.",
+          },
+          {
+            name: "hash",
+            type: "Uint8Array",
+            description: "Block hash.",
+          },
+          {
+            name: "items",
+            type: "Array<StorageQueryItem>",
+            description: "Storage items to query.",
+          },
+          {
+            name: "childTrie",
+            type: "Uint8Array",
+            description: "Optional child trie.",
           },
         ],
       },
       {
         id: "RemoteChainHeadStorageResponse",
         name: "RemoteChainHeadStorageResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainHeadStorageResponse = { tag: "V1"; value: V01RemoteChainHeadStorageResponse }',
+          "interface RemoteChainHeadStorageResponse { operation: OperationStartedResult }",
         description:
-          "Versioned wrapper for [`v01::RemoteChainHeadStorageResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "Response indicating a storage query operation was started.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainHeadStorageResponse",
-          },
-        ],
-      },
-      {
-        id: "RemoteChainHeadUnpinError",
-        name: "RemoteChainHeadUnpinError",
-        category: "versioned",
-        definition:
-          'type RemoteChainHeadUnpinError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
+            name: "operation",
+            type: "OperationStartedResult",
+            description: "Started operation result.",
           },
         ],
       },
       {
         id: "RemoteChainHeadUnpinRequest",
         name: "RemoteChainHeadUnpinRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainHeadUnpinRequest = { tag: "V1"; value: V01RemoteChainHeadUnpinRequest }',
+          "interface RemoteChainHeadUnpinRequest { genesisHash: Uint8Array; followSubscriptionId: string; hashes: Array<Uint8Array> }",
         description:
-          "Versioned wrapper for [`v01::RemoteChainHeadUnpinRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_unpin`].",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainHeadUnpinRequest",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
           },
-        ],
-      },
-      {
-        id: "RemoteChainHeadUnpinResponse",
-        name: "RemoteChainHeadUnpinResponse",
-        category: "versioned",
-        definition:
-          'type RemoteChainHeadUnpinResponse = { tag: "V1"; value: undefined }',
-        description: "Versioned wrapper for unit and older versions.",
-        source: "shared",
-        variants: [
           {
-            name: "V1",
-            type: "undefined",
+            name: "followSubscriptionId",
+            type: "string",
+            description: "Follow subscription identifier.",
           },
-        ],
-      },
-      {
-        id: "RemoteChainSpecChainNameError",
-        name: "RemoteChainSpecChainNameError",
-        category: "versioned",
-        definition:
-          'type RemoteChainSpecChainNameError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
           {
-            name: "V1",
-            type: "GenericError",
+            name: "hashes",
+            type: "Array<Uint8Array>",
+            description: "Block hashes to unpin.",
           },
         ],
       },
       {
         id: "RemoteChainSpecChainNameRequest",
         name: "RemoteChainSpecChainNameRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainSpecChainNameRequest = { tag: "V1"; value: V01RemoteChainSpecChainNameRequest }',
-        description:
-          "Versioned wrapper for [`v01::RemoteChainSpecChainNameRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface RemoteChainSpecChainNameRequest { genesisHash: Uint8Array }",
+        description: "Request to fetch a chain display name.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainSpecChainNameRequest",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
           },
         ],
       },
       {
         id: "RemoteChainSpecChainNameResponse",
         name: "RemoteChainSpecChainNameResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainSpecChainNameResponse = { tag: "V1"; value: V01RemoteChainSpecChainNameResponse }',
-        description:
-          "Versioned wrapper for [`v01::RemoteChainSpecChainNameResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface RemoteChainSpecChainNameResponse { chainName: string }",
+        description: "Response containing a chain display name.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainSpecChainNameResponse",
-          },
-        ],
-      },
-      {
-        id: "RemoteChainSpecGenesisHashError",
-        name: "RemoteChainSpecGenesisHashError",
-        category: "versioned",
-        definition:
-          'type RemoteChainSpecGenesisHashError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
+            name: "chainName",
+            type: "string",
+            description: "Chain display name.",
           },
         ],
       },
       {
         id: "RemoteChainSpecGenesisHashRequest",
         name: "RemoteChainSpecGenesisHashRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainSpecGenesisHashRequest = { tag: "V1"; value: V01RemoteChainSpecGenesisHashRequest }',
-        description:
-          "Versioned wrapper for [`v01::RemoteChainSpecGenesisHashRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface RemoteChainSpecGenesisHashRequest { genesisHash: Uint8Array }",
+        description: "Request to fetch a chain genesis hash.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainSpecGenesisHashRequest",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash requested by the product.",
           },
         ],
       },
       {
         id: "RemoteChainSpecGenesisHashResponse",
         name: "RemoteChainSpecGenesisHashResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainSpecGenesisHashResponse = { tag: "V1"; value: V01RemoteChainSpecGenesisHashResponse }',
-        description:
-          "Versioned wrapper for [`v01::RemoteChainSpecGenesisHashResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface RemoteChainSpecGenesisHashResponse { genesisHash: Uint8Array }",
+        description: "Response containing a chain genesis hash.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainSpecGenesisHashResponse",
-          },
-        ],
-      },
-      {
-        id: "RemoteChainSpecPropertiesError",
-        name: "RemoteChainSpecPropertiesError",
-        category: "versioned",
-        definition:
-          'type RemoteChainSpecPropertiesError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
           },
         ],
       },
       {
         id: "RemoteChainSpecPropertiesRequest",
         name: "RemoteChainSpecPropertiesRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainSpecPropertiesRequest = { tag: "V1"; value: V01RemoteChainSpecPropertiesRequest }',
-        description:
-          "Versioned wrapper for [`v01::RemoteChainSpecPropertiesRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface RemoteChainSpecPropertiesRequest { genesisHash: Uint8Array }",
+        description: "Request to fetch chain properties.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainSpecPropertiesRequest",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
           },
         ],
       },
       {
         id: "RemoteChainSpecPropertiesResponse",
         name: "RemoteChainSpecPropertiesResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainSpecPropertiesResponse = { tag: "V1"; value: V01RemoteChainSpecPropertiesResponse }',
-        description:
-          "Versioned wrapper for [`v01::RemoteChainSpecPropertiesResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface RemoteChainSpecPropertiesResponse { properties: string }",
+        description: "Response containing JSON-encoded chain properties.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainSpecPropertiesResponse",
-          },
-        ],
-      },
-      {
-        id: "RemoteChainTransactionBroadcastError",
-        name: "RemoteChainTransactionBroadcastError",
-        category: "versioned",
-        definition:
-          'type RemoteChainTransactionBroadcastError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
+            name: "properties",
+            type: "string",
+            description: "JSON-encoded properties.",
           },
         ],
       },
       {
         id: "RemoteChainTransactionBroadcastRequest",
         name: "RemoteChainTransactionBroadcastRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainTransactionBroadcastRequest = { tag: "V1"; value: V01RemoteChainTransactionBroadcastRequest }',
+          "interface RemoteChainTransactionBroadcastRequest { genesisHash: Uint8Array; transaction: Uint8Array }",
         description:
-          "Versioned wrapper for [`v01::RemoteChainTransactionBroadcastRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_broadcast`].",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainTransactionBroadcastRequest",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
+          },
+          {
+            name: "transaction",
+            type: "Uint8Array",
+            description: "Signed transaction bytes.",
           },
         ],
       },
       {
         id: "RemoteChainTransactionBroadcastResponse",
         name: "RemoteChainTransactionBroadcastResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainTransactionBroadcastResponse = { tag: "V1"; value: V01RemoteChainTransactionBroadcastResponse }',
+          "interface RemoteChainTransactionBroadcastResponse { operationId?: string }",
         description:
-          "Versioned wrapper for [`v01::RemoteChainTransactionBroadcastResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "Response containing a transaction broadcast operation identifier.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainTransactionBroadcastResponse",
-          },
-        ],
-      },
-      {
-        id: "RemoteChainTransactionStopError",
-        name: "RemoteChainTransactionStopError",
-        category: "versioned",
-        definition:
-          'type RemoteChainTransactionStopError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
+            name: "operationId",
+            type: "string",
+            description: "Broadcast operation identifier, if available.",
           },
         ],
       },
       {
         id: "RemoteChainTransactionStopRequest",
         name: "RemoteChainTransactionStopRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteChainTransactionStopRequest = { tag: "V1"; value: V01RemoteChainTransactionStopRequest }',
+          "interface RemoteChainTransactionStopRequest { genesisHash: Uint8Array; operationId: string }",
         description:
-          "Versioned wrapper for [`v01::RemoteChainTransactionStopRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_stop`].",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteChainTransactionStopRequest",
+            name: "genesisHash",
+            type: "Uint8Array",
+            description: "Chain genesis hash.",
           },
-        ],
-      },
-      {
-        id: "RemoteChainTransactionStopResponse",
-        name: "RemoteChainTransactionStopResponse",
-        category: "versioned",
-        definition:
-          'type RemoteChainTransactionStopResponse = { tag: "V1"; value: undefined }',
-        description: "Versioned wrapper for unit and older versions.",
-        source: "shared",
-        variants: [
           {
-            name: "V1",
-            type: "undefined",
+            name: "operationId",
+            type: "string",
+            description: "Operation identifier of the broadcast to stop.",
           },
         ],
       },
@@ -9522,214 +7672,175 @@ export const versions: ExplorerVersion[] = [
         ],
       },
       {
-        id: "RemotePermissionError",
-        name: "RemotePermissionError",
-        category: "versioned",
-        definition:
-          'type RemotePermissionError = { tag: "V1"; value: GenericError } | { tag: "V2"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
-          },
-          {
-            name: "V2",
-            type: "GenericError",
-          },
-        ],
-      },
-      {
         id: "RemotePermissionRequest",
         name: "RemotePermissionRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemotePermissionRequest = { tag: "V1"; value: V01RemotePermissionRequest } | { tag: "V2"; value: V02RemotePermissionRequest }',
-        description:
-          "Versioned wrapper for [`v02::RemotePermissionRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface RemotePermissionRequest { permissions: Array<RemotePermission> }",
+        description: "Request containing batched remote-operation permissions.",
+        source: "v0.2",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemotePermissionRequest",
-          },
-          {
-            name: "V2",
-            type: "V02RemotePermissionRequest",
+            name: "permissions",
+            type: "Array<RemotePermission>",
+            description: "Permissions requested by the product.",
           },
         ],
       },
       {
         id: "RemotePermissionResponse",
         name: "RemotePermissionResponse",
-        category: "versioned",
-        definition:
-          'type RemotePermissionResponse = { tag: "V1"; value: V01RemotePermissionResponse } | { tag: "V2"; value: V01RemotePermissionResponse }',
+        category: "struct",
+        definition: "interface RemotePermissionResponse { granted: boolean }",
         description:
-          "Versioned wrapper for [`v01::RemotePermissionResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "Response indicating whether a remote permission was granted.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemotePermissionResponse",
-          },
-          {
-            name: "V2",
-            type: "V01RemotePermissionResponse",
+            name: "granted",
+            type: "boolean",
+            description: "Whether the permission was granted.",
           },
         ],
       },
       {
         id: "RemotePreimageLookupSubscribeItem",
         name: "RemotePreimageLookupSubscribeItem",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemotePreimageLookupSubscribeItem = { tag: "V1"; value: V01RemotePreimageLookupSubscribeItem }',
-        description:
-          "Versioned wrapper for [`v01::RemotePreimageLookupSubscribeItem`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface RemotePreimageLookupSubscribeItem { value?: Uint8Array }",
+        description: "Item containing an optional preimage lookup result.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemotePreimageLookupSubscribeItem",
+            name: "value",
+            type: "Uint8Array",
+            description: "Preimage data, if found.",
           },
         ],
       },
       {
         id: "RemotePreimageLookupSubscribeRequest",
         name: "RemotePreimageLookupSubscribeRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemotePreimageLookupSubscribeRequest = { tag: "V1"; value: V01RemotePreimageLookupSubscribeRequest }',
-        description:
-          "Versioned wrapper for [`v01::RemotePreimageLookupSubscribeRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface RemotePreimageLookupSubscribeRequest { key: Uint8Array }",
+        description: "Request to subscribe to preimage lookup results.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemotePreimageLookupSubscribeRequest",
+            name: "key",
+            type: "Uint8Array",
+            description: "Hash of the preimage.",
           },
         ],
       },
       {
         id: "RemoteStatementStoreCreateProofError",
         name: "RemoteStatementStoreCreateProofError",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type RemoteStatementStoreCreateProofError = { tag: "V1"; value: V01RemoteStatementStoreCreateProofError }',
-        description:
-          "Versioned wrapper for [`v01::RemoteStatementStoreCreateProofError`] and older versions.",
-        source: "shared",
+          'type RemoteStatementStoreCreateProofError = { tag: "UnableToSign"; value: undefined } | { tag: "UnknownAccount"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description: "Statement proof creation error.",
+        source: "v0.1",
         variants: [
           {
-            name: "V1",
-            type: "V01RemoteStatementStoreCreateProofError",
+            name: "UnableToSign",
+            type: "undefined",
+            description: "Signing operation failed.",
+          },
+          {
+            name: "UnknownAccount",
+            type: "undefined",
+            description: "Account not recognized.",
+          },
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
           },
         ],
       },
       {
         id: "RemoteStatementStoreCreateProofRequest",
         name: "RemoteStatementStoreCreateProofRequest",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteStatementStoreCreateProofRequest = { tag: "V1"; value: V01RemoteStatementStoreCreateProofRequest }',
-        description:
-          "Versioned wrapper for [`v01::RemoteStatementStoreCreateProofRequest`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface RemoteStatementStoreCreateProofRequest { productAccountId: ProductAccountId; statement: Statement }",
+        description: "Request to create a cryptographic proof for a statement.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteStatementStoreCreateProofRequest",
+            name: "productAccountId",
+            type: "ProductAccountId",
+            description: "Product account that should create the proof.",
+          },
+          {
+            name: "statement",
+            type: "Statement",
+            description: "Statement to prove.",
           },
         ],
       },
       {
         id: "RemoteStatementStoreCreateProofResponse",
         name: "RemoteStatementStoreCreateProofResponse",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteStatementStoreCreateProofResponse = { tag: "V1"; value: V01RemoteStatementStoreCreateProofResponse }',
-        description:
-          "Versioned wrapper for [`v01::RemoteStatementStoreCreateProofResponse`] and older versions.",
-        source: "shared",
-        variants: [
+          "interface RemoteStatementStoreCreateProofResponse { proof: StatementProof }",
+        description: "Response containing a statement proof.",
+        source: "v0.1",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteStatementStoreCreateProofResponse",
-          },
-        ],
-      },
-      {
-        id: "RemoteStatementStoreSubmitError",
-        name: "RemoteStatementStoreSubmitError",
-        category: "versioned",
-        definition:
-          'type RemoteStatementStoreSubmitError = { tag: "V1"; value: GenericError }',
-        description:
-          "Versioned wrapper for [`v01::GenericError`] and older versions. Submit\nhas no success payload (`Result<(), GenericError>`), matching upstream.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "GenericError",
-          },
-        ],
-      },
-      {
-        id: "RemoteStatementStoreSubmitRequest",
-        name: "RemoteStatementStoreSubmitRequest",
-        category: "versioned",
-        definition:
-          'type RemoteStatementStoreSubmitRequest = { tag: "V1"; value: SignedStatement }',
-        description:
-          "Versioned wrapper for [`v01::SignedStatement`] and older versions.\nThe submit request is the signed statement itself; the host SCALE-decodes\nit directly without a wrapping field, matching the upstream\n`triangle-js-sdks` `StatementStoreSubmitV1_request = SignedStatement`.",
-        source: "shared",
-        variants: [
-          {
-            name: "V1",
-            type: "SignedStatement",
+            name: "proof",
+            type: "StatementProof",
+            description: "Created statement proof.",
           },
         ],
       },
       {
         id: "RemoteStatementStoreSubscribeItem",
         name: "RemoteStatementStoreSubscribeItem",
-        category: "versioned",
+        category: "struct",
         definition:
-          'type RemoteStatementStoreSubscribeItem = { tag: "V1"; value: V01RemoteStatementStoreSubscribeItem } | { tag: "V2"; value: V02RemoteStatementStoreSubscribeItem }',
+          "interface RemoteStatementStoreSubscribeItem { statements: Array<SignedStatement>; isComplete: boolean }",
         description:
-          "Versioned wrapper for [`v02::RemoteStatementStoreSubscribeItem`] and older versions.",
-        source: "shared",
-        variants: [
+          "Page of signed statements delivered by the statement store subscription\n(RFC 0008). The `is_complete` flag distinguishes the historical-dump phase\n(`false`) from the live-update phase (`true`).",
+        source: "v0.2",
+        fields: [
           {
-            name: "V1",
-            type: "V01RemoteStatementStoreSubscribeItem",
+            name: "statements",
+            type: "Array<SignedStatement>",
+            description: "Signed statements matching the subscription.",
           },
           {
-            name: "V2",
-            type: "V02RemoteStatementStoreSubscribeItem",
+            name: "isComplete",
+            type: "boolean",
+            description:
+              "`false` while the host is still streaming the historical dump (more\npages to follow). `true` once the dump is complete; all subsequent\npages are also `true` and carry only newly-arrived statements.",
           },
         ],
       },
       {
         id: "RemoteStatementStoreSubscribeRequest",
         name: "RemoteStatementStoreSubscribeRequest",
-        category: "versioned",
+        category: "enum",
         definition:
-          'type RemoteStatementStoreSubscribeRequest = { tag: "V1"; value: V01RemoteStatementStoreSubscribeRequest } | { tag: "V2"; value: V02RemoteStatementStoreSubscribeRequest }',
+          'type RemoteStatementStoreSubscribeRequest = { tag: "MatchAll"; value: Array<Topic> } | { tag: "MatchAny"; value: Array<Topic> }',
         description:
-          "Versioned wrapper for [`v02::RemoteStatementStoreSubscribeRequest`] and older versions.",
-        source: "shared",
+          "Request to subscribe to statements via a topic filter (RFC 0008).",
+        source: "v0.2",
         variants: [
           {
-            name: "V1",
-            type: "V01RemoteStatementStoreSubscribeRequest",
+            name: "MatchAll",
+            type: "Array<Topic>",
+            description: "AND: statement must contain every listed topic.",
           },
           {
-            name: "V2",
-            type: "V02RemoteStatementStoreSubscribeRequest",
+            name: "MatchAny",
+            type: "Array<Topic>",
+            description:
+              "OR: statement must contain at least one listed topic.",
           },
         ],
       },
@@ -10272,2258 +8383,6 @@ export const versions: ExplorerVersion[] = [
           {
             name: "Caption",
             type: "undefined",
-          },
-        ],
-      },
-      {
-        id: "V01HostAccountConnectionStatusSubscribeItem",
-        name: "V01HostAccountConnectionStatusSubscribeItem",
-        category: "enum",
-        definition:
-          'type V01HostAccountConnectionStatusSubscribeItem = { tag: "Disconnected"; value: undefined } | { tag: "Connected"; value: undefined }',
-        description: "User's authentication state.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "Disconnected",
-            type: "undefined",
-          },
-          {
-            name: "Connected",
-            type: "undefined",
-          },
-        ],
-      },
-      {
-        id: "V01HostAccountCreateProofError",
-        name: "V01HostAccountCreateProofError",
-        category: "enum",
-        definition:
-          'type V01HostAccountCreateProofError = { tag: "RingNotFound"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
-        description: "Error returned when ring VRF proof creation fails.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "RingNotFound",
-            type: "undefined",
-            description: "Ring not available at the specified location.",
-          },
-          {
-            name: "Rejected",
-            type: "undefined",
-            description: "User or host rejected.",
-          },
-          {
-            name: "Unknown",
-            type: "{ reason: string }",
-            description: "Catch-all.",
-          },
-        ],
-      },
-      {
-        id: "V01HostAccountCreateProofRequest",
-        name: "V01HostAccountCreateProofRequest",
-        category: "struct",
-        definition:
-          "interface V01HostAccountCreateProofRequest { productAccountId: ProductAccountId; ringLocation: RingLocation; context: Uint8Array }",
-        description:
-          "Request to create a ring VRF proof for a product account.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "productAccountId",
-            type: "ProductAccountId",
-            description: "Product account that should create the proof.",
-          },
-          {
-            name: "ringLocation",
-            type: "RingLocation",
-            description: "Ring location to use for proof generation.",
-          },
-          {
-            name: "context",
-            type: "Uint8Array",
-            description: "Context bytes bound to the proof.",
-          },
-        ],
-      },
-      {
-        id: "V01HostAccountCreateProofResponse",
-        name: "V01HostAccountCreateProofResponse",
-        category: "struct",
-        definition:
-          "interface V01HostAccountCreateProofResponse { proof: Uint8Array }",
-        description: "Response containing a ring VRF proof.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "proof",
-            type: "Uint8Array",
-            description: "Variable-length ring VRF proof bytes.",
-          },
-        ],
-      },
-      {
-        id: "V01HostAccountGetAliasRequest",
-        name: "V01HostAccountGetAliasRequest",
-        category: "struct",
-        definition:
-          "interface V01HostAccountGetAliasRequest { productAccountId: ProductAccountId }",
-        description:
-          "Request to retrieve a contextual alias for a product account.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "productAccountId",
-            type: "ProductAccountId",
-            description: "Product account to derive the alias for.",
-          },
-        ],
-      },
-      {
-        id: "V01HostAccountGetAliasResponse",
-        name: "V01HostAccountGetAliasResponse",
-        category: "struct",
-        definition:
-          "interface V01HostAccountGetAliasResponse { context: Uint8Array; alias: Uint8Array }",
-        description:
-          "A privacy-preserving alias derived via ring VRF, bound to a specific context.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "context",
-            type: "Uint8Array",
-            description: "32-byte context identifier.",
-          },
-          {
-            name: "alias",
-            type: "Uint8Array",
-            description: "Ring VRF alias (variable length).",
-          },
-        ],
-      },
-      {
-        id: "V01HostAccountGetError",
-        name: "V01HostAccountGetError",
-        category: "enum",
-        definition:
-          'type V01HostAccountGetError = { tag: "NotConnected"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "DomainNotValid"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
-        description: "Error returned when credential/account requests fail.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "NotConnected",
-            type: "undefined",
-            description: "User is not logged in.",
-          },
-          {
-            name: "Rejected",
-            type: "undefined",
-            description: "User or host rejected the request.",
-          },
-          {
-            name: "DomainNotValid",
-            type: "undefined",
-            description: "Domain identifier is invalid.",
-          },
-          {
-            name: "Unknown",
-            type: "{ reason: string }",
-            description: "Catch-all error with reason.",
-          },
-        ],
-      },
-      {
-        id: "V01HostAccountGetRequest",
-        name: "V01HostAccountGetRequest",
-        category: "struct",
-        definition:
-          "interface V01HostAccountGetRequest { productAccountId: ProductAccountId }",
-        description: "Request to retrieve a product-scoped account.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "productAccountId",
-            type: "ProductAccountId",
-            description: "Product account to retrieve.",
-          },
-        ],
-      },
-      {
-        id: "V01HostAccountGetResponse",
-        name: "V01HostAccountGetResponse",
-        category: "struct",
-        definition: "interface V01HostAccountGetResponse { account: Account }",
-        description: "Response containing a product-scoped account.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "account",
-            type: "Account",
-            description: "Retrieved account.",
-          },
-        ],
-      },
-      {
-        id: "V01HostChatActionSubscribeItem",
-        name: "V01HostChatActionSubscribeItem",
-        category: "struct",
-        definition:
-          "interface V01HostChatActionSubscribeItem { roomId: string; peer: string; payload: ChatActionPayload }",
-        description: "A chat action received from the host.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "roomId",
-            type: "string",
-            description: "Room where the action occurred.",
-          },
-          {
-            name: "peer",
-            type: "string",
-            description: "Peer who initiated the action.",
-          },
-          {
-            name: "payload",
-            type: "ChatActionPayload",
-            description: "The action payload.",
-          },
-        ],
-      },
-      {
-        id: "V01HostChatCreateRoomError",
-        name: "V01HostChatCreateRoomError",
-        category: "enum",
-        definition:
-          'type V01HostChatCreateRoomError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
-        description: "Chat room registration error.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "PermissionDenied",
-            type: "undefined",
-            description: "Not allowed.",
-          },
-          {
-            name: "Unknown",
-            type: "{ reason: string }",
-            description: "Catch-all.",
-          },
-        ],
-      },
-      {
-        id: "V01HostChatCreateRoomRequest",
-        name: "V01HostChatCreateRoomRequest",
-        category: "struct",
-        definition:
-          "interface V01HostChatCreateRoomRequest { roomId: string; name: string; icon: string }",
-        description: "Request to create a chat room.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "roomId",
-            type: "string",
-            description: "Unique room identifier.",
-          },
-          {
-            name: "name",
-            type: "string",
-            description: "Room display name.",
-          },
-          {
-            name: "icon",
-            type: "string",
-            description: "URL or base64 image.",
-          },
-        ],
-      },
-      {
-        id: "V01HostChatCreateRoomResponse",
-        name: "V01HostChatCreateRoomResponse",
-        category: "struct",
-        definition:
-          "interface V01HostChatCreateRoomResponse { status: ChatRoomRegistrationStatus }",
-        description: "Result of a room registration.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "status",
-            type: "ChatRoomRegistrationStatus",
-            description: "`New` or `Exists`.",
-          },
-        ],
-      },
-      {
-        id: "V01HostChatListSubscribeItem",
-        name: "V01HostChatListSubscribeItem",
-        category: "struct",
-        definition:
-          "interface V01HostChatListSubscribeItem { rooms: Array<ChatRoom> }",
-        description: "Item containing the current chat rooms.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "rooms",
-            type: "Array<ChatRoom>",
-            description: "Chat rooms the product participates in.",
-          },
-        ],
-      },
-      {
-        id: "V01HostChatPostMessageError",
-        name: "V01HostChatPostMessageError",
-        category: "enum",
-        definition:
-          'type V01HostChatPostMessageError = { tag: "MessageTooLarge"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
-        description: "Chat message posting error.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "MessageTooLarge",
-            type: "undefined",
-            description: "Message exceeded size limit.",
-          },
-          {
-            name: "Unknown",
-            type: "{ reason: string }",
-            description: "Catch-all.",
-          },
-        ],
-      },
-      {
-        id: "V01HostChatPostMessageRequest",
-        name: "V01HostChatPostMessageRequest",
-        category: "struct",
-        definition:
-          "interface V01HostChatPostMessageRequest { roomId: string; payload: ChatMessageContent }",
-        description: "Request to post a message to a chat room.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "roomId",
-            type: "string",
-            description: "Room to post to.",
-          },
-          {
-            name: "payload",
-            type: "ChatMessageContent",
-            description: "Message content.",
-          },
-        ],
-      },
-      {
-        id: "V01HostChatPostMessageResponse",
-        name: "V01HostChatPostMessageResponse",
-        category: "struct",
-        definition:
-          "interface V01HostChatPostMessageResponse { messageId: string }",
-        description: "Result of posting a message.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "messageId",
-            type: "string",
-            description: "Assigned message ID.",
-          },
-        ],
-      },
-      {
-        id: "V01HostChatRegisterBotError",
-        name: "V01HostChatRegisterBotError",
-        category: "enum",
-        definition:
-          'type V01HostChatRegisterBotError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
-        description: "Chat bot registration error.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "PermissionDenied",
-            type: "undefined",
-            description: "Not allowed.",
-          },
-          {
-            name: "Unknown",
-            type: "{ reason: string }",
-            description: "Catch-all.",
-          },
-        ],
-      },
-      {
-        id: "V01HostChatRegisterBotRequest",
-        name: "V01HostChatRegisterBotRequest",
-        category: "struct",
-        definition:
-          "interface V01HostChatRegisterBotRequest { botId: string; name: string; icon: string }",
-        description: "Request to register a chat bot.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "botId",
-            type: "string",
-            description: "Unique bot identifier.",
-          },
-          {
-            name: "name",
-            type: "string",
-            description: "Bot display name.",
-          },
-          {
-            name: "icon",
-            type: "string",
-            description: "URL or base64 image.",
-          },
-        ],
-      },
-      {
-        id: "V01HostChatRegisterBotResponse",
-        name: "V01HostChatRegisterBotResponse",
-        category: "struct",
-        definition:
-          "interface V01HostChatRegisterBotResponse { status: ChatBotRegistrationStatus }",
-        description: "Result of a bot registration.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "status",
-            type: "ChatBotRegistrationStatus",
-            description: "`New` or `Exists`.",
-          },
-        ],
-      },
-      {
-        id: "V01HostCreateTransactionError",
-        name: "V01HostCreateTransactionError",
-        category: "enum",
-        definition:
-          'type V01HostCreateTransactionError = { tag: "FailedToDecode"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "NotSupported"; value: { reason: string } } | { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
-        description: "Transaction creation error.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "FailedToDecode",
-            type: "undefined",
-            description: "Payload could not be deserialized.",
-          },
-          {
-            name: "Rejected",
-            type: "undefined",
-            description: "User rejected.",
-          },
-          {
-            name: "NotSupported",
-            type: "{ reason: string }",
-            description: "Unsupported payload version or extension.",
-          },
-          {
-            name: "PermissionDenied",
-            type: "undefined",
-            description: "Not authenticated.",
-          },
-          {
-            name: "Unknown",
-            type: "{ reason: string }",
-            description: "Catch-all.",
-          },
-        ],
-      },
-      {
-        id: "V01HostCreateTransactionRequest",
-        name: "V01HostCreateTransactionRequest",
-        category: "struct",
-        definition:
-          "interface V01HostCreateTransactionRequest { productAccountId: ProductAccountId; payload: VersionedTxPayload }",
-        description: "Request to create a transaction for a product account.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "productAccountId",
-            type: "ProductAccountId",
-            description: "Product account that will sign the transaction.",
-          },
-          {
-            name: "payload",
-            type: "VersionedTxPayload",
-            description: "Versioned transaction payload.",
-          },
-        ],
-      },
-      {
-        id: "V01HostCreateTransactionResponse",
-        name: "V01HostCreateTransactionResponse",
-        category: "struct",
-        definition:
-          "interface V01HostCreateTransactionResponse { transaction: Uint8Array }",
-        description: "Response containing a created transaction.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "transaction",
-            type: "Uint8Array",
-            description: "SCALE-encoded signed transaction.",
-          },
-        ],
-      },
-      {
-        id: "V01HostCreateTransactionWithLegacyAccountRequest",
-        name: "V01HostCreateTransactionWithLegacyAccountRequest",
-        category: "struct",
-        definition:
-          "interface V01HostCreateTransactionWithLegacyAccountRequest { payload: VersionedTxPayload }",
-        description:
-          "Request to create a transaction with a non-product account.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "payload",
-            type: "VersionedTxPayload",
-            description: "Versioned transaction payload to sign.",
-          },
-        ],
-      },
-      {
-        id: "V01HostCreateTransactionWithLegacyAccountResponse",
-        name: "V01HostCreateTransactionWithLegacyAccountResponse",
-        category: "struct",
-        definition:
-          "interface V01HostCreateTransactionWithLegacyAccountResponse { transaction: Uint8Array }",
-        description:
-          "Response containing a transaction created with a non-product account.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "transaction",
-            type: "Uint8Array",
-            description: "SCALE-encoded signed transaction.",
-          },
-        ],
-      },
-      {
-        id: "V01HostDevicePermissionRequest",
-        name: "V01HostDevicePermissionRequest",
-        category: "enum",
-        definition:
-          'type V01HostDevicePermissionRequest = { tag: "Camera"; value: undefined } | { tag: "Microphone"; value: undefined } | { tag: "Bluetooth"; value: undefined } | { tag: "Location"; value: undefined }',
-        description: "Device capability to request access to.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "Camera",
-            type: "undefined",
-          },
-          {
-            name: "Microphone",
-            type: "undefined",
-          },
-          {
-            name: "Bluetooth",
-            type: "undefined",
-          },
-          {
-            name: "Location",
-            type: "undefined",
-          },
-        ],
-      },
-      {
-        id: "V01HostDevicePermissionResponse",
-        name: "V01HostDevicePermissionResponse",
-        category: "struct",
-        definition:
-          "interface V01HostDevicePermissionResponse { granted: boolean }",
-        description:
-          "Response indicating whether a device permission was granted.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "granted",
-            type: "boolean",
-            description: "Whether the permission was granted.",
-          },
-        ],
-      },
-      {
-        id: "V01HostFeatureSupportedRequest",
-        name: "V01HostFeatureSupportedRequest",
-        category: "enum",
-        definition:
-          'type V01HostFeatureSupportedRequest = { tag: "Chain"; value: { genesisHash: Uint8Array } }',
-        description: "Feature to check for host support.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "Chain",
-            type: "{ genesisHash: Uint8Array }",
-            description: "Is this blockchain supported?",
-          },
-        ],
-      },
-      {
-        id: "V01HostFeatureSupportedResponse",
-        name: "V01HostFeatureSupportedResponse",
-        category: "struct",
-        definition:
-          "interface V01HostFeatureSupportedResponse { supported: boolean }",
-        description: "Response indicating whether a host feature is supported.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "supported",
-            type: "boolean",
-            description: "Whether the feature is supported.",
-          },
-        ],
-      },
-      {
-        id: "V01HostGetLegacyAccountsResponse",
-        name: "V01HostGetLegacyAccountsResponse",
-        category: "struct",
-        definition:
-          "interface V01HostGetLegacyAccountsResponse { accounts: Array<Account> }",
-        description:
-          "Response containing all non-product accounts owned by the user.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "accounts",
-            type: "Array<Account>",
-            description: "Non-product accounts.",
-          },
-        ],
-      },
-      {
-        id: "V01HostHandshakeRequest",
-        name: "V01HostHandshakeRequest",
-        category: "struct",
-        definition:
-          "interface V01HostHandshakeRequest { codecVersion: number }",
-        description: "Request to negotiate the wire codec version.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "codecVersion",
-            type: "number",
-            description: "Wire codec version requested by the peer.",
-          },
-        ],
-      },
-      {
-        id: "V01HostLocalStorageClearRequest",
-        name: "V01HostLocalStorageClearRequest",
-        category: "struct",
-        definition: "interface V01HostLocalStorageClearRequest { key: string }",
-        description: "Request to clear a local storage key.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "key",
-            type: "string",
-            description: "Storage key to clear.",
-          },
-        ],
-      },
-      {
-        id: "V01HostLocalStorageReadError",
-        name: "V01HostLocalStorageReadError",
-        category: "enum",
-        definition:
-          'type V01HostLocalStorageReadError = { tag: "Full"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
-        description: "Local storage operation error.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "Full",
-            type: "undefined",
-            description: "Storage quota exceeded.",
-          },
-          {
-            name: "Unknown",
-            type: "{ reason: string }",
-            description: "Catch-all.",
-          },
-        ],
-      },
-      {
-        id: "V01HostLocalStorageReadRequest",
-        name: "V01HostLocalStorageReadRequest",
-        category: "struct",
-        definition: "interface V01HostLocalStorageReadRequest { key: string }",
-        description: "Request to read a local storage value.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "key",
-            type: "string",
-            description: "Storage key to read.",
-          },
-        ],
-      },
-      {
-        id: "V01HostLocalStorageReadResponse",
-        name: "V01HostLocalStorageReadResponse",
-        category: "struct",
-        definition:
-          "interface V01HostLocalStorageReadResponse { value?: Uint8Array }",
-        description: "Response containing an optional local storage value.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "value",
-            type: "Uint8Array",
-            description: "Stored value, if present.",
-          },
-        ],
-      },
-      {
-        id: "V01HostLocalStorageWriteRequest",
-        name: "V01HostLocalStorageWriteRequest",
-        category: "struct",
-        definition:
-          "interface V01HostLocalStorageWriteRequest { key: string; value: Uint8Array }",
-        description: "Request to write a value into local storage.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "key",
-            type: "string",
-            description: "Storage key to write.",
-          },
-          {
-            name: "value",
-            type: "Uint8Array",
-            description: "Value to store at the key.",
-          },
-        ],
-      },
-      {
-        id: "V01HostNavigateToError",
-        name: "V01HostNavigateToError",
-        category: "enum",
-        definition:
-          'type V01HostNavigateToError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
-        description: "Navigation error.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "PermissionDenied",
-            type: "undefined",
-            description: "Navigation not allowed.",
-          },
-          {
-            name: "Unknown",
-            type: "{ reason: string }",
-            description: "Catch-all.",
-          },
-        ],
-      },
-      {
-        id: "V01HostNavigateToRequest",
-        name: "V01HostNavigateToRequest",
-        category: "struct",
-        definition: "interface V01HostNavigateToRequest { url: string }",
-        description: "Request to navigate to a URL.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "url",
-            type: "string",
-            description: "URL to open.",
-          },
-        ],
-      },
-      {
-        id: "V01HostPushNotificationRequest",
-        name: "V01HostPushNotificationRequest",
-        category: "struct",
-        definition:
-          "interface V01HostPushNotificationRequest { text: string; deeplink?: string }",
-        description: "Push notification payload.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "text",
-            type: "string",
-            description: "Notification text.",
-          },
-          {
-            name: "deeplink",
-            type: "string",
-            description: "Optional URL to open on tap.",
-          },
-        ],
-      },
-      {
-        id: "V01HostSignPayloadError",
-        name: "V01HostSignPayloadError",
-        category: "enum",
-        definition:
-          'type V01HostSignPayloadError = { tag: "FailedToDecode"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
-        description: "Signing operation error.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "FailedToDecode",
-            type: "undefined",
-            description: "Payload could not be deserialized.",
-          },
-          {
-            name: "Rejected",
-            type: "undefined",
-            description: "User rejected signing.",
-          },
-          {
-            name: "PermissionDenied",
-            type: "undefined",
-            description: "Not authenticated.",
-          },
-          {
-            name: "Unknown",
-            type: "{ reason: string }",
-            description: "Catch-all.",
-          },
-        ],
-      },
-      {
-        id: "V01HostSignPayloadRequest",
-        name: "V01HostSignPayloadRequest",
-        category: "struct",
-        definition:
-          "interface V01HostSignPayloadRequest { address: string; blockHash: Uint8Array; blockNumber: Uint8Array; era: Uint8Array; genesisHash: Uint8Array; method: Uint8Array; nonce: Uint8Array; specVersion: Uint8Array; tip: Uint8Array; transactionVersion: Uint8Array; signedExtensions: Array<string>; version: number; assetId?: Uint8Array; metadataHash?: Uint8Array; mode?: number; withSignedTransaction?: boolean }",
-        description:
-          "Full Substrate extrinsic signing payload with all fields needed for signature\ngeneration.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "address",
-            type: "string",
-            description: "Signer address (SS58 or hex).",
-          },
-          {
-            name: "blockHash",
-            type: "Uint8Array",
-            description: "Reference block hash.",
-          },
-          {
-            name: "blockNumber",
-            type: "Uint8Array",
-            description: "Reference block number.",
-          },
-          {
-            name: "era",
-            type: "Uint8Array",
-            description: "Mortality era encoding.",
-          },
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-          {
-            name: "method",
-            type: "Uint8Array",
-            description: "SCALE-encoded call data.",
-          },
-          {
-            name: "nonce",
-            type: "Uint8Array",
-            description: "Account nonce.",
-          },
-          {
-            name: "specVersion",
-            type: "Uint8Array",
-            description: "Runtime spec version.",
-          },
-          {
-            name: "tip",
-            type: "Uint8Array",
-            description: "Transaction tip.",
-          },
-          {
-            name: "transactionVersion",
-            type: "Uint8Array",
-            description: "Transaction format version.",
-          },
-          {
-            name: "signedExtensions",
-            type: "Array<string>",
-            description: "Extension identifiers.",
-          },
-          {
-            name: "version",
-            type: "number",
-            description: "Extrinsic version.",
-          },
-          {
-            name: "assetId",
-            type: "Uint8Array",
-            description: "For multi-asset tips.",
-          },
-          {
-            name: "metadataHash",
-            type: "Uint8Array",
-            description: "CheckMetadataHash extension.",
-          },
-          {
-            name: "mode",
-            type: "number",
-            description: "Metadata mode.",
-          },
-          {
-            name: "withSignedTransaction",
-            type: "boolean",
-            description: "Request signed transaction back.",
-          },
-        ],
-      },
-      {
-        id: "V01HostSignPayloadResponse",
-        name: "V01HostSignPayloadResponse",
-        category: "struct",
-        definition:
-          "interface V01HostSignPayloadResponse { signature: Uint8Array; signedTransaction?: Uint8Array }",
-        description: "Result of a signing operation.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "signature",
-            type: "Uint8Array",
-            description: "The cryptographic signature.",
-          },
-          {
-            name: "signedTransaction",
-            type: "Uint8Array",
-            description: "Full signed transaction, if requested.",
-          },
-        ],
-      },
-      {
-        id: "V01HostSignRawRequest",
-        name: "V01HostSignRawRequest",
-        category: "struct",
-        definition:
-          "interface V01HostSignRawRequest { address: string; data: RawPayload }",
-        description: "A raw signing request pairing an address with raw data.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "address",
-            type: "string",
-            description: "Signer address.",
-          },
-          {
-            name: "data",
-            type: "RawPayload",
-            description: "The data to sign.",
-          },
-        ],
-      },
-      {
-        id: "V01ProductChatCustomMessageRenderSubscribeRequest",
-        name: "V01ProductChatCustomMessageRenderSubscribeRequest",
-        category: "struct",
-        definition:
-          "interface V01ProductChatCustomMessageRenderSubscribeRequest { messageId: string; messageType: string; payload: Uint8Array }",
-        description:
-          "Subscribe payload identifying the chat message to render. The host responds\nwith a stream of [`CustomRendererNode`] trees describing the rendered UI.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "messageId",
-            type: "string",
-            description: "Message identifier.",
-          },
-          {
-            name: "messageType",
-            type: "string",
-            description: "Application-defined message type.",
-          },
-          {
-            name: "payload",
-            type: "Uint8Array",
-            description: "Binary payload.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainHeadBodyRequest",
-        name: "V01RemoteChainHeadBodyRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainHeadBodyRequest { genesisHash: Uint8Array; followSubscriptionId: string; hash: Uint8Array }",
-        description:
-          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_body`].",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-          {
-            name: "followSubscriptionId",
-            type: "string",
-            description: "Follow subscription identifier.",
-          },
-          {
-            name: "hash",
-            type: "Uint8Array",
-            description: "Block hash.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainHeadBodyResponse",
-        name: "V01RemoteChainHeadBodyResponse",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainHeadBodyResponse { operation: OperationStartedResult }",
-        description: "Response indicating a block body operation was started.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "operation",
-            type: "OperationStartedResult",
-            description: "Started operation result.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainHeadCallRequest",
-        name: "V01RemoteChainHeadCallRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainHeadCallRequest { genesisHash: Uint8Array; followSubscriptionId: string; hash: Uint8Array; function: string; callParameters: Uint8Array }",
-        description:
-          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_call`].",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-          {
-            name: "followSubscriptionId",
-            type: "string",
-            description: "Follow subscription identifier.",
-          },
-          {
-            name: "hash",
-            type: "Uint8Array",
-            description: "Block hash.",
-          },
-          {
-            name: "function",
-            type: "string",
-            description: "Runtime API function name.",
-          },
-          {
-            name: "callParameters",
-            type: "Uint8Array",
-            description: "SCALE-encoded call parameters.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainHeadCallResponse",
-        name: "V01RemoteChainHeadCallResponse",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainHeadCallResponse { operation: OperationStartedResult }",
-        description:
-          "Response indicating a runtime call operation was started.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "operation",
-            type: "OperationStartedResult",
-            description: "Started operation result.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainHeadContinueRequest",
-        name: "V01RemoteChainHeadContinueRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainHeadContinueRequest { genesisHash: Uint8Array; followSubscriptionId: string; operationId: string }",
-        description:
-          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_continue`].",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-          {
-            name: "followSubscriptionId",
-            type: "string",
-            description: "Follow subscription identifier.",
-          },
-          {
-            name: "operationId",
-            type: "string",
-            description: "Operation identifier.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainHeadFollowItem",
-        name: "V01RemoteChainHeadFollowItem",
-        category: "enum",
-        definition:
-          'type V01RemoteChainHeadFollowItem = { tag: "Initialized"; value: { finalizedBlockHashes: Array<Uint8Array>; finalizedBlockRuntime?: RuntimeType } } | { tag: "NewBlock"; value: { blockHash: Uint8Array; parentBlockHash: Uint8Array; newRuntime?: RuntimeType } } | { tag: "BestBlockChanged"; value: { bestBlockHash: Uint8Array } } | { tag: "Finalized"; value: { finalizedBlockHashes: Array<Uint8Array>; prunedBlockHashes: Array<Uint8Array> } } | { tag: "OperationBodyDone"; value: { operationId: string; value: Array<Uint8Array> } } | { tag: "OperationCallDone"; value: { operationId: string; output: Uint8Array } } | { tag: "OperationStorageItems"; value: { operationId: string; items: Array<StorageResultItem> } } | { tag: "OperationStorageDone"; value: { operationId: string } } | { tag: "OperationWaitingForContinue"; value: { operationId: string } } | { tag: "OperationInaccessible"; value: { operationId: string } } | { tag: "OperationError"; value: { operationId: string; error: string } } | { tag: "Stop"; value: undefined }',
-        description: "Events received when following the chain head.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "Initialized",
-            type: "{ finalizedBlockHashes: Array<Uint8Array>; finalizedBlockRuntime?: RuntimeType }",
-            description: "Initial state with finalized blocks.",
-          },
-          {
-            name: "NewBlock",
-            type: "{ blockHash: Uint8Array; parentBlockHash: Uint8Array; newRuntime?: RuntimeType }",
-            description: "A new block was produced.",
-          },
-          {
-            name: "BestBlockChanged",
-            type: "{ bestBlockHash: Uint8Array }",
-            description: "Best block changed.",
-          },
-          {
-            name: "Finalized",
-            type: "{ finalizedBlockHashes: Array<Uint8Array>; prunedBlockHashes: Array<Uint8Array> }",
-            description: "Blocks were finalized.",
-          },
-          {
-            name: "OperationBodyDone",
-            type: "{ operationId: string; value: Array<Uint8Array> }",
-            description: "Body fetch completed.",
-          },
-          {
-            name: "OperationCallDone",
-            type: "{ operationId: string; output: Uint8Array }",
-            description: "Runtime call completed.",
-          },
-          {
-            name: "OperationStorageItems",
-            type: "{ operationId: string; items: Array<StorageResultItem> }",
-            description: "Storage results batch.",
-          },
-          {
-            name: "OperationStorageDone",
-            type: "{ operationId: string }",
-            description: "Storage query completed.",
-          },
-          {
-            name: "OperationWaitingForContinue",
-            type: "{ operationId: string }",
-            description:
-              "Operation paused, needs [`crate::api::ChainInteraction::remote_chain_head_continue`].",
-          },
-          {
-            name: "OperationInaccessible",
-            type: "{ operationId: string }",
-            description: "Block became inaccessible.",
-          },
-          {
-            name: "OperationError",
-            type: "{ operationId: string; error: string }",
-            description: "Operation failed.",
-          },
-          {
-            name: "Stop",
-            type: "undefined",
-            description: "Subscription terminated by server.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainHeadFollowRequest",
-        name: "V01RemoteChainHeadFollowRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainHeadFollowRequest { genesisHash: Uint8Array; withRuntime: boolean }",
-        description:
-          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_follow`].",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-          {
-            name: "withRuntime",
-            type: "boolean",
-            description: "Whether to include runtime information in events.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainHeadHeaderRequest",
-        name: "V01RemoteChainHeadHeaderRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainHeadHeaderRequest { genesisHash: Uint8Array; followSubscriptionId: string; hash: Uint8Array }",
-        description:
-          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_header`].",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-          {
-            name: "followSubscriptionId",
-            type: "string",
-            description: "Follow subscription identifier.",
-          },
-          {
-            name: "hash",
-            type: "Uint8Array",
-            description: "Block hash.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainHeadHeaderResponse",
-        name: "V01RemoteChainHeadHeaderResponse",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainHeadHeaderResponse { header?: Uint8Array }",
-        description: "Response containing a block header, if available.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "header",
-            type: "Uint8Array",
-            description: "SCALE-encoded block header.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainHeadStopOperationRequest",
-        name: "V01RemoteChainHeadStopOperationRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainHeadStopOperationRequest { genesisHash: Uint8Array; followSubscriptionId: string; operationId: string }",
-        description:
-          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_stop_operation`].",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-          {
-            name: "followSubscriptionId",
-            type: "string",
-            description: "Follow subscription identifier.",
-          },
-          {
-            name: "operationId",
-            type: "string",
-            description: "Operation identifier.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainHeadStorageRequest",
-        name: "V01RemoteChainHeadStorageRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainHeadStorageRequest { genesisHash: Uint8Array; followSubscriptionId: string; hash: Uint8Array; items: Array<StorageQueryItem>; childTrie?: Uint8Array }",
-        description:
-          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_storage`].",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-          {
-            name: "followSubscriptionId",
-            type: "string",
-            description: "Follow subscription identifier.",
-          },
-          {
-            name: "hash",
-            type: "Uint8Array",
-            description: "Block hash.",
-          },
-          {
-            name: "items",
-            type: "Array<StorageQueryItem>",
-            description: "Storage items to query.",
-          },
-          {
-            name: "childTrie",
-            type: "Uint8Array",
-            description: "Optional child trie.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainHeadStorageResponse",
-        name: "V01RemoteChainHeadStorageResponse",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainHeadStorageResponse { operation: OperationStartedResult }",
-        description:
-          "Response indicating a storage query operation was started.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "operation",
-            type: "OperationStartedResult",
-            description: "Started operation result.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainHeadUnpinRequest",
-        name: "V01RemoteChainHeadUnpinRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainHeadUnpinRequest { genesisHash: Uint8Array; followSubscriptionId: string; hashes: Array<Uint8Array> }",
-        description:
-          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_unpin`].",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-          {
-            name: "followSubscriptionId",
-            type: "string",
-            description: "Follow subscription identifier.",
-          },
-          {
-            name: "hashes",
-            type: "Array<Uint8Array>",
-            description: "Block hashes to unpin.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainSpecChainNameRequest",
-        name: "V01RemoteChainSpecChainNameRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainSpecChainNameRequest { genesisHash: Uint8Array }",
-        description: "Request to fetch a chain display name.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainSpecChainNameResponse",
-        name: "V01RemoteChainSpecChainNameResponse",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainSpecChainNameResponse { chainName: string }",
-        description: "Response containing a chain display name.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "chainName",
-            type: "string",
-            description: "Chain display name.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainSpecGenesisHashRequest",
-        name: "V01RemoteChainSpecGenesisHashRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainSpecGenesisHashRequest { genesisHash: Uint8Array }",
-        description: "Request to fetch a chain genesis hash.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash requested by the product.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainSpecGenesisHashResponse",
-        name: "V01RemoteChainSpecGenesisHashResponse",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainSpecGenesisHashResponse { genesisHash: Uint8Array }",
-        description: "Response containing a chain genesis hash.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainSpecPropertiesRequest",
-        name: "V01RemoteChainSpecPropertiesRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainSpecPropertiesRequest { genesisHash: Uint8Array }",
-        description: "Request to fetch chain properties.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainSpecPropertiesResponse",
-        name: "V01RemoteChainSpecPropertiesResponse",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainSpecPropertiesResponse { properties: string }",
-        description: "Response containing JSON-encoded chain properties.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "properties",
-            type: "string",
-            description: "JSON-encoded properties.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainTransactionBroadcastRequest",
-        name: "V01RemoteChainTransactionBroadcastRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainTransactionBroadcastRequest { genesisHash: Uint8Array; transaction: Uint8Array }",
-        description:
-          "Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_broadcast`].",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-          {
-            name: "transaction",
-            type: "Uint8Array",
-            description: "Signed transaction bytes.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainTransactionBroadcastResponse",
-        name: "V01RemoteChainTransactionBroadcastResponse",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainTransactionBroadcastResponse { operationId?: string }",
-        description:
-          "Response containing a transaction broadcast operation identifier.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "operationId",
-            type: "string",
-            description: "Broadcast operation identifier, if available.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteChainTransactionStopRequest",
-        name: "V01RemoteChainTransactionStopRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteChainTransactionStopRequest { genesisHash: Uint8Array; operationId: string }",
-        description:
-          "Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_stop`].",
-        source: "v0.1",
-        fields: [
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-          {
-            name: "operationId",
-            type: "string",
-            description: "Operation identifier of the broadcast to stop.",
-          },
-        ],
-      },
-      {
-        id: "V01RemotePermissionRequest",
-        name: "V01RemotePermissionRequest",
-        category: "enum",
-        definition:
-          'type V01RemotePermissionRequest = { tag: "ExternalRequest"; value: { url: string } } | { tag: "TransactionSubmit"; value: undefined }',
-        description:
-          "Pre-RFC-0001 remote operation permission, as shipped by\n`@novasamatech/host-api@0.6.x`.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "ExternalRequest",
-            type: "{ url: string }",
-            description: "URL the product wants to fetch.",
-          },
-          {
-            name: "TransactionSubmit",
-            type: "undefined",
-            description: "Product wants to submit a transaction.",
-          },
-        ],
-      },
-      {
-        id: "V01RemotePermissionResponse",
-        name: "V01RemotePermissionResponse",
-        category: "struct",
-        definition:
-          "interface V01RemotePermissionResponse { granted: boolean }",
-        description:
-          "Response indicating whether a remote permission was granted.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "granted",
-            type: "boolean",
-            description: "Whether the permission was granted.",
-          },
-        ],
-      },
-      {
-        id: "V01RemotePreimageLookupSubscribeItem",
-        name: "V01RemotePreimageLookupSubscribeItem",
-        category: "struct",
-        definition:
-          "interface V01RemotePreimageLookupSubscribeItem { value?: Uint8Array }",
-        description: "Item containing an optional preimage lookup result.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "value",
-            type: "Uint8Array",
-            description: "Preimage data, if found.",
-          },
-        ],
-      },
-      {
-        id: "V01RemotePreimageLookupSubscribeRequest",
-        name: "V01RemotePreimageLookupSubscribeRequest",
-        category: "struct",
-        definition:
-          "interface V01RemotePreimageLookupSubscribeRequest { key: Uint8Array }",
-        description: "Request to subscribe to preimage lookup results.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "key",
-            type: "Uint8Array",
-            description: "Hash of the preimage.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteStatementStoreCreateProofError",
-        name: "V01RemoteStatementStoreCreateProofError",
-        category: "enum",
-        definition:
-          'type V01RemoteStatementStoreCreateProofError = { tag: "UnableToSign"; value: undefined } | { tag: "UnknownAccount"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
-        description: "Statement proof creation error.",
-        source: "v0.1",
-        variants: [
-          {
-            name: "UnableToSign",
-            type: "undefined",
-            description: "Signing operation failed.",
-          },
-          {
-            name: "UnknownAccount",
-            type: "undefined",
-            description: "Account not recognized.",
-          },
-          {
-            name: "Unknown",
-            type: "{ reason: string }",
-            description: "Catch-all.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteStatementStoreCreateProofRequest",
-        name: "V01RemoteStatementStoreCreateProofRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteStatementStoreCreateProofRequest { productAccountId: ProductAccountId; statement: Statement }",
-        description: "Request to create a cryptographic proof for a statement.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "productAccountId",
-            type: "ProductAccountId",
-            description: "Product account that should create the proof.",
-          },
-          {
-            name: "statement",
-            type: "Statement",
-            description: "Statement to prove.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteStatementStoreCreateProofResponse",
-        name: "V01RemoteStatementStoreCreateProofResponse",
-        category: "struct",
-        definition:
-          "interface V01RemoteStatementStoreCreateProofResponse { proof: StatementProof }",
-        description: "Response containing a statement proof.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "proof",
-            type: "StatementProof",
-            description: "Created statement proof.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteStatementStoreSubscribeItem",
-        name: "V01RemoteStatementStoreSubscribeItem",
-        category: "struct",
-        definition:
-          "interface V01RemoteStatementStoreSubscribeItem { statements: Array<SignedStatement> }",
-        description:
-          "Item containing statements delivered by the statement store subscription.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "statements",
-            type: "Array<SignedStatement>",
-            description: "Signed statements matching the subscription.",
-          },
-        ],
-      },
-      {
-        id: "V01RemoteStatementStoreSubscribeRequest",
-        name: "V01RemoteStatementStoreSubscribeRequest",
-        category: "struct",
-        definition:
-          "interface V01RemoteStatementStoreSubscribeRequest { topics: Array<Uint8Array> }",
-        description: "Request to subscribe to statements matching topics.",
-        source: "v0.1",
-        fields: [
-          {
-            name: "topics",
-            type: "Array<Uint8Array>",
-            description: "Required topics.",
-          },
-        ],
-      },
-      {
-        id: "V02HostAccountGetResponse",
-        name: "V02HostAccountGetResponse",
-        category: "struct",
-        definition:
-          "interface V02HostAccountGetResponse { account: ProductAccount }",
-        description:
-          "V0.2 response for [`crate::api::AccountManagement::host_account_get`].\nWraps a [`ProductAccount`] (no name field).",
-        source: "v0.2",
-        fields: [
-          {
-            name: "account",
-            type: "ProductAccount",
-            description: "Retrieved product account.",
-          },
-        ],
-      },
-      {
-        id: "V02HostChatCreateSimpleGroupRequest",
-        name: "V02HostChatCreateSimpleGroupRequest",
-        category: "struct",
-        definition:
-          "interface V02HostChatCreateSimpleGroupRequest { roomId: string; name: string; icon: string }",
-        description:
-          "Request to create a simple group chat room.\n\nV0.2: lightweight group chat that avoids the full Chat Extension v2\ncomplexity. Participants join via deep link; the host handles the UI\nwith default rendering (no custom elements).",
-        source: "v0.2",
-        fields: [
-          {
-            name: "roomId",
-            type: "string",
-            description: "Unique room identifier source.",
-          },
-          {
-            name: "name",
-            type: "string",
-            description: "Room display name.",
-          },
-          {
-            name: "icon",
-            type: "string",
-            description: "URL or base64 image for the room avatar.",
-          },
-        ],
-      },
-      {
-        id: "V02HostChatCreateSimpleGroupResponse",
-        name: "V02HostChatCreateSimpleGroupResponse",
-        category: "struct",
-        definition:
-          "interface V02HostChatCreateSimpleGroupResponse { status: ChatRoomRegistrationStatus; joinLink: string }",
-        description: "Result of creating a simple group chat room.\n\nV0.2.",
-        source: "v0.2",
-        fields: [
-          {
-            name: "status",
-            type: "ChatRoomRegistrationStatus",
-            description:
-              "Whether the room was newly created or already existed.",
-          },
-          {
-            name: "joinLink",
-            type: "string",
-            description:
-              "Deep link that participants can use to join the room.",
-          },
-        ],
-      },
-      {
-        id: "V02HostDeriveEntropyError",
-        name: "V02HostDeriveEntropyError",
-        category: "enum",
-        definition:
-          'type V02HostDeriveEntropyError = { tag: "Unknown"; value: undefined }',
-        description:
-          "Error from [`crate::api::EntropyDerivation::host_derive_entropy`].\n\nUnder normal operation the function always succeeds; `Unknown` indicates an\nunrecoverable internal host error.\n\nSee [RFC 0007].\n\n[RFC 0007]: https://github.com/paritytech/triangle-js-sdks/pull/95",
-        source: "v0.2",
-        variants: [
-          {
-            name: "Unknown",
-            type: "undefined",
-            description: "An unexpected error occurred in the host.",
-          },
-        ],
-      },
-      {
-        id: "V02HostDeriveEntropyRequest",
-        name: "V02HostDeriveEntropyRequest",
-        category: "struct",
-        definition:
-          "interface V02HostDeriveEntropyRequest { context: Uint8Array }",
-        description: "Request to derive deterministic entropy.",
-        source: "v0.2",
-        fields: [
-          {
-            name: "context",
-            type: "Uint8Array",
-            description: "Domain-separated derivation context.",
-          },
-        ],
-      },
-      {
-        id: "V02HostDeriveEntropyResponse",
-        name: "V02HostDeriveEntropyResponse",
-        category: "struct",
-        definition:
-          "interface V02HostDeriveEntropyResponse { entropy: Uint8Array }",
-        description: "Response containing derived deterministic entropy.",
-        source: "v0.2",
-        fields: [
-          {
-            name: "entropy",
-            type: "Uint8Array",
-            description: "32 bytes of derived entropy.",
-          },
-        ],
-      },
-      {
-        id: "V02HostDevicePermissionRequest",
-        name: "V02HostDevicePermissionRequest",
-        category: "enum",
-        definition:
-          'type V02HostDevicePermissionRequest = { tag: "Notifications"; value: undefined } | { tag: "Camera"; value: undefined } | { tag: "Microphone"; value: undefined } | { tag: "Bluetooth"; value: undefined } | { tag: "NFC"; value: undefined } | { tag: "Location"; value: undefined } | { tag: "Clipboard"; value: undefined } | { tag: "OpenUrl"; value: undefined } | { tag: "Biometrics"; value: undefined }',
-        description:
-          "Device capability to request access to.\n\nV0.2: extended with `Notifications`, `NFC`, `Clipboard`, `OpenUrl`, and\n`Biometrics` per [RFC 0001] (JIT permissions).\n\n[RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66",
-        source: "v0.2",
-        variants: [
-          {
-            name: "Notifications",
-            type: "undefined",
-            description: "Push notification delivery permission.",
-          },
-          {
-            name: "Camera",
-            type: "undefined",
-          },
-          {
-            name: "Microphone",
-            type: "undefined",
-          },
-          {
-            name: "Bluetooth",
-            type: "undefined",
-          },
-          {
-            name: "NFC",
-            type: "undefined",
-            description: "Near-field communication access.",
-          },
-          {
-            name: "Location",
-            type: "undefined",
-          },
-          {
-            name: "Clipboard",
-            type: "undefined",
-            description: "System clipboard access.",
-          },
-          {
-            name: "OpenUrl",
-            type: "undefined",
-            description: "Open a URL in an external browser.",
-          },
-          {
-            name: "Biometrics",
-            type: "undefined",
-            description: "Biometric authentication (fingerprint, face ID).",
-          },
-        ],
-      },
-      {
-        id: "V02HostGetUserIdError",
-        name: "V02HostGetUserIdError",
-        category: "enum",
-        definition:
-          'type V02HostGetUserIdError = { tag: "PermissionDenied"; value: undefined } | { tag: "NotConnected"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
-        description:
-          "Error from [`crate::api::AccountManagement::host_get_user_id`].\n\nV0.2.",
-        source: "v0.2",
-        variants: [
-          {
-            name: "PermissionDenied",
-            type: "undefined",
-            description: "User denied the identity disclosure request.",
-          },
-          {
-            name: "NotConnected",
-            type: "undefined",
-            description: "User is not logged in.",
-          },
-          {
-            name: "Unknown",
-            type: "{ reason: string }",
-            description: "Catch-all.",
-          },
-        ],
-      },
-      {
-        id: "V02HostGetUserIdResponse",
-        name: "V02HostGetUserIdResponse",
-        category: "struct",
-        definition:
-          "interface V02HostGetUserIdResponse { primaryUsername: string; publicKey: Uint8Array }",
-        description: "The user's primary DotNS account identity.\n\nV0.2.",
-        source: "v0.2",
-        fields: [
-          {
-            name: "primaryUsername",
-            type: "string",
-            description: "The user's primary DotNS username.",
-          },
-          {
-            name: "publicKey",
-            type: "Uint8Array",
-            description: "The user's primary public key.",
-          },
-        ],
-      },
-      {
-        id: "V02HostHandshakeError",
-        name: "V02HostHandshakeError",
-        category: "enum",
-        definition:
-          'type V02HostHandshakeError = { tag: "Timeout"; value: undefined } | { tag: "UnsupportedProtocolVersion"; value: undefined } | { tag: "Unknown"; value: GenericErr }',
-        description:
-          "Handshake error. Mirrors Novasama's `HandshakeErr` byte-for-byte so that\npre-codegen products (built against `@novasamatech/host-api`) can decode\n`host_handshake_response` frames produced by this host.",
-        source: "v0.2",
-        variants: [
-          {
-            name: "Timeout",
-            type: "undefined",
-          },
-          {
-            name: "UnsupportedProtocolVersion",
-            type: "undefined",
-          },
-          {
-            name: "Unknown",
-            type: "GenericErr",
-          },
-        ],
-      },
-      {
-        id: "V02HostPaymentBalanceSubscribeItem",
-        name: "V02HostPaymentBalanceSubscribeItem",
-        category: "struct",
-        definition:
-          "interface V02HostPaymentBalanceSubscribeItem { available: Balance }",
-        description:
-          "Current payment balance state pushed to subscribers.\n\nSee [RFC 0006]. V0.2: the `pending` field was removed; only `available`\nremains.\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
-        source: "v0.2",
-        fields: [
-          {
-            name: "available",
-            type: "Balance",
-            description: "Balance that can be spent right now.",
-          },
-        ],
-      },
-      {
-        id: "V02HostPaymentRequestError",
-        name: "V02HostPaymentRequestError",
-        category: "enum",
-        definition:
-          'type V02HostPaymentRequestError = { tag: "Rejected"; value: undefined } | { tag: "InsufficientBalance"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
-        description:
-          "Error from [`crate::api::Payment::host_payment_request`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
-        source: "v0.2",
-        variants: [
-          {
-            name: "Rejected",
-            type: "undefined",
-            description: "User rejected the payment request.",
-          },
-          {
-            name: "InsufficientBalance",
-            type: "undefined",
-            description:
-              "User's available balance is not sufficient for the requested amount.",
-          },
-          {
-            name: "Unknown",
-            type: "{ reason: string }",
-            description: "Catch-all.",
-          },
-        ],
-      },
-      {
-        id: "V02HostPaymentRequestRequest",
-        name: "V02HostPaymentRequestRequest",
-        category: "struct",
-        definition:
-          "interface V02HostPaymentRequestRequest { amount: Balance; destination: Uint8Array }",
-        description: "Request to initiate a payment to another account.",
-        source: "v0.2",
-        fields: [
-          {
-            name: "amount",
-            type: "Balance",
-            description: "Amount to pay.",
-          },
-          {
-            name: "destination",
-            type: "Uint8Array",
-            description: "Destination account.",
-          },
-        ],
-      },
-      {
-        id: "V02HostPaymentRequestResponse",
-        name: "V02HostPaymentRequestResponse",
-        category: "struct",
-        definition: "interface V02HostPaymentRequestResponse { id: string }",
-        description:
-          "Receipt returned after a successful payment request.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
-        source: "v0.2",
-        fields: [
-          {
-            name: "id",
-            type: "string",
-            description: "The assigned payment identifier.",
-          },
-        ],
-      },
-      {
-        id: "V02HostPaymentStatusSubscribeItem",
-        name: "V02HostPaymentStatusSubscribeItem",
-        category: "enum",
-        definition:
-          'type V02HostPaymentStatusSubscribeItem = { tag: "Processing"; value: undefined } | { tag: "Completed"; value: undefined } | { tag: "Failed"; value: { reason: string } }',
-        description:
-          "Payment lifecycle status pushed to subscribers.\n\nOnce a terminal state (`Completed` or `Failed`) is reached, the host\ndelivers it and may close the subscription.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
-        source: "v0.2",
-        variants: [
-          {
-            name: "Processing",
-            type: "undefined",
-            description: "Payment is being processed.",
-          },
-          {
-            name: "Completed",
-            type: "undefined",
-            description: "Payment has been settled successfully.",
-          },
-          {
-            name: "Failed",
-            type: "{ reason: string }",
-            description: "Payment has failed.",
-          },
-        ],
-      },
-      {
-        id: "V02HostPaymentStatusSubscribeRequest",
-        name: "V02HostPaymentStatusSubscribeRequest",
-        category: "struct",
-        definition:
-          "interface V02HostPaymentStatusSubscribeRequest { paymentId: string }",
-        description: "Request to subscribe to a payment status.",
-        source: "v0.2",
-        fields: [
-          {
-            name: "paymentId",
-            type: "string",
-            description: "Payment identifier to watch.",
-          },
-        ],
-      },
-      {
-        id: "V02HostPaymentTopUpError",
-        name: "V02HostPaymentTopUpError",
-        category: "enum",
-        definition:
-          'type V02HostPaymentTopUpError = { tag: "InsufficientFunds"; value: undefined } | { tag: "InvalidSource"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
-        description:
-          "Error from [`crate::api::Payment::host_payment_top_up`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
-        source: "v0.2",
-        variants: [
-          {
-            name: "InsufficientFunds",
-            type: "undefined",
-            description: "The source account does not hold sufficient funds.",
-          },
-          {
-            name: "InvalidSource",
-            type: "undefined",
-            description: "The source account was not found or is invalid.",
-          },
-          {
-            name: "Unknown",
-            type: "{ reason: string }",
-            description: "Catch-all.",
-          },
-        ],
-      },
-      {
-        id: "V02HostPaymentTopUpRequest",
-        name: "V02HostPaymentTopUpRequest",
-        category: "struct",
-        definition:
-          "interface V02HostPaymentTopUpRequest { amount: Balance; source: PaymentTopUpSource }",
-        description: "Request to top up the product payment balance.",
-        source: "v0.2",
-        fields: [
-          {
-            name: "amount",
-            type: "Balance",
-            description: "Amount to top up.",
-          },
-          {
-            name: "source",
-            type: "PaymentTopUpSource",
-            description: "Funding source for the top-up.",
-          },
-        ],
-      },
-      {
-        id: "V02HostSignPayloadRequest",
-        name: "V02HostSignPayloadRequest",
-        category: "struct",
-        definition:
-          "interface V02HostSignPayloadRequest { account: ProductAccountId; blockHash: Uint8Array; blockNumber: Uint8Array; era: Uint8Array; genesisHash: Uint8Array; method: Uint8Array; nonce: Uint8Array; specVersion: Uint8Array; tip: Uint8Array; transactionVersion: Uint8Array; signedExtensions: Array<string>; version: number; assetId?: Uint8Array; metadataHash?: Uint8Array; mode?: number; withSignedTransaction?: boolean }",
-        description:
-          "Full Substrate extrinsic signing payload with all fields needed for signature\ngeneration.",
-        source: "v0.2",
-        fields: [
-          {
-            name: "account",
-            type: "ProductAccountId",
-            description:
-              "Product account that will sign this payload.\n\nV0.2: replaces the previous `address: String` field per [RFC 0005],\naligning with all other TrUAPI account-related methods.\n\n[RFC 0005]: https://github.com/paritytech/triangle-js-sdks/pull/82",
-          },
-          {
-            name: "blockHash",
-            type: "Uint8Array",
-            description: "Reference block hash.",
-          },
-          {
-            name: "blockNumber",
-            type: "Uint8Array",
-            description: "Reference block number.",
-          },
-          {
-            name: "era",
-            type: "Uint8Array",
-            description: "Mortality era encoding.",
-          },
-          {
-            name: "genesisHash",
-            type: "Uint8Array",
-            description: "Chain genesis hash.",
-          },
-          {
-            name: "method",
-            type: "Uint8Array",
-            description: "SCALE-encoded call data.",
-          },
-          {
-            name: "nonce",
-            type: "Uint8Array",
-            description: "Account nonce.",
-          },
-          {
-            name: "specVersion",
-            type: "Uint8Array",
-            description: "Runtime spec version.",
-          },
-          {
-            name: "tip",
-            type: "Uint8Array",
-            description: "Transaction tip.",
-          },
-          {
-            name: "transactionVersion",
-            type: "Uint8Array",
-            description: "Transaction format version.",
-          },
-          {
-            name: "signedExtensions",
-            type: "Array<string>",
-            description: "Extension identifiers.",
-          },
-          {
-            name: "version",
-            type: "number",
-            description: "Extrinsic version.",
-          },
-          {
-            name: "assetId",
-            type: "Uint8Array",
-            description: "For multi-asset tips.",
-          },
-          {
-            name: "metadataHash",
-            type: "Uint8Array",
-            description: "CheckMetadataHash extension.",
-          },
-          {
-            name: "mode",
-            type: "number",
-            description: "Metadata mode.",
-          },
-          {
-            name: "withSignedTransaction",
-            type: "boolean",
-            description: "Request signed transaction back.",
-          },
-        ],
-      },
-      {
-        id: "V02HostSignRawRequest",
-        name: "V02HostSignRawRequest",
-        category: "struct",
-        definition:
-          "interface V02HostSignRawRequest { account: ProductAccountId; payload: RawPayload }",
-        description:
-          "A raw signing request pairing an account with the payload to sign.\n\nV0.2: `address` replaced with `account: ProductAccountId` per [RFC 0005];\nthe `data` field was also renamed to `payload`.\n\n[RFC 0005]: https://github.com/paritytech/triangle-js-sdks/pull/82",
-        source: "v0.2",
-        fields: [
-          {
-            name: "account",
-            type: "ProductAccountId",
-            description: "Product account that will sign this payload.",
-          },
-          {
-            name: "payload",
-            type: "RawPayload",
-            description: "The payload to sign.",
-          },
-        ],
-      },
-      {
-        id: "V02RemotePermissionRequest",
-        name: "V02RemotePermissionRequest",
-        category: "struct",
-        definition:
-          "interface V02RemotePermissionRequest { permissions: Array<RemotePermission> }",
-        description: "Request containing batched remote-operation permissions.",
-        source: "v0.2",
-        fields: [
-          {
-            name: "permissions",
-            type: "Array<RemotePermission>",
-            description: "Permissions requested by the product.",
-          },
-        ],
-      },
-      {
-        id: "V02RemoteStatementStoreSubscribeItem",
-        name: "V02RemoteStatementStoreSubscribeItem",
-        category: "struct",
-        definition:
-          "interface V02RemoteStatementStoreSubscribeItem { statements: Array<SignedStatement>; isComplete: boolean }",
-        description:
-          "Page of signed statements delivered by the statement store subscription\n(RFC 0008). The `is_complete` flag distinguishes the historical-dump phase\n(`false`) from the live-update phase (`true`).",
-        source: "v0.2",
-        fields: [
-          {
-            name: "statements",
-            type: "Array<SignedStatement>",
-            description: "Signed statements matching the subscription.",
-          },
-          {
-            name: "isComplete",
-            type: "boolean",
-            description:
-              "`false` while the host is still streaming the historical dump (more\npages to follow). `true` once the dump is complete; all subsequent\npages are also `true` and carry only newly-arrived statements.",
-          },
-        ],
-      },
-      {
-        id: "V02RemoteStatementStoreSubscribeRequest",
-        name: "V02RemoteStatementStoreSubscribeRequest",
-        category: "enum",
-        definition:
-          'type V02RemoteStatementStoreSubscribeRequest = { tag: "MatchAll"; value: Array<Topic> } | { tag: "MatchAny"; value: Array<Topic> }',
-        description:
-          "Request to subscribe to statements via a topic filter (RFC 0008).",
-        source: "v0.2",
-        variants: [
-          {
-            name: "MatchAll",
-            type: "Array<Topic>",
-            description: "AND: statement must contain every listed topic.",
-          },
-          {
-            name: "MatchAny",
-            type: "Array<Topic>",
-            description:
-              "OR: statement must contain at least one listed topic.",
           },
         ],
       },

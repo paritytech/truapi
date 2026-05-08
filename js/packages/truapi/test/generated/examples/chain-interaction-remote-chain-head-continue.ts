@@ -2,7 +2,9 @@
 
 import { type Client } from "@parity/truapi";
 
-export async function continueChainHeadOperation(truapi: Client) {
+export async function continueChainHeadOperation(
+  truapi: Client,
+): Promise<void> {
   const result = await truapi.chainInteraction.chainHeadContinue({
     genesisHash: new Uint8Array(),
     followSubscriptionId: "",

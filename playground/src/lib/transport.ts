@@ -280,47 +280,66 @@ export function openEphemeralFollow(
   return new Promise((resolve, reject) => {
     let settled = false;
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-    const sub = client.chainInteraction.chainHeadFollow({
-      request: { genesisHash: genesisHashBytes, withRuntime },
-      onData: (event) => {
-        if (!settled) {
-          if (event.tag !== "Initialized") return;
-          const finalizedBlockHash = event.value.finalizedBlockHashes[0];
-          if (!finalizedBlockHash) {
-            settled = true;
-            if (timeoutHandle !== null) clearTimeout(timeoutHandle);
-            try {
-              sub.unsubscribe();
-            } catch {
-              /* benign */
-            }
-            reject(new Error("Initialized event had no finalized block hash"));
-            return;
-          }
-          settled = true;
-          if (timeoutHandle !== null) clearTimeout(timeoutHandle);
-          resolve({
-            subscriptionId: sub.subscriptionId,
-            genesisHash: genesisHashBytes,
-            finalizedBlockHash,
-            onEvent: (listener) => {
-              listeners.add(listener);
-              return () => listeners.delete(listener);
-            },
-            unsubscribe: () => {
+    const sub = client.chainInteraction
+      .chainHeadFollow({
+        request: { genesisHash: genesisHashBytes, withRuntime },
+      })
+      .subscribe({
+        next: (event) => {
+          if (!settled) {
+            if (event.tag !== "Initialized") return;
+            const finalizedBlockHash = event.value.finalizedBlockHashes[0];
+            if (!finalizedBlockHash) {
+              settled = true;
+              if (timeoutHandle !== null) clearTimeout(timeoutHandle);
               try {
                 sub.unsubscribe();
               } catch {
                 /* benign */
               }
-              listeners.clear();
-            },
-          });
-          return;
-        }
-        for (const listener of listeners) listener(event);
-      },
-    });
+              reject(
+                new Error("Initialized event had no finalized block hash"),
+              );
+              return;
+            }
+            settled = true;
+            if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+            resolve({
+              subscriptionId: sub.subscriptionId,
+              genesisHash: genesisHashBytes,
+              finalizedBlockHash,
+              onEvent: (listener) => {
+                listeners.add(listener);
+                return () => listeners.delete(listener);
+              },
+              unsubscribe: () => {
+                try {
+                  sub.unsubscribe();
+                } catch {
+                  /* benign */
+                }
+                listeners.clear();
+              },
+            });
+            return;
+          }
+          for (const listener of listeners) listener(event);
+        },
+        error: (error) => {
+          listeners.clear();
+          if (settled) return;
+          settled = true;
+          if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+          reject(error);
+        },
+        complete: () => {
+          listeners.clear();
+          if (settled) return;
+          settled = true;
+          if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+          reject(new Error("chain_head_follow completed before Initialized"));
+        },
+      });
     timeoutHandle = setTimeout(() => {
       if (settled) return;
       settled = true;
