@@ -19,6 +19,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
       - uses: actions/setup-node@v4
         with:
@@ -28,10 +30,10 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Build package
-        run: npm install --prefix js/packages/truapi && npm run build --prefix js/packages/truapi
+        run: npm ci --prefix js/packages/truapi && npm run build --prefix js/packages/truapi
 
       - name: Install explorer dependencies
-        run: npm install --prefix explorer
+        run: npm ci --prefix explorer
 
       - name: Build explorer
         run: npm run build --prefix explorer

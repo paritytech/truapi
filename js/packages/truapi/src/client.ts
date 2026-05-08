@@ -198,15 +198,21 @@ export function createTransport(
       //
       // Respond with the handshake method's selected wire version. The inner
       // request carries the wire codec version.
+      let response: Uint8Array;
       try {
         const request = unwrapVersionedWireValue(
           T.HostHandshakeRequest.dec(payload.value),
         ) as T.V01HostHandshakeRequest;
         const requestedCodecVersion = request.codecVersion;
-        const response =
+        response =
           requestedCodecVersion === codecVersion
             ? encodeSuccessfulHandshakeResponse(HANDSHAKE_WIRE_VERSION)
             : encodeUnsupportedHandshakeResponse(HANDSHAKE_WIRE_VERSION);
+      } catch (error) {
+        closeWithError(toError(error));
+        return;
+      }
+      try {
         send({
           requestId,
           payload: {
@@ -306,6 +312,9 @@ export function createTransport(
       return {
         subscriptionId: requestId,
         unsubscribe: () => {
+          // Skip the `_stop` frame when the host already terminated the stream
+          // via `_interrupt` (which removes the entry from `subscriptions`).
+          if (!subscriptions.has(requestId)) return;
           subscriptions.delete(requestId);
           try {
             send({

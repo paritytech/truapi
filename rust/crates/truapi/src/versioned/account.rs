@@ -15,7 +15,7 @@ versioned_type! {
     pub enum HostAccountGetAliasRequest { V1 => v01::HostAccountGetAliasRequest }
     /// Versioned wrapper for [`v01::HostAccountGetAliasResponse`] and older versions.
     pub enum HostAccountGetAliasResponse { V1 => v01::HostAccountGetAliasResponse }
-    /// Versioned wrapper for [`v01::HostAccountGetError`] and older versions.
+    /// Versioned wrapper around the alias-lookup error path; reuses [`v01::HostAccountGetError`].
     pub enum HostAccountGetAliasError { V1 => v01::HostAccountGetError }
     /// Versioned wrapper for [`v01::HostAccountCreateProofRequest`] and older versions.
     pub enum HostAccountCreateProofRequest { V1 => v01::HostAccountCreateProofRequest }
@@ -27,7 +27,7 @@ versioned_type! {
     pub enum HostGetLegacyAccountsRequest { V1 }
     /// Versioned wrapper for [`v01::HostGetLegacyAccountsResponse`] and older versions.
     pub enum HostGetLegacyAccountsResponse { V1 => v01::HostGetLegacyAccountsResponse }
-    /// Versioned wrapper for [`v01::HostAccountGetError`] and older versions.
+    /// Versioned wrapper around the legacy-accounts error path; reuses [`v01::HostAccountGetError`].
     pub enum HostGetLegacyAccountsError { V1 => v01::HostAccountGetError }
     /// Versioned wrapper for [`v01::HostAccountConnectionStatusSubscribeItem`] and older versions.
     pub enum HostAccountConnectionStatusSubscribeItem { V1 => v01::HostAccountConnectionStatusSubscribeItem }

@@ -67,18 +67,19 @@ impl FromStr for ProtocolVersionArg {
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
+    let input = &cli.input;
     let json = std::fs::read_to_string(&cli.input)
-        .with_context(|| format!("reading rustdoc JSON from {}", cli.input))?;
-    let krate = rustdoc::parse(&json).with_context(|| format!("parsing {}", cli.input))?;
+        .with_context(|| format!("reading rustdoc JSON from {input}"))?;
+    let krate = rustdoc::parse(&json).with_context(|| format!("parsing {input}"))?;
     let api = rustdoc::extract_api(&krate)
-        .with_context(|| format!("extracting API definition from {}", cli.input))?;
-    typescript::generate(&api, &cli.output, cli.version.number(), cli.codec_version)
-        .with_context(|| format!("writing TypeScript client to {}", cli.output))?;
+        .with_context(|| format!("extracting API definition from {input}"))?;
     let output = &cli.output;
+    typescript::generate(&api, output, cli.version.number(), cli.codec_version)
+        .with_context(|| format!("writing TypeScript client to {output}"))?;
+    let version_number = cli.version.number();
+    let codec_version = cli.codec_version;
     println!(
-        "Generated TypeScript client for TrUAPI V{} codec {} in {output}",
-        cli.version.number(),
-        cli.codec_version
+        "Generated TypeScript client for TrUAPI V{version_number} codec {codec_version} in {output}",
     );
     if let Some(path) = &cli.playground_output {
         typescript::generate_playground_services(&api, path, cli.version.number())

@@ -14,18 +14,27 @@ pub struct Crate {
     pub paths: HashMap<String, ItemPath>,
 }
 
+/// Single rustdoc index entry: a name, its docs, and the raw `inner` payload
+/// whose shape depends on the item kind (struct, enum, function, ...).
 #[derive(Debug, Deserialize)]
 pub struct Item {
+    /// Local item name as it appears in source.
     pub name: Option<String>,
+    /// Rustdoc comment on the item, if any.
     #[allow(dead_code)]
     pub docs: Option<String>,
+    /// Kind-dependent rustdoc payload, parsed lazily by helpers in this module.
     pub inner: serde_json::Value,
 }
 
+/// Resolves a rustdoc id to its fully-qualified path and item kind.
 #[derive(Debug, Deserialize)]
 pub struct ItemPath {
+    /// Numeric id of the crate that owns the item.
     pub crate_id: u32,
+    /// Fully-qualified path segments (`["truapi", "api", "Foo"]`).
     pub path: Vec<String>,
+    /// Item kind string from rustdoc (e.g. `"struct"`, `"enum"`, `"trait"`).
     pub kind: String,
 }
 
@@ -36,19 +45,27 @@ pub struct ApiDefinition {
     pub types: Vec<TypeDef>,
 }
 
+/// Trait extracted from the rustdoc index: name, methods, and rustdoc.
 #[derive(Debug, PartialEq, Eq)]
 pub struct TraitDef {
+    /// Trait name as it appears in source.
     pub name: String,
+    /// Methods declared on the trait, in declaration order.
     pub methods: Vec<MethodDef>,
     /// Rustdoc comment on the trait, with hidden codegen markers stripped.
     pub docs: Option<String>,
 }
 
+/// Trait method extracted from rustdoc, including its wire id.
 #[derive(Debug, PartialEq, Eq)]
 pub struct MethodDef {
+    /// Method name as it appears in source.
     pub name: String,
+    /// What shape the method has on the wire (request, stream, ...).
     pub kind: MethodKind,
+    /// Parameter list with names preserved (excluding `&self` / `CallContext`).
     pub params: Vec<ParamDef>,
+    /// Return shape, decoded from the method signature.
     pub return_type: ReturnType,
     /// Base wire-protocol discriminant id for this method (from `#[wire(id = N)]`).
     /// `None` for trait methods that have not been annotated yet (legacy / opt-in).
@@ -57,75 +74,120 @@ pub struct MethodDef {
     pub docs: Option<String>,
 }
 
+/// Wire-shape classification of a trait method.
 #[derive(Debug, PartialEq, Eq)]
 pub enum MethodKind {
+    /// One request, one response.
     Request,
+    /// One request, a stream of items terminated by interrupt.
     Subscription,
+    /// One request, a stream of `Result<item, err>` items.
     ResultSubscription,
 }
 
+/// Trait method parameter (name + type).
 #[derive(Debug, PartialEq, Eq)]
 pub struct ParamDef {
+    /// Parameter name as written in the trait method signature.
     pub name: String,
+    /// Parameter type expressed as a [`TypeRef`].
     pub type_ref: TypeRef,
 }
 
+/// Return shape of a trait method, after stripping wrappers like `Result` /
+/// `Pin<Box<dyn Future>>` that rustdoc surfaces literally.
 #[derive(Debug, PartialEq, Eq)]
 pub enum ReturnType {
+    /// `Result<ok, err>`-shaped return.
     Result { ok: TypeRef, err: TypeRef },
+    /// Subscription that yields `TypeRef` items.
     Subscription(TypeRef),
+    /// Subscription that yields `Result<item, err>` items.
     ResultSubscription { item: TypeRef, err: TypeRef },
 }
 
+/// Type reference parsed from rustdoc into a structural form codegen can emit.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeRef {
+    /// Primitive scalar (`u8`, `bool`, `String`, ...).
     Primitive(String),
-    Named { name: String, args: Vec<TypeRef> },
+    /// Named type, optionally generic (`HostFoo`, `Vec<T>`, `Option<T>`).
+    Named {
+        /// Type name in source order.
+        name: String,
+        /// Generic arguments, if any.
+        args: Vec<TypeRef>,
+    },
+    /// Sugar for `Vec<T>` extracted from rustdoc.
     Vec(Box<TypeRef>),
+    /// Sugar for `Option<T>` extracted from rustdoc.
     Option(Box<TypeRef>),
+    /// Tuple of arbitrary arity (zero-tuple represents unit only via [`TypeRef::Unit`]).
     Tuple(Vec<TypeRef>),
+    /// Fixed-length array `[T; N]`.
     Array(Box<TypeRef>, usize),
+    /// Generic placeholder bound somewhere up the trait hierarchy.
     Generic(String),
+    /// Unit type `()`.
     Unit,
 }
 
+/// User-defined type (struct/enum/alias) discovered while walking the API.
 #[derive(Debug, PartialEq, Eq)]
 pub struct TypeDef {
+    /// Type name as it appears in source.
     pub name: String,
+    /// Generic parameter names declared on the type, in declaration order.
     pub generic_params: Vec<String>,
+    /// Type body shape (alias, struct, tuple struct, or enum).
     pub kind: TypeDefKind,
     /// Rustdoc comment on the type itself.
     pub docs: Option<String>,
 }
 
+/// Body shape of a [`TypeDef`].
 #[derive(Debug, PartialEq, Eq)]
 pub enum TypeDefKind {
+    /// `type Foo = Bar;`-style alias.
     Alias(TypeRef),
+    /// Struct with named fields.
     Struct(Vec<FieldDef>),
+    /// Tuple struct with positional fields.
     TupleStruct(Vec<TypeRef>),
+    /// Enum with named variants.
     Enum(Vec<VariantDef>),
 }
 
+/// Named field of a struct or struct-style enum variant.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FieldDef {
+    /// Field name.
     pub name: String,
+    /// Field type expressed as a [`TypeRef`].
     pub type_ref: TypeRef,
     /// Rustdoc comment on the field.
     pub docs: Option<String>,
 }
 
+/// Enum variant extracted from rustdoc.
 #[derive(Debug, PartialEq, Eq)]
 pub struct VariantDef {
+    /// Variant name.
     pub name: String,
+    /// Variant payload shape.
     pub fields: VariantFields,
     /// Rustdoc comment on the variant.
     pub docs: Option<String>,
 }
 
+/// Payload shape of an enum variant.
 #[derive(Debug, PartialEq, Eq)]
 pub enum VariantFields {
+    /// `VariantName,`
     Unit,
+    /// `VariantName(T1, T2, ...)`
     Unnamed(Vec<TypeRef>),
+    /// `VariantName { a: T1, b: T2, ... }`
     Named(Vec<FieldDef>),
 }
 

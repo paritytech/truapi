@@ -26,6 +26,14 @@ docs/                    design docs, RFCs, feature proposals
 scripts/codegen.sh       regenerate the TS client from the Rust crate
 ```
 
+## First-time setup
+
+```bash
+git submodule update --init --recursive
+( cd js/packages/truapi && npm install )
+( cd playground && yarn install --frozen-lockfile )
+```
+
 ## Regenerating the TS client
 
 ```bash

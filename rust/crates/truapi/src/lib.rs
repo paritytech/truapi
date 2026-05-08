@@ -86,10 +86,12 @@ pub struct CallContext {
 }
 
 impl CallContext {
+    /// Construct an empty context with a fresh cancellation token.
     pub fn new() -> Self {
         Self::with_request_id(String::new())
     }
 
+    /// Construct a context bound to the given `request_id` with a fresh cancellation token.
     pub fn with_request_id(request_id: RequestId) -> Self {
         Self {
             request_id,
@@ -97,14 +99,17 @@ impl CallContext {
         }
     }
 
+    /// Construct a context from explicit `request_id` and `cancel` parts.
     pub fn with_parts(request_id: RequestId, cancel: CancellationToken) -> Self {
         Self { request_id, cancel }
     }
 
+    /// Return the request id this context is associated with.
     pub fn request_id(&self) -> &str {
         &self.request_id
     }
 
+    /// Return the cancellation token that signals when the call should abort.
     pub fn cancel(&self) -> &CancellationToken {
         &self.cancel
     }

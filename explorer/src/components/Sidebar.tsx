@@ -121,7 +121,9 @@ export default function Sidebar({
               type="button"
             >
               <span className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${version.status === "stable" ? "bg-emerald-400" : "bg-amber-400"}`}
+                />
                 Protocol {version.label}
               </span>
               <ChevronDown
@@ -148,12 +150,20 @@ export default function Sidebar({
                     type="button"
                   >
                     <span className="flex items-center gap-1.5">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      <span
+                        className={`w-1.5 h-1.5 rounded-full ${v.status === "stable" ? "bg-emerald-400" : "bg-amber-400"}`}
+                      />
                       {v.label}
                     </span>
-                    <span className="text-[9px] text-emerald-400 font-medium">
-                      STABLE
-                    </span>
+                    {v.status === "stable" ? (
+                      <span className="text-[9px] text-emerald-400 font-medium">
+                        STABLE
+                      </span>
+                    ) : (
+                      <span className="text-[9px] text-amber-400 font-medium">
+                        PREVIEW
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>

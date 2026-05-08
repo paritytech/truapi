@@ -91,6 +91,12 @@ export function MethodView({
   const [activeSub, setActiveSub] = useState<{
     unsubscribe: () => void;
   } | null>(null);
+
+  useEffect(() => {
+    return () => {
+      activeSub?.unsubscribe();
+    };
+  }, [activeSub]);
   const callAbortRef = useRef<((reason: string) => void) | null>(null);
 
   const CALL_TIMEOUT_MS = 30_000;

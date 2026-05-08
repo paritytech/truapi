@@ -213,17 +213,12 @@ export function createMessagePortProvider(
       p.onmessage = (event: MessageEvent) => {
         const data = event.data;
         if (!(data instanceof Uint8Array)) return;
-        for (const listener of listeners) listener(data);
+        for (const listener of [...listeners]) listener(data);
       };
       if ("onmessageerror" in p) {
         p.onmessageerror = () => {
           notifyClose(new Error("message port closed unexpectedly"));
         };
-      }
-      if ("addEventListener" in p) {
-        p.addEventListener("close", () => {
-          notifyClose(new Error("message port closed unexpectedly"));
-        });
       }
       p.start();
       for (const msg of pending) p.postMessage(msg);

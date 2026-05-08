@@ -39,9 +39,13 @@ function isCorrectEnvironment(): boolean {
   return isIframe() || isWebview();
 }
 
-async function waitForWebviewPort(timeoutMs = 20_000): Promise<MessagePort> {
+async function waitForWebviewPort(
+  signal?: AbortSignal,
+  timeoutMs = 20_000,
+): Promise<MessagePort> {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
+    if (signal?.aborted) throw new Error("waitForWebviewPort aborted");
     if (window.__HOST_API_PORT__) return window.__HOST_API_PORT__;
     await new Promise((r) => setTimeout(r, 50));
   }
@@ -100,8 +104,7 @@ function createIframeProvider(): Provider {
       if (disposed) throw new Error("iframe provider disposed");
       // Pin the target origin so SCALE-encoded frames carrying signed
       // payloads / account ids don't leak to an unrelated frame parent.
-      // Transfer the underlying buffer for zero-copy where possible.
-      parent.postMessage(message, hostOrigin, [message.buffer]);
+      parent.postMessage(message, hostOrigin);
     },
     subscribe(callback: MessageListener) {
       listeners.add(callback);
@@ -130,7 +133,16 @@ function createIframeProvider(): Provider {
 function createSandboxProvider(): Provider {
   if (isIframe()) return createIframeProvider();
   if (isWebview()) {
-    return createMessagePortProvider(waitForWebviewPort());
+    const portController = new AbortController();
+    const provider = createMessagePortProvider(
+      waitForWebviewPort(portController.signal),
+    );
+    const baseDispose = provider.dispose;
+    provider.dispose = () => {
+      portController.abort();
+      baseDispose?.();
+    };
+    return provider;
   }
   throw new Error(
     "Playground must be opened inside a TrUAPI host (iframe or webview); detected neither.",

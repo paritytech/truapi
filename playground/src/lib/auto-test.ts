@@ -19,7 +19,7 @@ export const EXCLUDED_METHODS = new Set([
   "Signing/host_sign_payload",
   "Signing/host_sign_raw",
   "Signing/host_create_transaction",
-  "Signing/host_create_transaction_with_non_product_account",
+  "Signing/host_create_transaction_with_legacy_account",
   "Account Management/host_account_get_alias",
 ]);
 
