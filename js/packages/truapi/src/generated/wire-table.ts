@@ -257,8 +257,3 @@ export const HOST_PAYMENT_STATUS_SUBSCRIBE = {
   interrupt: 128,
   receive: 129,
 } as const satisfies SubscriptionFrameIds;
-
-export const HOST_CHAT_CREATE_SIMPLE_GROUP = {
-  request: 130,
-  response: 131,
-} as const satisfies RequestFrameIds;

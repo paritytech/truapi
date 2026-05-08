@@ -4030,7 +4030,6 @@ export const versions: ExplorerVersion[] = [
           "host_chat_post_message",
           "host_chat_action_subscribe",
           "product_chat_custom_message_render_subscribe",
-          "host_chat_create_simple_group",
         ],
       },
       {
@@ -4747,20 +4746,6 @@ export const versions: ExplorerVersion[] = [
           "Subscribe to payment lifecycle updates for a specific payment.",
         usageExample:
           'import {\n  type Client,\n  type Subscription,\n  type HostPaymentStatusSubscribeItem,\n} from "@parity/truapi";\n\nexport function watchPaymentStatus(truapi: Client): Subscription {\n  return truapi.payment\n    .paymentStatusSubscribe({\n      request: { paymentId: "payment-id" },\n    })\n    .subscribe({\n      next: (status: HostPaymentStatusSubscribeItem) =>\n        console.log(status),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
-      },
-      {
-        id: "host_chat_create_simple_group",
-        name: "host_chat_create_simple_group",
-        groupId: "chat",
-        groupName: "Chat",
-        wireId: 130,
-        pattern: "unary",
-        request: "HostChatCreateSimpleGroupRequest",
-        response: "HostChatCreateSimpleGroupResponse",
-        errorType: "HostChatCreateRoomError",
-        description: "Create a simple group chat room (V0.2+).",
-        usageExample:
-          'import {\n  type Client,\n  type HostChatCreateSimpleGroupResponse,\n} from "@parity/truapi";\n\nexport async function createSimpleGroup(\n  truapi: Client,\n): Promise<HostChatCreateSimpleGroupResponse> {\n  const result = await truapi.chat.chatCreateSimpleGroup({\n    roomId: "test-simple-group",\n    name: "Test Group",\n    icon: "",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
     ],
     dataTypes: [
@@ -5877,56 +5862,6 @@ export const versions: ExplorerVersion[] = [
             name: "status",
             type: "ChatRoomRegistrationStatus",
             description: "`New` or `Exists`.",
-          },
-        ],
-      },
-      {
-        id: "HostChatCreateSimpleGroupRequest",
-        name: "HostChatCreateSimpleGroupRequest",
-        category: "struct",
-        definition:
-          "interface HostChatCreateSimpleGroupRequest { roomId: string; name: string; icon: string }",
-        description:
-          "Request to create a simple group chat room.\n\nV0.2: lightweight group chat that avoids the full Chat Extension v2\ncomplexity. Participants join via deep link; the host handles the UI\nwith default rendering (no custom elements).",
-        source: "v0.2",
-        fields: [
-          {
-            name: "roomId",
-            type: "string",
-            description: "Unique room identifier source.",
-          },
-          {
-            name: "name",
-            type: "string",
-            description: "Room display name.",
-          },
-          {
-            name: "icon",
-            type: "string",
-            description: "URL or base64 image for the room avatar.",
-          },
-        ],
-      },
-      {
-        id: "HostChatCreateSimpleGroupResponse",
-        name: "HostChatCreateSimpleGroupResponse",
-        category: "struct",
-        definition:
-          "interface HostChatCreateSimpleGroupResponse { status: ChatRoomRegistrationStatus; joinLink: string }",
-        description: "Result of creating a simple group chat room.\n\nV0.2.",
-        source: "v0.2",
-        fields: [
-          {
-            name: "status",
-            type: "ChatRoomRegistrationStatus",
-            description:
-              "Whether the room was newly created or already existed.",
-          },
-          {
-            name: "joinLink",
-            type: "string",
-            description:
-              "Deep link that participants can use to join the room.",
           },
         ],
       },

@@ -1,6 +1,6 @@
 //! Versioned wrappers for [`Chat`](crate::api::Chat) methods.
 
-use crate::{v01, v02};
+use crate::v01;
 
 versioned_type! {
     /// Versioned wrapper for [`v01::HostChatCreateRoomRequest`] and older versions.
@@ -9,12 +9,6 @@ versioned_type! {
     pub enum HostChatCreateRoomResponse { V1 => v01::HostChatCreateRoomResponse }
     /// Versioned wrapper for [`v01::HostChatCreateRoomError`] and older versions.
     pub enum HostChatCreateRoomError { V1 => v01::HostChatCreateRoomError }
-    /// Versioned wrapper for [`v02::HostChatCreateSimpleGroupRequest`] and older versions.
-    pub enum HostChatCreateSimpleGroupRequest { V2 => v02::HostChatCreateSimpleGroupRequest }
-    /// Versioned wrapper for [`v02::HostChatCreateSimpleGroupResponse`] and older versions.
-    pub enum HostChatCreateSimpleGroupResponse { V2 => v02::HostChatCreateSimpleGroupResponse }
-    /// Versioned wrapper for [`v01::HostChatCreateRoomError`] and older versions.
-    pub enum HostChatCreateSimpleGroupError { V2 => v01::HostChatCreateRoomError }
     /// Versioned wrapper for [`v01::HostChatRegisterBotRequest`] and older versions.
     pub enum HostChatRegisterBotRequest { V1 => v01::HostChatRegisterBotRequest }
     /// Versioned wrapper for [`v01::HostChatRegisterBotResponse`] and older versions.

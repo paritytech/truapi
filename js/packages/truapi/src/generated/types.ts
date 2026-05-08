@@ -738,46 +738,6 @@ export const VersionedHostChatCreateRoomResponse: S.Codec<VersionedHostChatCreat
       S.indexedTaggedUnion({ V1: [0, HostChatCreateRoomResponse] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostChatCreateRoomError`] and older versions. */
-export type VersionedHostChatCreateSimpleGroupError = {
-  tag: "V2";
-  value: HostChatCreateRoomError;
-};
-
-export const VersionedHostChatCreateSimpleGroupError: S.Codec<VersionedHostChatCreateSimpleGroupError> =
-  S.lazy(
-    (): S.Codec<VersionedHostChatCreateSimpleGroupError> =>
-      S.indexedTaggedUnion({ V2: [0, HostChatCreateRoomError] as const }),
-  );
-
-/** Versioned wrapper for [`v02::HostChatCreateSimpleGroupRequest`] and older versions. */
-export type VersionedHostChatCreateSimpleGroupRequest = {
-  tag: "V2";
-  value: HostChatCreateSimpleGroupRequest;
-};
-
-export const VersionedHostChatCreateSimpleGroupRequest: S.Codec<VersionedHostChatCreateSimpleGroupRequest> =
-  S.lazy(
-    (): S.Codec<VersionedHostChatCreateSimpleGroupRequest> =>
-      S.indexedTaggedUnion({
-        V2: [0, HostChatCreateSimpleGroupRequest] as const,
-      }),
-  );
-
-/** Versioned wrapper for [`v02::HostChatCreateSimpleGroupResponse`] and older versions. */
-export type VersionedHostChatCreateSimpleGroupResponse = {
-  tag: "V2";
-  value: HostChatCreateSimpleGroupResponse;
-};
-
-export const VersionedHostChatCreateSimpleGroupResponse: S.Codec<VersionedHostChatCreateSimpleGroupResponse> =
-  S.lazy(
-    (): S.Codec<VersionedHostChatCreateSimpleGroupResponse> =>
-      S.indexedTaggedUnion({
-        V2: [0, HostChatCreateSimpleGroupResponse] as const,
-      }),
-  );
-
 /** Versioned wrapper for [`v01::HostChatListSubscribeItem`] and older versions. */
 export type VersionedHostChatListSubscribeItem = {
   tag: "V1";
@@ -4004,53 +3964,6 @@ export const RemoteStatementStoreCreateProofResponse: S.Codec<RemoteStatementSto
       S.Struct({
         proof: StatementProof,
       }) as S.Codec<RemoteStatementStoreCreateProofResponse>,
-  );
-
-/**
- * Request to create a simple group chat room.
- *
- * V0.2: lightweight group chat that avoids the full Chat Extension v2
- * complexity. Participants join via deep link; the host handles the UI
- * with default rendering (no custom elements).
- */
-export interface HostChatCreateSimpleGroupRequest {
-  /** Unique room identifier source. */
-  roomId: string;
-  /** Room display name. */
-  name: string;
-  /** URL or base64 image for the room avatar. */
-  icon: string;
-}
-
-export const HostChatCreateSimpleGroupRequest: S.Codec<HostChatCreateSimpleGroupRequest> =
-  S.lazy(
-    (): S.Codec<HostChatCreateSimpleGroupRequest> =>
-      S.Struct({
-        roomId: S.str,
-        name: S.str,
-        icon: S.str,
-      }) as S.Codec<HostChatCreateSimpleGroupRequest>,
-  );
-
-/**
- * Result of creating a simple group chat room.
- *
- * V0.2.
- */
-export interface HostChatCreateSimpleGroupResponse {
-  /** Whether the room was newly created or already existed. */
-  status: ChatRoomRegistrationStatus;
-  /** Deep link that participants can use to join the room. */
-  joinLink: string;
-}
-
-export const HostChatCreateSimpleGroupResponse: S.Codec<HostChatCreateSimpleGroupResponse> =
-  S.lazy(
-    (): S.Codec<HostChatCreateSimpleGroupResponse> =>
-      S.Struct({
-        status: ChatRoomRegistrationStatus,
-        joinLink: S.str,
-      }) as S.Codec<HostChatCreateSimpleGroupResponse>,
   );
 
 /**
