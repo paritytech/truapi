@@ -214,7 +214,7 @@ pub trait Chat: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(request_id = 130)]
+    #[wire(request_id = 134)]
     async fn host_chat_create_simple_group(
         &self,
         _cx: &CallContext,

@@ -4753,7 +4753,7 @@ export const versions: ExplorerVersion[] = [
         name: "host_chat_create_simple_group",
         groupId: "chat",
         groupName: "Chat",
-        wireId: 130,
+        wireId: 134,
         pattern: "unary",
         request: "HostChatCreateSimpleGroupRequest",
         response: "HostChatCreateSimpleGroupResponse",
