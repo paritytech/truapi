@@ -1,15 +1,6 @@
-<div align="center">
-
 # TrUAPI Playground
 
 *Browse, edit, and call every TrUAPI method live against a connected Polkadot host.*
-
-[![Live](https://img.shields.io/badge/playground-truapi--playground.dot.li-success?style=flat-square)](https://truapi-playground.dot.li/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](../LICENSE)
-
-</div>
-
-<!-- TODO: Add hero screenshot showing the method browser + a request/response panel. Capture from the live app, save to `playground/assets/screenshots/main.png`. -->
 
 The playground is an interactive reference for the TrUAPI: every method grouped by domain, with live request payload editing, one-click calls, and live subscriptions. It must be opened from inside a TrUAPI host so it can talk to the host over the wire.
 
