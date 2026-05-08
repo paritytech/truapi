@@ -1,20 +1,18 @@
 # truapi-codegen
 
-_Code generator that reads rustdoc JSON from `truapi` and emits generated TypeScript client code._
+*Reads rustdoc JSON for the `truapi` crate and generates the TypeScript client.*
 
-## What this crate is for
+[![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](../../../LICENSE)
 
-`truapi-codegen` keeps generated client code aligned with Rust protocol definitions.
+`truapi-codegen` keeps the generated client aligned with the Rust protocol definition. It reads rustdoc JSON, extracts the TrUAPI API surface, and writes:
 
-It reads rustdoc JSON, extracts TrUAPI API shape, then writes:
+- TypeScript types for every protocol type in `truapi`.
+- TypeScript domain client classes for every unified trait.
+- The TypeScript wire dispatch table.
 
-- generated TypeScript types
-- generated TypeScript client classes
-- generated TypeScript wire table
+## Generated output
 
-That output looks like this in practice.
-
-Generated TypeScript client methods keep the API codecs local, encode payload bytes, and hand only wire frames to the transport:
+Generated client methods keep API codecs local, encode payload bytes, and hand only wire frames to the transport:
 
 ```ts
 export interface TrUApiTransport {
@@ -38,7 +36,7 @@ export class AccountManagementClient {
       payload: T.HostAccountGetRequest.enc({ tag: "V2", value: request }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V2: [1, S.result(T.Account, T.RequestCredentialsError)] as const,
+          V2: [1, S.Result(T.Account, T.RequestCredentialsError)] as const,
         }).dec(payload).value,
     });
     return result.success ? ok(result.value) : err(result.value);
@@ -48,14 +46,13 @@ export class AccountManagementClient {
 
 ## Architecture
 
-The generator has three stages:
+The generator runs in three stages:
 
-1. `rustdoc` parses JSON emitted by nightly rustdoc
-2. extracted API model is normalized, including each method's `#[wire(id = N)]`
-3. generators write TypeScript output
+1. **Parse**: read JSON emitted by nightly rustdoc.
+2. **Normalize**: extract the API model, including each method's `#[wire(id = N)]`.
+3. **Emit**: generators write TypeScript output.
 
-Missing or duplicate wire ids fail generation. Subscription methods reserve four
-consecutive ids for `_start`, `_stop`, `_interrupt`, and `_receive`.
+Missing or duplicate wire ids fail generation. Subscription methods reserve four consecutive ids for `_start`, `_stop`, `_interrupt`, and `_receive`.
 
 ## CLI
 
@@ -67,13 +64,23 @@ cargo run -p truapi-codegen -- \
   --codec-version 1
 ```
 
-## Example workflow
+## Typical workflow
 
 ```bash
 cargo +nightly rustdoc -p truapi -- -Z unstable-options --output-format json
-cargo run -p truapi-codegen -- --input target/doc/truapi.json --output js/packages/truapi/src/generated --version V2 --codec-version 1
+cargo run -p truapi-codegen -- \
+  --input target/doc/truapi.json \
+  --output js/packages/truapi/src/generated \
+  --version V2 \
+  --codec-version 1
 ```
 
-## When to use it
+The repo wraps both steps in [`scripts/codegen.sh`](../../../scripts/codegen.sh), which is what you should run from the repo root.
 
-Run this after trait or type changes in `truapi`. If you only change runtime behavior without changing protocol shape, you usually do not need to regenerate.
+## When to run it
+
+Run after any trait or type change in [`truapi`](../truapi/). If you only change runtime behavior without changing the protocol shape, regeneration is not needed.
+
+## License
+
+[MIT](../../../LICENSE)

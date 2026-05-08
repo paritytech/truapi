@@ -86,7 +86,14 @@ yarn build              # static export to out/
 yarn lint
 ```
 
-The playground must be opened from inside a TrUAPI host. Locally, navigate to `https://dot.li/localhost:3000` inside the Polkadot Desktop Host.
+The playground must be opened from inside a TrUAPI host. The fastest local
+setup is to run dotli's preview server alongside the playground and open
+`http://localhost:5173/localhost:3000` in any browser. Use the
+[`playground-local-stack`](.claude/skills/playground-local-stack/SKILL.md)
+skill to bring both servers up in tmux (it handles the `hosts/dotli/`
+submodule init + `bun install` and the per-pane `cd` discipline).
+Alternatively, with a deployed Polkadot Desktop Host installed, navigate to
+`https://dot.li/localhost:3000` from within it.
 
 ### Explorer
 

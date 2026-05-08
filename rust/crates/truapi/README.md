@@ -1,44 +1,42 @@
 # truapi
 
-_Canonical TrUAPI contract: shared traits, shared types, versioned request and response shapes, and subscription primitives._
+*Source of truth for the TrUAPI protocol: shared traits, versioned types, and the wire dispatch table.*
 
-## What this crate is for
+[![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](../../../LICENSE)
 
-`truapi` is source of truth for protocol surface.
+`truapi` is the canonical Rust definition of the TrUAPI protocol. If you are changing the API surface, this crate is where it starts.
 
 It defines:
 
-- shared data types under `v01`, `v02`, and `versioned`
-- domain API traits under `api/`
-- per-method `#[wire(id = N)]` annotations that define the byte-level method table
-- `Subscription<T>` for streamed host responses
-- shared authoring types like `CallContext`, `CallError<D>`, and `CancellationToken`
+- **Versioned data types** under `v01`, `v02`, and `versioned`.
+- **Domain API traits** under `api/`, plus the composed `TrUApi` trait.
+- **Wire ids** via per-method `#[wire(id = N)]` annotations that pin the byte-level method table.
+- **Subscription primitives** through `Subscription<T>` for streamed host responses.
+- **Authoring types** like `CallContext`, `CallError<D>`, and `CancellationToken`.
 
-If you change API shape, start here.
+The TypeScript client and the host dispatcher are both generated from this crate.
 
 ## Architecture
 
-This crate has two layers:
+The crate has two layers:
 
-1. **Protocol types** under `v01` and `v02`
-2. **Unified host contract** under `api`, where each method takes a `CallContext`, a versioned request type, and returns a versioned response with `CallError<D>` or a `Subscription<T>`
+1. **Protocol types** under `v01` and `v02`.
+2. **Unified host contract** under `api`, where each method takes a `CallContext`, a versioned request type, and returns a versioned response with `CallError<D>` or a `Subscription<T>`.
 
-Codegen reuses the shared types from this crate.
-
-Wire ids are part of the public protocol after F1. Existing ids are append-only:
-do not renumber or reuse them, because the generated Rust and TypeScript wire
-tables must stay byte-compatible with deployed products.
+Wire ids are part of the public protocol after F1: existing ids are append-only. Do not renumber or reuse them. The generated Rust dispatcher and the generated TypeScript wire table must stay byte-compatible with deployed products.
 
 ## Key modules
 
-- `v02` - current protocol-facing types
-- `versioned` - request, response, and subscription item wrappers used by the unified trait surface
-- `api` - unified domain traits such as `AccountManagement`, `ChainInteraction`, and `Chat`, plus the composed `TrUApi` trait
-- `failure` - framework-level `CallError<D>` and lifecycle context types
+| Module | Role |
+| ------ | ---- |
+| `v02` | Current protocol-facing types. |
+| `versioned` | Request, response, and subscription item wrappers for the unified trait surface. |
+| `api` | Unified domain traits (`AccountManagement`, `ChainInteraction`, `Chat`, ...) and the composed `TrUApi` trait. |
+| `failure` | Framework-level `CallError<D>` and lifecycle context types. |
 
 ## Example
 
-Implement one or more unified sub-traits. `TrUApi` is a blanket trait over the full set:
+Implement one or more of the unified sub-traits. `TrUApi` is a blanket trait over the full set:
 
 ```rust
 use truapi::{CallContext, CallError, Subscription};
@@ -77,18 +75,21 @@ impl AccountManagement for MyHost {
 fn _assert_truapi<T: TrUApi>() {}
 ```
 
-Subscription endpoints use `Subscription<T>` so hosts can stream versioned items back to the runtime.
+Subscription endpoints return `Subscription<T>` so hosts can stream versioned items back to the runtime:
 
 ```rust
 use truapi::Subscription;
 use truapi::versioned::account::HostAccountConnectionStatusSubscribeItem;
 
-fn _subscription_shape(
-) -> Subscription<HostAccountConnectionStatusSubscribeItem> {
+fn _subscription_shape() -> Subscription<HostAccountConnectionStatusSubscribeItem> {
     Subscription::empty()
 }
 ```
 
-## How other packages use it
+## Used by
 
-- `truapi-codegen` reads rustdoc output from this crate
+- [`truapi-codegen`](../truapi-codegen/) reads rustdoc JSON for this crate to generate the TypeScript client.
+
+## License
+
+[MIT](../../../LICENSE)

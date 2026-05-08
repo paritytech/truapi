@@ -1,15 +1,19 @@
 # @parity/truapi
 
-TypeScript package for products that talk to a TrUAPI host.
+*Typed TypeScript client for products that talk to a TrUAPI host.*
 
-It contains:
+[![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](../../../LICENSE)
+[![Types](https://img.shields.io/badge/types-included-3178C6?style=flat-square&logo=typescript)](./package.json)
 
-- transport providers for `MessagePort` pipes
-- the TrUAPI request, response, subscription, and handshake transport
-- generated domain clients and protocol types from the Rust API contract
-- SCALE codec helpers used by the generated code
+This package gives a product running inside a Polkadot host (Desktop Browser, Triangle webview) a fully typed client for every TrUAPI method. The transport, SCALE codecs, generated types, and generated domain clients are all bundled together.
 
-## Usage
+## Install
+
+```bash
+npm install @parity/truapi
+```
+
+## Quick start
 
 ```ts
 import {
@@ -17,9 +21,7 @@ import {
   createMessagePortProvider,
   createTransport,
   type Client,
-  type Subscription,
   type HostAccountGetResponse,
-  type RemoteChainHeadFollowItem,
 } from "@parity/truapi";
 
 const provider = createMessagePortProvider(port);
@@ -27,27 +29,24 @@ const transport = createTransport(provider);
 const truapi: Client = createClient(transport);
 
 const result = await truapi.accountManagement.accountGet({
-  productAccountId: {
-    dotNsIdentifier: "my-product.dot",
-    derivationIndex: 0,
-  },
+  productAccountId: { dotNsIdentifier: "my-product.dot", derivationIndex: 0 },
 });
 
 if (result.isErr()) throw result.error;
 const account: HostAccountGetResponse = result.value;
 ```
 
-Request methods take the inner request value directly. The transport handles the
-wire-level version wrapper and unwraps versioned responses before generated
-methods return.
+Request methods take the inner request value directly. The transport adds the wire-level version wrapper and unwraps versioned responses before the generated method returns.
 
-Subscription methods return a small Observable-compatible object:
+## Subscriptions
+
+Streaming methods return a small Observable-compatible object:
 
 ```ts
+import type { Subscription, RemoteChainHeadFollowItem } from "@parity/truapi";
+
 const sub: Subscription = truapi.chainInteraction
-  .chainHeadFollow({
-    request: { genesisHash, withRuntime: false },
-  })
+  .chainHeadFollow({ request: { genesisHash, withRuntime: false } })
   .subscribe({
     next(event: RemoteChainHeadFollowItem) {
       console.log(event);
@@ -63,7 +62,14 @@ const sub: Subscription = truapi.chainInteraction
 sub.unsubscribe();
 ```
 
-## Wire Format
+## What's in the package
+
+- **Transport providers** for `MessagePort` pipes (used by both webview hosts and iframe hosts).
+- **TrUAPI transport** that handles request, response, subscription, and handshake framing.
+- **Generated domain clients and types** produced from the Rust API contract.
+- **SCALE codec helpers** used by the generated code, also re-exported for direct use.
+
+## Wire format
 
 Frames are SCALE encoded:
 
@@ -71,19 +77,17 @@ Frames are SCALE encoded:
 [requestId: SCALE str][discriminant: u8][payload bytes...]
 ```
 
-The discriminant table is generated from Rust `#[wire(request_id = N)]` and
-`#[wire(start_id = N)]` annotations and lives in `src/generated/wire-table.ts`.
+The discriminant table is generated from Rust `#[wire(request_id = N)]` and `#[wire(start_id = N)]` annotations and lives in `src/generated/wire-table.ts`.
 
-## Generated Files
+## Generated files
 
-`src/generated/` is produced by `truapi-codegen` from the Rust crate. Do not edit
-generated files directly; run from the repo root:
+`src/generated/` is produced by [`truapi-codegen`](../../../rust/crates/truapi-codegen/) from the Rust crate. Do not edit generated files directly. Run from the repo root:
 
 ```bash
 ./scripts/codegen.sh
 ```
 
-## Development
+## Develop
 
 ```bash
 npm install
@@ -91,6 +95,8 @@ npm run build
 npm test
 ```
 
-`npm test` runs the package smoke tests under [bun](https://bun.sh/), so it
-must be installed locally (`curl -fsSL https://bun.sh/install | bash`). The
-tests load the source `.ts` files directly without a build step.
+`npm test` runs the package's smoke tests under [bun](https://bun.sh/), so bun must be installed locally (`curl -fsSL https://bun.sh/install | bash`). The tests load the source `.ts` files directly without a build step.
+
+## License
+
+[MIT](../../../LICENSE)
