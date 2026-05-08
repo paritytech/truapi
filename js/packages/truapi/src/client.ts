@@ -139,11 +139,11 @@ export function createTransport(
     }
   }
 
-  provider.subscribeClose?.((error) => {
+  const unsubscribeClose = provider.subscribeClose?.((error) => {
     closeWithError(error);
   });
 
-  provider.subscribe((message) => {
+  const unsubscribeMessage = provider.subscribe((message) => {
     if (closedError) {
       return;
     }
@@ -326,6 +326,13 @@ export function createTransport(
           }
         },
       };
+    },
+    dispose() {
+      // Idempotent: closeWithError is a no-op once closedError is set, and
+      // unsubscribe handles tolerate being called twice.
+      closeWithError(new Error("transport disposed"));
+      unsubscribeMessage();
+      unsubscribeClose?.();
     },
   };
 }

@@ -125,6 +125,17 @@ export interface TrUApiTransport {
    * Start a subscription and return a handle that can stop it.
    **/
   subscribeRaw(params: SubscribeRawParams): Subscription;
+
+  /**
+   * Tear down the transport and release the listeners it registered on the
+   * underlying `Provider`. Pending requests reject and live subscriptions
+   * receive `onClose`. Idempotent.
+   *
+   * The provider itself is left alone; the caller decides whether to also
+   * call `provider.dispose()` (long-lived hosts that swap providers will
+   * typically dispose the transport but keep the provider).
+   **/
+  dispose(): void;
 }
 
 /**

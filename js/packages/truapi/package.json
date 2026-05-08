@@ -2,6 +2,22 @@
   "name": "@parity/truapi",
   "version": "0.1.0",
   "description": "TrUAPI TypeScript transport, SCALE codecs, and generated API client",
+  "license": "MIT",
+  "author": "Parity Technologies <admin@parity.io>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/paritytech/truapi.git",
+    "directory": "js/packages/truapi"
+  },
+  "homepage": "https://github.com/paritytech/truapi#readme",
+  "bugs": {
+    "url": "https://github.com/paritytech/truapi/issues"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
