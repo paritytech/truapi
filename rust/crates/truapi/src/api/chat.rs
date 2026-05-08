@@ -191,5 +191,4 @@ pub trait Chat: Send + Sync {
     ) -> Subscription<ProductChatCustomMessageRenderSubscribeItem> {
         Subscription::empty()
     }
-
 }
