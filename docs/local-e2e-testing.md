@@ -193,10 +193,10 @@ iframe via `window.parent` and uses the iframe `postMessage` provider.
 
 ### Verification flow inside the playground UI
 
-1. The connection chip should flip from _OFFLINE_ to _CONNECTING_ and
-   then to _ONLINE_ within ~1s. `ONLINE` proves the handshake round
-   trip (`host_handshake_request` → `host_handshake_response`) decoded
-   on both ends.
+1. The connection chip should flip from _Offline_ to _Handshaking_ and
+   then to _Host Linked_ within ~1s. `Host Linked` proves the handshake
+   round trip (`host_handshake_request` → `host_handshake_response`)
+   decoded on both ends.
 2. Open `Account Management → host_account_get` (or any unary method),
    keep the default request, and click **Call**. A success result with
    a public key proves: SCALE encode in TS → wire frame → dotli decode →
@@ -215,7 +215,7 @@ iframe via `window.parent` and uses the iframe `postMessage` provider.
    method (e.g. `host_account_get`) and one V0.2-only method (e.g.
    `host_get_user_id`) to confirm both wire variants still decode.
 
-If the connection chip stays on _CONNECTING_, the handshake is
+If the connection chip stays on _Handshaking_, the handshake is
 failing. Check:
 
 - The dotli console for `Unknown wire tag` / `Unknown wire discriminant`
@@ -299,5 +299,5 @@ A change is end-to-end-verified locally when all of:
 - [ ] `yarn build && yarn lint` in `playground/` clean (after a fresh
       `rm -rf node_modules && yarn install` if step 2 ran)
 - [ ] Playground loads inside `http://localhost:5173/localhost:3000`,
-      connection chip turns _ONLINE_, at least one unary call and one
+      connection chip turns _Host Linked_, at least one unary call and one
       subscription succeed against the dotli host.

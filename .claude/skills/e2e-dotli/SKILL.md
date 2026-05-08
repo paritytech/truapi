@@ -106,5 +106,5 @@ and uses the iframe `postMessage` provider.
   auto-responds to `host_handshake_request` only; everything else is on
   the host implementation.
 - Playwright `webServer` times out on `bun run preview` → dotli's
-  `turbo run build` is slow on a cold cache. The config gives it 5
+  `turbo run build` is slow on a cold cache. The config gives it 10
   minutes; if that is not enough, prebuild `hosts/dotli` once.

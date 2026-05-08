@@ -17,6 +17,8 @@ jobs:
   rust:
     name: Rust workspace
     runs-on: ubuntu-latest
+    env:
+      RUSTFLAGS: "-D warnings"
     steps:
       - uses: actions/checkout@v4
 
@@ -97,6 +99,9 @@ jobs:
 
       - name: Build
         run: npm run build --prefix js/packages/truapi
+
+      - name: Typecheck examples
+        run: npm run typecheck:examples --prefix js/packages/truapi
 
       - name: Test
         run: npm test --prefix js/packages/truapi
