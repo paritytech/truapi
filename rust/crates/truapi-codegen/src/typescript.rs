@@ -1678,156 +1678,11 @@ fn find_matching_delimiter(
 }
 
 fn ts_request_to_playground_json(input: &str) -> String {
-    let input = replace_uint8_array_from_hex_calls(input);
-    let input = replace_uint8_array_from_calls(&input);
-    let input = replace_new_uint8_array_calls(&input);
+    let input = input.replace("new Uint8Array()", "\"0x\"");
     let input = quote_unquoted_object_keys(&input);
     let input = quote_bigint_literals(&input);
     let input = remove_undefined_object_properties(&input);
     remove_trailing_commas(&input)
-}
-
-fn replace_uint8_array_from_hex_calls(input: &str) -> String {
-    let mut out = String::new();
-    let mut i = 0usize;
-    while i < input.len() {
-        if input[i..].starts_with("Uint8Array.fromHex(") {
-            let open = i + "Uint8Array.fromHex".len();
-            if let Some(close) = find_matching_delimiter(input, open, '(', ')') {
-                let argument = input[open + 1..close].trim();
-                let argument = argument.strip_suffix(',').unwrap_or(argument).trim();
-                if let Some(hex) = parse_string_literal(argument) {
-                    out.push('"');
-                    if hex.starts_with("0x") {
-                        out.push_str(hex);
-                    } else {
-                        out.push_str("0x");
-                        out.push_str(hex);
-                    }
-                    out.push('"');
-                    i = close + 1;
-                    continue;
-                }
-            }
-        }
-        if let Some(ch) = input[i..].chars().next() {
-            out.push(ch);
-            i += ch.len_utf8();
-        } else {
-            break;
-        }
-    }
-    out
-}
-
-fn parse_string_literal(input: &str) -> Option<&str> {
-    let bytes = input.as_bytes();
-    if bytes.len() < 2 {
-        return None;
-    }
-    let quote = bytes[0];
-    if !matches!(quote, b'\'' | b'"') || bytes[bytes.len() - 1] != quote {
-        return None;
-    }
-    let inner = &input[1..input.len() - 1];
-    if inner.contains('\\') {
-        return None;
-    }
-    Some(inner)
-}
-
-fn replace_uint8_array_from_calls(input: &str) -> String {
-    let mut out = String::new();
-    let mut i = 0usize;
-    while i < input.len() {
-        if input[i..].starts_with("Uint8Array.from(") {
-            let open = i + "Uint8Array.from".len();
-            if let Some(close) = find_matching_delimiter(input, open, '(', ')') {
-                let argument = input[open + 1..close].trim();
-                if let Some(hex) = parse_uint8_array_from_argument(argument) {
-                    out.push('"');
-                    out.push_str(&hex);
-                    out.push('"');
-                    i = close + 1;
-                    continue;
-                }
-            }
-        }
-        if let Some(ch) = input[i..].chars().next() {
-            out.push(ch);
-            i += ch.len_utf8();
-        } else {
-            break;
-        }
-    }
-    out
-}
-
-fn parse_uint8_array_from_argument(argument: &str) -> Option<String> {
-    let open = argument.find('[')?;
-    let close = find_matching_delimiter(argument, open, '[', ']')?;
-    let array = &argument[open + 1..close];
-    let mut bytes = Vec::new();
-    for part in array.split(',') {
-        let value = part.trim();
-        if value.is_empty() {
-            continue;
-        }
-        let byte = value.parse::<u8>().ok()?;
-        bytes.push(byte);
-    }
-    Some(bytes_to_hex(&bytes))
-}
-
-fn replace_new_uint8_array_calls(input: &str) -> String {
-    let mut out = String::new();
-    let mut i = 0usize;
-    while i < input.len() {
-        if input[i..].starts_with("new Uint8Array(") {
-            let open = i + "new Uint8Array".len();
-            if let Some(close) = find_matching_delimiter(input, open, '(', ')') {
-                let argument = input[open + 1..close].trim();
-                if argument.is_empty() {
-                    out.push_str("\"0x\"");
-                    i = close + 1;
-                    continue;
-                }
-                if let Ok(len) = argument.parse::<usize>() {
-                    out.push('"');
-                    out.push_str(&zero_hex(len));
-                    out.push('"');
-                    i = close + 1;
-                    continue;
-                }
-            }
-        }
-        if let Some(ch) = input[i..].chars().next() {
-            out.push(ch);
-            i += ch.len_utf8();
-        } else {
-            break;
-        }
-    }
-    out
-}
-
-fn zero_hex(len: usize) -> String {
-    let mut out = String::with_capacity(2 + len * 2);
-    out.push_str("0x");
-    for _ in 0..len {
-        out.push_str("00");
-    }
-    out
-}
-
-fn bytes_to_hex(bytes: &[u8]) -> String {
-    let mut out = String::with_capacity(2 + bytes.len() * 2);
-    out.push_str("0x");
-    for byte in bytes {
-        use std::fmt::Write;
-        write!(out, "{byte:02x}").unwrap();
-    }
-    out
 }
 
 fn remove_undefined_object_properties(input: &str) -> String {
@@ -2368,6 +2223,7 @@ fn generate_types(api: &ApiDefinition, target_version: u32) -> Result<String> {
     writeln!(out, "// Auto-generated by truapi-codegen. Do not edit.").unwrap();
     writeln!(out).unwrap();
     writeln!(out, "import * as S from '../scale.js';").unwrap();
+    writeln!(out, "import type {{ HexString }} from '../scale.js';").unwrap();
     writeln!(out).unwrap();
 
     let wrappers = collect_versioned_wrappers(api);
@@ -3531,7 +3387,7 @@ fn ts_type_with_named(ty: &TypeRef, qualified: bool) -> Result<String> {
             }
         }
         TypeRef::Vec(inner) => match inner.as_ref() {
-            TypeRef::Primitive(name) if name == "u8" => Ok("S.HexString".to_string()),
+            TypeRef::Primitive(name) if name == "u8" => Ok(hex_string_ts_name(qualified)),
             _ => Ok(format!("Array<{}>", ts_type_with_named(inner, qualified)?)),
         },
         TypeRef::Option(inner) => Ok(format!(
@@ -3553,12 +3409,19 @@ fn ts_type_with_named(ty: &TypeRef, qualified: bool) -> Result<String> {
             }
         }
         TypeRef::Array(inner, _len) => match inner.as_ref() {
-            TypeRef::Primitive(name) if name == "u8" => Ok("S.HexString".to_string()),
+            TypeRef::Primitive(name) if name == "u8" => Ok(hex_string_ts_name(qualified)),
             _ => Ok(format!("Array<{}>", ts_type_with_named(inner, qualified)?)),
         },
         TypeRef::Generic(name) => Ok(name.clone()),
         TypeRef::Unit => Ok("undefined".to_string()),
     }
+}
+
+/// Always emit the user-facing `HexString` name (no codec-namespace prefix).
+/// Generated `types.ts` imports it directly from `scale.js`; explorer
+/// description strings render it as documentation.
+fn hex_string_ts_name(_qualified: bool) -> String {
+    "HexString".to_string()
 }
 
 fn ts_inner_option(ty: &TypeRef) -> Result<String> {

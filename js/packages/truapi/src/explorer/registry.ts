@@ -746,15 +746,14 @@ export const versions: ExplorerVersion[] = [
         id: "Account",
         name: "Account",
         category: "struct",
-        definition:
-          "interface Account { publicKey: S.HexString; name?: string }",
+        definition: "interface Account { publicKey: HexString; name?: string }",
         description:
           "An account with its public key and optional display name.",
         source: "shared",
         fields: [
           {
             name: "publicKey",
-            type: "S.HexString",
+            type: "HexString",
             description: "The account public key (variable-length bytes).",
           },
           {
@@ -769,7 +768,7 @@ export const versions: ExplorerVersion[] = [
         name: "ActionTrigger",
         category: "struct",
         definition:
-          "interface ActionTrigger { messageId: string; actionId: string; payload?: S.HexString }",
+          "interface ActionTrigger { messageId: string; actionId: string; payload?: HexString }",
         description: "Payload when a user clicks an action button.",
         source: "shared",
         fields: [
@@ -785,7 +784,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "payload",
-            type: "S.HexString",
+            type: "HexString",
             description: "Optional additional data.",
           },
         ],
@@ -1072,7 +1071,7 @@ export const versions: ExplorerVersion[] = [
         name: "ChatCustomMessage",
         category: "struct",
         definition:
-          "interface ChatCustomMessage { messageType: string; payload: S.HexString }",
+          "interface ChatCustomMessage { messageType: string; payload: HexString }",
         description:
           "A custom message with application-defined type and binary payload.",
         source: "shared",
@@ -1084,7 +1083,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "payload",
-            type: "S.HexString",
+            type: "HexString",
             description: "Binary payload.",
           },
         ],
@@ -1622,7 +1621,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostAccountCreateProofRequest",
         category: "struct",
         definition:
-          "interface HostAccountCreateProofRequest { productAccountId: ProductAccountId; ringLocation: RingLocation; context: S.HexString }",
+          "interface HostAccountCreateProofRequest { productAccountId: ProductAccountId; ringLocation: RingLocation; context: HexString }",
         description:
           "Request to create a ring VRF proof for a product account.",
         source: "v0.1",
@@ -1639,7 +1638,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "context",
-            type: "S.HexString",
+            type: "HexString",
             description: "Context bytes bound to the proof.",
           },
         ],
@@ -1649,13 +1648,13 @@ export const versions: ExplorerVersion[] = [
         name: "HostAccountCreateProofResponse",
         category: "struct",
         definition:
-          "interface HostAccountCreateProofResponse { proof: S.HexString }",
+          "interface HostAccountCreateProofResponse { proof: HexString }",
         description: "Response containing a ring VRF proof.",
         source: "v0.1",
         fields: [
           {
             name: "proof",
-            type: "S.HexString",
+            type: "HexString",
             description: "Variable-length ring VRF proof bytes.",
           },
         ],
@@ -1682,19 +1681,19 @@ export const versions: ExplorerVersion[] = [
         name: "HostAccountGetAliasResponse",
         category: "struct",
         definition:
-          "interface HostAccountGetAliasResponse { context: S.HexString; alias: S.HexString }",
+          "interface HostAccountGetAliasResponse { context: HexString; alias: HexString }",
         description:
           "A privacy-preserving alias derived via ring VRF, bound to a specific context.",
         source: "v0.1",
         fields: [
           {
             name: "context",
-            type: "S.HexString",
+            type: "HexString",
             description: "32-byte context identifier.",
           },
           {
             name: "alias",
-            type: "S.HexString",
+            type: "HexString",
             description: "Ring VRF alias (variable length).",
           },
         ],
@@ -2049,13 +2048,13 @@ export const versions: ExplorerVersion[] = [
         name: "HostCreateTransactionResponse",
         category: "struct",
         definition:
-          "interface HostCreateTransactionResponse { transaction: S.HexString }",
+          "interface HostCreateTransactionResponse { transaction: HexString }",
         description: "Response containing a created transaction.",
         source: "v0.1",
         fields: [
           {
             name: "transaction",
-            type: "S.HexString",
+            type: "HexString",
             description: "SCALE-encoded signed transaction.",
           },
         ],
@@ -2082,14 +2081,14 @@ export const versions: ExplorerVersion[] = [
         name: "HostCreateTransactionWithLegacyAccountResponse",
         category: "struct",
         definition:
-          "interface HostCreateTransactionWithLegacyAccountResponse { transaction: S.HexString }",
+          "interface HostCreateTransactionWithLegacyAccountResponse { transaction: HexString }",
         description:
           "Response containing a transaction created with a non-product account.",
         source: "v0.1",
         fields: [
           {
             name: "transaction",
-            type: "S.HexString",
+            type: "HexString",
             description: "SCALE-encoded signed transaction.",
           },
         ],
@@ -2143,13 +2142,13 @@ export const versions: ExplorerVersion[] = [
         name: "HostFeatureSupportedRequest",
         category: "enum",
         definition:
-          'type HostFeatureSupportedRequest = { tag: "Chain"; value: { genesisHash: S.HexString } }',
+          'type HostFeatureSupportedRequest = { tag: "Chain"; value: { genesisHash: HexString } }',
         description: "Feature to check for host support.",
         source: "v0.1",
         variants: [
           {
             name: "Chain",
-            type: "{ genesisHash: S.HexString }",
+            type: "{ genesisHash: HexString }",
             description: "Is this blockchain supported?",
           },
         ],
@@ -2282,13 +2281,13 @@ export const versions: ExplorerVersion[] = [
         name: "HostLocalStorageReadResponse",
         category: "struct",
         definition:
-          "interface HostLocalStorageReadResponse { value?: S.HexString }",
+          "interface HostLocalStorageReadResponse { value?: HexString }",
         description: "Response containing an optional local storage value.",
         source: "v0.1",
         fields: [
           {
             name: "value",
-            type: "S.HexString",
+            type: "HexString",
             description: "Stored value, if present.",
           },
         ],
@@ -2298,7 +2297,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostLocalStorageWriteRequest",
         category: "struct",
         definition:
-          "interface HostLocalStorageWriteRequest { key: string; value: S.HexString }",
+          "interface HostLocalStorageWriteRequest { key: string; value: HexString }",
         description: "Request to write a value into local storage.",
         source: "v0.1",
         fields: [
@@ -2309,7 +2308,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "value",
-            type: "S.HexString",
+            type: "HexString",
             description: "Value to store at the key.",
           },
         ],
@@ -2407,7 +2406,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostSignPayloadRequest",
         category: "struct",
         definition:
-          "interface HostSignPayloadRequest { address: string; blockHash: S.HexString; blockNumber: S.HexString; era: S.HexString; genesisHash: S.HexString; method: S.HexString; nonce: S.HexString; specVersion: S.HexString; tip: S.HexString; transactionVersion: S.HexString; signedExtensions: Array<string>; version: number; assetId?: S.HexString; metadataHash?: S.HexString; mode?: number; withSignedTransaction?: boolean }",
+          "interface HostSignPayloadRequest { address: string; blockHash: HexString; blockNumber: HexString; era: HexString; genesisHash: HexString; method: HexString; nonce: HexString; specVersion: HexString; tip: HexString; transactionVersion: HexString; signedExtensions: Array<string>; version: number; assetId?: HexString; metadataHash?: HexString; mode?: number; withSignedTransaction?: boolean }",
         description:
           "Full Substrate extrinsic signing payload with all fields needed for signature\ngeneration.",
         source: "v0.1",
@@ -2419,47 +2418,47 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "blockHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Reference block hash.",
           },
           {
             name: "blockNumber",
-            type: "S.HexString",
+            type: "HexString",
             description: "Reference block number.",
           },
           {
             name: "era",
-            type: "S.HexString",
+            type: "HexString",
             description: "Mortality era encoding.",
           },
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
             name: "method",
-            type: "S.HexString",
+            type: "HexString",
             description: "SCALE-encoded call data.",
           },
           {
             name: "nonce",
-            type: "S.HexString",
+            type: "HexString",
             description: "Account nonce.",
           },
           {
             name: "specVersion",
-            type: "S.HexString",
+            type: "HexString",
             description: "Runtime spec version.",
           },
           {
             name: "tip",
-            type: "S.HexString",
+            type: "HexString",
             description: "Transaction tip.",
           },
           {
             name: "transactionVersion",
-            type: "S.HexString",
+            type: "HexString",
             description: "Transaction format version.",
           },
           {
@@ -2474,12 +2473,12 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "assetId",
-            type: "S.HexString",
+            type: "HexString",
             description: "For multi-asset tips.",
           },
           {
             name: "metadataHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "CheckMetadataHash extension.",
           },
           {
@@ -2499,18 +2498,18 @@ export const versions: ExplorerVersion[] = [
         name: "HostSignPayloadResponse",
         category: "struct",
         definition:
-          "interface HostSignPayloadResponse { signature: S.HexString; signedTransaction?: S.HexString }",
+          "interface HostSignPayloadResponse { signature: HexString; signedTransaction?: HexString }",
         description: "Result of a signing operation.",
         source: "v0.1",
         fields: [
           {
             name: "signature",
-            type: "S.HexString",
+            type: "HexString",
             description: "The cryptographic signature.",
           },
           {
             name: "signedTransaction",
-            type: "S.HexString",
+            type: "HexString",
             description: "Full signed transaction, if requested.",
           },
         ],
@@ -2648,7 +2647,7 @@ export const versions: ExplorerVersion[] = [
         name: "ProductChatCustomMessageRenderSubscribeRequest",
         category: "struct",
         definition:
-          "interface ProductChatCustomMessageRenderSubscribeRequest { messageId: string; messageType: string; payload: S.HexString }",
+          "interface ProductChatCustomMessageRenderSubscribeRequest { messageId: string; messageType: string; payload: HexString }",
         description:
           "Subscribe payload identifying the chat message to render. The host responds\nwith a stream of [`CustomRendererNode`] trees describing the rendered UI.",
         source: "v0.1",
@@ -2665,7 +2664,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "payload",
-            type: "S.HexString",
+            type: "HexString",
             description: "Binary payload.",
           },
         ],
@@ -2675,14 +2674,14 @@ export const versions: ExplorerVersion[] = [
         name: "RawPayload",
         category: "enum",
         definition:
-          'type RawPayload = { tag: "Bytes"; value: { bytes: S.HexString } } | { tag: "Payload"; value: { payload: string } }',
+          'type RawPayload = { tag: "Bytes"; value: { bytes: HexString } } | { tag: "Payload"; value: { payload: string } }',
         description:
           "Raw data to sign -- either binary bytes or a string message.",
         source: "shared",
         variants: [
           {
             name: "Bytes",
-            type: "{ bytes: S.HexString }",
+            type: "{ bytes: HexString }",
             description: "Raw binary data to sign.",
           },
           {
@@ -2697,14 +2696,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadBodyRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadBodyRequest { genesisHash: S.HexString; followSubscriptionId: string; hash: S.HexString }",
+          "interface RemoteChainHeadBodyRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_body`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -2714,7 +2713,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "hash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Block hash.",
           },
         ],
@@ -2740,14 +2739,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadCallRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadCallRequest { genesisHash: S.HexString; followSubscriptionId: string; hash: S.HexString; function: string; callParameters: S.HexString }",
+          "interface RemoteChainHeadCallRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString; function: string; callParameters: HexString }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_call`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -2757,7 +2756,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "hash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Block hash.",
           },
           {
@@ -2767,7 +2766,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "callParameters",
-            type: "S.HexString",
+            type: "HexString",
             description: "SCALE-encoded call parameters.",
           },
         ],
@@ -2794,14 +2793,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadContinueRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadContinueRequest { genesisHash: S.HexString; followSubscriptionId: string; operationId: string }",
+          "interface RemoteChainHeadContinueRequest { genesisHash: HexString; followSubscriptionId: string; operationId: string }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_continue`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -2821,38 +2820,38 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadFollowItem",
         category: "enum",
         definition:
-          'type RemoteChainHeadFollowItem = { tag: "Initialized"; value: { finalizedBlockHashes: Array<S.HexString>; finalizedBlockRuntime?: RuntimeType } } | { tag: "NewBlock"; value: { blockHash: S.HexString; parentBlockHash: S.HexString; newRuntime?: RuntimeType } } | { tag: "BestBlockChanged"; value: { bestBlockHash: S.HexString } } | { tag: "Finalized"; value: { finalizedBlockHashes: Array<S.HexString>; prunedBlockHashes: Array<S.HexString> } } | { tag: "OperationBodyDone"; value: { operationId: string; value: Array<S.HexString> } } | { tag: "OperationCallDone"; value: { operationId: string; output: S.HexString } } | { tag: "OperationStorageItems"; value: { operationId: string; items: Array<StorageResultItem> } } | { tag: "OperationStorageDone"; value: { operationId: string } } | { tag: "OperationWaitingForContinue"; value: { operationId: string } } | { tag: "OperationInaccessible"; value: { operationId: string } } | { tag: "OperationError"; value: { operationId: string; error: string } } | { tag: "Stop"; value: undefined }',
+          'type RemoteChainHeadFollowItem = { tag: "Initialized"; value: { finalizedBlockHashes: Array<HexString>; finalizedBlockRuntime?: RuntimeType } } | { tag: "NewBlock"; value: { blockHash: HexString; parentBlockHash: HexString; newRuntime?: RuntimeType } } | { tag: "BestBlockChanged"; value: { bestBlockHash: HexString } } | { tag: "Finalized"; value: { finalizedBlockHashes: Array<HexString>; prunedBlockHashes: Array<HexString> } } | { tag: "OperationBodyDone"; value: { operationId: string; value: Array<HexString> } } | { tag: "OperationCallDone"; value: { operationId: string; output: HexString } } | { tag: "OperationStorageItems"; value: { operationId: string; items: Array<StorageResultItem> } } | { tag: "OperationStorageDone"; value: { operationId: string } } | { tag: "OperationWaitingForContinue"; value: { operationId: string } } | { tag: "OperationInaccessible"; value: { operationId: string } } | { tag: "OperationError"; value: { operationId: string; error: string } } | { tag: "Stop"; value: undefined }',
         description: "Events received when following the chain head.",
         source: "v0.1",
         variants: [
           {
             name: "Initialized",
-            type: "{ finalizedBlockHashes: Array<S.HexString>; finalizedBlockRuntime?: RuntimeType }",
+            type: "{ finalizedBlockHashes: Array<HexString>; finalizedBlockRuntime?: RuntimeType }",
             description: "Initial state with finalized blocks.",
           },
           {
             name: "NewBlock",
-            type: "{ blockHash: S.HexString; parentBlockHash: S.HexString; newRuntime?: RuntimeType }",
+            type: "{ blockHash: HexString; parentBlockHash: HexString; newRuntime?: RuntimeType }",
             description: "A new block was produced.",
           },
           {
             name: "BestBlockChanged",
-            type: "{ bestBlockHash: S.HexString }",
+            type: "{ bestBlockHash: HexString }",
             description: "Best block changed.",
           },
           {
             name: "Finalized",
-            type: "{ finalizedBlockHashes: Array<S.HexString>; prunedBlockHashes: Array<S.HexString> }",
+            type: "{ finalizedBlockHashes: Array<HexString>; prunedBlockHashes: Array<HexString> }",
             description: "Blocks were finalized.",
           },
           {
             name: "OperationBodyDone",
-            type: "{ operationId: string; value: Array<S.HexString> }",
+            type: "{ operationId: string; value: Array<HexString> }",
             description: "Body fetch completed.",
           },
           {
             name: "OperationCallDone",
-            type: "{ operationId: string; output: S.HexString }",
+            type: "{ operationId: string; output: HexString }",
             description: "Runtime call completed.",
           },
           {
@@ -2893,14 +2892,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadFollowRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadFollowRequest { genesisHash: S.HexString; withRuntime: boolean }",
+          "interface RemoteChainHeadFollowRequest { genesisHash: HexString; withRuntime: boolean }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_follow`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -2915,14 +2914,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadHeaderRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadHeaderRequest { genesisHash: S.HexString; followSubscriptionId: string; hash: S.HexString }",
+          "interface RemoteChainHeadHeaderRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_header`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -2932,7 +2931,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "hash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Block hash.",
           },
         ],
@@ -2942,13 +2941,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadHeaderResponse",
         category: "struct",
         definition:
-          "interface RemoteChainHeadHeaderResponse { header?: S.HexString }",
+          "interface RemoteChainHeadHeaderResponse { header?: HexString }",
         description: "Response containing a block header, if available.",
         source: "v0.1",
         fields: [
           {
             name: "header",
-            type: "S.HexString",
+            type: "HexString",
             description: "SCALE-encoded block header.",
           },
         ],
@@ -2958,14 +2957,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadStopOperationRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadStopOperationRequest { genesisHash: S.HexString; followSubscriptionId: string; operationId: string }",
+          "interface RemoteChainHeadStopOperationRequest { genesisHash: HexString; followSubscriptionId: string; operationId: string }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_stop_operation`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -2985,14 +2984,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadStorageRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadStorageRequest { genesisHash: S.HexString; followSubscriptionId: string; hash: S.HexString; items: Array<StorageQueryItem>; childTrie?: S.HexString }",
+          "interface RemoteChainHeadStorageRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString; items: Array<StorageQueryItem>; childTrie?: HexString }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_storage`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -3002,7 +3001,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "hash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Block hash.",
           },
           {
@@ -3012,7 +3011,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "childTrie",
-            type: "S.HexString",
+            type: "HexString",
             description: "Optional child trie.",
           },
         ],
@@ -3039,14 +3038,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadUnpinRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadUnpinRequest { genesisHash: S.HexString; followSubscriptionId: string; hashes: Array<S.HexString> }",
+          "interface RemoteChainHeadUnpinRequest { genesisHash: HexString; followSubscriptionId: string; hashes: Array<HexString> }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_unpin`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -3056,7 +3055,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "hashes",
-            type: "Array<S.HexString>",
+            type: "Array<HexString>",
             description: "Block hashes to unpin.",
           },
         ],
@@ -3066,13 +3065,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainSpecChainNameRequest",
         category: "struct",
         definition:
-          "interface RemoteChainSpecChainNameRequest { genesisHash: S.HexString }",
+          "interface RemoteChainSpecChainNameRequest { genesisHash: HexString }",
         description: "Request to fetch a chain display name.",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
         ],
@@ -3098,13 +3097,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainSpecGenesisHashRequest",
         category: "struct",
         definition:
-          "interface RemoteChainSpecGenesisHashRequest { genesisHash: S.HexString }",
+          "interface RemoteChainSpecGenesisHashRequest { genesisHash: HexString }",
         description: "Request to fetch a chain genesis hash.",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash requested by the product.",
           },
         ],
@@ -3114,13 +3113,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainSpecGenesisHashResponse",
         category: "struct",
         definition:
-          "interface RemoteChainSpecGenesisHashResponse { genesisHash: S.HexString }",
+          "interface RemoteChainSpecGenesisHashResponse { genesisHash: HexString }",
         description: "Response containing a chain genesis hash.",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
         ],
@@ -3130,13 +3129,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainSpecPropertiesRequest",
         category: "struct",
         definition:
-          "interface RemoteChainSpecPropertiesRequest { genesisHash: S.HexString }",
+          "interface RemoteChainSpecPropertiesRequest { genesisHash: HexString }",
         description: "Request to fetch chain properties.",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
         ],
@@ -3162,19 +3161,19 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainTransactionBroadcastRequest",
         category: "struct",
         definition:
-          "interface RemoteChainTransactionBroadcastRequest { genesisHash: S.HexString; transaction: S.HexString }",
+          "interface RemoteChainTransactionBroadcastRequest { genesisHash: HexString; transaction: HexString }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_broadcast`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
             name: "transaction",
-            type: "S.HexString",
+            type: "HexString",
             description: "Signed transaction bytes.",
           },
         ],
@@ -3201,14 +3200,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainTransactionStopRequest",
         category: "struct",
         definition:
-          "interface RemoteChainTransactionStopRequest { genesisHash: S.HexString; operationId: string }",
+          "interface RemoteChainTransactionStopRequest { genesisHash: HexString; operationId: string }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_stop`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -3261,13 +3260,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemotePreimageLookupSubscribeItem",
         category: "struct",
         definition:
-          "interface RemotePreimageLookupSubscribeItem { value?: S.HexString }",
+          "interface RemotePreimageLookupSubscribeItem { value?: HexString }",
         description: "Item containing an optional preimage lookup result.",
         source: "v0.1",
         fields: [
           {
             name: "value",
-            type: "S.HexString",
+            type: "HexString",
             description: "Preimage data, if found.",
           },
         ],
@@ -3277,13 +3276,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemotePreimageLookupSubscribeRequest",
         category: "struct",
         definition:
-          "interface RemotePreimageLookupSubscribeRequest { key: S.HexString }",
+          "interface RemotePreimageLookupSubscribeRequest { key: HexString }",
         description: "Request to subscribe to preimage lookup results.",
         source: "v0.1",
         fields: [
           {
             name: "key",
-            type: "S.HexString",
+            type: "HexString",
             description: "Hash of the preimage.",
           },
         ],
@@ -3373,13 +3372,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteStatementStoreSubscribeRequest",
         category: "struct",
         definition:
-          "interface RemoteStatementStoreSubscribeRequest { topics: Array<S.HexString> }",
+          "interface RemoteStatementStoreSubscribeRequest { topics: Array<HexString> }",
         description: "Request to subscribe to statements matching topics.",
         source: "v0.1",
         fields: [
           {
             name: "topics",
-            type: "Array<S.HexString>",
+            type: "Array<HexString>",
             description: "Required topics.",
           },
         ],
@@ -3389,19 +3388,19 @@ export const versions: ExplorerVersion[] = [
         name: "RingLocation",
         category: "struct",
         definition:
-          "interface RingLocation { genesisHash: S.HexString; ringRootHash: S.HexString; hints?: RingLocationHint }",
+          "interface RingLocation { genesisHash: HexString; ringRootHash: HexString; hints?: RingLocationHint }",
         description:
           "Locates a specific ring on a specific chain for ring VRF operations.",
         source: "shared",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
             name: "ringRootHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Root hash of the ring.",
           },
           {
@@ -3555,7 +3554,7 @@ export const versions: ExplorerVersion[] = [
         name: "SignedStatement",
         category: "struct",
         definition:
-          "interface SignedStatement { proof: StatementProof; decryptionKey?: S.HexString; expiry?: bigint; channel?: S.HexString; topics: Array<S.HexString>; data?: S.HexString }",
+          "interface SignedStatement { proof: StatementProof; decryptionKey?: HexString; expiry?: bigint; channel?: HexString; topics: Array<HexString>; data?: HexString }",
         description: "A statement with a required (not optional) proof.",
         source: "shared",
         fields: [
@@ -3566,7 +3565,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "decryptionKey",
-            type: "S.HexString",
+            type: "HexString",
             description: "Optional decryption key.",
           },
           {
@@ -3576,17 +3575,17 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "channel",
-            type: "S.HexString",
+            type: "HexString",
             description: "Optional channel.",
           },
           {
             name: "topics",
-            type: "Array<S.HexString>",
+            type: "Array<HexString>",
             description: "[u8; 32] tags.",
           },
           {
             name: "data",
-            type: "S.HexString",
+            type: "HexString",
             description: "Optional data payload.",
           },
         ],
@@ -3596,7 +3595,7 @@ export const versions: ExplorerVersion[] = [
         name: "Statement",
         category: "struct",
         definition:
-          "interface Statement { proof?: StatementProof; decryptionKey?: S.HexString; expiry?: bigint; channel?: S.HexString; topics: Array<S.HexString>; data?: S.HexString }",
+          "interface Statement { proof?: StatementProof; decryptionKey?: HexString; expiry?: bigint; channel?: HexString; topics: Array<HexString>; data?: HexString }",
         description: "A statement with optional proof and metadata.",
         source: "shared",
         fields: [
@@ -3607,7 +3606,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "decryptionKey",
-            type: "S.HexString",
+            type: "HexString",
             description: "Optional decryption key.",
           },
           {
@@ -3617,17 +3616,17 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "channel",
-            type: "S.HexString",
+            type: "HexString",
             description: "Optional channel.",
           },
           {
             name: "topics",
-            type: "Array<S.HexString>",
+            type: "Array<HexString>",
             description: "[u8; 32] tags.",
           },
           {
             name: "data",
-            type: "S.HexString",
+            type: "HexString",
             description: "Optional data payload.",
           },
         ],
@@ -3637,28 +3636,28 @@ export const versions: ExplorerVersion[] = [
         name: "StatementProof",
         category: "enum",
         definition:
-          'type StatementProof = { tag: "Sr25519"; value: { signature: S.HexString; signer: S.HexString } } | { tag: "Ed25519"; value: { signature: S.HexString; signer: S.HexString } } | { tag: "Ecdsa"; value: { signature: S.HexString; signer: S.HexString } } | { tag: "OnChain"; value: { who: S.HexString; blockHash: S.HexString; event: bigint } }',
+          'type StatementProof = { tag: "Sr25519"; value: { signature: HexString; signer: HexString } } | { tag: "Ed25519"; value: { signature: HexString; signer: HexString } } | { tag: "Ecdsa"; value: { signature: HexString; signer: HexString } } | { tag: "OnChain"; value: { who: HexString; blockHash: HexString; event: bigint } }',
         description: "Cryptographic proof for a statement.",
         source: "shared",
         variants: [
           {
             name: "Sr25519",
-            type: "{ signature: S.HexString; signer: S.HexString }",
+            type: "{ signature: HexString; signer: HexString }",
             description: "Sr25519 signature proof.",
           },
           {
             name: "Ed25519",
-            type: "{ signature: S.HexString; signer: S.HexString }",
+            type: "{ signature: HexString; signer: HexString }",
             description: "Ed25519 signature proof.",
           },
           {
             name: "Ecdsa",
-            type: "{ signature: S.HexString; signer: S.HexString }",
+            type: "{ signature: HexString; signer: HexString }",
             description: "ECDSA signature proof.",
           },
           {
             name: "OnChain",
-            type: "{ who: S.HexString; blockHash: S.HexString; event: bigint }",
+            type: "{ who: HexString; blockHash: HexString; event: bigint }",
             description: "On-chain event proof.",
           },
         ],
@@ -3668,13 +3667,13 @@ export const versions: ExplorerVersion[] = [
         name: "StorageQueryItem",
         category: "struct",
         definition:
-          "interface StorageQueryItem { key: S.HexString; queryType: StorageQueryType }",
+          "interface StorageQueryItem { key: HexString; queryType: StorageQueryType }",
         description: "A single storage query.",
         source: "shared",
         fields: [
           {
             name: "key",
-            type: "S.HexString",
+            type: "HexString",
             description: "Storage key to query.",
           },
           {
@@ -3720,28 +3719,28 @@ export const versions: ExplorerVersion[] = [
         name: "StorageResultItem",
         category: "struct",
         definition:
-          "interface StorageResultItem { key: S.HexString; value?: S.HexString; hash?: S.HexString; closestDescendantMerkleValue?: S.HexString }",
+          "interface StorageResultItem { key: HexString; value?: HexString; hash?: HexString; closestDescendantMerkleValue?: HexString }",
         description: "Result of a storage query.",
         source: "shared",
         fields: [
           {
             name: "key",
-            type: "S.HexString",
+            type: "HexString",
             description: "The queried key.",
           },
           {
             name: "value",
-            type: "S.HexString",
+            type: "HexString",
             description: "Value, if requested.",
           },
           {
             name: "hash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Hash, if requested.",
           },
           {
             name: "closestDescendantMerkleValue",
-            type: "S.HexString",
+            type: "HexString",
             description: "Merkle value, if requested.",
           },
         ],
@@ -3798,13 +3797,13 @@ export const versions: ExplorerVersion[] = [
         name: "TxPayloadContextV1",
         category: "struct",
         definition:
-          "interface TxPayloadContextV1 { metadata: S.HexString; tokenSymbol: string; tokenDecimals: number; bestBlockHeight: number }",
+          "interface TxPayloadContextV1 { metadata: HexString; tokenSymbol: string; tokenDecimals: number; bestBlockHeight: number }",
         description: "Context information for transaction construction.",
         source: "shared",
         fields: [
           {
             name: "metadata",
-            type: "S.HexString",
+            type: "HexString",
             description: "`RuntimeMetadataPrefixed` blob (SCALE).",
           },
           {
@@ -3829,7 +3828,7 @@ export const versions: ExplorerVersion[] = [
         name: "TxPayloadExtensionV1",
         category: "struct",
         definition:
-          "interface TxPayloadExtensionV1 { id: string; extra: S.HexString; additionalSigned: S.HexString }",
+          "interface TxPayloadExtensionV1 { id: string; extra: HexString; additionalSigned: HexString }",
         description: "A signed extension for a transaction payload.",
         source: "shared",
         fields: [
@@ -3840,12 +3839,12 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "extra",
-            type: "S.HexString",
+            type: "HexString",
             description: "SCALE-encoded extra data (in extrinsic body).",
           },
           {
             name: "additionalSigned",
-            type: "S.HexString",
+            type: "HexString",
             description: "SCALE-encoded implicit data (signed, not in body).",
           },
         ],
@@ -3855,7 +3854,7 @@ export const versions: ExplorerVersion[] = [
         name: "TxPayloadV1",
         category: "struct",
         definition:
-          "interface TxPayloadV1 { signer?: string; callData: S.HexString; extensions: Array<TxPayloadExtensionV1>; txExtVersion: number; context: TxPayloadContextV1 }",
+          "interface TxPayloadV1 { signer?: string; callData: HexString; extensions: Array<TxPayloadExtensionV1>; txExtVersion: number; context: TxPayloadContextV1 }",
         description:
           "Version 1 transaction payload with all data needed to construct a signed\nextrinsic.",
         source: "shared",
@@ -3867,7 +3866,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "callData",
-            type: "S.HexString",
+            type: "HexString",
             description: "SCALE-encoded Call data.",
           },
           {
@@ -4769,15 +4768,14 @@ export const versions: ExplorerVersion[] = [
         id: "Account",
         name: "Account",
         category: "struct",
-        definition:
-          "interface Account { publicKey: S.HexString; name?: string }",
+        definition: "interface Account { publicKey: HexString; name?: string }",
         description:
           "An account with its public key and optional display name.",
         source: "shared",
         fields: [
           {
             name: "publicKey",
-            type: "S.HexString",
+            type: "HexString",
             description: "The account public key (variable-length bytes).",
           },
           {
@@ -4792,7 +4790,7 @@ export const versions: ExplorerVersion[] = [
         name: "ActionTrigger",
         category: "struct",
         definition:
-          "interface ActionTrigger { messageId: string; actionId: string; payload?: S.HexString }",
+          "interface ActionTrigger { messageId: string; actionId: string; payload?: HexString }",
         description: "Payload when a user clicks an action button.",
         source: "shared",
         fields: [
@@ -4808,7 +4806,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "payload",
-            type: "S.HexString",
+            type: "HexString",
             description: "Optional additional data.",
           },
         ],
@@ -5104,7 +5102,7 @@ export const versions: ExplorerVersion[] = [
         name: "ChatCustomMessage",
         category: "struct",
         definition:
-          "interface ChatCustomMessage { messageType: string; payload: S.HexString }",
+          "interface ChatCustomMessage { messageType: string; payload: HexString }",
         description:
           "A custom message with application-defined type and binary payload.",
         source: "shared",
@@ -5116,7 +5114,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "payload",
-            type: "S.HexString",
+            type: "HexString",
             description: "Binary payload.",
           },
         ],
@@ -5654,7 +5652,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostAccountCreateProofRequest",
         category: "struct",
         definition:
-          "interface HostAccountCreateProofRequest { productAccountId: ProductAccountId; ringLocation: RingLocation; context: S.HexString }",
+          "interface HostAccountCreateProofRequest { productAccountId: ProductAccountId; ringLocation: RingLocation; context: HexString }",
         description:
           "Request to create a ring VRF proof for a product account.",
         source: "v0.1",
@@ -5671,7 +5669,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "context",
-            type: "S.HexString",
+            type: "HexString",
             description: "Context bytes bound to the proof.",
           },
         ],
@@ -5681,13 +5679,13 @@ export const versions: ExplorerVersion[] = [
         name: "HostAccountCreateProofResponse",
         category: "struct",
         definition:
-          "interface HostAccountCreateProofResponse { proof: S.HexString }",
+          "interface HostAccountCreateProofResponse { proof: HexString }",
         description: "Response containing a ring VRF proof.",
         source: "v0.1",
         fields: [
           {
             name: "proof",
-            type: "S.HexString",
+            type: "HexString",
             description: "Variable-length ring VRF proof bytes.",
           },
         ],
@@ -5714,19 +5712,19 @@ export const versions: ExplorerVersion[] = [
         name: "HostAccountGetAliasResponse",
         category: "struct",
         definition:
-          "interface HostAccountGetAliasResponse { context: S.HexString; alias: S.HexString }",
+          "interface HostAccountGetAliasResponse { context: HexString; alias: HexString }",
         description:
           "A privacy-preserving alias derived via ring VRF, bound to a specific context.",
         source: "v0.1",
         fields: [
           {
             name: "context",
-            type: "S.HexString",
+            type: "HexString",
             description: "32-byte context identifier.",
           },
           {
             name: "alias",
-            type: "S.HexString",
+            type: "HexString",
             description: "Ring VRF alias (variable length).",
           },
         ],
@@ -6131,13 +6129,13 @@ export const versions: ExplorerVersion[] = [
         name: "HostCreateTransactionResponse",
         category: "struct",
         definition:
-          "interface HostCreateTransactionResponse { transaction: S.HexString }",
+          "interface HostCreateTransactionResponse { transaction: HexString }",
         description: "Response containing a created transaction.",
         source: "v0.1",
         fields: [
           {
             name: "transaction",
-            type: "S.HexString",
+            type: "HexString",
             description: "SCALE-encoded signed transaction.",
           },
         ],
@@ -6164,14 +6162,14 @@ export const versions: ExplorerVersion[] = [
         name: "HostCreateTransactionWithLegacyAccountResponse",
         category: "struct",
         definition:
-          "interface HostCreateTransactionWithLegacyAccountResponse { transaction: S.HexString }",
+          "interface HostCreateTransactionWithLegacyAccountResponse { transaction: HexString }",
         description:
           "Response containing a transaction created with a non-product account.",
         source: "v0.1",
         fields: [
           {
             name: "transaction",
-            type: "S.HexString",
+            type: "HexString",
             description: "SCALE-encoded signed transaction.",
           },
         ],
@@ -6197,14 +6195,13 @@ export const versions: ExplorerVersion[] = [
         id: "HostDeriveEntropyRequest",
         name: "HostDeriveEntropyRequest",
         category: "struct",
-        definition:
-          "interface HostDeriveEntropyRequest { context: S.HexString }",
+        definition: "interface HostDeriveEntropyRequest { context: HexString }",
         description: "Request to derive deterministic entropy.",
         source: "v0.2",
         fields: [
           {
             name: "context",
-            type: "S.HexString",
+            type: "HexString",
             description: "Domain-separated derivation context.",
           },
         ],
@@ -6214,13 +6211,13 @@ export const versions: ExplorerVersion[] = [
         name: "HostDeriveEntropyResponse",
         category: "struct",
         definition:
-          "interface HostDeriveEntropyResponse { entropy: S.HexString }",
+          "interface HostDeriveEntropyResponse { entropy: HexString }",
         description: "Response containing derived deterministic entropy.",
         source: "v0.2",
         fields: [
           {
             name: "entropy",
-            type: "S.HexString",
+            type: "HexString",
             description: "32 bytes of derived entropy.",
           },
         ],
@@ -6300,13 +6297,13 @@ export const versions: ExplorerVersion[] = [
         name: "HostFeatureSupportedRequest",
         category: "enum",
         definition:
-          'type HostFeatureSupportedRequest = { tag: "Chain"; value: { genesisHash: S.HexString } }',
+          'type HostFeatureSupportedRequest = { tag: "Chain"; value: { genesisHash: HexString } }',
         description: "Feature to check for host support.",
         source: "v0.1",
         variants: [
           {
             name: "Chain",
-            type: "{ genesisHash: S.HexString }",
+            type: "{ genesisHash: HexString }",
             description: "Is this blockchain supported?",
           },
         ],
@@ -6376,7 +6373,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostGetUserIdResponse",
         category: "struct",
         definition:
-          "interface HostGetUserIdResponse { primaryUsername: string; publicKey: S.HexString }",
+          "interface HostGetUserIdResponse { primaryUsername: string; publicKey: HexString }",
         description: "The user's primary DotNS account identity.\n\nV0.2.",
         source: "v0.2",
         fields: [
@@ -6387,7 +6384,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "publicKey",
-            type: "S.HexString",
+            type: "HexString",
             description: "The user's primary public key.",
           },
         ],
@@ -6487,13 +6484,13 @@ export const versions: ExplorerVersion[] = [
         name: "HostLocalStorageReadResponse",
         category: "struct",
         definition:
-          "interface HostLocalStorageReadResponse { value?: S.HexString }",
+          "interface HostLocalStorageReadResponse { value?: HexString }",
         description: "Response containing an optional local storage value.",
         source: "v0.1",
         fields: [
           {
             name: "value",
-            type: "S.HexString",
+            type: "HexString",
             description: "Stored value, if present.",
           },
         ],
@@ -6503,7 +6500,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostLocalStorageWriteRequest",
         category: "struct",
         definition:
-          "interface HostLocalStorageWriteRequest { key: string; value: S.HexString }",
+          "interface HostLocalStorageWriteRequest { key: string; value: HexString }",
         description: "Request to write a value into local storage.",
         source: "v0.1",
         fields: [
@@ -6514,7 +6511,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "value",
-            type: "S.HexString",
+            type: "HexString",
             description: "Value to store at the key.",
           },
         ],
@@ -6627,7 +6624,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostPaymentRequestRequest",
         category: "struct",
         definition:
-          "interface HostPaymentRequestRequest { amount: Balance; destination: S.HexString }",
+          "interface HostPaymentRequestRequest { amount: Balance; destination: HexString }",
         description: "Request to initiate a payment to another account.",
         source: "v0.2",
         fields: [
@@ -6638,7 +6635,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "destination",
-            type: "S.HexString",
+            type: "HexString",
             description: "Destination account.",
           },
         ],
@@ -6830,7 +6827,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostSignPayloadRequest",
         category: "struct",
         definition:
-          "interface HostSignPayloadRequest { account: ProductAccountId; blockHash: S.HexString; blockNumber: S.HexString; era: S.HexString; genesisHash: S.HexString; method: S.HexString; nonce: S.HexString; specVersion: S.HexString; tip: S.HexString; transactionVersion: S.HexString; signedExtensions: Array<string>; version: number; assetId?: S.HexString; metadataHash?: S.HexString; mode?: number; withSignedTransaction?: boolean }",
+          "interface HostSignPayloadRequest { account: ProductAccountId; blockHash: HexString; blockNumber: HexString; era: HexString; genesisHash: HexString; method: HexString; nonce: HexString; specVersion: HexString; tip: HexString; transactionVersion: HexString; signedExtensions: Array<string>; version: number; assetId?: HexString; metadataHash?: HexString; mode?: number; withSignedTransaction?: boolean }",
         description:
           "Full Substrate extrinsic signing payload with all fields needed for signature\ngeneration.",
         source: "v0.2",
@@ -6843,47 +6840,47 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "blockHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Reference block hash.",
           },
           {
             name: "blockNumber",
-            type: "S.HexString",
+            type: "HexString",
             description: "Reference block number.",
           },
           {
             name: "era",
-            type: "S.HexString",
+            type: "HexString",
             description: "Mortality era encoding.",
           },
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
             name: "method",
-            type: "S.HexString",
+            type: "HexString",
             description: "SCALE-encoded call data.",
           },
           {
             name: "nonce",
-            type: "S.HexString",
+            type: "HexString",
             description: "Account nonce.",
           },
           {
             name: "specVersion",
-            type: "S.HexString",
+            type: "HexString",
             description: "Runtime spec version.",
           },
           {
             name: "tip",
-            type: "S.HexString",
+            type: "HexString",
             description: "Transaction tip.",
           },
           {
             name: "transactionVersion",
-            type: "S.HexString",
+            type: "HexString",
             description: "Transaction format version.",
           },
           {
@@ -6898,12 +6895,12 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "assetId",
-            type: "S.HexString",
+            type: "HexString",
             description: "For multi-asset tips.",
           },
           {
             name: "metadataHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "CheckMetadataHash extension.",
           },
           {
@@ -6923,18 +6920,18 @@ export const versions: ExplorerVersion[] = [
         name: "HostSignPayloadResponse",
         category: "struct",
         definition:
-          "interface HostSignPayloadResponse { signature: S.HexString; signedTransaction?: S.HexString }",
+          "interface HostSignPayloadResponse { signature: HexString; signedTransaction?: HexString }",
         description: "Result of a signing operation.",
         source: "v0.1",
         fields: [
           {
             name: "signature",
-            type: "S.HexString",
+            type: "HexString",
             description: "The cryptographic signature.",
           },
           {
             name: "signedTransaction",
-            type: "S.HexString",
+            type: "HexString",
             description: "Full signed transaction, if requested.",
           },
         ],
@@ -7049,7 +7046,7 @@ export const versions: ExplorerVersion[] = [
         name: "PaymentTopUpSource",
         category: "enum",
         definition:
-          'type PaymentTopUpSource = { tag: "ProductAccount"; value: { derivationIndex: number } } | { tag: "PrivateKey"; value: { ed25519PrivateKey: S.HexString } }',
+          'type PaymentTopUpSource = { tag: "ProductAccount"; value: { derivationIndex: number } } | { tag: "PrivateKey"; value: { ed25519PrivateKey: HexString } }',
         description:
           "Source for a payment top-up operation.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         source: "shared",
@@ -7062,7 +7059,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "PrivateKey",
-            type: "{ ed25519PrivateKey: S.HexString }",
+            type: "{ ed25519PrivateKey: HexString }",
             description:
               "Fund from a one-time account represented by its private key. This is a\nstandard account holding public funds, not a coin key.",
           },
@@ -7072,14 +7069,14 @@ export const versions: ExplorerVersion[] = [
         id: "ProductAccount",
         name: "ProductAccount",
         category: "struct",
-        definition: "interface ProductAccount { publicKey: S.HexString }",
+        definition: "interface ProductAccount { publicKey: HexString }",
         description:
           "V0.2 product account: a public key only, no display name.\n\nV0.2 replaces V0.1's [`crate::v01::Account`] (which carries `name:\nOption<String>`) for `host_account_get` responses; the name is no longer\nreturned because it's not bound to the account derivation.",
         source: "shared",
         fields: [
           {
             name: "publicKey",
-            type: "S.HexString",
+            type: "HexString",
             description: "The account public key (variable-length bytes).",
           },
         ],
@@ -7113,7 +7110,7 @@ export const versions: ExplorerVersion[] = [
         name: "ProductChatCustomMessageRenderSubscribeRequest",
         category: "struct",
         definition:
-          "interface ProductChatCustomMessageRenderSubscribeRequest { messageId: string; messageType: string; payload: S.HexString }",
+          "interface ProductChatCustomMessageRenderSubscribeRequest { messageId: string; messageType: string; payload: HexString }",
         description:
           "Subscribe payload identifying the chat message to render. The host responds\nwith a stream of [`CustomRendererNode`] trees describing the rendered UI.",
         source: "v0.1",
@@ -7130,7 +7127,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "payload",
-            type: "S.HexString",
+            type: "HexString",
             description: "Binary payload.",
           },
         ],
@@ -7140,14 +7137,14 @@ export const versions: ExplorerVersion[] = [
         name: "RawPayload",
         category: "enum",
         definition:
-          'type RawPayload = { tag: "Bytes"; value: { bytes: S.HexString } } | { tag: "Payload"; value: { payload: string } }',
+          'type RawPayload = { tag: "Bytes"; value: { bytes: HexString } } | { tag: "Payload"; value: { payload: string } }',
         description:
           "Raw data to sign -- either binary bytes or a string message.",
         source: "shared",
         variants: [
           {
             name: "Bytes",
-            type: "{ bytes: S.HexString }",
+            type: "{ bytes: HexString }",
             description: "Raw binary data to sign.",
           },
           {
@@ -7162,14 +7159,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadBodyRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadBodyRequest { genesisHash: S.HexString; followSubscriptionId: string; hash: S.HexString }",
+          "interface RemoteChainHeadBodyRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_body`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -7179,7 +7176,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "hash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Block hash.",
           },
         ],
@@ -7205,14 +7202,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadCallRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadCallRequest { genesisHash: S.HexString; followSubscriptionId: string; hash: S.HexString; function: string; callParameters: S.HexString }",
+          "interface RemoteChainHeadCallRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString; function: string; callParameters: HexString }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_call`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -7222,7 +7219,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "hash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Block hash.",
           },
           {
@@ -7232,7 +7229,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "callParameters",
-            type: "S.HexString",
+            type: "HexString",
             description: "SCALE-encoded call parameters.",
           },
         ],
@@ -7259,14 +7256,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadContinueRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadContinueRequest { genesisHash: S.HexString; followSubscriptionId: string; operationId: string }",
+          "interface RemoteChainHeadContinueRequest { genesisHash: HexString; followSubscriptionId: string; operationId: string }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_continue`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -7286,38 +7283,38 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadFollowItem",
         category: "enum",
         definition:
-          'type RemoteChainHeadFollowItem = { tag: "Initialized"; value: { finalizedBlockHashes: Array<S.HexString>; finalizedBlockRuntime?: RuntimeType } } | { tag: "NewBlock"; value: { blockHash: S.HexString; parentBlockHash: S.HexString; newRuntime?: RuntimeType } } | { tag: "BestBlockChanged"; value: { bestBlockHash: S.HexString } } | { tag: "Finalized"; value: { finalizedBlockHashes: Array<S.HexString>; prunedBlockHashes: Array<S.HexString> } } | { tag: "OperationBodyDone"; value: { operationId: string; value: Array<S.HexString> } } | { tag: "OperationCallDone"; value: { operationId: string; output: S.HexString } } | { tag: "OperationStorageItems"; value: { operationId: string; items: Array<StorageResultItem> } } | { tag: "OperationStorageDone"; value: { operationId: string } } | { tag: "OperationWaitingForContinue"; value: { operationId: string } } | { tag: "OperationInaccessible"; value: { operationId: string } } | { tag: "OperationError"; value: { operationId: string; error: string } } | { tag: "Stop"; value: undefined }',
+          'type RemoteChainHeadFollowItem = { tag: "Initialized"; value: { finalizedBlockHashes: Array<HexString>; finalizedBlockRuntime?: RuntimeType } } | { tag: "NewBlock"; value: { blockHash: HexString; parentBlockHash: HexString; newRuntime?: RuntimeType } } | { tag: "BestBlockChanged"; value: { bestBlockHash: HexString } } | { tag: "Finalized"; value: { finalizedBlockHashes: Array<HexString>; prunedBlockHashes: Array<HexString> } } | { tag: "OperationBodyDone"; value: { operationId: string; value: Array<HexString> } } | { tag: "OperationCallDone"; value: { operationId: string; output: HexString } } | { tag: "OperationStorageItems"; value: { operationId: string; items: Array<StorageResultItem> } } | { tag: "OperationStorageDone"; value: { operationId: string } } | { tag: "OperationWaitingForContinue"; value: { operationId: string } } | { tag: "OperationInaccessible"; value: { operationId: string } } | { tag: "OperationError"; value: { operationId: string; error: string } } | { tag: "Stop"; value: undefined }',
         description: "Events received when following the chain head.",
         source: "v0.1",
         variants: [
           {
             name: "Initialized",
-            type: "{ finalizedBlockHashes: Array<S.HexString>; finalizedBlockRuntime?: RuntimeType }",
+            type: "{ finalizedBlockHashes: Array<HexString>; finalizedBlockRuntime?: RuntimeType }",
             description: "Initial state with finalized blocks.",
           },
           {
             name: "NewBlock",
-            type: "{ blockHash: S.HexString; parentBlockHash: S.HexString; newRuntime?: RuntimeType }",
+            type: "{ blockHash: HexString; parentBlockHash: HexString; newRuntime?: RuntimeType }",
             description: "A new block was produced.",
           },
           {
             name: "BestBlockChanged",
-            type: "{ bestBlockHash: S.HexString }",
+            type: "{ bestBlockHash: HexString }",
             description: "Best block changed.",
           },
           {
             name: "Finalized",
-            type: "{ finalizedBlockHashes: Array<S.HexString>; prunedBlockHashes: Array<S.HexString> }",
+            type: "{ finalizedBlockHashes: Array<HexString>; prunedBlockHashes: Array<HexString> }",
             description: "Blocks were finalized.",
           },
           {
             name: "OperationBodyDone",
-            type: "{ operationId: string; value: Array<S.HexString> }",
+            type: "{ operationId: string; value: Array<HexString> }",
             description: "Body fetch completed.",
           },
           {
             name: "OperationCallDone",
-            type: "{ operationId: string; output: S.HexString }",
+            type: "{ operationId: string; output: HexString }",
             description: "Runtime call completed.",
           },
           {
@@ -7358,14 +7355,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadFollowRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadFollowRequest { genesisHash: S.HexString; withRuntime: boolean }",
+          "interface RemoteChainHeadFollowRequest { genesisHash: HexString; withRuntime: boolean }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_follow`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -7380,14 +7377,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadHeaderRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadHeaderRequest { genesisHash: S.HexString; followSubscriptionId: string; hash: S.HexString }",
+          "interface RemoteChainHeadHeaderRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_header`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -7397,7 +7394,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "hash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Block hash.",
           },
         ],
@@ -7407,13 +7404,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadHeaderResponse",
         category: "struct",
         definition:
-          "interface RemoteChainHeadHeaderResponse { header?: S.HexString }",
+          "interface RemoteChainHeadHeaderResponse { header?: HexString }",
         description: "Response containing a block header, if available.",
         source: "v0.1",
         fields: [
           {
             name: "header",
-            type: "S.HexString",
+            type: "HexString",
             description: "SCALE-encoded block header.",
           },
         ],
@@ -7423,14 +7420,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadStopOperationRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadStopOperationRequest { genesisHash: S.HexString; followSubscriptionId: string; operationId: string }",
+          "interface RemoteChainHeadStopOperationRequest { genesisHash: HexString; followSubscriptionId: string; operationId: string }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_stop_operation`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -7450,14 +7447,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadStorageRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadStorageRequest { genesisHash: S.HexString; followSubscriptionId: string; hash: S.HexString; items: Array<StorageQueryItem>; childTrie?: S.HexString }",
+          "interface RemoteChainHeadStorageRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString; items: Array<StorageQueryItem>; childTrie?: HexString }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_storage`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -7467,7 +7464,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "hash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Block hash.",
           },
           {
@@ -7477,7 +7474,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "childTrie",
-            type: "S.HexString",
+            type: "HexString",
             description: "Optional child trie.",
           },
         ],
@@ -7504,14 +7501,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadUnpinRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadUnpinRequest { genesisHash: S.HexString; followSubscriptionId: string; hashes: Array<S.HexString> }",
+          "interface RemoteChainHeadUnpinRequest { genesisHash: HexString; followSubscriptionId: string; hashes: Array<HexString> }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_unpin`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -7521,7 +7518,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "hashes",
-            type: "Array<S.HexString>",
+            type: "Array<HexString>",
             description: "Block hashes to unpin.",
           },
         ],
@@ -7531,13 +7528,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainSpecChainNameRequest",
         category: "struct",
         definition:
-          "interface RemoteChainSpecChainNameRequest { genesisHash: S.HexString }",
+          "interface RemoteChainSpecChainNameRequest { genesisHash: HexString }",
         description: "Request to fetch a chain display name.",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
         ],
@@ -7563,13 +7560,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainSpecGenesisHashRequest",
         category: "struct",
         definition:
-          "interface RemoteChainSpecGenesisHashRequest { genesisHash: S.HexString }",
+          "interface RemoteChainSpecGenesisHashRequest { genesisHash: HexString }",
         description: "Request to fetch a chain genesis hash.",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash requested by the product.",
           },
         ],
@@ -7579,13 +7576,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainSpecGenesisHashResponse",
         category: "struct",
         definition:
-          "interface RemoteChainSpecGenesisHashResponse { genesisHash: S.HexString }",
+          "interface RemoteChainSpecGenesisHashResponse { genesisHash: HexString }",
         description: "Response containing a chain genesis hash.",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
         ],
@@ -7595,13 +7592,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainSpecPropertiesRequest",
         category: "struct",
         definition:
-          "interface RemoteChainSpecPropertiesRequest { genesisHash: S.HexString }",
+          "interface RemoteChainSpecPropertiesRequest { genesisHash: HexString }",
         description: "Request to fetch chain properties.",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
         ],
@@ -7627,19 +7624,19 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainTransactionBroadcastRequest",
         category: "struct",
         definition:
-          "interface RemoteChainTransactionBroadcastRequest { genesisHash: S.HexString; transaction: S.HexString }",
+          "interface RemoteChainTransactionBroadcastRequest { genesisHash: HexString; transaction: HexString }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_broadcast`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
             name: "transaction",
-            type: "S.HexString",
+            type: "HexString",
             description: "Signed transaction bytes.",
           },
         ],
@@ -7666,14 +7663,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainTransactionStopRequest",
         category: "struct",
         definition:
-          "interface RemoteChainTransactionStopRequest { genesisHash: S.HexString; operationId: string }",
+          "interface RemoteChainTransactionStopRequest { genesisHash: HexString; operationId: string }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_stop`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -7761,13 +7758,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemotePreimageLookupSubscribeItem",
         category: "struct",
         definition:
-          "interface RemotePreimageLookupSubscribeItem { value?: S.HexString }",
+          "interface RemotePreimageLookupSubscribeItem { value?: HexString }",
         description: "Item containing an optional preimage lookup result.",
         source: "v0.1",
         fields: [
           {
             name: "value",
-            type: "S.HexString",
+            type: "HexString",
             description: "Preimage data, if found.",
           },
         ],
@@ -7777,13 +7774,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemotePreimageLookupSubscribeRequest",
         category: "struct",
         definition:
-          "interface RemotePreimageLookupSubscribeRequest { key: S.HexString }",
+          "interface RemotePreimageLookupSubscribeRequest { key: HexString }",
         description: "Request to subscribe to preimage lookup results.",
         source: "v0.1",
         fields: [
           {
             name: "key",
-            type: "S.HexString",
+            type: "HexString",
             description: "Hash of the preimage.",
           },
         ],
@@ -7902,19 +7899,19 @@ export const versions: ExplorerVersion[] = [
         name: "RingLocation",
         category: "struct",
         definition:
-          "interface RingLocation { genesisHash: S.HexString; ringRootHash: S.HexString; hints?: RingLocationHint }",
+          "interface RingLocation { genesisHash: HexString; ringRootHash: HexString; hints?: RingLocationHint }",
         description:
           "Locates a specific ring on a specific chain for ring VRF operations.",
         source: "shared",
         fields: [
           {
             name: "genesisHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
             name: "ringRootHash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Root hash of the ring.",
           },
           {
@@ -8068,7 +8065,7 @@ export const versions: ExplorerVersion[] = [
         name: "SignedStatement",
         category: "struct",
         definition:
-          "interface SignedStatement { proof: StatementProof; decryptionKey?: S.HexString; expiry?: bigint; channel?: S.HexString; topics: Array<S.HexString>; data?: S.HexString }",
+          "interface SignedStatement { proof: StatementProof; decryptionKey?: HexString; expiry?: bigint; channel?: HexString; topics: Array<HexString>; data?: HexString }",
         description: "A statement with a required (not optional) proof.",
         source: "shared",
         fields: [
@@ -8079,7 +8076,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "decryptionKey",
-            type: "S.HexString",
+            type: "HexString",
             description: "Optional decryption key.",
           },
           {
@@ -8089,17 +8086,17 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "channel",
-            type: "S.HexString",
+            type: "HexString",
             description: "Optional channel.",
           },
           {
             name: "topics",
-            type: "Array<S.HexString>",
+            type: "Array<HexString>",
             description: "[u8; 32] tags.",
           },
           {
             name: "data",
-            type: "S.HexString",
+            type: "HexString",
             description: "Optional data payload.",
           },
         ],
@@ -8109,7 +8106,7 @@ export const versions: ExplorerVersion[] = [
         name: "Statement",
         category: "struct",
         definition:
-          "interface Statement { proof?: StatementProof; decryptionKey?: S.HexString; expiry?: bigint; channel?: S.HexString; topics: Array<S.HexString>; data?: S.HexString }",
+          "interface Statement { proof?: StatementProof; decryptionKey?: HexString; expiry?: bigint; channel?: HexString; topics: Array<HexString>; data?: HexString }",
         description: "A statement with optional proof and metadata.",
         source: "shared",
         fields: [
@@ -8120,7 +8117,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "decryptionKey",
-            type: "S.HexString",
+            type: "HexString",
             description: "Optional decryption key.",
           },
           {
@@ -8130,17 +8127,17 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "channel",
-            type: "S.HexString",
+            type: "HexString",
             description: "Optional channel.",
           },
           {
             name: "topics",
-            type: "Array<S.HexString>",
+            type: "Array<HexString>",
             description: "[u8; 32] tags.",
           },
           {
             name: "data",
-            type: "S.HexString",
+            type: "HexString",
             description: "Optional data payload.",
           },
         ],
@@ -8150,28 +8147,28 @@ export const versions: ExplorerVersion[] = [
         name: "StatementProof",
         category: "enum",
         definition:
-          'type StatementProof = { tag: "Sr25519"; value: { signature: S.HexString; signer: S.HexString } } | { tag: "Ed25519"; value: { signature: S.HexString; signer: S.HexString } } | { tag: "Ecdsa"; value: { signature: S.HexString; signer: S.HexString } } | { tag: "OnChain"; value: { who: S.HexString; blockHash: S.HexString; event: bigint } }',
+          'type StatementProof = { tag: "Sr25519"; value: { signature: HexString; signer: HexString } } | { tag: "Ed25519"; value: { signature: HexString; signer: HexString } } | { tag: "Ecdsa"; value: { signature: HexString; signer: HexString } } | { tag: "OnChain"; value: { who: HexString; blockHash: HexString; event: bigint } }',
         description: "Cryptographic proof for a statement.",
         source: "shared",
         variants: [
           {
             name: "Sr25519",
-            type: "{ signature: S.HexString; signer: S.HexString }",
+            type: "{ signature: HexString; signer: HexString }",
             description: "Sr25519 signature proof.",
           },
           {
             name: "Ed25519",
-            type: "{ signature: S.HexString; signer: S.HexString }",
+            type: "{ signature: HexString; signer: HexString }",
             description: "Ed25519 signature proof.",
           },
           {
             name: "Ecdsa",
-            type: "{ signature: S.HexString; signer: S.HexString }",
+            type: "{ signature: HexString; signer: HexString }",
             description: "ECDSA signature proof.",
           },
           {
             name: "OnChain",
-            type: "{ who: S.HexString; blockHash: S.HexString; event: bigint }",
+            type: "{ who: HexString; blockHash: HexString; event: bigint }",
             description: "On-chain event proof.",
           },
         ],
@@ -8181,13 +8178,13 @@ export const versions: ExplorerVersion[] = [
         name: "StorageQueryItem",
         category: "struct",
         definition:
-          "interface StorageQueryItem { key: S.HexString; queryType: StorageQueryType }",
+          "interface StorageQueryItem { key: HexString; queryType: StorageQueryType }",
         description: "A single storage query.",
         source: "shared",
         fields: [
           {
             name: "key",
-            type: "S.HexString",
+            type: "HexString",
             description: "Storage key to query.",
           },
           {
@@ -8233,28 +8230,28 @@ export const versions: ExplorerVersion[] = [
         name: "StorageResultItem",
         category: "struct",
         definition:
-          "interface StorageResultItem { key: S.HexString; value?: S.HexString; hash?: S.HexString; closestDescendantMerkleValue?: S.HexString }",
+          "interface StorageResultItem { key: HexString; value?: HexString; hash?: HexString; closestDescendantMerkleValue?: HexString }",
         description: "Result of a storage query.",
         source: "shared",
         fields: [
           {
             name: "key",
-            type: "S.HexString",
+            type: "HexString",
             description: "The queried key.",
           },
           {
             name: "value",
-            type: "S.HexString",
+            type: "HexString",
             description: "Value, if requested.",
           },
           {
             name: "hash",
-            type: "S.HexString",
+            type: "HexString",
             description: "Hash, if requested.",
           },
           {
             name: "closestDescendantMerkleValue",
-            type: "S.HexString",
+            type: "HexString",
             description: "Merkle value, if requested.",
           },
         ],
@@ -8310,7 +8307,7 @@ export const versions: ExplorerVersion[] = [
         id: "Topic",
         name: "Topic",
         category: "alias",
-        definition: "type Topic = S.HexString",
+        definition: "type Topic = HexString",
         description: "32-byte statement topic.",
         source: "shared",
       },
@@ -8319,13 +8316,13 @@ export const versions: ExplorerVersion[] = [
         name: "TxPayloadContextV1",
         category: "struct",
         definition:
-          "interface TxPayloadContextV1 { metadata: S.HexString; tokenSymbol: string; tokenDecimals: number; bestBlockHeight: number }",
+          "interface TxPayloadContextV1 { metadata: HexString; tokenSymbol: string; tokenDecimals: number; bestBlockHeight: number }",
         description: "Context information for transaction construction.",
         source: "shared",
         fields: [
           {
             name: "metadata",
-            type: "S.HexString",
+            type: "HexString",
             description: "`RuntimeMetadataPrefixed` blob (SCALE).",
           },
           {
@@ -8350,7 +8347,7 @@ export const versions: ExplorerVersion[] = [
         name: "TxPayloadExtensionV1",
         category: "struct",
         definition:
-          "interface TxPayloadExtensionV1 { id: string; extra: S.HexString; additionalSigned: S.HexString }",
+          "interface TxPayloadExtensionV1 { id: string; extra: HexString; additionalSigned: HexString }",
         description: "A signed extension for a transaction payload.",
         source: "shared",
         fields: [
@@ -8361,12 +8358,12 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "extra",
-            type: "S.HexString",
+            type: "HexString",
             description: "SCALE-encoded extra data (in extrinsic body).",
           },
           {
             name: "additionalSigned",
-            type: "S.HexString",
+            type: "HexString",
             description: "SCALE-encoded implicit data (signed, not in body).",
           },
         ],
@@ -8376,7 +8373,7 @@ export const versions: ExplorerVersion[] = [
         name: "TxPayloadV1",
         category: "struct",
         definition:
-          "interface TxPayloadV1 { signer?: string; callData: S.HexString; extensions: Array<TxPayloadExtensionV1>; txExtVersion: number; context: TxPayloadContextV1 }",
+          "interface TxPayloadV1 { signer?: string; callData: HexString; extensions: Array<TxPayloadExtensionV1>; txExtVersion: number; context: TxPayloadContextV1 }",
         description:
           "Version 1 transaction payload with all data needed to construct a signed\nextrinsic.",
         source: "shared",
@@ -8388,7 +8385,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "callData",
-            type: "S.HexString",
+            type: "HexString",
             description: "SCALE-encoded Call data.",
           },
           {
