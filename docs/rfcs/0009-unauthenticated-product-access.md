@@ -1,10 +1,10 @@
 # RFC-0009: Unauthenticated Product Access
 
-|                 |                                                                                          |
-| --------------- | ---------------------------------------------------------------------------------------- |
-| **Start Date**  | 2026-04-13                                                                               |
-| **Description** | Define how products behave before user login and how login is triggered                  |
-| **Authors**     | Filippo Vecchiato                                                                        |
+|                 |                                                                         |
+| --------------- | ----------------------------------------------------------------------- |
+| **Start Date**  | 2026-04-13                                                              |
+| **Description** | Define how products behave before user login and how login is triggered |
+| **Authors**     | Filippo Vecchiato                                                       |
 
 ## Summary
 
@@ -51,29 +51,29 @@ A product operates in one of two authentication states:
 
 These APIs do not depend on a user identity and must work regardless of login state:
 
-| API Group          | Methods |
-|--------------------|---------|
-| General            | `host_handshake`, `host_feature_supported`, `host_navigate_to` |
-| Storage            | `host_local_storage_read`, `host_local_storage_write`, `host_local_storage_clear` |
-| Chain Interaction  | All `remote_chain_*` methods |
-| Preimage           | `remote_preimage_lookup_subscribe` |
-| Statement Store    | `remote_statement_store_subscribe` (read-only subscription) |
-| Permissions        | `host_device_permission`, `remote_permission` |
-| Account Status     | `host_account_connection_status_subscribe` |
+| API Group         | Methods                                                                           |
+| ----------------- | --------------------------------------------------------------------------------- |
+| General           | `host_handshake`, `host_feature_supported`, `host_navigate_to`                    |
+| Storage           | `host_local_storage_read`, `host_local_storage_write`, `host_local_storage_clear` |
+| Chain Interaction | All `remote_chain_*` methods                                                      |
+| Preimage          | `remote_preimage_lookup_subscribe`                                                |
+| Statement Store   | `remote_statement_store_subscribe` (read-only subscription)                       |
+| Permissions       | `host_device_permission`, `remote_permission`                                     |
+| Account Status    | `host_account_connection_status_subscribe`                                        |
 
 #### Requires authentication
 
 These APIs depend on a user identity. Calling them in the Anonymous state must return a well-defined error:
 
-| API Group          | Methods | Error |
-|--------------------|---------|-------|
-| Accounts           | `host_account_get`, `host_account_get_alias`, `host_account_create_proof`, `host_get_non_product_accounts`, `host_get_user_id` | `NotConnected` |
-| Signing            | `host_create_transaction`, `host_create_transaction_with_non_product_account`, `host_sign_raw`, `host_sign_payload` | `NotConnected` |
-| Entropy            | `host_derive_entropy` | `NotConnected` |
-| Payment            | `host_payment_balance_subscribe`, `host_payment_top_up`, `host_payment_request`, `host_payment_status_subscribe` | `NotConnected` |
-| Statement Store    | `remote_statement_store_create_proof`, `remote_statement_store_submit` | `NotConnected` |
-| Chat               | All `host_chat_*` methods | `NotConnected` |
-| Notifications      | `host_push_notification` | `NotConnected` |
+| API Group       | Methods                                                                                                                        | Error          |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------ | -------------- |
+| Accounts        | `host_account_get`, `host_account_get_alias`, `host_account_create_proof`, `host_get_non_product_accounts`, `host_get_user_id` | `NotConnected` |
+| Signing         | `host_create_transaction`, `host_create_transaction_with_non_product_account`, `host_sign_raw`, `host_sign_payload`            | `NotConnected` |
+| Entropy         | `host_derive_entropy`                                                                                                          | `NotConnected` |
+| Payment         | `host_payment_balance_subscribe`, `host_payment_top_up`, `host_payment_request`, `host_payment_status_subscribe`               | `NotConnected` |
+| Statement Store | `remote_statement_store_create_proof`, `remote_statement_store_submit`                                                         | `NotConnected` |
+| Chat            | All `host_chat_*` methods                                                                                                      | `NotConnected` |
+| Notifications   | `host_push_notification`                                                                                                       | `NotConnected` |
 
 ### New API: `host_request_login`
 
@@ -128,17 +128,19 @@ The Product SDK should provide ergonomic helpers for the common pattern:
 // Conceptual example — not a binding API proposal
 const status = await hostApi.accountConnectionStatus.subscribe();
 
-if (status === 'Disconnected') {
+if (status === "Disconnected") {
   // Render read-only UI with a login button
   renderReadOnlyView({
     onLoginClick: async () => {
-      const result = await hostApi.requestLogin('Sign in to access your account');
-      if (result === 'Rejected') {
+      const result = await hostApi.requestLogin(
+        "Sign in to access your account",
+      );
+      if (result === "Rejected") {
         // User cancelled — stay in read-only mode
       }
       // On Success, the subscription will emit Connected
       // and the product re-renders with full capabilities
-    }
+    },
   });
 } else {
   // Render full authenticated UI
@@ -153,6 +155,7 @@ if (status === 'Disconnected') {
 The host intercepts calls like `host_account_get` or `host_sign_payload` and automatically presents the login UI before returning.
 
 **Rejected because:**
+
 - Creates unexpected popups during exploratory browsing.
 - Conflates login with the action that required it (e.g. login + sign in one flow).
 - Makes it impossible for the product to customize the login prompt or explain why login is needed.
@@ -162,6 +165,7 @@ The host intercepts calls like `host_account_get` or `host_sign_payload` and aut
 The host does not load the product iframe until a user is authenticated.
 
 **Rejected because:**
+
 - Prevents read-only browsing of public content.
 - Contradicts the design intent of allowing users to view products before committing to sign in.
 - Poor UX for discovery — users cannot preview a product before creating an account.
@@ -171,6 +175,7 @@ The host does not load the product iframe until a user is authenticated.
 The host presents login when the product first requests a permission or signature.
 
 **Rejected because:**
+
 - Subset of Alternative A with the same problems.
 - Additionally confusing: the user sees a login prompt when they expected a permission prompt.
 

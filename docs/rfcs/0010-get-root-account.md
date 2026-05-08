@@ -60,5 +60,5 @@ The method is added to the **Accounts** section of the host API protocol, alongs
 
 ## Unresolved Questions
 
-* **Grant persistence.** Should the host be required to persist the grant across sessions, or is session-scoped caching sufficient? Persistent grants reduce friction for returning users; session-scoped grants give users more frequent control.
-* **Re-prompt policy.** If the user denied the request in a previous session and the host persisted that denial, should the product ever be able to trigger a new prompt? The protocol is silent on this; it is left to host implementations.
+- **Grant persistence.** Should the host be required to persist the grant across sessions, or is session-scoped caching sufficient? Persistent grants reduce friction for returning users; session-scoped grants give users more frequent control.
+- **Re-prompt policy.** If the user denied the request in a previous session and the host persisted that denial, should the product ever be able to trigger a new prompt? The protocol is silent on this; it is left to host implementations.

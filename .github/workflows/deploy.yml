@@ -1,53 +1,46 @@
-name: Deploy to GitHub Pages
+name: Deploy
 
 on:
   push:
     branches: [main]
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
 concurrency:
-  group: pages
+  group: deploy-truapi-playground
   cancel-in-progress: false
 
+permissions:
+  contents: read
+
 jobs:
-  build:
+  deploy:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          submodules: recursive
 
-      # ── Webapp ──────────────────────────────────────────────
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
-      - run: npm ci
+      - name: Build @parity/truapi
+        run: npm ci --prefix js/packages/truapi && npm run build --prefix js/packages/truapi
 
-      - run: npm run build
+      - name: Install playground dependencies
+        working-directory: playground
+        run: yarn install --frozen-lockfile
 
-      # ── Rust docs ──────────────────────────────────────────
-      - uses: dtolnay/rust-toolchain@stable
+      - name: Build playground
+        working-directory: playground
+        run: yarn build
 
-      - run: cargo doc --no-deps --manifest-path truapi-spec/Cargo.toml
+      - name: Install bulletin-deploy
+        run: npm install -g bulletin-deploy
 
-      - run: cp -r truapi-spec/target/doc dist/rustdoc
-
-      # ── Upload ─────────────────────────────────────────────
-      - uses: actions/upload-pages-artifact@v3
+      - name: Deploy to DotNS
+        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3.0.2
         with:
-          path: dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          timeout_minutes: 10
+          max_attempts: 3
+          command: cd playground && bulletin-deploy ./out truapi-playground.dot --js-merkle

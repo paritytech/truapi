@@ -433,6 +433,7 @@ The provider MUST send data updates with a `receive` message.
 If the provider has trouble providing data, it CAN send an `interrupt` message to the consumer. The consumer MAY react to an `interrupt` message by notifying the application layer.
 
 The returned `Subscriber` interface depends on the implementation, but a generic interface may look like this:
+
 ```rust
 struct Subscriber {
   unsubscribe: fn(),
@@ -587,26 +588,27 @@ Products MAY request permissions lazily (on first use) or upfront during initial
 
 The following business methods gate on a specific `RemotePermission` and MUST internally trigger a permission prompt if the permission has not yet been resolved:
 
-| Business Method                      | Required Permission                |
-|--------------------------------------|------------------------------------|
-| `remote_chain_transaction_broadcast` | `RemotePermission::ChainSubmit`    |
-| `remote_preimage_submit`             | `RemotePermission::PreimageSubmit` |
-| `remote_statement_store_submit`      | `RemotePermission::StatementSubmit`|
+| Business Method                      | Required Permission                 |
+| ------------------------------------ | ----------------------------------- |
+| `remote_chain_transaction_broadcast` | `RemotePermission::ChainSubmit`     |
+| `remote_preimage_submit`             | `RemotePermission::PreimageSubmit`  |
+| `remote_statement_store_submit`      | `RemotePermission::StatementSubmit` |
 
 If the user has already granted the relevant permission, the business method proceeds without prompting. If the user denies, the method returns `GenericErr` with a permission-denied reason.
 
 The following business methods require user consent through their own signing-confirmation flow and return `PermissionDenied` when the user cancels — this is separate from the remote permission system:
 
-| Business Method                                    | Error on Denial                          |
-|----------------------------------------------------|------------------------------------------|
-| `host_sign_raw`                                    | `SigningErr::PermissionDenied`           |
-| `host_sign_payload`                                | `SigningErr::PermissionDenied`           |
-| `host_create_transaction`                          | `CreateTransactionErr::PermissionDenied` |
-| `host_create_transaction_with_legacy_account`       | `CreateTransactionErr::PermissionDenied` |
+| Business Method                               | Error on Denial                          |
+| --------------------------------------------- | ---------------------------------------- |
+| `host_sign_raw`                               | `SigningErr::PermissionDenied`           |
+| `host_sign_payload`                           | `SigningErr::PermissionDenied`           |
+| `host_create_transaction`                     | `CreateTransactionErr::PermissionDenied` |
+| `host_create_transaction_with_legacy_account` | `CreateTransactionErr::PermissionDenied` |
 
 ### Local storage
 
 Local storage is a basic key-value storage implemented on the Host side. Each Product can read, store, and clear only its own values. A basic Host implementation can rely on a local DB, but it can also use some kind of on-chain data storage.
+
 ```rust
 enum LocalStorageErr {
   Full,
@@ -870,7 +872,6 @@ This API section corresponds to Product ↔ Chat integration. There are two type
 
 A product can create multiple rooms that correspond to direct product ↔ user interactions.
 
-
 ##### Room Registration
 
 In the case of Room Extension, the Product MUST register itself as a room before sending any message. The Host MUST add the Product to the contact list on the first call; if the Product requests creation of a room with the same `room_id`, the Host MUST deduplicate requests and send `Exists` status. `room_id` MUST be unique and stable across product presentations.
@@ -904,6 +905,7 @@ fn host_chat_create_room(
 #### Bot registration
 
 The Host application should know about the existence of the Product's bot, so it needs to be registered first.
+
 ```rust
 enum ChatBotRegistrationErr {
   PermissionDenied,
