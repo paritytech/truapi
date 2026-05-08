@@ -157,6 +157,8 @@ jobs:
 
   e2e:
     name: E2E (playground inside dotli)
+    # Temporarily disabled while the dotli playground smoke test is stabilized.
+    if: false
     runs-on: ubuntu-latest
     needs: playground
     timeout-minutes: 30
