@@ -7,6 +7,7 @@ import {
   SubscriptionInterruptedError,
 } from "../src/generated/client.ts";
 import * as T from "../src/generated/types.ts";
+import * as W from "../src/generated/wire-table.ts";
 import { encodeWireMessage } from "../src/transport.ts";
 
 function toHex(u) {
@@ -121,7 +122,7 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: "p:1",
       payload: {
-        tag: "host_handshake_response",
+        id: W.HOST_HANDSHAKE.response,
         value: handshakeResponsePayload({ success: true, value: undefined }),
       },
     }),
@@ -146,7 +147,7 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: "h:1",
       payload: {
-        tag: "host_handshake_request",
+        id: W.HOST_HANDSHAKE.request,
         value: requestPayload,
       },
     }),
@@ -162,7 +163,7 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: "h:1",
       payload: {
-        tag: "host_handshake_response",
+        id: W.HOST_HANDSHAKE.response,
         value: expectedResponsePayload,
       },
     }),
@@ -190,7 +191,7 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: sub.subscriptionId,
       payload: {
-        tag: "host_account_connection_status_subscribe_receive",
+        id: W.HOST_ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.receive,
         value: T.VersionedHostAccountConnectionStatusSubscribeItem.enc({
           tag: "V1",
           value: { tag: "Connected", value: undefined },
@@ -221,7 +222,7 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: sub.subscriptionId,
       payload: {
-        tag: "host_account_connection_status_subscribe_interrupt",
+        id: W.HOST_ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.interrupt,
         value: unit.enc(undefined),
       },
     }),
@@ -251,7 +252,7 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: sub.subscriptionId,
       payload: {
-        tag: "host_payment_balance_subscribe_interrupt",
+        id: W.HOST_PAYMENT_BALANCE_SUBSCRIBE.interrupt,
         value: T.VersionedHostPaymentBalanceSubscribeError.enc({
           tag: "V2",
           value: reason,
@@ -289,7 +290,7 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: sub.subscriptionId,
       payload: {
-        tag: "host_account_connection_status_subscribe_receive",
+        id: W.HOST_ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.receive,
         value: unit.enc(undefined),
       },
     }),
@@ -305,7 +306,7 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: sub.subscriptionId,
       payload: {
-        tag: "host_account_connection_status_subscribe_stop",
+        id: W.HOST_ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.stop,
         value: unit.enc(undefined),
       },
     }),
@@ -317,7 +318,7 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: sub.subscriptionId,
       payload: {
-        tag: "host_account_connection_status_subscribe_receive",
+        id: W.HOST_ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.receive,
         value: T.VersionedHostAccountConnectionStatusSubscribeItem.enc({
           tag: "V1",
           value: { tag: "Connected", value: undefined },
@@ -352,7 +353,7 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: sub.subscriptionId,
       payload: {
-        tag: "host_account_connection_status_subscribe_stop",
+        id: W.HOST_ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.stop,
         value: unit.enc(undefined),
       },
     }),

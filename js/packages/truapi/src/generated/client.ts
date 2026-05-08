@@ -6,9 +6,11 @@ import type {
   ObservableLike,
   Observer,
   Subscription,
+  SubscriptionFrameIds,
   TrUApiTransport,
 } from "../transport.js";
 import * as T from "./types.js";
+import * as W from "./wire-table.js";
 
 export { Result };
 export type { ObservableLike, Observer, Subscription, TrUApiTransport };
@@ -28,13 +30,13 @@ function toError(error: unknown): Error {
 
 function createObservable<Item>({
   transport,
-  method,
+  ids,
   payload,
   decodeItem,
   decodeInterrupt,
 }: {
   transport: TrUApiTransport;
-  method: string;
+  ids: SubscriptionFrameIds;
   payload: Uint8Array;
   decodeItem: (payload: Uint8Array) => Item;
   decodeInterrupt?: (payload: Uint8Array) => unknown;
@@ -55,7 +57,7 @@ function createObservable<Item>({
       };
 
       raw = transport.subscribeRaw({
-        method,
+        ids,
         payload,
         onReceive: (payload) => {
           if (closed) return;
@@ -111,7 +113,7 @@ export class AccountManagementClient {
   accountConnectionStatusSubscribe(): ObservableLike<T.HostAccountConnectionStatusSubscribeItem> {
     return createObservable<T.HostAccountConnectionStatusSubscribeItem>({
       transport: this.transport,
-      method: "host_account_connection_status_subscribe",
+      ids: W.HOST_ACCOUNT_CONNECTION_STATUS_SUBSCRIBE,
       payload: S.indexedTaggedUnion({ V1: [0, S.unit] as const }).enc({
         tag: "V1",
         value: undefined,
@@ -133,7 +135,7 @@ export class AccountManagementClient {
     const result = await this.transport.request<
       S.ResultPayload<T.HostAccountGetResponse, T.HostAccountGetError>
     >({
-      method: "host_account_get",
+      ids: W.HOST_ACCOUNT_GET,
       payload: T.VersionedHostAccountGetRequest.enc({
         tag: "V1",
         value: request,
@@ -156,7 +158,7 @@ export class AccountManagementClient {
     const result = await this.transport.request<
       S.ResultPayload<T.HostAccountGetAliasResponse, T.HostAccountGetError>
     >({
-      method: "host_account_get_alias",
+      ids: W.HOST_ACCOUNT_GET_ALIAS,
       payload: T.VersionedHostAccountGetAliasRequest.enc({
         tag: "V1",
         value: request,
@@ -184,7 +186,7 @@ export class AccountManagementClient {
         T.HostAccountCreateProofError
       >
     >({
-      method: "host_account_create_proof",
+      ids: W.HOST_ACCOUNT_CREATE_PROOF,
       payload: T.VersionedHostAccountCreateProofRequest.enc({
         tag: "V1",
         value: request,
@@ -210,7 +212,7 @@ export class AccountManagementClient {
     const result = await this.transport.request<
       S.ResultPayload<T.HostGetLegacyAccountsResponse, T.HostAccountGetError>
     >({
-      method: "host_get_legacy_accounts",
+      ids: W.HOST_GET_LEGACY_ACCOUNTS,
       payload: T.VersionedHostGetLegacyAccountsRequest.enc({
         tag: "V1",
         value: undefined,
@@ -233,7 +235,7 @@ export class AccountManagementClient {
     const result = await this.transport.request<
       S.ResultPayload<T.HostGetUserIdResponse, T.HostGetUserIdError>
     >({
-      method: "host_get_user_id",
+      ids: W.HOST_GET_USER_ID,
       payload: T.VersionedHostGetUserIdRequest.enc({
         tag: "V2",
         value: undefined,
@@ -267,7 +269,7 @@ export class ChainInteractionClient {
   }): ObservableLike<T.RemoteChainHeadFollowItem> {
     return createObservable<T.RemoteChainHeadFollowItem>({
       transport: this.transport,
-      method: "remote_chain_head_follow",
+      ids: W.REMOTE_CHAIN_HEAD_FOLLOW,
       payload: T.VersionedRemoteChainHeadFollowRequest.enc({
         tag: "V1",
         value: request,
@@ -289,7 +291,7 @@ export class ChainInteractionClient {
     const result = await this.transport.request<
       S.ResultPayload<T.RemoteChainHeadHeaderResponse, T.GenericError>
     >({
-      method: "remote_chain_head_header",
+      ids: W.REMOTE_CHAIN_HEAD_HEADER,
       payload: T.VersionedRemoteChainHeadHeaderRequest.enc({
         tag: "V1",
         value: request,
@@ -312,7 +314,7 @@ export class ChainInteractionClient {
     const result = await this.transport.request<
       S.ResultPayload<T.RemoteChainHeadBodyResponse, T.GenericError>
     >({
-      method: "remote_chain_head_body",
+      ids: W.REMOTE_CHAIN_HEAD_BODY,
       payload: T.VersionedRemoteChainHeadBodyRequest.enc({
         tag: "V1",
         value: request,
@@ -335,7 +337,7 @@ export class ChainInteractionClient {
     const result = await this.transport.request<
       S.ResultPayload<T.RemoteChainHeadStorageResponse, T.GenericError>
     >({
-      method: "remote_chain_head_storage",
+      ids: W.REMOTE_CHAIN_HEAD_STORAGE,
       payload: T.VersionedRemoteChainHeadStorageRequest.enc({
         tag: "V1",
         value: request,
@@ -358,7 +360,7 @@ export class ChainInteractionClient {
     const result = await this.transport.request<
       S.ResultPayload<T.RemoteChainHeadCallResponse, T.GenericError>
     >({
-      method: "remote_chain_head_call",
+      ids: W.REMOTE_CHAIN_HEAD_CALL,
       payload: T.VersionedRemoteChainHeadCallRequest.enc({
         tag: "V1",
         value: request,
@@ -381,7 +383,7 @@ export class ChainInteractionClient {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.GenericError>
     >({
-      method: "remote_chain_head_unpin",
+      ids: W.REMOTE_CHAIN_HEAD_UNPIN,
       payload: T.VersionedRemoteChainHeadUnpinRequest.enc({
         tag: "V1",
         value: request,
@@ -401,7 +403,7 @@ export class ChainInteractionClient {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.GenericError>
     >({
-      method: "remote_chain_head_continue",
+      ids: W.REMOTE_CHAIN_HEAD_CONTINUE,
       payload: T.VersionedRemoteChainHeadContinueRequest.enc({
         tag: "V1",
         value: request,
@@ -421,7 +423,7 @@ export class ChainInteractionClient {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.GenericError>
     >({
-      method: "remote_chain_head_stop_operation",
+      ids: W.REMOTE_CHAIN_HEAD_STOP_OPERATION,
       payload: T.VersionedRemoteChainHeadStopOperationRequest.enc({
         tag: "V1",
         value: request,
@@ -441,7 +443,7 @@ export class ChainInteractionClient {
     const result = await this.transport.request<
       S.ResultPayload<T.RemoteChainSpecGenesisHashResponse, T.GenericError>
     >({
-      method: "remote_chain_spec_genesis_hash",
+      ids: W.REMOTE_CHAIN_SPEC_GENESIS_HASH,
       payload: T.VersionedRemoteChainSpecGenesisHashRequest.enc({
         tag: "V1",
         value: request,
@@ -464,7 +466,7 @@ export class ChainInteractionClient {
     const result = await this.transport.request<
       S.ResultPayload<T.RemoteChainSpecChainNameResponse, T.GenericError>
     >({
-      method: "remote_chain_spec_chain_name",
+      ids: W.REMOTE_CHAIN_SPEC_CHAIN_NAME,
       payload: T.VersionedRemoteChainSpecChainNameRequest.enc({
         tag: "V1",
         value: request,
@@ -487,7 +489,7 @@ export class ChainInteractionClient {
     const result = await this.transport.request<
       S.ResultPayload<T.RemoteChainSpecPropertiesResponse, T.GenericError>
     >({
-      method: "remote_chain_spec_properties",
+      ids: W.REMOTE_CHAIN_SPEC_PROPERTIES,
       payload: T.VersionedRemoteChainSpecPropertiesRequest.enc({
         tag: "V1",
         value: request,
@@ -512,7 +514,7 @@ export class ChainInteractionClient {
     const result = await this.transport.request<
       S.ResultPayload<T.RemoteChainTransactionBroadcastResponse, T.GenericError>
     >({
-      method: "remote_chain_transaction_broadcast",
+      ids: W.REMOTE_CHAIN_TRANSACTION_BROADCAST,
       payload: T.VersionedRemoteChainTransactionBroadcastRequest.enc({
         tag: "V1",
         value: request,
@@ -535,7 +537,7 @@ export class ChainInteractionClient {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.GenericError>
     >({
-      method: "remote_chain_transaction_stop",
+      ids: W.REMOTE_CHAIN_TRANSACTION_STOP,
       payload: T.VersionedRemoteChainTransactionStopRequest.enc({
         tag: "V1",
         value: request,
@@ -565,7 +567,7 @@ export class ChatClient {
     const result = await this.transport.request<
       S.ResultPayload<T.HostChatCreateRoomResponse, T.HostChatCreateRoomError>
     >({
-      method: "host_chat_create_room",
+      ids: W.HOST_CHAT_CREATE_ROOM,
       payload: T.VersionedHostChatCreateRoomRequest.enc({
         tag: "V1",
         value: request,
@@ -590,7 +592,7 @@ export class ChatClient {
     const result = await this.transport.request<
       S.ResultPayload<T.HostChatRegisterBotResponse, T.HostChatRegisterBotError>
     >({
-      method: "host_chat_register_bot",
+      ids: W.HOST_CHAT_REGISTER_BOT,
       payload: T.VersionedHostChatRegisterBotRequest.enc({
         tag: "V1",
         value: request,
@@ -610,7 +612,7 @@ export class ChatClient {
   chatListSubscribe(): ObservableLike<T.HostChatListSubscribeItem> {
     return createObservable<T.HostChatListSubscribeItem>({
       transport: this.transport,
-      method: "host_chat_list_subscribe",
+      ids: W.HOST_CHAT_LIST_SUBSCRIBE,
       payload: S.indexedTaggedUnion({ V1: [0, S.unit] as const }).enc({
         tag: "V1",
         value: undefined,
@@ -634,7 +636,7 @@ export class ChatClient {
     const result = await this.transport.request<
       S.ResultPayload<T.HostChatPostMessageResponse, T.HostChatPostMessageError>
     >({
-      method: "host_chat_post_message",
+      ids: W.HOST_CHAT_POST_MESSAGE,
       payload: T.VersionedHostChatPostMessageRequest.enc({
         tag: "V1",
         value: request,
@@ -654,7 +656,7 @@ export class ChatClient {
   chatActionSubscribe(): ObservableLike<T.HostChatActionSubscribeItem> {
     return createObservable<T.HostChatActionSubscribeItem>({
       transport: this.transport,
-      method: "host_chat_action_subscribe",
+      ids: W.HOST_CHAT_ACTION_SUBSCRIBE,
       payload: S.indexedTaggedUnion({ V1: [0, S.unit] as const }).enc({
         tag: "V1",
         value: undefined,
@@ -681,7 +683,7 @@ export class ChatClient {
   }): ObservableLike<T.CustomRendererNode> {
     return createObservable<T.CustomRendererNode>({
       transport: this.transport,
-      method: "product_chat_custom_message_render_subscribe",
+      ids: W.PRODUCT_CHAT_CUSTOM_MESSAGE_RENDER_SUBSCRIBE,
       payload: T.VersionedProductChatCustomMessageRenderSubscribeRequest.enc({
         tag: "V1",
         value: request,
@@ -710,7 +712,7 @@ export class ChatClient {
         T.HostChatCreateRoomError
       >
     >({
-      method: "host_chat_create_simple_group",
+      ids: W.HOST_CHAT_CREATE_SIMPLE_GROUP,
       payload: T.VersionedHostChatCreateSimpleGroupRequest.enc({
         tag: "V2",
         value: request,
@@ -749,7 +751,7 @@ export class EntropyDerivationClient {
     const result = await this.transport.request<
       S.ResultPayload<T.HostDeriveEntropyResponse, T.HostDeriveEntropyError>
     >({
-      method: "host_derive_entropy",
+      ids: W.HOST_DERIVE_ENTROPY,
       payload: T.VersionedHostDeriveEntropyRequest.enc({
         tag: "V2",
         value: request,
@@ -782,7 +784,7 @@ export class LocalStorageClient {
         T.HostLocalStorageReadError
       >
     >({
-      method: "host_local_storage_read",
+      ids: W.HOST_LOCAL_STORAGE_READ,
       payload: T.VersionedHostLocalStorageReadRequest.enc({
         tag: "V1",
         value: request,
@@ -808,7 +810,7 @@ export class LocalStorageClient {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.HostLocalStorageReadError>
     >({
-      method: "host_local_storage_write",
+      ids: W.HOST_LOCAL_STORAGE_WRITE,
       payload: T.VersionedHostLocalStorageWriteRequest.enc({
         tag: "V1",
         value: request,
@@ -828,7 +830,7 @@ export class LocalStorageClient {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.HostLocalStorageReadError>
     >({
-      method: "host_local_storage_clear",
+      ids: W.HOST_LOCAL_STORAGE_CLEAR,
       payload: T.VersionedHostLocalStorageClearRequest.enc({
         tag: "V1",
         value: request,
@@ -855,7 +857,7 @@ export class PaymentClient {
   paymentBalanceSubscribe(): ObservableLike<T.HostPaymentBalanceSubscribeItem> {
     return createObservable<T.HostPaymentBalanceSubscribeItem>({
       transport: this.transport,
-      method: "host_payment_balance_subscribe",
+      ids: W.HOST_PAYMENT_BALANCE_SUBSCRIBE,
       payload: T.VersionedHostPaymentBalanceSubscribeRequest.enc({
         tag: "V2",
         value: undefined,
@@ -884,7 +886,7 @@ export class PaymentClient {
     const result = await this.transport.request<
       S.ResultPayload<T.HostPaymentRequestResponse, T.HostPaymentRequestError>
     >({
-      method: "host_payment_request",
+      ids: W.HOST_PAYMENT_REQUEST,
       payload: T.VersionedHostPaymentRequestRequest.enc({
         tag: "V2",
         value: request,
@@ -908,7 +910,7 @@ export class PaymentClient {
   }): ObservableLike<T.HostPaymentStatusSubscribeItem> {
     return createObservable<T.HostPaymentStatusSubscribeItem>({
       transport: this.transport,
-      method: "host_payment_status_subscribe",
+      ids: W.HOST_PAYMENT_STATUS_SUBSCRIBE,
       payload: T.VersionedHostPaymentStatusSubscribeRequest.enc({
         tag: "V2",
         value: request,
@@ -937,7 +939,7 @@ export class PaymentClient {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.HostPaymentTopUpError>
     >({
-      method: "host_payment_top_up",
+      ids: W.HOST_PAYMENT_TOP_UP,
       payload: T.VersionedHostPaymentTopUpRequest.enc({
         tag: "V2",
         value: request,
@@ -962,7 +964,7 @@ export class PermissionsClient {
     const result = await this.transport.request<
       S.ResultPayload<T.HostDevicePermissionResponse, T.GenericError>
     >({
-      method: "host_device_permission",
+      ids: W.HOST_DEVICE_PERMISSION,
       payload: T.VersionedHostDevicePermissionRequest.enc({
         tag: "V2",
         value: request,
@@ -985,7 +987,7 @@ export class PermissionsClient {
     const result = await this.transport.request<
       S.ResultPayload<T.RemotePermissionResponse, T.GenericError>
     >({
-      method: "remote_permission",
+      ids: W.REMOTE_PERMISSION,
       payload: T.VersionedRemotePermissionRequest.enc({
         tag: "V2",
         value: request,
@@ -1021,7 +1023,7 @@ export class PreimageClient {
   }): ObservableLike<T.RemotePreimageLookupSubscribeItem> {
     return createObservable<T.RemotePreimageLookupSubscribeItem>({
       transport: this.transport,
-      method: "remote_preimage_lookup_subscribe",
+      ids: W.REMOTE_PREIMAGE_LOOKUP_SUBSCRIBE,
       payload: T.VersionedRemotePreimageLookupSubscribeRequest.enc({
         tag: "V1",
         value: request,
@@ -1058,7 +1060,7 @@ export class SigningClient {
         T.HostCreateTransactionError
       >
     >({
-      method: "host_create_transaction",
+      ids: W.HOST_CREATE_TRANSACTION,
       payload: T.VersionedHostCreateTransactionRequest.enc({
         tag: "V1",
         value: request,
@@ -1092,7 +1094,7 @@ export class SigningClient {
         T.HostCreateTransactionError
       >
     >({
-      method: "host_create_transaction_with_legacy_account",
+      ids: W.HOST_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT,
       payload: T.VersionedHostCreateTransactionWithLegacyAccountRequest.enc({
         tag: "V1",
         value: request,
@@ -1118,7 +1120,7 @@ export class SigningClient {
     const result = await this.transport.request<
       S.ResultPayload<T.HostSignPayloadResponse, T.HostSignPayloadError>
     >({
-      method: "host_sign_raw",
+      ids: W.HOST_SIGN_RAW,
       payload: T.VersionedHostSignRawRequest.enc({ tag: "V2", value: request }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
@@ -1138,7 +1140,7 @@ export class SigningClient {
     const result = await this.transport.request<
       S.ResultPayload<T.HostSignPayloadResponse, T.HostSignPayloadError>
     >({
-      method: "host_sign_payload",
+      ids: W.HOST_SIGN_PAYLOAD,
       payload: T.VersionedHostSignPayloadRequest.enc({
         tag: "V2",
         value: request,
@@ -1172,7 +1174,7 @@ export class StatementStoreClient {
   }): ObservableLike<T.RemoteStatementStoreSubscribeItem> {
     return createObservable<T.RemoteStatementStoreSubscribeItem>({
       transport: this.transport,
-      method: "remote_statement_store_subscribe",
+      ids: W.REMOTE_STATEMENT_STORE_SUBSCRIBE,
       payload: T.VersionedRemoteStatementStoreSubscribeRequest.enc({
         tag: "V2",
         value: request,
@@ -1202,7 +1204,7 @@ export class StatementStoreClient {
         T.RemoteStatementStoreCreateProofError
       >
     >({
-      method: "remote_statement_store_create_proof",
+      ids: W.REMOTE_STATEMENT_STORE_CREATE_PROOF,
       payload: T.VersionedRemoteStatementStoreCreateProofRequest.enc({
         tag: "V1",
         value: request,
@@ -1232,7 +1234,7 @@ export class StatementStoreClient {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.GenericError>
     >({
-      method: "remote_statement_store_submit",
+      ids: W.REMOTE_STATEMENT_STORE_SUBMIT,
       payload: T.VersionedRemoteStatementStoreSubmitRequest.enc({
         tag: "V1",
         value: request,
@@ -1276,7 +1278,7 @@ export class TrUApiCallsClient {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.HostHandshakeError>
     >({
-      method: "host_handshake",
+      ids: W.HOST_HANDSHAKE,
       payload: T.VersionedHostHandshakeRequest.enc({
         tag: "V1",
         value: { codecVersion: this.transport.codecVersion },
@@ -1296,7 +1298,7 @@ export class TrUApiCallsClient {
     const result = await this.transport.request<
       S.ResultPayload<T.HostFeatureSupportedResponse, T.GenericError>
     >({
-      method: "host_feature_supported",
+      ids: W.HOST_FEATURE_SUPPORTED,
       payload: T.VersionedHostFeatureSupportedRequest.enc({
         tag: "V1",
         value: request,
@@ -1319,7 +1321,7 @@ export class TrUApiCallsClient {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.GenericError>
     >({
-      method: "host_push_notification",
+      ids: W.HOST_PUSH_NOTIFICATION,
       payload: T.VersionedHostPushNotificationRequest.enc({
         tag: "V1",
         value: request,
@@ -1339,7 +1341,7 @@ export class TrUApiCallsClient {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.HostNavigateToError>
     >({
-      method: "host_navigate_to",
+      ids: W.HOST_NAVIGATE_TO,
       payload: T.VersionedHostNavigateToRequest.enc({
         tag: "V1",
         value: request,

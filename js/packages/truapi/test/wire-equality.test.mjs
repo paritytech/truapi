@@ -16,6 +16,7 @@
 import assert from "node:assert/strict";
 import { decodeWireMessage, encodeWireMessage } from "../src/transport.ts";
 import { str } from "../src/scale.ts";
+import * as W from "../src/generated/wire-table.ts";
 
 function toHex(u) {
   return Array.from(u)
@@ -43,7 +44,7 @@ function unwrap(result, message) {
   const encoded = unwrap(
     encodeWireMessage({
       requestId: "p:1",
-      payload: { tag: "host_handshake_request", value: inner },
+      payload: { id: W.HOST_HANDSHAKE.request, value: inner },
     }),
     "encode handshake_request",
   );
@@ -68,7 +69,7 @@ function unwrap(result, message) {
   const encoded = unwrap(
     encodeWireMessage({
       requestId: "p:1",
-      payload: { tag: "host_account_get_request", value: inner },
+      payload: { id: W.HOST_ACCOUNT_GET.request, value: inner },
     }),
     "encode account_get_request",
   );
@@ -93,7 +94,7 @@ function unwrap(result, message) {
   const encoded = unwrap(
     encodeWireMessage({
       requestId: "p:1",
-      payload: { tag: "host_local_storage_read_request", value: inner },
+      payload: { id: W.HOST_LOCAL_STORAGE_READ.request, value: inner },
     }),
     "encode local_storage_read_request",
   );
@@ -102,20 +103,18 @@ function unwrap(result, message) {
     "decode local_storage_read_request",
   );
   assert.equal(decoded.requestId, "p:1");
-  assert.equal(decoded.payload.tag, "host_local_storage_read_request");
+  assert.equal(decoded.payload.id, W.HOST_LOCAL_STORAGE_READ.request);
   assert.equal(toHex(decoded.payload.value), toHex(inner));
 }
 
-// 4) unknown discriminant must surface as Err
+// 4) invalid outbound discriminant must surface as Err.
 {
-  const reqId = str.enc("p:1");
-  const bytes = new Uint8Array(reqId.length + 1 + 4);
-  bytes.set(reqId);
-  bytes[reqId.length] = 250;
-  bytes.set([0, 0, 0, 0], reqId.length + 1);
-  const result = decodeWireMessage(bytes);
-  assert.ok(result.isErr(), "decode of id 250 should be Err");
-  assert.match(result.error.message, /Unknown wire discriminant/);
+  const result = encodeWireMessage({
+    requestId: "p:1",
+    payload: { id: 256, value: new Uint8Array() },
+  });
+  assert.ok(result.isErr(), "encode of id 256 should be Err");
+  assert.match(result.error.message, /Invalid wire discriminant/);
 }
 
 // 5) truncated frame (no discriminant byte) must surface as Err.
@@ -135,7 +134,7 @@ function unwrap(result, message) {
   const encoded = unwrap(
     encodeWireMessage({
       requestId: longId,
-      payload: { tag: "host_account_get_request", value: inner },
+      payload: { id: W.HOST_ACCOUNT_GET.request, value: inner },
     }),
     "encode long-id account_get_request",
   );
@@ -147,7 +146,7 @@ function unwrap(result, message) {
     "decode long-id account_get_request",
   );
   assert.equal(decoded.requestId, longId);
-  assert.equal(decoded.payload.tag, "host_account_get_request");
+  assert.equal(decoded.payload.id, W.HOST_ACCOUNT_GET.request);
   assert.equal(toHex(decoded.payload.value), toHex(inner));
 }
 

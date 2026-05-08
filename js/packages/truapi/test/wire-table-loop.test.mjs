@@ -1,21 +1,14 @@
 // Programmatic wire-equality loop.
 //
-// `wire-equality.test.mjs` exercises a handful of hand-picked tags. This file
-// iterates every (id, tag) pair in `WIRE_TABLE` and asserts the codec
-// round-trips a sentinel payload and produces the expected byte layout for
-// each. Catches discriminant-specific bugs that a small fixed sample would
-// miss: e.g. a stray off-by-one in `idForTag` for mid-table entries, or a
-// `tag.length === 0`-shaped guard tripping for any specific tag.
-//
-// Mirrors the exhaustive-coverage check the Rust side gets for free via
-// `wire_table_only_has_known_gaps` (which iterates 0..=max_id), but on the
-// codec round-trip path rather than the lookup path.
+// `wire-equality.test.mjs` exercises a handful of hand-picked frames. This file
+// iterates every generated numeric frame id and asserts the codec round-trips a
+// sentinel payload and produces the expected byte layout for each.
 //
 // Run via: `bun run test`.
 
 import assert from "node:assert/strict";
 import { decodeWireMessage, encodeWireMessage } from "../src/transport.ts";
-import { WIRE_TABLE } from "../src/generated/wire-table.ts";
+import * as W from "../src/generated/wire-table.ts";
 import { str } from "../src/scale.ts";
 
 function toHex(u) {
@@ -33,41 +26,39 @@ function expectedWire(reqId, tagId, valueBytes) {
   return out;
 }
 
-assert.ok(WIRE_TABLE.length > 0, "WIRE_TABLE must not be empty");
-
 function unwrap(result, message) {
   if (result.isErr()) throw new Error(`${message}: ${result.error.message}`);
   return result.value;
 }
 
+const frames = Object.entries(W).flatMap(([method, ids]) =>
+  Object.entries(ids).map(([kind, id]) => ({ method, kind, id })),
+);
+assert.ok(frames.length > 0, "wire frame constants must not be empty");
+
 // Use a per-id sentinel payload so any cross-talk between ids surfaces as a
 // concrete byte mismatch rather than a silent equality.
 let checked = 0;
-for (const [id, tag] of WIRE_TABLE) {
+for (const { method, kind, id } of frames) {
   const sentinel = new Uint8Array([id, 0xa5, ~id & 0xff, 0x5a]);
   const message = {
     requestId: `r:${id}`,
-    payload: { tag, value: sentinel },
+    payload: { id, value: sentinel },
   };
-  const encoded = unwrap(encodeWireMessage(message), `encode id=${id}`);
+  const label = `${method}.${kind}`;
+  const encoded = unwrap(encodeWireMessage(message), `encode ${label}`);
   const expected = expectedWire(`r:${id}`, id, sentinel);
-  assert.equal(
-    toHex(encoded),
-    toHex(expected),
-    `encode mismatch for id=${id} tag=${tag}`,
-  );
+  assert.equal(toHex(encoded), toHex(expected), `encode mismatch for ${label}`);
 
-  const decoded = unwrap(decodeWireMessage(encoded), `decode id=${id}`);
-  assert.equal(decoded.requestId, `r:${id}`, `requestId mismatch for id=${id}`);
-  assert.equal(decoded.payload.tag, tag, `tag mismatch for id=${id}`);
+  const decoded = unwrap(decodeWireMessage(encoded), `decode ${label}`);
+  assert.equal(decoded.requestId, `r:${id}`, `requestId mismatch for ${label}`);
+  assert.equal(decoded.payload.id, id, `id mismatch for ${label}`);
   assert.equal(
     toHex(decoded.payload.value),
     toHex(sentinel),
-    `payload mismatch for id=${id} tag=${tag}`,
+    `payload mismatch for ${label}`,
   );
   checked++;
 }
 
-console.log(
-  `programmatic wire-table loop: ${checked} (id, tag) pairs round-tripped`,
-);
+console.log(`programmatic wire-table loop: ${checked} frame ids round-tripped`);

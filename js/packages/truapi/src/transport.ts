@@ -1,7 +1,6 @@
 import { err, ok, type Result } from "neverthrow";
 
 import { str, u8 } from "./scale.js";
-import { idForTag, tagForId } from "./generated/wire-table.js";
 
 /**
  * Handle returned by TrUAPI subscription APIs.
@@ -53,13 +52,53 @@ export interface ObservableLike<Item> {
 }
 
 /**
+ * Numeric frame ids for a one-shot request method.
+ **/
+export interface RequestFrameIds {
+  /**
+   * Wire discriminant for the outbound request frame.
+   **/
+  request: number;
+
+  /**
+   * Wire discriminant for the inbound response frame.
+   **/
+  response: number;
+}
+
+/**
+ * Numeric frame ids for a subscription method.
+ **/
+export interface SubscriptionFrameIds {
+  /**
+   * Wire discriminant for the outbound start frame.
+   **/
+  start: number;
+
+  /**
+   * Wire discriminant for the outbound stop frame.
+   **/
+  stop: number;
+
+  /**
+   * Wire discriminant for the inbound interrupt frame.
+   **/
+  interrupt: number;
+
+  /**
+   * Wire discriminant for the inbound receive frame.
+   **/
+  receive: number;
+}
+
+/**
  * Options accepted by `TrUApiTransport.request`.
  **/
 export interface RequestParams<Response> {
   /**
-   * Canonical TrUAPI method name, without the frame suffix.
+   * Wire discriminants for this request method.
    **/
-  method: string;
+  ids: RequestFrameIds;
 
   /**
    * SCALE-encoded request payload bytes.
@@ -77,9 +116,9 @@ export interface RequestParams<Response> {
  **/
 export interface SubscribeRawParams {
   /**
-   * Canonical TrUAPI method name, without the frame suffix.
+   * Wire discriminants for this subscription method.
    **/
-  method: string;
+  ids: SubscriptionFrameIds;
 
   /**
    * SCALE-encoded subscription start payload bytes.
@@ -143,9 +182,9 @@ export interface TrUApiTransport {
  **/
 export interface Payload {
   /**
-   * Wire-table tag, such as `host_account_get_request`.
+   * Wire-table numeric discriminant.
    **/
-  tag: string;
+  id: number;
 
   /**
    * SCALE-encoded payload body.
@@ -214,9 +253,9 @@ function concatBytes(parts: Uint8Array[]): Uint8Array {
 export function encodeWireMessage(
   message: ProtocolMessage,
 ): Result<Uint8Array, Error> {
-  const id = idForTag(message.payload.tag);
-  if (id === undefined) {
-    return err(new Error(`Unknown wire tag: ${message.payload.tag}`));
+  const id = message.payload.id;
+  if (!Number.isInteger(id) || id < 0 || id > 255) {
+    return err(new Error(`Invalid wire discriminant: ${id}`));
   }
   return ok(
     concatBytes([
@@ -248,16 +287,12 @@ export function decodeWireMessage(
     return err(new Error("Wire frame too short: missing discriminant byte"));
   }
   const id = cursor[0];
-  const tag = tagForId(id);
-  if (tag === undefined) {
-    return err(new Error(`Unknown wire discriminant: ${id}`));
-  }
   const value = cursor.subarray(1);
   // Hand the value bytes back as a fresh slice so callers may safely retain
   // it even if the source buffer is reused by the transport.
   const valueCopy = new Uint8Array(value.length);
   valueCopy.set(value);
-  return ok({ requestId, payload: { tag, value: valueCopy } });
+  return ok({ requestId, payload: { id, value: valueCopy } });
 }
 
 /**

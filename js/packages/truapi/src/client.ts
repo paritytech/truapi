@@ -3,7 +3,9 @@ import {
   encodeWireMessage,
   type Provider,
   type ProtocolMessage,
+  type RequestFrameIds,
   type RequestParams,
+  type SubscriptionFrameIds,
   type SubscribeRawParams,
   type Subscription,
   type TrUApiTransport,
@@ -17,6 +19,7 @@ import {
 } from "./scale.js";
 import { TRUAPI_CODEC_VERSION, TRUAPI_VERSION } from "./generated/client.js";
 import * as T from "./generated/types.js";
+import * as W from "./generated/wire-table.js";
 
 export type { Subscription, TrUApiTransport };
 
@@ -105,11 +108,16 @@ export function createTransport(
   let closedError: Error | null = null;
   const pending = new Map<
     string,
-    { resolve: (value: Uint8Array) => void; reject: (error: Error) => void }
+    {
+      ids: RequestFrameIds;
+      resolve: (value: Uint8Array) => void;
+      reject: (error: Error) => void;
+    }
   >();
   const subscriptions = new Map<
     string,
     {
+      ids: SubscriptionFrameIds;
       onReceive: (payload: Uint8Array) => void;
       onInterrupt?: (payload: Uint8Array) => void;
       onClose?: (error: Error) => void;
@@ -155,35 +163,7 @@ export function createTransport(
     }
     const { requestId, payload } = decoded.value;
 
-    if (payload.tag.endsWith("_response")) {
-      const p = pending.get(requestId);
-      if (p) {
-        pending.delete(requestId);
-        try {
-          p.resolve(payload.value);
-        } catch (error) {
-          p.reject(toError(error));
-        }
-      }
-    } else if (payload.tag.endsWith("_receive")) {
-      const subscription = subscriptions.get(requestId);
-      if (subscription) {
-        try {
-          subscription.onReceive(payload.value);
-        } catch (error) {
-          // A consumer-side decode/handler error must not tear down the
-          // provider's message loop and silently break every other
-          // subscription on the same transport. Surface via onClose and
-          // drop this subscription; siblings stay alive.
-          subscriptions.delete(requestId);
-          subscription.onClose?.(toError(error));
-        }
-      }
-    } else if (payload.tag.endsWith("_interrupt")) {
-      const subscription = subscriptions.get(requestId);
-      subscriptions.delete(requestId);
-      subscription?.onInterrupt?.(payload.value);
-    } else if (payload.tag === "host_handshake_request") {
+    if (payload.id === W.HOST_HANDSHAKE.request) {
       // Auto-respond to inbound `host_handshake_request` frames.
       //
       // Legacy hosts shipping `@novasamatech/host-api@0.6.x` (e.g. dotli)
@@ -213,12 +193,46 @@ export function createTransport(
         send({
           requestId,
           payload: {
-            tag: "host_handshake_response",
+            id: W.HOST_HANDSHAKE.response,
             value: response,
           },
         });
       } catch {
         // provider already closed
+      }
+      return;
+    }
+
+    const p = pending.get(requestId);
+    if (p) {
+      if (payload.id !== p.ids.response) {
+        return;
+      }
+      pending.delete(requestId);
+      try {
+        p.resolve(payload.value);
+      } catch (error) {
+        p.reject(toError(error));
+      }
+      return;
+    }
+
+    const subscription = subscriptions.get(requestId);
+    if (subscription) {
+      if (payload.id === subscription.ids.receive) {
+        try {
+          subscription.onReceive(payload.value);
+        } catch (error) {
+          // A consumer-side decode/handler error must not tear down the
+          // provider's message loop and silently break every other
+          // subscription on the same transport. Surface via onClose and
+          // drop this subscription; siblings stay alive.
+          subscriptions.delete(requestId);
+          subscription.onClose?.(toError(error));
+        }
+      } else if (payload.id === subscription.ids.interrupt) {
+        subscriptions.delete(requestId);
+        subscription.onInterrupt?.(payload.value);
       }
     }
   });
@@ -246,7 +260,7 @@ export function createTransport(
     truapiVersion,
     codecVersion,
     request<Response>({
-      method,
+      ids,
       payload,
       decodeResponse,
     }: RequestParams<Response>) {
@@ -258,6 +272,7 @@ export function createTransport(
 
         const requestId = `p:${++idCounter}`;
         pending.set(requestId, {
+          ids,
           resolve: (response) => resolve(decodeResponse(response)),
           reject,
         });
@@ -265,7 +280,7 @@ export function createTransport(
           send({
             requestId,
             payload: {
-              tag: `${method}_request`,
+              id: ids.request,
               value: payload,
             },
           });
@@ -276,7 +291,7 @@ export function createTransport(
       });
     },
     subscribeRaw({
-      method,
+      ids,
       payload,
       onReceive,
       onInterrupt,
@@ -289,6 +304,7 @@ export function createTransport(
 
       const requestId = `p:${++idCounter}`;
       subscriptions.set(requestId, {
+        ids,
         onReceive,
         onInterrupt,
         onClose,
@@ -297,7 +313,7 @@ export function createTransport(
         send({
           requestId,
           payload: {
-            tag: `${method}_start`,
+            id: ids.start,
             value: payload,
           },
         });
@@ -317,7 +333,7 @@ export function createTransport(
             send({
               requestId,
               payload: {
-                tag: `${method}_stop`,
+                id: ids.stop,
                 value: unit.enc(undefined),
               },
             });
