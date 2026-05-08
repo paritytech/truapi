@@ -1933,6 +1933,14 @@ fn generate_wire_table(api: &ApiDefinition, target_version: u32) -> Result<Strin
             }
             let wire_ids = wire_ids_for_method(trait_def, method)?;
             for (id, tag) in wire_ids.entries(&method.name) {
+                if truapi::api::RESERVED_WIRE_IDS.contains(&id) {
+                    bail!(
+                        "wire id {} (`{}`) collides with truapi::api::RESERVED_WIRE_IDS; \
+                         remove it from RESERVED_WIRE_IDS or pick another id",
+                        id,
+                        tag
+                    );
+                }
                 if let Some(existing) = seen.insert(id, tag.clone()) {
                     bail!(
                         "wire id {} reused: `{}` and `{}` collide",
@@ -3774,6 +3782,24 @@ mod tests {
         .expect_err("duplicate ids must error");
 
         assert!(err.to_string().contains("wire id 3 reused"));
+    }
+
+    #[test]
+    fn generate_wire_table_rejects_reserved_wire_ids() {
+        let reserved_id = *truapi::api::RESERVED_WIRE_IDS
+            .first()
+            .expect("RESERVED_WIRE_IDS must not be empty");
+        let err = generate_wire_table(&api(vec![request_method("squat", Some(reserved_id))]), 2)
+            .expect_err("annotation that lands on a reserved id must error");
+        let message = err.to_string();
+        assert!(
+            message.contains("RESERVED_WIRE_IDS"),
+            "message should mention RESERVED_WIRE_IDS, got: {message}"
+        );
+        assert!(
+            message.contains(&format!("wire id {reserved_id}")),
+            "message should name the offending id, got: {message}"
+        );
     }
 
     #[test]

@@ -532,6 +532,7 @@ dependencies = [
  "clap",
  "serde",
  "serde_json",
+ "truapi",
 ]
 
 [[package]]

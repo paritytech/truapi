@@ -1252,12 +1252,13 @@ export class StatementStoreClient {
  *
  * # Wire id reservations
  *
- * Some slots are reserved for upstream `triangle-js-sdks` methods that
- * TrUAPI does not implement, but whose discriminants must remain free to
- * keep our wire-table positionally aligned with the canonical host
- * `MessagePayload` enum. If we ever need them, annotate the trait method
- * with `#[wire(request_id = ...)]` or `#[wire(start_id = ...)]` matching the
- * slot below.
+ * The discriminants below are listed in [`super::RESERVED_WIRE_IDS`] so
+ * codegen rejects any `#[wire(...)]` annotation that collides with them.
+ * Slots are held back for upstream `triangle-js-sdks` methods that TrUAPI
+ * does not implement, but whose ids must remain free to keep our wire-table
+ * positionally aligned with the canonical host `MessagePayload` enum. If we
+ * ever need one, annotate the trait method with the matching id and remove
+ * it from `RESERVED_WIRE_IDS`.
  *
  * - 34-35: `host_sign_raw_with_legacy_account` (request, response)
  * - 36-37: `host_sign_payload_with_legacy_account` (request, response)

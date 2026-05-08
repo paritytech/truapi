@@ -19,6 +19,17 @@
 //! derives method availability from the versioned request, response, item, and
 //! error wrappers.
 
+/// Wire ids held back for upstream `triangle-js-sdks` methods that TrUAPI
+/// does not implement, but whose discriminants must remain free to keep our
+/// wire-table positionally aligned with the canonical host `MessagePayload`
+/// enum. `truapi-codegen` links this crate at compile time and rejects any
+/// `#[wire(...)]` annotation whose id falls in the reserved set.
+///
+/// Slot owners are documented on [`calls::TrUApiCalls`].
+pub const RESERVED_WIRE_IDS: &[u8] = &[
+    34, 35, 36, 37, 68, 69, 70, 71, 72, 73, 74, 75, 104, 105, 106, 107, 112, 113,
+];
+
 pub mod account;
 pub mod calls;
 pub mod chain;
