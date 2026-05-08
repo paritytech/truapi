@@ -26,7 +26,9 @@ pub trait Preimage: Send + Sync {
     /// export function lookupPreimage(truapi: Client): Subscription {
     ///   return truapi.preimage
     ///     .preimageLookupSubscribe({
-    ///       request: { key: new Uint8Array() },
+    ///       request: {
+    ///         key: "0x0000000000000000000000000000000000000000000000000000000000000000",
+    ///       },
     ///     })
     ///     .subscribe({
     ///       next: (item: RemotePreimageLookupSubscribeItem) =>

@@ -12,11 +12,11 @@ export async function createTransactionWithLegacyAccount(
     payload: {
       tag: "V1",
       value: {
-        callData: new Uint8Array(),
+        callData: "0x0000",
         extensions: [],
         txExtVersion: 0,
         context: {
-          metadata: new Uint8Array(),
+          metadata: "0x",
           tokenSymbol: "DOT",
           tokenDecimals: 10,
           bestBlockHeight: 0,

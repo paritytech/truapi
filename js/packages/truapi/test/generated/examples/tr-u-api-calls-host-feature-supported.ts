@@ -5,7 +5,10 @@ import { type Client } from "@parity/truapi";
 export async function supportsChain(truapi: Client): Promise<boolean> {
   const result = await truapi.trUApiCalls.featureSupported({
     tag: "Chain",
-    value: { genesisHash: new Uint8Array() },
+    value: {
+      genesisHash:
+        "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    },
   });
 
   if (result.isErr()) throw result.error;

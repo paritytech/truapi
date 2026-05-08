@@ -39,7 +39,10 @@ pub trait ChainInteraction: Send + Sync {
     /// export function followChainHead(truapi: Client): Subscription {
     ///   return truapi.chainInteraction
     ///     .chainHeadFollow({
-    ///       request: { genesisHash: new Uint8Array(), withRuntime: false },
+    ///       request: {
+    ///         genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///         withRuntime: false,
+    ///       },
     ///     })
     ///     .subscribe({
     ///       next: (item: RemoteChainHeadFollowItem) => console.log(item),
@@ -69,9 +72,9 @@ pub trait ChainInteraction: Send + Sync {
     ///   truapi: Client,
     /// ): Promise<RemoteChainHeadHeaderResponse> {
     ///   const result = await truapi.chainInteraction.chainHeadHeader({
-    ///     genesisHash: new Uint8Array(),
+    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///     followSubscriptionId: "",
-    ///     hash: new Uint8Array(),
+    ///     hash: "0x0000000000000000000000000000000000000000000000000000000000000000",
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;
@@ -99,9 +102,9 @@ pub trait ChainInteraction: Send + Sync {
     ///   truapi: Client,
     /// ): Promise<RemoteChainHeadBodyResponse> {
     ///   const result = await truapi.chainInteraction.chainHeadBody({
-    ///     genesisHash: new Uint8Array(),
+    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///     followSubscriptionId: "",
-    ///     hash: new Uint8Array(),
+    ///     hash: "0x0000000000000000000000000000000000000000000000000000000000000000",
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;
@@ -129,11 +132,14 @@ pub trait ChainInteraction: Send + Sync {
     ///   truapi: Client,
     /// ): Promise<RemoteChainHeadStorageResponse> {
     ///   const result = await truapi.chainInteraction.chainHeadStorage({
-    ///     genesisHash: new Uint8Array(),
+    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///     followSubscriptionId: "",
-    ///     hash: new Uint8Array(),
+    ///     hash: "0x0000000000000000000000000000000000000000000000000000000000000000",
     ///     items: [
-    ///       { key: new Uint8Array(), queryType: { tag: "Value", value: undefined } },
+    ///       {
+    ///         key: "0x26aa394eea5630e07c48ae0c9558cef7",
+    ///         queryType: { tag: "Value", value: undefined },
+    ///       },
     ///     ],
     ///   });
     ///
@@ -162,11 +168,11 @@ pub trait ChainInteraction: Send + Sync {
     ///   truapi: Client,
     /// ): Promise<RemoteChainHeadCallResponse> {
     ///   const result = await truapi.chainInteraction.chainHeadCall({
-    ///     genesisHash: new Uint8Array(),
+    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///     followSubscriptionId: "",
-    ///     hash: new Uint8Array(),
+    ///     hash: "0x0000000000000000000000000000000000000000000000000000000000000000",
     ///     function: "Core_version",
-    ///     callParameters: new Uint8Array(),
+    ///     callParameters: "0x",
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;
@@ -189,9 +195,11 @@ pub trait ChainInteraction: Send + Sync {
     ///
     /// export async function unpinChainHead(truapi: Client): Promise<void> {
     ///   const result = await truapi.chainInteraction.chainHeadUnpin({
-    ///     genesisHash: new Uint8Array(),
+    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///     followSubscriptionId: "",
-    ///     hashes: [new Uint8Array()],
+    ///     hashes: [
+    ///       "0x0000000000000000000000000000000000000000000000000000000000000000",
+    ///     ],
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;
@@ -215,7 +223,7 @@ pub trait ChainInteraction: Send + Sync {
     ///   truapi: Client,
     /// ): Promise<void> {
     ///   const result = await truapi.chainInteraction.chainHeadContinue({
-    ///     genesisHash: new Uint8Array(),
+    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///     followSubscriptionId: "",
     ///     operationId: "op-id",
     ///   });
@@ -241,7 +249,7 @@ pub trait ChainInteraction: Send + Sync {
     ///   truapi: Client,
     /// ): Promise<void> {
     ///   const result = await truapi.chainInteraction.chainHeadStopOperation({
-    ///     genesisHash: new Uint8Array(),
+    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///     followSubscriptionId: "",
     ///     operationId: "op-id",
     ///   });
@@ -271,7 +279,7 @@ pub trait ChainInteraction: Send + Sync {
     ///   truapi: Client,
     /// ): Promise<RemoteChainSpecGenesisHashResponse> {
     ///   const result = await truapi.chainInteraction.chainSpecGenesisHash({
-    ///     genesisHash: new Uint8Array(),
+    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;
@@ -300,7 +308,7 @@ pub trait ChainInteraction: Send + Sync {
     ///   truapi: Client,
     /// ): Promise<RemoteChainSpecChainNameResponse> {
     ///   const result = await truapi.chainInteraction.chainSpecChainName({
-    ///     genesisHash: new Uint8Array(),
+    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;
@@ -328,7 +336,7 @@ pub trait ChainInteraction: Send + Sync {
     ///   truapi: Client,
     /// ): Promise<RemoteChainSpecPropertiesResponse> {
     ///   const result = await truapi.chainInteraction.chainSpecProperties({
-    ///     genesisHash: new Uint8Array(),
+    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;
@@ -356,8 +364,8 @@ pub trait ChainInteraction: Send + Sync {
     ///   truapi: Client,
     /// ): Promise<RemoteChainTransactionBroadcastResponse> {
     ///   const result = await truapi.chainInteraction.chainTransactionBroadcast({
-    ///     genesisHash: new Uint8Array(),
-    ///     transaction: new Uint8Array(),
+    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///     transaction: "0x",
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;
@@ -385,7 +393,7 @@ pub trait ChainInteraction: Send + Sync {
     ///   truapi: Client,
     /// ): Promise<void> {
     ///   const result = await truapi.chainInteraction.chainTransactionStop({
-    ///     genesisHash: new Uint8Array(),
+    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///     operationId: "op-id",
     ///   });
     ///

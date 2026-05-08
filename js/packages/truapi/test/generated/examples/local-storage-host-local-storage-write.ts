@@ -5,7 +5,7 @@ import { type Client } from "@parity/truapi";
 export async function writeLocalValue(truapi: Client): Promise<void> {
   const result = await truapi.localStorage.localStorageWrite({
     key: "test-key",
-    value: new Uint8Array(),
+    value: "0x48656c6c6f",
   });
 
   if (result.isErr()) throw result.error;

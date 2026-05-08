@@ -6,11 +6,12 @@ export async function callChainHeadRuntime(
   truapi: Client,
 ): Promise<RemoteChainHeadCallResponse> {
   const result = await truapi.chainInteraction.chainHeadCall({
-    genesisHash: new Uint8Array(),
+    genesisHash:
+      "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     followSubscriptionId: "",
-    hash: new Uint8Array(),
+    hash: "0x0000000000000000000000000000000000000000000000000000000000000000",
     function: "Core_version",
-    callParameters: new Uint8Array(),
+    callParameters: "0x",
   });
 
   if (result.isErr()) throw result.error;

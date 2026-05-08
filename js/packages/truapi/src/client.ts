@@ -12,8 +12,8 @@ import {
 } from "./transport.js";
 import {
   indexedTaggedUnion,
-  result,
-  unit,
+  Result,
+  _void,
   type Codec,
   type ResultPayload,
 } from "./scale.js";
@@ -23,11 +23,25 @@ import * as W from "./generated/wire-table.js";
 
 export type { Subscription, TrUApiTransport };
 
+/**
+ * Version overrides used when constructing a transport.
+ */
 export interface CreateTransportOptions {
+  /**
+   * Highest TrUAPI protocol version exposed by the transport.
+   */
   truapiVersion?: number;
+
+  /**
+   * SCALE codec version advertised during host handshake negotiation.
+   */
   codecVersion?: number;
 }
 
+/**
+ * Convert a positive protocol version number into the generated version tag
+ * used by TrUAPI wire wrappers.
+ */
 function protocolVersionTag(version: number): `V${number}` {
   if (!Number.isInteger(version) || version < 1) {
     throw new Error(`Invalid TrUAPI protocol version: ${version}`);
@@ -38,17 +52,23 @@ function protocolVersionTag(version: number): `V${number}` {
 type HandshakeResponse = ResultPayload<undefined, T.HostHandshakeError>;
 const HANDSHAKE_WIRE_VERSION = 1;
 
+/**
+ * Build the versioned handshake response codec for the selected wire version.
+ */
 function handshakeResponseCodec(
   version: number,
 ): Codec<{ tag: `V${number}`; value: HandshakeResponse }> {
   return indexedTaggedUnion({
     [protocolVersionTag(version)]: [
       version - 1,
-      result(unit, T.HostHandshakeError),
+      Result(_void, T.HostHandshakeError),
     ] as const,
   }) as Codec<{ tag: `V${number}`; value: HandshakeResponse }>;
 }
 
+/**
+ * Encode a successful host-handshake response payload.
+ */
 function encodeSuccessfulHandshakeResponse(version: number): Uint8Array {
   return encodeHandshakeResponse(version, {
     tag: protocolVersionTag(version),
@@ -59,6 +79,9 @@ function encodeSuccessfulHandshakeResponse(version: number): Uint8Array {
   });
 }
 
+/**
+ * Encode a host-handshake response that reports an unsupported codec version.
+ */
 function encodeUnsupportedHandshakeResponse(version: number): Uint8Array {
   return encodeHandshakeResponse(version, {
     tag: protocolVersionTag(version),
@@ -72,6 +95,9 @@ function encodeUnsupportedHandshakeResponse(version: number): Uint8Array {
   });
 }
 
+/**
+ * Encode a typed handshake response with the versioned response codec.
+ */
 function encodeHandshakeResponse(
   version: number,
   response: { tag: `V${number}`; value: HandshakeResponse },
@@ -81,6 +107,10 @@ function encodeHandshakeResponse(
 
 type VersionedWireValue = { tag: `V${number}`; value: unknown };
 
+/**
+ * Check whether a decoded SCALE value has the generated `{ tag, value }`
+ * wrapper shape used for versioned wire payloads.
+ */
 function isVersionedWireValue(value: unknown): value is VersionedWireValue {
   return (
     typeof value === "object" &&
@@ -92,12 +122,18 @@ function isVersionedWireValue(value: unknown): value is VersionedWireValue {
   );
 }
 
+/**
+ * Return the inner payload from a versioned wire wrapper, or the original
+ * value when the payload is already unwrapped.
+ */
 function unwrapVersionedWireValue(value: unknown): unknown {
   return isVersionedWireValue(value) ? value.value : value;
 }
 
-/** Build a TrUApiTransport on top of a Provider (request/response correlation,
- * subscription start/receive/stop lifecycle). */
+/**
+ * Build a `TrUApiTransport` on top of a `Provider`, adding request/response
+ * correlation and subscription start/receive/stop lifecycle handling.
+ */
 export function createTransport(
   provider: Provider,
   options: CreateTransportOptions = {},
@@ -124,10 +160,17 @@ export function createTransport(
     }
   >();
 
+  /**
+   * Normalize arbitrary thrown values into `Error` instances.
+   */
   function toError(error: unknown): Error {
     return error instanceof Error ? error : new Error(String(error));
   }
 
+  /**
+   * Close the transport once, rejecting pending requests and notifying live
+   * subscriptions.
+   */
   function closeWithError(error: unknown) {
     const nextError = toError(error);
     if (closedError) {
@@ -237,6 +280,9 @@ export function createTransport(
     }
   });
 
+  /**
+   * Encode and post a protocol message through the underlying provider.
+   */
   function send(message: ProtocolMessage) {
     if (closedError) {
       throw closedError;
@@ -259,6 +305,9 @@ export function createTransport(
   return {
     truapiVersion,
     codecVersion,
+    /**
+     * Send one request frame and resolve with the decoded response payload.
+     */
     request<Response>({
       ids,
       payload,
@@ -290,6 +339,10 @@ export function createTransport(
         }
       });
     },
+    /**
+     * Start a raw subscription and route incoming receive/interrupt frames to
+     * the supplied callbacks.
+     */
     subscribeRaw({
       ids,
       payload,
@@ -334,7 +387,7 @@ export function createTransport(
               requestId,
               payload: {
                 id: ids.stop,
-                value: unit.enc(undefined),
+                value: _void.enc(undefined),
               },
             });
           } catch {
@@ -343,6 +396,9 @@ export function createTransport(
         },
       };
     },
+    /**
+     * Close this transport and detach its provider listeners.
+     */
     dispose() {
       // Idempotent: closeWithError is a no-op once closedError is set, and
       // unsubscribe handles tolerate being called twice.

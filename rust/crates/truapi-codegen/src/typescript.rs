@@ -253,7 +253,7 @@ fn strip_playground_doc_blocks(text: &str) -> String {
 }
 
 fn is_truapi_doc_block_start(trimmed: &str) -> bool {
-    trimmed == "```truapi-playground-request" || trimmed == "```truapi-client-example"
+    trimmed == "```truapi-client-example"
 }
 
 /// Generates the TypeScript client, types, and barrel files for an extracted
@@ -1472,31 +1472,19 @@ fn split_playground_docs(docs: Option<&str>, method_name: &str) -> Result<Playgr
     };
 
     let mut description = Vec::new();
-    let mut example = Vec::new();
     let mut client_example = Vec::new();
-    let mut in_playground_example = false;
     let mut in_client_example = false;
     for line in docs.lines() {
         let trimmed = line.trim();
-        if trimmed == "```truapi-playground-request" {
-            in_playground_example = true;
-            continue;
-        }
         if trimmed == "```truapi-client-example" {
             in_client_example = true;
-            continue;
-        }
-        if in_playground_example && trimmed == "```" {
-            in_playground_example = false;
             continue;
         }
         if in_client_example && trimmed == "```" {
             in_client_example = false;
             continue;
         }
-        if in_playground_example {
-            example.push(line);
-        } else if in_client_example {
+        if in_client_example {
             client_example.push(line);
         } else {
             description.push(line);
@@ -1505,10 +1493,7 @@ fn split_playground_docs(docs: Option<&str>, method_name: &str) -> Result<Playgr
 
     let description = trim_doc_lines(&description);
     let client_example = trim_doc_lines(&client_example);
-    let default_request = if let Some(default_request) = trim_doc_lines(&example) {
-        validate_default_request(method_name, "truapi-playground-request", &default_request)?;
-        Some(default_request)
-    } else if let Some(client_example) = &client_example {
+    let default_request = if let Some(client_example) = &client_example {
         extract_default_request_from_client_example(method_name, client_example)?
     } else {
         None
@@ -1693,11 +1678,156 @@ fn find_matching_delimiter(
 }
 
 fn ts_request_to_playground_json(input: &str) -> String {
-    let input = input.replace("new Uint8Array()", "\"0x\"");
+    let input = replace_uint8_array_from_hex_calls(input);
+    let input = replace_uint8_array_from_calls(&input);
+    let input = replace_new_uint8_array_calls(&input);
     let input = quote_unquoted_object_keys(&input);
     let input = quote_bigint_literals(&input);
     let input = remove_undefined_object_properties(&input);
     remove_trailing_commas(&input)
+}
+
+fn replace_uint8_array_from_hex_calls(input: &str) -> String {
+    let mut out = String::new();
+    let mut i = 0usize;
+    while i < input.len() {
+        if input[i..].starts_with("Uint8Array.fromHex(") {
+            let open = i + "Uint8Array.fromHex".len();
+            if let Some(close) = find_matching_delimiter(input, open, '(', ')') {
+                let argument = input[open + 1..close].trim();
+                let argument = argument.strip_suffix(',').unwrap_or(argument).trim();
+                if let Some(hex) = parse_string_literal(argument) {
+                    out.push('"');
+                    if hex.starts_with("0x") {
+                        out.push_str(hex);
+                    } else {
+                        out.push_str("0x");
+                        out.push_str(hex);
+                    }
+                    out.push('"');
+                    i = close + 1;
+                    continue;
+                }
+            }
+        }
+        if let Some(ch) = input[i..].chars().next() {
+            out.push(ch);
+            i += ch.len_utf8();
+        } else {
+            break;
+        }
+    }
+    out
+}
+
+fn parse_string_literal(input: &str) -> Option<&str> {
+    let bytes = input.as_bytes();
+    if bytes.len() < 2 {
+        return None;
+    }
+    let quote = bytes[0];
+    if !matches!(quote, b'\'' | b'"') || bytes[bytes.len() - 1] != quote {
+        return None;
+    }
+    let inner = &input[1..input.len() - 1];
+    if inner.contains('\\') {
+        return None;
+    }
+    Some(inner)
+}
+
+fn replace_uint8_array_from_calls(input: &str) -> String {
+    let mut out = String::new();
+    let mut i = 0usize;
+    while i < input.len() {
+        if input[i..].starts_with("Uint8Array.from(") {
+            let open = i + "Uint8Array.from".len();
+            if let Some(close) = find_matching_delimiter(input, open, '(', ')') {
+                let argument = input[open + 1..close].trim();
+                if let Some(hex) = parse_uint8_array_from_argument(argument) {
+                    out.push('"');
+                    out.push_str(&hex);
+                    out.push('"');
+                    i = close + 1;
+                    continue;
+                }
+            }
+        }
+        if let Some(ch) = input[i..].chars().next() {
+            out.push(ch);
+            i += ch.len_utf8();
+        } else {
+            break;
+        }
+    }
+    out
+}
+
+fn parse_uint8_array_from_argument(argument: &str) -> Option<String> {
+    let open = argument.find('[')?;
+    let close = find_matching_delimiter(argument, open, '[', ']')?;
+    let array = &argument[open + 1..close];
+    let mut bytes = Vec::new();
+    for part in array.split(',') {
+        let value = part.trim();
+        if value.is_empty() {
+            continue;
+        }
+        let byte = value.parse::<u8>().ok()?;
+        bytes.push(byte);
+    }
+    Some(bytes_to_hex(&bytes))
+}
+
+fn replace_new_uint8_array_calls(input: &str) -> String {
+    let mut out = String::new();
+    let mut i = 0usize;
+    while i < input.len() {
+        if input[i..].starts_with("new Uint8Array(") {
+            let open = i + "new Uint8Array".len();
+            if let Some(close) = find_matching_delimiter(input, open, '(', ')') {
+                let argument = input[open + 1..close].trim();
+                if argument.is_empty() {
+                    out.push_str("\"0x\"");
+                    i = close + 1;
+                    continue;
+                }
+                if let Ok(len) = argument.parse::<usize>() {
+                    out.push('"');
+                    out.push_str(&zero_hex(len));
+                    out.push('"');
+                    i = close + 1;
+                    continue;
+                }
+            }
+        }
+        if let Some(ch) = input[i..].chars().next() {
+            out.push(ch);
+            i += ch.len_utf8();
+        } else {
+            break;
+        }
+    }
+    out
+}
+
+fn zero_hex(len: usize) -> String {
+    let mut out = String::with_capacity(2 + len * 2);
+    out.push_str("0x");
+    for _ in 0..len {
+        out.push_str("00");
+    }
+    out
+}
+
+fn bytes_to_hex(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(2 + bytes.len() * 2);
+    out.push_str("0x");
+    for byte in bytes {
+        use std::fmt::Write;
+        write!(out, "{byte:02x}").unwrap();
+    }
+    out
 }
 
 fn remove_undefined_object_properties(input: &str) -> String {
@@ -2358,6 +2488,37 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
     writeln!(out).unwrap();
     writeln!(
         out,
+        "export type GeneratedClientTransport = Omit<TrUApiTransport, \"truapiVersion\" | \"codecVersion\"> &"
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "  Partial<Pick<TrUApiTransport, \"truapiVersion\" | \"codecVersion\">>;"
+    )
+    .unwrap();
+    writeln!(out).unwrap();
+    writeln!(
+        out,
+        "function withGeneratedTransportVersions(transport: GeneratedClientTransport): TrUApiTransport {{"
+    )
+    .unwrap();
+    writeln!(out, "  return {{").unwrap();
+    writeln!(out, "    ...transport,").unwrap();
+    writeln!(
+        out,
+        "    truapiVersion: transport.truapiVersion ?? TRUAPI_VERSION,"
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "    codecVersion: transport.codecVersion ?? TRUAPI_CODEC_VERSION,"
+    )
+    .unwrap();
+    writeln!(out, "  }};").unwrap();
+    writeln!(out, "}}").unwrap();
+    writeln!(out).unwrap();
+    writeln!(
+        out,
         "/** Creates the generated client facade by binding each service namespace to the"
     )
     .unwrap();
@@ -2365,7 +2526,12 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
 
     writeln!(
         out,
-        "export function createClient(transport: TrUApiTransport): TrUApiClient {{"
+        "export function createClient(transport: GeneratedClientTransport): TrUApiClient {{"
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "  const versionedTransport = withGeneratedTransportVersions(transport);"
     )
     .unwrap();
     writeln!(out, "  return {{").unwrap();
@@ -2379,7 +2545,7 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
         let field = to_camel_case(&trait_def.name);
         writeln!(
             out,
-            "    {}: new {}Client(transport),",
+            "    {}: new {}Client(versionedTransport),",
             field, trait_def.name
         )
         .unwrap();
@@ -2579,7 +2745,7 @@ fn emit_payload(
         // `Enum({v1: _void})` payload receive at least the version byte.
         let version = wire_version.unwrap_or(1);
         let wire_codec_expr =
-            indexed_versioned_codec_expr(std::iter::once((version, "S.unit".to_string())))?;
+            indexed_versioned_codec_expr(std::iter::once((version, "S._void".to_string())))?;
         return Ok(PayloadEmission {
             param_list: String::new(),
             param_names: Vec::new(),
@@ -2647,7 +2813,7 @@ fn emit_response(
                 inner_type_ts: "undefined".to_string(),
                 wire_type_ts: format!("T.{}", versioned_wrapper_ts_name(wrapper_name)),
                 wire_codec_expr: format!("T.{}", versioned_wrapper_ts_name(wrapper_name)),
-                inner_codec_expr: "S.unit".to_string(),
+                inner_codec_expr: "S._void".to_string(),
             }),
             VersionedKind::Tuple(inner) => Ok(ResponseEmission {
                 inner_type_ts: ts_type_qualified(inner)?,
@@ -2686,7 +2852,7 @@ fn versioned_kind_codec_expr(
     ctx: &CodecContext,
 ) -> Result<String> {
     match kind {
-        VersionedKind::Unit => Ok("S.unit".to_string()),
+        VersionedKind::Unit => Ok("S._void".to_string()),
         VersionedKind::Tuple(inner) => codec_expr(inner, qualified, ctx),
     }
 }
@@ -2716,7 +2882,7 @@ fn indexed_versioned_codec_expr(
 }
 
 fn versioned_result_codec_expr(version: u32, ok_codec: &str, err_codec: &str) -> Result<String> {
-    indexed_versioned_codec_expr([(version, format!("S.result({ok_codec}, {err_codec})"))])
+    indexed_versioned_codec_expr([(version, format!("S.Result({ok_codec}, {err_codec})"))])
 }
 
 fn emit_method(
@@ -2744,7 +2910,7 @@ fn emit_method(
                     &error.inner_codec_expr,
                 )?,
                 None => format!(
-                    "S.result({}, {})",
+                    "S.Result({}, {})",
                     response.wire_codec_expr, error.wire_codec_expr
                 ),
             };
@@ -3136,7 +3302,7 @@ fn type_codec_expr(ty: &TypeDef, type_name: &str, ctx: &CodecContext) -> Result<
                 })
                 .collect::<Result<Vec<_>>>()?
                 .join(", ");
-            Ok(format!("S.taggedUnion({{{variants}}})"))
+            Ok(format!("S.Enum({{{variants}}})"))
         }
     }
 }
@@ -3155,7 +3321,7 @@ fn variant_codec_expr(
     ctx: &CodecContext,
 ) -> Result<String> {
     match fields {
-        VariantFields::Unit => Ok("S.unit".to_string()),
+        VariantFields::Unit => Ok("S._void".to_string()),
         VariantFields::Unnamed(types) => unnamed_fields_codec_expr(types, qualified, ctx),
         VariantFields::Named(fields) => struct_codec_expr(
             fields,
@@ -3189,7 +3355,7 @@ fn unnamed_fields_codec_expr(
     ctx: &CodecContext,
 ) -> Result<String> {
     if types.is_empty() {
-        Ok("S.unit".to_string())
+        Ok("S._void".to_string())
     } else if types.len() == 1 {
         codec_expr(&types[0], qualified, ctx)
     } else {
@@ -3198,7 +3364,7 @@ fn unnamed_fields_codec_expr(
             .map(|ty| codec_expr(ty, qualified, ctx))
             .collect::<Result<Vec<_>>>()?
             .join(", ");
-        Ok(format!("S.tuple({codecs})"))
+        Ok(format!("S.Tuple({codecs})"))
     }
 }
 
@@ -3221,7 +3387,7 @@ fn struct_codec_expr(
         .collect::<Result<Vec<_>>>()?
         .join(", ");
     Ok(format!(
-        "S.struct({{{field_specs}}}) as S.Codec<{type_name}>"
+        "S.Struct({{{field_specs}}}) as S.Codec<{type_name}>"
     ))
 }
 
@@ -3257,7 +3423,7 @@ fn method_payload_codec_expr(
     ctx: &CodecContext,
 ) -> Result<String> {
     match params.len() {
-        0 => Ok("S.unit".to_string()),
+        0 => Ok("S._void".to_string()),
         1 => codec_expr(&params[0].type_ref, qualified, ctx),
         _ => {
             let codecs = params
@@ -3265,7 +3431,7 @@ fn method_payload_codec_expr(
                 .map(|param| codec_expr(&param.type_ref, qualified, ctx))
                 .collect::<Result<Vec<_>>>()?
                 .join(", ");
-            Ok(format!("S.tuple({codecs})"))
+            Ok(format!("S.Tuple({codecs})"))
         }
     }
 }
@@ -3284,8 +3450,6 @@ fn codec_expr(ty: &TypeRef, qualified: bool, ctx: &CodecContext) -> Result<Strin
             "i32" => Ok("S.i32".to_string()),
             "i64" => Ok("S.i64".to_string()),
             "i128" => Ok("S.i128".to_string()),
-            "f32" => Ok("S.f32".to_string()),
-            "f64" => Ok("S.f64".to_string()),
             "str" => Ok("S.str".to_string()),
             _ => bail!("Unsupported primitive type `{name}` in TypeScript codec generation"),
         },
@@ -3305,26 +3469,26 @@ fn codec_expr(ty: &TypeRef, qualified: bool, ctx: &CodecContext) -> Result<Strin
             }
         }
         TypeRef::Vec(inner) => match inner.as_ref() {
-            TypeRef::Primitive(name) if name == "u8" => Ok("S.bytes".to_string()),
-            _ => Ok(format!("S.vec({})", codec_expr(inner, qualified, ctx)?)),
+            TypeRef::Primitive(name) if name == "u8" => Ok("S.Hex()".to_string()),
+            _ => Ok(format!("S.Vector({})", codec_expr(inner, qualified, ctx)?)),
         },
-        TypeRef::Option(inner) => Ok(format!("S.option({})", codec_expr(inner, qualified, ctx)?)),
+        TypeRef::Option(inner) => Ok(format!("S.Option({})", codec_expr(inner, qualified, ctx)?)),
         TypeRef::Tuple(items) => {
             if items.is_empty() {
-                Ok("S.unit".to_string())
+                Ok("S._void".to_string())
             } else {
                 let codecs = items
                     .iter()
                     .map(|item| codec_expr(item, qualified, ctx))
                     .collect::<Result<Vec<_>>>()?
                     .join(", ");
-                Ok(format!("S.tuple({codecs})"))
+                Ok(format!("S.Tuple({codecs})"))
             }
         }
         TypeRef::Array(inner, len) => match inner.as_ref() {
-            TypeRef::Primitive(name) if name == "u8" => Ok(format!("S.byteArray({len})")),
+            TypeRef::Primitive(name) if name == "u8" => Ok(format!("S.Hex({len})")),
             _ => Ok(format!(
-                "S.array({}, {})",
+                "S.Vector({}, {})",
                 codec_expr(inner, qualified, ctx)?,
                 len
             )),
@@ -3334,7 +3498,7 @@ fn codec_expr(ty: &TypeRef, qualified: bool, ctx: &CodecContext) -> Result<Strin
             .get(name)
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("Missing codec for generic parameter `{name}`")),
-        TypeRef::Unit => Ok("S.unit".to_string()),
+        TypeRef::Unit => Ok("S._void".to_string()),
     }
 }
 
@@ -3367,7 +3531,7 @@ fn ts_type_with_named(ty: &TypeRef, qualified: bool) -> Result<String> {
             }
         }
         TypeRef::Vec(inner) => match inner.as_ref() {
-            TypeRef::Primitive(name) if name == "u8" => Ok("Uint8Array".to_string()),
+            TypeRef::Primitive(name) if name == "u8" => Ok("S.HexString".to_string()),
             _ => Ok(format!("Array<{}>", ts_type_with_named(inner, qualified)?)),
         },
         TypeRef::Option(inner) => Ok(format!(
@@ -3389,7 +3553,7 @@ fn ts_type_with_named(ty: &TypeRef, qualified: bool) -> Result<String> {
             }
         }
         TypeRef::Array(inner, _len) => match inner.as_ref() {
-            TypeRef::Primitive(name) if name == "u8" => Ok("Uint8Array".to_string()),
+            TypeRef::Primitive(name) if name == "u8" => Ok("S.HexString".to_string()),
             _ => Ok(format!("Array<{}>", ts_type_with_named(inner, qualified)?)),
         },
         TypeRef::Generic(name) => Ok(name.clone()),

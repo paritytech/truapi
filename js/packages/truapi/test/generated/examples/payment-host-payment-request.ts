@@ -6,8 +6,9 @@ export async function requestPayment(
   truapi: Client,
 ): Promise<HostPaymentRequestResponse> {
   const result = await truapi.payment.paymentRequest({
-    amount: 0n,
-    destination: new Uint8Array(),
+    amount: 1000000000000n,
+    destination:
+      "0x0000000000000000000000000000000000000000000000000000000000000000",
   });
 
   if (result.isErr()) throw result.error;

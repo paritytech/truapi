@@ -9,7 +9,11 @@ import {
 export function followChainHead(truapi: Client): Subscription {
   return truapi.chainInteraction
     .chainHeadFollow({
-      request: { genesisHash: new Uint8Array(), withRuntime: false },
+      request: {
+        genesisHash:
+          "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+        withRuntime: false,
+      },
     })
     .subscribe({
       next: (item: RemoteChainHeadFollowItem) => console.log(item),

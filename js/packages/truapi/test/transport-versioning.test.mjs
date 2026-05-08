@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 import { createTransport } from "../src/client.ts";
-import { indexedTaggedUnion, result, str, unit } from "../src/scale.ts";
+import { indexedTaggedUnion, Result, str, _void } from "../src/scale.ts";
 import {
   createClient,
   SubscriptionInterruptedError,
@@ -10,17 +10,22 @@ import * as T from "../src/generated/types.ts";
 import * as W from "../src/generated/wire-table.ts";
 import { encodeWireMessage } from "../src/transport.ts";
 
+/** Convert bytes to a lower-case hex string for readable assertions. */
 function toHex(u) {
   return Array.from(u)
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
 }
 
+/** Return the successful result value or fail the assertion with context. */
 function unwrap(result, message) {
-  if (result.isErr()) throw new Error(`${message}: ${result.error.message}`);
-  return result.value;
+  return result.match(
+    (value) => value,
+    (error) => assert.fail(`${message}: ${error.message}`),
+  );
 }
 
+/** Create an in-memory provider plus helpers for injecting frames and closes. */
 function providerFixture() {
   const sent = [];
   let listener = () => {};
@@ -50,9 +55,10 @@ function providerFixture() {
   };
 }
 
+/** Encode a V1 host-handshake response result payload. */
 function handshakeResponsePayload(value) {
   return indexedTaggedUnion({
-    V1: [0, result(unit, T.HostHandshakeError)],
+    V1: [0, Result(_void, T.HostHandshakeError)],
   }).enc({ tag: "V1", value });
 }
 
@@ -223,7 +229,7 @@ function handshakeResponsePayload(value) {
       requestId: sub.subscriptionId,
       payload: {
         id: W.HOST_ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.interrupt,
-        value: unit.enc(undefined),
+        value: _void.enc(undefined),
       },
     }),
     "encode interrupt",
@@ -291,7 +297,7 @@ function handshakeResponsePayload(value) {
       requestId: sub.subscriptionId,
       payload: {
         id: W.HOST_ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.receive,
-        value: unit.enc(undefined),
+        value: _void.enc(undefined),
       },
     }),
     "encode malformed receive",
@@ -307,7 +313,7 @@ function handshakeResponsePayload(value) {
       requestId: sub.subscriptionId,
       payload: {
         id: W.HOST_ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.stop,
-        value: unit.enc(undefined),
+        value: _void.enc(undefined),
       },
     }),
     "encode stop after malformed receive",
@@ -354,7 +360,7 @@ function handshakeResponsePayload(value) {
       requestId: sub.subscriptionId,
       payload: {
         id: W.HOST_ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.stop,
-        value: unit.enc(undefined),
+        value: _void.enc(undefined),
       },
     }),
     "encode explicit unsubscribe stop",

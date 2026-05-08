@@ -3,7 +3,6 @@ import {
   awaitChainHeadOperation,
   awaitChainHeadStorage,
   getClient,
-  hexToBytes,
   openEphemeralFollow,
   type EphemeralFollow,
 } from "./transport";
@@ -270,11 +269,17 @@ const ZERO_HASH =
 //   - Unary: `methodName(request: T)` — a single positional arg, where `T`
 //     is either an inner enum/value type or a struct-shaped versioned
 //     wrapper. The bridge passes the user-typed JSON straight through.
-//   - Subscribe: `methodName({ request? }).subscribe({ next, error, complete })`
-//     No-input subscribes drop the `request` argument.
+//   - Subscribe: `methodName({ request: T })` — an options-object whose
+//     `request` field carries the inner type. No-input subscribes drop the
+//     argument entirely.
 function buildArgs(req: unknown): unknown[] {
   const noParams = req === null || req === undefined;
   return noParams ? [] : [req];
+}
+
+function buildSubscribeArgs(req: unknown): unknown[] {
+  const noParams = req === null || req === undefined;
+  return noParams ? [] : [{ request: req }];
 }
 
 // Methods whose unary response is `Started { operationId }`, with the real
@@ -380,7 +385,7 @@ export function getMethodBinding(
     return {
       isStream: true,
       subscribe(req, onEvent, onEnd) {
-        const args = buildArgs(normalizeForScale(req));
+        const args = buildSubscribeArgs(normalizeForScale(req));
         const observable = fn.apply(thisArg, args) as ObservableLike<unknown>;
         const sub = observable.subscribe({
           next: onEvent,
@@ -496,54 +501,32 @@ export function getMethodBinding(
 // Recursively prepares a JSON-parsed value for the generated client codecs:
 //   - null              -> undefined         (JSON has no undefined; SCALE optionals need it)
 //   - "123n"            -> BigInt(123)       (JSON has no BigInt; use the JS literal suffix convention)
-//   - "0x.."            -> Uint8Array        (any 0x-prefixed even-length hex string is treated as bytes)
-//   - { bytes: "0x.." } -> Uint8Array        (explicit envelope, kept for symmetry with stringify())
-//   - Uint8Array        -> Uint8Array        (pass-through, do not recurse)
+// Hex-encoded byte fields stay as `0x...` strings: the generated codecs use
+// `S.Hex()` (HexString) for `Vec<u8>` and `[u8; N]`, so no conversion needed.
 function normalizeForScale(value: unknown): unknown {
   if (value === null) return undefined;
-  if (value instanceof Uint8Array) return value;
-  if (typeof value === "string") {
-    if (/^-?\d+n$/.test(value)) return BigInt(value.slice(0, -1));
-    if (/^0x[0-9a-fA-F]+$/.test(value) && value.length % 2 === 0)
-      return hexToBytes(value);
-    return value;
+  if (typeof value === "string" && /^-?\d+n$/.test(value)) {
+    return BigInt(value.slice(0, -1));
   }
   if (Array.isArray(value)) return value.map(normalizeForScale);
-  if (typeof value === "object") {
-    const obj = value as Record<string, unknown>;
-    if (
-      Object.keys(obj).length === 1 &&
-      typeof obj["bytes"] === "string" &&
-      /^0x[0-9a-fA-F]+$/.test(obj["bytes"] as string) &&
-      obj["bytes"].length % 2 === 0
-    ) {
-      return hexToBytes(obj["bytes"] as string);
-    }
+  if (value && typeof value === "object") {
     return Object.fromEntries(
-      Object.entries(obj).map(([k, v]) => [k, normalizeForScale(v)]),
+      Object.entries(value as Record<string, unknown>).map(([k, v]) => [
+        k,
+        normalizeForScale(v),
+      ]),
     );
   }
   return value;
 }
 
 // Stringify helper retained from the previous bridge so the response panel
-// matches the request panel. Uint8Array -> {bytes:"0x.."}, bigint -> "<n>n".
+// matches the request panel. Bigint is suffixed with `n` to round-trip with
+// the request panel's parsing.
 export function stringify(value: unknown): string {
   return JSON.stringify(
     value,
-    (_, v) => {
-      if (v instanceof Uint8Array) {
-        return {
-          bytes:
-            "0x" +
-            Array.from(v)
-              .map((b) => b.toString(16).padStart(2, "0"))
-              .join(""),
-        };
-      }
-      if (typeof v === "bigint") return v.toString() + "n";
-      return v;
-    },
+    (_, v) => (typeof v === "bigint" ? v.toString() + "n" : v),
     2,
   );
 }

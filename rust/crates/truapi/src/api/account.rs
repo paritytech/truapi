@@ -122,11 +122,11 @@ pub trait AccountManagement: Send + Sync {
     ///       derivationIndex: 0,
     ///     },
     ///     ringLocation: {
-    ///       genesisHash: new Uint8Array(),
-    ///       ringRootHash: new Uint8Array(),
+    ///       genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///       ringRootHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///       hints: { palletInstance: 42 },
     ///     },
-    ///     context: new Uint8Array(),
+    ///     context: "0x",
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;
