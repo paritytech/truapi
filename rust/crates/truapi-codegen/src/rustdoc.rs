@@ -56,7 +56,7 @@ pub struct TraitDef {
     pub docs: Option<String>,
 }
 
-/// Trait method extracted from rustdoc, including its wire id.
+/// Trait method extracted from rustdoc, including its wire ids.
 #[derive(Debug, PartialEq, Eq)]
 pub struct MethodDef {
     /// Method name as it appears in source.
@@ -67,11 +67,21 @@ pub struct MethodDef {
     pub params: Vec<ParamDef>,
     /// Return shape, decoded from the method signature.
     pub return_type: ReturnType,
-    /// Base wire-protocol discriminant id for this method (from `#[wire(id = N)]`).
-    /// `None` for trait methods that have not been annotated yet (legacy / opt-in).
-    pub wire_id: Option<u8>,
+    /// Wire-protocol discriminant ids from the `#[wire(...)]` attribute.
+    pub wire: WireAttrs,
     /// Rustdoc comment on the method, with hidden codegen markers stripped.
     pub docs: Option<String>,
+}
+
+/// Raw wire ids extracted from `#[wire(...)]`.
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct WireAttrs {
+    pub request_id: Option<u8>,
+    pub response_id: Option<u8>,
+    pub start_id: Option<u8>,
+    pub stop_id: Option<u8>,
+    pub interrupt_id: Option<u8>,
+    pub receive_id: Option<u8>,
 }
 
 /// Wire-shape classification of a trait method.
@@ -595,14 +605,18 @@ fn extract_method(item_id: &str, item: &Item, names: &NameContext) -> Result<Opt
         });
     }
 
-    let wire_id = item.docs.as_deref().and_then(extract_wire_id);
+    let wire = item
+        .docs
+        .as_deref()
+        .map(extract_wire_attrs)
+        .unwrap_or_default();
 
     Ok(Some(MethodDef {
         name,
         kind,
         params,
         return_type,
-        wire_id,
+        wire,
         docs: clean_docs(item.docs.as_deref()),
     }))
 }
@@ -627,23 +641,36 @@ pub fn clean_docs(docs: Option<&str>) -> Option<String> {
 
 fn is_codegen_doc_marker(line: &str) -> bool {
     let line = line.trim_start();
-    line.starts_with("@wire_id=")
+    line.starts_with("@wire_")
 }
 
-/// Extracts `@wire_id=N` from a doc comment block. Annotated methods carry
-/// this marker via the `#[wire(id = N)]` proc-macro, which appends the marker
-/// as a hidden doc string so it propagates through rustdoc JSON.
-///
-/// Only the first `@wire_id=` marker is honored. The proc-macro emits exactly
-/// one, and duplicate ids are rejected by `generate_wire_table` regardless.
-/// Trailing non-digit characters (whitespace, newlines) terminate the match.
-fn extract_wire_id(docs: &str) -> Option<u8> {
-    let needle = "@wire_id=";
-    let start = docs.find(needle)? + needle.len();
-    let end = docs[start..]
-        .find(|c: char| !c.is_ascii_digit())
-        .map_or(docs.len(), |offset| start + offset);
-    docs[start..end].parse::<u8>().ok()
+/// Extracts `@wire_<name>_id=N` markers from a doc comment block. Annotated
+/// methods carry these markers via the `#[wire(...)]` proc-macro, which appends
+/// hidden doc strings so they propagate through rustdoc JSON.
+fn extract_wire_attrs(docs: &str) -> WireAttrs {
+    let mut attrs = WireAttrs::default();
+    for line in docs.lines() {
+        let line = line.trim_start();
+        for (needle, target) in [
+            ("@wire_request_id=", &mut attrs.request_id),
+            ("@wire_response_id=", &mut attrs.response_id),
+            ("@wire_start_id=", &mut attrs.start_id),
+            ("@wire_stop_id=", &mut attrs.stop_id),
+            ("@wire_interrupt_id=", &mut attrs.interrupt_id),
+            ("@wire_receive_id=", &mut attrs.receive_id),
+        ] {
+            let Some(start) = line.find(needle).map(|index| index + needle.len()) else {
+                continue;
+            };
+            let end = line[start..]
+                .find(|c: char| !c.is_ascii_digit())
+                .map_or(line.len(), |offset| start + offset);
+            if let Ok(id) = line[start..end].parse::<u8>() {
+                *target = Some(id);
+            }
+        }
+    }
+    attrs
 }
 
 /// Unwrap the `async_trait` expansion `Pin<Box<dyn Future<Output = T> + Send>>`

@@ -27,7 +27,7 @@ pub trait EntropyDerivation: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(id = 108)]
+    #[wire(request_id = 108)]
     async fn host_derive_entropy(
         &self,
         _cx: &CallContext,

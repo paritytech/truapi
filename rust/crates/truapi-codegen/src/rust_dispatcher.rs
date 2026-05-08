@@ -78,36 +78,18 @@ pub fn generate(api: &ApiDefinition, output_dir: &str) -> Result<()> {
     Ok(())
 }
 
-/// Builds the (discriminant, tag) → wire table from per-method `#[wire(id)]`
-/// annotations. Each request method occupies 2 consecutive ids (request,
-/// response); each subscription occupies 4 (start, stop, interrupt, receive).
-/// Authors must therefore leave 2 (request) or 4 (subscription) slots between
-/// consecutive `#[wire(id)]` bases. Duplicate ids and missing annotations
-/// both fail the build.
+/// Builds the (discriminant, tag) → wire table from per-method `#[wire(...)]`
+/// annotations. Request methods anchor on `request_id`; subscriptions anchor
+/// on `start_id`. Omitted peer ids are inferred consecutively unless explicit
+/// overrides are present. Duplicate ids and missing annotations both fail the
+/// build.
 fn generate_wire_table(api: &ApiDefinition) -> Result<String> {
     let mut entries: Vec<(u8, String)> = Vec::new();
     let mut seen: BTreeMap<u8, String> = BTreeMap::new();
 
     for trait_def in &api.traits {
         for method in &trait_def.methods {
-            let Some(base) = method.wire_id else {
-                bail!(
-                    "method `{}::{}` is missing #[wire(id = N)] annotation",
-                    trait_def.name,
-                    method.name
-                );
-            };
-            let suffixes: &[&str] = match method.kind {
-                MethodKind::Request => &["request", "response"],
-                MethodKind::Subscription | MethodKind::ResultSubscription => {
-                    &["start", "stop", "interrupt", "receive"]
-                }
-            };
-            for (i, suffix) in suffixes.iter().enumerate() {
-                let id = base.checked_add(i as u8).ok_or_else(|| {
-                    anyhow::anyhow!("wire id overflow on `{}` (base {})", method.name, base)
-                })?;
-                let tag = format!("{}_{}", method.name, suffix);
+            for (id, tag) in wire_table_entries(trait_def, method)? {
                 if let Some(existing) = seen.insert(id, tag.clone()) {
                     bail!(
                         "wire id {} reused: `{}` and `{}` collide",
@@ -202,6 +184,65 @@ fn generate_wire_table(api: &ApiDefinition) -> Result<String> {
     writeln!(out, "}};").unwrap();
 
     Ok(out)
+}
+
+fn wire_table_entries(trait_def: &TraitDef, method: &MethodDef) -> Result<Vec<(u8, String)>> {
+    match method.kind {
+        MethodKind::Request => {
+            let request_id = method.wire.request_id.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "method `{}::{}` is missing #[wire(request_id = N)] annotation",
+                    trait_def.name,
+                    method.name
+                )
+            })?;
+            let response_id = method
+                .wire
+                .response_id
+                .map_or_else(|| infer_wire_id(request_id, 1, &method.name), Ok)?;
+            Ok(vec![
+                (request_id, format!("{}_request", method.name)),
+                (response_id, format!("{}_response", method.name)),
+            ])
+        }
+        MethodKind::Subscription | MethodKind::ResultSubscription => {
+            let start_id = method.wire.start_id.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "method `{}::{}` is missing #[wire(start_id = N)] annotation",
+                    trait_def.name,
+                    method.name
+                )
+            })?;
+            let stop_id = method
+                .wire
+                .stop_id
+                .map_or_else(|| infer_wire_id(start_id, 1, &method.name), Ok)?;
+            let interrupt_id = method
+                .wire
+                .interrupt_id
+                .map_or_else(|| infer_wire_id(start_id, 2, &method.name), Ok)?;
+            let receive_id = method
+                .wire
+                .receive_id
+                .map_or_else(|| infer_wire_id(start_id, 3, &method.name), Ok)?;
+            Ok(vec![
+                (start_id, format!("{}_start", method.name)),
+                (stop_id, format!("{}_stop", method.name)),
+                (interrupt_id, format!("{}_interrupt", method.name)),
+                (receive_id, format!("{}_receive", method.name)),
+            ])
+        }
+    }
+}
+
+fn infer_wire_id(anchor_id: u8, offset: u8, method_name: &str) -> Result<u8> {
+    anchor_id.checked_add(offset).ok_or_else(|| {
+        anyhow::anyhow!(
+            "wire id overflow on `{}` while inferring id from {}",
+            method_name,
+            anchor_id
+        )
+    })
 }
 
 fn generate_dispatcher(api: &ApiDefinition) -> Result<String> {
@@ -721,7 +762,10 @@ mod tests {
                     args: vec![],
                 },
             },
-            wire_id: Some(wire_id),
+            wire: WireAttrs {
+                request_id: Some(wire_id),
+                ..WireAttrs::default()
+            },
             docs: None,
         }
     }
@@ -793,7 +837,7 @@ mod tests {
         );
     }
 
-    /// Duplicate `#[wire(id = N)]` annotations across methods must fail the
+    /// Duplicate `#[wire(...)]` annotations across methods must fail the
     /// build deterministically rather than silently overwriting an entry.
     #[test]
     fn generate_wire_table_rejects_duplicate_ids() {
@@ -816,12 +860,12 @@ mod tests {
         );
     }
 
-    /// A method missing `#[wire(id = N)]` must hard-error during codegen so
+    /// A method missing `#[wire(...)]` must hard-error during codegen so
     /// no slot ever silently lacks a discriminant.
     #[test]
     fn generate_wire_table_rejects_missing_annotation() {
         let mut method = make_request_method("orphan", 0);
-        method.wire_id = None;
+        method.wire = WireAttrs::default();
         let api = ApiDefinition {
             traits: vec![TraitDef {
                 name: "Synthetic".to_string(),
@@ -833,7 +877,7 @@ mod tests {
         let err = generate_wire_table(&api).expect_err("missing annotation must error");
         let msg = format!("{err}");
         assert!(
-            msg.contains("missing #[wire(id = N)]"),
+            msg.contains("missing #[wire(request_id = N)]"),
             "unexpected error message: {msg}",
         );
     }
@@ -847,7 +891,10 @@ mod tests {
                 name: "ItemWrapper".to_string(),
                 args: vec![],
             }),
-            wire_id: Some(wire_id),
+            wire: WireAttrs {
+                start_id: Some(wire_id),
+                ..WireAttrs::default()
+            },
             docs: None,
         }
     }

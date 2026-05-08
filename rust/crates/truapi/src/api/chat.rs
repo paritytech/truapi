@@ -33,7 +33,7 @@ pub trait Chat: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(id = 38)]
+    #[wire(request_id = 38)]
     async fn host_chat_create_room(
         &self,
         _cx: &CallContext,
@@ -58,7 +58,7 @@ pub trait Chat: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(id = 40)]
+    #[wire(request_id = 40)]
     async fn host_chat_register_bot(
         &self,
         _cx: &CallContext,
@@ -81,7 +81,7 @@ pub trait Chat: Send + Sync {
     ///   });
     /// }
     /// ```
-    #[wire(id = 42)]
+    #[wire(start_id = 42)]
     async fn host_chat_list_subscribe(
         &self,
         _cx: &CallContext,
@@ -104,7 +104,7 @@ pub trait Chat: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(id = 46)]
+    #[wire(request_id = 46)]
     async fn host_chat_post_message(
         &self,
         _cx: &CallContext,
@@ -127,7 +127,7 @@ pub trait Chat: Send + Sync {
     ///   });
     /// }
     /// ```
-    #[wire(id = 48)]
+    #[wire(start_id = 48)]
     async fn host_chat_action_subscribe(
         &self,
         _cx: &CallContext,
@@ -156,7 +156,7 @@ pub trait Chat: Send + Sync {
     ///   });
     /// }
     /// ```
-    #[wire(id = 52)]
+    #[wire(start_id = 52)]
     async fn product_chat_custom_message_render_subscribe(
         &self,
         _cx: &CallContext,
@@ -181,7 +181,7 @@ pub trait Chat: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(id = 130)]
+    #[wire(request_id = 130)]
     async fn host_chat_create_simple_group(
         &self,
         _cx: &CallContext,

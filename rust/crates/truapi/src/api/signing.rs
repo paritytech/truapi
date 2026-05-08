@@ -46,7 +46,7 @@ pub trait Signing: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(id = 30)]
+    #[wire(request_id = 30)]
     async fn host_create_transaction(
         &self,
         _cx: &CallContext,
@@ -82,7 +82,7 @@ pub trait Signing: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(id = 32)]
+    #[wire(request_id = 32)]
     async fn host_create_transaction_with_legacy_account(
         &self,
         _cx: &CallContext,
@@ -109,7 +109,7 @@ pub trait Signing: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(id = 114)]
+    #[wire(request_id = 114)]
     async fn host_sign_raw(
         &self,
         _cx: &CallContext,
@@ -143,7 +143,7 @@ pub trait Signing: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(id = 116)]
+    #[wire(request_id = 116)]
     async fn host_sign_payload(
         &self,
         _cx: &CallContext,

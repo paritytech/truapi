@@ -23,7 +23,7 @@ pub trait LocalStorage: Send + Sync {
     ///   return result.value.value;
     /// }
     /// ```
-    #[wire(id = 12)]
+    #[wire(request_id = 12)]
     async fn host_local_storage_read(
         &self,
         cx: &CallContext,
@@ -44,7 +44,7 @@ pub trait LocalStorage: Send + Sync {
     ///   if (result.isErr()) throw result.error;
     /// }
     /// ```
-    #[wire(id = 14)]
+    #[wire(request_id = 14)]
     async fn host_local_storage_write(
         &self,
         cx: &CallContext,
@@ -62,7 +62,7 @@ pub trait LocalStorage: Send + Sync {
     ///   if (result.isErr()) throw result.error;
     /// }
     /// ```
-    #[wire(id = 16)]
+    #[wire(request_id = 16)]
     async fn host_local_storage_clear(
         &self,
         cx: &CallContext,

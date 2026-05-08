@@ -42,7 +42,7 @@ pub trait ChainInteraction: Send + Sync {
     ///   });
     /// }
     /// ```
-    #[wire(id = 76)]
+    #[wire(start_id = 76)]
     async fn remote_chain_head_follow(
         &self,
         _cx: &CallContext,
@@ -67,7 +67,7 @@ pub trait ChainInteraction: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(id = 80)]
+    #[wire(request_id = 80)]
     async fn remote_chain_head_header(
         &self,
         _cx: &CallContext,
@@ -92,7 +92,7 @@ pub trait ChainInteraction: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(id = 82)]
+    #[wire(request_id = 82)]
     async fn remote_chain_head_body(
         &self,
         _cx: &CallContext,
@@ -120,7 +120,7 @@ pub trait ChainInteraction: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(id = 84)]
+    #[wire(request_id = 84)]
     async fn remote_chain_head_storage(
         &self,
         _cx: &CallContext,
@@ -147,7 +147,7 @@ pub trait ChainInteraction: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(id = 86)]
+    #[wire(request_id = 86)]
     async fn remote_chain_head_call(
         &self,
         _cx: &CallContext,
@@ -171,7 +171,7 @@ pub trait ChainInteraction: Send + Sync {
     ///   if (result.isErr()) throw result.error;
     /// }
     /// ```
-    #[wire(id = 88)]
+    #[wire(request_id = 88)]
     async fn remote_chain_head_unpin(
         &self,
         _cx: &CallContext,
@@ -195,7 +195,7 @@ pub trait ChainInteraction: Send + Sync {
     ///   if (result.isErr()) throw result.error;
     /// }
     /// ```
-    #[wire(id = 90)]
+    #[wire(request_id = 90)]
     async fn remote_chain_head_continue(
         &self,
         _cx: &CallContext,
@@ -219,7 +219,7 @@ pub trait ChainInteraction: Send + Sync {
     ///   if (result.isErr()) throw result.error;
     /// }
     /// ```
-    #[wire(id = 92)]
+    #[wire(request_id = 92)]
     async fn remote_chain_head_stop_operation(
         &self,
         _cx: &CallContext,
@@ -243,7 +243,7 @@ pub trait ChainInteraction: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(id = 94)]
+    #[wire(request_id = 94)]
     async fn remote_chain_spec_genesis_hash(
         &self,
         _cx: &CallContext,
@@ -267,7 +267,7 @@ pub trait ChainInteraction: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(id = 96)]
+    #[wire(request_id = 96)]
     async fn remote_chain_spec_chain_name(
         &self,
         _cx: &CallContext,
@@ -290,7 +290,7 @@ pub trait ChainInteraction: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(id = 98)]
+    #[wire(request_id = 98)]
     async fn remote_chain_spec_properties(
         &self,
         _cx: &CallContext,
@@ -314,7 +314,7 @@ pub trait ChainInteraction: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(id = 100)]
+    #[wire(request_id = 100)]
     async fn remote_chain_transaction_broadcast(
         &self,
         _cx: &CallContext,
@@ -340,7 +340,7 @@ pub trait ChainInteraction: Send + Sync {
     ///   if (result.isErr()) throw result.error;
     /// }
     /// ```
-    #[wire(id = 102)]
+    #[wire(request_id = 102)]
     async fn remote_chain_transaction_stop(
         &self,
         _cx: &CallContext,

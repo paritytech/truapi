@@ -268,7 +268,7 @@ pub fn generate_client_examples(
 
     for trait_def in traits {
         let mut methods = included_methods(trait_def, &wrappers, target_version)?;
-        methods.sort_by_key(|method| (method.wire_id.unwrap_or(u8::MAX), method.name.as_str()));
+        methods.sort_by_key(|method| (method_wire_sort_id(method), method.name.as_str()));
 
         for method in methods {
             let docs = split_playground_docs(method.docs.as_deref(), &method.name)?;
@@ -464,6 +464,52 @@ struct ExplorerMethodRecord {
     client_example: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ExpandedWireIds {
+    Request {
+        request_id: u8,
+        response_id: u8,
+    },
+    Subscription {
+        start_id: u8,
+        stop_id: u8,
+        interrupt_id: u8,
+        receive_id: u8,
+    },
+}
+
+impl ExpandedWireIds {
+    fn sort_id(self) -> u8 {
+        match self {
+            ExpandedWireIds::Request { request_id, .. } => request_id,
+            ExpandedWireIds::Subscription { start_id, .. } => start_id,
+        }
+    }
+
+    fn entries(self, method_name: &str) -> Vec<(u8, String)> {
+        match self {
+            ExpandedWireIds::Request {
+                request_id,
+                response_id,
+            } => vec![
+                (request_id, format!("{method_name}_request")),
+                (response_id, format!("{method_name}_response")),
+            ],
+            ExpandedWireIds::Subscription {
+                start_id,
+                stop_id,
+                interrupt_id,
+                receive_id,
+            } => vec![
+                (start_id, format!("{method_name}_start")),
+                (stop_id, format!("{method_name}_stop")),
+                (interrupt_id, format!("{method_name}_interrupt")),
+                (receive_id, format!("{method_name}_receive")),
+            ],
+        }
+    }
+}
+
 #[derive(Debug)]
 struct ExplorerTypeRecord {
     id: String,
@@ -528,7 +574,7 @@ fn explorer_methods(
     let mut methods = Vec::new();
     for trait_def in explorer_traits(api) {
         let mut included = included_methods(trait_def, wrappers, target_version)?;
-        included.sort_by_key(|method| (method.wire_id.unwrap_or(u8::MAX), method.name.as_str()));
+        included.sort_by_key(|method| (method_wire_sort_id(method), method.name.as_str()));
         for method in included {
             let wire_version = method_wire_version(method, wrappers, target_version)?;
             let payload = emit_payload(&method.params, wrappers, ctx, wire_version)?;
@@ -539,7 +585,7 @@ fn explorer_methods(
                 name: method.name.clone(),
                 group_id: explorer_group_id(&trait_def.name),
                 group_name: service_name(&trait_def.name),
-                wire_id: method.wire_id.expect("validated by included_methods"),
+                wire_id: wire_ids_for_method(trait_def, method)?.sort_id(),
                 pattern: match method.kind {
                     MethodKind::Request => "unary",
                     MethodKind::Subscription | MethodKind::ResultSubscription => "subscription",
@@ -1169,7 +1215,7 @@ fn generate_playground_services_code(api: &ApiDefinition, target_version: u32) -
 
     for trait_def in traits {
         let mut methods = included_methods(trait_def, &wrappers, target_version)?;
-        methods.sort_by_key(|method| (method.wire_id.unwrap_or(u8::MAX), method.name.as_str()));
+        methods.sort_by_key(|method| (method_wire_sort_id(method), method.name.as_str()));
         if methods.is_empty() {
             continue;
         }
@@ -1294,6 +1340,14 @@ fn split_pascal_case(name: &str) -> String {
         prev_lowercase = ch.is_lowercase();
     }
     out
+}
+
+fn method_wire_sort_id(method: &MethodDef) -> u8 {
+    method
+        .wire
+        .request_id
+        .or(method.wire.start_id)
+        .unwrap_or(u8::MAX)
 }
 
 #[derive(Debug)]
@@ -1781,18 +1835,8 @@ fn generate_wire_table(api: &ApiDefinition, target_version: u32) -> Result<Strin
             if !method_is_included(trait_def, method, &wrappers, target_version)? {
                 continue;
             }
-            let base = method.wire_id.expect("validated by method_is_included");
-            let suffixes: &[&str] = match method.kind {
-                MethodKind::Request => &["request", "response"],
-                MethodKind::Subscription | MethodKind::ResultSubscription => {
-                    &["start", "stop", "interrupt", "receive"]
-                }
-            };
-            for (offset, suffix) in suffixes.iter().enumerate() {
-                let id = base.checked_add(offset as u8).ok_or_else(|| {
-                    anyhow::anyhow!("wire id overflow on `{}` (base {})", method.name, base)
-                })?;
-                let tag = format!("{}_{}", method.name, suffix);
+            let wire_ids = wire_ids_for_method(trait_def, method)?;
+            for (id, tag) in wire_ids.entries(&method.name) {
                 if let Some(existing) = seen.insert(id, tag.clone()) {
                     bail!(
                         "wire id {} reused: `{}` and `{}` collide",
@@ -1876,18 +1920,93 @@ fn method_is_included(
     wrappers: &HashMap<String, VersionedWrapper>,
     target_version: u32,
 ) -> Result<bool> {
-    if method.wire_id.is_none() {
-        bail!(
-            "method `{}::{}` is missing #[wire(id = N)] annotation",
-            trait_def.name,
-            method.name
-        );
-    };
+    wire_ids_for_method(trait_def, method)?;
 
     let wrapper_names = method_versioned_wrappers(method, wrappers);
     Ok(
         wrapper_names.is_empty()
             || method_wire_version(method, wrappers, target_version)?.is_some(),
+    )
+}
+
+fn wire_ids_for_method(trait_def: &TraitDef, method: &MethodDef) -> Result<ExpandedWireIds> {
+    let wire = &method.wire;
+    match method.kind {
+        MethodKind::Request => {
+            if wire.start_id.is_some()
+                || wire.stop_id.is_some()
+                || wire.interrupt_id.is_some()
+                || wire.receive_id.is_some()
+            {
+                bail!(
+                    "method `{}::{}` is a request and must not use subscription wire ids",
+                    trait_def.name,
+                    method.name
+                );
+            }
+            let request_id = wire.request_id.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "method `{}::{}` is missing #[wire(request_id = N)] annotation",
+                    trait_def.name,
+                    method.name
+                )
+            })?;
+            let response_id =
+                infer_wire_id(wire.response_id, request_id, 1, &method.name, "response_id")?;
+            Ok(ExpandedWireIds::Request {
+                request_id,
+                response_id,
+            })
+        }
+        MethodKind::Subscription | MethodKind::ResultSubscription => {
+            if wire.request_id.is_some() || wire.response_id.is_some() {
+                bail!(
+                    "method `{}::{}` is a subscription and must not use request wire ids",
+                    trait_def.name,
+                    method.name
+                );
+            }
+            let start_id = wire.start_id.ok_or_else(|| {
+                anyhow::anyhow!(
+                    "method `{}::{}` is missing #[wire(start_id = N)] annotation",
+                    trait_def.name,
+                    method.name
+                )
+            })?;
+            let stop_id = infer_wire_id(wire.stop_id, start_id, 1, &method.name, "stop_id")?;
+            let interrupt_id =
+                infer_wire_id(wire.interrupt_id, start_id, 2, &method.name, "interrupt_id")?;
+            let receive_id =
+                infer_wire_id(wire.receive_id, start_id, 3, &method.name, "receive_id")?;
+            Ok(ExpandedWireIds::Subscription {
+                start_id,
+                stop_id,
+                interrupt_id,
+                receive_id,
+            })
+        }
+    }
+}
+
+fn infer_wire_id(
+    explicit: Option<u8>,
+    anchor_id: u8,
+    offset: u8,
+    method_name: &str,
+    field_name: &str,
+) -> Result<u8> {
+    explicit.map_or_else(
+        || {
+            anchor_id.checked_add(offset).ok_or_else(|| {
+                anyhow::anyhow!(
+                    "wire id overflow on `{}` while inferring `{}` from {}",
+                    method_name,
+                    field_name,
+                    anchor_id
+                )
+            })
+        },
+        Ok,
     )
 }
 
@@ -3174,6 +3293,20 @@ fn to_camel_case(s: &str) -> String {
 mod tests {
     use super::*;
 
+    fn request_wire(request_id: Option<u8>) -> WireAttrs {
+        WireAttrs {
+            request_id,
+            ..WireAttrs::default()
+        }
+    }
+
+    fn subscription_wire(start_id: Option<u8>) -> WireAttrs {
+        WireAttrs {
+            start_id,
+            ..WireAttrs::default()
+        }
+    }
+
     fn request_method(name: &str, wire_id: Option<u8>) -> MethodDef {
         MethodDef {
             name: name.to_string(),
@@ -3183,7 +3316,7 @@ mod tests {
                 ok: TypeRef::Unit,
                 err: TypeRef::Unit,
             },
-            wire_id,
+            wire: request_wire(wire_id),
             docs: None,
         }
     }
@@ -3194,7 +3327,7 @@ mod tests {
             kind: MethodKind::Subscription,
             params: Vec::new(),
             return_type: ReturnType::Subscription(TypeRef::Unit),
-            wire_id,
+            wire: subscription_wire(wire_id),
             docs: None,
         }
     }
@@ -3235,7 +3368,7 @@ mod tests {
                 ok: named_type(response),
                 err: named_type(error),
             },
-            wire_id,
+            wire: request_wire(wire_id),
             docs: None,
         }
     }
@@ -3246,7 +3379,7 @@ mod tests {
             kind: MethodKind::Subscription,
             params: Vec::new(),
             return_type: ReturnType::Subscription(named_type(item)),
-            wire_id,
+            wire: subscription_wire(wire_id),
             docs: None,
         }
     }
@@ -3417,7 +3550,51 @@ mod tests {
         let err = generate_wire_table(&api(vec![request_method("missing", None)]), 2)
             .expect_err("missing wire id must error");
 
-        assert!(err.to_string().contains("missing #[wire(id = N)]"));
+        assert!(err.to_string().contains("missing #[wire(request_id = N)]"));
+    }
+
+    #[test]
+    fn generate_wire_table_uses_explicit_overrides() {
+        let mut request = request_method("custom_request", Some(2));
+        request.wire.response_id = Some(9);
+        let mut subscription = subscription_method("custom_stream", Some(20));
+        subscription.wire.stop_id = Some(30);
+        subscription.wire.interrupt_id = Some(31);
+        subscription.wire.receive_id = Some(32);
+
+        let source = generate_wire_table(&api(vec![request, subscription]), 2).expect("wire table");
+
+        assert!(source.contains("  [2, 'custom_request_request'],"));
+        assert!(source.contains("  [9, 'custom_request_response'],"));
+        assert!(source.contains("  [20, 'custom_stream_start'],"));
+        assert!(source.contains("  [30, 'custom_stream_stop'],"));
+        assert!(source.contains("  [31, 'custom_stream_interrupt'],"));
+        assert!(source.contains("  [32, 'custom_stream_receive'],"));
+    }
+
+    #[test]
+    fn generate_wire_table_rejects_invalid_attrs_by_method_kind() {
+        let mut request = request_method("bad_request", Some(2));
+        request.wire.start_id = Some(4);
+        let err = generate_wire_table(&api(vec![request]), 2)
+            .expect_err("request with start id must error");
+        assert!(err
+            .to_string()
+            .contains("must not use subscription wire ids"));
+
+        let mut subscription = subscription_method("bad_stream", Some(10));
+        subscription.wire.request_id = Some(12);
+        let err = generate_wire_table(&api(vec![subscription]), 2)
+            .expect_err("subscription with request id must error");
+        assert!(err.to_string().contains("must not use request wire ids"));
+    }
+
+    #[test]
+    fn generate_wire_table_rejects_inferred_overflow() {
+        let err = generate_wire_table(&api(vec![subscription_method("overflow", Some(253))]), 2)
+            .expect_err("overflow must error");
+
+        assert!(err.to_string().contains("wire id overflow"));
     }
 
     #[test]
@@ -3531,7 +3708,7 @@ mod tests {
                         },
                         err: TypeRef::Unit,
                     },
-                    wire_id: Some(2),
+                    wire: request_wire(Some(2)),
                     docs: None,
                 }],
                 docs: None,
@@ -3575,7 +3752,7 @@ mod tests {
                         },
                         err: TypeRef::Unit,
                     },
-                    wire_id: Some(2),
+                    wire: request_wire(Some(2)),
                     docs: None,
                 }],
                 docs: None,
@@ -3616,7 +3793,7 @@ mod tests {
                         },
                         err: TypeRef::Unit,
                     },
-                    wire_id: Some(2),
+                    wire: request_wire(Some(2)),
                     docs: None,
                 }],
                 docs: None,

@@ -29,7 +29,7 @@ pub trait Preimage: Send + Sync {
     ///   });
     /// }
     /// ```
-    #[wire(id = 64)]
+    #[wire(start_id = 64)]
     async fn remote_preimage_lookup_subscribe(
         &self,
         _cx: &CallContext,

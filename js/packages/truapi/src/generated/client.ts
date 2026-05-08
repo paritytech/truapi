@@ -1311,7 +1311,8 @@ export class StatementStoreClient {
  * TrUAPI does not implement, but whose discriminants must remain free to
  * keep our wire-table positionally aligned with the canonical host
  * `MessagePayload` enum. If we ever need them, annotate the trait method
- * with `#[wire(id = ...)]` matching the slot below.
+ * with `#[wire(request_id = ...)]` or `#[wire(start_id = ...)]` matching the
+ * slot below.
  *
  * - 34-35: `host_sign_raw_with_legacy_account` (request, response)
  * - 36-37: `host_sign_payload_with_legacy_account` (request, response)

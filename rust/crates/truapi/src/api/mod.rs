@@ -10,12 +10,14 @@
 //! implementation of [`TrUApi`] is the canonical host contract consumed by
 //! `truapi-codegen` and the generated Rust dispatcher.
 //!
-//! Every method must carry a stable `#[wire(id = N)]` annotation. The id is part of the append-only wire protocol:
-//! request/response methods consume two consecutive slots (`_request`,
-//! `_response`) and subscriptions consume four (`_start`, `_stop`,
-//! `_interrupt`, `_receive`). Removing or reordering a slot is a wire-breaking
-//! change; retired methods leave documented gaps. Codegen derives method
-//! availability from the versioned request, response, item, and error wrappers.
+//! Every method must carry a stable wire id annotation. Request/response
+//! methods use `#[wire(request_id = N)]`; subscriptions use
+//! `#[wire(start_id = N)]`. Omitted peer ids are inferred consecutively
+//! (`_response`, or `_stop`, `_interrupt`, `_receive`) and can be overridden
+//! explicitly for compatibility gaps. Removing or reordering a slot is a
+//! wire-breaking change; retired methods leave documented gaps. Codegen
+//! derives method availability from the versioned request, response, item, and
+//! error wrappers.
 
 pub mod account;
 pub mod calls;

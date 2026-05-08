@@ -18,7 +18,8 @@ use crate::{CallContext, CallError};
 /// TrUAPI does not implement, but whose discriminants must remain free to
 /// keep our wire-table positionally aligned with the canonical host
 /// `MessagePayload` enum. If we ever need them, annotate the trait method
-/// with `#[wire(id = ...)]` matching the slot below.
+/// with `#[wire(request_id = ...)]` or `#[wire(start_id = ...)]` matching the
+/// slot below.
 ///
 /// - 34-35: `host_sign_raw_with_legacy_account` (request, response)
 /// - 36-37: `host_sign_payload_with_legacy_account` (request, response)
@@ -40,7 +41,7 @@ pub trait TrUApiCalls: Send + Sync {
     ///   if (result.isErr()) throw result.error;
     /// }
     /// ```
-    #[wire(id = 0)]
+    #[wire(request_id = 0)]
     async fn host_handshake(
         &self,
         _cx: &CallContext,
@@ -71,7 +72,7 @@ pub trait TrUApiCalls: Send + Sync {
     ///   return result.value.supported;
     /// }
     /// ```
-    #[wire(id = 2)]
+    #[wire(request_id = 2)]
     async fn host_feature_supported(
         &self,
         cx: &CallContext,
@@ -91,7 +92,7 @@ pub trait TrUApiCalls: Send + Sync {
     ///   if (result.isErr()) throw result.error;
     /// }
     /// ```
-    #[wire(id = 4)]
+    #[wire(request_id = 4)]
     async fn host_push_notification(
         &self,
         cx: &CallContext,
@@ -111,7 +112,7 @@ pub trait TrUApiCalls: Send + Sync {
     ///   if (result.isErr()) throw result.error;
     /// }
     /// ```
-    #[wire(id = 6)]
+    #[wire(request_id = 6)]
     async fn host_navigate_to(
         &self,
         cx: &CallContext,

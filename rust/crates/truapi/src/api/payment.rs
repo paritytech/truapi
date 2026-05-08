@@ -29,7 +29,7 @@ pub trait Payment: Send + Sync {
     ///   });
     /// }
     /// ```
-    #[wire(id = 118)]
+    #[wire(start_id = 118)]
     async fn host_payment_balance_subscribe(
         &self,
         _cx: &CallContext,
@@ -53,7 +53,7 @@ pub trait Payment: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(id = 124)]
+    #[wire(request_id = 124)]
     async fn host_payment_request(
         &self,
         _cx: &CallContext,
@@ -77,7 +77,7 @@ pub trait Payment: Send + Sync {
     ///   });
     /// }
     /// ```
-    #[wire(id = 126)]
+    #[wire(start_id = 126)]
     async fn host_payment_status_subscribe(
         &self,
         _cx: &CallContext,
@@ -100,7 +100,7 @@ pub trait Payment: Send + Sync {
     ///   if (result.isErr()) throw result.error;
     /// }
     /// ```
-    #[wire(id = 122)]
+    #[wire(request_id = 122)]
     async fn host_payment_top_up(
         &self,
         _cx: &CallContext,

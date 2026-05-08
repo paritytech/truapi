@@ -31,7 +31,7 @@ pub trait AccountManagement: Send + Sync {
     ///   });
     /// }
     /// ```
-    #[wire(id = 18)]
+    #[wire(start_id = 18)]
     async fn host_account_connection_status_subscribe(
         &self,
         _cx: &CallContext,
@@ -56,7 +56,7 @@ pub trait AccountManagement: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(id = 22)]
+    #[wire(request_id = 22)]
     async fn host_account_get(
         &self,
         _cx: &CallContext,
@@ -82,7 +82,7 @@ pub trait AccountManagement: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(id = 24)]
+    #[wire(request_id = 24)]
     async fn host_account_get_alias(
         &self,
         _cx: &CallContext,
@@ -114,7 +114,7 @@ pub trait AccountManagement: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(id = 26)]
+    #[wire(request_id = 26)]
     async fn host_account_create_proof(
         &self,
         _cx: &CallContext,
@@ -135,7 +135,7 @@ pub trait AccountManagement: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(id = 28)]
+    #[wire(request_id = 28)]
     async fn host_get_legacy_accounts(
         &self,
         _cx: &CallContext,
@@ -156,7 +156,7 @@ pub trait AccountManagement: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(id = 110)]
+    #[wire(request_id = 110)]
     async fn host_get_user_id(
         &self,
         _cx: &CallContext,

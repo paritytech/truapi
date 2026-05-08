@@ -30,7 +30,7 @@ pub trait StatementStore: Send + Sync {
     ///   });
     /// }
     /// ```
-    #[wire(id = 56)]
+    #[wire(start_id = 56)]
     async fn remote_statement_store_subscribe(
         &self,
         _cx: &CallContext,
@@ -60,7 +60,7 @@ pub trait StatementStore: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(id = 60)]
+    #[wire(request_id = 60)]
     async fn remote_statement_store_create_proof(
         &self,
         _cx: &CallContext,
@@ -91,7 +91,7 @@ pub trait StatementStore: Send + Sync {
     ///   if (result.isErr()) throw result.error;
     /// }
     /// ```
-    #[wire(id = 62)]
+    #[wire(request_id = 62)]
     async fn remote_statement_store_submit(
         &self,
         _cx: &CallContext,

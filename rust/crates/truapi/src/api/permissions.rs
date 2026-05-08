@@ -25,7 +25,7 @@ pub trait Permissions: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(id = 8)]
+    #[wire(request_id = 8)]
     async fn host_device_permission(
         &self,
         cx: &CallContext,
@@ -46,7 +46,7 @@ pub trait Permissions: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(id = 10)]
+    #[wire(request_id = 10)]
     async fn remote_permission(
         &self,
         cx: &CallContext,
