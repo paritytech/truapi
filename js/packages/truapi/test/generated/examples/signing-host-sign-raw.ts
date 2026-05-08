@@ -7,7 +7,12 @@ export async function signRawBytes(
 ): Promise<HostSignPayloadResponse> {
   const result = await truapi.signing.signRaw({
     account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },
-    payload: { tag: "Bytes", value: { bytes: new Uint8Array() } },
+    payload: {
+      tag: "Bytes",
+      value: {
+        bytes: "0x48656c6c6f2c20776f726c6421",
+      },
+    },
   });
 
   if (result.isErr()) throw result.error;

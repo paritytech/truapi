@@ -31,8 +31,19 @@ test.describe("subscription", () => {
     await expect(stopButton).toBeVisible();
     await stopButton.click();
 
-    // After stopping, the subscribe button comes back. This proves the
-    // _stop frame round-tripped, not just that the UI was reset.
+    await expect(
+      frame
+        .locator('[data-testid="stream-entry"]')
+        .filter({ hasText: "--- stopped ---" }),
+    ).toHaveCount(1);
+    await expect(
+      frame
+        .locator('[data-testid="stream-entry"]')
+        .filter({ hasText: "--- stream ended ---" }),
+    ).toHaveCount(0);
+
+    // After stopping, the subscribe button comes back and the UI records a
+    // local stop instead of synthesizing a normal stream completion.
     await expect(
       frame.locator('[data-testid="subscribe-button"]'),
     ).toBeVisible();

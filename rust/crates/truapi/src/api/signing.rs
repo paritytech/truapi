@@ -34,11 +34,11 @@ pub trait Signing: Send + Sync {
     ///     payload: {
     ///       tag: "V1",
     ///       value: {
-    ///         callData: new Uint8Array(),
+    ///         callData: "0x0000",
     ///         extensions: [],
     ///         txExtVersion: 0,
     ///         context: {
-    ///           metadata: new Uint8Array(),
+    ///           metadata: "0x",
     ///           tokenSymbol: "DOT",
     ///           tokenDecimals: 10,
     ///           bestBlockHeight: 0,
@@ -75,11 +75,11 @@ pub trait Signing: Send + Sync {
     ///     payload: {
     ///       tag: "V1",
     ///       value: {
-    ///         callData: new Uint8Array(),
+    ///         callData: "0x0000",
     ///         extensions: [],
     ///         txExtVersion: 0,
     ///         context: {
-    ///           metadata: new Uint8Array(),
+    ///           metadata: "0x",
     ///           tokenSymbol: "DOT",
     ///           tokenDecimals: 10,
     ///           bestBlockHeight: 0,
@@ -117,7 +117,12 @@ pub trait Signing: Send + Sync {
     /// ): Promise<HostSignPayloadResponse> {
     ///   const result = await truapi.signing.signRaw({
     ///     account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },
-    ///     payload: { tag: "Bytes", value: { bytes: new Uint8Array() } },
+    ///     payload: {
+    ///       tag: "Bytes",
+    ///       value: {
+    ///         bytes: "0x48656c6c6f2c20776f726c6421",
+    ///       },
+    ///     },
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;
@@ -146,16 +151,16 @@ pub trait Signing: Send + Sync {
     /// ): Promise<HostSignPayloadResponse> {
     ///   const result = await truapi.signing.signPayload({
     ///     account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },
-    ///     blockHash: new Uint8Array(),
-    ///     blockNumber: new Uint8Array(),
-    ///     era: new Uint8Array(),
-    ///     genesisHash: new Uint8Array(),
-    ///     method: new Uint8Array(),
-    ///     nonce: new Uint8Array(),
+    ///     blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///     blockNumber: "0x00000000",
+    ///     era: "0x00",
+    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///     method: "0x00003448656c6c6f2c20776f726c6421",
+    ///     nonce: "0x00000000",
     ///     signedExtensions: [],
-    ///     specVersion: new Uint8Array(),
-    ///     tip: new Uint8Array(),
-    ///     transactionVersion: new Uint8Array(),
+    ///     specVersion: "0x00000000",
+    ///     tip: "0x00000000000000000000000000000000",
+    ///     transactionVersion: "0x00000000",
     ///     version: 4,
     ///   });
     ///

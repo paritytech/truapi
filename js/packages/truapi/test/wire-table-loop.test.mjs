@@ -26,9 +26,12 @@ function expectedWire(reqId, tagId, valueBytes) {
   return out;
 }
 
+/** Return the successful result value or fail the assertion with context. */
 function unwrap(result, message) {
-  if (result.isErr()) throw new Error(`${message}: ${result.error.message}`);
-  return result.value;
+  return result.match(
+    (value) => value,
+    (error) => assert.fail(`${message}: ${error.message}`),
+  );
 }
 
 const frames = Object.entries(W).flatMap(([method, ids]) =>

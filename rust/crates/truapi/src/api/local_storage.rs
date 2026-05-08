@@ -14,11 +14,11 @@ pub trait LocalStorage: Send + Sync {
     /// Read a value by key.
     ///
     /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// import { type Client, type HexString } from "@parity/truapi";
     ///
     /// export async function readLocalValue(
     ///   truapi: Client,
-    /// ): Promise<Uint8Array | undefined> {
+    /// ): Promise<HexString | undefined> {
     ///   const result = await truapi.localStorage.localStorageRead({ key: "test-key" });
     ///
     ///   if (result.isErr()) throw result.error;
@@ -40,7 +40,7 @@ pub trait LocalStorage: Send + Sync {
     /// export async function writeLocalValue(truapi: Client): Promise<void> {
     ///   const result = await truapi.localStorage.localStorageWrite({
     ///     key: "test-key",
-    ///     value: new Uint8Array(),
+    ///     value: "0x48656c6c6f",
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;

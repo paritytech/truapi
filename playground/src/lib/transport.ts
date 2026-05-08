@@ -2,16 +2,13 @@ import {
   createClient,
   createMessagePortProvider,
   createTransport,
+  type HexString,
   type Provider,
   type TrUApiClient,
   type TrUApiTransport,
   type RemoteChainHeadFollowItem,
 } from "@parity/truapi";
 
-// `Hex` was a Vec<u8> alias in earlier generated TS; the new codegen
-// inlines the underlying type, so we keep a local alias to avoid churning
-// the rest of this module.
-type Hex = Uint8Array;
 type ChainHeadEvent = RemoteChainHeadFollowItem;
 
 export type ConnectionStatus = "disconnected" | "connecting" | "connected";
@@ -243,24 +240,12 @@ type ChainHeadEventListener = (event: ChainHeadEvent) => void;
 
 export interface EphemeralFollow {
   subscriptionId: string;
-  genesisHash: Hex;
-  finalizedBlockHash: Hex;
+  genesisHash: HexString;
+  finalizedBlockHash: HexString;
   /** Subscribe to subsequent ChainHeadEvents on this follow. */
   onEvent: (listener: ChainHeadEventListener) => () => void;
   /** Send the stop frame and clear listeners. Idempotent. */
   unsubscribe: () => void;
-}
-
-export function hexToBytes(hex: string): Uint8Array {
-  if (!/^0x[0-9a-fA-F]*$/.test(hex)) {
-    throw new Error(`hexToBytes: not a hex-prefixed string: ${hex}`);
-  }
-  const body = hex.slice(2);
-  const out = new Uint8Array(body.length / 2);
-  for (let i = 0; i < body.length; i += 2) {
-    out[i / 2] = parseInt(body.slice(i, i + 2), 16);
-  }
-  return out;
 }
 
 /** Opens a one-shot `chain_head_follow`, waits for the first `Initialized`
@@ -268,21 +253,19 @@ export function hexToBytes(hex: string): Uint8Array {
  * first finalized block hash. The follow stays alive until `unsubscribe()` is
  * called; the caller is expected to do so after the dependent call settles. */
 export function openEphemeralFollow(
-  genesisHash: Hex | string,
+  genesisHash: HexString,
   withRuntime = false,
   timeoutMs = 15_000,
 ): Promise<EphemeralFollow> {
   const client = getClient();
   const listeners = new Set<ChainHeadEventListener>();
-  const genesisHashBytes =
-    typeof genesisHash === "string" ? hexToBytes(genesisHash) : genesisHash;
 
   return new Promise((resolve, reject) => {
     let settled = false;
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
     const sub = client.chainInteraction
       .chainHeadFollow({
-        request: { genesisHash: genesisHashBytes, withRuntime },
+        request: { genesisHash, withRuntime },
       })
       .subscribe({
         next: (event) => {
@@ -306,7 +289,7 @@ export function openEphemeralFollow(
             if (timeoutHandle !== null) clearTimeout(timeoutHandle);
             resolve({
               subscriptionId: sub.subscriptionId,
-              genesisHash: genesisHashBytes,
+              genesisHash,
               finalizedBlockHash,
               onEvent: (listener) => {
                 listeners.add(listener);

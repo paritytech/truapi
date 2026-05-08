@@ -6,7 +6,12 @@ export async function submitStatement(truapi: Client): Promise<void> {
   const result = await truapi.statementStore.statementStoreSubmit({
     proof: {
       tag: "Sr25519",
-      value: { signature: new Uint8Array(), signer: new Uint8Array() },
+      value: {
+        signature:
+          "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+        signer:
+          "0x0000000000000000000000000000000000000000000000000000000000000000",
+      },
     },
     topics: [],
   });

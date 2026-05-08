@@ -30,7 +30,7 @@ export const services: ServiceInfo[] = [
         description: "Queries whether the host supports a specific feature.",
         requestDescription: "HostFeatureSupportedRequest",
         defaultRequest:
-          '{\n  "tag": "Chain",\n  "value": {\n    "genesisHash": "0x"\n  }\n}',
+          '{\n  "tag": "Chain",\n  "value": {\n    "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2"\n  }\n}',
       },
       {
         name: "host_push_notification",
@@ -83,7 +83,7 @@ export const services: ServiceInfo[] = [
         type: "unary",
         description: "Write a value to a key.",
         requestDescription: "HostLocalStorageWriteRequest",
-        defaultRequest: '{\n  "key": "test-key",\n  "value": "0x"\n}',
+        defaultRequest: '{\n  "key": "test-key",\n  "value": "0x48656c6c6f"\n}',
       },
       {
         name: "host_local_storage_clear",
@@ -125,7 +125,7 @@ export const services: ServiceInfo[] = [
         description: "Generate a ring VRF proof for a product account.",
         requestDescription: "HostAccountCreateProofRequest",
         defaultRequest:
-          '{\n  "context": "0x",\n  "productAccountId": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  },\n  "ringLocation": {\n    "genesisHash": "0x",\n    "hints": {\n      "palletInstance": 42\n    },\n    "ringRootHash": "0x"\n  }\n}',
+          '{\n  "context": "0x",\n  "productAccountId": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  },\n  "ringLocation": {\n    "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    "hints": {\n      "palletInstance": 42\n    },\n    "ringRootHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2"\n  }\n}',
       },
       {
         name: "host_get_legacy_accounts",
@@ -150,7 +150,7 @@ export const services: ServiceInfo[] = [
         description: "Construct a signed extrinsic for a product account.",
         requestDescription: "HostCreateTransactionRequest",
         defaultRequest:
-          '{\n  "payload": {\n    "tag": "V1",\n    "value": {\n      "callData": "0x",\n      "context": {\n        "bestBlockHeight": 0,\n        "metadata": "0x",\n        "tokenDecimals": 10,\n        "tokenSymbol": "DOT"\n      },\n      "extensions": [],\n      "txExtVersion": 0\n    }\n  },\n  "productAccountId": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  }\n}',
+          '{\n  "payload": {\n    "tag": "V1",\n    "value": {\n      "callData": "0x0000",\n      "context": {\n        "bestBlockHeight": 0,\n        "metadata": "0x",\n        "tokenDecimals": 10,\n        "tokenSymbol": "DOT"\n      },\n      "extensions": [],\n      "txExtVersion": 0\n    }\n  },\n  "productAccountId": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  }\n}',
       },
       {
         name: "host_create_transaction_with_legacy_account",
@@ -158,7 +158,7 @@ export const services: ServiceInfo[] = [
         description: "Construct a signed extrinsic for a non-product account.",
         requestDescription: "HostCreateTransactionWithLegacyAccountRequest",
         defaultRequest:
-          '{\n  "payload": {\n    "tag": "V1",\n    "value": {\n      "callData": "0x",\n      "context": {\n        "bestBlockHeight": 0,\n        "metadata": "0x",\n        "tokenDecimals": 10,\n        "tokenSymbol": "DOT"\n      },\n      "extensions": [],\n      "txExtVersion": 0\n    }\n  }\n}',
+          '{\n  "payload": {\n    "tag": "V1",\n    "value": {\n      "callData": "0x0000",\n      "context": {\n        "bestBlockHeight": 0,\n        "metadata": "0x",\n        "tokenDecimals": 10,\n        "tokenSymbol": "DOT"\n      },\n      "extensions": [],\n      "txExtVersion": 0\n    }\n  }\n}',
       },
       {
         name: "host_sign_raw",
@@ -166,7 +166,7 @@ export const services: ServiceInfo[] = [
         description: "Sign raw bytes or a message.",
         requestDescription: "HostSignRawRequest",
         defaultRequest:
-          '{\n  "account": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  },\n  "payload": {\n    "tag": "Bytes",\n    "value": {\n      "bytes": "0x"\n    }\n  }\n}',
+          '{\n  "account": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  },\n  "payload": {\n    "tag": "Bytes",\n    "value": {\n      "bytes": "0x48656c6c6f2c20776f726c6421"\n    }\n  }\n}',
       },
       {
         name: "host_sign_payload",
@@ -174,7 +174,7 @@ export const services: ServiceInfo[] = [
         description: "Sign a Substrate extrinsic payload.",
         requestDescription: "HostSignPayloadRequest",
         defaultRequest:
-          '{\n  "account": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  },\n  "blockHash": "0x",\n  "blockNumber": "0x",\n  "era": "0x",\n  "genesisHash": "0x",\n  "method": "0x",\n  "nonce": "0x",\n  "signedExtensions": [],\n  "specVersion": "0x",\n  "tip": "0x",\n  "transactionVersion": "0x",\n  "version": 4\n}',
+          '{\n  "account": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  },\n  "blockHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "blockNumber": "0x00000000",\n  "era": "0x00",\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "method": "0x00003448656c6c6f2c20776f726c6421",\n  "nonce": "0x00000000",\n  "signedExtensions": [],\n  "specVersion": "0x00000000",\n  "tip": "0x00000000000000000000000000000000",\n  "transactionVersion": "0x00000000",\n  "version": 4\n}',
       },
     ],
   },
@@ -261,7 +261,7 @@ export const services: ServiceInfo[] = [
           "Submit a signed statement to the network. The request body is the\n[`SignedStatement`](crate::v01::SignedStatement) directly (no wrapping\nstruct), matching upstream `triangle-js-sdks`.",
         requestDescription: "SignedStatement",
         defaultRequest:
-          '{\n  "proof": {\n    "tag": "Sr25519",\n    "value": {\n      "signature": "0x",\n      "signer": "0x"\n    }\n  },\n  "topics": []\n}',
+          '{\n  "proof": {\n    "tag": "Sr25519",\n    "value": {\n      "signature": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",\n      "signer": "0x0000000000000000000000000000000000000000000000000000000000000000"\n    }\n  },\n  "topics": []\n}',
       },
     ],
   },
@@ -273,7 +273,8 @@ export const services: ServiceInfo[] = [
         type: "subscription",
         description: "Subscribe to preimage lookups for a given key.",
         requestDescription: "RemotePreimageLookupSubscribeRequest",
-        defaultRequest: '{\n  "key": "0x"\n}',
+        defaultRequest:
+          '{\n  "key": "0x0000000000000000000000000000000000000000000000000000000000000000"\n}',
       },
     ],
   },
@@ -285,7 +286,8 @@ export const services: ServiceInfo[] = [
         type: "subscription",
         description: "Follow the chain head and receive block events.",
         requestDescription: "RemoteChainHeadFollowRequest",
-        defaultRequest: '{\n  "genesisHash": "0x",\n  "withRuntime": false\n}',
+        defaultRequest:
+          '{\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "withRuntime": false\n}',
       },
       {
         name: "remote_chain_head_header",
@@ -293,7 +295,7 @@ export const services: ServiceInfo[] = [
         description: "Fetch a block header.",
         requestDescription: "RemoteChainHeadHeaderRequest",
         defaultRequest:
-          '{\n  "followSubscriptionId": "",\n  "genesisHash": "0x",\n  "hash": "0x"\n}',
+          '{\n  "followSubscriptionId": "",\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "hash": "0x0000000000000000000000000000000000000000000000000000000000000000"\n}',
       },
       {
         name: "remote_chain_head_body",
@@ -301,7 +303,7 @@ export const services: ServiceInfo[] = [
         description: "Fetch a block body.",
         requestDescription: "RemoteChainHeadBodyRequest",
         defaultRequest:
-          '{\n  "followSubscriptionId": "",\n  "genesisHash": "0x",\n  "hash": "0x"\n}',
+          '{\n  "followSubscriptionId": "",\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "hash": "0x0000000000000000000000000000000000000000000000000000000000000000"\n}',
       },
       {
         name: "remote_chain_head_storage",
@@ -309,7 +311,7 @@ export const services: ServiceInfo[] = [
         description: "Query runtime storage at a specific block.",
         requestDescription: "RemoteChainHeadStorageRequest",
         defaultRequest:
-          '{\n  "followSubscriptionId": "",\n  "genesisHash": "0x",\n  "hash": "0x",\n  "items": [\n    {\n      "key": "0x",\n      "queryType": {\n        "tag": "Value"\n      }\n    }\n  ]\n}',
+          '{\n  "followSubscriptionId": "",\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "hash": "0x0000000000000000000000000000000000000000000000000000000000000000",\n  "items": [\n    {\n      "key": "0x26aa394eea5630e07c48ae0c9558cef7",\n      "queryType": {\n        "tag": "Value"\n      }\n    }\n  ]\n}',
       },
       {
         name: "remote_chain_head_call",
@@ -317,7 +319,7 @@ export const services: ServiceInfo[] = [
         description: "Invoke a runtime call at a specific block.",
         requestDescription: "RemoteChainHeadCallRequest",
         defaultRequest:
-          '{\n  "callParameters": "0x",\n  "followSubscriptionId": "",\n  "function": "Core_version",\n  "genesisHash": "0x",\n  "hash": "0x"\n}',
+          '{\n  "callParameters": "0x",\n  "followSubscriptionId": "",\n  "function": "Core_version",\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "hash": "0x0000000000000000000000000000000000000000000000000000000000000000"\n}',
       },
       {
         name: "remote_chain_head_unpin",
@@ -325,7 +327,7 @@ export const services: ServiceInfo[] = [
         description: "Release pinned blocks.",
         requestDescription: "RemoteChainHeadUnpinRequest",
         defaultRequest:
-          '{\n  "followSubscriptionId": "",\n  "genesisHash": "0x",\n  "hashes": [\n    "0x"\n  ]\n}',
+          '{\n  "followSubscriptionId": "",\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "hashes": [\n    "0x0000000000000000000000000000000000000000000000000000000000000000"\n  ]\n}',
       },
       {
         name: "remote_chain_head_continue",
@@ -333,7 +335,7 @@ export const services: ServiceInfo[] = [
         description: "Continue a paused chain-head operation.",
         requestDescription: "RemoteChainHeadContinueRequest",
         defaultRequest:
-          '{\n  "followSubscriptionId": "",\n  "genesisHash": "0x",\n  "operationId": "op-id"\n}',
+          '{\n  "followSubscriptionId": "",\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "operationId": "op-id"\n}',
       },
       {
         name: "remote_chain_head_stop_operation",
@@ -341,35 +343,39 @@ export const services: ServiceInfo[] = [
         description: "Stop a chain-head operation.",
         requestDescription: "RemoteChainHeadStopOperationRequest",
         defaultRequest:
-          '{\n  "followSubscriptionId": "",\n  "genesisHash": "0x",\n  "operationId": "op-id"\n}',
+          '{\n  "followSubscriptionId": "",\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "operationId": "op-id"\n}',
       },
       {
         name: "remote_chain_spec_genesis_hash",
         type: "unary",
         description: "Fetch the canonical genesis hash for a chain.",
         requestDescription: "RemoteChainSpecGenesisHashRequest",
-        defaultRequest: '{\n  "genesisHash": "0x"\n}',
+        defaultRequest:
+          '{\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2"\n}',
       },
       {
         name: "remote_chain_spec_chain_name",
         type: "unary",
         description: "Fetch the display name of a chain.",
         requestDescription: "RemoteChainSpecChainNameRequest",
-        defaultRequest: '{\n  "genesisHash": "0x"\n}',
+        defaultRequest:
+          '{\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2"\n}',
       },
       {
         name: "remote_chain_spec_properties",
         type: "unary",
         description: "Fetch the JSON-encoded properties of a chain.",
         requestDescription: "RemoteChainSpecPropertiesRequest",
-        defaultRequest: '{\n  "genesisHash": "0x"\n}',
+        defaultRequest:
+          '{\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2"\n}',
       },
       {
         name: "remote_chain_transaction_broadcast",
         type: "unary",
         description: "Broadcast a signed transaction.",
         requestDescription: "RemoteChainTransactionBroadcastRequest",
-        defaultRequest: '{\n  "genesisHash": "0x",\n  "transaction": "0x"\n}',
+        defaultRequest:
+          '{\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "transaction": "0x"\n}',
       },
       {
         name: "remote_chain_transaction_stop",
@@ -377,7 +383,7 @@ export const services: ServiceInfo[] = [
         description: "Stop a transaction broadcast.",
         requestDescription: "RemoteChainTransactionStopRequest",
         defaultRequest:
-          '{\n  "genesisHash": "0x",\n  "operationId": "op-id"\n}',
+          '{\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "operationId": "op-id"\n}',
       },
     ],
   },
@@ -396,14 +402,15 @@ export const services: ServiceInfo[] = [
         description: "Top up the user's payment balance.",
         requestDescription: "HostPaymentTopUpRequest",
         defaultRequest:
-          '{\n  "amount": "0n",\n  "source": {\n    "tag": "ProductAccount",\n    "value": {\n      "derivationIndex": 0\n    }\n  }\n}',
+          '{\n  "amount": "1000000000000n",\n  "source": {\n    "tag": "ProductAccount",\n    "value": {\n      "derivationIndex": 0\n    }\n  }\n}',
       },
       {
         name: "host_payment_request",
         type: "unary",
         description: "Request a payment from the user.",
         requestDescription: "HostPaymentRequestRequest",
-        defaultRequest: '{\n  "amount": "0n",\n  "destination": "0x"\n}',
+        defaultRequest:
+          '{\n  "amount": "1000000000000n",\n  "destination": "0x0000000000000000000000000000000000000000000000000000000000000000"\n}',
       },
       {
         name: "host_payment_status_subscribe",
@@ -424,7 +431,7 @@ export const services: ServiceInfo[] = [
         description:
           "Derive 32 bytes of entropy from the user's root BIP-39 entropy for the\ngiven key.",
         requestDescription: "HostDeriveEntropyRequest",
-        defaultRequest: '{\n  "context": "0x"\n}',
+        defaultRequest: '{\n  "context": "0x70726f647563742d6b6579"\n}',
       },
     ],
   },

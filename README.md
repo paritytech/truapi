@@ -1,32 +1,78 @@
+<div align="center">
+
 # TrUAPI
 
-The TrUAPI (Triangle User-Agent Programming Interface) Protocol mediates all communication between a host application and products running in sandboxes inside it.
+*The protocol that lets product webviews talk to their Polkadot host.*
 
-This repository is the single source of truth for the protocol:
+[![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](./LICENSE)
+[![CI](https://img.shields.io/github/actions/workflow/status/paritytech/truapi/ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/paritytech/truapi/actions/workflows/ci.yml)
+[![Playground](https://img.shields.io/badge/playground-live-success?style=flat-square)](https://truapi-playground.dot.li/)
 
-- **`rust/crates/truapi/`** — Rust trait and type definitions for protocol versions v0.1 and v0.2.
-- **`rust/crates/truapi-codegen/`** — code generator that turns rustdoc JSON into the TypeScript client.
-- **`rust/crates/truapi-macros/`** — proc-macro for `#[wire(id = N)]` annotations.
-- **`js/packages/truapi/`** — the typed TypeScript client (`@parity/truapi`), with `src/generated/` produced by `truapi-codegen`.
-- **`explorer/`** — static GitHub Pages documentation explorer generated from the Rust API source.
-- **`playground/`** — interactive Next.js explorer/playground for the protocol, deployed to [`truapi-playground.dot`](https://truapi-playground.dot.li/).
+</div>
 
-## Layout
+<!-- TODO: Add hero screenshot of the playground showing methods + a live call/response. Capture with a screenshot tool, save to `assets/screenshots/playground.png`, then place it here. -->
+
+TrUAPI (Triangle User-Agent Programming Interface) is the API surface that hosts like the Polkadot Desktop Browser expose to the products that run inside them. One Rust crate defines the contract, a code generator produces a typed TypeScript client, and hosts and products implement against the same shared types.
+
+## Try it
+
+The interactive playground lets you browse every method, edit request payloads, and call or subscribe to them live against a connected host.
+
+**Live:** [truapi-playground.dot.li](https://truapi-playground.dot.li/) (open from inside the Polkadot Desktop Browser)
+
+## Usage
+
+`@parity/truapi` is the low-level generated protocol client. Product apps should normally use a higher-level product SDK, such as [`paritytech/product-sdk`](https://github.com/paritytech/product-sdk), while SDK and host-integration layers can depend on this package directly.
+
+```bash
+npm install @parity/truapi
+```
+
+```ts
+import {
+  createClient,
+  createMessagePortProvider,
+  createTransport,
+} from "@parity/truapi";
+
+const transport = createTransport(createMessagePortProvider(port));
+const truapi = createClient(transport);
+
+const result = await truapi.accountManagement.accountGet({
+  productAccountId: { dotNsIdentifier: "my-product.dot", derivationIndex: 0 },
+});
+```
+
+See [`js/packages/truapi/README.md`](js/packages/truapi/README.md) for the full client reference.
+
+## Repository layout
 
 ```
 rust/crates/
-  truapi/                Rust trait + type definitions (v01, v02)
-  truapi-codegen/        rustdoc JSON → TS client + Rust dispatcher
+  truapi/                Rust trait and type definitions (v01, v02)
+  truapi-codegen/        rustdoc JSON to TypeScript client + Rust dispatcher
   truapi-macros/         #[wire(id = N)] proc-macro
 js/packages/
-  truapi/         @parity/truapi TS package
-explorer/               Vite documentation explorer for GitHub Pages
-playground/              Next.js interactive playground
-docs/                    design docs, RFCs, feature proposals
-scripts/codegen.sh       regenerate the TS client from the Rust crate
+  truapi/                @parity/truapi TypeScript client
+explorer/                Static documentation explorer (GitHub Pages)
+playground/              Interactive Next.js playground (truapi-playground.dot)
+hosts/dotli/             dotli host, vendored as a submodule
+docs/                    Design docs, RFCs, feature proposals
+scripts/codegen.sh       Regenerate the TS client from the Rust source
 ```
 
-## First-time setup
+## How it works
+
+1. The protocol is defined as Rust traits in [`rust/crates/truapi/`](rust/crates/truapi/), with each method tagged `#[wire(id = N)]` for a stable byte-level dispatch table.
+2. `truapi-codegen` reads rustdoc JSON for that crate and generates the TypeScript client in `js/packages/truapi/src/generated/`.
+3. Higher-level SDKs wrap the typed client; the transport encodes SCALE frames and ships them over `MessagePort` (or `postMessage` in iframe mode) to the host.
+4. The host decodes the frame, dispatches to the matching trait method, encodes the response, and ships it back.
+
+Wire ids are append-only: existing ids never change, so deployed products stay compatible across protocol revisions.
+
+## Develop
+
+### First-time setup
 
 ```bash
 git submodule update --init --recursive
@@ -34,28 +80,7 @@ git submodule update --init --recursive
 ( cd playground && yarn install --frozen-lockfile )
 ```
 
-## Regenerating the TS client
-
-```bash
-./scripts/codegen.sh
-```
-
-Under the hood this runs:
-
-```bash
-cargo +nightly rustdoc -p truapi -- -Z unstable-options --output-format json
-cargo run -p truapi-codegen -- \
-  --input target/doc/truapi.json \
-  --output js/packages/truapi/src/generated \
-  --playground-output js/packages/truapi/src/playground \
-  --explorer-output js/packages/truapi/src/explorer
-```
-
-Commit the regenerated `src/generated/` alongside the Rust changes.
-
-## Local development
-
-### Rust
+### Rust workspace
 
 ```bash
 cargo build --workspace
@@ -68,7 +93,6 @@ cargo test --workspace
 
 ```bash
 cd js/packages/truapi
-npm install
 npm run build
 npm test
 ```
@@ -77,31 +101,53 @@ npm test
 
 ```bash
 cd playground
-yarn install --frozen-lockfile
 yarn dev
 ```
 
-Open `https://dot.li/localhost:3000` inside the Polkadot Desktop Host. See [`playground/README.md`](playground/README.md) for full deployment instructions.
+Open `https://dot.li/localhost:3000` inside the Polkadot Desktop Host. See [`playground/README.md`](playground/README.md) for deployment.
 
 ### Explorer
 
 ```bash
 cd explorer
-npm install
 npm run dev
 ```
 
 The explorer is a static GitHub Pages app. Its registry data is generated into `@parity/truapi/explorer/registry`.
 
-## Deployment
+## Regenerate the TypeScript client
 
-Pushes to `main` trigger [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml), which builds the playground and publishes its static export to the `truapi-playground.dot` DotNS name.
+When the Rust trait surface changes:
+
+```bash
+./scripts/codegen.sh
+```
+
+This repopulates `js/packages/truapi/src/generated/` (and the playground/explorer metadata under the same package). Commit the regenerated files alongside the Rust changes.
+
+After regenerating, refresh the playground's frozen snapshot:
+
+```bash
+( cd js/packages/truapi && npm run build )
+( cd playground && rm -rf node_modules/@parity && yarn install )
+```
 
 ## Protocol versions
 
-- **v0.1** — initial protocol version.
-- **v0.2** — current protocol version. See [`docs/design/v02-changes.md`](docs/design/v02-changes.md) for the rationale behind each change.
+- **v0.1**: initial protocol version.
+- **v0.2**: current protocol version. See [`docs/design/v02-changes.md`](docs/design/v02-changes.md) for the rationale behind each change.
+
+## Deploy
+
+Pushes to `main` build and deploy:
+
+- The playground to [`truapi-playground.dot`](https://truapi-playground.dot.li/) via [`.github/workflows/deploy-playground.yml`](.github/workflows/deploy-playground.yml).
+- The explorer to GitHub Pages via [`.github/workflows/deploy-explorer.yml`](.github/workflows/deploy-explorer.yml).
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for issue reports, feature proposals, and the RFC process.
 
 ## License
 
-MIT
+[MIT](./LICENSE)

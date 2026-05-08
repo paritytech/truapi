@@ -12,7 +12,7 @@ export function renderCustomChatMessage(truapi: Client): Subscription {
       request: {
         messageId: "msg-1",
         messageType: "custom-render-demo",
-        payload: new Uint8Array(),
+        payload: "0x",
       },
     })
     .subscribe({

@@ -6,7 +6,7 @@ export async function deriveEntropy(
   truapi: Client,
 ): Promise<HostDeriveEntropyResponse> {
   const result = await truapi.entropyDerivation.deriveEntropy({
-    context: new Uint8Array(),
+    context: "0x70726f647563742d6b6579",
   });
 
   if (result.isErr()) throw result.error;

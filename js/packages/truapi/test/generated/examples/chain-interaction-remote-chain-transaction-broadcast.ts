@@ -9,8 +9,9 @@ export async function broadcastTransaction(
   truapi: Client,
 ): Promise<RemoteChainTransactionBroadcastResponse> {
   const result = await truapi.chainInteraction.chainTransactionBroadcast({
-    genesisHash: new Uint8Array(),
-    transaction: new Uint8Array(),
+    genesisHash:
+      "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    transaction: "0x",
   });
 
   if (result.isErr()) throw result.error;

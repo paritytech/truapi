@@ -4,9 +4,12 @@ import { type Client } from "@parity/truapi";
 
 export async function unpinChainHead(truapi: Client): Promise<void> {
   const result = await truapi.chainInteraction.chainHeadUnpin({
-    genesisHash: new Uint8Array(),
+    genesisHash:
+      "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     followSubscriptionId: "",
-    hashes: [new Uint8Array()],
+    hashes: [
+      "0x0000000000000000000000000000000000000000000000000000000000000000",
+    ],
   });
 
   if (result.isErr()) throw result.error;

@@ -9,11 +9,15 @@ export async function getChainHeadStorage(
   truapi: Client,
 ): Promise<RemoteChainHeadStorageResponse> {
   const result = await truapi.chainInteraction.chainHeadStorage({
-    genesisHash: new Uint8Array(),
+    genesisHash:
+      "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     followSubscriptionId: "",
-    hash: new Uint8Array(),
+    hash: "0x0000000000000000000000000000000000000000000000000000000000000000",
     items: [
-      { key: new Uint8Array(), queryType: { tag: "Value", value: undefined } },
+      {
+        key: "0x26aa394eea5630e07c48ae0c9558cef7",
+        queryType: { tag: "Value", value: undefined },
+      },
     ],
   });
 

@@ -197,7 +197,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Queries whether the host supports a specific feature.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function supportsChain(truapi: Client): Promise<boolean> {\n  const result = await truapi.trUApiCalls.featureSupported({\n    tag: "Chain",\n    value: { genesisHash: new Uint8Array() },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value.supported;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function supportsChain(truapi: Client): Promise<boolean> {\n  const result = await truapi.trUApiCalls.featureSupported({\n    tag: "Chain",\n    value: {\n      genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value.supported;\n}',
       },
       {
         id: "host_push_notification",
@@ -267,7 +267,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostLocalStorageReadError",
         description: "Read a value by key.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function readLocalValue(\n  truapi: Client,\n): Promise<Uint8Array | undefined> {\n  const result = await truapi.localStorage.localStorageRead({ key: "test-key" });\n\n  if (result.isErr()) throw result.error;\n  return result.value.value;\n}',
+          'import { type Client, type HexString } from "@parity/truapi";\n\nexport async function readLocalValue(\n  truapi: Client,\n): Promise<HexString | undefined> {\n  const result = await truapi.localStorage.localStorageRead({ key: "test-key" });\n\n  if (result.isErr()) throw result.error;\n  return result.value.value;\n}',
       },
       {
         id: "host_local_storage_write",
@@ -281,7 +281,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostLocalStorageReadError",
         description: "Write a value to a key.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function writeLocalValue(truapi: Client): Promise<void> {\n  const result = await truapi.localStorage.localStorageWrite({\n    key: "test-key",\n    value: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function writeLocalValue(truapi: Client): Promise<void> {\n  const result = await truapi.localStorage.localStorageWrite({\n    key: "test-key",\n    value: "0x48656c6c6f",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_local_storage_clear",
@@ -350,7 +350,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostAccountCreateProofError",
         description: "Generate a ring VRF proof for a product account.",
         usageExample:
-          'import {\n  type Client,\n  type HostAccountCreateProofResponse,\n} from "@parity/truapi";\n\nexport async function createAccountProof(\n  truapi: Client,\n): Promise<HostAccountCreateProofResponse> {\n  const result = await truapi.accountManagement.accountCreateProof({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    ringLocation: {\n      genesisHash: new Uint8Array(),\n      ringRootHash: new Uint8Array(),\n      hints: { palletInstance: 42 },\n    },\n    context: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostAccountCreateProofResponse,\n} from "@parity/truapi";\n\nexport async function createAccountProof(\n  truapi: Client,\n): Promise<HostAccountCreateProofResponse> {\n  const result = await truapi.accountManagement.accountCreateProof({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    ringLocation: {\n      genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      ringRootHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      hints: { palletInstance: 42 },\n    },\n    context: "0x",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_get_legacy_accounts",
@@ -378,7 +378,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostCreateTransactionError",
         description: "Construct a signed extrinsic for a product account.",
         usageExample:
-          'import {\n  type Client,\n  type HostCreateTransactionResponse,\n} from "@parity/truapi";\n\nexport async function createTransaction(\n  truapi: Client,\n): Promise<HostCreateTransactionResponse> {\n  const result = await truapi.signing.createTransaction({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    payload: {\n      tag: "V1",\n      value: {\n        callData: new Uint8Array(),\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: new Uint8Array(),\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostCreateTransactionResponse,\n} from "@parity/truapi";\n\nexport async function createTransaction(\n  truapi: Client,\n): Promise<HostCreateTransactionResponse> {\n  const result = await truapi.signing.createTransaction({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    payload: {\n      tag: "V1",\n      value: {\n        callData: "0x0000",\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: "0x",\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_create_transaction_with_legacy_account",
@@ -392,7 +392,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostCreateTransactionError",
         description: "Construct a signed extrinsic for a non-product account.",
         usageExample:
-          'import {\n  type Client,\n  type HostCreateTransactionWithLegacyAccountResponse,\n} from "@parity/truapi";\n\nexport async function createTransactionWithLegacyAccount(\n  truapi: Client,\n): Promise<HostCreateTransactionWithLegacyAccountResponse> {\n  const result = await truapi.signing.createTransactionWithLegacyAccount({\n    payload: {\n      tag: "V1",\n      value: {\n        callData: new Uint8Array(),\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: new Uint8Array(),\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostCreateTransactionWithLegacyAccountResponse,\n} from "@parity/truapi";\n\nexport async function createTransactionWithLegacyAccount(\n  truapi: Client,\n): Promise<HostCreateTransactionWithLegacyAccountResponse> {\n  const result = await truapi.signing.createTransactionWithLegacyAccount({\n    payload: {\n      tag: "V1",\n      value: {\n        callData: "0x0000",\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: "0x",\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_create_room",
@@ -474,7 +474,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Subscribe to custom message render requests from the host. Each\nemitted item is a [`CustomRendererNode`](crate::v01::CustomRendererNode)\ntree describing the rendered UI.",
         usageExample:
-          'import {\n  type Client,\n  type CustomRendererNode,\n  type Subscription,\n} from "@parity/truapi";\n\nexport function renderCustomChatMessage(truapi: Client): Subscription {\n  return truapi.chat\n    .chatCustomMessageRenderSubscribe({\n      request: {\n        messageId: "msg-1",\n        messageType: "custom-render-demo",\n        payload: new Uint8Array(),\n      },\n    })\n    .subscribe({\n      next: (node: CustomRendererNode) => console.log(node),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
+          'import {\n  type Client,\n  type CustomRendererNode,\n  type Subscription,\n} from "@parity/truapi";\n\nexport function renderCustomChatMessage(truapi: Client): Subscription {\n  return truapi.chat\n    .chatCustomMessageRenderSubscribe({\n      request: {\n        messageId: "msg-1",\n        messageType: "custom-render-demo",\n        payload: "0x",\n      },\n    })\n    .subscribe({\n      next: (node: CustomRendererNode) => console.log(node),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_statement_store_subscribe",
@@ -516,7 +516,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Submit a signed statement to the network. The request body is the\n[`SignedStatement`](crate::v01::SignedStatement) directly (no wrapping\nstruct), matching upstream `triangle-js-sdks`.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function submitStatement(truapi: Client): Promise<void> {\n  const result = await truapi.statementStore.statementStoreSubmit({\n    proof: {\n      tag: "Sr25519",\n      value: { signature: new Uint8Array(), signer: new Uint8Array() },\n    },\n    topics: [],\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function submitStatement(truapi: Client): Promise<void> {\n  const result = await truapi.statementStore.statementStoreSubmit({\n    proof: {\n      tag: "Sr25519",\n      value: {\n        signature: "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",\n        signer: "0x0000000000000000000000000000000000000000000000000000000000000000",\n      },\n    },\n    topics: [],\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_preimage_lookup_subscribe",
@@ -529,7 +529,7 @@ export const versions: ExplorerVersion[] = [
         response: "RemotePreimageLookupSubscribeItem",
         description: "Subscribe to preimage lookups for a given key.",
         usageExample:
-          'import {\n  type Client,\n  type Subscription,\n  type RemotePreimageLookupSubscribeItem,\n} from "@parity/truapi";\n\nexport function lookupPreimage(truapi: Client): Subscription {\n  return truapi.preimage\n    .preimageLookupSubscribe({\n      request: { key: new Uint8Array() },\n    })\n    .subscribe({\n      next: (item: RemotePreimageLookupSubscribeItem) =>\n        console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
+          'import {\n  type Client,\n  type Subscription,\n  type RemotePreimageLookupSubscribeItem,\n} from "@parity/truapi";\n\nexport function lookupPreimage(truapi: Client): Subscription {\n  return truapi.preimage\n    .preimageLookupSubscribe({\n      request: {\n        key: "0x0000000000000000000000000000000000000000000000000000000000000000",\n      },\n    })\n    .subscribe({\n      next: (item: RemotePreimageLookupSubscribeItem) =>\n        console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_chain_head_follow",
@@ -542,7 +542,7 @@ export const versions: ExplorerVersion[] = [
         response: "RemoteChainHeadFollowItem",
         description: "Follow the chain head and receive block events.",
         usageExample:
-          'import {\n  type Client,\n  type Subscription,\n  type RemoteChainHeadFollowItem,\n} from "@parity/truapi";\n\nexport function followChainHead(truapi: Client): Subscription {\n  return truapi.chainInteraction\n    .chainHeadFollow({\n      request: { genesisHash: new Uint8Array(), withRuntime: false },\n    })\n    .subscribe({\n      next: (item: RemoteChainHeadFollowItem) => console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
+          'import {\n  type Client,\n  type Subscription,\n  type RemoteChainHeadFollowItem,\n} from "@parity/truapi";\n\nexport function followChainHead(truapi: Client): Subscription {\n  return truapi.chainInteraction\n    .chainHeadFollow({\n      request: {\n        genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n        withRuntime: false,\n      },\n    })\n    .subscribe({\n      next: (item: RemoteChainHeadFollowItem) => console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_chain_head_header",
@@ -556,7 +556,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Fetch a block header.",
         usageExample:
-          'import {\n  type Client,\n  type RemoteChainHeadHeaderResponse,\n} from "@parity/truapi";\n\nexport async function getChainHeadHeader(\n  truapi: Client,\n): Promise<RemoteChainHeadHeaderResponse> {\n  const result = await truapi.chainInteraction.chainHeadHeader({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainHeadHeaderResponse,\n} from "@parity/truapi";\n\nexport async function getChainHeadHeader(\n  truapi: Client,\n): Promise<RemoteChainHeadHeaderResponse> {\n  const result = await truapi.chainInteraction.chainHeadHeader({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    hash: "0x0000000000000000000000000000000000000000000000000000000000000000",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_body",
@@ -570,7 +570,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Fetch a block body.",
         usageExample:
-          'import {\n  type Client,\n  type RemoteChainHeadBodyResponse,\n} from "@parity/truapi";\n\nexport async function getChainHeadBody(\n  truapi: Client,\n): Promise<RemoteChainHeadBodyResponse> {\n  const result = await truapi.chainInteraction.chainHeadBody({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainHeadBodyResponse,\n} from "@parity/truapi";\n\nexport async function getChainHeadBody(\n  truapi: Client,\n): Promise<RemoteChainHeadBodyResponse> {\n  const result = await truapi.chainInteraction.chainHeadBody({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    hash: "0x0000000000000000000000000000000000000000000000000000000000000000",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_storage",
@@ -584,7 +584,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Query runtime storage at a specific block.",
         usageExample:
-          'import {\n  type Client,\n  type RemoteChainHeadStorageResponse,\n} from "@parity/truapi";\n\nexport async function getChainHeadStorage(\n  truapi: Client,\n): Promise<RemoteChainHeadStorageResponse> {\n  const result = await truapi.chainInteraction.chainHeadStorage({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n    items: [\n      { key: new Uint8Array(), queryType: { tag: "Value", value: undefined } },\n    ],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainHeadStorageResponse,\n} from "@parity/truapi";\n\nexport async function getChainHeadStorage(\n  truapi: Client,\n): Promise<RemoteChainHeadStorageResponse> {\n  const result = await truapi.chainInteraction.chainHeadStorage({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    hash: "0x0000000000000000000000000000000000000000000000000000000000000000",\n    items: [\n      {\n        key: "0x26aa394eea5630e07c48ae0c9558cef7",\n        queryType: { tag: "Value", value: undefined },\n      },\n    ],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_call",
@@ -598,7 +598,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Invoke a runtime call at a specific block.",
         usageExample:
-          'import {\n  type Client,\n  type RemoteChainHeadCallResponse,\n} from "@parity/truapi";\n\nexport async function callChainHeadRuntime(\n  truapi: Client,\n): Promise<RemoteChainHeadCallResponse> {\n  const result = await truapi.chainInteraction.chainHeadCall({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n    function: "Core_version",\n    callParameters: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainHeadCallResponse,\n} from "@parity/truapi";\n\nexport async function callChainHeadRuntime(\n  truapi: Client,\n): Promise<RemoteChainHeadCallResponse> {\n  const result = await truapi.chainInteraction.chainHeadCall({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    hash: "0x0000000000000000000000000000000000000000000000000000000000000000",\n    function: "Core_version",\n    callParameters: "0x",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_unpin",
@@ -612,7 +612,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Release pinned blocks.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function unpinChainHead(truapi: Client): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadUnpin({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hashes: [new Uint8Array()],\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function unpinChainHead(truapi: Client): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadUnpin({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    hashes: [\n      "0x0000000000000000000000000000000000000000000000000000000000000000",\n    ],\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_chain_head_continue",
@@ -626,7 +626,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Continue a paused chain-head operation.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function continueChainHeadOperation(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadContinue({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function continueChainHeadOperation(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadContinue({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_chain_head_stop_operation",
@@ -640,7 +640,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Stop a chain-head operation.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function stopChainHeadOperation(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadStopOperation({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function stopChainHeadOperation(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadStopOperation({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_chain_spec_genesis_hash",
@@ -654,7 +654,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Fetch the canonical genesis hash for a chain.",
         usageExample:
-          'import {\n  type Client,\n  type RemoteChainSpecGenesisHashResponse,\n} from "@parity/truapi";\n\nexport async function getChainGenesisHash(\n  truapi: Client,\n): Promise<RemoteChainSpecGenesisHashResponse> {\n  const result = await truapi.chainInteraction.chainSpecGenesisHash({\n    genesisHash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainSpecGenesisHashResponse,\n} from "@parity/truapi";\n\nexport async function getChainGenesisHash(\n  truapi: Client,\n): Promise<RemoteChainSpecGenesisHashResponse> {\n  const result = await truapi.chainInteraction.chainSpecGenesisHash({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_spec_chain_name",
@@ -668,7 +668,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Fetch the display name of a chain.",
         usageExample:
-          'import {\n  type Client,\n  type RemoteChainSpecChainNameResponse,\n} from "@parity/truapi";\n\nexport async function getChainName(\n  truapi: Client,\n): Promise<RemoteChainSpecChainNameResponse> {\n  const result = await truapi.chainInteraction.chainSpecChainName({\n    genesisHash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainSpecChainNameResponse,\n} from "@parity/truapi";\n\nexport async function getChainName(\n  truapi: Client,\n): Promise<RemoteChainSpecChainNameResponse> {\n  const result = await truapi.chainInteraction.chainSpecChainName({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_spec_properties",
@@ -682,7 +682,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Fetch the JSON-encoded properties of a chain.",
         usageExample:
-          'import {\n  type Client,\n  type RemoteChainSpecPropertiesResponse,\n} from "@parity/truapi";\n\nexport async function getChainProperties(\n  truapi: Client,\n): Promise<RemoteChainSpecPropertiesResponse> {\n  const result = await truapi.chainInteraction.chainSpecProperties({\n    genesisHash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainSpecPropertiesResponse,\n} from "@parity/truapi";\n\nexport async function getChainProperties(\n  truapi: Client,\n): Promise<RemoteChainSpecPropertiesResponse> {\n  const result = await truapi.chainInteraction.chainSpecProperties({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_transaction_broadcast",
@@ -696,7 +696,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Broadcast a signed transaction.",
         usageExample:
-          'import {\n  type Client,\n  type RemoteChainTransactionBroadcastResponse,\n} from "@parity/truapi";\n\nexport async function broadcastTransaction(\n  truapi: Client,\n): Promise<RemoteChainTransactionBroadcastResponse> {\n  const result = await truapi.chainInteraction.chainTransactionBroadcast({\n    genesisHash: new Uint8Array(),\n    transaction: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainTransactionBroadcastResponse,\n} from "@parity/truapi";\n\nexport async function broadcastTransaction(\n  truapi: Client,\n): Promise<RemoteChainTransactionBroadcastResponse> {\n  const result = await truapi.chainInteraction.chainTransactionBroadcast({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    transaction: "0x",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_transaction_stop",
@@ -710,7 +710,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Stop a transaction broadcast.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function stopTransactionBroadcast(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainTransactionStop({\n    genesisHash: new Uint8Array(),\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function stopTransactionBroadcast(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainTransactionStop({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_sign_raw",
@@ -724,7 +724,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostSignPayloadError",
         description: "Sign raw bytes or a message.",
         usageExample:
-          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signRawBytes(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signRaw({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    payload: { tag: "Bytes", value: { bytes: new Uint8Array() } },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signRawBytes(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signRaw({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    payload: {\n      tag: "Bytes",\n      value: {\n        bytes: "0x48656c6c6f2c20776f726c6421",\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_sign_payload",
@@ -738,7 +738,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostSignPayloadError",
         description: "Sign a Substrate extrinsic payload.",
         usageExample:
-          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signPayload(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signPayload({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    blockHash: new Uint8Array(),\n    blockNumber: new Uint8Array(),\n    era: new Uint8Array(),\n    genesisHash: new Uint8Array(),\n    method: new Uint8Array(),\n    nonce: new Uint8Array(),\n    signedExtensions: [],\n    specVersion: new Uint8Array(),\n    tip: new Uint8Array(),\n    transactionVersion: new Uint8Array(),\n    version: 4,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signPayload(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signPayload({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    blockNumber: "0x00000000",\n    era: "0x00",\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    method: "0x00003448656c6c6f2c20776f726c6421",\n    nonce: "0x00000000",\n    signedExtensions: [],\n    specVersion: "0x00000000",\n    tip: "0x00000000000000000000000000000000",\n    transactionVersion: "0x00000000",\n    version: 4,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
     ],
     dataTypes: [
@@ -746,15 +746,14 @@ export const versions: ExplorerVersion[] = [
         id: "Account",
         name: "Account",
         category: "struct",
-        definition:
-          "interface Account { publicKey: Uint8Array; name?: string }",
+        definition: "interface Account { publicKey: HexString; name?: string }",
         description:
           "An account with its public key and optional display name.",
         source: "shared",
         fields: [
           {
             name: "publicKey",
-            type: "Uint8Array",
+            type: "HexString",
             description: "The account public key (variable-length bytes).",
           },
           {
@@ -769,7 +768,7 @@ export const versions: ExplorerVersion[] = [
         name: "ActionTrigger",
         category: "struct",
         definition:
-          "interface ActionTrigger { messageId: string; actionId: string; payload?: Uint8Array }",
+          "interface ActionTrigger { messageId: string; actionId: string; payload?: HexString }",
         description: "Payload when a user clicks an action button.",
         source: "shared",
         fields: [
@@ -785,7 +784,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "payload",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Optional additional data.",
           },
         ],
@@ -1072,7 +1071,7 @@ export const versions: ExplorerVersion[] = [
         name: "ChatCustomMessage",
         category: "struct",
         definition:
-          "interface ChatCustomMessage { messageType: string; payload: Uint8Array }",
+          "interface ChatCustomMessage { messageType: string; payload: HexString }",
         description:
           "A custom message with application-defined type and binary payload.",
         source: "shared",
@@ -1084,7 +1083,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "payload",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Binary payload.",
           },
         ],
@@ -1622,7 +1621,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostAccountCreateProofRequest",
         category: "struct",
         definition:
-          "interface HostAccountCreateProofRequest { productAccountId: ProductAccountId; ringLocation: RingLocation; context: Uint8Array }",
+          "interface HostAccountCreateProofRequest { productAccountId: ProductAccountId; ringLocation: RingLocation; context: HexString }",
         description:
           "Request to create a ring VRF proof for a product account.",
         source: "v0.1",
@@ -1639,7 +1638,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "context",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Context bytes bound to the proof.",
           },
         ],
@@ -1649,13 +1648,13 @@ export const versions: ExplorerVersion[] = [
         name: "HostAccountCreateProofResponse",
         category: "struct",
         definition:
-          "interface HostAccountCreateProofResponse { proof: Uint8Array }",
+          "interface HostAccountCreateProofResponse { proof: HexString }",
         description: "Response containing a ring VRF proof.",
         source: "v0.1",
         fields: [
           {
             name: "proof",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Variable-length ring VRF proof bytes.",
           },
         ],
@@ -1682,19 +1681,19 @@ export const versions: ExplorerVersion[] = [
         name: "HostAccountGetAliasResponse",
         category: "struct",
         definition:
-          "interface HostAccountGetAliasResponse { context: Uint8Array; alias: Uint8Array }",
+          "interface HostAccountGetAliasResponse { context: HexString; alias: HexString }",
         description:
           "A privacy-preserving alias derived via ring VRF, bound to a specific context.",
         source: "v0.1",
         fields: [
           {
             name: "context",
-            type: "Uint8Array",
+            type: "HexString",
             description: "32-byte context identifier.",
           },
           {
             name: "alias",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Ring VRF alias (variable length).",
           },
         ],
@@ -2049,13 +2048,13 @@ export const versions: ExplorerVersion[] = [
         name: "HostCreateTransactionResponse",
         category: "struct",
         definition:
-          "interface HostCreateTransactionResponse { transaction: Uint8Array }",
+          "interface HostCreateTransactionResponse { transaction: HexString }",
         description: "Response containing a created transaction.",
         source: "v0.1",
         fields: [
           {
             name: "transaction",
-            type: "Uint8Array",
+            type: "HexString",
             description: "SCALE-encoded signed transaction.",
           },
         ],
@@ -2082,14 +2081,14 @@ export const versions: ExplorerVersion[] = [
         name: "HostCreateTransactionWithLegacyAccountResponse",
         category: "struct",
         definition:
-          "interface HostCreateTransactionWithLegacyAccountResponse { transaction: Uint8Array }",
+          "interface HostCreateTransactionWithLegacyAccountResponse { transaction: HexString }",
         description:
           "Response containing a transaction created with a non-product account.",
         source: "v0.1",
         fields: [
           {
             name: "transaction",
-            type: "Uint8Array",
+            type: "HexString",
             description: "SCALE-encoded signed transaction.",
           },
         ],
@@ -2143,13 +2142,13 @@ export const versions: ExplorerVersion[] = [
         name: "HostFeatureSupportedRequest",
         category: "enum",
         definition:
-          'type HostFeatureSupportedRequest = { tag: "Chain"; value: { genesisHash: Uint8Array } }',
+          'type HostFeatureSupportedRequest = { tag: "Chain"; value: { genesisHash: HexString } }',
         description: "Feature to check for host support.",
         source: "v0.1",
         variants: [
           {
             name: "Chain",
-            type: "{ genesisHash: Uint8Array }",
+            type: "{ genesisHash: HexString }",
             description: "Is this blockchain supported?",
           },
         ],
@@ -2282,13 +2281,13 @@ export const versions: ExplorerVersion[] = [
         name: "HostLocalStorageReadResponse",
         category: "struct",
         definition:
-          "interface HostLocalStorageReadResponse { value?: Uint8Array }",
+          "interface HostLocalStorageReadResponse { value?: HexString }",
         description: "Response containing an optional local storage value.",
         source: "v0.1",
         fields: [
           {
             name: "value",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Stored value, if present.",
           },
         ],
@@ -2298,7 +2297,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostLocalStorageWriteRequest",
         category: "struct",
         definition:
-          "interface HostLocalStorageWriteRequest { key: string; value: Uint8Array }",
+          "interface HostLocalStorageWriteRequest { key: string; value: HexString }",
         description: "Request to write a value into local storage.",
         source: "v0.1",
         fields: [
@@ -2309,7 +2308,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "value",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Value to store at the key.",
           },
         ],
@@ -2407,7 +2406,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostSignPayloadRequest",
         category: "struct",
         definition:
-          "interface HostSignPayloadRequest { address: string; blockHash: Uint8Array; blockNumber: Uint8Array; era: Uint8Array; genesisHash: Uint8Array; method: Uint8Array; nonce: Uint8Array; specVersion: Uint8Array; tip: Uint8Array; transactionVersion: Uint8Array; signedExtensions: Array<string>; version: number; assetId?: Uint8Array; metadataHash?: Uint8Array; mode?: number; withSignedTransaction?: boolean }",
+          "interface HostSignPayloadRequest { address: string; blockHash: HexString; blockNumber: HexString; era: HexString; genesisHash: HexString; method: HexString; nonce: HexString; specVersion: HexString; tip: HexString; transactionVersion: HexString; signedExtensions: Array<string>; version: number; assetId?: HexString; metadataHash?: HexString; mode?: number; withSignedTransaction?: boolean }",
         description:
           "Full Substrate extrinsic signing payload with all fields needed for signature\ngeneration.",
         source: "v0.1",
@@ -2419,47 +2418,47 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "blockHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Reference block hash.",
           },
           {
             name: "blockNumber",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Reference block number.",
           },
           {
             name: "era",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Mortality era encoding.",
           },
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
             name: "method",
-            type: "Uint8Array",
+            type: "HexString",
             description: "SCALE-encoded call data.",
           },
           {
             name: "nonce",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Account nonce.",
           },
           {
             name: "specVersion",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Runtime spec version.",
           },
           {
             name: "tip",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Transaction tip.",
           },
           {
             name: "transactionVersion",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Transaction format version.",
           },
           {
@@ -2474,12 +2473,12 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "assetId",
-            type: "Uint8Array",
+            type: "HexString",
             description: "For multi-asset tips.",
           },
           {
             name: "metadataHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "CheckMetadataHash extension.",
           },
           {
@@ -2499,18 +2498,18 @@ export const versions: ExplorerVersion[] = [
         name: "HostSignPayloadResponse",
         category: "struct",
         definition:
-          "interface HostSignPayloadResponse { signature: Uint8Array; signedTransaction?: Uint8Array }",
+          "interface HostSignPayloadResponse { signature: HexString; signedTransaction?: HexString }",
         description: "Result of a signing operation.",
         source: "v0.1",
         fields: [
           {
             name: "signature",
-            type: "Uint8Array",
+            type: "HexString",
             description: "The cryptographic signature.",
           },
           {
             name: "signedTransaction",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Full signed transaction, if requested.",
           },
         ],
@@ -2648,7 +2647,7 @@ export const versions: ExplorerVersion[] = [
         name: "ProductChatCustomMessageRenderSubscribeRequest",
         category: "struct",
         definition:
-          "interface ProductChatCustomMessageRenderSubscribeRequest { messageId: string; messageType: string; payload: Uint8Array }",
+          "interface ProductChatCustomMessageRenderSubscribeRequest { messageId: string; messageType: string; payload: HexString }",
         description:
           "Subscribe payload identifying the chat message to render. The host responds\nwith a stream of [`CustomRendererNode`] trees describing the rendered UI.",
         source: "v0.1",
@@ -2665,7 +2664,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "payload",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Binary payload.",
           },
         ],
@@ -2675,14 +2674,14 @@ export const versions: ExplorerVersion[] = [
         name: "RawPayload",
         category: "enum",
         definition:
-          'type RawPayload = { tag: "Bytes"; value: { bytes: Uint8Array } } | { tag: "Payload"; value: { payload: string } }',
+          'type RawPayload = { tag: "Bytes"; value: { bytes: HexString } } | { tag: "Payload"; value: { payload: string } }',
         description:
           "Raw data to sign -- either binary bytes or a string message.",
         source: "shared",
         variants: [
           {
             name: "Bytes",
-            type: "{ bytes: Uint8Array }",
+            type: "{ bytes: HexString }",
             description: "Raw binary data to sign.",
           },
           {
@@ -2697,14 +2696,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadBodyRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadBodyRequest { genesisHash: Uint8Array; followSubscriptionId: string; hash: Uint8Array }",
+          "interface RemoteChainHeadBodyRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_body`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -2714,7 +2713,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "hash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Block hash.",
           },
         ],
@@ -2740,14 +2739,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadCallRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadCallRequest { genesisHash: Uint8Array; followSubscriptionId: string; hash: Uint8Array; function: string; callParameters: Uint8Array }",
+          "interface RemoteChainHeadCallRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString; function: string; callParameters: HexString }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_call`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -2757,7 +2756,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "hash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Block hash.",
           },
           {
@@ -2767,7 +2766,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "callParameters",
-            type: "Uint8Array",
+            type: "HexString",
             description: "SCALE-encoded call parameters.",
           },
         ],
@@ -2794,14 +2793,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadContinueRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadContinueRequest { genesisHash: Uint8Array; followSubscriptionId: string; operationId: string }",
+          "interface RemoteChainHeadContinueRequest { genesisHash: HexString; followSubscriptionId: string; operationId: string }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_continue`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -2821,38 +2820,38 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadFollowItem",
         category: "enum",
         definition:
-          'type RemoteChainHeadFollowItem = { tag: "Initialized"; value: { finalizedBlockHashes: Array<Uint8Array>; finalizedBlockRuntime?: RuntimeType } } | { tag: "NewBlock"; value: { blockHash: Uint8Array; parentBlockHash: Uint8Array; newRuntime?: RuntimeType } } | { tag: "BestBlockChanged"; value: { bestBlockHash: Uint8Array } } | { tag: "Finalized"; value: { finalizedBlockHashes: Array<Uint8Array>; prunedBlockHashes: Array<Uint8Array> } } | { tag: "OperationBodyDone"; value: { operationId: string; value: Array<Uint8Array> } } | { tag: "OperationCallDone"; value: { operationId: string; output: Uint8Array } } | { tag: "OperationStorageItems"; value: { operationId: string; items: Array<StorageResultItem> } } | { tag: "OperationStorageDone"; value: { operationId: string } } | { tag: "OperationWaitingForContinue"; value: { operationId: string } } | { tag: "OperationInaccessible"; value: { operationId: string } } | { tag: "OperationError"; value: { operationId: string; error: string } } | { tag: "Stop"; value: undefined }',
+          'type RemoteChainHeadFollowItem = { tag: "Initialized"; value: { finalizedBlockHashes: Array<HexString>; finalizedBlockRuntime?: RuntimeType } } | { tag: "NewBlock"; value: { blockHash: HexString; parentBlockHash: HexString; newRuntime?: RuntimeType } } | { tag: "BestBlockChanged"; value: { bestBlockHash: HexString } } | { tag: "Finalized"; value: { finalizedBlockHashes: Array<HexString>; prunedBlockHashes: Array<HexString> } } | { tag: "OperationBodyDone"; value: { operationId: string; value: Array<HexString> } } | { tag: "OperationCallDone"; value: { operationId: string; output: HexString } } | { tag: "OperationStorageItems"; value: { operationId: string; items: Array<StorageResultItem> } } | { tag: "OperationStorageDone"; value: { operationId: string } } | { tag: "OperationWaitingForContinue"; value: { operationId: string } } | { tag: "OperationInaccessible"; value: { operationId: string } } | { tag: "OperationError"; value: { operationId: string; error: string } } | { tag: "Stop"; value: undefined }',
         description: "Events received when following the chain head.",
         source: "v0.1",
         variants: [
           {
             name: "Initialized",
-            type: "{ finalizedBlockHashes: Array<Uint8Array>; finalizedBlockRuntime?: RuntimeType }",
+            type: "{ finalizedBlockHashes: Array<HexString>; finalizedBlockRuntime?: RuntimeType }",
             description: "Initial state with finalized blocks.",
           },
           {
             name: "NewBlock",
-            type: "{ blockHash: Uint8Array; parentBlockHash: Uint8Array; newRuntime?: RuntimeType }",
+            type: "{ blockHash: HexString; parentBlockHash: HexString; newRuntime?: RuntimeType }",
             description: "A new block was produced.",
           },
           {
             name: "BestBlockChanged",
-            type: "{ bestBlockHash: Uint8Array }",
+            type: "{ bestBlockHash: HexString }",
             description: "Best block changed.",
           },
           {
             name: "Finalized",
-            type: "{ finalizedBlockHashes: Array<Uint8Array>; prunedBlockHashes: Array<Uint8Array> }",
+            type: "{ finalizedBlockHashes: Array<HexString>; prunedBlockHashes: Array<HexString> }",
             description: "Blocks were finalized.",
           },
           {
             name: "OperationBodyDone",
-            type: "{ operationId: string; value: Array<Uint8Array> }",
+            type: "{ operationId: string; value: Array<HexString> }",
             description: "Body fetch completed.",
           },
           {
             name: "OperationCallDone",
-            type: "{ operationId: string; output: Uint8Array }",
+            type: "{ operationId: string; output: HexString }",
             description: "Runtime call completed.",
           },
           {
@@ -2893,14 +2892,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadFollowRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadFollowRequest { genesisHash: Uint8Array; withRuntime: boolean }",
+          "interface RemoteChainHeadFollowRequest { genesisHash: HexString; withRuntime: boolean }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_follow`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -2915,14 +2914,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadHeaderRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadHeaderRequest { genesisHash: Uint8Array; followSubscriptionId: string; hash: Uint8Array }",
+          "interface RemoteChainHeadHeaderRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_header`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -2932,7 +2931,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "hash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Block hash.",
           },
         ],
@@ -2942,13 +2941,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadHeaderResponse",
         category: "struct",
         definition:
-          "interface RemoteChainHeadHeaderResponse { header?: Uint8Array }",
+          "interface RemoteChainHeadHeaderResponse { header?: HexString }",
         description: "Response containing a block header, if available.",
         source: "v0.1",
         fields: [
           {
             name: "header",
-            type: "Uint8Array",
+            type: "HexString",
             description: "SCALE-encoded block header.",
           },
         ],
@@ -2958,14 +2957,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadStopOperationRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadStopOperationRequest { genesisHash: Uint8Array; followSubscriptionId: string; operationId: string }",
+          "interface RemoteChainHeadStopOperationRequest { genesisHash: HexString; followSubscriptionId: string; operationId: string }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_stop_operation`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -2985,14 +2984,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadStorageRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadStorageRequest { genesisHash: Uint8Array; followSubscriptionId: string; hash: Uint8Array; items: Array<StorageQueryItem>; childTrie?: Uint8Array }",
+          "interface RemoteChainHeadStorageRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString; items: Array<StorageQueryItem>; childTrie?: HexString }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_storage`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -3002,7 +3001,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "hash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Block hash.",
           },
           {
@@ -3012,7 +3011,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "childTrie",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Optional child trie.",
           },
         ],
@@ -3039,14 +3038,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadUnpinRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadUnpinRequest { genesisHash: Uint8Array; followSubscriptionId: string; hashes: Array<Uint8Array> }",
+          "interface RemoteChainHeadUnpinRequest { genesisHash: HexString; followSubscriptionId: string; hashes: Array<HexString> }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_unpin`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -3056,7 +3055,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "hashes",
-            type: "Array<Uint8Array>",
+            type: "Array<HexString>",
             description: "Block hashes to unpin.",
           },
         ],
@@ -3066,13 +3065,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainSpecChainNameRequest",
         category: "struct",
         definition:
-          "interface RemoteChainSpecChainNameRequest { genesisHash: Uint8Array }",
+          "interface RemoteChainSpecChainNameRequest { genesisHash: HexString }",
         description: "Request to fetch a chain display name.",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
         ],
@@ -3098,13 +3097,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainSpecGenesisHashRequest",
         category: "struct",
         definition:
-          "interface RemoteChainSpecGenesisHashRequest { genesisHash: Uint8Array }",
+          "interface RemoteChainSpecGenesisHashRequest { genesisHash: HexString }",
         description: "Request to fetch a chain genesis hash.",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash requested by the product.",
           },
         ],
@@ -3114,13 +3113,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainSpecGenesisHashResponse",
         category: "struct",
         definition:
-          "interface RemoteChainSpecGenesisHashResponse { genesisHash: Uint8Array }",
+          "interface RemoteChainSpecGenesisHashResponse { genesisHash: HexString }",
         description: "Response containing a chain genesis hash.",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
         ],
@@ -3130,13 +3129,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainSpecPropertiesRequest",
         category: "struct",
         definition:
-          "interface RemoteChainSpecPropertiesRequest { genesisHash: Uint8Array }",
+          "interface RemoteChainSpecPropertiesRequest { genesisHash: HexString }",
         description: "Request to fetch chain properties.",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
         ],
@@ -3162,19 +3161,19 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainTransactionBroadcastRequest",
         category: "struct",
         definition:
-          "interface RemoteChainTransactionBroadcastRequest { genesisHash: Uint8Array; transaction: Uint8Array }",
+          "interface RemoteChainTransactionBroadcastRequest { genesisHash: HexString; transaction: HexString }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_broadcast`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
             name: "transaction",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Signed transaction bytes.",
           },
         ],
@@ -3201,14 +3200,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainTransactionStopRequest",
         category: "struct",
         definition:
-          "interface RemoteChainTransactionStopRequest { genesisHash: Uint8Array; operationId: string }",
+          "interface RemoteChainTransactionStopRequest { genesisHash: HexString; operationId: string }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_stop`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -3261,13 +3260,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemotePreimageLookupSubscribeItem",
         category: "struct",
         definition:
-          "interface RemotePreimageLookupSubscribeItem { value?: Uint8Array }",
+          "interface RemotePreimageLookupSubscribeItem { value?: HexString }",
         description: "Item containing an optional preimage lookup result.",
         source: "v0.1",
         fields: [
           {
             name: "value",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Preimage data, if found.",
           },
         ],
@@ -3277,13 +3276,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemotePreimageLookupSubscribeRequest",
         category: "struct",
         definition:
-          "interface RemotePreimageLookupSubscribeRequest { key: Uint8Array }",
+          "interface RemotePreimageLookupSubscribeRequest { key: HexString }",
         description: "Request to subscribe to preimage lookup results.",
         source: "v0.1",
         fields: [
           {
             name: "key",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Hash of the preimage.",
           },
         ],
@@ -3373,13 +3372,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteStatementStoreSubscribeRequest",
         category: "struct",
         definition:
-          "interface RemoteStatementStoreSubscribeRequest { topics: Array<Uint8Array> }",
+          "interface RemoteStatementStoreSubscribeRequest { topics: Array<HexString> }",
         description: "Request to subscribe to statements matching topics.",
         source: "v0.1",
         fields: [
           {
             name: "topics",
-            type: "Array<Uint8Array>",
+            type: "Array<HexString>",
             description: "Required topics.",
           },
         ],
@@ -3389,19 +3388,19 @@ export const versions: ExplorerVersion[] = [
         name: "RingLocation",
         category: "struct",
         definition:
-          "interface RingLocation { genesisHash: Uint8Array; ringRootHash: Uint8Array; hints?: RingLocationHint }",
+          "interface RingLocation { genesisHash: HexString; ringRootHash: HexString; hints?: RingLocationHint }",
         description:
           "Locates a specific ring on a specific chain for ring VRF operations.",
         source: "shared",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
             name: "ringRootHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Root hash of the ring.",
           },
           {
@@ -3555,7 +3554,7 @@ export const versions: ExplorerVersion[] = [
         name: "SignedStatement",
         category: "struct",
         definition:
-          "interface SignedStatement { proof: StatementProof; decryptionKey?: Uint8Array; expiry?: bigint; channel?: Uint8Array; topics: Array<Uint8Array>; data?: Uint8Array }",
+          "interface SignedStatement { proof: StatementProof; decryptionKey?: HexString; expiry?: bigint; channel?: HexString; topics: Array<HexString>; data?: HexString }",
         description: "A statement with a required (not optional) proof.",
         source: "shared",
         fields: [
@@ -3566,7 +3565,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "decryptionKey",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Optional decryption key.",
           },
           {
@@ -3576,17 +3575,17 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "channel",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Optional channel.",
           },
           {
             name: "topics",
-            type: "Array<Uint8Array>",
+            type: "Array<HexString>",
             description: "[u8; 32] tags.",
           },
           {
             name: "data",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Optional data payload.",
           },
         ],
@@ -3596,7 +3595,7 @@ export const versions: ExplorerVersion[] = [
         name: "Statement",
         category: "struct",
         definition:
-          "interface Statement { proof?: StatementProof; decryptionKey?: Uint8Array; expiry?: bigint; channel?: Uint8Array; topics: Array<Uint8Array>; data?: Uint8Array }",
+          "interface Statement { proof?: StatementProof; decryptionKey?: HexString; expiry?: bigint; channel?: HexString; topics: Array<HexString>; data?: HexString }",
         description: "A statement with optional proof and metadata.",
         source: "shared",
         fields: [
@@ -3607,7 +3606,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "decryptionKey",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Optional decryption key.",
           },
           {
@@ -3617,17 +3616,17 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "channel",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Optional channel.",
           },
           {
             name: "topics",
-            type: "Array<Uint8Array>",
+            type: "Array<HexString>",
             description: "[u8; 32] tags.",
           },
           {
             name: "data",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Optional data payload.",
           },
         ],
@@ -3637,28 +3636,28 @@ export const versions: ExplorerVersion[] = [
         name: "StatementProof",
         category: "enum",
         definition:
-          'type StatementProof = { tag: "Sr25519"; value: { signature: Uint8Array; signer: Uint8Array } } | { tag: "Ed25519"; value: { signature: Uint8Array; signer: Uint8Array } } | { tag: "Ecdsa"; value: { signature: Uint8Array; signer: Uint8Array } } | { tag: "OnChain"; value: { who: Uint8Array; blockHash: Uint8Array; event: bigint } }',
+          'type StatementProof = { tag: "Sr25519"; value: { signature: HexString; signer: HexString } } | { tag: "Ed25519"; value: { signature: HexString; signer: HexString } } | { tag: "Ecdsa"; value: { signature: HexString; signer: HexString } } | { tag: "OnChain"; value: { who: HexString; blockHash: HexString; event: bigint } }',
         description: "Cryptographic proof for a statement.",
         source: "shared",
         variants: [
           {
             name: "Sr25519",
-            type: "{ signature: Uint8Array; signer: Uint8Array }",
+            type: "{ signature: HexString; signer: HexString }",
             description: "Sr25519 signature proof.",
           },
           {
             name: "Ed25519",
-            type: "{ signature: Uint8Array; signer: Uint8Array }",
+            type: "{ signature: HexString; signer: HexString }",
             description: "Ed25519 signature proof.",
           },
           {
             name: "Ecdsa",
-            type: "{ signature: Uint8Array; signer: Uint8Array }",
+            type: "{ signature: HexString; signer: HexString }",
             description: "ECDSA signature proof.",
           },
           {
             name: "OnChain",
-            type: "{ who: Uint8Array; blockHash: Uint8Array; event: bigint }",
+            type: "{ who: HexString; blockHash: HexString; event: bigint }",
             description: "On-chain event proof.",
           },
         ],
@@ -3668,13 +3667,13 @@ export const versions: ExplorerVersion[] = [
         name: "StorageQueryItem",
         category: "struct",
         definition:
-          "interface StorageQueryItem { key: Uint8Array; queryType: StorageQueryType }",
+          "interface StorageQueryItem { key: HexString; queryType: StorageQueryType }",
         description: "A single storage query.",
         source: "shared",
         fields: [
           {
             name: "key",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Storage key to query.",
           },
           {
@@ -3720,28 +3719,28 @@ export const versions: ExplorerVersion[] = [
         name: "StorageResultItem",
         category: "struct",
         definition:
-          "interface StorageResultItem { key: Uint8Array; value?: Uint8Array; hash?: Uint8Array; closestDescendantMerkleValue?: Uint8Array }",
+          "interface StorageResultItem { key: HexString; value?: HexString; hash?: HexString; closestDescendantMerkleValue?: HexString }",
         description: "Result of a storage query.",
         source: "shared",
         fields: [
           {
             name: "key",
-            type: "Uint8Array",
+            type: "HexString",
             description: "The queried key.",
           },
           {
             name: "value",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Value, if requested.",
           },
           {
             name: "hash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Hash, if requested.",
           },
           {
             name: "closestDescendantMerkleValue",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Merkle value, if requested.",
           },
         ],
@@ -3798,13 +3797,13 @@ export const versions: ExplorerVersion[] = [
         name: "TxPayloadContextV1",
         category: "struct",
         definition:
-          "interface TxPayloadContextV1 { metadata: Uint8Array; tokenSymbol: string; tokenDecimals: number; bestBlockHeight: number }",
+          "interface TxPayloadContextV1 { metadata: HexString; tokenSymbol: string; tokenDecimals: number; bestBlockHeight: number }",
         description: "Context information for transaction construction.",
         source: "shared",
         fields: [
           {
             name: "metadata",
-            type: "Uint8Array",
+            type: "HexString",
             description: "`RuntimeMetadataPrefixed` blob (SCALE).",
           },
           {
@@ -3829,7 +3828,7 @@ export const versions: ExplorerVersion[] = [
         name: "TxPayloadExtensionV1",
         category: "struct",
         definition:
-          "interface TxPayloadExtensionV1 { id: string; extra: Uint8Array; additionalSigned: Uint8Array }",
+          "interface TxPayloadExtensionV1 { id: string; extra: HexString; additionalSigned: HexString }",
         description: "A signed extension for a transaction payload.",
         source: "shared",
         fields: [
@@ -3840,12 +3839,12 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "extra",
-            type: "Uint8Array",
+            type: "HexString",
             description: "SCALE-encoded extra data (in extrinsic body).",
           },
           {
             name: "additionalSigned",
-            type: "Uint8Array",
+            type: "HexString",
             description: "SCALE-encoded implicit data (signed, not in body).",
           },
         ],
@@ -3855,7 +3854,7 @@ export const versions: ExplorerVersion[] = [
         name: "TxPayloadV1",
         category: "struct",
         definition:
-          "interface TxPayloadV1 { signer?: string; callData: Uint8Array; extensions: Array<TxPayloadExtensionV1>; txExtVersion: number; context: TxPayloadContextV1 }",
+          "interface TxPayloadV1 { signer?: string; callData: HexString; extensions: Array<TxPayloadExtensionV1>; txExtVersion: number; context: TxPayloadContextV1 }",
         description:
           "Version 1 transaction payload with all data needed to construct a signed\nextrinsic.",
         source: "shared",
@@ -3867,7 +3866,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "callData",
-            type: "Uint8Array",
+            type: "HexString",
             description: "SCALE-encoded Call data.",
           },
           {
@@ -4120,7 +4119,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Queries whether the host supports a specific feature.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function supportsChain(truapi: Client): Promise<boolean> {\n  const result = await truapi.trUApiCalls.featureSupported({\n    tag: "Chain",\n    value: { genesisHash: new Uint8Array() },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value.supported;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function supportsChain(truapi: Client): Promise<boolean> {\n  const result = await truapi.trUApiCalls.featureSupported({\n    tag: "Chain",\n    value: {\n      genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value.supported;\n}',
       },
       {
         id: "host_push_notification",
@@ -4190,7 +4189,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostLocalStorageReadError",
         description: "Read a value by key.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function readLocalValue(\n  truapi: Client,\n): Promise<Uint8Array | undefined> {\n  const result = await truapi.localStorage.localStorageRead({ key: "test-key" });\n\n  if (result.isErr()) throw result.error;\n  return result.value.value;\n}',
+          'import { type Client, type HexString } from "@parity/truapi";\n\nexport async function readLocalValue(\n  truapi: Client,\n): Promise<HexString | undefined> {\n  const result = await truapi.localStorage.localStorageRead({ key: "test-key" });\n\n  if (result.isErr()) throw result.error;\n  return result.value.value;\n}',
       },
       {
         id: "host_local_storage_write",
@@ -4204,7 +4203,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostLocalStorageReadError",
         description: "Write a value to a key.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function writeLocalValue(truapi: Client): Promise<void> {\n  const result = await truapi.localStorage.localStorageWrite({\n    key: "test-key",\n    value: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function writeLocalValue(truapi: Client): Promise<void> {\n  const result = await truapi.localStorage.localStorageWrite({\n    key: "test-key",\n    value: "0x48656c6c6f",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_local_storage_clear",
@@ -4273,7 +4272,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostAccountCreateProofError",
         description: "Generate a ring VRF proof for a product account.",
         usageExample:
-          'import {\n  type Client,\n  type HostAccountCreateProofResponse,\n} from "@parity/truapi";\n\nexport async function createAccountProof(\n  truapi: Client,\n): Promise<HostAccountCreateProofResponse> {\n  const result = await truapi.accountManagement.accountCreateProof({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    ringLocation: {\n      genesisHash: new Uint8Array(),\n      ringRootHash: new Uint8Array(),\n      hints: { palletInstance: 42 },\n    },\n    context: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostAccountCreateProofResponse,\n} from "@parity/truapi";\n\nexport async function createAccountProof(\n  truapi: Client,\n): Promise<HostAccountCreateProofResponse> {\n  const result = await truapi.accountManagement.accountCreateProof({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    ringLocation: {\n      genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      ringRootHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      hints: { palletInstance: 42 },\n    },\n    context: "0x",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_get_legacy_accounts",
@@ -4301,7 +4300,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostCreateTransactionError",
         description: "Construct a signed extrinsic for a product account.",
         usageExample:
-          'import {\n  type Client,\n  type HostCreateTransactionResponse,\n} from "@parity/truapi";\n\nexport async function createTransaction(\n  truapi: Client,\n): Promise<HostCreateTransactionResponse> {\n  const result = await truapi.signing.createTransaction({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    payload: {\n      tag: "V1",\n      value: {\n        callData: new Uint8Array(),\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: new Uint8Array(),\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostCreateTransactionResponse,\n} from "@parity/truapi";\n\nexport async function createTransaction(\n  truapi: Client,\n): Promise<HostCreateTransactionResponse> {\n  const result = await truapi.signing.createTransaction({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    payload: {\n      tag: "V1",\n      value: {\n        callData: "0x0000",\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: "0x",\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_create_transaction_with_legacy_account",
@@ -4315,7 +4314,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostCreateTransactionError",
         description: "Construct a signed extrinsic for a non-product account.",
         usageExample:
-          'import {\n  type Client,\n  type HostCreateTransactionWithLegacyAccountResponse,\n} from "@parity/truapi";\n\nexport async function createTransactionWithLegacyAccount(\n  truapi: Client,\n): Promise<HostCreateTransactionWithLegacyAccountResponse> {\n  const result = await truapi.signing.createTransactionWithLegacyAccount({\n    payload: {\n      tag: "V1",\n      value: {\n        callData: new Uint8Array(),\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: new Uint8Array(),\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostCreateTransactionWithLegacyAccountResponse,\n} from "@parity/truapi";\n\nexport async function createTransactionWithLegacyAccount(\n  truapi: Client,\n): Promise<HostCreateTransactionWithLegacyAccountResponse> {\n  const result = await truapi.signing.createTransactionWithLegacyAccount({\n    payload: {\n      tag: "V1",\n      value: {\n        callData: "0x0000",\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: "0x",\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_create_room",
@@ -4397,7 +4396,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Subscribe to custom message render requests from the host. Each\nemitted item is a [`CustomRendererNode`](crate::v01::CustomRendererNode)\ntree describing the rendered UI.",
         usageExample:
-          'import {\n  type Client,\n  type CustomRendererNode,\n  type Subscription,\n} from "@parity/truapi";\n\nexport function renderCustomChatMessage(truapi: Client): Subscription {\n  return truapi.chat\n    .chatCustomMessageRenderSubscribe({\n      request: {\n        messageId: "msg-1",\n        messageType: "custom-render-demo",\n        payload: new Uint8Array(),\n      },\n    })\n    .subscribe({\n      next: (node: CustomRendererNode) => console.log(node),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
+          'import {\n  type Client,\n  type CustomRendererNode,\n  type Subscription,\n} from "@parity/truapi";\n\nexport function renderCustomChatMessage(truapi: Client): Subscription {\n  return truapi.chat\n    .chatCustomMessageRenderSubscribe({\n      request: {\n        messageId: "msg-1",\n        messageType: "custom-render-demo",\n        payload: "0x",\n      },\n    })\n    .subscribe({\n      next: (node: CustomRendererNode) => console.log(node),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_statement_store_subscribe",
@@ -4439,7 +4438,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Submit a signed statement to the network. The request body is the\n[`SignedStatement`](crate::v01::SignedStatement) directly (no wrapping\nstruct), matching upstream `triangle-js-sdks`.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function submitStatement(truapi: Client): Promise<void> {\n  const result = await truapi.statementStore.statementStoreSubmit({\n    proof: {\n      tag: "Sr25519",\n      value: { signature: new Uint8Array(), signer: new Uint8Array() },\n    },\n    topics: [],\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function submitStatement(truapi: Client): Promise<void> {\n  const result = await truapi.statementStore.statementStoreSubmit({\n    proof: {\n      tag: "Sr25519",\n      value: {\n        signature: "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",\n        signer: "0x0000000000000000000000000000000000000000000000000000000000000000",\n      },\n    },\n    topics: [],\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_preimage_lookup_subscribe",
@@ -4452,7 +4451,7 @@ export const versions: ExplorerVersion[] = [
         response: "RemotePreimageLookupSubscribeItem",
         description: "Subscribe to preimage lookups for a given key.",
         usageExample:
-          'import {\n  type Client,\n  type Subscription,\n  type RemotePreimageLookupSubscribeItem,\n} from "@parity/truapi";\n\nexport function lookupPreimage(truapi: Client): Subscription {\n  return truapi.preimage\n    .preimageLookupSubscribe({\n      request: { key: new Uint8Array() },\n    })\n    .subscribe({\n      next: (item: RemotePreimageLookupSubscribeItem) =>\n        console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
+          'import {\n  type Client,\n  type Subscription,\n  type RemotePreimageLookupSubscribeItem,\n} from "@parity/truapi";\n\nexport function lookupPreimage(truapi: Client): Subscription {\n  return truapi.preimage\n    .preimageLookupSubscribe({\n      request: {\n        key: "0x0000000000000000000000000000000000000000000000000000000000000000",\n      },\n    })\n    .subscribe({\n      next: (item: RemotePreimageLookupSubscribeItem) =>\n        console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_chain_head_follow",
@@ -4465,7 +4464,7 @@ export const versions: ExplorerVersion[] = [
         response: "RemoteChainHeadFollowItem",
         description: "Follow the chain head and receive block events.",
         usageExample:
-          'import {\n  type Client,\n  type Subscription,\n  type RemoteChainHeadFollowItem,\n} from "@parity/truapi";\n\nexport function followChainHead(truapi: Client): Subscription {\n  return truapi.chainInteraction\n    .chainHeadFollow({\n      request: { genesisHash: new Uint8Array(), withRuntime: false },\n    })\n    .subscribe({\n      next: (item: RemoteChainHeadFollowItem) => console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
+          'import {\n  type Client,\n  type Subscription,\n  type RemoteChainHeadFollowItem,\n} from "@parity/truapi";\n\nexport function followChainHead(truapi: Client): Subscription {\n  return truapi.chainInteraction\n    .chainHeadFollow({\n      request: {\n        genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n        withRuntime: false,\n      },\n    })\n    .subscribe({\n      next: (item: RemoteChainHeadFollowItem) => console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_chain_head_header",
@@ -4479,7 +4478,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Fetch a block header.",
         usageExample:
-          'import {\n  type Client,\n  type RemoteChainHeadHeaderResponse,\n} from "@parity/truapi";\n\nexport async function getChainHeadHeader(\n  truapi: Client,\n): Promise<RemoteChainHeadHeaderResponse> {\n  const result = await truapi.chainInteraction.chainHeadHeader({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainHeadHeaderResponse,\n} from "@parity/truapi";\n\nexport async function getChainHeadHeader(\n  truapi: Client,\n): Promise<RemoteChainHeadHeaderResponse> {\n  const result = await truapi.chainInteraction.chainHeadHeader({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    hash: "0x0000000000000000000000000000000000000000000000000000000000000000",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_body",
@@ -4493,7 +4492,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Fetch a block body.",
         usageExample:
-          'import {\n  type Client,\n  type RemoteChainHeadBodyResponse,\n} from "@parity/truapi";\n\nexport async function getChainHeadBody(\n  truapi: Client,\n): Promise<RemoteChainHeadBodyResponse> {\n  const result = await truapi.chainInteraction.chainHeadBody({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainHeadBodyResponse,\n} from "@parity/truapi";\n\nexport async function getChainHeadBody(\n  truapi: Client,\n): Promise<RemoteChainHeadBodyResponse> {\n  const result = await truapi.chainInteraction.chainHeadBody({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    hash: "0x0000000000000000000000000000000000000000000000000000000000000000",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_storage",
@@ -4507,7 +4506,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Query runtime storage at a specific block.",
         usageExample:
-          'import {\n  type Client,\n  type RemoteChainHeadStorageResponse,\n} from "@parity/truapi";\n\nexport async function getChainHeadStorage(\n  truapi: Client,\n): Promise<RemoteChainHeadStorageResponse> {\n  const result = await truapi.chainInteraction.chainHeadStorage({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n    items: [\n      { key: new Uint8Array(), queryType: { tag: "Value", value: undefined } },\n    ],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainHeadStorageResponse,\n} from "@parity/truapi";\n\nexport async function getChainHeadStorage(\n  truapi: Client,\n): Promise<RemoteChainHeadStorageResponse> {\n  const result = await truapi.chainInteraction.chainHeadStorage({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    hash: "0x0000000000000000000000000000000000000000000000000000000000000000",\n    items: [\n      {\n        key: "0x26aa394eea5630e07c48ae0c9558cef7",\n        queryType: { tag: "Value", value: undefined },\n      },\n    ],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_call",
@@ -4521,7 +4520,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Invoke a runtime call at a specific block.",
         usageExample:
-          'import {\n  type Client,\n  type RemoteChainHeadCallResponse,\n} from "@parity/truapi";\n\nexport async function callChainHeadRuntime(\n  truapi: Client,\n): Promise<RemoteChainHeadCallResponse> {\n  const result = await truapi.chainInteraction.chainHeadCall({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hash: new Uint8Array(),\n    function: "Core_version",\n    callParameters: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainHeadCallResponse,\n} from "@parity/truapi";\n\nexport async function callChainHeadRuntime(\n  truapi: Client,\n): Promise<RemoteChainHeadCallResponse> {\n  const result = await truapi.chainInteraction.chainHeadCall({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    hash: "0x0000000000000000000000000000000000000000000000000000000000000000",\n    function: "Core_version",\n    callParameters: "0x",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_unpin",
@@ -4535,7 +4534,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Release pinned blocks.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function unpinChainHead(truapi: Client): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadUnpin({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    hashes: [new Uint8Array()],\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function unpinChainHead(truapi: Client): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadUnpin({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    hashes: [\n      "0x0000000000000000000000000000000000000000000000000000000000000000",\n    ],\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_chain_head_continue",
@@ -4549,7 +4548,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Continue a paused chain-head operation.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function continueChainHeadOperation(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadContinue({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function continueChainHeadOperation(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadContinue({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_chain_head_stop_operation",
@@ -4563,7 +4562,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Stop a chain-head operation.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function stopChainHeadOperation(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadStopOperation({\n    genesisHash: new Uint8Array(),\n    followSubscriptionId: "",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function stopChainHeadOperation(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadStopOperation({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_chain_spec_genesis_hash",
@@ -4577,7 +4576,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Fetch the canonical genesis hash for a chain.",
         usageExample:
-          'import {\n  type Client,\n  type RemoteChainSpecGenesisHashResponse,\n} from "@parity/truapi";\n\nexport async function getChainGenesisHash(\n  truapi: Client,\n): Promise<RemoteChainSpecGenesisHashResponse> {\n  const result = await truapi.chainInteraction.chainSpecGenesisHash({\n    genesisHash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainSpecGenesisHashResponse,\n} from "@parity/truapi";\n\nexport async function getChainGenesisHash(\n  truapi: Client,\n): Promise<RemoteChainSpecGenesisHashResponse> {\n  const result = await truapi.chainInteraction.chainSpecGenesisHash({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_spec_chain_name",
@@ -4591,7 +4590,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Fetch the display name of a chain.",
         usageExample:
-          'import {\n  type Client,\n  type RemoteChainSpecChainNameResponse,\n} from "@parity/truapi";\n\nexport async function getChainName(\n  truapi: Client,\n): Promise<RemoteChainSpecChainNameResponse> {\n  const result = await truapi.chainInteraction.chainSpecChainName({\n    genesisHash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainSpecChainNameResponse,\n} from "@parity/truapi";\n\nexport async function getChainName(\n  truapi: Client,\n): Promise<RemoteChainSpecChainNameResponse> {\n  const result = await truapi.chainInteraction.chainSpecChainName({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_spec_properties",
@@ -4605,7 +4604,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Fetch the JSON-encoded properties of a chain.",
         usageExample:
-          'import {\n  type Client,\n  type RemoteChainSpecPropertiesResponse,\n} from "@parity/truapi";\n\nexport async function getChainProperties(\n  truapi: Client,\n): Promise<RemoteChainSpecPropertiesResponse> {\n  const result = await truapi.chainInteraction.chainSpecProperties({\n    genesisHash: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainSpecPropertiesResponse,\n} from "@parity/truapi";\n\nexport async function getChainProperties(\n  truapi: Client,\n): Promise<RemoteChainSpecPropertiesResponse> {\n  const result = await truapi.chainInteraction.chainSpecProperties({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_transaction_broadcast",
@@ -4619,7 +4618,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Broadcast a signed transaction.",
         usageExample:
-          'import {\n  type Client,\n  type RemoteChainTransactionBroadcastResponse,\n} from "@parity/truapi";\n\nexport async function broadcastTransaction(\n  truapi: Client,\n): Promise<RemoteChainTransactionBroadcastResponse> {\n  const result = await truapi.chainInteraction.chainTransactionBroadcast({\n    genesisHash: new Uint8Array(),\n    transaction: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainTransactionBroadcastResponse,\n} from "@parity/truapi";\n\nexport async function broadcastTransaction(\n  truapi: Client,\n): Promise<RemoteChainTransactionBroadcastResponse> {\n  const result = await truapi.chainInteraction.chainTransactionBroadcast({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    transaction: "0x",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_transaction_stop",
@@ -4633,7 +4632,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Stop a transaction broadcast.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function stopTransactionBroadcast(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainTransactionStop({\n    genesisHash: new Uint8Array(),\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function stopTransactionBroadcast(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainTransactionStop({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_derive_entropy",
@@ -4648,7 +4647,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Derive 32 bytes of entropy from the user's root BIP-39 entropy for the\ngiven key.",
         usageExample:
-          'import {\n  type Client,\n  type HostDeriveEntropyResponse,\n} from "@parity/truapi";\n\nexport async function deriveEntropy(\n  truapi: Client,\n): Promise<HostDeriveEntropyResponse> {\n  const result = await truapi.entropyDerivation.deriveEntropy({\n    context: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostDeriveEntropyResponse,\n} from "@parity/truapi";\n\nexport async function deriveEntropy(\n  truapi: Client,\n): Promise<HostDeriveEntropyResponse> {\n  const result = await truapi.entropyDerivation.deriveEntropy({\n    context: "0x70726f647563742d6b6579",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_get_user_id",
@@ -4676,7 +4675,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostSignPayloadError",
         description: "Sign raw bytes or a message.",
         usageExample:
-          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signRawBytes(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signRaw({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    payload: { tag: "Bytes", value: { bytes: new Uint8Array() } },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signRawBytes(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signRaw({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    payload: {\n      tag: "Bytes",\n      value: {\n        bytes: "0x48656c6c6f2c20776f726c6421",\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_sign_payload",
@@ -4690,7 +4689,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostSignPayloadError",
         description: "Sign a Substrate extrinsic payload.",
         usageExample:
-          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signPayload(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signPayload({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    blockHash: new Uint8Array(),\n    blockNumber: new Uint8Array(),\n    era: new Uint8Array(),\n    genesisHash: new Uint8Array(),\n    method: new Uint8Array(),\n    nonce: new Uint8Array(),\n    signedExtensions: [],\n    specVersion: new Uint8Array(),\n    tip: new Uint8Array(),\n    transactionVersion: new Uint8Array(),\n    version: 4,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signPayload(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signPayload({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    blockNumber: "0x00000000",\n    era: "0x00",\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    method: "0x00003448656c6c6f2c20776f726c6421",\n    nonce: "0x00000000",\n    signedExtensions: [],\n    specVersion: "0x00000000",\n    tip: "0x00000000000000000000000000000000",\n    transactionVersion: "0x00000000",\n    version: 4,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_payment_balance_subscribe",
@@ -4718,7 +4717,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostPaymentTopUpError",
         description: "Top up the user's payment balance.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function topUpPaymentBalance(truapi: Client): Promise<void> {\n  const result = await truapi.payment.paymentTopUp({\n    amount: 0n,\n    source: { tag: "ProductAccount", value: { derivationIndex: 0 } },\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function topUpPaymentBalance(truapi: Client): Promise<void> {\n  const result = await truapi.payment.paymentTopUp({\n    amount: 1000000000000n,\n    source: { tag: "ProductAccount", value: { derivationIndex: 0 } },\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_payment_request",
@@ -4732,7 +4731,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostPaymentRequestError",
         description: "Request a payment from the user.",
         usageExample:
-          'import {\n  type Client,\n  type HostPaymentRequestResponse,\n} from "@parity/truapi";\n\nexport async function requestPayment(\n  truapi: Client,\n): Promise<HostPaymentRequestResponse> {\n  const result = await truapi.payment.paymentRequest({\n    amount: 0n,\n    destination: new Uint8Array(),\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostPaymentRequestResponse,\n} from "@parity/truapi";\n\nexport async function requestPayment(\n  truapi: Client,\n): Promise<HostPaymentRequestResponse> {\n  const result = await truapi.payment.paymentRequest({\n    amount: 1000000000000n,\n    destination: "0x0000000000000000000000000000000000000000000000000000000000000000",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_payment_status_subscribe",
@@ -4769,15 +4768,14 @@ export const versions: ExplorerVersion[] = [
         id: "Account",
         name: "Account",
         category: "struct",
-        definition:
-          "interface Account { publicKey: Uint8Array; name?: string }",
+        definition: "interface Account { publicKey: HexString; name?: string }",
         description:
           "An account with its public key and optional display name.",
         source: "shared",
         fields: [
           {
             name: "publicKey",
-            type: "Uint8Array",
+            type: "HexString",
             description: "The account public key (variable-length bytes).",
           },
           {
@@ -4792,7 +4790,7 @@ export const versions: ExplorerVersion[] = [
         name: "ActionTrigger",
         category: "struct",
         definition:
-          "interface ActionTrigger { messageId: string; actionId: string; payload?: Uint8Array }",
+          "interface ActionTrigger { messageId: string; actionId: string; payload?: HexString }",
         description: "Payload when a user clicks an action button.",
         source: "shared",
         fields: [
@@ -4808,7 +4806,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "payload",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Optional additional data.",
           },
         ],
@@ -5104,7 +5102,7 @@ export const versions: ExplorerVersion[] = [
         name: "ChatCustomMessage",
         category: "struct",
         definition:
-          "interface ChatCustomMessage { messageType: string; payload: Uint8Array }",
+          "interface ChatCustomMessage { messageType: string; payload: HexString }",
         description:
           "A custom message with application-defined type and binary payload.",
         source: "shared",
@@ -5116,7 +5114,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "payload",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Binary payload.",
           },
         ],
@@ -5654,7 +5652,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostAccountCreateProofRequest",
         category: "struct",
         definition:
-          "interface HostAccountCreateProofRequest { productAccountId: ProductAccountId; ringLocation: RingLocation; context: Uint8Array }",
+          "interface HostAccountCreateProofRequest { productAccountId: ProductAccountId; ringLocation: RingLocation; context: HexString }",
         description:
           "Request to create a ring VRF proof for a product account.",
         source: "v0.1",
@@ -5671,7 +5669,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "context",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Context bytes bound to the proof.",
           },
         ],
@@ -5681,13 +5679,13 @@ export const versions: ExplorerVersion[] = [
         name: "HostAccountCreateProofResponse",
         category: "struct",
         definition:
-          "interface HostAccountCreateProofResponse { proof: Uint8Array }",
+          "interface HostAccountCreateProofResponse { proof: HexString }",
         description: "Response containing a ring VRF proof.",
         source: "v0.1",
         fields: [
           {
             name: "proof",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Variable-length ring VRF proof bytes.",
           },
         ],
@@ -5714,19 +5712,19 @@ export const versions: ExplorerVersion[] = [
         name: "HostAccountGetAliasResponse",
         category: "struct",
         definition:
-          "interface HostAccountGetAliasResponse { context: Uint8Array; alias: Uint8Array }",
+          "interface HostAccountGetAliasResponse { context: HexString; alias: HexString }",
         description:
           "A privacy-preserving alias derived via ring VRF, bound to a specific context.",
         source: "v0.1",
         fields: [
           {
             name: "context",
-            type: "Uint8Array",
+            type: "HexString",
             description: "32-byte context identifier.",
           },
           {
             name: "alias",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Ring VRF alias (variable length).",
           },
         ],
@@ -6131,13 +6129,13 @@ export const versions: ExplorerVersion[] = [
         name: "HostCreateTransactionResponse",
         category: "struct",
         definition:
-          "interface HostCreateTransactionResponse { transaction: Uint8Array }",
+          "interface HostCreateTransactionResponse { transaction: HexString }",
         description: "Response containing a created transaction.",
         source: "v0.1",
         fields: [
           {
             name: "transaction",
-            type: "Uint8Array",
+            type: "HexString",
             description: "SCALE-encoded signed transaction.",
           },
         ],
@@ -6164,14 +6162,14 @@ export const versions: ExplorerVersion[] = [
         name: "HostCreateTransactionWithLegacyAccountResponse",
         category: "struct",
         definition:
-          "interface HostCreateTransactionWithLegacyAccountResponse { transaction: Uint8Array }",
+          "interface HostCreateTransactionWithLegacyAccountResponse { transaction: HexString }",
         description:
           "Response containing a transaction created with a non-product account.",
         source: "v0.1",
         fields: [
           {
             name: "transaction",
-            type: "Uint8Array",
+            type: "HexString",
             description: "SCALE-encoded signed transaction.",
           },
         ],
@@ -6197,14 +6195,13 @@ export const versions: ExplorerVersion[] = [
         id: "HostDeriveEntropyRequest",
         name: "HostDeriveEntropyRequest",
         category: "struct",
-        definition:
-          "interface HostDeriveEntropyRequest { context: Uint8Array }",
+        definition: "interface HostDeriveEntropyRequest { context: HexString }",
         description: "Request to derive deterministic entropy.",
         source: "v0.2",
         fields: [
           {
             name: "context",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Domain-separated derivation context.",
           },
         ],
@@ -6214,13 +6211,13 @@ export const versions: ExplorerVersion[] = [
         name: "HostDeriveEntropyResponse",
         category: "struct",
         definition:
-          "interface HostDeriveEntropyResponse { entropy: Uint8Array }",
+          "interface HostDeriveEntropyResponse { entropy: HexString }",
         description: "Response containing derived deterministic entropy.",
         source: "v0.2",
         fields: [
           {
             name: "entropy",
-            type: "Uint8Array",
+            type: "HexString",
             description: "32 bytes of derived entropy.",
           },
         ],
@@ -6300,13 +6297,13 @@ export const versions: ExplorerVersion[] = [
         name: "HostFeatureSupportedRequest",
         category: "enum",
         definition:
-          'type HostFeatureSupportedRequest = { tag: "Chain"; value: { genesisHash: Uint8Array } }',
+          'type HostFeatureSupportedRequest = { tag: "Chain"; value: { genesisHash: HexString } }',
         description: "Feature to check for host support.",
         source: "v0.1",
         variants: [
           {
             name: "Chain",
-            type: "{ genesisHash: Uint8Array }",
+            type: "{ genesisHash: HexString }",
             description: "Is this blockchain supported?",
           },
         ],
@@ -6376,7 +6373,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostGetUserIdResponse",
         category: "struct",
         definition:
-          "interface HostGetUserIdResponse { primaryUsername: string; publicKey: Uint8Array }",
+          "interface HostGetUserIdResponse { primaryUsername: string; publicKey: HexString }",
         description: "The user's primary DotNS account identity.\n\nV0.2.",
         source: "v0.2",
         fields: [
@@ -6387,7 +6384,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "publicKey",
-            type: "Uint8Array",
+            type: "HexString",
             description: "The user's primary public key.",
           },
         ],
@@ -6487,13 +6484,13 @@ export const versions: ExplorerVersion[] = [
         name: "HostLocalStorageReadResponse",
         category: "struct",
         definition:
-          "interface HostLocalStorageReadResponse { value?: Uint8Array }",
+          "interface HostLocalStorageReadResponse { value?: HexString }",
         description: "Response containing an optional local storage value.",
         source: "v0.1",
         fields: [
           {
             name: "value",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Stored value, if present.",
           },
         ],
@@ -6503,7 +6500,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostLocalStorageWriteRequest",
         category: "struct",
         definition:
-          "interface HostLocalStorageWriteRequest { key: string; value: Uint8Array }",
+          "interface HostLocalStorageWriteRequest { key: string; value: HexString }",
         description: "Request to write a value into local storage.",
         source: "v0.1",
         fields: [
@@ -6514,7 +6511,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "value",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Value to store at the key.",
           },
         ],
@@ -6627,7 +6624,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostPaymentRequestRequest",
         category: "struct",
         definition:
-          "interface HostPaymentRequestRequest { amount: Balance; destination: Uint8Array }",
+          "interface HostPaymentRequestRequest { amount: Balance; destination: HexString }",
         description: "Request to initiate a payment to another account.",
         source: "v0.2",
         fields: [
@@ -6638,7 +6635,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "destination",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Destination account.",
           },
         ],
@@ -6830,7 +6827,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostSignPayloadRequest",
         category: "struct",
         definition:
-          "interface HostSignPayloadRequest { account: ProductAccountId; blockHash: Uint8Array; blockNumber: Uint8Array; era: Uint8Array; genesisHash: Uint8Array; method: Uint8Array; nonce: Uint8Array; specVersion: Uint8Array; tip: Uint8Array; transactionVersion: Uint8Array; signedExtensions: Array<string>; version: number; assetId?: Uint8Array; metadataHash?: Uint8Array; mode?: number; withSignedTransaction?: boolean }",
+          "interface HostSignPayloadRequest { account: ProductAccountId; blockHash: HexString; blockNumber: HexString; era: HexString; genesisHash: HexString; method: HexString; nonce: HexString; specVersion: HexString; tip: HexString; transactionVersion: HexString; signedExtensions: Array<string>; version: number; assetId?: HexString; metadataHash?: HexString; mode?: number; withSignedTransaction?: boolean }",
         description:
           "Full Substrate extrinsic signing payload with all fields needed for signature\ngeneration.",
         source: "v0.2",
@@ -6843,47 +6840,47 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "blockHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Reference block hash.",
           },
           {
             name: "blockNumber",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Reference block number.",
           },
           {
             name: "era",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Mortality era encoding.",
           },
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
             name: "method",
-            type: "Uint8Array",
+            type: "HexString",
             description: "SCALE-encoded call data.",
           },
           {
             name: "nonce",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Account nonce.",
           },
           {
             name: "specVersion",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Runtime spec version.",
           },
           {
             name: "tip",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Transaction tip.",
           },
           {
             name: "transactionVersion",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Transaction format version.",
           },
           {
@@ -6898,12 +6895,12 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "assetId",
-            type: "Uint8Array",
+            type: "HexString",
             description: "For multi-asset tips.",
           },
           {
             name: "metadataHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "CheckMetadataHash extension.",
           },
           {
@@ -6923,18 +6920,18 @@ export const versions: ExplorerVersion[] = [
         name: "HostSignPayloadResponse",
         category: "struct",
         definition:
-          "interface HostSignPayloadResponse { signature: Uint8Array; signedTransaction?: Uint8Array }",
+          "interface HostSignPayloadResponse { signature: HexString; signedTransaction?: HexString }",
         description: "Result of a signing operation.",
         source: "v0.1",
         fields: [
           {
             name: "signature",
-            type: "Uint8Array",
+            type: "HexString",
             description: "The cryptographic signature.",
           },
           {
             name: "signedTransaction",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Full signed transaction, if requested.",
           },
         ],
@@ -7049,7 +7046,7 @@ export const versions: ExplorerVersion[] = [
         name: "PaymentTopUpSource",
         category: "enum",
         definition:
-          'type PaymentTopUpSource = { tag: "ProductAccount"; value: { derivationIndex: number } } | { tag: "PrivateKey"; value: { ed25519PrivateKey: Uint8Array } }',
+          'type PaymentTopUpSource = { tag: "ProductAccount"; value: { derivationIndex: number } } | { tag: "PrivateKey"; value: { ed25519PrivateKey: HexString } }',
         description:
           "Source for a payment top-up operation.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         source: "shared",
@@ -7062,7 +7059,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "PrivateKey",
-            type: "{ ed25519PrivateKey: Uint8Array }",
+            type: "{ ed25519PrivateKey: HexString }",
             description:
               "Fund from a one-time account represented by its private key. This is a\nstandard account holding public funds, not a coin key.",
           },
@@ -7072,14 +7069,14 @@ export const versions: ExplorerVersion[] = [
         id: "ProductAccount",
         name: "ProductAccount",
         category: "struct",
-        definition: "interface ProductAccount { publicKey: Uint8Array }",
+        definition: "interface ProductAccount { publicKey: HexString }",
         description:
           "V0.2 product account: a public key only, no display name.\n\nV0.2 replaces V0.1's [`crate::v01::Account`] (which carries `name:\nOption<String>`) for `host_account_get` responses; the name is no longer\nreturned because it's not bound to the account derivation.",
         source: "shared",
         fields: [
           {
             name: "publicKey",
-            type: "Uint8Array",
+            type: "HexString",
             description: "The account public key (variable-length bytes).",
           },
         ],
@@ -7113,7 +7110,7 @@ export const versions: ExplorerVersion[] = [
         name: "ProductChatCustomMessageRenderSubscribeRequest",
         category: "struct",
         definition:
-          "interface ProductChatCustomMessageRenderSubscribeRequest { messageId: string; messageType: string; payload: Uint8Array }",
+          "interface ProductChatCustomMessageRenderSubscribeRequest { messageId: string; messageType: string; payload: HexString }",
         description:
           "Subscribe payload identifying the chat message to render. The host responds\nwith a stream of [`CustomRendererNode`] trees describing the rendered UI.",
         source: "v0.1",
@@ -7130,7 +7127,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "payload",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Binary payload.",
           },
         ],
@@ -7140,14 +7137,14 @@ export const versions: ExplorerVersion[] = [
         name: "RawPayload",
         category: "enum",
         definition:
-          'type RawPayload = { tag: "Bytes"; value: { bytes: Uint8Array } } | { tag: "Payload"; value: { payload: string } }',
+          'type RawPayload = { tag: "Bytes"; value: { bytes: HexString } } | { tag: "Payload"; value: { payload: string } }',
         description:
           "Raw data to sign -- either binary bytes or a string message.",
         source: "shared",
         variants: [
           {
             name: "Bytes",
-            type: "{ bytes: Uint8Array }",
+            type: "{ bytes: HexString }",
             description: "Raw binary data to sign.",
           },
           {
@@ -7162,14 +7159,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadBodyRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadBodyRequest { genesisHash: Uint8Array; followSubscriptionId: string; hash: Uint8Array }",
+          "interface RemoteChainHeadBodyRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_body`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -7179,7 +7176,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "hash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Block hash.",
           },
         ],
@@ -7205,14 +7202,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadCallRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadCallRequest { genesisHash: Uint8Array; followSubscriptionId: string; hash: Uint8Array; function: string; callParameters: Uint8Array }",
+          "interface RemoteChainHeadCallRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString; function: string; callParameters: HexString }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_call`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -7222,7 +7219,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "hash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Block hash.",
           },
           {
@@ -7232,7 +7229,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "callParameters",
-            type: "Uint8Array",
+            type: "HexString",
             description: "SCALE-encoded call parameters.",
           },
         ],
@@ -7259,14 +7256,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadContinueRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadContinueRequest { genesisHash: Uint8Array; followSubscriptionId: string; operationId: string }",
+          "interface RemoteChainHeadContinueRequest { genesisHash: HexString; followSubscriptionId: string; operationId: string }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_continue`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -7286,38 +7283,38 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadFollowItem",
         category: "enum",
         definition:
-          'type RemoteChainHeadFollowItem = { tag: "Initialized"; value: { finalizedBlockHashes: Array<Uint8Array>; finalizedBlockRuntime?: RuntimeType } } | { tag: "NewBlock"; value: { blockHash: Uint8Array; parentBlockHash: Uint8Array; newRuntime?: RuntimeType } } | { tag: "BestBlockChanged"; value: { bestBlockHash: Uint8Array } } | { tag: "Finalized"; value: { finalizedBlockHashes: Array<Uint8Array>; prunedBlockHashes: Array<Uint8Array> } } | { tag: "OperationBodyDone"; value: { operationId: string; value: Array<Uint8Array> } } | { tag: "OperationCallDone"; value: { operationId: string; output: Uint8Array } } | { tag: "OperationStorageItems"; value: { operationId: string; items: Array<StorageResultItem> } } | { tag: "OperationStorageDone"; value: { operationId: string } } | { tag: "OperationWaitingForContinue"; value: { operationId: string } } | { tag: "OperationInaccessible"; value: { operationId: string } } | { tag: "OperationError"; value: { operationId: string; error: string } } | { tag: "Stop"; value: undefined }',
+          'type RemoteChainHeadFollowItem = { tag: "Initialized"; value: { finalizedBlockHashes: Array<HexString>; finalizedBlockRuntime?: RuntimeType } } | { tag: "NewBlock"; value: { blockHash: HexString; parentBlockHash: HexString; newRuntime?: RuntimeType } } | { tag: "BestBlockChanged"; value: { bestBlockHash: HexString } } | { tag: "Finalized"; value: { finalizedBlockHashes: Array<HexString>; prunedBlockHashes: Array<HexString> } } | { tag: "OperationBodyDone"; value: { operationId: string; value: Array<HexString> } } | { tag: "OperationCallDone"; value: { operationId: string; output: HexString } } | { tag: "OperationStorageItems"; value: { operationId: string; items: Array<StorageResultItem> } } | { tag: "OperationStorageDone"; value: { operationId: string } } | { tag: "OperationWaitingForContinue"; value: { operationId: string } } | { tag: "OperationInaccessible"; value: { operationId: string } } | { tag: "OperationError"; value: { operationId: string; error: string } } | { tag: "Stop"; value: undefined }',
         description: "Events received when following the chain head.",
         source: "v0.1",
         variants: [
           {
             name: "Initialized",
-            type: "{ finalizedBlockHashes: Array<Uint8Array>; finalizedBlockRuntime?: RuntimeType }",
+            type: "{ finalizedBlockHashes: Array<HexString>; finalizedBlockRuntime?: RuntimeType }",
             description: "Initial state with finalized blocks.",
           },
           {
             name: "NewBlock",
-            type: "{ blockHash: Uint8Array; parentBlockHash: Uint8Array; newRuntime?: RuntimeType }",
+            type: "{ blockHash: HexString; parentBlockHash: HexString; newRuntime?: RuntimeType }",
             description: "A new block was produced.",
           },
           {
             name: "BestBlockChanged",
-            type: "{ bestBlockHash: Uint8Array }",
+            type: "{ bestBlockHash: HexString }",
             description: "Best block changed.",
           },
           {
             name: "Finalized",
-            type: "{ finalizedBlockHashes: Array<Uint8Array>; prunedBlockHashes: Array<Uint8Array> }",
+            type: "{ finalizedBlockHashes: Array<HexString>; prunedBlockHashes: Array<HexString> }",
             description: "Blocks were finalized.",
           },
           {
             name: "OperationBodyDone",
-            type: "{ operationId: string; value: Array<Uint8Array> }",
+            type: "{ operationId: string; value: Array<HexString> }",
             description: "Body fetch completed.",
           },
           {
             name: "OperationCallDone",
-            type: "{ operationId: string; output: Uint8Array }",
+            type: "{ operationId: string; output: HexString }",
             description: "Runtime call completed.",
           },
           {
@@ -7358,14 +7355,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadFollowRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadFollowRequest { genesisHash: Uint8Array; withRuntime: boolean }",
+          "interface RemoteChainHeadFollowRequest { genesisHash: HexString; withRuntime: boolean }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_follow`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -7380,14 +7377,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadHeaderRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadHeaderRequest { genesisHash: Uint8Array; followSubscriptionId: string; hash: Uint8Array }",
+          "interface RemoteChainHeadHeaderRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_header`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -7397,7 +7394,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "hash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Block hash.",
           },
         ],
@@ -7407,13 +7404,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadHeaderResponse",
         category: "struct",
         definition:
-          "interface RemoteChainHeadHeaderResponse { header?: Uint8Array }",
+          "interface RemoteChainHeadHeaderResponse { header?: HexString }",
         description: "Response containing a block header, if available.",
         source: "v0.1",
         fields: [
           {
             name: "header",
-            type: "Uint8Array",
+            type: "HexString",
             description: "SCALE-encoded block header.",
           },
         ],
@@ -7423,14 +7420,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadStopOperationRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadStopOperationRequest { genesisHash: Uint8Array; followSubscriptionId: string; operationId: string }",
+          "interface RemoteChainHeadStopOperationRequest { genesisHash: HexString; followSubscriptionId: string; operationId: string }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_stop_operation`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -7450,14 +7447,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadStorageRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadStorageRequest { genesisHash: Uint8Array; followSubscriptionId: string; hash: Uint8Array; items: Array<StorageQueryItem>; childTrie?: Uint8Array }",
+          "interface RemoteChainHeadStorageRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString; items: Array<StorageQueryItem>; childTrie?: HexString }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_storage`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -7467,7 +7464,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "hash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Block hash.",
           },
           {
@@ -7477,7 +7474,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "childTrie",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Optional child trie.",
           },
         ],
@@ -7504,14 +7501,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadUnpinRequest",
         category: "struct",
         definition:
-          "interface RemoteChainHeadUnpinRequest { genesisHash: Uint8Array; followSubscriptionId: string; hashes: Array<Uint8Array> }",
+          "interface RemoteChainHeadUnpinRequest { genesisHash: HexString; followSubscriptionId: string; hashes: Array<HexString> }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_unpin`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -7521,7 +7518,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "hashes",
-            type: "Array<Uint8Array>",
+            type: "Array<HexString>",
             description: "Block hashes to unpin.",
           },
         ],
@@ -7531,13 +7528,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainSpecChainNameRequest",
         category: "struct",
         definition:
-          "interface RemoteChainSpecChainNameRequest { genesisHash: Uint8Array }",
+          "interface RemoteChainSpecChainNameRequest { genesisHash: HexString }",
         description: "Request to fetch a chain display name.",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
         ],
@@ -7563,13 +7560,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainSpecGenesisHashRequest",
         category: "struct",
         definition:
-          "interface RemoteChainSpecGenesisHashRequest { genesisHash: Uint8Array }",
+          "interface RemoteChainSpecGenesisHashRequest { genesisHash: HexString }",
         description: "Request to fetch a chain genesis hash.",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash requested by the product.",
           },
         ],
@@ -7579,13 +7576,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainSpecGenesisHashResponse",
         category: "struct",
         definition:
-          "interface RemoteChainSpecGenesisHashResponse { genesisHash: Uint8Array }",
+          "interface RemoteChainSpecGenesisHashResponse { genesisHash: HexString }",
         description: "Response containing a chain genesis hash.",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
         ],
@@ -7595,13 +7592,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainSpecPropertiesRequest",
         category: "struct",
         definition:
-          "interface RemoteChainSpecPropertiesRequest { genesisHash: Uint8Array }",
+          "interface RemoteChainSpecPropertiesRequest { genesisHash: HexString }",
         description: "Request to fetch chain properties.",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
         ],
@@ -7627,19 +7624,19 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainTransactionBroadcastRequest",
         category: "struct",
         definition:
-          "interface RemoteChainTransactionBroadcastRequest { genesisHash: Uint8Array; transaction: Uint8Array }",
+          "interface RemoteChainTransactionBroadcastRequest { genesisHash: HexString; transaction: HexString }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_broadcast`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
             name: "transaction",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Signed transaction bytes.",
           },
         ],
@@ -7666,14 +7663,14 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainTransactionStopRequest",
         category: "struct",
         definition:
-          "interface RemoteChainTransactionStopRequest { genesisHash: Uint8Array; operationId: string }",
+          "interface RemoteChainTransactionStopRequest { genesisHash: HexString; operationId: string }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_stop`].",
         source: "v0.1",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
@@ -7761,13 +7758,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemotePreimageLookupSubscribeItem",
         category: "struct",
         definition:
-          "interface RemotePreimageLookupSubscribeItem { value?: Uint8Array }",
+          "interface RemotePreimageLookupSubscribeItem { value?: HexString }",
         description: "Item containing an optional preimage lookup result.",
         source: "v0.1",
         fields: [
           {
             name: "value",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Preimage data, if found.",
           },
         ],
@@ -7777,13 +7774,13 @@ export const versions: ExplorerVersion[] = [
         name: "RemotePreimageLookupSubscribeRequest",
         category: "struct",
         definition:
-          "interface RemotePreimageLookupSubscribeRequest { key: Uint8Array }",
+          "interface RemotePreimageLookupSubscribeRequest { key: HexString }",
         description: "Request to subscribe to preimage lookup results.",
         source: "v0.1",
         fields: [
           {
             name: "key",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Hash of the preimage.",
           },
         ],
@@ -7902,19 +7899,19 @@ export const versions: ExplorerVersion[] = [
         name: "RingLocation",
         category: "struct",
         definition:
-          "interface RingLocation { genesisHash: Uint8Array; ringRootHash: Uint8Array; hints?: RingLocationHint }",
+          "interface RingLocation { genesisHash: HexString; ringRootHash: HexString; hints?: RingLocationHint }",
         description:
           "Locates a specific ring on a specific chain for ring VRF operations.",
         source: "shared",
         fields: [
           {
             name: "genesisHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Chain genesis hash.",
           },
           {
             name: "ringRootHash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Root hash of the ring.",
           },
           {
@@ -8068,7 +8065,7 @@ export const versions: ExplorerVersion[] = [
         name: "SignedStatement",
         category: "struct",
         definition:
-          "interface SignedStatement { proof: StatementProof; decryptionKey?: Uint8Array; expiry?: bigint; channel?: Uint8Array; topics: Array<Uint8Array>; data?: Uint8Array }",
+          "interface SignedStatement { proof: StatementProof; decryptionKey?: HexString; expiry?: bigint; channel?: HexString; topics: Array<HexString>; data?: HexString }",
         description: "A statement with a required (not optional) proof.",
         source: "shared",
         fields: [
@@ -8079,7 +8076,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "decryptionKey",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Optional decryption key.",
           },
           {
@@ -8089,17 +8086,17 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "channel",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Optional channel.",
           },
           {
             name: "topics",
-            type: "Array<Uint8Array>",
+            type: "Array<HexString>",
             description: "[u8; 32] tags.",
           },
           {
             name: "data",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Optional data payload.",
           },
         ],
@@ -8109,7 +8106,7 @@ export const versions: ExplorerVersion[] = [
         name: "Statement",
         category: "struct",
         definition:
-          "interface Statement { proof?: StatementProof; decryptionKey?: Uint8Array; expiry?: bigint; channel?: Uint8Array; topics: Array<Uint8Array>; data?: Uint8Array }",
+          "interface Statement { proof?: StatementProof; decryptionKey?: HexString; expiry?: bigint; channel?: HexString; topics: Array<HexString>; data?: HexString }",
         description: "A statement with optional proof and metadata.",
         source: "shared",
         fields: [
@@ -8120,7 +8117,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "decryptionKey",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Optional decryption key.",
           },
           {
@@ -8130,17 +8127,17 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "channel",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Optional channel.",
           },
           {
             name: "topics",
-            type: "Array<Uint8Array>",
+            type: "Array<HexString>",
             description: "[u8; 32] tags.",
           },
           {
             name: "data",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Optional data payload.",
           },
         ],
@@ -8150,28 +8147,28 @@ export const versions: ExplorerVersion[] = [
         name: "StatementProof",
         category: "enum",
         definition:
-          'type StatementProof = { tag: "Sr25519"; value: { signature: Uint8Array; signer: Uint8Array } } | { tag: "Ed25519"; value: { signature: Uint8Array; signer: Uint8Array } } | { tag: "Ecdsa"; value: { signature: Uint8Array; signer: Uint8Array } } | { tag: "OnChain"; value: { who: Uint8Array; blockHash: Uint8Array; event: bigint } }',
+          'type StatementProof = { tag: "Sr25519"; value: { signature: HexString; signer: HexString } } | { tag: "Ed25519"; value: { signature: HexString; signer: HexString } } | { tag: "Ecdsa"; value: { signature: HexString; signer: HexString } } | { tag: "OnChain"; value: { who: HexString; blockHash: HexString; event: bigint } }',
         description: "Cryptographic proof for a statement.",
         source: "shared",
         variants: [
           {
             name: "Sr25519",
-            type: "{ signature: Uint8Array; signer: Uint8Array }",
+            type: "{ signature: HexString; signer: HexString }",
             description: "Sr25519 signature proof.",
           },
           {
             name: "Ed25519",
-            type: "{ signature: Uint8Array; signer: Uint8Array }",
+            type: "{ signature: HexString; signer: HexString }",
             description: "Ed25519 signature proof.",
           },
           {
             name: "Ecdsa",
-            type: "{ signature: Uint8Array; signer: Uint8Array }",
+            type: "{ signature: HexString; signer: HexString }",
             description: "ECDSA signature proof.",
           },
           {
             name: "OnChain",
-            type: "{ who: Uint8Array; blockHash: Uint8Array; event: bigint }",
+            type: "{ who: HexString; blockHash: HexString; event: bigint }",
             description: "On-chain event proof.",
           },
         ],
@@ -8181,13 +8178,13 @@ export const versions: ExplorerVersion[] = [
         name: "StorageQueryItem",
         category: "struct",
         definition:
-          "interface StorageQueryItem { key: Uint8Array; queryType: StorageQueryType }",
+          "interface StorageQueryItem { key: HexString; queryType: StorageQueryType }",
         description: "A single storage query.",
         source: "shared",
         fields: [
           {
             name: "key",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Storage key to query.",
           },
           {
@@ -8233,28 +8230,28 @@ export const versions: ExplorerVersion[] = [
         name: "StorageResultItem",
         category: "struct",
         definition:
-          "interface StorageResultItem { key: Uint8Array; value?: Uint8Array; hash?: Uint8Array; closestDescendantMerkleValue?: Uint8Array }",
+          "interface StorageResultItem { key: HexString; value?: HexString; hash?: HexString; closestDescendantMerkleValue?: HexString }",
         description: "Result of a storage query.",
         source: "shared",
         fields: [
           {
             name: "key",
-            type: "Uint8Array",
+            type: "HexString",
             description: "The queried key.",
           },
           {
             name: "value",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Value, if requested.",
           },
           {
             name: "hash",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Hash, if requested.",
           },
           {
             name: "closestDescendantMerkleValue",
-            type: "Uint8Array",
+            type: "HexString",
             description: "Merkle value, if requested.",
           },
         ],
@@ -8310,7 +8307,7 @@ export const versions: ExplorerVersion[] = [
         id: "Topic",
         name: "Topic",
         category: "alias",
-        definition: "type Topic = Uint8Array",
+        definition: "type Topic = HexString",
         description: "32-byte statement topic.",
         source: "shared",
       },
@@ -8319,13 +8316,13 @@ export const versions: ExplorerVersion[] = [
         name: "TxPayloadContextV1",
         category: "struct",
         definition:
-          "interface TxPayloadContextV1 { metadata: Uint8Array; tokenSymbol: string; tokenDecimals: number; bestBlockHeight: number }",
+          "interface TxPayloadContextV1 { metadata: HexString; tokenSymbol: string; tokenDecimals: number; bestBlockHeight: number }",
         description: "Context information for transaction construction.",
         source: "shared",
         fields: [
           {
             name: "metadata",
-            type: "Uint8Array",
+            type: "HexString",
             description: "`RuntimeMetadataPrefixed` blob (SCALE).",
           },
           {
@@ -8350,7 +8347,7 @@ export const versions: ExplorerVersion[] = [
         name: "TxPayloadExtensionV1",
         category: "struct",
         definition:
-          "interface TxPayloadExtensionV1 { id: string; extra: Uint8Array; additionalSigned: Uint8Array }",
+          "interface TxPayloadExtensionV1 { id: string; extra: HexString; additionalSigned: HexString }",
         description: "A signed extension for a transaction payload.",
         source: "shared",
         fields: [
@@ -8361,12 +8358,12 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "extra",
-            type: "Uint8Array",
+            type: "HexString",
             description: "SCALE-encoded extra data (in extrinsic body).",
           },
           {
             name: "additionalSigned",
-            type: "Uint8Array",
+            type: "HexString",
             description: "SCALE-encoded implicit data (signed, not in body).",
           },
         ],
@@ -8376,7 +8373,7 @@ export const versions: ExplorerVersion[] = [
         name: "TxPayloadV1",
         category: "struct",
         definition:
-          "interface TxPayloadV1 { signer?: string; callData: Uint8Array; extensions: Array<TxPayloadExtensionV1>; txExtVersion: number; context: TxPayloadContextV1 }",
+          "interface TxPayloadV1 { signer?: string; callData: HexString; extensions: Array<TxPayloadExtensionV1>; txExtVersion: number; context: TxPayloadContextV1 }",
         description:
           "Version 1 transaction payload with all data needed to construct a signed\nextrinsic.",
         source: "shared",
@@ -8388,7 +8385,7 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "callData",
-            type: "Uint8Array",
+            type: "HexString",
             description: "SCALE-encoded Call data.",
           },
           {

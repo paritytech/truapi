@@ -114,7 +114,7 @@ export class AccountManagementClient {
     return createObservable<T.HostAccountConnectionStatusSubscribeItem>({
       transport: this.transport,
       ids: W.HOST_ACCOUNT_CONNECTION_STATUS_SUBSCRIBE,
-      payload: S.indexedTaggedUnion({ V1: [0, S.unit] as const }).enc({
+      payload: S.indexedTaggedUnion({ V1: [0, S._void] as const }).enc({
         tag: "V1",
         value: undefined,
       }),
@@ -144,7 +144,7 @@ export class AccountManagementClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(T.HostAccountGetResponse, T.HostAccountGetError),
+            S.Result(T.HostAccountGetResponse, T.HostAccountGetError),
           ] as const,
         }).dec(payload).value,
     });
@@ -167,7 +167,7 @@ export class AccountManagementClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(T.HostAccountGetAliasResponse, T.HostAccountGetError),
+            S.Result(T.HostAccountGetAliasResponse, T.HostAccountGetError),
           ] as const,
         }).dec(payload).value,
     });
@@ -195,7 +195,7 @@ export class AccountManagementClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(
+            S.Result(
               T.HostAccountCreateProofResponse,
               T.HostAccountCreateProofError,
             ),
@@ -221,7 +221,7 @@ export class AccountManagementClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(T.HostGetLegacyAccountsResponse, T.HostAccountGetError),
+            S.Result(T.HostGetLegacyAccountsResponse, T.HostAccountGetError),
           ] as const,
         }).dec(payload).value,
     });
@@ -244,7 +244,7 @@ export class AccountManagementClient {
         S.indexedTaggedUnion({
           V2: [
             0,
-            S.result(T.HostGetUserIdResponse, T.HostGetUserIdError),
+            S.Result(T.HostGetUserIdResponse, T.HostGetUserIdError),
           ] as const,
         }).dec(payload).value,
     });
@@ -300,7 +300,7 @@ export class ChainInteractionClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(T.RemoteChainHeadHeaderResponse, T.GenericError),
+            S.Result(T.RemoteChainHeadHeaderResponse, T.GenericError),
           ] as const,
         }).dec(payload).value,
     });
@@ -323,7 +323,7 @@ export class ChainInteractionClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(T.RemoteChainHeadBodyResponse, T.GenericError),
+            S.Result(T.RemoteChainHeadBodyResponse, T.GenericError),
           ] as const,
         }).dec(payload).value,
     });
@@ -346,7 +346,7 @@ export class ChainInteractionClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(T.RemoteChainHeadStorageResponse, T.GenericError),
+            S.Result(T.RemoteChainHeadStorageResponse, T.GenericError),
           ] as const,
         }).dec(payload).value,
     });
@@ -369,7 +369,7 @@ export class ChainInteractionClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(T.RemoteChainHeadCallResponse, T.GenericError),
+            S.Result(T.RemoteChainHeadCallResponse, T.GenericError),
           ] as const,
         }).dec(payload).value,
     });
@@ -390,7 +390,7 @@ export class ChainInteractionClient {
       }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V1: [0, S.result(S.unit, T.GenericError)] as const,
+          V1: [0, S.Result(S._void, T.GenericError)] as const,
         }).dec(payload).value,
     });
     return result.success ? ok(result.value) : err(result.value);
@@ -410,7 +410,7 @@ export class ChainInteractionClient {
       }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V1: [0, S.result(S.unit, T.GenericError)] as const,
+          V1: [0, S.Result(S._void, T.GenericError)] as const,
         }).dec(payload).value,
     });
     return result.success ? ok(result.value) : err(result.value);
@@ -430,7 +430,7 @@ export class ChainInteractionClient {
       }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V1: [0, S.result(S.unit, T.GenericError)] as const,
+          V1: [0, S.Result(S._void, T.GenericError)] as const,
         }).dec(payload).value,
     });
     return result.success ? ok(result.value) : err(result.value);
@@ -452,7 +452,7 @@ export class ChainInteractionClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(T.RemoteChainSpecGenesisHashResponse, T.GenericError),
+            S.Result(T.RemoteChainSpecGenesisHashResponse, T.GenericError),
           ] as const,
         }).dec(payload).value,
     });
@@ -475,7 +475,7 @@ export class ChainInteractionClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(T.RemoteChainSpecChainNameResponse, T.GenericError),
+            S.Result(T.RemoteChainSpecChainNameResponse, T.GenericError),
           ] as const,
         }).dec(payload).value,
     });
@@ -498,7 +498,7 @@ export class ChainInteractionClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(T.RemoteChainSpecPropertiesResponse, T.GenericError),
+            S.Result(T.RemoteChainSpecPropertiesResponse, T.GenericError),
           ] as const,
         }).dec(payload).value,
     });
@@ -523,7 +523,7 @@ export class ChainInteractionClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(T.RemoteChainTransactionBroadcastResponse, T.GenericError),
+            S.Result(T.RemoteChainTransactionBroadcastResponse, T.GenericError),
           ] as const,
         }).dec(payload).value,
     });
@@ -544,7 +544,7 @@ export class ChainInteractionClient {
       }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V1: [0, S.result(S.unit, T.GenericError)] as const,
+          V1: [0, S.Result(S._void, T.GenericError)] as const,
         }).dec(payload).value,
     });
     return result.success ? ok(result.value) : err(result.value);
@@ -576,7 +576,7 @@ export class ChatClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(T.HostChatCreateRoomResponse, T.HostChatCreateRoomError),
+            S.Result(T.HostChatCreateRoomResponse, T.HostChatCreateRoomError),
           ] as const,
         }).dec(payload).value,
     });
@@ -601,7 +601,7 @@ export class ChatClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(T.HostChatRegisterBotResponse, T.HostChatRegisterBotError),
+            S.Result(T.HostChatRegisterBotResponse, T.HostChatRegisterBotError),
           ] as const,
         }).dec(payload).value,
     });
@@ -613,7 +613,7 @@ export class ChatClient {
     return createObservable<T.HostChatListSubscribeItem>({
       transport: this.transport,
       ids: W.HOST_CHAT_LIST_SUBSCRIBE,
-      payload: S.indexedTaggedUnion({ V1: [0, S.unit] as const }).enc({
+      payload: S.indexedTaggedUnion({ V1: [0, S._void] as const }).enc({
         tag: "V1",
         value: undefined,
       }),
@@ -645,7 +645,7 @@ export class ChatClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(T.HostChatPostMessageResponse, T.HostChatPostMessageError),
+            S.Result(T.HostChatPostMessageResponse, T.HostChatPostMessageError),
           ] as const,
         }).dec(payload).value,
     });
@@ -657,7 +657,7 @@ export class ChatClient {
     return createObservable<T.HostChatActionSubscribeItem>({
       transport: this.transport,
       ids: W.HOST_CHAT_ACTION_SUBSCRIBE,
-      payload: S.indexedTaggedUnion({ V1: [0, S.unit] as const }).enc({
+      payload: S.indexedTaggedUnion({ V1: [0, S._void] as const }).enc({
         tag: "V1",
         value: undefined,
       }),
@@ -721,7 +721,7 @@ export class ChatClient {
         S.indexedTaggedUnion({
           V2: [
             0,
-            S.result(
+            S.Result(
               T.HostChatCreateSimpleGroupResponse,
               T.HostChatCreateRoomError,
             ),
@@ -760,7 +760,7 @@ export class EntropyDerivationClient {
         S.indexedTaggedUnion({
           V2: [
             0,
-            S.result(T.HostDeriveEntropyResponse, T.HostDeriveEntropyError),
+            S.Result(T.HostDeriveEntropyResponse, T.HostDeriveEntropyError),
           ] as const,
         }).dec(payload).value,
     });
@@ -793,7 +793,7 @@ export class LocalStorageClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(
+            S.Result(
               T.HostLocalStorageReadResponse,
               T.HostLocalStorageReadError,
             ),
@@ -817,7 +817,7 @@ export class LocalStorageClient {
       }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V1: [0, S.result(S.unit, T.HostLocalStorageReadError)] as const,
+          V1: [0, S.Result(S._void, T.HostLocalStorageReadError)] as const,
         }).dec(payload).value,
     });
     return result.success ? ok(result.value) : err(result.value);
@@ -837,7 +837,7 @@ export class LocalStorageClient {
       }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V1: [0, S.result(S.unit, T.HostLocalStorageReadError)] as const,
+          V1: [0, S.Result(S._void, T.HostLocalStorageReadError)] as const,
         }).dec(payload).value,
     });
     return result.success ? ok(result.value) : err(result.value);
@@ -895,7 +895,7 @@ export class PaymentClient {
         S.indexedTaggedUnion({
           V2: [
             0,
-            S.result(T.HostPaymentRequestResponse, T.HostPaymentRequestError),
+            S.Result(T.HostPaymentRequestResponse, T.HostPaymentRequestError),
           ] as const,
         }).dec(payload).value,
     });
@@ -946,7 +946,7 @@ export class PaymentClient {
       }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V2: [0, S.result(S.unit, T.HostPaymentTopUpError)] as const,
+          V2: [0, S.Result(S._void, T.HostPaymentTopUpError)] as const,
         }).dec(payload).value,
     });
     return result.success ? ok(result.value) : err(result.value);
@@ -973,7 +973,7 @@ export class PermissionsClient {
         S.indexedTaggedUnion({
           V2: [
             0,
-            S.result(T.HostDevicePermissionResponse, T.GenericError),
+            S.Result(T.HostDevicePermissionResponse, T.GenericError),
           ] as const,
         }).dec(payload).value,
     });
@@ -996,7 +996,7 @@ export class PermissionsClient {
         S.indexedTaggedUnion({
           V2: [
             0,
-            S.result(T.RemotePermissionResponse, T.GenericError),
+            S.Result(T.RemotePermissionResponse, T.GenericError),
           ] as const,
         }).dec(payload).value,
     });
@@ -1069,7 +1069,7 @@ export class SigningClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(
+            S.Result(
               T.HostCreateTransactionResponse,
               T.HostCreateTransactionError,
             ),
@@ -1103,7 +1103,7 @@ export class SigningClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(
+            S.Result(
               T.HostCreateTransactionWithLegacyAccountResponse,
               T.HostCreateTransactionError,
             ),
@@ -1126,7 +1126,7 @@ export class SigningClient {
         S.indexedTaggedUnion({
           V2: [
             0,
-            S.result(T.HostSignPayloadResponse, T.HostSignPayloadError),
+            S.Result(T.HostSignPayloadResponse, T.HostSignPayloadError),
           ] as const,
         }).dec(payload).value,
     });
@@ -1149,7 +1149,7 @@ export class SigningClient {
         S.indexedTaggedUnion({
           V2: [
             0,
-            S.result(T.HostSignPayloadResponse, T.HostSignPayloadError),
+            S.Result(T.HostSignPayloadResponse, T.HostSignPayloadError),
           ] as const,
         }).dec(payload).value,
     });
@@ -1213,7 +1213,7 @@ export class StatementStoreClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(
+            S.Result(
               T.RemoteStatementStoreCreateProofResponse,
               T.RemoteStatementStoreCreateProofError,
             ),
@@ -1241,7 +1241,7 @@ export class StatementStoreClient {
       }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V1: [0, S.result(S.unit, T.GenericError)] as const,
+          V1: [0, S.Result(S._void, T.GenericError)] as const,
         }).dec(payload).value,
     });
     return result.success ? ok(result.value) : err(result.value);
@@ -1285,7 +1285,7 @@ export class TrUApiCallsClient {
       }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V1: [0, S.result(S.unit, T.HostHandshakeError)] as const,
+          V1: [0, S.Result(S._void, T.HostHandshakeError)] as const,
         }).dec(payload).value,
     });
     return result.success ? ok(result.value) : err(result.value);
@@ -1307,7 +1307,7 @@ export class TrUApiCallsClient {
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.result(T.HostFeatureSupportedResponse, T.GenericError),
+            S.Result(T.HostFeatureSupportedResponse, T.GenericError),
           ] as const,
         }).dec(payload).value,
     });
@@ -1328,7 +1328,7 @@ export class TrUApiCallsClient {
       }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V1: [0, S.result(S.unit, T.GenericError)] as const,
+          V1: [0, S.Result(S._void, T.GenericError)] as const,
         }).dec(payload).value,
     });
     return result.success ? ok(result.value) : err(result.value);
@@ -1348,7 +1348,7 @@ export class TrUApiCallsClient {
       }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V1: [0, S.result(S.unit, T.HostNavigateToError)] as const,
+          V1: [0, S.Result(S._void, T.HostNavigateToError)] as const,
         }).dec(payload).value,
     });
     return result.success ? ok(result.value) : err(result.value);
@@ -1371,20 +1371,39 @@ export interface TrUApiClient {
 
 export type Client = TrUApiClient;
 
+export type GeneratedClientTransport = Omit<
+  TrUApiTransport,
+  "truapiVersion" | "codecVersion"
+> &
+  Partial<Pick<TrUApiTransport, "truapiVersion" | "codecVersion">>;
+
+function withGeneratedTransportVersions(
+  transport: GeneratedClientTransport,
+): TrUApiTransport {
+  return {
+    ...transport,
+    truapiVersion: transport.truapiVersion ?? TRUAPI_VERSION,
+    codecVersion: transport.codecVersion ?? TRUAPI_CODEC_VERSION,
+  };
+}
+
 /** Creates the generated client facade by binding each service namespace to the
  * shared transport instance. */
-export function createClient(transport: TrUApiTransport): TrUApiClient {
+export function createClient(
+  transport: GeneratedClientTransport,
+): TrUApiClient {
+  const versionedTransport = withGeneratedTransportVersions(transport);
   return {
-    accountManagement: new AccountManagementClient(transport),
-    chainInteraction: new ChainInteractionClient(transport),
-    chat: new ChatClient(transport),
-    entropyDerivation: new EntropyDerivationClient(transport),
-    localStorage: new LocalStorageClient(transport),
-    payment: new PaymentClient(transport),
-    permissions: new PermissionsClient(transport),
-    preimage: new PreimageClient(transport),
-    signing: new SigningClient(transport),
-    statementStore: new StatementStoreClient(transport),
-    trUApiCalls: new TrUApiCallsClient(transport),
+    accountManagement: new AccountManagementClient(versionedTransport),
+    chainInteraction: new ChainInteractionClient(versionedTransport),
+    chat: new ChatClient(versionedTransport),
+    entropyDerivation: new EntropyDerivationClient(versionedTransport),
+    localStorage: new LocalStorageClient(versionedTransport),
+    payment: new PaymentClient(versionedTransport),
+    permissions: new PermissionsClient(versionedTransport),
+    preimage: new PreimageClient(versionedTransport),
+    signing: new SigningClient(versionedTransport),
+    statementStore: new StatementStoreClient(versionedTransport),
+    trUApiCalls: new TrUApiCallsClient(versionedTransport),
   };
 }

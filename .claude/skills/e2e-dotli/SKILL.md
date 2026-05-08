@@ -41,32 +41,17 @@ When a test fails, traces and screenshots land in
 Use when investigating a wire issue or when the automated suite green-
 washes a real problem.
 
-### Start dotli's preview server
+To bring up dotli + playground locally, **invoke the
+`playground-local-stack` skill** rather than running the commands by
+hand. It handles the submodule init, `bun install`, and the
+per-pane-cd discipline that makes tmux orchestration succeed first try.
+Use the `preview:debugger` variant when investigating a wire issue —
+the debug panel logs every host↔product TrUAPI frame.
 
-```bash
-cd hosts/dotli
-bun run preview            # → http://localhost:5173
-# or, for the TrUAPI debug panel:
-bun run preview:debugger   # = VITE_APP_DEBUG=true bun run preview
-```
-
-`preview:debugger` is recommended whenever you are investigating a wire
-issue — the debug panel logs every host↔product TrUAPI frame.
-
-### Start the playground dev server
-
-```bash
-cd playground
-yarn dev                   # → http://localhost:3000
-```
-
-### Open the playground inside dotli
-
-Navigate (in any browser) to `http://localhost:5173/localhost:3000`.
-
-dotli's host parses `/localhost:<port>` as a proxy directive and iframes
-the playground. The playground detects the iframe via `window.parent`
-and uses the iframe `postMessage` provider.
+The browser URL is **`http://localhost:5173/localhost:3000`**: dotli's
+host parses `/localhost:<port>` as a proxy directive and iframes the
+playground. The playground detects the iframe via `window.parent` and
+uses the iframe `postMessage` provider.
 
 ### Verification flow inside the playground UI
 
