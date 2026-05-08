@@ -2,8 +2,7 @@
 
 use crate::versioned::chat::{
     HostChatActionSubscribeItem, HostChatCreateRoomError, HostChatCreateRoomRequest,
-    HostChatCreateRoomResponse, HostChatCreateSimpleGroupError, HostChatCreateSimpleGroupRequest,
-    HostChatCreateSimpleGroupResponse, HostChatListSubscribeItem, HostChatPostMessageError,
+    HostChatCreateRoomResponse, HostChatListSubscribeItem, HostChatPostMessageError,
     HostChatPostMessageRequest, HostChatPostMessageResponse, HostChatRegisterBotError,
     HostChatRegisterBotRequest, HostChatRegisterBotResponse,
     ProductChatCustomMessageRenderSubscribeItem, ProductChatCustomMessageRenderSubscribeRequest,
@@ -193,33 +192,4 @@ pub trait Chat: Send + Sync {
         Subscription::empty()
     }
 
-    /// Create a simple group chat room (V0.2+).
-    ///
-    /// ```truapi-client-example
-    /// import {
-    ///   type Client,
-    ///   type HostChatCreateSimpleGroupResponse,
-    /// } from "@parity/truapi";
-    ///
-    /// export async function createSimpleGroup(
-    ///   truapi: Client,
-    /// ): Promise<HostChatCreateSimpleGroupResponse> {
-    ///   const result = await truapi.chat.chatCreateSimpleGroup({
-    ///     roomId: "test-simple-group",
-    ///     name: "Test Group",
-    ///     icon: "",
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
-    /// ```
-    #[wire(request_id = 134)]
-    async fn host_chat_create_simple_group(
-        &self,
-        _cx: &CallContext,
-        _request: HostChatCreateSimpleGroupRequest,
-    ) -> Result<HostChatCreateSimpleGroupResponse, CallError<HostChatCreateSimpleGroupError>> {
-        Err(CallError::unavailable())
-    }
 }

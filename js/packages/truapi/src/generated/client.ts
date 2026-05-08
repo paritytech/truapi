@@ -699,37 +699,6 @@ export class ChatClient {
         ).value,
     });
   }
-
-  /** Create a simple group chat room (V0.2+). */
-  async chatCreateSimpleGroup(
-    request: T.HostChatCreateSimpleGroupRequest,
-  ): Promise<
-    Result<T.HostChatCreateSimpleGroupResponse, T.HostChatCreateRoomError>
-  > {
-    const result = await this.transport.request<
-      S.ResultPayload<
-        T.HostChatCreateSimpleGroupResponse,
-        T.HostChatCreateRoomError
-      >
-    >({
-      ids: W.HOST_CHAT_CREATE_SIMPLE_GROUP,
-      payload: T.VersionedHostChatCreateSimpleGroupRequest.enc({
-        tag: "V2",
-        value: request,
-      }),
-      decodeResponse: (payload) =>
-        S.indexedTaggedUnion({
-          V2: [
-            0,
-            S.Result(
-              T.HostChatCreateSimpleGroupResponse,
-              T.HostChatCreateRoomError,
-            ),
-          ] as const,
-        }).dec(payload).value,
-    });
-    return result.success ? ok(result.value) : err(result.value);
-  }
 }
 
 /**

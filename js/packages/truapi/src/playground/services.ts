@@ -226,14 +226,6 @@ export const services: ServiceInfo[] = [
         defaultRequest:
           '{\n  "messageId": "msg-1",\n  "messageType": "custom-render-demo",\n  "payload": "0x"\n}',
       },
-      {
-        name: "host_chat_create_simple_group",
-        type: "unary",
-        description: "Create a simple group chat room (V0.2+).",
-        requestDescription: "HostChatCreateSimpleGroupRequest",
-        defaultRequest:
-          '{\n  "icon": "",\n  "name": "Test Group",\n  "roomId": "test-simple-group"\n}',
-      },
     ],
   },
   {

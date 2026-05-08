@@ -4,7 +4,6 @@
 //! wrappers. The canonical host API traits live in [`crate::api`].
 
 mod account;
-mod chat;
 mod common;
 mod entropy;
 mod payment;
@@ -12,7 +11,6 @@ mod signing;
 mod statement_store;
 
 pub use account::*;
-pub use chat::*;
 pub use common::*;
 pub use entropy::*;
 pub use payment::*;

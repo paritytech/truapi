@@ -116,11 +116,6 @@ const methodMap: Record<string, [keyof TrUApiClient, string, boolean]> = {
 
   // Chat
   "Chat/host_chat_create_room": ["chat", "chatCreateRoom", false],
-  "Chat/host_chat_create_simple_group": [
-    "chat",
-    "chatCreateSimpleGroup",
-    false,
-  ],
   "Chat/host_chat_register_bot": ["chat", "chatRegisterBot", false],
   "Chat/host_chat_post_message": ["chat", "chatPostMessage", false],
   "Chat/host_chat_list_subscribe": ["chat", "chatListSubscribe", true],
