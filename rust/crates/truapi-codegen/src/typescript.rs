@@ -2296,6 +2296,17 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
     )
     .unwrap();
     writeln!(out).unwrap();
+    writeln!(
+        out,
+        "export class SubscriptionInterruptedError<Reason = unknown> extends Error {{"
+    )
+    .unwrap();
+    writeln!(out, "  constructor(readonly reason: Reason) {{").unwrap();
+    writeln!(out, "    super(\"Subscription interrupted\");").unwrap();
+    writeln!(out, "    this.name = \"SubscriptionInterruptedError\";").unwrap();
+    writeln!(out, "  }}").unwrap();
+    writeln!(out, "}}").unwrap();
+    writeln!(out).unwrap();
     writeln!(out, "function toError(error: unknown): Error {{").unwrap();
     writeln!(
         out,
@@ -2391,11 +2402,13 @@ fn write_observable_helper(out: &mut String) {
     writeln!(out, "  method,").unwrap();
     writeln!(out, "  payload,").unwrap();
     writeln!(out, "  decodeItem,").unwrap();
+    writeln!(out, "  decodeInterrupt,").unwrap();
     writeln!(out, "}}: {{").unwrap();
     writeln!(out, "  transport: TrUApiTransport;").unwrap();
     writeln!(out, "  method: string;").unwrap();
     writeln!(out, "  payload: Uint8Array;").unwrap();
     writeln!(out, "  decodeItem: (payload: Uint8Array) => Item;").unwrap();
+    writeln!(out, "  decodeInterrupt?: (payload: Uint8Array) => unknown;").unwrap();
     writeln!(out, "}}): ObservableLike<Item> {{").unwrap();
     writeln!(out, "  return {{").unwrap();
     writeln!(
@@ -2406,11 +2419,15 @@ fn write_observable_helper(out: &mut String) {
     writeln!(out, "      let closed = false;").unwrap();
     writeln!(out, "      let raw: Subscription | undefined;").unwrap();
     writeln!(out).unwrap();
-    writeln!(out, "      const fail = (error: unknown) => {{").unwrap();
+    writeln!(
+        out,
+        "      const fail = (error: unknown, stop = true) => {{"
+    )
+    .unwrap();
     writeln!(out, "        if (closed) return;").unwrap();
     writeln!(out, "        closed = true;").unwrap();
     writeln!(out, "        try {{").unwrap();
-    writeln!(out, "          raw?.unsubscribe();").unwrap();
+    writeln!(out, "          if (stop) raw?.unsubscribe();").unwrap();
     writeln!(out, "        }} finally {{").unwrap();
     writeln!(out, "          observer.error?.(toError(error));").unwrap();
     writeln!(out, "        }}").unwrap();
@@ -2427,8 +2444,23 @@ fn write_observable_helper(out: &mut String) {
     writeln!(out, "            fail(error);").unwrap();
     writeln!(out, "          }}").unwrap();
     writeln!(out, "        }},").unwrap();
-    writeln!(out, "        onInterrupt: () => {{").unwrap();
+    writeln!(out, "        onInterrupt: (payload) => {{").unwrap();
     writeln!(out, "          if (closed) return;").unwrap();
+    writeln!(out, "          if (decodeInterrupt) {{").unwrap();
+    writeln!(out, "            let reason: unknown;").unwrap();
+    writeln!(out, "            try {{").unwrap();
+    writeln!(out, "              reason = decodeInterrupt(payload);").unwrap();
+    writeln!(out, "            }} catch (error) {{").unwrap();
+    writeln!(out, "              fail(error, false);").unwrap();
+    writeln!(out, "              return;").unwrap();
+    writeln!(out, "            }}").unwrap();
+    writeln!(
+        out,
+        "            fail(new SubscriptionInterruptedError(reason), false);"
+    )
+    .unwrap();
+    writeln!(out, "            return;").unwrap();
+    writeln!(out, "          }}").unwrap();
     writeln!(out, "          closed = true;").unwrap();
     writeln!(out, "          observer.complete?.();").unwrap();
     writeln!(out, "        }},").unwrap();
@@ -2800,8 +2832,9 @@ fn emit_method(
                 wire_version,
             )?;
         }
-        (MethodKind::ResultSubscription, ReturnType::ResultSubscription { item, err: _ }) => {
+        (MethodKind::ResultSubscription, ReturnType::ResultSubscription { item, err }) => {
             let response = emit_response(item, wrappers, ctx, wire_version)?;
+            let error = emit_error_response(err, wrappers, ctx, wire_version)?;
             emit_subscribe_method(
                 out,
                 &ts_method_name,
@@ -2809,7 +2842,7 @@ fn emit_method(
                 &payload,
                 &response,
                 response.inner_type_ts.clone(),
-                None,
+                Some(error),
                 wire_version,
             )?;
         }
@@ -2827,7 +2860,8 @@ fn emit_method(
 }
 
 /// Emits a subscribe method body that returns an Observable-compatible object.
-/// `_interrupt` is payloadless for compatibility and maps to `complete`.
+/// Payloadless `_interrupt` maps to `complete`; typed interrupt payloads map
+/// to `error`.
 #[allow(clippy::too_many_arguments)]
 fn emit_subscribe_method(
     out: &mut String,
@@ -2839,7 +2873,6 @@ fn emit_subscribe_method(
     err: Option<ResponseEmission>,
     wire_version: Option<u32>,
 ) -> Result<()> {
-    let _ = err;
     if payload.param_list.is_empty() {
         writeln!(
             out,
@@ -2880,6 +2913,19 @@ fn emit_subscribe_method(
         format!("{}.dec(payload)", response.wire_codec_expr)
     };
     writeln!(out, "      decodeItem: (payload) => {},", item_value).unwrap();
+    if let Some(err) = err {
+        let err_value = if let Some(version) = wire_version {
+            versioned_value_expr(
+                &format!("{}.dec(payload)", err.wire_codec_expr),
+                &err.wire_type_ts,
+                &err.inner_type_ts,
+                version,
+            )
+        } else {
+            format!("{}.dec(payload)", err.wire_codec_expr)
+        };
+        writeln!(out, "      decodeInterrupt: (payload) => {},", err_value).unwrap();
+    }
     writeln!(out, "    }});").unwrap();
     writeln!(out, "  }}").unwrap();
 

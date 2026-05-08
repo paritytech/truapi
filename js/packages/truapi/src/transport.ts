@@ -92,9 +92,9 @@ export interface SubscribeRawParams {
   onReceive: (payload: Uint8Array) => void;
 
   /**
-   * Called when the peer sends an interrupt frame for the subscription.
+   * Called with raw SCALE interrupt payload bytes when the peer interrupts the subscription.
    **/
-  onInterrupt?: () => void;
+  onInterrupt?: (payload: Uint8Array) => void;
 
   /**
    * Called when the underlying provider closes while the subscription is active.

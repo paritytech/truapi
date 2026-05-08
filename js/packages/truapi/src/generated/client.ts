@@ -15,6 +15,13 @@ export type { ObservableLike, Observer, Subscription, TrUApiTransport };
 export const TRUAPI_VERSION = 2 as const;
 export const TRUAPI_CODEC_VERSION = 1 as const;
 
+export class SubscriptionInterruptedError<Reason = unknown> extends Error {
+  constructor(readonly reason: Reason) {
+    super("Subscription interrupted");
+    this.name = "SubscriptionInterruptedError";
+  }
+}
+
 function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
@@ -24,22 +31,24 @@ function createObservable<Item>({
   method,
   payload,
   decodeItem,
+  decodeInterrupt,
 }: {
   transport: TrUApiTransport;
   method: string;
   payload: Uint8Array;
   decodeItem: (payload: Uint8Array) => Item;
+  decodeInterrupt?: (payload: Uint8Array) => unknown;
 }): ObservableLike<Item> {
   return {
     subscribe(observer: Partial<Observer<Item>> = {}): Subscription {
       let closed = false;
       let raw: Subscription | undefined;
 
-      const fail = (error: unknown) => {
+      const fail = (error: unknown, stop = true) => {
         if (closed) return;
         closed = true;
         try {
-          raw?.unsubscribe();
+          if (stop) raw?.unsubscribe();
         } finally {
           observer.error?.(toError(error));
         }
@@ -56,8 +65,19 @@ function createObservable<Item>({
             fail(error);
           }
         },
-        onInterrupt: () => {
+        onInterrupt: (payload) => {
           if (closed) return;
+          if (decodeInterrupt) {
+            let reason: unknown;
+            try {
+              reason = decodeInterrupt(payload);
+            } catch (error) {
+              fail(error, false);
+              return;
+            }
+            fail(new SubscriptionInterruptedError(reason), false);
+            return;
+          }
           closed = true;
           observer.complete?.();
         },
@@ -847,6 +867,13 @@ export class PaymentClient {
             value: T.HostPaymentBalanceSubscribeItem;
           } & T.VersionedHostPaymentBalanceSubscribeItem
         ).value,
+      decodeInterrupt: (payload) =>
+        (
+          T.VersionedHostPaymentBalanceSubscribeError.dec(payload) as {
+            tag: "V2";
+            value: T.HostPaymentBalanceSubscribeError;
+          } & T.VersionedHostPaymentBalanceSubscribeError
+        ).value,
     });
   }
 
@@ -892,6 +919,13 @@ export class PaymentClient {
             tag: "V2";
             value: T.HostPaymentStatusSubscribeItem;
           } & T.VersionedHostPaymentStatusSubscribeItem
+        ).value,
+      decodeInterrupt: (payload) =>
+        (
+          T.VersionedHostPaymentStatusSubscribeError.dec(payload) as {
+            tag: "V2";
+            value: T.HostPaymentStatusSubscribeError;
+          } & T.VersionedHostPaymentStatusSubscribeError
         ).value,
     });
   }

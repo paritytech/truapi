@@ -4701,6 +4701,7 @@ export const versions: ExplorerVersion[] = [
         pattern: "subscription",
         request: "undefined",
         response: "HostPaymentBalanceSubscribeItem",
+        errorType: "HostPaymentBalanceSubscribeError",
         description: "Subscribe to payment balance updates.",
         usageExample:
           'import {\n  type Client,\n  type Subscription,\n  type HostPaymentBalanceSubscribeItem,\n} from "@parity/truapi";\n\nexport function watchPaymentBalance(truapi: Client): Subscription {\n  return truapi.payment.paymentBalanceSubscribe().subscribe({\n    next: (balance: HostPaymentBalanceSubscribeItem) =>\n      console.log(balance),\n    error: (error: Error) => console.error(error),\n    complete: () => console.log("completed"),\n  });\n}',
@@ -4742,6 +4743,7 @@ export const versions: ExplorerVersion[] = [
         pattern: "subscription",
         request: "HostPaymentStatusSubscribeRequest",
         response: "HostPaymentStatusSubscribeItem",
+        errorType: "HostPaymentStatusSubscribeError",
         description:
           "Subscribe to payment lifecycle updates for a specific payment.",
         usageExample:
@@ -6554,6 +6556,28 @@ export const versions: ExplorerVersion[] = [
         ],
       },
       {
+        id: "HostPaymentBalanceSubscribeError",
+        name: "HostPaymentBalanceSubscribeError",
+        category: "enum",
+        definition:
+          'type HostPaymentBalanceSubscribeError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description:
+          "Error from [`crate::api::Payment::host_payment_balance_subscribe`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
+        source: "v0.2",
+        variants: [
+          {
+            name: "PermissionDenied",
+            type: "undefined",
+            description: "User denied the balance disclosure request.",
+          },
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
+          },
+        ],
+      },
+      {
         id: "HostPaymentBalanceSubscribeItem",
         name: "HostPaymentBalanceSubscribeItem",
         category: "struct",
@@ -6632,6 +6656,29 @@ export const versions: ExplorerVersion[] = [
             name: "id",
             type: "string",
             description: "The assigned payment identifier.",
+          },
+        ],
+      },
+      {
+        id: "HostPaymentStatusSubscribeError",
+        name: "HostPaymentStatusSubscribeError",
+        category: "enum",
+        definition:
+          'type HostPaymentStatusSubscribeError = { tag: "PaymentNotFound"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description:
+          "Error from [`crate::api::Payment::host_payment_status_subscribe`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
+        source: "v0.2",
+        variants: [
+          {
+            name: "PaymentNotFound",
+            type: "undefined",
+            description:
+              "Payment ID was not found or does not belong to the current product.",
+          },
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
           },
         ],
       },

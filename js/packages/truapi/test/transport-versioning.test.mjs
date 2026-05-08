@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 
 import { createTransport } from "../src/client.ts";
 import { indexedTaggedUnion, result, str, unit } from "../src/scale.ts";
-import { createClient } from "../src/generated/client.ts";
+import {
+  createClient,
+  SubscriptionInterruptedError,
+} from "../src/generated/client.ts";
 import * as T from "../src/generated/types.ts";
 import { encodeWireMessage } from "../src/transport.ts";
 
@@ -227,6 +230,43 @@ function handshakeResponsePayload(value) {
   fixture.receive(frame);
 
   assert.deepEqual(completions, [[]]);
+}
+
+// Payment subscriptions carry typed interrupt payloads. Those are observable
+// errors, not normal completion.
+{
+  const fixture = providerFixture();
+  const transport = createTransport(fixture.provider);
+  const client = createClient(transport);
+  const completions = [];
+  const errors = [];
+
+  const sub = client.payment.paymentBalanceSubscribe().subscribe({
+    complete: () => completions.push(true),
+    error: (error) => errors.push(error),
+  });
+
+  const reason = { tag: "PermissionDenied", value: undefined };
+  const frame = unwrap(
+    encodeWireMessage({
+      requestId: sub.subscriptionId,
+      payload: {
+        tag: "host_payment_balance_subscribe_interrupt",
+        value: T.VersionedHostPaymentBalanceSubscribeError.enc({
+          tag: "V2",
+          value: reason,
+        }),
+      },
+    }),
+    "encode typed payment interrupt",
+  );
+  fixture.receive(frame);
+
+  assert.deepEqual(completions, []);
+  assert.equal(errors.length, 1);
+  assert.ok(errors[0] instanceof SubscriptionInterruptedError);
+  assert.deepEqual(errors[0].reason, reason);
+  assert.equal(fixture.sent.length, 1);
 }
 
 // Malformed receive payloads are terminal observable errors. The generated
