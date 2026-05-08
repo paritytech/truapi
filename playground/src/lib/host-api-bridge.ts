@@ -504,7 +504,7 @@ function normalizeForScale(value: unknown): unknown {
   if (value instanceof Uint8Array) return value;
   if (typeof value === "string") {
     if (/^-?\d+n$/.test(value)) return BigInt(value.slice(0, -1));
-    if (/^0x[0-9a-fA-F]*$/.test(value) && value.length % 2 === 0)
+    if (/^0x[0-9a-fA-F]+$/.test(value) && value.length % 2 === 0)
       return hexToBytes(value);
     return value;
   }
@@ -514,7 +514,8 @@ function normalizeForScale(value: unknown): unknown {
     if (
       Object.keys(obj).length === 1 &&
       typeof obj["bytes"] === "string" &&
-      /^0x[0-9a-fA-F]*$/.test(obj["bytes"] as string)
+      /^0x[0-9a-fA-F]+$/.test(obj["bytes"] as string) &&
+      obj["bytes"].length % 2 === 0
     ) {
       return hexToBytes(obj["bytes"] as string);
     }
