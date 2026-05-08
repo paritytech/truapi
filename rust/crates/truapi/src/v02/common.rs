@@ -87,11 +87,13 @@ pub enum RemotePermission {
         /// Domain patterns requested by the product.
         domains: Vec<String>,
     },
-    /// WebRTC access — can expose the user's IP address.
+    /// WebRTC access, can expose the user's IP address.
     WebRtc,
     /// Broadcast signed transactions via
     /// [`crate::api::ChainInteraction::remote_chain_transaction_broadcast`].
     ChainSubmit,
+    /// Submit a preimage via [`crate::api::Preimage::remote_preimage_submit`].
+    PreimageSubmit,
     /// Submit statements via [`crate::api::StatementStore::remote_statement_store_submit`].
     StatementSubmit,
 }

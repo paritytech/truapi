@@ -2222,13 +2222,15 @@ export type RemotePermission =
    * subdomain), or `"*"` (all hosts).
    */
   | { tag: "Remote"; value: { domains: Array<string> } }
-  /** WebRTC access — can expose the user's IP address. */
+  /** WebRTC access, can expose the user's IP address. */
   | { tag: "WebRtc"; value: undefined }
   /**
    * Broadcast signed transactions via
    * [`crate::api::ChainInteraction::remote_chain_transaction_broadcast`].
    */
   | { tag: "ChainSubmit"; value: undefined }
+  /** Submit a preimage via [`crate::api::Preimage::remote_preimage_submit`]. */
+  | { tag: "PreimageSubmit"; value: undefined }
   /** Submit statements via [`crate::api::StatementStore::remote_statement_store_submit`]. */
   | { tag: "StatementSubmit"; value: undefined };
 
@@ -2240,6 +2242,7 @@ export const RemotePermission: S.Codec<RemotePermission> = S.lazy(
       }>,
       WebRtc: S.unit,
       ChainSubmit: S.unit,
+      PreimageSubmit: S.unit,
       StatementSubmit: S.unit,
     }),
 );

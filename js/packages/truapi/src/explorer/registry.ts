@@ -7688,7 +7688,7 @@ export const versions: ExplorerVersion[] = [
         name: "RemotePermission",
         category: "enum",
         definition:
-          'type RemotePermission = { tag: "Remote"; value: { domains: Array<string> } } | { tag: "WebRtc"; value: undefined } | { tag: "ChainSubmit"; value: undefined } | { tag: "StatementSubmit"; value: undefined }',
+          'type RemotePermission = { tag: "Remote"; value: { domains: Array<string> } } | { tag: "WebRtc"; value: undefined } | { tag: "ChainSubmit"; value: undefined } | { tag: "PreimageSubmit"; value: undefined } | { tag: "StatementSubmit"; value: undefined }',
         description:
           "A single remote-operation permission entry.\n\nV0.2: replaces `RemotePermissionRequest`. The [`crate::api::Permissions::remote_permission`] method\nnow accepts a `Vec<RemotePermission>` so products can batch multiple\npermission requests into a single prompt.\n\nSee [RFC 0001] and [issue #64].\n\n[RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66\n[issue #64]: https://github.com/paritytech/triangle-js-sdks/issues/64",
         source: "shared",
@@ -7702,13 +7702,19 @@ export const versions: ExplorerVersion[] = [
           {
             name: "WebRtc",
             type: "undefined",
-            description: "WebRTC access — can expose the user's IP address.",
+            description: "WebRTC access, can expose the user's IP address.",
           },
           {
             name: "ChainSubmit",
             type: "undefined",
             description:
               "Broadcast signed transactions via\n[`crate::api::ChainInteraction::remote_chain_transaction_broadcast`].",
+          },
+          {
+            name: "PreimageSubmit",
+            type: "undefined",
+            description:
+              "Submit a preimage via [`crate::api::Preimage::remote_preimage_submit`].",
           },
           {
             name: "StatementSubmit",

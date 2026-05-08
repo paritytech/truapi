@@ -436,7 +436,7 @@ fn version_rank(path: &[String]) -> u32 {
 
 fn select_candidate<'a>(name: &str, candidates: &'a [ItemCandidate]) -> Result<&'a ItemCandidate> {
     let Some(selected) = candidates.last() else {
-        bail!("No rustdoc candidates found for `{}`", name);
+        bail!("No rustdoc candidates found for `{name}`");
     };
 
     let selected_rank = version_rank(&selected.path);
@@ -475,24 +475,24 @@ fn extract_trait(
         .name
         .as_ref()
         .cloned()
-        .with_context(|| format!("Trait item `{}` has no name", item_id))?;
+        .with_context(|| format!("Trait item `{item_id}` has no name"))?;
     let trait_inner = item
         .inner
         .get("trait")
-        .with_context(|| format!("Trait `{}` missing rustdoc trait body", name))?;
+        .with_context(|| format!("Trait `{name}` missing rustdoc trait body"))?;
     let item_ids = trait_inner
         .get("items")
         .and_then(|value| value.as_array())
-        .with_context(|| format!("Trait `{}` missing rustdoc items array", name))?;
+        .with_context(|| format!("Trait `{name}` missing rustdoc items array"))?;
 
     let mut methods = Vec::new();
     for method_id in item_ids {
         let method_id = value_id(method_id)
-            .with_context(|| format!("Trait `{}` contained a non-item method id", name))?;
+            .with_context(|| format!("Trait `{name}` contained a non-item method id"))?;
         let method_item = krate
             .index
             .get(&method_id)
-            .with_context(|| format!("Trait `{}` references missing item `{}`", name, method_id))?;
+            .with_context(|| format!("Trait `{name}` references missing item `{method_id}`"))?;
         if let Some(method_def) = extract_method(&method_id, method_item, names)? {
             methods.push(method_def);
         }
@@ -514,29 +514,26 @@ fn extract_method(item_id: &str, item: &Item, names: &NameContext) -> Result<Opt
         .name
         .as_ref()
         .cloned()
-        .with_context(|| format!("Method item `{}` has no name", item_id))?;
+        .with_context(|| format!("Method item `{item_id}` has no name"))?;
     let sig = fn_inner
         .get("sig")
-        .with_context(|| format!("Method `{}` missing rustdoc signature", name))?;
+        .with_context(|| format!("Method `{name}` missing rustdoc signature"))?;
     let raw_output = sig
         .get("output")
-        .with_context(|| format!("Method `{}` missing rustdoc return type", name))?;
-    let output = unwrap_async_trait_future(raw_output).unwrap_or(raw_output);
+        .with_context(|| format!("Method `{name}` missing rustdoc return type"))?;
+    let output = unwrap_async_trait_future(raw_output)
+        .with_context(|| format!("Method `{name}` return type not in async_trait shape"))?;
 
     let (kind, return_type) = if is_result_subscription_return(output) {
         (
             MethodKind::ResultSubscription,
             ReturnType::ResultSubscription {
                 item: extract_result_subscription_inner(output, names).with_context(|| {
-                    format!(
-                        "Method `{}` has invalid Result<Subscription<..>, E> return type",
-                        name
-                    )
+                    format!("Method `{name}` has invalid Result<Subscription<..>, E> return type")
                 })?,
                 err: extract_generic_arg(output, 1, names).with_context(|| {
                     format!(
-                        "Method `{}` is missing the error type in Result<Subscription<..>, E>",
-                        name
+                        "Method `{name}` is missing the error type in Result<Subscription<..>, E>"
                     )
                 })?,
             },
@@ -545,18 +542,17 @@ fn extract_method(item_id: &str, item: &Item, names: &NameContext) -> Result<Opt
         (
             MethodKind::Subscription,
             ReturnType::Subscription(extract_generic_arg(output, 0, names).with_context(|| {
-                format!("Method `{}` is missing Subscription<T> item type", name)
+                format!("Method `{name}` is missing Subscription<T> item type")
             })?),
         )
     } else if is_result_return(output) {
         (
             MethodKind::Request,
             ReturnType::Result {
-                ok: extract_generic_arg(output, 0, names).with_context(|| {
-                    format!("Method `{}` is missing Result<T, E> ok type", name)
-                })?,
+                ok: extract_generic_arg(output, 0, names)
+                    .with_context(|| format!("Method `{name}` is missing Result<T, E> ok type"))?,
                 err: extract_generic_arg(output, 1, names).with_context(|| {
-                    format!("Method `{}` is missing Result<T, E> error type", name)
+                    format!("Method `{name}` is missing Result<T, E> error type")
                 })?,
             },
         )
@@ -571,38 +567,47 @@ fn extract_method(item_id: &str, item: &Item, names: &NameContext) -> Result<Opt
     let inputs = sig
         .get("inputs")
         .and_then(|value| value.as_array())
-        .with_context(|| format!("Method `{}` missing rustdoc inputs array", name))?;
+        .with_context(|| format!("Method `{name}` missing rustdoc inputs array"))?;
     let mut params = Vec::new();
+    let mut saw_call_context = false;
     for input in inputs {
         let arr = input
             .as_array()
-            .with_context(|| format!("Method `{}` has an invalid input entry", name))?;
+            .with_context(|| format!("Method `{name}` has an invalid input entry"))?;
         let param_name = arr
             .first()
             .and_then(|value| value.as_str())
-            .with_context(|| format!("Method `{}` has an unnamed input", name))?
+            .with_context(|| format!("Method `{name}` has an unnamed input"))?
             .to_string();
         if param_name == "self" {
             continue;
         }
 
-        let ty = arr.get(1).with_context(|| {
-            format!("Method `{}` input `{}` is missing a type", name, param_name)
-        })?;
+        let ty = arr
+            .get(1)
+            .with_context(|| format!("Method `{name}` input `{param_name}` is missing a type"))?;
         if is_call_context_ref(ty) {
+            saw_call_context = true;
             continue;
         }
         let type_ref = resolve_type(ty, names).with_context(|| {
-            format!(
-                "Method `{}` input `{}` has an unsupported type",
-                name, param_name
-            )
+            format!("Method `{name}` input `{param_name}` has an unsupported type")
         })?;
 
         params.push(ParamDef {
             name: param_name,
             type_ref,
         });
+    }
+    if !saw_call_context {
+        // Every TrUAPI trait method must take `&CallContext` as its first
+        // non-self parameter. If we did not detect one, either the trait is
+        // wrong or rustdoc changed how `&CallContext` is encoded; fail loudly
+        // rather than silently emitting `cx` as a public client parameter.
+        bail!(
+            "Method `{name}` did not declare `&CallContext`; \
+             trait method shape may have drifted from rustdoc"
+        );
     }
 
     let wire = item
@@ -674,48 +679,87 @@ fn extract_wire_attrs(docs: &str) -> WireAttrs {
 }
 
 /// Unwrap the `async_trait` expansion `Pin<Box<dyn Future<Output = T> + Send>>`
-/// back to `T`. Returns `None` when the output does not match that pattern.
-fn unwrap_async_trait_future(output: &serde_json::Value) -> Option<&serde_json::Value> {
-    let pin = output.get("resolved_path")?;
-    if path_suffix(pin.get("path")?.as_str()?) != "Pin" {
-        return None;
+/// back to `T`. Bails with a structured error pointing at the rustdoc field
+/// that did not match expectations, so a future rustdoc-format change is
+/// surfaced loudly instead of being silently treated as a sync return type.
+fn unwrap_async_trait_future(output: &serde_json::Value) -> Result<&serde_json::Value> {
+    const SHAPE: &str = "rustdoc async_trait return shape changed";
+    let pin = output
+        .get("resolved_path")
+        .with_context(|| format!("{SHAPE}: expected resolved_path on return type"))?;
+    let pin_path = pin
+        .get("path")
+        .and_then(|p| p.as_str())
+        .with_context(|| format!("{SHAPE}: expected `path` on Pin resolved_path"))?;
+    if path_suffix(pin_path) != "Pin" {
+        bail!("{SHAPE}: expected `Pin<..>` outer wrapper, got `{pin_path}`");
     }
     let boxed = pin
-        .get("args")?
-        .get("angle_bracketed")?
-        .get("args")?
-        .as_array()?
-        .first()?
-        .get("type")?;
-    let box_path = boxed.get("resolved_path")?;
-    if path_suffix(box_path.get("path")?.as_str()?) != "Box" {
-        return None;
+        .get("args")
+        .and_then(|a| a.get("angle_bracketed"))
+        .and_then(|a| a.get("args"))
+        .and_then(|a| a.as_array())
+        .and_then(|a| a.first())
+        .and_then(|a| a.get("type"))
+        .with_context(|| format!("{SHAPE}: expected Pin generic argument"))?;
+    let box_path = boxed
+        .get("resolved_path")
+        .with_context(|| format!("{SHAPE}: expected resolved_path inside Pin<..>"))?;
+    let box_path_str = box_path
+        .get("path")
+        .and_then(|p| p.as_str())
+        .with_context(|| format!("{SHAPE}: expected `path` on Box resolved_path"))?;
+    if path_suffix(box_path_str) != "Box" {
+        bail!("{SHAPE}: expected `Pin<Box<..>>`, got `Pin<{box_path_str}<..>>`");
     }
     let dyn_trait = box_path
-        .get("args")?
-        .get("angle_bracketed")?
-        .get("args")?
-        .as_array()?
-        .first()?
-        .get("type")?
-        .get("dyn_trait")?;
-    for entry in dyn_trait.get("traits")?.as_array()? {
-        let trait_ref = entry.get("trait")?;
-        if path_suffix(trait_ref.get("path")?.as_str()?) != "Future" {
+        .get("args")
+        .and_then(|a| a.get("angle_bracketed"))
+        .and_then(|a| a.get("args"))
+        .and_then(|a| a.as_array())
+        .and_then(|a| a.first())
+        .and_then(|a| a.get("type"))
+        .and_then(|a| a.get("dyn_trait"))
+        .with_context(|| format!("{SHAPE}: expected `dyn Trait` inside Box<..>"))?;
+    let traits = dyn_trait
+        .get("traits")
+        .and_then(|a| a.as_array())
+        .with_context(|| format!("{SHAPE}: expected `traits` array on dyn_trait"))?;
+    for entry in traits {
+        let trait_ref = entry
+            .get("trait")
+            .with_context(|| format!("{SHAPE}: dyn_trait entry missing `trait`"))?;
+        let trait_path = trait_ref
+            .get("path")
+            .and_then(|p| p.as_str())
+            .with_context(|| format!("{SHAPE}: dyn_trait `trait` missing `path`"))?;
+        if path_suffix(trait_path) != "Future" {
             continue;
         }
-        for constraint in trait_ref
-            .get("args")?
-            .get("angle_bracketed")?
-            .get("constraints")?
-            .as_array()?
-        {
-            if constraint.get("name")?.as_str()? == "Output" {
-                return constraint.get("binding")?.get("equality")?.get("type");
+        let constraints = trait_ref
+            .get("args")
+            .and_then(|a| a.get("angle_bracketed"))
+            .and_then(|a| a.get("constraints"))
+            .and_then(|a| a.as_array())
+            .with_context(|| format!("{SHAPE}: Future trait missing constraints"))?;
+        for constraint in constraints {
+            let name = constraint
+                .get("name")
+                .and_then(|n| n.as_str())
+                .with_context(|| format!("{SHAPE}: Future constraint missing `name`"))?;
+            if name == "Output" {
+                return constraint
+                    .get("binding")
+                    .and_then(|b| b.get("equality"))
+                    .and_then(|e| e.get("type"))
+                    .with_context(|| {
+                        format!("{SHAPE}: Future Output constraint missing equality type")
+                    });
             }
         }
+        bail!("{SHAPE}: Future trait constraints did not include `Output = T`");
     }
-    None
+    bail!("{SHAPE}: dyn_trait did not reference Future")
 }
 
 fn path_suffix(path: &str) -> &str {
@@ -955,17 +999,17 @@ fn extract_struct(
         .name
         .as_ref()
         .cloned()
-        .with_context(|| format!("Struct item `{}` has no name", item_id))?;
+        .with_context(|| format!("Struct item `{item_id}` has no name"))?;
     let name = names.name_for_item(item_id, &rust_name);
     let struct_inner = item
         .inner
         .get("struct")
-        .with_context(|| format!("Struct `{}` missing rustdoc body", name))?;
+        .with_context(|| format!("Struct `{name}` missing rustdoc body"))?;
     let generic_params = extract_generic_params(struct_inner.get("generics"))
-        .with_context(|| format!("Struct `{}` has unsupported generic parameters", name))?;
+        .with_context(|| format!("Struct `{name}` has unsupported generic parameters"))?;
     let kind = struct_inner
         .get("kind")
-        .with_context(|| format!("Struct `{}` missing rustdoc kind", name))?;
+        .with_context(|| format!("Struct `{name}` missing rustdoc kind"))?;
 
     if let Some(field_ids) = kind.get("tuple").and_then(|tuple| {
         tuple.as_array().cloned().or_else(|| {
@@ -978,24 +1022,15 @@ fn extract_struct(
         let mut fields = Vec::new();
         for field_id in field_ids {
             let field_id = value_id(&field_id)
-                .with_context(|| format!("Tuple struct `{}` had a non-item field id", name))?;
+                .with_context(|| format!("Tuple struct `{name}` had a non-item field id"))?;
             let field_item = krate.index.get(&field_id).with_context(|| {
-                format!(
-                    "Tuple struct `{}` references missing field `{}`",
-                    name, field_id
-                )
+                format!("Tuple struct `{name}` references missing field `{field_id}`")
             })?;
             let field_type = field_item.inner.get("struct_field").with_context(|| {
-                format!(
-                    "Tuple struct `{}` field `{}` is missing rustdoc type info",
-                    name, field_id
-                )
+                format!("Tuple struct `{name}` field `{field_id}` is missing rustdoc type info")
             })?;
             fields.push(resolve_type(field_type, names).with_context(|| {
-                format!(
-                    "Tuple struct `{}` field `{}` has an unsupported type",
-                    name, field_id
-                )
+                format!("Tuple struct `{name}` field `{field_id}` has an unsupported type")
             })?);
         }
 
@@ -1022,28 +1057,23 @@ fn extract_struct(
     let mut fields = Vec::new();
     for field_id in field_ids {
         let field_id = value_id(field_id)
-            .with_context(|| format!("Struct `{}` had a non-item field id", name))?;
-        let field_item = krate.index.get(&field_id).with_context(|| {
-            format!("Struct `{}` references missing field `{}`", name, field_id)
-        })?;
+            .with_context(|| format!("Struct `{name}` had a non-item field id"))?;
+        let field_item = krate
+            .index
+            .get(&field_id)
+            .with_context(|| format!("Struct `{name}` references missing field `{field_id}`"))?;
         let field_name = field_item
             .name
             .as_ref()
             .cloned()
-            .with_context(|| format!("Struct `{}` field `{}` has no name", name, field_id))?;
+            .with_context(|| format!("Struct `{name}` field `{field_id}` has no name"))?;
         let field_type = field_item.inner.get("struct_field").with_context(|| {
-            format!(
-                "Struct `{}` field `{}` is missing rustdoc type info",
-                name, field_name
-            )
+            format!("Struct `{name}` field `{field_name}` is missing rustdoc type info")
         })?;
         fields.push(FieldDef {
             name: field_name,
             type_ref: resolve_type(field_type, names).with_context(|| {
-                format!(
-                    "Struct `{}` field `{}` has an unsupported type",
-                    name, field_id
-                )
+                format!("Struct `{name}` field `{field_id}` has an unsupported type")
             })?,
             docs: clean_docs(field_item.docs.as_deref()),
         });
@@ -1062,40 +1092,35 @@ fn extract_enum(item_id: &str, item: &Item, krate: &Crate, names: &NameContext) 
         .name
         .as_ref()
         .cloned()
-        .with_context(|| format!("Enum item `{}` has no name", item_id))?;
+        .with_context(|| format!("Enum item `{item_id}` has no name"))?;
     let name = names.name_for_item(item_id, &rust_name);
     let enum_inner = item
         .inner
         .get("enum")
-        .with_context(|| format!("Enum `{}` missing rustdoc body", name))?;
+        .with_context(|| format!("Enum `{name}` missing rustdoc body"))?;
     let generic_params = extract_generic_params(enum_inner.get("generics"))
-        .with_context(|| format!("Enum `{}` has unsupported generic parameters", name))?;
+        .with_context(|| format!("Enum `{name}` has unsupported generic parameters"))?;
     let variant_ids = enum_inner
         .get("variants")
         .and_then(|value| value.as_array())
-        .with_context(|| format!("Enum `{}` missing rustdoc variants", name))?;
+        .with_context(|| format!("Enum `{name}` missing rustdoc variants"))?;
 
     let mut variants = Vec::new();
     for variant_id in variant_ids {
         let variant_id = value_id(variant_id)
-            .with_context(|| format!("Enum `{}` had a non-item variant id", name))?;
-        let variant_item = krate.index.get(&variant_id).with_context(|| {
-            format!(
-                "Enum `{}` references missing variant `{}`",
-                name, variant_id
-            )
-        })?;
+            .with_context(|| format!("Enum `{name}` had a non-item variant id"))?;
+        let variant_item = krate
+            .index
+            .get(&variant_id)
+            .with_context(|| format!("Enum `{name}` references missing variant `{variant_id}`"))?;
         let variant_name = variant_item
             .name
             .as_ref()
             .cloned()
-            .with_context(|| format!("Enum `{}` variant `{}` has no name", name, variant_id))?;
+            .with_context(|| format!("Enum `{name}` variant `{variant_id}` has no name"))?;
         let fields = extract_variant_fields(variant_item.inner.get("variant"), krate, names)
             .with_context(|| {
-                format!(
-                    "Enum `{}` variant `{}` has an unsupported shape",
-                    name, variant_name
-                )
+                format!("Enum `{name}` variant `{variant_name}` has an unsupported shape")
             })?;
         variants.push(VariantDef {
             name: variant_name,
@@ -1141,12 +1166,9 @@ fn extract_variant_fields(
             let item = krate
                 .index
                 .get(&field_id)
-                .with_context(|| format!("Missing tuple variant field `{}`", field_id))?;
+                .with_context(|| format!("Missing tuple variant field `{field_id}`"))?;
             let ty = item.inner.get("struct_field").with_context(|| {
-                format!(
-                    "Tuple variant field `{}` is missing rustdoc type info",
-                    field_id
-                )
+                format!("Tuple variant field `{field_id}` is missing rustdoc type info")
             })?;
             types.push(resolve_type(ty, names)?);
         }
@@ -1169,17 +1191,14 @@ fn extract_variant_fields(
             let item = krate
                 .index
                 .get(&field_id)
-                .with_context(|| format!("Missing struct variant field `{}`", field_id))?;
+                .with_context(|| format!("Missing struct variant field `{field_id}`"))?;
             let name = item
                 .name
                 .as_ref()
                 .cloned()
-                .with_context(|| format!("Struct variant field `{}` has no name", field_id))?;
+                .with_context(|| format!("Struct variant field `{field_id}` has no name"))?;
             let ty = item.inner.get("struct_field").with_context(|| {
-                format!(
-                    "Struct variant field `{}` is missing rustdoc type info",
-                    field_id
-                )
+                format!("Struct variant field `{field_id}` is missing rustdoc type info")
             })?;
             fields.push(FieldDef {
                 name,
@@ -1198,19 +1217,19 @@ fn extract_type_alias(item_id: &str, item: &Item, names: &NameContext) -> Result
         .name
         .as_ref()
         .cloned()
-        .with_context(|| format!("Type alias item `{}` has no name", item_id))?;
+        .with_context(|| format!("Type alias item `{item_id}` has no name"))?;
     let name = names.name_for_item(item_id, &rust_name);
     let type_alias = item
         .inner
         .get("type_alias")
-        .with_context(|| format!("Type alias `{}` missing rustdoc body", name))?;
+        .with_context(|| format!("Type alias `{name}` missing rustdoc body"))?;
     let generic_params = extract_generic_params(type_alias.get("generics"))
-        .with_context(|| format!("Type alias `{}` has unsupported generic parameters", name))?;
+        .with_context(|| format!("Type alias `{name}` has unsupported generic parameters"))?;
     let ty = type_alias
         .get("type")
-        .with_context(|| format!("Type alias `{}` is missing its target type", name))?;
+        .with_context(|| format!("Type alias `{name}` is missing its target type"))?;
     let target = resolve_type(ty, names)
-        .with_context(|| format!("Type alias `{}` has an unsupported target type", name))?;
+        .with_context(|| format!("Type alias `{name}` has an unsupported target type"))?;
 
     Ok(TypeDef {
         name,
