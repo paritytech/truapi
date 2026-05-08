@@ -13,6 +13,7 @@ rust/crates/
   truapi-macros/         #[wire(id = N)] proc-macro
 js/packages/
   truapi/         @parity/truapi TS package; src/generated/ produced by truapi-codegen
+explorer/               Vite documentation explorer; deploys to GitHub Pages
 playground/              Next.js interactive explorer; deploys to truapi-playground.dot
 hosts/dotli/             dotli submodule
 docs/                    design docs, RFCs, feature proposals
@@ -47,6 +48,7 @@ When the Rust trait surface changes, rerun:
 ```
 
 That will repopulate `js/packages/truapi/src/generated/`. Commit the regenerated files alongside the Rust changes.
+It also regenerates playground metadata in `js/packages/truapi/src/playground/` and explorer metadata in `js/packages/truapi/src/explorer/`.
 After regenerating, rebuild the client and refresh the playground's link copy:
 
 ```bash
@@ -86,6 +88,16 @@ yarn lint
 
 The playground must be opened from inside a TrUAPI host. Locally, navigate to `https://dot.li/localhost:3000` inside the Polkadot Desktop Host.
 
+### Explorer
+
+```bash
+cd explorer
+npm run dev             # Vite dev server
+npm run build           # static GitHub Pages build to dist/
+npm run lint            # TypeScript checks
+```
+
 ## Deployment
 
 Pushes to `main` trigger `.github/workflows/deploy.yml`, which builds `playground/` and publishes the static export to `truapi-playground.dot` via `bulletin-deploy`.
+Pushes to `main` also trigger `.github/workflows/deploy-explorer.yml`, which builds `explorer/` and publishes it to GitHub Pages.

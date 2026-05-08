@@ -13,6 +13,10 @@
     "./playground/services": {
       "types": "./dist/playground/services.d.ts",
       "import": "./dist/playground/services.js"
+    },
+    "./explorer/registry": {
+      "types": "./dist/explorer/registry.d.ts",
+      "import": "./dist/explorer/registry.js"
     }
   },
   "scripts": {

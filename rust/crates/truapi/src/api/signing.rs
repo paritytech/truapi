@@ -20,6 +20,22 @@ pub trait Signing: Send + Sync {
     /// ```truapi-playground-request
     /// { "productAccountId": { "dotNsIdentifier": "truapi-playground.dot", "derivationIndex": 0 }, "payload": { "tag": "V1", "value": { "signer": null, "callData": "0x0000", "extensions": [], "txExtVersion": 0, "context": { "metadata": "0x", "tokenSymbol": "DOT", "tokenDecimals": 10, "bestBlockHeight": 0 } } } }
     /// ```
+    ///
+    /// ```truapi-client-example
+    /// import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";
+    ///
+    /// export async function createTransaction(
+    ///   provider: Provider,
+    ///   request: T.V01HostCreateTransactionRequest,
+    /// ) {
+    ///   const truapi = createClient(createTransport(provider));
+    ///
+    ///   const result = await truapi.signing.createTransaction(request);
+    ///
+    ///   if (result.isErr()) throw result.error;
+    ///   return result.value;
+    /// }
+    /// ```
     #[wire(id = 30)]
     async fn host_create_transaction(
         &self,
@@ -33,6 +49,23 @@ pub trait Signing: Send + Sync {
     ///
     /// ```truapi-playground-request
     /// { "payload": { "tag": "V1", "value": { "signer": null, "callData": "0x0000", "extensions": [], "txExtVersion": 0, "context": { "metadata": "0x", "tokenSymbol": "DOT", "tokenDecimals": 10, "bestBlockHeight": 0 } } } }
+    /// ```
+    ///
+    /// ```truapi-client-example
+    /// import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";
+    ///
+    /// export async function createTransactionWithLegacyAccount(
+    ///   provider: Provider,
+    ///   request: T.V01HostCreateTransactionWithLegacyAccountRequest,
+    /// ) {
+    ///   const truapi = createClient(createTransport(provider));
+    ///
+    ///   const result =
+    ///     await truapi.signing.createTransactionWithLegacyAccount(request);
+    ///
+    ///   if (result.isErr()) throw result.error;
+    ///   return result.value;
+    /// }
     /// ```
     #[wire(id = 32)]
     async fn host_create_transaction_with_legacy_account(
@@ -51,6 +84,25 @@ pub trait Signing: Send + Sync {
     /// ```truapi-playground-request
     /// { "account": { "dotNsIdentifier": "truapi-playground.dot", "derivationIndex": 0 }, "data": { "tag": "Bytes", "value": { "bytes": "0x48656c6c6f" } } }
     /// ```
+    ///
+    /// ```truapi-client-example
+    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    ///
+    /// export async function signRawBytes(provider: Provider, bytes: Uint8Array) {
+    ///   const truapi = createClient(createTransport(provider));
+    ///
+    ///   const result = await truapi.signing.signRaw({
+    ///     account: {
+    ///       dotNsIdentifier: "truapi-playground.dot",
+    ///       derivationIndex: 0,
+    ///     },
+    ///     data: { tag: "Bytes", value: { bytes } },
+    ///   });
+    ///
+    ///   if (result.isErr()) throw result.error;
+    ///   return result.value;
+    /// }
+    /// ```
     #[wire(id = 114)]
     async fn host_sign_raw(
         &self,
@@ -64,6 +116,22 @@ pub trait Signing: Send + Sync {
     ///
     /// ```truapi-playground-request
     /// { "account": { "dotNsIdentifier": "truapi-playground.dot", "derivationIndex": 0 }, "blockHash": "0x0000000000000000000000000000000000000000000000000000000000000000", "blockNumber": "0x00000000", "era": "0x00", "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2", "method": "0x00000000", "nonce": "0x00000000", "signedExtensions": [], "specVersion": "0x00000000", "tip": "0x00000000000000000000000000000000", "transactionVersion": "0x00000000", "version": 4 }
+    /// ```
+    ///
+    /// ```truapi-client-example
+    /// import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";
+    ///
+    /// export async function signPayload(
+    ///   provider: Provider,
+    ///   request: T.V02HostSignPayloadRequest,
+    /// ) {
+    ///   const truapi = createClient(createTransport(provider));
+    ///
+    ///   const result = await truapi.signing.signPayload(request);
+    ///
+    ///   if (result.isErr()) throw result.error;
+    ///   return result.value;
+    /// }
     /// ```
     #[wire(id = 116)]
     async fn host_sign_payload(

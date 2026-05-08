@@ -22,6 +22,23 @@ pub trait Chat: Send + Sync {
     /// ```truapi-playground-request
     /// { "roomId": "test-room", "name": "Test Room", "icon": "" }
     /// ```
+    ///
+    /// ```truapi-client-example
+    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    ///
+    /// export async function createRoom(provider: Provider) {
+    ///   const truapi = createClient(createTransport(provider));
+    ///
+    ///   const result = await truapi.chat.chatCreateRoom({
+    ///     roomId: "test-room",
+    ///     name: "Test Room",
+    ///     icon: "",
+    ///   });
+    ///
+    ///   if (result.isErr()) throw result.error;
+    ///   return result.value;
+    /// }
+    /// ```
     #[wire(id = 38)]
     async fn host_chat_create_room(
         &self,
@@ -36,6 +53,23 @@ pub trait Chat: Send + Sync {
     /// ```truapi-playground-request
     /// { "botId": "test-bot", "name": "Test Bot", "icon": "" }
     /// ```
+    ///
+    /// ```truapi-client-example
+    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    ///
+    /// export async function registerBot(provider: Provider) {
+    ///   const truapi = createClient(createTransport(provider));
+    ///
+    ///   const result = await truapi.chat.chatRegisterBot({
+    ///     botId: "test-bot",
+    ///     name: "Test Bot",
+    ///     icon: "",
+    ///   });
+    ///
+    ///   if (result.isErr()) throw result.error;
+    ///   return result.value;
+    /// }
+    /// ```
     #[wire(id = 40)]
     async fn host_chat_register_bot(
         &self,
@@ -46,6 +80,21 @@ pub trait Chat: Send + Sync {
     }
 
     /// Subscribe to the list of chat rooms.
+    ///
+    /// ```truapi-client-example
+    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    ///
+    /// export function watchChatRooms(provider: Provider) {
+    ///   const truapi = createClient(createTransport(provider));
+    ///
+    ///   return truapi.chat.chatListSubscribe({
+    ///     onData: (rooms) => console.log(rooms),
+    ///     onError: console.error,
+    ///     onInterrupt: () => console.log("interrupted"),
+    ///     onClose: console.error,
+    ///   });
+    /// }
+    /// ```
     #[wire(id = 42)]
     async fn host_chat_list_subscribe(
         &self,
@@ -59,6 +108,22 @@ pub trait Chat: Send + Sync {
     /// ```truapi-playground-request
     /// { "roomId": "test-room", "payload": { "tag": "Text", "value": "Hello from playground!" } }
     /// ```
+    ///
+    /// ```truapi-client-example
+    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    ///
+    /// export async function postChatMessage(provider: Provider) {
+    ///   const truapi = createClient(createTransport(provider));
+    ///
+    ///   const result = await truapi.chat.chatPostMessage({
+    ///     roomId: "test-room",
+    ///     payload: { tag: "Text", value: "Hello from product!" },
+    ///   });
+    ///
+    ///   if (result.isErr()) throw result.error;
+    ///   return result.value;
+    /// }
+    /// ```
     #[wire(id = 46)]
     async fn host_chat_post_message(
         &self,
@@ -69,6 +134,21 @@ pub trait Chat: Send + Sync {
     }
 
     /// Subscribe to received chat actions.
+    ///
+    /// ```truapi-client-example
+    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    ///
+    /// export function watchChatActions(provider: Provider) {
+    ///   const truapi = createClient(createTransport(provider));
+    ///
+    ///   return truapi.chat.chatActionSubscribe({
+    ///     onData: (action) => console.log(action),
+    ///     onError: console.error,
+    ///     onInterrupt: () => console.log("interrupted"),
+    ///     onClose: console.error,
+    ///   });
+    /// }
+    /// ```
     #[wire(id = 48)]
     async fn host_chat_action_subscribe(
         &self,
@@ -84,6 +164,26 @@ pub trait Chat: Send + Sync {
     /// ```truapi-playground-request
     /// { "messageId": "msg-1", "messageType": "custom-render-demo", "payload": { "bytes": "0x" } }
     /// ```
+    ///
+    /// ```truapi-client-example
+    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    ///
+    /// export function renderCustomChatMessage(provider: Provider) {
+    ///   const truapi = createClient(createTransport(provider));
+    ///
+    ///   return truapi.chat.chatCustomMessageRenderSubscribe({
+    ///     request: {
+    ///       messageId: "msg-1",
+    ///       messageType: "custom-render-demo",
+    ///       payload: { bytes: new Uint8Array() },
+    ///     },
+    ///     onData: (node) => console.log(node),
+    ///     onError: console.error,
+    ///     onInterrupt: () => console.log("interrupted"),
+    ///     onClose: console.error,
+    ///   });
+    /// }
+    /// ```
     #[wire(id = 52)]
     async fn product_chat_custom_message_render_subscribe(
         &self,
@@ -97,6 +197,23 @@ pub trait Chat: Send + Sync {
     ///
     /// ```truapi-playground-request
     /// { "roomId": "test-simple-group", "name": "Test Group", "icon": "" }
+    /// ```
+    ///
+    /// ```truapi-client-example
+    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    ///
+    /// export async function createSimpleGroup(provider: Provider) {
+    ///   const truapi = createClient(createTransport(provider));
+    ///
+    ///   const result = await truapi.chat.chatCreateSimpleGroup({
+    ///     roomId: "test-simple-group",
+    ///     name: "Test Group",
+    ///     icon: "",
+    ///   });
+    ///
+    ///   if (result.isErr()) throw result.error;
+    ///   return result.value;
+    /// }
     /// ```
     #[wire(id = 130)]
     async fn host_chat_create_simple_group(

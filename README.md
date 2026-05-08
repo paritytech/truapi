@@ -8,6 +8,7 @@ This repository is the single source of truth for the protocol:
 - **`rust/crates/truapi-codegen/`** — code generator that turns rustdoc JSON into the TypeScript client.
 - **`rust/crates/truapi-macros/`** — proc-macro for `#[wire(id = N)]` annotations.
 - **`js/packages/truapi/`** — the typed TypeScript client (`@parity/truapi`), with `src/generated/` produced by `truapi-codegen`.
+- **`explorer/`** — static GitHub Pages documentation explorer generated from the Rust API source.
 - **`playground/`** — interactive Next.js explorer/playground for the protocol, deployed to [`truapi-playground.dot`](https://truapi-playground.dot.li/).
 
 ## Layout
@@ -19,6 +20,7 @@ rust/crates/
   truapi-macros/         #[wire(id = N)] proc-macro
 js/packages/
   truapi/         @parity/truapi TS package
+explorer/               Vite documentation explorer for GitHub Pages
 playground/              Next.js interactive playground
 docs/                    design docs, RFCs, feature proposals
 scripts/codegen.sh       regenerate the TS client from the Rust crate
@@ -36,7 +38,9 @@ Under the hood this runs:
 cargo +nightly rustdoc -p truapi -- -Z unstable-options --output-format json
 cargo run -p truapi-codegen -- \
   --input target/doc/truapi.json \
-  --output js/packages/truapi/src/generated
+  --output js/packages/truapi/src/generated \
+  --playground-output js/packages/truapi/src/playground \
+  --explorer-output js/packages/truapi/src/explorer
 ```
 
 Commit the regenerated `src/generated/` alongside the Rust changes.
@@ -70,6 +74,16 @@ yarn dev
 ```
 
 Open `https://dot.li/localhost:3000` inside the Polkadot Desktop Host. See [`playground/README.md`](playground/README.md) for full deployment instructions.
+
+### Explorer
+
+```bash
+cd explorer
+npm install
+npm run dev
+```
+
+The explorer is a static GitHub Pages app. Its registry data is generated into `@parity/truapi/explorer/registry`.
 
 ## Deployment
 

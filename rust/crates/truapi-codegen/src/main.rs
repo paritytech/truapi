@@ -2,7 +2,6 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use std::str::FromStr;
 
-mod rust_dispatcher;
 mod rustdoc;
 mod typescript;
 
@@ -30,13 +29,13 @@ struct Cli {
     #[arg(long, default_value_t = 1)]
     codec_version: u8,
 
-    /// Output directory for the generated Rust dispatcher (optional).
-    #[arg(long)]
-    rust_output: Option<String>,
-
     /// Output directory for generated playground metadata (optional).
     #[arg(long)]
     playground_output: Option<String>,
+
+    /// Output directory for generated explorer registry data (optional).
+    #[arg(long)]
+    explorer_output: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -86,10 +85,10 @@ fn main() -> Result<()> {
             .with_context(|| format!("writing playground metadata to {path}"))?;
         println!("Generated playground metadata in {path}");
     }
-    if let Some(path) = &cli.rust_output {
-        rust_dispatcher::generate(&api, path)
-            .with_context(|| format!("writing Rust dispatcher to {path}"))?;
-        println!("Generated Rust dispatcher in {path}");
+    if let Some(path) = &cli.explorer_output {
+        typescript::generate_explorer_registry(&api, path, cli.version.number())
+            .with_context(|| format!("writing explorer registry to {path}"))?;
+        println!("Generated explorer registry in {path}");
     }
     Ok(())
 }

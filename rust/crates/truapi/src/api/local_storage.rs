@@ -16,6 +16,19 @@ pub trait LocalStorage: Send + Sync {
     /// ```truapi-playground-request
     /// { "key": "test-key" }
     /// ```
+    ///
+    /// ```truapi-client-example
+    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    ///
+    /// export async function readLocalValue(provider: Provider, key: string) {
+    ///   const truapi = createClient(createTransport(provider));
+    ///
+    ///   const result = await truapi.localStorage.localStorageRead({ key });
+    ///
+    ///   if (result.isErr()) throw result.error;
+    ///   return result.value.value;
+    /// }
+    /// ```
     #[wire(id = 12)]
     async fn host_local_storage_read(
         &self,
@@ -28,6 +41,22 @@ pub trait LocalStorage: Send + Sync {
     /// ```truapi-playground-request
     /// { "key": "test-key", "value": "0x48656c6c6f" }
     /// ```
+    ///
+    /// ```truapi-client-example
+    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    ///
+    /// export async function writeLocalValue(
+    ///   provider: Provider,
+    ///   key: string,
+    ///   value: Uint8Array,
+    /// ) {
+    ///   const truapi = createClient(createTransport(provider));
+    ///
+    ///   const result = await truapi.localStorage.localStorageWrite({ key, value });
+    ///
+    ///   if (result.isErr()) throw result.error;
+    /// }
+    /// ```
     #[wire(id = 14)]
     async fn host_local_storage_write(
         &self,
@@ -39,6 +68,18 @@ pub trait LocalStorage: Send + Sync {
     ///
     /// ```truapi-playground-request
     /// { "key": "test-key" }
+    /// ```
+    ///
+    /// ```truapi-client-example
+    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    ///
+    /// export async function clearLocalValue(provider: Provider, key: string) {
+    ///   const truapi = createClient(createTransport(provider));
+    ///
+    ///   const result = await truapi.localStorage.localStorageClear({ key });
+    ///
+    ///   if (result.isErr()) throw result.error;
+    /// }
     /// ```
     #[wire(id = 16)]
     async fn host_local_storage_clear(

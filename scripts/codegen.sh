@@ -6,6 +6,7 @@
 #   2. cargo run -p truapi-codegen -- --input target/doc/truapi.json
 #                                     --output js/packages/truapi/src/generated
 #                                     --playground-output js/packages/truapi/src/playground
+#                                     --explorer-output js/packages/truapi/src/explorer
 #                                     --version V2
 #                                     --codec-version 1
 #
@@ -21,12 +22,14 @@ cargo run -p truapi-codegen -- \
   --input target/doc/truapi.json \
   --output js/packages/truapi/src/generated \
   --playground-output js/packages/truapi/src/playground \
+  --explorer-output js/packages/truapi/src/explorer \
   --version V2 \
   --codec-version 1
 
 npm exec --yes -- prettier --write \
   "js/packages/truapi/src/generated/**/*.ts" \
-  "js/packages/truapi/src/playground/**/*.ts"
+  "js/packages/truapi/src/playground/**/*.ts" \
+  "js/packages/truapi/src/explorer/**/*.ts"
 
 # Rebuild dist/ so downstream consumers (in particular the playground,
 # which picks up @parity/truapi via yarn 1.x file: snapshot) see the
@@ -35,3 +38,4 @@ npm run build --prefix js/packages/truapi
 
 echo "Generated client at js/packages/truapi/src/generated/"
 echo "Generated playground metadata at js/packages/truapi/src/playground/"
+echo "Generated explorer registry at js/packages/truapi/src/explorer/"

@@ -18,6 +18,21 @@ pub trait EntropyDerivation: Send + Sync {
     /// ```truapi-playground-request
     /// { "context": "0x" }
     /// ```
+    ///
+    /// ```truapi-client-example
+    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    ///
+    /// export async function deriveEntropy(provider: Provider, context: Uint8Array) {
+    ///   const truapi = createClient(createTransport(provider));
+    ///
+    ///   const result = await truapi.entropyDerivation.deriveEntropy({
+    ///     context,
+    ///   });
+    ///
+    ///   if (result.isErr()) throw result.error;
+    ///   return result.value;
+    /// }
+    /// ```
     #[wire(id = 108)]
     async fn host_derive_entropy(
         &self,

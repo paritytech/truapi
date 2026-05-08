@@ -1324,15 +1324,7 @@ export class StatementStoreClient {
 export class TrUApiCallsClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
-  /**
-   * Negotiates the wire codec version with the product. Required for
-   * compatibility with `@novasamatech/host-api`-built products that gate
-   * "connected" state on a successful handshake response.
-   *
-   * Default impl accepts codec version `1` (Novasama's `JAM_CODEC_PROTOCOL_ID`)
-   * and rejects everything else with `UnsupportedProtocolVersion`. Hosts that
-   * want to gate handshake on additional preconditions can override.
-   */
+  /** Negotiates the wire codec version with the product. */
   async handshake(): Promise<Result<undefined, T.V02HostHandshakeError>> {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.V02HostHandshakeError>

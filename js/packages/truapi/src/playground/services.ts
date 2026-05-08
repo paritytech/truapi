@@ -21,8 +21,7 @@ export const services: ServiceInfo[] = [
       {
         name: "host_handshake",
         type: "unary",
-        description:
-          'Negotiates the wire codec version with the product. Required for\ncompatibility with `@novasamatech/host-api`-built products that gate\n"connected" state on a successful handshake response.\n\nDefault impl accepts codec version `1` (Novasama\'s `JAM_CODEC_PROTOCOL_ID`)\nand rejects everything else with `UnsupportedProtocolVersion`. Hosts that\nwant to gate handshake on additional preconditions can override.',
+        description: "Negotiates the wire codec version with the product.",
         noParams: true,
       },
       {

@@ -20,6 +20,22 @@ pub trait StatementStore: Send + Sync {
     /// ```truapi-playground-request
     /// { "tag": "MatchAll", "value": [] }
     /// ```
+    ///
+    /// ```truapi-client-example
+    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    ///
+    /// export function subscribeStatements(provider: Provider) {
+    ///   const truapi = createClient(createTransport(provider));
+    ///
+    ///   return truapi.statementStore.statementStoreSubscribe({
+    ///     request: { tag: "MatchAll", value: [] },
+    ///     onData: (statements) => console.log(statements),
+    ///     onError: console.error,
+    ///     onInterrupt: () => console.log("interrupted"),
+    ///     onClose: console.error,
+    ///   });
+    /// }
+    /// ```
     #[wire(id = 56)]
     async fn remote_statement_store_subscribe(
         &self,
@@ -33,6 +49,23 @@ pub trait StatementStore: Send + Sync {
     ///
     /// ```truapi-playground-request
     /// { "productAccountId": { "dotNsIdentifier": "truapi-playground.dot", "derivationIndex": 0 }, "statement": { "proof": null, "decryptionKey": null, "expiry": "9999999999999n", "channel": null, "topics": [], "data": null } }
+    /// ```
+    ///
+    /// ```truapi-client-example
+    /// import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";
+    ///
+    /// export async function createStatementProof(
+    ///   provider: Provider,
+    ///   request: T.V01RemoteStatementStoreCreateProofRequest,
+    /// ) {
+    ///   const truapi = createClient(createTransport(provider));
+    ///
+    ///   const result =
+    ///     await truapi.statementStore.statementStoreCreateProof(request);
+    ///
+    ///   if (result.isErr()) throw result.error;
+    ///   return result.value;
+    /// }
     /// ```
     #[wire(id = 60)]
     async fn remote_statement_store_create_proof(
@@ -52,6 +85,21 @@ pub trait StatementStore: Send + Sync {
     ///
     /// ```truapi-playground-request
     /// { "proof": { "tag": "Sr25519", "value": { "signature": "0x0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", "signer": "0x0000000000000000000000000000000000000000000000000000000000000000" } }, "decryptionKey": null, "expiry": null, "channel": null, "topics": [], "data": null }
+    /// ```
+    ///
+    /// ```truapi-client-example
+    /// import { createClient, createTransport, types as T, type Provider } from "@parity/truapi";
+    ///
+    /// export async function submitStatement(
+    ///   provider: Provider,
+    ///   statement: T.SignedStatement,
+    /// ) {
+    ///   const truapi = createClient(createTransport(provider));
+    ///
+    ///   const result = await truapi.statementStore.statementStoreSubmit(statement);
+    ///
+    ///   if (result.isErr()) throw result.error;
+    /// }
     /// ```
     #[wire(id = 62)]
     async fn remote_statement_store_submit(

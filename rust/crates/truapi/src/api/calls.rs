@@ -30,6 +30,18 @@ use crate::{CallContext, CallError};
 #[async_trait::async_trait]
 pub trait TrUApiCalls: Send + Sync {
     /// Negotiates the wire codec version with the product.
+    ///
+    /// ```truapi-client-example
+    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    ///
+    /// export async function handshake(provider: Provider) {
+    ///   const truapi = createClient(createTransport(provider));
+    ///
+    ///   const result = await truapi.trUApiCalls.handshake();
+    ///
+    ///   if (result.isErr()) throw result.error;
+    /// }
+    /// ```
     #[wire(id = 0)]
     async fn host_handshake(
         &self,
@@ -51,6 +63,22 @@ pub trait TrUApiCalls: Send + Sync {
     /// ```truapi-playground-request
     /// { "tag": "Chain", "value": { "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2" } }
     /// ```
+    ///
+    /// ```truapi-client-example
+    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    ///
+    /// export async function supportsChain(provider: Provider, genesisHash: Uint8Array) {
+    ///   const truapi = createClient(createTransport(provider));
+    ///
+    ///   const result = await truapi.trUApiCalls.featureSupported({
+    ///     tag: "Chain",
+    ///     value: { genesisHash },
+    ///   });
+    ///
+    ///   if (result.isErr()) throw result.error;
+    ///   return result.value.supported;
+    /// }
+    /// ```
     #[wire(id = 2)]
     async fn host_feature_supported(
         &self,
@@ -63,6 +91,21 @@ pub trait TrUApiCalls: Send + Sync {
     /// ```truapi-playground-request
     /// { "text": "Hello!", "deeplink": null }
     /// ```
+    ///
+    /// ```truapi-client-example
+    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    ///
+    /// export async function pushNotification(provider: Provider) {
+    ///   const truapi = createClient(createTransport(provider));
+    ///
+    ///   const result = await truapi.trUApiCalls.pushNotification({
+    ///     text: "Hello!",
+    ///     deeplink: null,
+    ///   });
+    ///
+    ///   if (result.isErr()) throw result.error;
+    /// }
+    /// ```
     #[wire(id = 4)]
     async fn host_push_notification(
         &self,
@@ -74,6 +117,20 @@ pub trait TrUApiCalls: Send + Sync {
     ///
     /// ```truapi-playground-request
     /// { "url": "https://example.com" }
+    /// ```
+    ///
+    /// ```truapi-client-example
+    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    ///
+    /// export async function navigateToDocs(provider: Provider) {
+    ///   const truapi = createClient(createTransport(provider));
+    ///
+    ///   const result = await truapi.trUApiCalls.navigateTo({
+    ///     url: "https://example.com",
+    ///   });
+    ///
+    ///   if (result.isErr()) throw result.error;
+    /// }
     /// ```
     #[wire(id = 6)]
     async fn host_navigate_to(

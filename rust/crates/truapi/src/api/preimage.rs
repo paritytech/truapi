@@ -19,6 +19,22 @@ pub trait Preimage: Send + Sync {
     /// ```truapi-playground-request
     /// { "key": "0x0000000000000000000000000000000000000000000000000000000000000000" }
     /// ```
+    ///
+    /// ```truapi-client-example
+    /// import { createClient, createTransport, type Provider } from "@parity/truapi";
+    ///
+    /// export function lookupPreimage(provider: Provider, key: Uint8Array) {
+    ///   const truapi = createClient(createTransport(provider));
+    ///
+    ///   return truapi.preimage.preimageLookupSubscribe({
+    ///     request: { key },
+    ///     onData: (item) => console.log(item),
+    ///     onError: console.error,
+    ///     onInterrupt: () => console.log("interrupted"),
+    ///     onClose: console.error,
+    ///   });
+    /// }
+    /// ```
     #[wire(id = 64)]
     async fn remote_preimage_lookup_subscribe(
         &self,
