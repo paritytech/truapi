@@ -264,7 +264,7 @@ export function openEphemeralFollow(
     let settled = false;
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
     const sub = client.chainInteraction
-      .chainHeadFollow({
+      .chainHeadFollowSubscribe({
         request: { genesisHash, withRuntime },
       })
       .subscribe({
