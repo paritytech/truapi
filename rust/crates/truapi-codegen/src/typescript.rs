@@ -2251,6 +2251,7 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
     writeln!(out).unwrap();
     writeln!(out, "import {{ err, ok, type Result }} from 'neverthrow';").unwrap();
     writeln!(out, "import * as S from '../scale.js';").unwrap();
+    writeln!(out, "import type {{ HexString }} from '../scale.js';").unwrap();
     writeln!(
         out,
         "import type {{ ObservableLike, Observer, Subscription, SubscriptionFrameIds, TrUApiTransport }} from '../transport.js';"
