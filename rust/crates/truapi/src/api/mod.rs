@@ -26,9 +26,7 @@
 /// `#[wire(...)]` annotation whose id falls in the reserved set.
 ///
 /// Slot owners are documented on [`calls::TrUApiCalls`].
-pub const RESERVED_WIRE_IDS: &[u8] = &[
-    68, 69, 70, 71, 72, 73, 74, 75, 104, 105, 106, 107, 112, 113,
-];
+pub const RESERVED_WIRE_IDS: &[u8] = &[70, 71, 72, 73, 74, 75, 104, 105, 106, 107, 112, 113];
 
 pub mod account;
 pub mod calls;

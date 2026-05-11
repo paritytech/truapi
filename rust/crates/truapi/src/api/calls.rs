@@ -22,7 +22,6 @@ use crate::{CallContext, CallError};
 /// ever need one, annotate the trait method with the matching id and remove
 /// it from `RESERVED_WIRE_IDS`.
 ///
-/// - 68-69: `remote_preimage_submit` (request, response)
 /// - 70-71: `host_jsonrpc_message_send` (request, response)
 /// - 72-75: `host_jsonrpc_message_subscribe` (start, stop, interrupt, receive)
 /// - 104-107: `host_theme_subscribe` (start, stop, interrupt, receive)
