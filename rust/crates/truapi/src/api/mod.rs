@@ -27,7 +27,7 @@
 ///
 /// Slot owners are documented on [`calls::TrUApiCalls`].
 pub const RESERVED_WIRE_IDS: &[u8] = &[
-    34, 35, 36, 37, 68, 69, 70, 71, 72, 73, 74, 75, 104, 105, 106, 107, 112, 113,
+    68, 69, 70, 71, 72, 73, 74, 75, 104, 105, 106, 107, 112, 113,
 ];
 
 pub mod account;
