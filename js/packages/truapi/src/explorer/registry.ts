@@ -410,7 +410,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostSignPayloadError",
         description: "Sign raw bytes with a non-product (legacy) account.",
         usageExample:
-          'import {\n  type Client,\n  type HostSignRawWithLegacyAccountResponse,\n} from "@parity/truapi";\n\nexport async function signRawWithLegacyAccount(\n  truapi: Client,\n): Promise<HostSignRawWithLegacyAccountResponse> {\n  const result = await truapi.signing.signRawWithLegacyAccount({\n    signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",\n    payload: {\n      tag: "Bytes",\n      value: { bytes: "0x48656c6c6f" },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signRawWithLegacyAccount(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signRawWithLegacyAccount({\n    signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",\n    payload: {\n      tag: "Bytes",\n      value: { bytes: "0x48656c6c6f" },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_sign_payload_with_legacy_account",
@@ -425,7 +425,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Sign a Substrate extrinsic payload with a non-product (legacy) account.",
         usageExample:
-          'import {\n  type Client,\n  type HostSignPayloadWithLegacyAccountResponse,\n} from "@parity/truapi";\n\nexport async function signPayloadWithLegacyAccount(\n  truapi: Client,\n): Promise<HostSignPayloadWithLegacyAccountResponse> {\n  const result = await truapi.signing.signPayloadWithLegacyAccount({\n    signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",\n    payload: {\n      account: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",\n      blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      blockNumber: "0x00000000",\n      era: "0x00",\n      genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      method: "0x0000",\n      nonce: "0x00000000",\n      signedExtensions: [],\n      specVersion: "0x00000000",\n      tip: "0x00000000000000000000000000000000",\n      transactionVersion: "0x00000000",\n      version: 4,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signPayloadWithLegacyAccount(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signPayloadWithLegacyAccount({\n    signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",\n    payload: {\n      account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n      blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      blockNumber: "0x00000000",\n      era: "0x00",\n      genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      method: "0x0000",\n      nonce: "0x00000000",\n      signedExtensions: [],\n      specVersion: "0x00000000",\n      tip: "0x00000000000000000000000000000000",\n      transactionVersion: "0x00000000",\n      version: 4,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_create_room",
@@ -577,7 +577,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Submit a preimage. Returns the preimage key (hash) on success.",
         usageExample:
-          'import {\n  type Client,\n  type RemotePreimageSubmitResponse,\n} from "@parity/truapi";\n\nexport async function submitPreimage(\n  truapi: Client,\n): Promise<RemotePreimageSubmitResponse> {\n  const result = await truapi.preimage.preimageSubmit("0xdeadbeef");\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HexString,\n} from "@parity/truapi";\n\nexport async function submitPreimage(\n  truapi: Client,\n): Promise<HexString> {\n  const result = await truapi.preimage.preimageSubmit("0xdeadbeef");\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_follow_subscribe",
@@ -816,7 +816,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Create a proof for a statement using a pre-allocated allowance account,\nbypassing the per-call signing prompt.",
         usageExample:
-          'import {\n  type Client,\n  type RemoteStatementStoreCreateProofAuthorizedResponse,\n} from "@parity/truapi";\n\nexport async function createAuthorizedStatementProof(\n  truapi: Client,\n): Promise<RemoteStatementStoreCreateProofAuthorizedResponse> {\n  const result =\n    await truapi.statementStore.statementStoreCreateProofAuthorized({\n      expiry: 9999999999999n,\n      topics: [],\n    });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteStatementStoreCreateProofResponse,\n} from "@parity/truapi";\n\nexport async function createAuthorizedStatementProof(\n  truapi: Client,\n): Promise<RemoteStatementStoreCreateProofResponse> {\n  const result =\n    await truapi.statementStore.statementStoreCreateProofAuthorized({\n      expiry: 9999999999999n,\n      topics: [],\n    });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
     ],
     dataTypes: [
@@ -4527,7 +4527,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostSignPayloadError",
         description: "Sign raw bytes with a non-product (legacy) account.",
         usageExample:
-          'import {\n  type Client,\n  type HostSignRawWithLegacyAccountResponse,\n} from "@parity/truapi";\n\nexport async function signRawWithLegacyAccount(\n  truapi: Client,\n): Promise<HostSignRawWithLegacyAccountResponse> {\n  const result = await truapi.signing.signRawWithLegacyAccount({\n    signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",\n    payload: {\n      tag: "Bytes",\n      value: { bytes: "0x48656c6c6f" },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signRawWithLegacyAccount(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signRawWithLegacyAccount({\n    signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",\n    payload: {\n      tag: "Bytes",\n      value: { bytes: "0x48656c6c6f" },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_sign_payload_with_legacy_account",
@@ -4542,7 +4542,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Sign a Substrate extrinsic payload with a non-product (legacy) account.",
         usageExample:
-          'import {\n  type Client,\n  type HostSignPayloadWithLegacyAccountResponse,\n} from "@parity/truapi";\n\nexport async function signPayloadWithLegacyAccount(\n  truapi: Client,\n): Promise<HostSignPayloadWithLegacyAccountResponse> {\n  const result = await truapi.signing.signPayloadWithLegacyAccount({\n    signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",\n    payload: {\n      account: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",\n      blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      blockNumber: "0x00000000",\n      era: "0x00",\n      genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      method: "0x0000",\n      nonce: "0x00000000",\n      signedExtensions: [],\n      specVersion: "0x00000000",\n      tip: "0x00000000000000000000000000000000",\n      transactionVersion: "0x00000000",\n      version: 4,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signPayloadWithLegacyAccount(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signPayloadWithLegacyAccount({\n    signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",\n    payload: {\n      account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n      blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      blockNumber: "0x00000000",\n      era: "0x00",\n      genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      method: "0x0000",\n      nonce: "0x00000000",\n      signedExtensions: [],\n      specVersion: "0x00000000",\n      tip: "0x00000000000000000000000000000000",\n      transactionVersion: "0x00000000",\n      version: 4,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_create_room",
@@ -4694,7 +4694,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Submit a preimage. Returns the preimage key (hash) on success.",
         usageExample:
-          'import {\n  type Client,\n  type RemotePreimageSubmitResponse,\n} from "@parity/truapi";\n\nexport async function submitPreimage(\n  truapi: Client,\n): Promise<RemotePreimageSubmitResponse> {\n  const result = await truapi.preimage.preimageSubmit("0xdeadbeef");\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HexString,\n} from "@parity/truapi";\n\nexport async function submitPreimage(\n  truapi: Client,\n): Promise<HexString> {\n  const result = await truapi.preimage.preimageSubmit("0xdeadbeef");\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_follow_subscribe",
@@ -5019,7 +5019,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Create a proof for a statement using a pre-allocated allowance account,\nbypassing the per-call signing prompt.",
         usageExample:
-          'import {\n  type Client,\n  type RemoteStatementStoreCreateProofAuthorizedResponse,\n} from "@parity/truapi";\n\nexport async function createAuthorizedStatementProof(\n  truapi: Client,\n): Promise<RemoteStatementStoreCreateProofAuthorizedResponse> {\n  const result =\n    await truapi.statementStore.statementStoreCreateProofAuthorized({\n      expiry: 9999999999999n,\n      topics: [],\n    });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteStatementStoreCreateProofResponse,\n} from "@parity/truapi";\n\nexport async function createAuthorizedStatementProof(\n  truapi: Client,\n): Promise<RemoteStatementStoreCreateProofResponse> {\n  const result =\n    await truapi.statementStore.statementStoreCreateProofAuthorized({\n      expiry: 9999999999999n,\n      topics: [],\n    });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
     ],
     dataTypes: [

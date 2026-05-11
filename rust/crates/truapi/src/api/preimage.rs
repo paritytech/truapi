@@ -51,12 +51,12 @@ pub trait Preimage: Send + Sync {
     /// ```truapi-client-example
     /// import {
     ///   type Client,
-    ///   type RemotePreimageSubmitResponse,
+    ///   type HexString,
     /// } from "@parity/truapi";
     ///
     /// export async function submitPreimage(
     ///   truapi: Client,
-    /// ): Promise<RemotePreimageSubmitResponse> {
+    /// ): Promise<HexString> {
     ///   const result = await truapi.preimage.preimageSubmit("0xdeadbeef");
     ///
     ///   if (result.isErr()) throw result.error;

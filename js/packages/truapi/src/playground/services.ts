@@ -183,7 +183,7 @@ export const services: ServiceInfo[] = [
           "Sign a Substrate extrinsic payload with a non-product (legacy) account.",
         requestDescription: "HostSignPayloadWithLegacyAccountRequest",
         defaultRequest:
-          '{\n  "payload": {\n    "account": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",\n    "blockHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    "blockNumber": "0x00000000",\n    "era": "0x00",\n    "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    "method": "0x0000",\n    "nonce": "0x00000000",\n    "signedExtensions": [],\n    "specVersion": "0x00000000",\n    "tip": "0x00000000000000000000000000000000",\n    "transactionVersion": "0x00000000",\n    "version": 4\n  },\n  "signer": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"\n}',
+          '{\n  "payload": {\n    "account": {\n      "derivationIndex": 0,\n      "dotNsIdentifier": "truapi-playground.dot"\n    },\n    "blockHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    "blockNumber": "0x00000000",\n    "era": "0x00",\n    "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    "method": "0x0000",\n    "nonce": "0x00000000",\n    "signedExtensions": [],\n    "specVersion": "0x00000000",\n    "tip": "0x00000000000000000000000000000000",\n    "transactionVersion": "0x00000000",\n    "version": 4\n  },\n  "signer": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"\n}',
       },
       {
         name: "host_sign_raw",

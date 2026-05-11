@@ -112,12 +112,12 @@ pub trait Signing: Send + Sync {
     /// ```truapi-client-example
     /// import {
     ///   type Client,
-    ///   type HostSignRawWithLegacyAccountResponse,
+    ///   type HostSignPayloadResponse,
     /// } from "@parity/truapi";
     ///
     /// export async function signRawWithLegacyAccount(
     ///   truapi: Client,
-    /// ): Promise<HostSignRawWithLegacyAccountResponse> {
+    /// ): Promise<HostSignPayloadResponse> {
     ///   const result = await truapi.signing.signRawWithLegacyAccount({
     ///     signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
     ///     payload: {
@@ -145,16 +145,16 @@ pub trait Signing: Send + Sync {
     /// ```truapi-client-example
     /// import {
     ///   type Client,
-    ///   type HostSignPayloadWithLegacyAccountResponse,
+    ///   type HostSignPayloadResponse,
     /// } from "@parity/truapi";
     ///
     /// export async function signPayloadWithLegacyAccount(
     ///   truapi: Client,
-    /// ): Promise<HostSignPayloadWithLegacyAccountResponse> {
+    /// ): Promise<HostSignPayloadResponse> {
     ///   const result = await truapi.signing.signPayloadWithLegacyAccount({
     ///     signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
     ///     payload: {
-    ///       account: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
+    ///       account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },
     ///       blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///       blockNumber: "0x00000000",
     ///       era: "0x00",

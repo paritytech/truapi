@@ -92,12 +92,12 @@ pub trait StatementStore: Send + Sync {
     /// ```truapi-client-example
     /// import {
     ///   type Client,
-    ///   type RemoteStatementStoreCreateProofAuthorizedResponse,
+    ///   type RemoteStatementStoreCreateProofResponse,
     /// } from "@parity/truapi";
     ///
     /// export async function createAuthorizedStatementProof(
     ///   truapi: Client,
-    /// ): Promise<RemoteStatementStoreCreateProofAuthorizedResponse> {
+    /// ): Promise<RemoteStatementStoreCreateProofResponse> {
     ///   const result =
     ///     await truapi.statementStore.statementStoreCreateProofAuthorized({
     ///       expiry: 9999999999999n,
