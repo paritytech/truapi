@@ -139,6 +139,14 @@ export const services: ServiceInfo[] = [
         description: "Fetch the user's primary identity (V0.2+).",
         noParams: true,
       },
+      {
+        name: "host_request_login",
+        type: "unary",
+        description:
+          'Request the host to present the login flow to the user.\n\nProducts should call this in response to a user action (e.g. tapping a\n"Sign in" button), not automatically on load.',
+        requestDescription: "HostRequestLoginRequest",
+        defaultRequest: '{\n  "reason": "Sign in to vote on Referendum #42"\n}',
+      },
     ],
   },
   {
@@ -159,6 +167,23 @@ export const services: ServiceInfo[] = [
         requestDescription: "HostCreateTransactionWithLegacyAccountRequest",
         defaultRequest:
           '{\n  "payload": {\n    "tag": "V1",\n    "value": {\n      "callData": "0x0000",\n      "context": {\n        "bestBlockHeight": 0,\n        "metadata": "0x",\n        "tokenDecimals": 10,\n        "tokenSymbol": "DOT"\n      },\n      "extensions": [],\n      "txExtVersion": 0\n    }\n  }\n}',
+      },
+      {
+        name: "host_sign_raw_with_legacy_account",
+        type: "unary",
+        description: "Sign raw bytes with a non-product (legacy) account.",
+        requestDescription: "HostSignRawWithLegacyAccountRequest",
+        defaultRequest:
+          '{\n  "payload": {\n    "tag": "Bytes",\n    "value": {\n      "bytes": "0x48656c6c6f"\n    }\n  },\n  "signer": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"\n}',
+      },
+      {
+        name: "host_sign_payload_with_legacy_account",
+        type: "unary",
+        description:
+          "Sign a Substrate extrinsic payload with a non-product (legacy) account.",
+        requestDescription: "HostSignPayloadWithLegacyAccountRequest",
+        defaultRequest:
+          '{\n  "payload": {\n    "account": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",\n    "blockHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    "blockNumber": "0x00000000",\n    "era": "0x00",\n    "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    "method": "0x0000",\n    "nonce": "0x00000000",\n    "signedExtensions": [],\n    "specVersion": "0x00000000",\n    "tip": "0x00000000000000000000000000000000",\n    "transactionVersion": "0x00000000",\n    "version": 4\n  },\n  "signer": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"\n}',
       },
       {
         name: "host_sign_raw",
@@ -255,6 +280,14 @@ export const services: ServiceInfo[] = [
         defaultRequest:
           '{\n  "proof": {\n    "tag": "Sr25519",\n    "value": {\n      "signature": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",\n      "signer": "0x0000000000000000000000000000000000000000000000000000000000000000"\n    }\n  },\n  "topics": []\n}',
       },
+      {
+        name: "remote_statement_store_create_proof_authorized",
+        type: "unary",
+        description:
+          "Create a proof for a statement using a pre-allocated allowance account,\nbypassing the per-call signing prompt.",
+        requestDescription: "Statement",
+        defaultRequest: '{\n  "expiry": "9999999999999n",\n  "topics": []\n}',
+      },
     ],
   },
   {
@@ -268,13 +301,20 @@ export const services: ServiceInfo[] = [
         defaultRequest:
           '{\n  "key": "0x0000000000000000000000000000000000000000000000000000000000000000"\n}',
       },
+      {
+        name: "remote_preimage_submit",
+        type: "unary",
+        description:
+          "Submit a preimage. Returns the preimage key (hash) on success.",
+        requestDescription: "HexString",
+      },
     ],
   },
   {
     name: "Chain Interaction",
     methods: [
       {
-        name: "remote_chain_head_follow",
+        name: "remote_chain_head_follow_subscribe",
         type: "subscription",
         description: "Follow the chain head and receive block events.",
         requestDescription: "RemoteChainHeadFollowRequest",
