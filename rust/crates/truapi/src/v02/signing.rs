@@ -90,3 +90,39 @@ impl TryFrom<HostSignRawRequest> for crate::v01::HostSignRawRequest {
         Err(())
     }
 }
+
+/// Sign a Substrate extrinsic payload with a non-product (legacy) account.
+///
+/// V0.2: the inner `payload` now uses the V0.2 [`HostSignPayloadRequest`]
+/// (with `account: ProductAccountId` instead of `address: String`).
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostSignPayloadWithLegacyAccountRequest {
+    /// Signer address (SS58 or hex) of the legacy account.
+    pub signer: String,
+    /// The extrinsic payload to sign.
+    pub payload: HostSignPayloadRequest,
+}
+
+impl TryFrom<crate::v01::HostSignPayloadWithLegacyAccountRequest>
+    for HostSignPayloadWithLegacyAccountRequest
+{
+    type Error = ();
+
+    fn try_from(
+        _value: crate::v01::HostSignPayloadWithLegacyAccountRequest,
+    ) -> Result<Self, Self::Error> {
+        Err(())
+    }
+}
+
+impl TryFrom<HostSignPayloadWithLegacyAccountRequest>
+    for crate::v01::HostSignPayloadWithLegacyAccountRequest
+{
+    type Error = ();
+
+    fn try_from(
+        _value: HostSignPayloadWithLegacyAccountRequest,
+    ) -> Result<Self, Self::Error> {
+        Err(())
+    }
+}

@@ -21,8 +21,8 @@ versioned_type! {
     pub enum HostSignRawWithLegacyAccountResponse { V1 => v01::HostSignPayloadResponse }
     /// Versioned wrapper for the legacy-account sign-raw error; reuses [`v01::HostSignPayloadError`].
     pub enum HostSignRawWithLegacyAccountError { V1 => v01::HostSignPayloadError }
-    /// Versioned wrapper for [`v01::HostSignPayloadWithLegacyAccountRequest`].
-    pub enum HostSignPayloadWithLegacyAccountRequest { V1 => v01::HostSignPayloadWithLegacyAccountRequest }
+    /// Versioned wrapper for the legacy-account sign-payload request.
+    pub enum HostSignPayloadWithLegacyAccountRequest { V1 => v01::HostSignPayloadWithLegacyAccountRequest, V2 => v02::HostSignPayloadWithLegacyAccountRequest }
     /// Versioned wrapper for the legacy-account sign-payload response; reuses [`v01::HostSignPayloadResponse`].
     pub enum HostSignPayloadWithLegacyAccountResponse { V1 => v01::HostSignPayloadResponse }
     /// Versioned wrapper for the legacy-account sign-payload error; reuses [`v01::HostSignPayloadError`].
