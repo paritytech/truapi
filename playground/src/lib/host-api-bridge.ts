@@ -151,9 +151,9 @@ const methodMap: Record<string, [keyof TrUApiClient, string, boolean]> = {
   ],
 
   // Chain Interaction
-  "Chain Interaction/remote_chain_head_follow": [
+  "Chain Interaction/remote_chain_head_follow_subscribe": [
     "chainInteraction",
-    "chainHeadFollow",
+    "chainHeadFollowSubscribe",
     true,
   ],
   "Chain Interaction/remote_chain_head_header": [
