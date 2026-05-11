@@ -6,9 +6,8 @@ use crate::versioned::signing::{
     HostCreateTransactionWithLegacyAccountResponse, HostSignPayloadError, HostSignPayloadRequest,
     HostSignPayloadResponse, HostSignPayloadWithLegacyAccountError,
     HostSignPayloadWithLegacyAccountRequest, HostSignPayloadWithLegacyAccountResponse,
-    HostSignRawError, HostSignRawRequest, HostSignRawResponse,
-    HostSignRawWithLegacyAccountError, HostSignRawWithLegacyAccountRequest,
-    HostSignRawWithLegacyAccountResponse,
+    HostSignRawError, HostSignRawRequest, HostSignRawResponse, HostSignRawWithLegacyAccountError,
+    HostSignRawWithLegacyAccountRequest, HostSignRawWithLegacyAccountResponse,
 };
 use crate::wire;
 use crate::{CallContext, CallError};

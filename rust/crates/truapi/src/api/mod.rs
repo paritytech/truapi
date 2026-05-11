@@ -26,31 +26,37 @@
 /// `#[wire(...)]` annotation whose id falls in the reserved set.
 ///
 /// Slot owners are documented on [`calls::TrUApiCalls`].
-pub const RESERVED_WIRE_IDS: &[u8] = &[70, 71, 72, 73, 74, 75, 104, 105, 106, 107, 112, 113];
+pub const RESERVED_WIRE_IDS: &[u8] = &[];
 
 pub mod account;
 pub mod calls;
 pub mod chain;
 pub mod chat;
 pub mod entropy;
+pub mod jsonrpc;
 pub mod local_storage;
 pub mod payment;
 pub mod permissions;
 pub mod preimage;
+pub mod resource_allocation;
 pub mod signing;
 pub mod statement_store;
+pub mod theme;
 
 pub use account::AccountManagement;
 pub use calls::TrUApiCalls;
 pub use chain::ChainInteraction;
 pub use chat::Chat;
 pub use entropy::EntropyDerivation;
+pub use jsonrpc::JsonRpc;
 pub use local_storage::LocalStorage;
 pub use payment::Payment;
 pub use permissions::Permissions;
 pub use preimage::Preimage;
+pub use resource_allocation::ResourceAllocation;
 pub use signing::Signing;
 pub use statement_store::StatementStore;
+pub use theme::HostTheme;
 
 /// The unified TrUAPI contract. Composes every sub-trait so a host can be
 /// expressed as a single `impl TrUApi for MyHost` rather than an
@@ -60,10 +66,13 @@ pub trait TrUApi:
     + ChainInteraction
     + Chat
     + EntropyDerivation
+    + HostTheme
+    + JsonRpc
     + LocalStorage
     + Payment
     + Permissions
     + Preimage
+    + ResourceAllocation
     + Signing
     + StatementStore
     + TrUApiCalls
@@ -77,10 +86,13 @@ impl<T> TrUApi for T where
         + ChainInteraction
         + Chat
         + EntropyDerivation
+        + HostTheme
+        + JsonRpc
         + LocalStorage
         + Payment
         + Permissions
         + Preimage
+        + ResourceAllocation
         + Signing
         + StatementStore
         + TrUApiCalls

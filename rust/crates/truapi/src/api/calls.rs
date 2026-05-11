@@ -22,10 +22,7 @@ use crate::{CallContext, CallError};
 /// ever need one, annotate the trait method with the matching id and remove
 /// it from `RESERVED_WIRE_IDS`.
 ///
-/// - 70-71: `host_jsonrpc_message_send` (request, response)
-/// - 72-75: `host_jsonrpc_message_subscribe` (start, stop, interrupt, receive)
-/// - 104-107: `host_theme_subscribe` (start, stop, interrupt, receive)
-/// - 112-113: `host_request_login` (request, response)
+/// All previously reserved slots have been implemented.
 #[async_trait::async_trait]
 pub trait TrUApiCalls: Send + Sync {
     /// Negotiates the wire codec version with the product.
