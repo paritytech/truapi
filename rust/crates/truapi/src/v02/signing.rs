@@ -120,9 +120,7 @@ impl TryFrom<HostSignPayloadWithLegacyAccountRequest>
 {
     type Error = ();
 
-    fn try_from(
-        _value: HostSignPayloadWithLegacyAccountRequest,
-    ) -> Result<Self, Self::Error> {
+    fn try_from(_value: HostSignPayloadWithLegacyAccountRequest) -> Result<Self, Self::Error> {
         Err(())
     }
 }

@@ -154,7 +154,7 @@ pub trait Signing: Send + Sync {
     ///   const result = await truapi.signing.signPayloadWithLegacyAccount({
     ///     signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
     ///     payload: {
-    ///       address: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
+    ///       account: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
     ///       blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///       blockNumber: "0x00000000",
     ///       era: "0x00",
