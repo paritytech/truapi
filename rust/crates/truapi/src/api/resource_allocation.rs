@@ -27,10 +27,7 @@ pub trait ResourceAllocation: Send + Sync {
     /// ): Promise<HostRequestResourceAllocationResponse> {
     ///   const result =
     ///     await truapi.resourceAllocation.requestResourceAllocation({
-    ///       resources: [
-    ///         { tag: "StatementStoreAllowance" },
-    ///         { tag: "AutoSigning" },
-    ///       ],
+    ///       resources: ["StatementStoreAllowance", "AutoSigning"],
     ///     });
     ///
     ///   if (result.isErr()) throw result.error;

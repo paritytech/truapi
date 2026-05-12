@@ -88,6 +88,35 @@ export function Hex(length?: number): Codec<HexString> {
 }
 
 /**
+ * Enum without payloads — maps string labels to SCALE discriminant bytes.
+ *
+ * `scale-ts` models `Enum({ Foo: _void, Bar: _void })` as tagged objects. For
+ * user-facing TrUAPI enums with only unit variants, we keep the public TS shape
+ * as a plain string union instead.
+ */
+export function Status<const T extends string>(
+  ...variants: readonly T[]
+): Codec<T> {
+  return enhanceCodec(
+    u8,
+    (value: unknown) => {
+      const index = variants.indexOf(value as T);
+      if (index === -1) {
+        throw new Error(`Unknown status value: ${String(value)}`);
+      }
+      return index;
+    },
+    (index: number) => {
+      const value = variants[index];
+      if (value === undefined) {
+        throw new Error(`Unknown status index: ${index}`);
+      }
+      return value;
+    },
+  ) as unknown as Codec<T>;
+}
+
+/**
  * Defers codec construction until first use so recursive generated codecs can
  * reference each other safely.
  */

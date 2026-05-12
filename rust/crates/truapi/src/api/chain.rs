@@ -138,7 +138,7 @@ pub trait ChainInteraction: Send + Sync {
     ///     items: [
     ///       {
     ///         key: "0x26aa394eea5630e07c48ae0c9558cef7",
-    ///         queryType: { tag: "Value", value: undefined },
+    ///         queryType: "Value",
     ///       },
     ///     ],
     ///   });

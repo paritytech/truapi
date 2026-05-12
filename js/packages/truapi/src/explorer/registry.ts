@@ -263,7 +263,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Request a device-capability permission from the user.",
         usageExample:
-          'import {\n  type Client,\n  type HostDevicePermissionResponse,\n} from "@parity/truapi";\n\nexport async function requestCameraPermission(\n  truapi: Client,\n): Promise<HostDevicePermissionResponse> {\n  const result = await truapi.permissions.devicePermission({\n    tag: "Camera",\n    value: undefined,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostDevicePermissionResponse,\n} from "@parity/truapi";\n\nexport async function requestCameraPermission(\n  truapi: Client,\n): Promise<HostDevicePermissionResponse> {\n  const result = await truapi.permissions.devicePermission("Camera");\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_permission",
@@ -652,7 +652,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Query runtime storage at a specific block.",
         usageExample:
-          'import {\n  type Client,\n  type RemoteChainHeadStorageResponse,\n} from "@parity/truapi";\n\nexport async function getChainHeadStorage(\n  truapi: Client,\n): Promise<RemoteChainHeadStorageResponse> {\n  const result = await truapi.chainInteraction.chainHeadStorage({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    hash: "0x0000000000000000000000000000000000000000000000000000000000000000",\n    items: [\n      {\n        key: "0x26aa394eea5630e07c48ae0c9558cef7",\n        queryType: { tag: "Value", value: undefined },\n      },\n    ],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemoteChainHeadStorageResponse,\n} from "@parity/truapi";\n\nexport async function getChainHeadStorage(\n  truapi: Client,\n): Promise<RemoteChainHeadStorageResponse> {\n  const result = await truapi.chainInteraction.chainHeadStorage({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    hash: "0x0000000000000000000000000000000000000000000000000000000000000000",\n    items: [\n      {\n        key: "0x26aa394eea5630e07c48ae0c9558cef7",\n        queryType: "Value",\n      },\n    ],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_call",
@@ -978,7 +978,7 @@ export const versions: ExplorerVersion[] = [
         name: "Arrangement",
         category: "enum",
         definition:
-          'type Arrangement = { tag: "Start"; value: undefined } | { tag: "End"; value: undefined } | { tag: "Center"; value: undefined } | { tag: "SpaceBetween"; value: undefined } | { tag: "SpaceAround"; value: undefined } | { tag: "SpaceEvenly"; value: undefined }',
+          'type Arrangement = "Start" | "End" | "Center" | "SpaceBetween" | "SpaceAround" | "SpaceEvenly"',
         description: "Layout arrangement (like CSS flexbox `justify-content`).",
         source: "shared",
         variants: [
@@ -1109,8 +1109,7 @@ export const versions: ExplorerVersion[] = [
         id: "ButtonVariant",
         name: "ButtonVariant",
         category: "enum",
-        definition:
-          'type ButtonVariant = { tag: "Primary"; value: undefined } | { tag: "Secondary"; value: undefined } | { tag: "Text"; value: undefined }',
+        definition: 'type ButtonVariant = "Primary" | "Secondary" | "Text"',
         description: "Button style variants.",
         source: "shared",
         variants: [
@@ -1152,8 +1151,7 @@ export const versions: ExplorerVersion[] = [
         id: "ChatActionLayout",
         name: "ChatActionLayout",
         category: "enum",
-        definition:
-          'type ChatActionLayout = { tag: "Column"; value: undefined } | { tag: "Grid"; value: undefined }',
+        definition: 'type ChatActionLayout = "Column" | "Grid"',
         description: "Layout for action buttons.",
         source: "shared",
         variants: [
@@ -1223,8 +1221,7 @@ export const versions: ExplorerVersion[] = [
         id: "ChatBotRegistrationStatus",
         name: "ChatBotRegistrationStatus",
         category: "enum",
-        definition:
-          'type ChatBotRegistrationStatus = { tag: "New"; value: undefined } | { tag: "Exists"; value: undefined }',
+        definition: 'type ChatBotRegistrationStatus = "New" | "Exists"',
         description: "Whether the bot was newly registered or already existed.",
         source: "shared",
         variants: [
@@ -1445,8 +1442,7 @@ export const versions: ExplorerVersion[] = [
         id: "ChatRoomParticipation",
         name: "ChatRoomParticipation",
         category: "enum",
-        definition:
-          'type ChatRoomParticipation = { tag: "RoomHost"; value: undefined } | { tag: "Bot"; value: undefined }',
+        definition: 'type ChatRoomParticipation = "RoomHost" | "Bot"',
         description: "How the product participates in a chat room.",
         source: "shared",
         variants: [
@@ -1464,8 +1460,7 @@ export const versions: ExplorerVersion[] = [
         id: "ChatRoomRegistrationStatus",
         name: "ChatRoomRegistrationStatus",
         category: "enum",
-        definition:
-          'type ChatRoomRegistrationStatus = { tag: "New"; value: undefined } | { tag: "Exists"; value: undefined }',
+        definition: 'type ChatRoomRegistrationStatus = "New" | "Exists"',
         description: "Whether the room was newly created or already existed.",
         source: "shared",
         variants: [
@@ -1484,7 +1479,7 @@ export const versions: ExplorerVersion[] = [
         name: "ColorToken",
         category: "enum",
         definition:
-          'type ColorToken = { tag: "TextPrimary"; value: undefined } | { tag: "TextSecondary"; value: undefined } | { tag: "TextTertiary"; value: undefined } | { tag: "BackgroundPrimary"; value: undefined } | { tag: "BackgroundSecondary"; value: undefined } | { tag: "BackgroundTertiary"; value: undefined } | { tag: "Success"; value: undefined } | { tag: "Error"; value: undefined } | { tag: "Warning"; value: undefined }',
+          'type ColorToken = "TextPrimary" | "TextSecondary" | "TextTertiary" | "BackgroundPrimary" | "BackgroundSecondary" | "BackgroundTertiary" | "Success" | "Error" | "Warning"',
         description: "Semantic color tokens for theming.",
         source: "shared",
         variants: [
@@ -1579,7 +1574,7 @@ export const versions: ExplorerVersion[] = [
         name: "ContentAlignment",
         category: "enum",
         definition:
-          'type ContentAlignment = { tag: "TopStart"; value: undefined } | { tag: "TopCenter"; value: undefined } | { tag: "TopEnd"; value: undefined } | { tag: "CenterStart"; value: undefined } | { tag: "Center"; value: undefined } | { tag: "CenterEnd"; value: undefined } | { tag: "BottomStart"; value: undefined } | { tag: "BottomCenter"; value: undefined } | { tag: "BottomEnd"; value: undefined }',
+          'type ContentAlignment = "TopStart" | "TopCenter" | "TopEnd" | "CenterStart" | "Center" | "CenterEnd" | "BottomStart" | "BottomCenter" | "BottomEnd"',
         description: "2D content alignment.",
         source: "shared",
         variants: [
@@ -1745,8 +1740,7 @@ export const versions: ExplorerVersion[] = [
         id: "HorizontalAlignment",
         name: "HorizontalAlignment",
         category: "enum",
-        definition:
-          'type HorizontalAlignment = { tag: "Start"; value: undefined } | { tag: "Center"; value: undefined } | { tag: "End"; value: undefined }',
+        definition: 'type HorizontalAlignment = "Start" | "Center" | "End"',
         description: "Horizontal alignment options.",
         source: "shared",
         variants: [
@@ -1769,7 +1763,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostAccountConnectionStatusSubscribeItem",
         category: "enum",
         definition:
-          'type HostAccountConnectionStatusSubscribeItem = { tag: "Disconnected"; value: undefined } | { tag: "Connected"; value: undefined }',
+          'type HostAccountConnectionStatusSubscribeItem = "Disconnected" | "Connected"',
         description: "User's authentication state.",
         source: "v0.1",
         variants: [
@@ -2291,8 +2285,7 @@ export const versions: ExplorerVersion[] = [
         id: "HostDeriveEntropyError",
         name: "HostDeriveEntropyError",
         category: "enum",
-        definition:
-          'type HostDeriveEntropyError = { tag: "Unknown"; value: undefined }',
+        definition: 'type HostDeriveEntropyError = "Unknown"',
         description:
           "Error from [`crate::api::EntropyDerivation::host_derive_entropy`].\n\nUnder normal operation the function always succeeds; `Unknown` indicates an\nunrecoverable internal host error.\n\nSee [RFC 0007].\n\n[RFC 0007]: https://github.com/paritytech/triangle-js-sdks/pull/95",
         source: "v0.1",
@@ -2340,7 +2333,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostDevicePermissionRequest",
         category: "enum",
         definition:
-          'type HostDevicePermissionRequest = { tag: "Notifications"; value: undefined } | { tag: "Camera"; value: undefined } | { tag: "Microphone"; value: undefined } | { tag: "Bluetooth"; value: undefined } | { tag: "NFC"; value: undefined } | { tag: "Location"; value: undefined } | { tag: "Clipboard"; value: undefined } | { tag: "OpenUrl"; value: undefined } | { tag: "Biometrics"; value: undefined }',
+          'type HostDevicePermissionRequest = "Notifications" | "Camera" | "Microphone" | "Bluetooth" | "NFC" | "Location" | "Clipboard" | "OpenUrl" | "Biometrics"',
         description:
           "Device capability to request access to.\n\nExtended with `Notifications`, `NFC`, `Clipboard`, `OpenUrl`, and\n`Biometrics` per [RFC 0001] (JIT permissions).\n\n[RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66",
         source: "v0.1",
@@ -2941,7 +2934,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostRequestLoginResponse",
         category: "enum",
         definition:
-          'type HostRequestLoginResponse = { tag: "Success"; value: undefined } | { tag: "AlreadyConnected"; value: undefined } | { tag: "Rejected"; value: undefined }',
+          'type HostRequestLoginResponse = "Success" | "AlreadyConnected" | "Rejected"',
         description: "Result of a login request.",
         source: "v0.1",
         variants: [
@@ -4428,7 +4421,7 @@ export const versions: ExplorerVersion[] = [
         name: "StorageQueryType",
         category: "enum",
         definition:
-          'type StorageQueryType = { tag: "Value"; value: undefined } | { tag: "Hash"; value: undefined } | { tag: "ClosestDescendantMerkleValue"; value: undefined } | { tag: "DescendantsValues"; value: undefined } | { tag: "DescendantsHashes"; value: undefined }',
+          'type StorageQueryType = "Value" | "Hash" | "ClosestDescendantMerkleValue" | "DescendantsValues" | "DescendantsHashes"',
         description: "Type of storage query to perform.",
         source: "shared",
         variants: [
@@ -4639,7 +4632,7 @@ export const versions: ExplorerVersion[] = [
         name: "TypographyStyle",
         category: "enum",
         definition:
-          'type TypographyStyle = { tag: "TitleXL"; value: undefined } | { tag: "Headline"; value: undefined } | { tag: "BodyM"; value: undefined } | { tag: "BodyS"; value: undefined } | { tag: "Caption"; value: undefined }',
+          'type TypographyStyle = "TitleXL" | "Headline" | "BodyM" | "BodyS" | "Caption"',
         description: "Text typography presets.",
         source: "shared",
         variants: [
@@ -4685,8 +4678,7 @@ export const versions: ExplorerVersion[] = [
         id: "VerticalAlignment",
         name: "VerticalAlignment",
         category: "enum",
-        definition:
-          'type VerticalAlignment = { tag: "Top"; value: undefined } | { tag: "Center"; value: undefined } | { tag: "Bottom"; value: undefined }',
+        definition: 'type VerticalAlignment = "Top" | "Center" | "Bottom"',
         description: "Vertical alignment options.",
         source: "shared",
         variants: [

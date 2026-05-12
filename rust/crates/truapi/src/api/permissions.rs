@@ -21,10 +21,7 @@ pub trait Permissions: Send + Sync {
     /// export async function requestCameraPermission(
     ///   truapi: Client,
     /// ): Promise<HostDevicePermissionResponse> {
-    ///   const result = await truapi.permissions.devicePermission({
-    ///     tag: "Camera",
-    ///     value: undefined,
-    ///   });
+    ///   const result = await truapi.permissions.devicePermission("Camera");
     ///
     ///   if (result.isErr()) throw result.error;
     ///   return result.value;

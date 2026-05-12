@@ -966,6 +966,12 @@ fn explorer_type_definition(
             generic_decl,
             unnamed_fields_type(types)?
         )),
+        TypeDefKind::Enum(variants) if is_unit_only_enum(ty) => Ok(format!(
+            "type {}{} = {}",
+            display_name,
+            generic_decl,
+            unit_enum_union_type(variants)?
+        )),
         TypeDefKind::Enum(variants) => {
             let rendered = variants
                 .iter()
@@ -1286,6 +1292,8 @@ fn wire_const_name(method_name: &str) -> String {
 
 fn generate_playground_services_code(api: &ApiDefinition, target_version: u32) -> Result<String> {
     let wrappers = collect_versioned_wrappers(api);
+    let emit_versions = versioned_wrapper_emit_versions(api, &wrappers, target_version)?;
+    let aliases = selected_public_aliases(api, &wrappers, &emit_versions, target_version);
     let ctx = CodecContext::default();
     let mut traits: Vec<&TraitDef> = api
         .traits
@@ -1356,10 +1364,12 @@ fn generate_playground_services_code(api: &ApiDefinition, target_version: u32) -
             }
             let no_params = method.name == "host_handshake" || payload.param_list.is_empty();
             if !no_params {
+                let request_description =
+                    playground_request_description(api, &aliases, &payload.inner_type_ts);
                 writeln!(
                     out,
                     "        requestDescription: {},",
-                    ts_string_literal(&playground_type_name(&payload.inner_type_ts))
+                    ts_string_literal(&request_description)
                 )
                 .unwrap();
             }
@@ -1542,13 +1552,39 @@ fn extract_default_request_from_client_example(
         } else {
             argument
         }
+    } else if matches!(
+        argument.as_bytes().first(),
+        Some(b'"' | b'\'' | b'`' | b'[')
+    ) {
+        argument
     } else {
         return Ok(None);
     };
     let json = ts_request_to_playground_json(request);
     validate_default_request(method_name, "truapi-client-example", &json)?;
-    let value = serde_json::from_str::<serde_json::Value>(&json)?;
+    let value = collapse_tag_only_objects(serde_json::from_str::<serde_json::Value>(&json)?);
     Ok(Some(serde_json::to_string_pretty(&value)?))
+}
+
+fn collapse_tag_only_objects(value: serde_json::Value) -> serde_json::Value {
+    match value {
+        serde_json::Value::Array(items) => {
+            serde_json::Value::Array(items.into_iter().map(collapse_tag_only_objects).collect())
+        }
+        serde_json::Value::Object(mut map) => {
+            if map.len() == 1 {
+                if let Some(serde_json::Value::String(tag)) = map.remove("tag") {
+                    return serde_json::Value::String(tag);
+                }
+            }
+            serde_json::Value::Object(
+                map.into_iter()
+                    .map(|(key, value)| (key, collapse_tag_only_objects(value)))
+                    .collect(),
+            )
+        }
+        other => other,
+    }
 }
 
 fn extract_request_property(argument: &str) -> Option<&str> {
@@ -1908,6 +1944,24 @@ fn trim_doc_lines(lines: &[&str]) -> Option<String> {
 
 fn playground_type_name(value: &str) -> String {
     value.replace("T.", "")
+}
+
+fn playground_request_description(
+    api: &ApiDefinition,
+    aliases: &BTreeMap<String, String>,
+    value: &str,
+) -> String {
+    let value = playground_type_name(value);
+    api.types
+        .iter()
+        .filter(|ty| aliases.get(&ty.name).map(String::as_str).unwrap_or(&ty.name) == value)
+        .find_map(|ty| match &ty.kind {
+            TypeDefKind::Enum(variants) if is_unit_only_enum(ty) => {
+                Some(unit_enum_summary(variants))
+            }
+            _ => None,
+        })
+        .unwrap_or(value)
 }
 
 fn ts_string_literal(value: &str) -> String {
@@ -3003,30 +3057,41 @@ fn write_type_definition(
             .unwrap();
         }
         TypeDefKind::Enum(variants) => {
-            // For versioned wrappers, only emit the variant(s) the client
-            // actually wire-encodes. The wire byte index is preserved by the
-            // codec definition (`indexed_versioned_codec_expr`).
-            let selected = emit_versions.get(&ty.name);
-            writeln!(out, "export type {emitted_name}{generic_decl} =").unwrap();
-            for variant in variants {
-                if let Some(versions) = selected {
-                    let Some(version) = version_number(&variant.name) else {
-                        continue;
-                    };
-                    if !versions.contains(&version) {
-                        continue;
-                    }
-                }
-                write_jsdoc(out, "  ", variant.docs.as_deref());
+            if is_unit_only_enum(ty) {
                 writeln!(
                     out,
-                    "  | {{ tag: \"{}\"; value: {} }}",
-                    variant.name,
-                    variant_value_type(&variant.fields)?
+                    "export type {}{} = {};",
+                    emitted_name,
+                    generic_decl,
+                    unit_enum_union_type(variants)?
                 )
                 .unwrap();
+            } else {
+                // For versioned wrappers, only emit the variant(s) the client
+                // actually wire-encodes. The wire byte index is preserved by the
+                // codec definition (`indexed_versioned_codec_expr`).
+                let selected = emit_versions.get(&ty.name);
+                writeln!(out, "export type {emitted_name}{generic_decl} =").unwrap();
+                for variant in variants {
+                    if let Some(versions) = selected {
+                        let Some(version) = version_number(&variant.name) else {
+                            continue;
+                        };
+                        if !versions.contains(&version) {
+                            continue;
+                        }
+                    }
+                    write_jsdoc(out, "  ", variant.docs.as_deref());
+                    writeln!(
+                        out,
+                        "  | {{ tag: \"{}\"; value: {} }}",
+                        variant.name,
+                        variant_value_type(&variant.fields)?
+                    )
+                    .unwrap();
+                }
+                writeln!(out, ";").unwrap();
             }
-            writeln!(out, ";").unwrap();
         }
     }
 
@@ -3156,20 +3221,66 @@ fn type_codec_expr(ty: &TypeDef, type_name: &str, ctx: &CodecContext) -> Result<
         TypeDefKind::Struct(fields) => struct_codec_expr(fields, type_name, false, ctx),
         TypeDefKind::TupleStruct(fields) => unnamed_fields_codec_expr(fields, false, ctx),
         TypeDefKind::Enum(variants) => {
-            let variants = variants
-                .iter()
-                .map(|variant| {
-                    Ok(format!(
-                        "{}: {}",
-                        variant.name,
-                        variant_codec_expr(&variant.fields, false, ctx)?
-                    ))
-                })
-                .collect::<Result<Vec<_>>>()?
-                .join(", ");
-            Ok(format!("S.Enum({{{variants}}})"))
+            if is_unit_only_enum(ty) {
+                unit_enum_codec_expr(variants)
+            } else {
+                let variants = variants
+                    .iter()
+                    .map(|variant| {
+                        Ok(format!(
+                            "{}: {}",
+                            variant.name,
+                            variant_codec_expr(&variant.fields, false, ctx)?
+                        ))
+                    })
+                    .collect::<Result<Vec<_>>>()?
+                    .join(", ");
+                Ok(format!("S.Enum({{{variants}}})"))
+            }
         }
     }
+}
+
+fn is_unit_only_enum(ty: &TypeDef) -> bool {
+    detect_versioned_wrapper(ty).is_none()
+        && matches!(
+            &ty.kind,
+            TypeDefKind::Enum(variants)
+                if !variants.is_empty()
+                    && variants
+                        .iter()
+                        .all(|variant| matches!(variant.fields, VariantFields::Unit))
+        )
+}
+
+fn unit_enum_union_type(variants: &[VariantDef]) -> Result<String> {
+    Ok(variants
+        .iter()
+        .map(|variant| ts_string_literal(&variant.name))
+        .collect::<Vec<_>>()
+        .join(" | "))
+}
+
+fn unit_enum_codec_expr(variants: &[VariantDef]) -> Result<String> {
+    Ok(format!(
+        "S.Status({})",
+        variants
+            .iter()
+            .map(|variant| ts_string_literal(&variant.name))
+            .collect::<Vec<_>>()
+            .join(", ")
+    ))
+}
+
+fn unit_enum_summary(variants: &[VariantDef]) -> String {
+    format!(
+        "Enum values: {}",
+        variants
+            .iter()
+            .map(|variant| variant.name.as_str())
+            .collect::<Vec<_>>()
+            .join(" / ")
+    )
 }
 
 fn variant_value_type(fields: &VariantFields) -> Result<String> {

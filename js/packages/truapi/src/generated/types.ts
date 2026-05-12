@@ -62,38 +62,32 @@ export const AllocatableResource: S.Codec<AllocatableResource> = S.lazy(
 );
 
 /** Outcome of a resource allocation request. */
-export type AllocationOutcome =
-  /** Resource was allocated. */
-  | { tag: "Allocated"; value: undefined }
-  /** User or host rejected the allocation. */
-  | { tag: "Rejected"; value: undefined }
-  /** Resource type is not available on this host. */
-  | { tag: "NotAvailable"; value: undefined };
+export type AllocationOutcome = "Allocated" | "Rejected" | "NotAvailable";
 
 export const AllocationOutcome: S.Codec<AllocationOutcome> = S.lazy(
   (): S.Codec<AllocationOutcome> =>
-    S.Enum({ Allocated: S._void, Rejected: S._void, NotAvailable: S._void }),
+    S.Status("Allocated", "Rejected", "NotAvailable"),
 );
 
 /** Layout arrangement (like CSS flexbox `justify-content`). */
 export type Arrangement =
-  | { tag: "Start"; value: undefined }
-  | { tag: "End"; value: undefined }
-  | { tag: "Center"; value: undefined }
-  | { tag: "SpaceBetween"; value: undefined }
-  | { tag: "SpaceAround"; value: undefined }
-  | { tag: "SpaceEvenly"; value: undefined };
+  | "Start"
+  | "End"
+  | "Center"
+  | "SpaceBetween"
+  | "SpaceAround"
+  | "SpaceEvenly";
 
 export const Arrangement: S.Codec<Arrangement> = S.lazy(
   (): S.Codec<Arrangement> =>
-    S.Enum({
-      Start: S._void,
-      End: S._void,
-      Center: S._void,
-      SpaceBetween: S._void,
-      SpaceAround: S._void,
-      SpaceEvenly: S._void,
-    }),
+    S.Status(
+      "Start",
+      "End",
+      "Center",
+      "SpaceBetween",
+      "SpaceAround",
+      "SpaceEvenly",
+    ),
 );
 
 /** Background styling. */
@@ -172,14 +166,10 @@ export const ButtonProps: S.Codec<ButtonProps> = S.lazy(
 );
 
 /** Button style variants. */
-export type ButtonVariant =
-  | { tag: "Primary"; value: undefined }
-  | { tag: "Secondary"; value: undefined }
-  | { tag: "Text"; value: undefined };
+export type ButtonVariant = "Primary" | "Secondary" | "Text";
 
 export const ButtonVariant: S.Codec<ButtonVariant> = S.lazy(
-  (): S.Codec<ButtonVariant> =>
-    S.Enum({ Primary: S._void, Secondary: S._void, Text: S._void }),
+  (): S.Codec<ButtonVariant> => S.Status("Primary", "Secondary", "Text"),
 );
 
 /** A clickable action button in a chat message. */
@@ -196,12 +186,10 @@ export const ChatAction: S.Codec<ChatAction> = S.lazy(
 );
 
 /** Layout for action buttons. */
-export type ChatActionLayout =
-  | { tag: "Column"; value: undefined }
-  | { tag: "Grid"; value: undefined };
+export type ChatActionLayout = "Column" | "Grid";
 
 export const ChatActionLayout: S.Codec<ChatActionLayout> = S.lazy(
-  (): S.Codec<ChatActionLayout> => S.Enum({ Column: S._void, Grid: S._void }),
+  (): S.Codec<ChatActionLayout> => S.Status("Column", "Grid"),
 );
 
 /** Payload of a received chat action. */
@@ -242,15 +230,10 @@ export const ChatActions: S.Codec<ChatActions> = S.lazy(
 );
 
 /** Whether the bot was newly registered or already existed. */
-export type ChatBotRegistrationStatus =
-  | { tag: "New"; value: undefined }
-  | { tag: "Exists"; value: undefined };
+export type ChatBotRegistrationStatus = "New" | "Exists";
 
 export const ChatBotRegistrationStatus: S.Codec<ChatBotRegistrationStatus> =
-  S.lazy(
-    (): S.Codec<ChatBotRegistrationStatus> =>
-      S.Enum({ New: S._void, Exists: S._void }),
-  );
+  S.lazy((): S.Codec<ChatBotRegistrationStatus> => S.Status("New", "Exists"));
 
 /** A slash command from a chat user. */
 export interface ChatCommand {
@@ -392,51 +375,43 @@ export const ChatRoom: S.Codec<ChatRoom> = S.lazy(
 );
 
 /** How the product participates in a chat room. */
-export type ChatRoomParticipation =
-  | { tag: "RoomHost"; value: undefined }
-  | { tag: "Bot"; value: undefined };
+export type ChatRoomParticipation = "RoomHost" | "Bot";
 
 export const ChatRoomParticipation: S.Codec<ChatRoomParticipation> = S.lazy(
-  (): S.Codec<ChatRoomParticipation> =>
-    S.Enum({ RoomHost: S._void, Bot: S._void }),
+  (): S.Codec<ChatRoomParticipation> => S.Status("RoomHost", "Bot"),
 );
 
 /** Whether the room was newly created or already existed. */
-export type ChatRoomRegistrationStatus =
-  | { tag: "New"; value: undefined }
-  | { tag: "Exists"; value: undefined };
+export type ChatRoomRegistrationStatus = "New" | "Exists";
 
 export const ChatRoomRegistrationStatus: S.Codec<ChatRoomRegistrationStatus> =
-  S.lazy(
-    (): S.Codec<ChatRoomRegistrationStatus> =>
-      S.Enum({ New: S._void, Exists: S._void }),
-  );
+  S.lazy((): S.Codec<ChatRoomRegistrationStatus> => S.Status("New", "Exists"));
 
 /** Semantic color tokens for theming. */
 export type ColorToken =
-  | { tag: "TextPrimary"; value: undefined }
-  | { tag: "TextSecondary"; value: undefined }
-  | { tag: "TextTertiary"; value: undefined }
-  | { tag: "BackgroundPrimary"; value: undefined }
-  | { tag: "BackgroundSecondary"; value: undefined }
-  | { tag: "BackgroundTertiary"; value: undefined }
-  | { tag: "Success"; value: undefined }
-  | { tag: "Error"; value: undefined }
-  | { tag: "Warning"; value: undefined };
+  | "TextPrimary"
+  | "TextSecondary"
+  | "TextTertiary"
+  | "BackgroundPrimary"
+  | "BackgroundSecondary"
+  | "BackgroundTertiary"
+  | "Success"
+  | "Error"
+  | "Warning";
 
 export const ColorToken: S.Codec<ColorToken> = S.lazy(
   (): S.Codec<ColorToken> =>
-    S.Enum({
-      TextPrimary: S._void,
-      TextSecondary: S._void,
-      TextTertiary: S._void,
-      BackgroundPrimary: S._void,
-      BackgroundSecondary: S._void,
-      BackgroundTertiary: S._void,
-      Success: S._void,
-      Error: S._void,
-      Warning: S._void,
-    }),
+    S.Status(
+      "TextPrimary",
+      "TextSecondary",
+      "TextTertiary",
+      "BackgroundPrimary",
+      "BackgroundSecondary",
+      "BackgroundTertiary",
+      "Success",
+      "Error",
+      "Warning",
+    ),
 );
 
 /** Properties for a [`CustomRendererNode::Column`] layout. */
@@ -483,29 +458,29 @@ export function Component<P>(pCodec: S.Codec<P>): S.Codec<Component<P>> {
 
 /** 2D content alignment. */
 export type ContentAlignment =
-  | { tag: "TopStart"; value: undefined }
-  | { tag: "TopCenter"; value: undefined }
-  | { tag: "TopEnd"; value: undefined }
-  | { tag: "CenterStart"; value: undefined }
-  | { tag: "Center"; value: undefined }
-  | { tag: "CenterEnd"; value: undefined }
-  | { tag: "BottomStart"; value: undefined }
-  | { tag: "BottomCenter"; value: undefined }
-  | { tag: "BottomEnd"; value: undefined };
+  | "TopStart"
+  | "TopCenter"
+  | "TopEnd"
+  | "CenterStart"
+  | "Center"
+  | "CenterEnd"
+  | "BottomStart"
+  | "BottomCenter"
+  | "BottomEnd";
 
 export const ContentAlignment: S.Codec<ContentAlignment> = S.lazy(
   (): S.Codec<ContentAlignment> =>
-    S.Enum({
-      TopStart: S._void,
-      TopCenter: S._void,
-      TopEnd: S._void,
-      CenterStart: S._void,
-      Center: S._void,
-      CenterEnd: S._void,
-      BottomStart: S._void,
-      BottomCenter: S._void,
-      BottomEnd: S._void,
-    }),
+    S.Status(
+      "TopStart",
+      "TopCenter",
+      "TopEnd",
+      "CenterStart",
+      "Center",
+      "CenterEnd",
+      "BottomStart",
+      "BottomCenter",
+      "BottomEnd",
+    ),
 );
 
 /**
@@ -592,14 +567,10 @@ export const GenericError: S.Codec<GenericError> = S.lazy(
 );
 
 /** Horizontal alignment options. */
-export type HorizontalAlignment =
-  | { tag: "Start"; value: undefined }
-  | { tag: "Center"; value: undefined }
-  | { tag: "End"; value: undefined };
+export type HorizontalAlignment = "Start" | "Center" | "End";
 
 export const HorizontalAlignment: S.Codec<HorizontalAlignment> = S.lazy(
-  (): S.Codec<HorizontalAlignment> =>
-    S.Enum({ Start: S._void, Center: S._void, End: S._void }),
+  (): S.Codec<HorizontalAlignment> => S.Status("Start", "Center", "End"),
 );
 
 /** Versioned envelope for [`HostAccountConnectionStatusSubscribeItem`]. */
@@ -2936,21 +2907,21 @@ export const StorageQueryItem: S.Codec<StorageQueryItem> = S.lazy(
 
 /** Type of storage query to perform. */
 export type StorageQueryType =
-  | { tag: "Value"; value: undefined }
-  | { tag: "Hash"; value: undefined }
-  | { tag: "ClosestDescendantMerkleValue"; value: undefined }
-  | { tag: "DescendantsValues"; value: undefined }
-  | { tag: "DescendantsHashes"; value: undefined };
+  | "Value"
+  | "Hash"
+  | "ClosestDescendantMerkleValue"
+  | "DescendantsValues"
+  | "DescendantsHashes";
 
 export const StorageQueryType: S.Codec<StorageQueryType> = S.lazy(
   (): S.Codec<StorageQueryType> =>
-    S.Enum({
-      Value: S._void,
-      Hash: S._void,
-      ClosestDescendantMerkleValue: S._void,
-      DescendantsValues: S._void,
-      DescendantsHashes: S._void,
-    }),
+    S.Status(
+      "Value",
+      "Hash",
+      "ClosestDescendantMerkleValue",
+      "DescendantsValues",
+      "DescendantsHashes",
+    ),
 );
 
 /** Result of a storage query. */
@@ -3011,14 +2982,10 @@ export const TextProps: S.Codec<TextProps> = S.lazy(
 );
 
 /** Host UI theme. */
-export type Theme =
-  /** Light appearance. */
-  | { tag: "Light"; value: undefined }
-  /** Dark appearance. */
-  | { tag: "Dark"; value: undefined };
+export type Theme = "Light" | "Dark";
 
 export const Theme: S.Codec<Theme> = S.lazy(
-  (): S.Codec<Theme> => S.Enum({ Light: S._void, Dark: S._void }),
+  (): S.Codec<Theme> => S.Status("Light", "Dark"),
 );
 
 /** 32-byte statement topic. */
@@ -3097,32 +3064,26 @@ export const TxPayloadV1: S.Codec<TxPayloadV1> = S.lazy(
 
 /** Text typography presets. */
 export type TypographyStyle =
-  | { tag: "TitleXL"; value: undefined }
-  | { tag: "Headline"; value: undefined }
-  | { tag: "BodyM"; value: undefined }
-  | { tag: "BodyS"; value: undefined }
-  | { tag: "Caption"; value: undefined };
+  | "TitleXL"
+  | "Headline"
+  | "BodyM"
+  | "BodyS"
+  | "Caption";
 
 export const TypographyStyle: S.Codec<TypographyStyle> = S.lazy(
   (): S.Codec<TypographyStyle> =>
-    S.Enum({
-      TitleXL: S._void,
-      Headline: S._void,
-      BodyM: S._void,
-      BodyS: S._void,
-      Caption: S._void,
-    }),
+    S.Status("TitleXL", "Headline", "BodyM", "BodyS", "Caption"),
 );
 
 /** User's authentication state. */
 export type HostAccountConnectionStatusSubscribeItem =
-  | { tag: "Disconnected"; value: undefined }
-  | { tag: "Connected"; value: undefined };
+  | "Disconnected"
+  | "Connected";
 
 export const HostAccountConnectionStatusSubscribeItem: S.Codec<HostAccountConnectionStatusSubscribeItem> =
   S.lazy(
     (): S.Codec<HostAccountConnectionStatusSubscribeItem> =>
-      S.Enum({ Disconnected: S._void, Connected: S._void }),
+      S.Status("Disconnected", "Connected"),
   );
 
 /** Error returned when ring VRF proof creation fails. */
@@ -3526,12 +3487,10 @@ export const HostCreateTransactionWithLegacyAccountResponse: S.Codec<HostCreateT
  *
  * [RFC 0007]: https://github.com/paritytech/triangle-js-sdks/pull/95
  */
-export type HostDeriveEntropyError =
-  /** An unexpected error occurred in the host. */
-  { tag: "Unknown"; value: undefined };
+export type HostDeriveEntropyError = "Unknown";
 
 export const HostDeriveEntropyError: S.Codec<HostDeriveEntropyError> = S.lazy(
-  (): S.Codec<HostDeriveEntropyError> => S.Enum({ Unknown: S._void }),
+  (): S.Codec<HostDeriveEntropyError> => S.Status("Unknown"),
 );
 
 /** Request to derive deterministic entropy. */
@@ -3567,35 +3526,30 @@ export const HostDeriveEntropyResponse: S.Codec<HostDeriveEntropyResponse> =
  * [RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66
  */
 export type HostDevicePermissionRequest =
-  /** Push notification delivery permission. */
-  | { tag: "Notifications"; value: undefined }
-  | { tag: "Camera"; value: undefined }
-  | { tag: "Microphone"; value: undefined }
-  | { tag: "Bluetooth"; value: undefined }
-  /** Near-field communication access. */
-  | { tag: "NFC"; value: undefined }
-  | { tag: "Location"; value: undefined }
-  /** System clipboard access. */
-  | { tag: "Clipboard"; value: undefined }
-  /** Open a URL in an external browser. */
-  | { tag: "OpenUrl"; value: undefined }
-  /** Biometric authentication (fingerprint, face ID). */
-  | { tag: "Biometrics"; value: undefined };
+  | "Notifications"
+  | "Camera"
+  | "Microphone"
+  | "Bluetooth"
+  | "NFC"
+  | "Location"
+  | "Clipboard"
+  | "OpenUrl"
+  | "Biometrics";
 
 export const HostDevicePermissionRequest: S.Codec<HostDevicePermissionRequest> =
   S.lazy(
     (): S.Codec<HostDevicePermissionRequest> =>
-      S.Enum({
-        Notifications: S._void,
-        Camera: S._void,
-        Microphone: S._void,
-        Bluetooth: S._void,
-        NFC: S._void,
-        Location: S._void,
-        Clipboard: S._void,
-        OpenUrl: S._void,
-        Biometrics: S._void,
-      }),
+      S.Status(
+        "Notifications",
+        "Camera",
+        "Microphone",
+        "Bluetooth",
+        "NFC",
+        "Location",
+        "Clipboard",
+        "OpenUrl",
+        "Biometrics",
+      ),
   );
 
 /** Response indicating whether a device permission was granted. */
@@ -4102,21 +4056,14 @@ export const HostRequestLoginRequest: S.Codec<HostRequestLoginRequest> = S.lazy(
 
 /** Result of a login request. */
 export type HostRequestLoginResponse =
-  /** User successfully authenticated. */
-  | { tag: "Success"; value: undefined }
-  /** User is already authenticated — no action was taken. */
-  | { tag: "AlreadyConnected"; value: undefined }
-  /** User dismissed/rejected the login UI. */
-  | { tag: "Rejected"; value: undefined };
+  | "Success"
+  | "AlreadyConnected"
+  | "Rejected";
 
 export const HostRequestLoginResponse: S.Codec<HostRequestLoginResponse> =
   S.lazy(
     (): S.Codec<HostRequestLoginResponse> =>
-      S.Enum({
-        Success: S._void,
-        AlreadyConnected: S._void,
-        Rejected: S._void,
-      }),
+      S.Status("Success", "AlreadyConnected", "Rejected"),
   );
 
 /** Request to allocate one or more resources. */
@@ -4971,12 +4918,8 @@ export const VersionedTxPayload: S.Codec<VersionedTxPayload> = S.lazy(
 );
 
 /** Vertical alignment options. */
-export type VerticalAlignment =
-  | { tag: "Top"; value: undefined }
-  | { tag: "Center"; value: undefined }
-  | { tag: "Bottom"; value: undefined };
+export type VerticalAlignment = "Top" | "Center" | "Bottom";
 
 export const VerticalAlignment: S.Codec<VerticalAlignment> = S.lazy(
-  (): S.Codec<VerticalAlignment> =>
-    S.Enum({ Top: S._void, Center: S._void, Bottom: S._void }),
+  (): S.Codec<VerticalAlignment> => S.Status("Top", "Center", "Bottom"),
 );

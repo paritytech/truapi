@@ -55,8 +55,9 @@ export const services: ServiceInfo[] = [
         name: "host_device_permission",
         type: "unary",
         description: "Request a device-capability permission from the user.",
-        requestDescription: "HostDevicePermissionRequest",
-        defaultRequest: '{\n  "tag": "Camera"\n}',
+        requestDescription:
+          "Enum values: Notifications / Camera / Microphone / Bluetooth / NFC / Location / Clipboard / OpenUrl / Biometrics",
+        defaultRequest: '"Camera"',
       },
       {
         name: "remote_permission",
@@ -307,6 +308,7 @@ export const services: ServiceInfo[] = [
         description:
           "Submit a preimage. Returns the preimage key (hash) on success.",
         requestDescription: "HexString",
+        defaultRequest: '"0xdeadbeef"',
       },
     ],
   },
@@ -343,7 +345,7 @@ export const services: ServiceInfo[] = [
         description: "Query runtime storage at a specific block.",
         requestDescription: "RemoteChainHeadStorageRequest",
         defaultRequest:
-          '{\n  "followSubscriptionId": "",\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "hash": "0x0000000000000000000000000000000000000000000000000000000000000000",\n  "items": [\n    {\n      "key": "0x26aa394eea5630e07c48ae0c9558cef7",\n      "queryType": {\n        "tag": "Value"\n      }\n    }\n  ]\n}',
+          '{\n  "followSubscriptionId": "",\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "hash": "0x0000000000000000000000000000000000000000000000000000000000000000",\n  "items": [\n    {\n      "key": "0x26aa394eea5630e07c48ae0c9558cef7",\n      "queryType": "Value"\n    }\n  ]\n}',
       },
       {
         name: "remote_chain_head_call",
