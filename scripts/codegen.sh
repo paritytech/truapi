@@ -25,7 +25,7 @@ cargo run -p truapi-codegen -- \
   --playground-output js/packages/truapi/src/playground \
   --explorer-output js/packages/truapi/src/explorer \
   --client-examples-output js/packages/truapi/test/generated/examples \
-  --version V1 \
+  --version V2 \
   --codec-version 1
 
 npm exec --yes -- prettier --write \

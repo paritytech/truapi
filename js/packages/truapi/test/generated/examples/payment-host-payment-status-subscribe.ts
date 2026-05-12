@@ -14,7 +14,8 @@ export function watchPaymentStatus(truapi: Client): Subscription {
       request: { paymentId: "payment-id" },
     })
     .subscribe({
-      next: (status: HostPaymentStatusSubscribeItem) => console.log(status),
+      next: (status: HostPaymentStatusSubscribeItem) =>
+        console.log(status),
       error: (error: SubscriptionError<HostPaymentStatusSubscribeError>) =>
         console.error(error),
       complete: () => console.log("completed"),

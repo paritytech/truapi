@@ -3,9 +3,7 @@
 import { type Client } from "@parity/truapi";
 
 export async function clearLocalValue(truapi: Client): Promise<void> {
-  const result = await truapi.localStorage.localStorageClear({
-    key: "test-key",
-  });
+  const result = await truapi.localStorage.localStorageClear({ key: "test-key" });
 
   if (result.isErr()) throw result.error;
 }

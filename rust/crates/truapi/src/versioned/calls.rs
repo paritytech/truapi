@@ -1,6 +1,6 @@
 //! Versioned wrappers for [`TrUApiCalls`](crate::api::TrUApiCalls) methods.
 
-use crate::v01;
+use crate::{v01, v02};
 
 versioned_type! {
     pub enum HostHandshakeRequest { V1 => v01::HostHandshakeRequest }
@@ -12,7 +12,16 @@ versioned_type! {
     pub enum HostNavigateToRequest { V1 => v01::HostNavigateToRequest }
     pub enum HostNavigateToResponse { V1 }
     pub enum HostNavigateToError { V1 => v01::HostNavigateToError }
-    pub enum HostPushNotificationRequest { V1 => v01::HostPushNotificationRequest }
-    pub enum HostPushNotificationResponse { V1 }
-    pub enum HostPushNotificationError { V1 => v01::GenericError }
+    pub enum HostPushNotificationRequest {
+        V1 => v01::HostPushNotificationRequest,
+        V2 => v02::HostPushNotificationRequest,
+    }
+    pub enum HostPushNotificationResponse {
+        V1,
+        V2 => v02::HostPushNotificationResponse,
+    }
+    pub enum HostPushNotificationError {
+        V1 => v01::GenericError,
+        V2 => v02::HostPushNotificationError,
+    }
 }

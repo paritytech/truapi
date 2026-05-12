@@ -8,7 +8,8 @@ import {
 
 export function watchChatActions(truapi: Client): Subscription {
   return truapi.chat.chatActionSubscribe().subscribe({
-    next: (action: HostChatActionSubscribeItem) => console.log(action),
+    next: (action: HostChatActionSubscribeItem) =>
+      console.log(action),
     error: (error: Error) => console.error(error),
     complete: () => console.log("completed"),
   });

@@ -1,6 +1,6 @@
 //! TrUAPI trait and type definitions for the host product SDK.
 //!
-//! Concrete wire types live in per-version modules (currently [`v01`]).
+//! Concrete wire types live in per-version modules ([`v01`], [`v02`]).
 //! Versioned envelopes are in [`versioned`].
 
 #![forbid(unsafe_code)]
@@ -15,6 +15,7 @@ use futures::Stream;
 
 pub mod api;
 pub mod v01;
+pub mod v02;
 pub mod versioned;
 
 pub use truapi_macros::wire;

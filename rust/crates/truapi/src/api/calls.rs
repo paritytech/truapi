@@ -6,6 +6,10 @@ use crate::versioned::calls::{
     HostNavigateToRequest, HostNavigateToResponse, HostPushNotificationError,
     HostPushNotificationRequest, HostPushNotificationResponse,
 };
+use crate::versioned::notifications::{
+    HostPushNotificationCancelError, HostPushNotificationCancelRequest,
+    HostPushNotificationCancelResponse,
+};
 use crate::wire;
 use crate::{CallContext, CallError};
 
@@ -75,7 +79,20 @@ pub trait TrUApiCalls: Send + Sync {
         request: HostFeatureSupportedRequest,
     ) -> Result<HostFeatureSupportedResponse, CallError<HostFeatureSupportedError>>;
 
-    /// Sends a push notification to the user.
+    /// Sends a push notification to the user, or schedules it for a future
+    /// wall-clock instant. The response carries a per-product
+    /// [`crate::v02::NotificationId`] (v0.2 only) which can later be passed to
+    /// [`Self::host_push_notification_cancel`] to retract a pending
+    /// scheduled delivery.
+    ///
+    /// Behaviour per RFC 0019:
+    /// - If `scheduled_at` is `None`, fire immediately (v0.1 behaviour).
+    /// - If `scheduled_at` is `Some(t)` and `t <= now`, fire immediately.
+    /// - Scheduled notifications MUST survive app and device restart.
+    /// - The host maintains a single shared queue across all installed
+    ///   products with capacity 64; over-cap calls return
+    ///   [`crate::v02::HostPushNotificationError::ScheduleLimitReached`].
+    ///   Immediate notifications do not count against the cap.
     ///
     /// ```truapi-client-example
     /// import { type Client } from "@parity/truapi";
@@ -94,6 +111,17 @@ pub trait TrUApiCalls: Send + Sync {
         cx: &CallContext,
         request: HostPushNotificationRequest,
     ) -> Result<HostPushNotificationResponse, CallError<HostPushNotificationError>>;
+
+    /// Cancels a previously scheduled notification by its
+    /// [`crate::v02::NotificationId`]. Idempotent — succeeds whether the id
+    /// refers to a pending entry, an already-fired notification, an unknown
+    /// id, or one owned by another product. Introduced in v0.2 (RFC 0019).
+    #[wire(request_id = 134)]
+    async fn host_push_notification_cancel(
+        &self,
+        cx: &CallContext,
+        request: HostPushNotificationCancelRequest,
+    ) -> Result<HostPushNotificationCancelResponse, CallError<HostPushNotificationCancelError>>;
 
     /// Requests the host to open a URL.
     ///
