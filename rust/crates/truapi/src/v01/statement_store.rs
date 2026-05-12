@@ -82,18 +82,29 @@ pub enum RemoteStatementStoreCreateProofError {
     Unknown { reason: String },
 }
 
-/// Request to subscribe to statements matching topics.
+/// 32-byte statement topic.
+pub type Topic = [u8; 32];
+
+/// Request to subscribe to statements via a topic filter (RFC 0008).
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct RemoteStatementStoreSubscribeRequest {
-    /// Required topics.
-    pub topics: Vec<[u8; 32]>,
+pub enum RemoteStatementStoreSubscribeRequest {
+    /// AND: statement must contain every listed topic.
+    MatchAll(Vec<Topic>),
+    /// OR: statement must contain at least one listed topic.
+    MatchAny(Vec<Topic>),
 }
 
-/// Item containing statements delivered by the statement store subscription.
+/// Page of signed statements delivered by the statement store subscription
+/// (RFC 0008). The `is_complete` flag distinguishes the historical-dump phase
+/// (`false`) from the live-update phase (`true`).
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct RemoteStatementStoreSubscribeItem {
     /// Signed statements matching the subscription.
     pub statements: Vec<SignedStatement>,
+    /// `false` while the host is still streaming the historical dump (more
+    /// pages to follow). `true` once the dump is complete; all subsequent
+    /// pages are also `true` and carry only newly-arrived statements.
+    pub is_complete: bool,
 }
 
 /// Response containing a statement proof.

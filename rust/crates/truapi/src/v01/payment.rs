@@ -6,8 +6,7 @@ pub type Balance = u128;
 
 /// Current payment balance state pushed to subscribers.
 ///
-/// See [RFC 0006]. V0.2: the `pending` field was removed; only `available`
-/// remains.
+/// See [RFC 0006].
 ///
 /// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]

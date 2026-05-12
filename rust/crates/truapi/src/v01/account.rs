@@ -11,12 +11,22 @@ pub struct ProductAccountId {
 }
 
 /// An account with its public key and optional display name.
+///
+/// Used by [`HostGetLegacyAccountsResponse`] for non-product (legacy) accounts
+/// that may carry a display name.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct Account {
     /// The account public key (variable-length bytes).
     pub public_key: Vec<u8>,
     /// Optional human-readable display name.
     pub name: Option<String>,
+}
+
+/// A product account: public key only, no display name.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct ProductAccount {
+    /// The account public key (variable-length bytes).
+    pub public_key: Vec<u8>,
 }
 
 /// A privacy-preserving alias derived via ring VRF, bound to a specific context.
@@ -123,8 +133,28 @@ pub struct HostAccountGetRequest {
 /// Response containing a product-scoped account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostAccountGetResponse {
-    /// Retrieved account.
-    pub account: Account,
+    /// Retrieved product account.
+    pub account: ProductAccount,
+}
+
+/// The user's primary DotNS account identity.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostGetUserIdResponse {
+    /// The user's primary DotNS username.
+    pub primary_username: String,
+    /// The user's primary public key.
+    pub public_key: Vec<u8>,
+}
+
+/// Error from [`crate::api::AccountManagement::host_get_user_id`].
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum HostGetUserIdError {
+    /// User denied the identity disclosure request.
+    PermissionDenied,
+    /// User is not logged in.
+    NotConnected,
+    /// Catch-all.
+    Unknown { reason: String },
 }
 
 /// Request to retrieve a contextual alias for a product account.

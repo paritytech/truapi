@@ -16,7 +16,7 @@ import * as W from "./wire-table.js";
 
 export { Result, SubscriptionError };
 export type { ObservableLike, Observer, Subscription, TrUApiTransport };
-export const TRUAPI_VERSION = 2 as const;
+export const TRUAPI_VERSION = 1 as const;
 export const TRUAPI_CODEC_VERSION = 1 as const;
 
 function toSubscriptionError<Reason = never>(
@@ -240,12 +240,12 @@ export class AccountManagementClient {
     >({
       ids: W.HOST_GET_USER_ID,
       payload: T.VersionedHostGetUserIdRequest.enc({
-        tag: "V2",
+        tag: "V1",
         value: undefined,
       }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V2: [
+          V1: [
             0,
             S.Result(T.HostGetUserIdResponse, T.HostGetUserIdError),
           ] as const,
@@ -753,12 +753,12 @@ export class EntropyDerivationClient {
     >({
       ids: W.HOST_DERIVE_ENTROPY,
       payload: T.VersionedHostDeriveEntropyRequest.enc({
-        tag: "V2",
+        tag: "V1",
         value: request,
       }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V2: [
+          V1: [
             0,
             S.Result(T.HostDeriveEntropyResponse, T.HostDeriveEntropyError),
           ] as const,
@@ -947,20 +947,20 @@ export class PaymentClient {
       transport: this.transport,
       ids: W.HOST_PAYMENT_BALANCE_SUBSCRIBE,
       payload: T.VersionedHostPaymentBalanceSubscribeRequest.enc({
-        tag: "V2",
+        tag: "V1",
         value: undefined,
       }),
       decodeItem: (payload) =>
         (
           T.VersionedHostPaymentBalanceSubscribeItem.dec(payload) as {
-            tag: "V2";
+            tag: "V1";
             value: T.HostPaymentBalanceSubscribeItem;
           } & T.VersionedHostPaymentBalanceSubscribeItem
         ).value,
       decodeInterrupt: (payload) =>
         (
           T.VersionedHostPaymentBalanceSubscribeError.dec(payload) as {
-            tag: "V2";
+            tag: "V1";
             value: T.HostPaymentBalanceSubscribeError;
           } & T.VersionedHostPaymentBalanceSubscribeError
         ).value,
@@ -976,12 +976,12 @@ export class PaymentClient {
     >({
       ids: W.HOST_PAYMENT_REQUEST,
       payload: T.VersionedHostPaymentRequestRequest.enc({
-        tag: "V2",
+        tag: "V1",
         value: request,
       }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V2: [
+          V1: [
             0,
             S.Result(T.HostPaymentRequestResponse, T.HostPaymentRequestError),
           ] as const,
@@ -1006,20 +1006,20 @@ export class PaymentClient {
       transport: this.transport,
       ids: W.HOST_PAYMENT_STATUS_SUBSCRIBE,
       payload: T.VersionedHostPaymentStatusSubscribeRequest.enc({
-        tag: "V2",
+        tag: "V1",
         value: request,
       }),
       decodeItem: (payload) =>
         (
           T.VersionedHostPaymentStatusSubscribeItem.dec(payload) as {
-            tag: "V2";
+            tag: "V1";
             value: T.HostPaymentStatusSubscribeItem;
           } & T.VersionedHostPaymentStatusSubscribeItem
         ).value,
       decodeInterrupt: (payload) =>
         (
           T.VersionedHostPaymentStatusSubscribeError.dec(payload) as {
-            tag: "V2";
+            tag: "V1";
             value: T.HostPaymentStatusSubscribeError;
           } & T.VersionedHostPaymentStatusSubscribeError
         ).value,
@@ -1035,12 +1035,12 @@ export class PaymentClient {
     >({
       ids: W.HOST_PAYMENT_TOP_UP,
       payload: T.VersionedHostPaymentTopUpRequest.enc({
-        tag: "V2",
+        tag: "V1",
         value: request,
       }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V2: [0, S.Result(S._void, T.HostPaymentTopUpError)] as const,
+          V1: [0, S.Result(S._void, T.HostPaymentTopUpError)] as const,
         }).dec(payload).value,
     });
     return result.success ? ok(result.value) : err(result.value);
@@ -1060,12 +1060,12 @@ export class PermissionsClient {
     >({
       ids: W.HOST_DEVICE_PERMISSION,
       payload: T.VersionedHostDevicePermissionRequest.enc({
-        tag: "V2",
+        tag: "V1",
         value: request,
       }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V2: [
+          V1: [
             0,
             S.Result(T.HostDevicePermissionResponse, T.GenericError),
           ] as const,
@@ -1083,12 +1083,12 @@ export class PermissionsClient {
     >({
       ids: W.REMOTE_PERMISSION,
       payload: T.VersionedRemotePermissionRequest.enc({
-        tag: "V2",
+        tag: "V1",
         value: request,
       }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V2: [
+          V1: [
             0,
             S.Result(T.RemotePermissionResponse, T.GenericError),
           ] as const,
@@ -1323,10 +1323,10 @@ export class SigningClient {
       S.ResultPayload<T.HostSignPayloadResponse, T.HostSignPayloadError>
     >({
       ids: W.HOST_SIGN_RAW,
-      payload: T.VersionedHostSignRawRequest.enc({ tag: "V2", value: request }),
+      payload: T.VersionedHostSignRawRequest.enc({ tag: "V1", value: request }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V2: [
+          V1: [
             0,
             S.Result(T.HostSignPayloadResponse, T.HostSignPayloadError),
           ] as const,
@@ -1344,12 +1344,12 @@ export class SigningClient {
     >({
       ids: W.HOST_SIGN_PAYLOAD,
       payload: T.VersionedHostSignPayloadRequest.enc({
-        tag: "V2",
+        tag: "V1",
         value: request,
       }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
-          V2: [
+          V1: [
             0,
             S.Result(T.HostSignPayloadResponse, T.HostSignPayloadError),
           ] as const,
@@ -1378,13 +1378,13 @@ export class StatementStoreClient {
       transport: this.transport,
       ids: W.REMOTE_STATEMENT_STORE_SUBSCRIBE,
       payload: T.VersionedRemoteStatementStoreSubscribeRequest.enc({
-        tag: "V2",
+        tag: "V1",
         value: request,
       }),
       decodeItem: (payload) =>
         (
           T.VersionedRemoteStatementStoreSubscribeItem.dec(payload) as {
-            tag: "V2";
+            tag: "V1";
             value: T.RemoteStatementStoreSubscribeItem;
           } & T.VersionedRemoteStatementStoreSubscribeItem
         ).value,
