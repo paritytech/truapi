@@ -7,7 +7,11 @@
     "noEmit": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "skipLibCheck": true
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@parity/truapi": ["./src/index.ts"]
+    }
   },
   "include": ["test/generated/examples/**/*.ts"]
 }

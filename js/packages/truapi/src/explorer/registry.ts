@@ -4961,7 +4961,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostPaymentBalanceSubscribeError",
         description: "Subscribe to payment balance updates.",
         usageExample:
-          'import {\n  type Client,\n  type Subscription,\n  type HostPaymentBalanceSubscribeItem,\n} from "@parity/truapi";\n\nexport function watchPaymentBalance(truapi: Client): Subscription {\n  return truapi.payment.paymentBalanceSubscribe().subscribe({\n    next: (balance: HostPaymentBalanceSubscribeItem) =>\n      console.log(balance),\n    error: (error: Error) => console.error(error),\n    complete: () => console.log("completed"),\n  });\n}',
+          'import {\n  type Client,\n  type HostPaymentBalanceSubscribeError,\n  type HostPaymentBalanceSubscribeItem,\n  type Subscription,\n  type SubscriptionError,\n} from "@parity/truapi";\n\nexport function watchPaymentBalance(truapi: Client): Subscription {\n  return truapi.payment.paymentBalanceSubscribe().subscribe({\n    next: (balance: HostPaymentBalanceSubscribeItem) =>\n      console.log(balance),\n    error: (error: SubscriptionError<HostPaymentBalanceSubscribeError>) =>\n      console.error(error),\n    complete: () => console.log("completed"),\n  });\n}',
       },
       {
         id: "host_payment_top_up",
@@ -5004,7 +5004,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Subscribe to payment lifecycle updates for a specific payment.",
         usageExample:
-          'import {\n  type Client,\n  type Subscription,\n  type HostPaymentStatusSubscribeItem,\n} from "@parity/truapi";\n\nexport function watchPaymentStatus(truapi: Client): Subscription {\n  return truapi.payment\n    .paymentStatusSubscribe({\n      request: { paymentId: "payment-id" },\n    })\n    .subscribe({\n      next: (status: HostPaymentStatusSubscribeItem) =>\n        console.log(status),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
+          'import {\n  type Client,\n  type HostPaymentStatusSubscribeError,\n  type HostPaymentStatusSubscribeItem,\n  type Subscription,\n  type SubscriptionError,\n} from "@parity/truapi";\n\nexport function watchPaymentStatus(truapi: Client): Subscription {\n  return truapi.payment\n    .paymentStatusSubscribe({\n      request: { paymentId: "payment-id" },\n    })\n    .subscribe({\n      next: (status: HostPaymentStatusSubscribeItem) =>\n        console.log(status),\n      error: (error: SubscriptionError<HostPaymentStatusSubscribeError>) =>\n        console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_statement_store_create_proof_authorized",
