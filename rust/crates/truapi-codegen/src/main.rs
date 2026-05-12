@@ -3,7 +3,7 @@ use clap::Parser;
 use std::str::FromStr;
 
 mod rustdoc;
-mod typescript;
+mod ts;
 
 #[derive(Parser)]
 #[command(
@@ -78,7 +78,7 @@ fn main() -> Result<()> {
     let api = rustdoc::extract_api(&krate)
         .with_context(|| format!("extracting API definition from {input}"))?;
     let output = &cli.output;
-    typescript::generate(&api, output, cli.version.number(), cli.codec_version)
+    ts::generate(&api, output, cli.version.number(), cli.codec_version)
         .with_context(|| format!("writing TypeScript client to {output}"))?;
     let version_number = cli.version.number();
     let codec_version = cli.codec_version;
@@ -86,17 +86,17 @@ fn main() -> Result<()> {
         "Generated TypeScript client for TrUAPI V{version_number} codec {codec_version} in {output}",
     );
     if let Some(path) = &cli.playground_output {
-        typescript::generate_playground_services(&api, path, cli.version.number())
+        ts::generate_playground_services(&api, path, cli.version.number())
             .with_context(|| format!("writing playground metadata to {path}"))?;
         println!("Generated playground metadata in {path}");
     }
     if let Some(path) = &cli.explorer_output {
-        typescript::generate_explorer_registry(&api, path, cli.version.number())
+        ts::generate_explorer_registry(&api, path, cli.version.number())
             .with_context(|| format!("writing explorer registry to {path}"))?;
         println!("Generated explorer registry in {path}");
     }
     if let Some(path) = &cli.client_examples_output {
-        typescript::generate_client_examples(&api, path, cli.version.number())
+        ts::generate_client_examples(&api, path, cli.version.number())
             .with_context(|| format!("writing client examples to {path}"))?;
         println!("Generated client examples in {path}");
     }
