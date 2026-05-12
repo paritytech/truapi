@@ -602,7 +602,7 @@ export const HorizontalAlignment: S.Codec<HorizontalAlignment> = S.lazy(
     S.Enum({ Start: S._void, Center: S._void, End: S._void }),
 );
 
-/** Versioned wrapper for [`v01::HostAccountConnectionStatusSubscribeItem`]. */
+/** Versioned envelope for [`HostAccountConnectionStatusSubscribeItem`]. */
 export type VersionedHostAccountConnectionStatusSubscribeItem = {
   tag: "V1";
   value: HostAccountConnectionStatusSubscribeItem;
@@ -616,7 +616,7 @@ export const VersionedHostAccountConnectionStatusSubscribeItem: S.Codec<Versione
       }),
   );
 
-/** Versioned wrapper for [`v01::HostAccountCreateProofError`]. */
+/** Versioned envelope for [`HostAccountCreateProofError`]. */
 export type VersionedHostAccountCreateProofError = {
   tag: "V1";
   value: HostAccountCreateProofError;
@@ -628,7 +628,7 @@ export const VersionedHostAccountCreateProofError: S.Codec<VersionedHostAccountC
       S.indexedTaggedUnion({ V1: [0, HostAccountCreateProofError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostAccountCreateProofRequest`]. */
+/** Versioned envelope for [`HostAccountCreateProofRequest`]. */
 export type VersionedHostAccountCreateProofRequest = {
   tag: "V1";
   value: HostAccountCreateProofRequest;
@@ -640,7 +640,7 @@ export const VersionedHostAccountCreateProofRequest: S.Codec<VersionedHostAccoun
       S.indexedTaggedUnion({ V1: [0, HostAccountCreateProofRequest] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostAccountCreateProofResponse`]. */
+/** Versioned envelope for [`HostAccountCreateProofResponse`]. */
 export type VersionedHostAccountCreateProofResponse = {
   tag: "V1";
   value: HostAccountCreateProofResponse;
@@ -654,7 +654,7 @@ export const VersionedHostAccountCreateProofResponse: S.Codec<VersionedHostAccou
       }),
   );
 
-/** Versioned wrapper around the alias-lookup error path; reuses [`v01::HostAccountGetError`]. */
+/** Versioned envelope for [`HostAccountGetAliasError`]. */
 export type VersionedHostAccountGetAliasError = {
   tag: "V1";
   value: HostAccountGetError;
@@ -666,7 +666,7 @@ export const VersionedHostAccountGetAliasError: S.Codec<VersionedHostAccountGetA
       S.indexedTaggedUnion({ V1: [0, HostAccountGetError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostAccountGetAliasRequest`]. */
+/** Versioned envelope for [`HostAccountGetAliasRequest`]. */
 export type VersionedHostAccountGetAliasRequest = {
   tag: "V1";
   value: HostAccountGetAliasRequest;
@@ -678,7 +678,7 @@ export const VersionedHostAccountGetAliasRequest: S.Codec<VersionedHostAccountGe
       S.indexedTaggedUnion({ V1: [0, HostAccountGetAliasRequest] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostAccountGetAliasResponse`]. */
+/** Versioned envelope for [`HostAccountGetAliasResponse`]. */
 export type VersionedHostAccountGetAliasResponse = {
   tag: "V1";
   value: HostAccountGetAliasResponse;
@@ -690,7 +690,7 @@ export const VersionedHostAccountGetAliasResponse: S.Codec<VersionedHostAccountG
       S.indexedTaggedUnion({ V1: [0, HostAccountGetAliasResponse] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostAccountGetError`]. */
+/** Versioned envelope for [`HostAccountGetError`]. */
 export type VersionedHostAccountGetError = {
   tag: "V1";
   value: HostAccountGetError;
@@ -702,7 +702,7 @@ export const VersionedHostAccountGetError: S.Codec<VersionedHostAccountGetError>
       S.indexedTaggedUnion({ V1: [0, HostAccountGetError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostAccountGetRequest`]. */
+/** Versioned envelope for [`HostAccountGetRequest`]. */
 export type VersionedHostAccountGetRequest = {
   tag: "V1";
   value: HostAccountGetRequest;
@@ -714,7 +714,7 @@ export const VersionedHostAccountGetRequest: S.Codec<VersionedHostAccountGetRequ
       S.indexedTaggedUnion({ V1: [0, HostAccountGetRequest] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostAccountGetResponse`]. */
+/** Versioned envelope for [`HostAccountGetResponse`]. */
 export type VersionedHostAccountGetResponse = {
   tag: "V1";
   value: HostAccountGetResponse;
@@ -726,7 +726,7 @@ export const VersionedHostAccountGetResponse: S.Codec<VersionedHostAccountGetRes
       S.indexedTaggedUnion({ V1: [0, HostAccountGetResponse] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostChatActionSubscribeItem`] and older versions. */
+/** Versioned envelope for [`HostChatActionSubscribeItem`]. */
 export type VersionedHostChatActionSubscribeItem = {
   tag: "V1";
   value: HostChatActionSubscribeItem;
@@ -738,7 +738,7 @@ export const VersionedHostChatActionSubscribeItem: S.Codec<VersionedHostChatActi
       S.indexedTaggedUnion({ V1: [0, HostChatActionSubscribeItem] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostChatCreateRoomError`] and older versions. */
+/** Versioned envelope for [`HostChatCreateRoomError`]. */
 export type VersionedHostChatCreateRoomError = {
   tag: "V1";
   value: HostChatCreateRoomError;
@@ -750,7 +750,7 @@ export const VersionedHostChatCreateRoomError: S.Codec<VersionedHostChatCreateRo
       S.indexedTaggedUnion({ V1: [0, HostChatCreateRoomError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostChatCreateRoomRequest`] and older versions. */
+/** Versioned envelope for [`HostChatCreateRoomRequest`]. */
 export type VersionedHostChatCreateRoomRequest = {
   tag: "V1";
   value: HostChatCreateRoomRequest;
@@ -762,7 +762,7 @@ export const VersionedHostChatCreateRoomRequest: S.Codec<VersionedHostChatCreate
       S.indexedTaggedUnion({ V1: [0, HostChatCreateRoomRequest] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostChatCreateRoomResponse`] and older versions. */
+/** Versioned envelope for [`HostChatCreateRoomResponse`]. */
 export type VersionedHostChatCreateRoomResponse = {
   tag: "V1";
   value: HostChatCreateRoomResponse;
@@ -774,7 +774,7 @@ export const VersionedHostChatCreateRoomResponse: S.Codec<VersionedHostChatCreat
       S.indexedTaggedUnion({ V1: [0, HostChatCreateRoomResponse] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostChatListSubscribeItem`] and older versions. */
+/** Versioned envelope for [`HostChatListSubscribeItem`]. */
 export type VersionedHostChatListSubscribeItem = {
   tag: "V1";
   value: HostChatListSubscribeItem;
@@ -786,7 +786,7 @@ export const VersionedHostChatListSubscribeItem: S.Codec<VersionedHostChatListSu
       S.indexedTaggedUnion({ V1: [0, HostChatListSubscribeItem] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostChatPostMessageError`] and older versions. */
+/** Versioned envelope for [`HostChatPostMessageError`]. */
 export type VersionedHostChatPostMessageError = {
   tag: "V1";
   value: HostChatPostMessageError;
@@ -798,7 +798,7 @@ export const VersionedHostChatPostMessageError: S.Codec<VersionedHostChatPostMes
       S.indexedTaggedUnion({ V1: [0, HostChatPostMessageError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostChatPostMessageRequest`] and older versions. */
+/** Versioned envelope for [`HostChatPostMessageRequest`]. */
 export type VersionedHostChatPostMessageRequest = {
   tag: "V1";
   value: HostChatPostMessageRequest;
@@ -810,7 +810,7 @@ export const VersionedHostChatPostMessageRequest: S.Codec<VersionedHostChatPostM
       S.indexedTaggedUnion({ V1: [0, HostChatPostMessageRequest] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostChatPostMessageResponse`] and older versions. */
+/** Versioned envelope for [`HostChatPostMessageResponse`]. */
 export type VersionedHostChatPostMessageResponse = {
   tag: "V1";
   value: HostChatPostMessageResponse;
@@ -822,7 +822,7 @@ export const VersionedHostChatPostMessageResponse: S.Codec<VersionedHostChatPost
       S.indexedTaggedUnion({ V1: [0, HostChatPostMessageResponse] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostChatRegisterBotError`] and older versions. */
+/** Versioned envelope for [`HostChatRegisterBotError`]. */
 export type VersionedHostChatRegisterBotError = {
   tag: "V1";
   value: HostChatRegisterBotError;
@@ -834,7 +834,7 @@ export const VersionedHostChatRegisterBotError: S.Codec<VersionedHostChatRegiste
       S.indexedTaggedUnion({ V1: [0, HostChatRegisterBotError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostChatRegisterBotRequest`] and older versions. */
+/** Versioned envelope for [`HostChatRegisterBotRequest`]. */
 export type VersionedHostChatRegisterBotRequest = {
   tag: "V1";
   value: HostChatRegisterBotRequest;
@@ -846,7 +846,7 @@ export const VersionedHostChatRegisterBotRequest: S.Codec<VersionedHostChatRegis
       S.indexedTaggedUnion({ V1: [0, HostChatRegisterBotRequest] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostChatRegisterBotResponse`] and older versions. */
+/** Versioned envelope for [`HostChatRegisterBotResponse`]. */
 export type VersionedHostChatRegisterBotResponse = {
   tag: "V1";
   value: HostChatRegisterBotResponse;
@@ -858,7 +858,7 @@ export const VersionedHostChatRegisterBotResponse: S.Codec<VersionedHostChatRegi
       S.indexedTaggedUnion({ V1: [0, HostChatRegisterBotResponse] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostCreateTransactionError`]. */
+/** Versioned envelope for [`HostCreateTransactionError`]. */
 export type VersionedHostCreateTransactionError = {
   tag: "V1";
   value: HostCreateTransactionError;
@@ -870,7 +870,7 @@ export const VersionedHostCreateTransactionError: S.Codec<VersionedHostCreateTra
       S.indexedTaggedUnion({ V1: [0, HostCreateTransactionError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostCreateTransactionRequest`]. */
+/** Versioned envelope for [`HostCreateTransactionRequest`]. */
 export type VersionedHostCreateTransactionRequest = {
   tag: "V1";
   value: HostCreateTransactionRequest;
@@ -882,7 +882,7 @@ export const VersionedHostCreateTransactionRequest: S.Codec<VersionedHostCreateT
       S.indexedTaggedUnion({ V1: [0, HostCreateTransactionRequest] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostCreateTransactionResponse`]. */
+/** Versioned envelope for [`HostCreateTransactionResponse`]. */
 export type VersionedHostCreateTransactionResponse = {
   tag: "V1";
   value: HostCreateTransactionResponse;
@@ -894,7 +894,7 @@ export const VersionedHostCreateTransactionResponse: S.Codec<VersionedHostCreate
       S.indexedTaggedUnion({ V1: [0, HostCreateTransactionResponse] as const }),
   );
 
-/** Versioned wrapper for the legacy-account create-transaction error path; reuses [`v01::HostCreateTransactionError`]. */
+/** Versioned envelope for [`HostCreateTransactionWithLegacyAccountError`]. */
 export type VersionedHostCreateTransactionWithLegacyAccountError = {
   tag: "V1";
   value: HostCreateTransactionError;
@@ -906,7 +906,7 @@ export const VersionedHostCreateTransactionWithLegacyAccountError: S.Codec<Versi
       S.indexedTaggedUnion({ V1: [0, HostCreateTransactionError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostCreateTransactionWithLegacyAccountRequest`]. */
+/** Versioned envelope for [`HostCreateTransactionWithLegacyAccountRequest`]. */
 export type VersionedHostCreateTransactionWithLegacyAccountRequest = {
   tag: "V1";
   value: HostCreateTransactionWithLegacyAccountRequest;
@@ -920,7 +920,7 @@ export const VersionedHostCreateTransactionWithLegacyAccountRequest: S.Codec<Ver
       }),
   );
 
-/** Versioned wrapper for [`v01::HostCreateTransactionWithLegacyAccountResponse`]. */
+/** Versioned envelope for [`HostCreateTransactionWithLegacyAccountResponse`]. */
 export type VersionedHostCreateTransactionWithLegacyAccountResponse = {
   tag: "V1";
   value: HostCreateTransactionWithLegacyAccountResponse;
@@ -934,7 +934,7 @@ export const VersionedHostCreateTransactionWithLegacyAccountResponse: S.Codec<Ve
       }),
   );
 
-/** Versioned wrapper for [`v01::HostDeriveEntropyError`]. */
+/** Versioned envelope for [`HostDeriveEntropyError`]. */
 export type VersionedHostDeriveEntropyError = {
   tag: "V1";
   value: HostDeriveEntropyError;
@@ -946,7 +946,7 @@ export const VersionedHostDeriveEntropyError: S.Codec<VersionedHostDeriveEntropy
       S.indexedTaggedUnion({ V1: [0, HostDeriveEntropyError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostDeriveEntropyRequest`]. */
+/** Versioned envelope for [`HostDeriveEntropyRequest`]. */
 export type VersionedHostDeriveEntropyRequest = {
   tag: "V1";
   value: HostDeriveEntropyRequest;
@@ -958,7 +958,7 @@ export const VersionedHostDeriveEntropyRequest: S.Codec<VersionedHostDeriveEntro
       S.indexedTaggedUnion({ V1: [0, HostDeriveEntropyRequest] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostDeriveEntropyResponse`]. */
+/** Versioned envelope for [`HostDeriveEntropyResponse`]. */
 export type VersionedHostDeriveEntropyResponse = {
   tag: "V1";
   value: HostDeriveEntropyResponse;
@@ -970,7 +970,7 @@ export const VersionedHostDeriveEntropyResponse: S.Codec<VersionedHostDeriveEntr
       S.indexedTaggedUnion({ V1: [0, HostDeriveEntropyResponse] as const }),
   );
 
-/** Versioned wrapper for [`v01::GenericError`]. */
+/** Versioned envelope for [`HostDevicePermissionError`]. */
 export type VersionedHostDevicePermissionError = {
   tag: "V1";
   value: GenericError;
@@ -982,7 +982,7 @@ export const VersionedHostDevicePermissionError: S.Codec<VersionedHostDevicePerm
       S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostDevicePermissionRequest`]. */
+/** Versioned envelope for [`HostDevicePermissionRequest`]. */
 export type VersionedHostDevicePermissionRequest = {
   tag: "V1";
   value: HostDevicePermissionRequest;
@@ -994,7 +994,7 @@ export const VersionedHostDevicePermissionRequest: S.Codec<VersionedHostDevicePe
       S.indexedTaggedUnion({ V1: [0, HostDevicePermissionRequest] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostDevicePermissionResponse`]. */
+/** Versioned envelope for [`HostDevicePermissionResponse`]. */
 export type VersionedHostDevicePermissionResponse = {
   tag: "V1";
   value: HostDevicePermissionResponse;
@@ -1006,7 +1006,7 @@ export const VersionedHostDevicePermissionResponse: S.Codec<VersionedHostDeviceP
       S.indexedTaggedUnion({ V1: [0, HostDevicePermissionResponse] as const }),
   );
 
-/** Versioned wrapper for [`v01::GenericError`]. */
+/** Versioned envelope for [`HostFeatureSupportedError`]. */
 export type VersionedHostFeatureSupportedError = {
   tag: "V1";
   value: GenericError;
@@ -1018,7 +1018,7 @@ export const VersionedHostFeatureSupportedError: S.Codec<VersionedHostFeatureSup
       S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostFeatureSupportedRequest`]. */
+/** Versioned envelope for [`HostFeatureSupportedRequest`]. */
 export type VersionedHostFeatureSupportedRequest = {
   tag: "V1";
   value: HostFeatureSupportedRequest;
@@ -1030,7 +1030,7 @@ export const VersionedHostFeatureSupportedRequest: S.Codec<VersionedHostFeatureS
       S.indexedTaggedUnion({ V1: [0, HostFeatureSupportedRequest] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostFeatureSupportedResponse`]. */
+/** Versioned envelope for [`HostFeatureSupportedResponse`]. */
 export type VersionedHostFeatureSupportedResponse = {
   tag: "V1";
   value: HostFeatureSupportedResponse;
@@ -1042,7 +1042,7 @@ export const VersionedHostFeatureSupportedResponse: S.Codec<VersionedHostFeature
       S.indexedTaggedUnion({ V1: [0, HostFeatureSupportedResponse] as const }),
   );
 
-/** Versioned wrapper around the legacy-accounts error path; reuses [`v01::HostAccountGetError`]. */
+/** Versioned envelope for [`HostGetLegacyAccountsError`]. */
 export type VersionedHostGetLegacyAccountsError = {
   tag: "V1";
   value: HostAccountGetError;
@@ -1054,7 +1054,7 @@ export const VersionedHostGetLegacyAccountsError: S.Codec<VersionedHostGetLegacy
       S.indexedTaggedUnion({ V1: [0, HostAccountGetError] as const }),
   );
 
-/** Versioned wrapper for unit. */
+/** Versioned envelope for [`HostGetLegacyAccountsRequest`]. */
 export type VersionedHostGetLegacyAccountsRequest = {
   tag: "V1";
   value: undefined;
@@ -1066,7 +1066,7 @@ export const VersionedHostGetLegacyAccountsRequest: S.Codec<VersionedHostGetLega
       S.indexedTaggedUnion({ V1: [0, S._void] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostGetLegacyAccountsResponse`]. */
+/** Versioned envelope for [`HostGetLegacyAccountsResponse`]. */
 export type VersionedHostGetLegacyAccountsResponse = {
   tag: "V1";
   value: HostGetLegacyAccountsResponse;
@@ -1078,7 +1078,7 @@ export const VersionedHostGetLegacyAccountsResponse: S.Codec<VersionedHostGetLeg
       S.indexedTaggedUnion({ V1: [0, HostGetLegacyAccountsResponse] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostGetUserIdError`]. */
+/** Versioned envelope for [`HostGetUserIdError`]. */
 export type VersionedHostGetUserIdError = {
   tag: "V1";
   value: HostGetUserIdError;
@@ -1090,7 +1090,7 @@ export const VersionedHostGetUserIdError: S.Codec<VersionedHostGetUserIdError> =
       S.indexedTaggedUnion({ V1: [0, HostGetUserIdError] as const }),
   );
 
-/** Versioned wrapper for unit. */
+/** Versioned envelope for [`HostGetUserIdRequest`]. */
 export type VersionedHostGetUserIdRequest = { tag: "V1"; value: undefined };
 
 export const VersionedHostGetUserIdRequest: S.Codec<VersionedHostGetUserIdRequest> =
@@ -1099,7 +1099,7 @@ export const VersionedHostGetUserIdRequest: S.Codec<VersionedHostGetUserIdReques
       S.indexedTaggedUnion({ V1: [0, S._void] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostGetUserIdResponse`]. */
+/** Versioned envelope for [`HostGetUserIdResponse`]. */
 export type VersionedHostGetUserIdResponse = {
   tag: "V1";
   value: HostGetUserIdResponse;
@@ -1111,7 +1111,7 @@ export const VersionedHostGetUserIdResponse: S.Codec<VersionedHostGetUserIdRespo
       S.indexedTaggedUnion({ V1: [0, HostGetUserIdResponse] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostHandshakeError`]. */
+/** Versioned envelope for [`HostHandshakeError`]. */
 export type VersionedHostHandshakeError = {
   tag: "V1";
   value: HostHandshakeError;
@@ -1123,7 +1123,7 @@ export const VersionedHostHandshakeError: S.Codec<VersionedHostHandshakeError> =
       S.indexedTaggedUnion({ V1: [0, HostHandshakeError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostHandshakeRequest`]. */
+/** Versioned envelope for [`HostHandshakeRequest`]. */
 export type VersionedHostHandshakeRequest = {
   tag: "V1";
   value: HostHandshakeRequest;
@@ -1135,7 +1135,7 @@ export const VersionedHostHandshakeRequest: S.Codec<VersionedHostHandshakeReques
       S.indexedTaggedUnion({ V1: [0, HostHandshakeRequest] as const }),
   );
 
-/** Versioned wrapper for unit. */
+/** Versioned envelope for [`HostHandshakeResponse`]. */
 export type VersionedHostHandshakeResponse = { tag: "V1"; value: undefined };
 
 export const VersionedHostHandshakeResponse: S.Codec<VersionedHostHandshakeResponse> =
@@ -1144,7 +1144,7 @@ export const VersionedHostHandshakeResponse: S.Codec<VersionedHostHandshakeRespo
       S.indexedTaggedUnion({ V1: [0, S._void] as const }),
   );
 
-/** Versioned wrapper for [`v01::GenericError`]. */
+/** Versioned envelope for [`HostJsonrpcMessageSendError`]. */
 export type VersionedHostJsonrpcMessageSendError = {
   tag: "V1";
   value: GenericError;
@@ -1156,7 +1156,7 @@ export const VersionedHostJsonrpcMessageSendError: S.Codec<VersionedHostJsonrpcM
       S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostJsonrpcMessageSendRequest`]. */
+/** Versioned envelope for [`HostJsonrpcMessageSendRequest`]. */
 export type VersionedHostJsonrpcMessageSendRequest = {
   tag: "V1";
   value: HostJsonrpcMessageSendRequest;
@@ -1168,7 +1168,7 @@ export const VersionedHostJsonrpcMessageSendRequest: S.Codec<VersionedHostJsonrp
       S.indexedTaggedUnion({ V1: [0, HostJsonrpcMessageSendRequest] as const }),
   );
 
-/** Versioned unit response for JSON-RPC send. */
+/** Versioned envelope for [`HostJsonrpcMessageSendResponse`]. */
 export type VersionedHostJsonrpcMessageSendResponse = {
   tag: "V1";
   value: undefined;
@@ -1180,7 +1180,7 @@ export const VersionedHostJsonrpcMessageSendResponse: S.Codec<VersionedHostJsonr
       S.indexedTaggedUnion({ V1: [0, S._void] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostJsonrpcMessageSubscribeItem`]. */
+/** Versioned envelope for [`HostJsonrpcMessageSubscribeItem`]. */
 export type VersionedHostJsonrpcMessageSubscribeItem = {
   tag: "V1";
   value: HostJsonrpcMessageSubscribeItem;
@@ -1194,7 +1194,7 @@ export const VersionedHostJsonrpcMessageSubscribeItem: S.Codec<VersionedHostJson
       }),
   );
 
-/** Versioned wrapper for [`v01::HostJsonrpcMessageSubscribeRequest`]. */
+/** Versioned envelope for [`HostJsonrpcMessageSubscribeRequest`]. */
 export type VersionedHostJsonrpcMessageSubscribeRequest = {
   tag: "V1";
   value: HostJsonrpcMessageSubscribeRequest;
@@ -1208,7 +1208,7 @@ export const VersionedHostJsonrpcMessageSubscribeRequest: S.Codec<VersionedHostJ
       }),
   );
 
-/** Versioned wrapper for [`v01::HostLocalStorageReadError`] and older versions. */
+/** Versioned envelope for [`HostLocalStorageClearError`]. */
 export type VersionedHostLocalStorageClearError = {
   tag: "V1";
   value: HostLocalStorageReadError;
@@ -1220,7 +1220,7 @@ export const VersionedHostLocalStorageClearError: S.Codec<VersionedHostLocalStor
       S.indexedTaggedUnion({ V1: [0, HostLocalStorageReadError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostLocalStorageClearRequest`] and older versions. */
+/** Versioned envelope for [`HostLocalStorageClearRequest`]. */
 export type VersionedHostLocalStorageClearRequest = {
   tag: "V1";
   value: HostLocalStorageClearRequest;
@@ -1232,7 +1232,7 @@ export const VersionedHostLocalStorageClearRequest: S.Codec<VersionedHostLocalSt
       S.indexedTaggedUnion({ V1: [0, HostLocalStorageClearRequest] as const }),
   );
 
-/** Versioned wrapper for unit and older versions. */
+/** Versioned envelope for [`HostLocalStorageClearResponse`]. */
 export type VersionedHostLocalStorageClearResponse = {
   tag: "V1";
   value: undefined;
@@ -1244,7 +1244,7 @@ export const VersionedHostLocalStorageClearResponse: S.Codec<VersionedHostLocalS
       S.indexedTaggedUnion({ V1: [0, S._void] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostLocalStorageReadError`] and older versions. */
+/** Versioned envelope for [`HostLocalStorageReadError`]. */
 export type VersionedHostLocalStorageReadError = {
   tag: "V1";
   value: HostLocalStorageReadError;
@@ -1256,7 +1256,7 @@ export const VersionedHostLocalStorageReadError: S.Codec<VersionedHostLocalStora
       S.indexedTaggedUnion({ V1: [0, HostLocalStorageReadError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostLocalStorageReadRequest`] and older versions. */
+/** Versioned envelope for [`HostLocalStorageReadRequest`]. */
 export type VersionedHostLocalStorageReadRequest = {
   tag: "V1";
   value: HostLocalStorageReadRequest;
@@ -1268,7 +1268,7 @@ export const VersionedHostLocalStorageReadRequest: S.Codec<VersionedHostLocalSto
       S.indexedTaggedUnion({ V1: [0, HostLocalStorageReadRequest] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostLocalStorageReadResponse`] and older versions. */
+/** Versioned envelope for [`HostLocalStorageReadResponse`]. */
 export type VersionedHostLocalStorageReadResponse = {
   tag: "V1";
   value: HostLocalStorageReadResponse;
@@ -1280,7 +1280,7 @@ export const VersionedHostLocalStorageReadResponse: S.Codec<VersionedHostLocalSt
       S.indexedTaggedUnion({ V1: [0, HostLocalStorageReadResponse] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostLocalStorageReadError`] and older versions. */
+/** Versioned envelope for [`HostLocalStorageWriteError`]. */
 export type VersionedHostLocalStorageWriteError = {
   tag: "V1";
   value: HostLocalStorageReadError;
@@ -1292,7 +1292,7 @@ export const VersionedHostLocalStorageWriteError: S.Codec<VersionedHostLocalStor
       S.indexedTaggedUnion({ V1: [0, HostLocalStorageReadError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostLocalStorageWriteRequest`] and older versions. */
+/** Versioned envelope for [`HostLocalStorageWriteRequest`]. */
 export type VersionedHostLocalStorageWriteRequest = {
   tag: "V1";
   value: HostLocalStorageWriteRequest;
@@ -1304,7 +1304,7 @@ export const VersionedHostLocalStorageWriteRequest: S.Codec<VersionedHostLocalSt
       S.indexedTaggedUnion({ V1: [0, HostLocalStorageWriteRequest] as const }),
   );
 
-/** Versioned wrapper for unit and older versions. */
+/** Versioned envelope for [`HostLocalStorageWriteResponse`]. */
 export type VersionedHostLocalStorageWriteResponse = {
   tag: "V1";
   value: undefined;
@@ -1316,7 +1316,7 @@ export const VersionedHostLocalStorageWriteResponse: S.Codec<VersionedHostLocalS
       S.indexedTaggedUnion({ V1: [0, S._void] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostNavigateToError`]. */
+/** Versioned envelope for [`HostNavigateToError`]. */
 export type VersionedHostNavigateToError = {
   tag: "V1";
   value: HostNavigateToError;
@@ -1328,7 +1328,7 @@ export const VersionedHostNavigateToError: S.Codec<VersionedHostNavigateToError>
       S.indexedTaggedUnion({ V1: [0, HostNavigateToError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostNavigateToRequest`]. */
+/** Versioned envelope for [`HostNavigateToRequest`]. */
 export type VersionedHostNavigateToRequest = {
   tag: "V1";
   value: HostNavigateToRequest;
@@ -1340,7 +1340,7 @@ export const VersionedHostNavigateToRequest: S.Codec<VersionedHostNavigateToRequ
       S.indexedTaggedUnion({ V1: [0, HostNavigateToRequest] as const }),
   );
 
-/** Versioned wrapper for unit. */
+/** Versioned envelope for [`HostNavigateToResponse`]. */
 export type VersionedHostNavigateToResponse = { tag: "V1"; value: undefined };
 
 export const VersionedHostNavigateToResponse: S.Codec<VersionedHostNavigateToResponse> =
@@ -1349,7 +1349,7 @@ export const VersionedHostNavigateToResponse: S.Codec<VersionedHostNavigateToRes
       S.indexedTaggedUnion({ V1: [0, S._void] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostPaymentBalanceSubscribeError`]. */
+/** Versioned envelope for [`HostPaymentBalanceSubscribeError`]. */
 export type VersionedHostPaymentBalanceSubscribeError = {
   tag: "V1";
   value: HostPaymentBalanceSubscribeError;
@@ -1363,7 +1363,7 @@ export const VersionedHostPaymentBalanceSubscribeError: S.Codec<VersionedHostPay
       }),
   );
 
-/** Versioned wrapper for [`v01::HostPaymentBalanceSubscribeItem`]. */
+/** Versioned envelope for [`HostPaymentBalanceSubscribeItem`]. */
 export type VersionedHostPaymentBalanceSubscribeItem = {
   tag: "V1";
   value: HostPaymentBalanceSubscribeItem;
@@ -1377,7 +1377,7 @@ export const VersionedHostPaymentBalanceSubscribeItem: S.Codec<VersionedHostPaym
       }),
   );
 
-/** Versioned wrapper for unit. */
+/** Versioned envelope for [`HostPaymentBalanceSubscribeRequest`]. */
 export type VersionedHostPaymentBalanceSubscribeRequest = {
   tag: "V1";
   value: undefined;
@@ -1389,7 +1389,7 @@ export const VersionedHostPaymentBalanceSubscribeRequest: S.Codec<VersionedHostP
       S.indexedTaggedUnion({ V1: [0, S._void] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostPaymentRequestError`]. */
+/** Versioned envelope for [`HostPaymentRequestError`]. */
 export type VersionedHostPaymentRequestError = {
   tag: "V1";
   value: HostPaymentRequestError;
@@ -1401,7 +1401,7 @@ export const VersionedHostPaymentRequestError: S.Codec<VersionedHostPaymentReque
       S.indexedTaggedUnion({ V1: [0, HostPaymentRequestError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostPaymentRequestRequest`]. */
+/** Versioned envelope for [`HostPaymentRequestRequest`]. */
 export type VersionedHostPaymentRequestRequest = {
   tag: "V1";
   value: HostPaymentRequestRequest;
@@ -1413,7 +1413,7 @@ export const VersionedHostPaymentRequestRequest: S.Codec<VersionedHostPaymentReq
       S.indexedTaggedUnion({ V1: [0, HostPaymentRequestRequest] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostPaymentRequestResponse`]. */
+/** Versioned envelope for [`HostPaymentRequestResponse`]. */
 export type VersionedHostPaymentRequestResponse = {
   tag: "V1";
   value: HostPaymentRequestResponse;
@@ -1425,7 +1425,7 @@ export const VersionedHostPaymentRequestResponse: S.Codec<VersionedHostPaymentRe
       S.indexedTaggedUnion({ V1: [0, HostPaymentRequestResponse] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostPaymentStatusSubscribeError`]. */
+/** Versioned envelope for [`HostPaymentStatusSubscribeError`]. */
 export type VersionedHostPaymentStatusSubscribeError = {
   tag: "V1";
   value: HostPaymentStatusSubscribeError;
@@ -1439,7 +1439,7 @@ export const VersionedHostPaymentStatusSubscribeError: S.Codec<VersionedHostPaym
       }),
   );
 
-/** Versioned wrapper for [`v01::HostPaymentStatusSubscribeItem`]. */
+/** Versioned envelope for [`HostPaymentStatusSubscribeItem`]. */
 export type VersionedHostPaymentStatusSubscribeItem = {
   tag: "V1";
   value: HostPaymentStatusSubscribeItem;
@@ -1453,7 +1453,7 @@ export const VersionedHostPaymentStatusSubscribeItem: S.Codec<VersionedHostPayme
       }),
   );
 
-/** Versioned wrapper for [`v01::HostPaymentStatusSubscribeRequest`]. */
+/** Versioned envelope for [`HostPaymentStatusSubscribeRequest`]. */
 export type VersionedHostPaymentStatusSubscribeRequest = {
   tag: "V1";
   value: HostPaymentStatusSubscribeRequest;
@@ -1467,7 +1467,7 @@ export const VersionedHostPaymentStatusSubscribeRequest: S.Codec<VersionedHostPa
       }),
   );
 
-/** Versioned wrapper for [`v01::HostPaymentTopUpError`]. */
+/** Versioned envelope for [`HostPaymentTopUpError`]. */
 export type VersionedHostPaymentTopUpError = {
   tag: "V1";
   value: HostPaymentTopUpError;
@@ -1479,7 +1479,7 @@ export const VersionedHostPaymentTopUpError: S.Codec<VersionedHostPaymentTopUpEr
       S.indexedTaggedUnion({ V1: [0, HostPaymentTopUpError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostPaymentTopUpRequest`]. */
+/** Versioned envelope for [`HostPaymentTopUpRequest`]. */
 export type VersionedHostPaymentTopUpRequest = {
   tag: "V1";
   value: HostPaymentTopUpRequest;
@@ -1491,7 +1491,7 @@ export const VersionedHostPaymentTopUpRequest: S.Codec<VersionedHostPaymentTopUp
       S.indexedTaggedUnion({ V1: [0, HostPaymentTopUpRequest] as const }),
   );
 
-/** Versioned wrapper for unit. */
+/** Versioned envelope for [`HostPaymentTopUpResponse`]. */
 export type VersionedHostPaymentTopUpResponse = { tag: "V1"; value: undefined };
 
 export const VersionedHostPaymentTopUpResponse: S.Codec<VersionedHostPaymentTopUpResponse> =
@@ -1500,7 +1500,7 @@ export const VersionedHostPaymentTopUpResponse: S.Codec<VersionedHostPaymentTopU
       S.indexedTaggedUnion({ V1: [0, S._void] as const }),
   );
 
-/** Versioned wrapper for [`v01::GenericError`]. */
+/** Versioned envelope for [`HostPushNotificationError`]. */
 export type VersionedHostPushNotificationError = {
   tag: "V1";
   value: GenericError;
@@ -1512,7 +1512,7 @@ export const VersionedHostPushNotificationError: S.Codec<VersionedHostPushNotifi
       S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostPushNotificationRequest`]. */
+/** Versioned envelope for [`HostPushNotificationRequest`]. */
 export type VersionedHostPushNotificationRequest = {
   tag: "V1";
   value: HostPushNotificationRequest;
@@ -1524,7 +1524,7 @@ export const VersionedHostPushNotificationRequest: S.Codec<VersionedHostPushNoti
       S.indexedTaggedUnion({ V1: [0, HostPushNotificationRequest] as const }),
   );
 
-/** Versioned wrapper for unit. */
+/** Versioned envelope for [`HostPushNotificationResponse`]. */
 export type VersionedHostPushNotificationResponse = {
   tag: "V1";
   value: undefined;
@@ -1536,7 +1536,7 @@ export const VersionedHostPushNotificationResponse: S.Codec<VersionedHostPushNot
       S.indexedTaggedUnion({ V1: [0, S._void] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostRequestLoginError`]. */
+/** Versioned envelope for [`HostRequestLoginError`]. */
 export type VersionedHostRequestLoginError = {
   tag: "V1";
   value: HostRequestLoginError;
@@ -1548,7 +1548,7 @@ export const VersionedHostRequestLoginError: S.Codec<VersionedHostRequestLoginEr
       S.indexedTaggedUnion({ V1: [0, HostRequestLoginError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostRequestLoginRequest`]. */
+/** Versioned envelope for [`HostRequestLoginRequest`]. */
 export type VersionedHostRequestLoginRequest = {
   tag: "V1";
   value: HostRequestLoginRequest;
@@ -1560,7 +1560,7 @@ export const VersionedHostRequestLoginRequest: S.Codec<VersionedHostRequestLogin
       S.indexedTaggedUnion({ V1: [0, HostRequestLoginRequest] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostRequestLoginResponse`]. */
+/** Versioned envelope for [`HostRequestLoginResponse`]. */
 export type VersionedHostRequestLoginResponse = {
   tag: "V1";
   value: HostRequestLoginResponse;
@@ -1572,7 +1572,7 @@ export const VersionedHostRequestLoginResponse: S.Codec<VersionedHostRequestLogi
       S.indexedTaggedUnion({ V1: [0, HostRequestLoginResponse] as const }),
   );
 
-/** Versioned wrapper for [`v01::ResourceAllocationError`]. */
+/** Versioned envelope for [`HostRequestResourceAllocationError`]. */
 export type VersionedHostRequestResourceAllocationError = {
   tag: "V1";
   value: ResourceAllocationError;
@@ -1584,7 +1584,7 @@ export const VersionedHostRequestResourceAllocationError: S.Codec<VersionedHostR
       S.indexedTaggedUnion({ V1: [0, ResourceAllocationError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostRequestResourceAllocationRequest`]. */
+/** Versioned envelope for [`HostRequestResourceAllocationRequest`]. */
 export type VersionedHostRequestResourceAllocationRequest = {
   tag: "V1";
   value: HostRequestResourceAllocationRequest;
@@ -1598,7 +1598,7 @@ export const VersionedHostRequestResourceAllocationRequest: S.Codec<VersionedHos
       }),
   );
 
-/** Versioned wrapper for [`v01::HostRequestResourceAllocationResponse`]. */
+/** Versioned envelope for [`HostRequestResourceAllocationResponse`]. */
 export type VersionedHostRequestResourceAllocationResponse = {
   tag: "V1";
   value: HostRequestResourceAllocationResponse;
@@ -1612,7 +1612,7 @@ export const VersionedHostRequestResourceAllocationResponse: S.Codec<VersionedHo
       }),
   );
 
-/** Versioned wrapper for [`v01::HostSignPayloadError`]. */
+/** Versioned envelope for [`HostSignPayloadError`]. */
 export type VersionedHostSignPayloadError = {
   tag: "V1";
   value: HostSignPayloadError;
@@ -1624,7 +1624,7 @@ export const VersionedHostSignPayloadError: S.Codec<VersionedHostSignPayloadErro
       S.indexedTaggedUnion({ V1: [0, HostSignPayloadError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostSignPayloadRequest`]. */
+/** Versioned envelope for [`HostSignPayloadRequest`]. */
 export type VersionedHostSignPayloadRequest = {
   tag: "V1";
   value: HostSignPayloadRequest;
@@ -1636,7 +1636,7 @@ export const VersionedHostSignPayloadRequest: S.Codec<VersionedHostSignPayloadRe
       S.indexedTaggedUnion({ V1: [0, HostSignPayloadRequest] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostSignPayloadResponse`]. */
+/** Versioned envelope for [`HostSignPayloadResponse`]. */
 export type VersionedHostSignPayloadResponse = {
   tag: "V1";
   value: HostSignPayloadResponse;
@@ -1648,7 +1648,7 @@ export const VersionedHostSignPayloadResponse: S.Codec<VersionedHostSignPayloadR
       S.indexedTaggedUnion({ V1: [0, HostSignPayloadResponse] as const }),
   );
 
-/** Versioned wrapper for the legacy-account sign-payload error; reuses [`v01::HostSignPayloadError`]. */
+/** Versioned envelope for [`HostSignPayloadWithLegacyAccountError`]. */
 export type VersionedHostSignPayloadWithLegacyAccountError = {
   tag: "V1";
   value: HostSignPayloadError;
@@ -1660,7 +1660,7 @@ export const VersionedHostSignPayloadWithLegacyAccountError: S.Codec<VersionedHo
       S.indexedTaggedUnion({ V1: [0, HostSignPayloadError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostSignPayloadWithLegacyAccountRequest`]. */
+/** Versioned envelope for [`HostSignPayloadWithLegacyAccountRequest`]. */
 export type VersionedHostSignPayloadWithLegacyAccountRequest = {
   tag: "V1";
   value: HostSignPayloadWithLegacyAccountRequest;
@@ -1674,7 +1674,7 @@ export const VersionedHostSignPayloadWithLegacyAccountRequest: S.Codec<Versioned
       }),
   );
 
-/** Versioned wrapper for the legacy-account sign-payload response; reuses [`v01::HostSignPayloadResponse`]. */
+/** Versioned envelope for [`HostSignPayloadWithLegacyAccountResponse`]. */
 export type VersionedHostSignPayloadWithLegacyAccountResponse = {
   tag: "V1";
   value: HostSignPayloadResponse;
@@ -1686,7 +1686,7 @@ export const VersionedHostSignPayloadWithLegacyAccountResponse: S.Codec<Versione
       S.indexedTaggedUnion({ V1: [0, HostSignPayloadResponse] as const }),
   );
 
-/** Versioned wrapper for the sign-raw error; reuses [`v01::HostSignPayloadError`]. */
+/** Versioned envelope for [`HostSignRawError`]. */
 export type VersionedHostSignRawError = {
   tag: "V1";
   value: HostSignPayloadError;
@@ -1698,7 +1698,7 @@ export const VersionedHostSignRawError: S.Codec<VersionedHostSignRawError> =
       S.indexedTaggedUnion({ V1: [0, HostSignPayloadError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostSignRawRequest`]. */
+/** Versioned envelope for [`HostSignRawRequest`]. */
 export type VersionedHostSignRawRequest = {
   tag: "V1";
   value: HostSignRawRequest;
@@ -1710,7 +1710,7 @@ export const VersionedHostSignRawRequest: S.Codec<VersionedHostSignRawRequest> =
       S.indexedTaggedUnion({ V1: [0, HostSignRawRequest] as const }),
   );
 
-/** Versioned wrapper for the sign-raw response; reuses [`v01::HostSignPayloadResponse`]. */
+/** Versioned envelope for [`HostSignRawResponse`]. */
 export type VersionedHostSignRawResponse = {
   tag: "V1";
   value: HostSignPayloadResponse;
@@ -1722,7 +1722,7 @@ export const VersionedHostSignRawResponse: S.Codec<VersionedHostSignRawResponse>
       S.indexedTaggedUnion({ V1: [0, HostSignPayloadResponse] as const }),
   );
 
-/** Versioned wrapper for the legacy-account sign-raw error; reuses [`v01::HostSignPayloadError`]. */
+/** Versioned envelope for [`HostSignRawWithLegacyAccountError`]. */
 export type VersionedHostSignRawWithLegacyAccountError = {
   tag: "V1";
   value: HostSignPayloadError;
@@ -1734,7 +1734,7 @@ export const VersionedHostSignRawWithLegacyAccountError: S.Codec<VersionedHostSi
       S.indexedTaggedUnion({ V1: [0, HostSignPayloadError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostSignRawWithLegacyAccountRequest`]. */
+/** Versioned envelope for [`HostSignRawWithLegacyAccountRequest`]. */
 export type VersionedHostSignRawWithLegacyAccountRequest = {
   tag: "V1";
   value: HostSignRawWithLegacyAccountRequest;
@@ -1748,7 +1748,7 @@ export const VersionedHostSignRawWithLegacyAccountRequest: S.Codec<VersionedHost
       }),
   );
 
-/** Versioned wrapper for the legacy-account sign-raw response; reuses [`v01::HostSignPayloadResponse`]. */
+/** Versioned envelope for [`HostSignRawWithLegacyAccountResponse`]. */
 export type VersionedHostSignRawWithLegacyAccountResponse = {
   tag: "V1";
   value: HostSignPayloadResponse;
@@ -1760,7 +1760,7 @@ export const VersionedHostSignRawWithLegacyAccountResponse: S.Codec<VersionedHos
       S.indexedTaggedUnion({ V1: [0, HostSignPayloadResponse] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostThemeSubscribeItem`]. */
+/** Versioned envelope for [`HostThemeSubscribeItem`]. */
 export type VersionedHostThemeSubscribeItem = {
   tag: "V1";
   value: HostThemeSubscribeItem;
@@ -1900,7 +1900,7 @@ export const ProductAccountId: S.Codec<ProductAccountId> = S.lazy(
     }) as S.Codec<ProductAccountId>,
 );
 
-/** Versioned wrapper for [`v01::CustomRendererNode`] and older versions. */
+/** Versioned envelope for [`ProductChatCustomMessageRenderSubscribeItem`]. */
 export type VersionedProductChatCustomMessageRenderSubscribeItem = {
   tag: "V1";
   value: CustomRendererNode;
@@ -1912,7 +1912,7 @@ export const VersionedProductChatCustomMessageRenderSubscribeItem: S.Codec<Versi
       S.indexedTaggedUnion({ V1: [0, CustomRendererNode] as const }),
   );
 
-/** Versioned wrapper for [`v01::ProductChatCustomMessageRenderSubscribeRequest`] and older versions. */
+/** Versioned envelope for [`ProductChatCustomMessageRenderSubscribeRequest`]. */
 export type VersionedProductChatCustomMessageRenderSubscribeRequest = {
   tag: "V1";
   value: ProductChatCustomMessageRenderSubscribeRequest;
@@ -1941,7 +1941,7 @@ export const RawPayload: S.Codec<RawPayload> = S.lazy(
     }),
 );
 
-/** Versioned wrapper for [`v01::GenericError`] and older versions. */
+/** Versioned envelope for [`RemoteChainHeadBodyError`]. */
 export type VersionedRemoteChainHeadBodyError = {
   tag: "V1";
   value: GenericError;
@@ -1953,7 +1953,7 @@ export const VersionedRemoteChainHeadBodyError: S.Codec<VersionedRemoteChainHead
       S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainHeadBodyRequest`] and older versions. */
+/** Versioned envelope for [`RemoteChainHeadBodyRequest`]. */
 export type VersionedRemoteChainHeadBodyRequest = {
   tag: "V1";
   value: RemoteChainHeadBodyRequest;
@@ -1965,7 +1965,7 @@ export const VersionedRemoteChainHeadBodyRequest: S.Codec<VersionedRemoteChainHe
       S.indexedTaggedUnion({ V1: [0, RemoteChainHeadBodyRequest] as const }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainHeadBodyResponse`] and older versions. */
+/** Versioned envelope for [`RemoteChainHeadBodyResponse`]. */
 export type VersionedRemoteChainHeadBodyResponse = {
   tag: "V1";
   value: RemoteChainHeadBodyResponse;
@@ -1977,7 +1977,7 @@ export const VersionedRemoteChainHeadBodyResponse: S.Codec<VersionedRemoteChainH
       S.indexedTaggedUnion({ V1: [0, RemoteChainHeadBodyResponse] as const }),
   );
 
-/** Versioned wrapper for [`v01::GenericError`] and older versions. */
+/** Versioned envelope for [`RemoteChainHeadCallError`]. */
 export type VersionedRemoteChainHeadCallError = {
   tag: "V1";
   value: GenericError;
@@ -1989,7 +1989,7 @@ export const VersionedRemoteChainHeadCallError: S.Codec<VersionedRemoteChainHead
       S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainHeadCallRequest`] and older versions. */
+/** Versioned envelope for [`RemoteChainHeadCallRequest`]. */
 export type VersionedRemoteChainHeadCallRequest = {
   tag: "V1";
   value: RemoteChainHeadCallRequest;
@@ -2001,7 +2001,7 @@ export const VersionedRemoteChainHeadCallRequest: S.Codec<VersionedRemoteChainHe
       S.indexedTaggedUnion({ V1: [0, RemoteChainHeadCallRequest] as const }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainHeadCallResponse`] and older versions. */
+/** Versioned envelope for [`RemoteChainHeadCallResponse`]. */
 export type VersionedRemoteChainHeadCallResponse = {
   tag: "V1";
   value: RemoteChainHeadCallResponse;
@@ -2013,7 +2013,7 @@ export const VersionedRemoteChainHeadCallResponse: S.Codec<VersionedRemoteChainH
       S.indexedTaggedUnion({ V1: [0, RemoteChainHeadCallResponse] as const }),
   );
 
-/** Versioned wrapper for [`v01::GenericError`] and older versions. */
+/** Versioned envelope for [`RemoteChainHeadContinueError`]. */
 export type VersionedRemoteChainHeadContinueError = {
   tag: "V1";
   value: GenericError;
@@ -2025,7 +2025,7 @@ export const VersionedRemoteChainHeadContinueError: S.Codec<VersionedRemoteChain
       S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainHeadContinueRequest`] and older versions. */
+/** Versioned envelope for [`RemoteChainHeadContinueRequest`]. */
 export type VersionedRemoteChainHeadContinueRequest = {
   tag: "V1";
   value: RemoteChainHeadContinueRequest;
@@ -2039,7 +2039,7 @@ export const VersionedRemoteChainHeadContinueRequest: S.Codec<VersionedRemoteCha
       }),
   );
 
-/** Versioned wrapper for unit and older versions. */
+/** Versioned envelope for [`RemoteChainHeadContinueResponse`]. */
 export type VersionedRemoteChainHeadContinueResponse = {
   tag: "V1";
   value: undefined;
@@ -2051,7 +2051,7 @@ export const VersionedRemoteChainHeadContinueResponse: S.Codec<VersionedRemoteCh
       S.indexedTaggedUnion({ V1: [0, S._void] as const }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainHeadFollowItem`] and older versions. */
+/** Versioned envelope for [`RemoteChainHeadFollowItem`]. */
 export type VersionedRemoteChainHeadFollowItem = {
   tag: "V1";
   value: RemoteChainHeadFollowItem;
@@ -2063,7 +2063,7 @@ export const VersionedRemoteChainHeadFollowItem: S.Codec<VersionedRemoteChainHea
       S.indexedTaggedUnion({ V1: [0, RemoteChainHeadFollowItem] as const }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainHeadFollowRequest`] and older versions. */
+/** Versioned envelope for [`RemoteChainHeadFollowRequest`]. */
 export type VersionedRemoteChainHeadFollowRequest = {
   tag: "V1";
   value: RemoteChainHeadFollowRequest;
@@ -2075,7 +2075,7 @@ export const VersionedRemoteChainHeadFollowRequest: S.Codec<VersionedRemoteChain
       S.indexedTaggedUnion({ V1: [0, RemoteChainHeadFollowRequest] as const }),
   );
 
-/** Versioned wrapper for [`v01::GenericError`] and older versions. */
+/** Versioned envelope for [`RemoteChainHeadHeaderError`]. */
 export type VersionedRemoteChainHeadHeaderError = {
   tag: "V1";
   value: GenericError;
@@ -2087,7 +2087,7 @@ export const VersionedRemoteChainHeadHeaderError: S.Codec<VersionedRemoteChainHe
       S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainHeadHeaderRequest`] and older versions. */
+/** Versioned envelope for [`RemoteChainHeadHeaderRequest`]. */
 export type VersionedRemoteChainHeadHeaderRequest = {
   tag: "V1";
   value: RemoteChainHeadHeaderRequest;
@@ -2099,7 +2099,7 @@ export const VersionedRemoteChainHeadHeaderRequest: S.Codec<VersionedRemoteChain
       S.indexedTaggedUnion({ V1: [0, RemoteChainHeadHeaderRequest] as const }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainHeadHeaderResponse`] and older versions. */
+/** Versioned envelope for [`RemoteChainHeadHeaderResponse`]. */
 export type VersionedRemoteChainHeadHeaderResponse = {
   tag: "V1";
   value: RemoteChainHeadHeaderResponse;
@@ -2111,7 +2111,7 @@ export const VersionedRemoteChainHeadHeaderResponse: S.Codec<VersionedRemoteChai
       S.indexedTaggedUnion({ V1: [0, RemoteChainHeadHeaderResponse] as const }),
   );
 
-/** Versioned wrapper for [`v01::GenericError`] and older versions. */
+/** Versioned envelope for [`RemoteChainHeadStopOperationError`]. */
 export type VersionedRemoteChainHeadStopOperationError = {
   tag: "V1";
   value: GenericError;
@@ -2123,7 +2123,7 @@ export const VersionedRemoteChainHeadStopOperationError: S.Codec<VersionedRemote
       S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainHeadStopOperationRequest`] and older versions. */
+/** Versioned envelope for [`RemoteChainHeadStopOperationRequest`]. */
 export type VersionedRemoteChainHeadStopOperationRequest = {
   tag: "V1";
   value: RemoteChainHeadStopOperationRequest;
@@ -2137,7 +2137,7 @@ export const VersionedRemoteChainHeadStopOperationRequest: S.Codec<VersionedRemo
       }),
   );
 
-/** Versioned wrapper for unit and older versions. */
+/** Versioned envelope for [`RemoteChainHeadStopOperationResponse`]. */
 export type VersionedRemoteChainHeadStopOperationResponse = {
   tag: "V1";
   value: undefined;
@@ -2149,7 +2149,7 @@ export const VersionedRemoteChainHeadStopOperationResponse: S.Codec<VersionedRem
       S.indexedTaggedUnion({ V1: [0, S._void] as const }),
   );
 
-/** Versioned wrapper for [`v01::GenericError`] and older versions. */
+/** Versioned envelope for [`RemoteChainHeadStorageError`]. */
 export type VersionedRemoteChainHeadStorageError = {
   tag: "V1";
   value: GenericError;
@@ -2161,7 +2161,7 @@ export const VersionedRemoteChainHeadStorageError: S.Codec<VersionedRemoteChainH
       S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainHeadStorageRequest`] and older versions. */
+/** Versioned envelope for [`RemoteChainHeadStorageRequest`]. */
 export type VersionedRemoteChainHeadStorageRequest = {
   tag: "V1";
   value: RemoteChainHeadStorageRequest;
@@ -2173,7 +2173,7 @@ export const VersionedRemoteChainHeadStorageRequest: S.Codec<VersionedRemoteChai
       S.indexedTaggedUnion({ V1: [0, RemoteChainHeadStorageRequest] as const }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainHeadStorageResponse`] and older versions. */
+/** Versioned envelope for [`RemoteChainHeadStorageResponse`]. */
 export type VersionedRemoteChainHeadStorageResponse = {
   tag: "V1";
   value: RemoteChainHeadStorageResponse;
@@ -2187,7 +2187,7 @@ export const VersionedRemoteChainHeadStorageResponse: S.Codec<VersionedRemoteCha
       }),
   );
 
-/** Versioned wrapper for [`v01::GenericError`] and older versions. */
+/** Versioned envelope for [`RemoteChainHeadUnpinError`]. */
 export type VersionedRemoteChainHeadUnpinError = {
   tag: "V1";
   value: GenericError;
@@ -2199,7 +2199,7 @@ export const VersionedRemoteChainHeadUnpinError: S.Codec<VersionedRemoteChainHea
       S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainHeadUnpinRequest`] and older versions. */
+/** Versioned envelope for [`RemoteChainHeadUnpinRequest`]. */
 export type VersionedRemoteChainHeadUnpinRequest = {
   tag: "V1";
   value: RemoteChainHeadUnpinRequest;
@@ -2211,7 +2211,7 @@ export const VersionedRemoteChainHeadUnpinRequest: S.Codec<VersionedRemoteChainH
       S.indexedTaggedUnion({ V1: [0, RemoteChainHeadUnpinRequest] as const }),
   );
 
-/** Versioned wrapper for unit and older versions. */
+/** Versioned envelope for [`RemoteChainHeadUnpinResponse`]. */
 export type VersionedRemoteChainHeadUnpinResponse = {
   tag: "V1";
   value: undefined;
@@ -2223,7 +2223,7 @@ export const VersionedRemoteChainHeadUnpinResponse: S.Codec<VersionedRemoteChain
       S.indexedTaggedUnion({ V1: [0, S._void] as const }),
   );
 
-/** Versioned wrapper for [`v01::GenericError`] and older versions. */
+/** Versioned envelope for [`RemoteChainSpecChainNameError`]. */
 export type VersionedRemoteChainSpecChainNameError = {
   tag: "V1";
   value: GenericError;
@@ -2235,7 +2235,7 @@ export const VersionedRemoteChainSpecChainNameError: S.Codec<VersionedRemoteChai
       S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainSpecChainNameRequest`] and older versions. */
+/** Versioned envelope for [`RemoteChainSpecChainNameRequest`]. */
 export type VersionedRemoteChainSpecChainNameRequest = {
   tag: "V1";
   value: RemoteChainSpecChainNameRequest;
@@ -2249,7 +2249,7 @@ export const VersionedRemoteChainSpecChainNameRequest: S.Codec<VersionedRemoteCh
       }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainSpecChainNameResponse`] and older versions. */
+/** Versioned envelope for [`RemoteChainSpecChainNameResponse`]. */
 export type VersionedRemoteChainSpecChainNameResponse = {
   tag: "V1";
   value: RemoteChainSpecChainNameResponse;
@@ -2263,7 +2263,7 @@ export const VersionedRemoteChainSpecChainNameResponse: S.Codec<VersionedRemoteC
       }),
   );
 
-/** Versioned wrapper for [`v01::GenericError`] and older versions. */
+/** Versioned envelope for [`RemoteChainSpecGenesisHashError`]. */
 export type VersionedRemoteChainSpecGenesisHashError = {
   tag: "V1";
   value: GenericError;
@@ -2275,7 +2275,7 @@ export const VersionedRemoteChainSpecGenesisHashError: S.Codec<VersionedRemoteCh
       S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainSpecGenesisHashRequest`] and older versions. */
+/** Versioned envelope for [`RemoteChainSpecGenesisHashRequest`]. */
 export type VersionedRemoteChainSpecGenesisHashRequest = {
   tag: "V1";
   value: RemoteChainSpecGenesisHashRequest;
@@ -2289,7 +2289,7 @@ export const VersionedRemoteChainSpecGenesisHashRequest: S.Codec<VersionedRemote
       }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainSpecGenesisHashResponse`] and older versions. */
+/** Versioned envelope for [`RemoteChainSpecGenesisHashResponse`]. */
 export type VersionedRemoteChainSpecGenesisHashResponse = {
   tag: "V1";
   value: RemoteChainSpecGenesisHashResponse;
@@ -2303,7 +2303,7 @@ export const VersionedRemoteChainSpecGenesisHashResponse: S.Codec<VersionedRemot
       }),
   );
 
-/** Versioned wrapper for [`v01::GenericError`] and older versions. */
+/** Versioned envelope for [`RemoteChainSpecPropertiesError`]. */
 export type VersionedRemoteChainSpecPropertiesError = {
   tag: "V1";
   value: GenericError;
@@ -2315,7 +2315,7 @@ export const VersionedRemoteChainSpecPropertiesError: S.Codec<VersionedRemoteCha
       S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainSpecPropertiesRequest`] and older versions. */
+/** Versioned envelope for [`RemoteChainSpecPropertiesRequest`]. */
 export type VersionedRemoteChainSpecPropertiesRequest = {
   tag: "V1";
   value: RemoteChainSpecPropertiesRequest;
@@ -2329,7 +2329,7 @@ export const VersionedRemoteChainSpecPropertiesRequest: S.Codec<VersionedRemoteC
       }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainSpecPropertiesResponse`] and older versions. */
+/** Versioned envelope for [`RemoteChainSpecPropertiesResponse`]. */
 export type VersionedRemoteChainSpecPropertiesResponse = {
   tag: "V1";
   value: RemoteChainSpecPropertiesResponse;
@@ -2343,7 +2343,7 @@ export const VersionedRemoteChainSpecPropertiesResponse: S.Codec<VersionedRemote
       }),
   );
 
-/** Versioned wrapper for [`v01::GenericError`] and older versions. */
+/** Versioned envelope for [`RemoteChainTransactionBroadcastError`]. */
 export type VersionedRemoteChainTransactionBroadcastError = {
   tag: "V1";
   value: GenericError;
@@ -2355,7 +2355,7 @@ export const VersionedRemoteChainTransactionBroadcastError: S.Codec<VersionedRem
       S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainTransactionBroadcastRequest`] and older versions. */
+/** Versioned envelope for [`RemoteChainTransactionBroadcastRequest`]. */
 export type VersionedRemoteChainTransactionBroadcastRequest = {
   tag: "V1";
   value: RemoteChainTransactionBroadcastRequest;
@@ -2369,7 +2369,7 @@ export const VersionedRemoteChainTransactionBroadcastRequest: S.Codec<VersionedR
       }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainTransactionBroadcastResponse`] and older versions. */
+/** Versioned envelope for [`RemoteChainTransactionBroadcastResponse`]. */
 export type VersionedRemoteChainTransactionBroadcastResponse = {
   tag: "V1";
   value: RemoteChainTransactionBroadcastResponse;
@@ -2383,7 +2383,7 @@ export const VersionedRemoteChainTransactionBroadcastResponse: S.Codec<Versioned
       }),
   );
 
-/** Versioned wrapper for [`v01::GenericError`] and older versions. */
+/** Versioned envelope for [`RemoteChainTransactionStopError`]. */
 export type VersionedRemoteChainTransactionStopError = {
   tag: "V1";
   value: GenericError;
@@ -2395,7 +2395,7 @@ export const VersionedRemoteChainTransactionStopError: S.Codec<VersionedRemoteCh
       S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
-/** Versioned wrapper for [`v01::RemoteChainTransactionStopRequest`] and older versions. */
+/** Versioned envelope for [`RemoteChainTransactionStopRequest`]. */
 export type VersionedRemoteChainTransactionStopRequest = {
   tag: "V1";
   value: RemoteChainTransactionStopRequest;
@@ -2409,7 +2409,7 @@ export const VersionedRemoteChainTransactionStopRequest: S.Codec<VersionedRemote
       }),
   );
 
-/** Versioned wrapper for unit and older versions. */
+/** Versioned envelope for [`RemoteChainTransactionStopResponse`]. */
 export type VersionedRemoteChainTransactionStopResponse = {
   tag: "V1";
   value: undefined;
@@ -2465,7 +2465,7 @@ export const RemotePermission: S.Codec<RemotePermission> = S.lazy(
     }),
 );
 
-/** Versioned wrapper for [`v01::GenericError`]. */
+/** Versioned envelope for [`RemotePermissionError`]. */
 export type VersionedRemotePermissionError = { tag: "V1"; value: GenericError };
 
 export const VersionedRemotePermissionError: S.Codec<VersionedRemotePermissionError> =
@@ -2474,7 +2474,7 @@ export const VersionedRemotePermissionError: S.Codec<VersionedRemotePermissionEr
       S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
-/** Versioned wrapper for [`v01::RemotePermissionRequest`]. */
+/** Versioned envelope for [`RemotePermissionRequest`]. */
 export type VersionedRemotePermissionRequest = {
   tag: "V1";
   value: RemotePermissionRequest;
@@ -2486,7 +2486,7 @@ export const VersionedRemotePermissionRequest: S.Codec<VersionedRemotePermission
       S.indexedTaggedUnion({ V1: [0, RemotePermissionRequest] as const }),
   );
 
-/** Versioned wrapper for [`v01::RemotePermissionResponse`]. */
+/** Versioned envelope for [`RemotePermissionResponse`]. */
 export type VersionedRemotePermissionResponse = {
   tag: "V1";
   value: RemotePermissionResponse;
@@ -2498,7 +2498,7 @@ export const VersionedRemotePermissionResponse: S.Codec<VersionedRemotePermissio
       S.indexedTaggedUnion({ V1: [0, RemotePermissionResponse] as const }),
   );
 
-/** Versioned wrapper for [`v01::RemotePreimageLookupSubscribeItem`] and older versions. */
+/** Versioned envelope for [`RemotePreimageLookupSubscribeItem`]. */
 export type VersionedRemotePreimageLookupSubscribeItem = {
   tag: "V1";
   value: RemotePreimageLookupSubscribeItem;
@@ -2512,7 +2512,7 @@ export const VersionedRemotePreimageLookupSubscribeItem: S.Codec<VersionedRemote
       }),
   );
 
-/** Versioned wrapper for [`v01::RemotePreimageLookupSubscribeRequest`] and older versions. */
+/** Versioned envelope for [`RemotePreimageLookupSubscribeRequest`]. */
 export type VersionedRemotePreimageLookupSubscribeRequest = {
   tag: "V1";
   value: RemotePreimageLookupSubscribeRequest;
@@ -2526,7 +2526,7 @@ export const VersionedRemotePreimageLookupSubscribeRequest: S.Codec<VersionedRem
       }),
   );
 
-/** Versioned wrapper for [`v01::PreimageSubmitError`]. */
+/** Versioned envelope for [`RemotePreimageSubmitError`]. */
 export type VersionedRemotePreimageSubmitError = {
   tag: "V1";
   value: PreimageSubmitError;
@@ -2538,7 +2538,7 @@ export const VersionedRemotePreimageSubmitError: S.Codec<VersionedRemotePreimage
       S.indexedTaggedUnion({ V1: [0, PreimageSubmitError] as const }),
   );
 
-/** Versioned wrapper for the preimage submit request (raw bytes). */
+/** Versioned envelope for [`RemotePreimageSubmitRequest`]. */
 export type VersionedRemotePreimageSubmitRequest = {
   tag: "V1";
   value: HexString;
@@ -2550,7 +2550,7 @@ export const VersionedRemotePreimageSubmitRequest: S.Codec<VersionedRemotePreima
       S.indexedTaggedUnion({ V1: [0, S.Hex()] as const }),
   );
 
-/** Versioned wrapper for the preimage submit response (preimage key). */
+/** Versioned envelope for [`RemotePreimageSubmitResponse`]. */
 export type VersionedRemotePreimageSubmitResponse = {
   tag: "V1";
   value: HexString;
@@ -2562,7 +2562,7 @@ export const VersionedRemotePreimageSubmitResponse: S.Codec<VersionedRemotePreim
       S.indexedTaggedUnion({ V1: [0, S.Hex()] as const }),
   );
 
-/** Versioned wrapper for the authorized proof error; reuses [`v01::RemoteStatementStoreCreateProofError`]. */
+/** Versioned envelope for [`RemoteStatementStoreCreateProofAuthorizedError`]. */
 export type VersionedRemoteStatementStoreCreateProofAuthorizedError = {
   tag: "V1";
   value: RemoteStatementStoreCreateProofError;
@@ -2576,7 +2576,7 @@ export const VersionedRemoteStatementStoreCreateProofAuthorizedError: S.Codec<Ve
       }),
   );
 
-/** Versioned wrapper for the authorized proof request; uses [`v01::Statement`] directly. */
+/** Versioned envelope for [`RemoteStatementStoreCreateProofAuthorizedRequest`]. */
 export type VersionedRemoteStatementStoreCreateProofAuthorizedRequest = {
   tag: "V1";
   value: Statement;
@@ -2588,7 +2588,7 @@ export const VersionedRemoteStatementStoreCreateProofAuthorizedRequest: S.Codec<
       S.indexedTaggedUnion({ V1: [0, Statement] as const }),
   );
 
-/** Versioned wrapper for the authorized proof response; reuses [`v01::RemoteStatementStoreCreateProofResponse`]. */
+/** Versioned envelope for [`RemoteStatementStoreCreateProofAuthorizedResponse`]. */
 export type VersionedRemoteStatementStoreCreateProofAuthorizedResponse = {
   tag: "V1";
   value: RemoteStatementStoreCreateProofResponse;
@@ -2602,7 +2602,7 @@ export const VersionedRemoteStatementStoreCreateProofAuthorizedResponse: S.Codec
       }),
   );
 
-/** Versioned wrapper for [`v01::RemoteStatementStoreCreateProofError`]. */
+/** Versioned envelope for [`RemoteStatementStoreCreateProofError`]. */
 export type VersionedRemoteStatementStoreCreateProofError = {
   tag: "V1";
   value: RemoteStatementStoreCreateProofError;
@@ -2616,7 +2616,7 @@ export const VersionedRemoteStatementStoreCreateProofError: S.Codec<VersionedRem
       }),
   );
 
-/** Versioned wrapper for [`v01::RemoteStatementStoreCreateProofRequest`]. */
+/** Versioned envelope for [`RemoteStatementStoreCreateProofRequest`]. */
 export type VersionedRemoteStatementStoreCreateProofRequest = {
   tag: "V1";
   value: RemoteStatementStoreCreateProofRequest;
@@ -2630,7 +2630,7 @@ export const VersionedRemoteStatementStoreCreateProofRequest: S.Codec<VersionedR
       }),
   );
 
-/** Versioned wrapper for [`v01::RemoteStatementStoreCreateProofResponse`]. */
+/** Versioned envelope for [`RemoteStatementStoreCreateProofResponse`]. */
 export type VersionedRemoteStatementStoreCreateProofResponse = {
   tag: "V1";
   value: RemoteStatementStoreCreateProofResponse;
@@ -2644,7 +2644,7 @@ export const VersionedRemoteStatementStoreCreateProofResponse: S.Codec<Versioned
       }),
   );
 
-/** Versioned wrapper for [`v01::GenericError`]. Submit has no success payload. */
+/** Versioned envelope for [`RemoteStatementStoreSubmitError`]. */
 export type VersionedRemoteStatementStoreSubmitError = {
   tag: "V1";
   value: GenericError;
@@ -2656,11 +2656,7 @@ export const VersionedRemoteStatementStoreSubmitError: S.Codec<VersionedRemoteSt
       S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
-/**
- * Versioned wrapper for [`v01::SignedStatement`]. The submit request is the
- * signed statement itself; the host SCALE-decodes it directly without a
- * wrapping field.
- */
+/** Versioned envelope for [`RemoteStatementStoreSubmitRequest`]. */
 export type VersionedRemoteStatementStoreSubmitRequest = {
   tag: "V1";
   value: SignedStatement;
@@ -2672,7 +2668,7 @@ export const VersionedRemoteStatementStoreSubmitRequest: S.Codec<VersionedRemote
       S.indexedTaggedUnion({ V1: [0, SignedStatement] as const }),
   );
 
-/** Versioned wrapper for [`v01::RemoteStatementStoreSubscribeItem`]. */
+/** Versioned envelope for [`RemoteStatementStoreSubscribeItem`]. */
 export type VersionedRemoteStatementStoreSubscribeItem = {
   tag: "V1";
   value: RemoteStatementStoreSubscribeItem;
@@ -2686,7 +2682,7 @@ export const VersionedRemoteStatementStoreSubscribeItem: S.Codec<VersionedRemote
       }),
   );
 
-/** Versioned wrapper for [`v01::RemoteStatementStoreSubscribeRequest`]. */
+/** Versioned envelope for [`RemoteStatementStoreSubscribeRequest`]. */
 export type VersionedRemoteStatementStoreSubscribeRequest = {
   tag: "V1";
   value: RemoteStatementStoreSubscribeRequest;
@@ -4952,9 +4948,12 @@ export const RemoteStatementStoreSubscribeRequest: S.Codec<RemoteStatementStoreS
       S.Enum({ MatchAll: S.Vector(Topic), MatchAny: S.Vector(Topic) }),
   );
 
-/** Protocol version identifier. */
+/**
+ * Protocol version identifier. Each variant matches a `V<N>(..)` arm of the
+ * versioned wrapper enums.
+ */
 export type Version =
-  /** The single protocol version. */
+  /** Initial protocol version. */
   { tag: "V1"; value: undefined };
 
 export const Version: S.Codec<Version> = S.lazy(
