@@ -45,7 +45,12 @@ fn generate_playground_services_code(api: &ApiDefinition, target_version: u32) -
         }
 
         writeln!(out, "  {{").unwrap();
-        writeln!(out, "    name: {},", ts_string_literal(&trait_def.name)).unwrap();
+        writeln!(
+            out,
+            "    name: {},",
+            ts_string_literal(&service_display_name(trait_def))
+        )
+        .unwrap();
         writeln!(out, "    methods: [").unwrap();
 
         for method in methods {

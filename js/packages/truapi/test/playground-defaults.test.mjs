@@ -6,17 +6,20 @@ import { services } from "../src/playground/services.ts";
 const ENCODED = Symbol("payload encoded");
 
 const serviceFields = {
-  "TrUAPI Calls": "trUApiCalls",
-  Permissions: "permissions",
-  "Local Storage": "localStorage",
   "Account Management": "accountManagement",
-  Signing: "signing",
-  Chat: "chat",
-  "Statement Store": "statementStore",
-  Preimage: "preimage",
   "Chain Interaction": "chainInteraction",
-  Payment: "payment",
+  Chat: "chat",
   "Entropy Derivation": "entropyDerivation",
+  "Host Theme": "hostTheme",
+  "JSON-RPC": "jsonRpc",
+  "Local Storage": "localStorage",
+  Payment: "payment",
+  Permissions: "permissions",
+  Preimage: "preimage",
+  "Resource Allocation": "resourceAllocation",
+  Signing: "signing",
+  "Statement Store": "statementStore",
+  "TrUAPI Calls": "trUApiCalls",
 };
 
 function methodField(methodName) {

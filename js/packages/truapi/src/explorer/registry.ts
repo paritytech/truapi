@@ -9,34 +9,6 @@ export const versions: ExplorerVersion[] = [
     status: "stable",
     groups: [
       {
-        id: "truapi-calls",
-        name: "TrUAPI Calls",
-        description:
-          "General-purpose TrUAPI methods for feature detection, navigation, and\nnotifications.\n\n# Wire id reservations\n\nThe discriminants below are listed in [`super::RESERVED_WIRE_IDS`] so\ncodegen rejects any `#[wire(...)]` annotation that collides with them.\nSlots are held back for upstream `triangle-js-sdks` methods that TrUAPI\ndoes not implement, but whose ids must remain free to keep our wire-table\npositionally aligned with the canonical host `MessagePayload` enum. If we\never need one, annotate the trait method with the matching id and remove\nit from `RESERVED_WIRE_IDS`.",
-        methods: [
-          "host_handshake",
-          "host_feature_supported",
-          "host_push_notification",
-          "host_navigate_to",
-        ],
-      },
-      {
-        id: "permissions",
-        name: "Permissions",
-        description: "Device and remote permission prompts.",
-        methods: ["host_device_permission", "remote_permission"],
-      },
-      {
-        id: "local-storage",
-        name: "Local Storage",
-        description: "Local key/value storage scoped to the calling product.",
-        methods: [
-          "host_local_storage_read",
-          "host_local_storage_write",
-          "host_local_storage_clear",
-        ],
-      },
-      {
         id: "account-management",
         name: "Account Management",
         description:
@@ -50,53 +22,6 @@ export const versions: ExplorerVersion[] = [
           "host_get_user_id",
           "host_request_login",
         ],
-      },
-      {
-        id: "signing",
-        name: "Signing",
-        description:
-          "Signing and transaction construction.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
-        methods: [
-          "host_create_transaction",
-          "host_create_transaction_with_legacy_account",
-          "host_sign_raw_with_legacy_account",
-          "host_sign_payload_with_legacy_account",
-          "host_sign_raw",
-          "host_sign_payload",
-        ],
-      },
-      {
-        id: "chat",
-        name: "Chat",
-        description:
-          "Chat room, bot, and message APIs.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
-        methods: [
-          "host_chat_create_room",
-          "host_chat_register_bot",
-          "host_chat_list_subscribe",
-          "host_chat_post_message",
-          "host_chat_action_subscribe",
-          "product_chat_custom_message_render_subscribe",
-        ],
-      },
-      {
-        id: "statement-store",
-        name: "Statement Store",
-        description:
-          "Statement store operations.\n\nDefault request methods return [`CallError::HostFailure`] with an\n`unavailable` reason. Hosts override only the methods they actually support.",
-        methods: [
-          "remote_statement_store_subscribe",
-          "remote_statement_store_create_proof",
-          "remote_statement_store_create_proof_authorized",
-          "remote_statement_store_submit",
-        ],
-      },
-      {
-        id: "preimage",
-        name: "Preimage",
-        description:
-          "Preimage lookup and submission.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
-        methods: ["remote_preimage_lookup_subscribe", "remote_preimage_submit"],
       },
       {
         id: "chain-interaction",
@@ -120,6 +45,54 @@ export const versions: ExplorerVersion[] = [
         ],
       },
       {
+        id: "chat",
+        name: "Chat",
+        description:
+          "Chat room, bot, and message APIs.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
+        methods: [
+          "host_chat_create_room",
+          "host_chat_register_bot",
+          "host_chat_list_subscribe",
+          "host_chat_post_message",
+          "host_chat_action_subscribe",
+          "product_chat_custom_message_render_subscribe",
+        ],
+      },
+      {
+        id: "entropy-derivation",
+        name: "Entropy Derivation",
+        description:
+          "Deterministic entropy derivation.\n\nThe default body returns [`CallError::HostFailure`] with an `unavailable`\nreason; hosts override only if they can derive entropy.",
+        methods: ["host_derive_entropy"],
+      },
+      {
+        id: "host-theme",
+        name: "Host Theme",
+        description:
+          "Host UI theme subscription.\n\nThe default body returns an empty stream; hosts override to push theme\nupdates.",
+        methods: ["host_theme_subscribe"],
+      },
+      {
+        id: "json-rpc",
+        name: "JSON-RPC",
+        description:
+          "Raw JSON-RPC passthrough to a chain node.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
+        methods: [
+          "host_jsonrpc_message_send",
+          "host_jsonrpc_message_subscribe",
+        ],
+      },
+      {
+        id: "local-storage",
+        name: "Local Storage",
+        description: "Local key/value storage scoped to the calling product.",
+        methods: [
+          "host_local_storage_read",
+          "host_local_storage_write",
+          "host_local_storage_clear",
+        ],
+      },
+      {
         id: "payment",
         name: "Payment",
         description:
@@ -132,18 +105,69 @@ export const versions: ExplorerVersion[] = [
         ],
       },
       {
-        id: "entropy-derivation",
-        name: "Entropy Derivation",
+        id: "permissions",
+        name: "Permissions",
+        description: "Device and remote permission prompts.",
+        methods: ["host_device_permission", "remote_permission"],
+      },
+      {
+        id: "preimage",
+        name: "Preimage",
         description:
-          "Deterministic entropy derivation.\n\nThe default body returns [`CallError::HostFailure`] with an `unavailable`\nreason; hosts override only if they can derive entropy.",
-        methods: ["host_derive_entropy"],
+          "Preimage lookup and submission.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
+        methods: ["remote_preimage_lookup_subscribe", "remote_preimage_submit"],
+      },
+      {
+        id: "resource-allocation",
+        name: "Resource Allocation",
+        description:
+          "Resource pre-allocation (allowance management).\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
+        methods: ["host_request_resource_allocation"],
+      },
+      {
+        id: "signing",
+        name: "Signing",
+        description:
+          "Signing and transaction construction.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
+        methods: [
+          "host_create_transaction",
+          "host_create_transaction_with_legacy_account",
+          "host_sign_raw_with_legacy_account",
+          "host_sign_payload_with_legacy_account",
+          "host_sign_raw",
+          "host_sign_payload",
+        ],
+      },
+      {
+        id: "statement-store",
+        name: "Statement Store",
+        description:
+          "Statement store operations.\n\nDefault request methods return [`CallError::HostFailure`] with an\n`unavailable` reason. Hosts override only the methods they actually support.",
+        methods: [
+          "remote_statement_store_subscribe",
+          "remote_statement_store_create_proof",
+          "remote_statement_store_create_proof_authorized",
+          "remote_statement_store_submit",
+        ],
+      },
+      {
+        id: "tr-uapi-calls",
+        name: "TrUAPI Calls",
+        description:
+          "General-purpose TrUAPI methods for feature detection, navigation, and\nnotifications.\n\n\n# Wire id reservations\n\nThe discriminants below are listed in [`super::RESERVED_WIRE_IDS`] so\ncodegen rejects any `#[wire(...)]` annotation that collides with them.\nSlots are held back for upstream `triangle-js-sdks` methods that TrUAPI\ndoes not implement, but whose ids must remain free to keep our wire-table\npositionally aligned with the canonical host `MessagePayload` enum. If we\never need one, annotate the trait method with the matching id and remove\nit from `RESERVED_WIRE_IDS`.",
+        methods: [
+          "host_handshake",
+          "host_feature_supported",
+          "host_push_notification",
+          "host_navigate_to",
+        ],
       },
     ],
     methods: [
       {
         id: "host_handshake",
         name: "host_handshake",
-        groupId: "truapi-calls",
+        groupId: "tr-uapi-calls",
         groupName: "TrUAPI Calls",
         wireId: 0,
         pattern: "unary",
@@ -157,7 +181,7 @@ export const versions: ExplorerVersion[] = [
       {
         id: "host_feature_supported",
         name: "host_feature_supported",
-        groupId: "truapi-calls",
+        groupId: "tr-uapi-calls",
         groupName: "TrUAPI Calls",
         wireId: 2,
         pattern: "unary",
@@ -171,7 +195,7 @@ export const versions: ExplorerVersion[] = [
       {
         id: "host_push_notification",
         name: "host_push_notification",
-        groupId: "truapi-calls",
+        groupId: "tr-uapi-calls",
         groupName: "TrUAPI Calls",
         wireId: 4,
         pattern: "unary",
@@ -185,7 +209,7 @@ export const versions: ExplorerVersion[] = [
       {
         id: "host_navigate_to",
         name: "host_navigate_to",
-        groupId: "truapi-calls",
+        groupId: "tr-uapi-calls",
         groupName: "TrUAPI Calls",
         wireId: 6,
         pattern: "unary",
@@ -545,6 +569,34 @@ export const versions: ExplorerVersion[] = [
           'import {\n  type Client,\n  type HexString,\n} from "@parity/truapi";\n\nexport async function submitPreimage(\n  truapi: Client,\n): Promise<HexString> {\n  const result = await truapi.preimage.preimageSubmit("0xdeadbeef");\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
+        id: "host_jsonrpc_message_send",
+        name: "host_jsonrpc_message_send",
+        groupId: "json-rpc",
+        groupName: "JSON-RPC",
+        wireId: 70,
+        pattern: "unary",
+        request: "HostJsonrpcMessageSendRequest",
+        response: "undefined",
+        errorType: "GenericError",
+        description:
+          "Send a JSON-RPC message to the chain identified by genesis hash.",
+        usageExample:
+          'import { type Client } from "@parity/truapi";\n\nexport async function sendJsonRpc(truapi: Client): Promise<void> {\n  const result = await truapi.jsonRpc.jsonrpcMessageSend({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    message: "{\\"jsonrpc\\":\\"2.0\\",\\"id\\":1,\\"method\\":\\"system_name\\",\\"params\\":[]}",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+      },
+      {
+        id: "host_jsonrpc_message_subscribe",
+        name: "host_jsonrpc_message_subscribe",
+        groupId: "json-rpc",
+        groupName: "JSON-RPC",
+        wireId: 72,
+        pattern: "subscription",
+        request: "HostJsonrpcMessageSubscribeRequest",
+        response: "HostJsonrpcMessageSubscribeItem",
+        description: "Subscribe to inbound JSON-RPC messages for a chain.",
+        usageExample:
+          'import {\n  type Client,\n  type Subscription,\n  type HostJsonrpcMessageSubscribeItem,\n} from "@parity/truapi";\n\nexport function subscribeJsonRpc(truapi: Client): Subscription {\n  return truapi.jsonRpc\n    .jsonrpcMessageSubscribe({\n      request: {\n        genesisHash:\n          "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      },\n    })\n    .subscribe({\n      next: (item: HostJsonrpcMessageSubscribeItem) =>\n        console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
+      },
+      {
         id: "remote_chain_head_follow_subscribe",
         name: "remote_chain_head_follow_subscribe",
         groupId: "chain-interaction",
@@ -726,6 +778,19 @@ export const versions: ExplorerVersion[] = [
           'import { type Client } from "@parity/truapi";\n\nexport async function stopTransactionBroadcast(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainTransactionStop({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
+        id: "host_theme_subscribe",
+        name: "host_theme_subscribe",
+        groupId: "host-theme",
+        groupName: "Host Theme",
+        wireId: 104,
+        pattern: "subscription",
+        request: "undefined",
+        response: "HostThemeSubscribeItem",
+        description: "Subscribe to host theme changes (light/dark).",
+        usageExample:
+          'import {\n  type Client,\n  type Subscription,\n  type HostThemeSubscribeItem,\n} from "@parity/truapi";\n\nexport function watchTheme(truapi: Client): Subscription {\n  return truapi.hostTheme.themeSubscribe().subscribe({\n    next: (theme: HostThemeSubscribeItem) => console.log(theme),\n    error: (error: Error) => console.error(error),\n    complete: () => console.log("completed"),\n  });\n}',
+      },
+      {
         id: "host_derive_entropy",
         name: "host_derive_entropy",
         groupId: "entropy-derivation",
@@ -855,6 +920,21 @@ export const versions: ExplorerVersion[] = [
           'import {\n  type Client,\n  type HostPaymentStatusSubscribeError,\n  type HostPaymentStatusSubscribeItem,\n  type Subscription,\n  type SubscriptionError,\n} from "@parity/truapi";\n\nexport function watchPaymentStatus(truapi: Client): Subscription {\n  return truapi.payment\n    .paymentStatusSubscribe({\n      request: { paymentId: "payment-id" },\n    })\n    .subscribe({\n      next: (status: HostPaymentStatusSubscribeItem) =>\n        console.log(status),\n      error: (error: SubscriptionError<HostPaymentStatusSubscribeError>) =>\n        console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
+        id: "host_request_resource_allocation",
+        name: "host_request_resource_allocation",
+        groupId: "resource-allocation",
+        groupName: "Resource Allocation",
+        wireId: 130,
+        pattern: "unary",
+        request: "HostRequestResourceAllocationRequest",
+        response: "HostRequestResourceAllocationResponse",
+        errorType: "ResourceAllocationError",
+        description:
+          "Request the host to pre-allocate one or more resources (statement store\nallowance, bulletin allowance, smart contract allowance, auto-signing).",
+        usageExample:
+          'import {\n  type Client,\n  type HostRequestResourceAllocationResponse,\n} from "@parity/truapi";\n\nexport async function requestAllocation(\n  truapi: Client,\n): Promise<HostRequestResourceAllocationResponse> {\n  const result =\n    await truapi.resourceAllocation.requestResourceAllocation({\n      resources: [\n        { tag: "StatementStoreAllowance", value: null },\n        { tag: "AutoSigning", value: null },\n      ],\n    });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+      },
+      {
         id: "remote_statement_store_create_proof_authorized",
         name: "remote_statement_store_create_proof_authorized",
         groupId: "statement-store",
@@ -915,6 +995,64 @@ export const versions: ExplorerVersion[] = [
             name: "payload",
             type: "HexString",
             description: "Optional additional data.",
+          },
+        ],
+      },
+      {
+        id: "AllocatableResource",
+        name: "AllocatableResource",
+        category: "enum",
+        definition:
+          'type AllocatableResource = { tag: "StatementStoreAllowance"; value: undefined } | { tag: "BulletinAllowance"; value: undefined } | { tag: "SmartContractAllowance"; value: number } | { tag: "AutoSigning"; value: undefined }',
+        description:
+          "A resource the product can request the host to pre-allocate.",
+        source: "shared",
+        variants: [
+          {
+            name: "StatementStoreAllowance",
+            type: "undefined",
+            description: "Statement store allowance.",
+          },
+          {
+            name: "BulletinAllowance",
+            type: "undefined",
+            description: "Bulletin board allowance.",
+          },
+          {
+            name: "SmartContractAllowance",
+            type: "number",
+            description: "Smart contract allowance with a derivation index.",
+          },
+          {
+            name: "AutoSigning",
+            type: "undefined",
+            description: "Auto-signing capability.",
+          },
+        ],
+      },
+      {
+        id: "AllocationOutcome",
+        name: "AllocationOutcome",
+        category: "enum",
+        definition:
+          'type AllocationOutcome = "Allocated" | "Rejected" | "NotAvailable"',
+        description: "Outcome of a resource allocation request.",
+        source: "shared",
+        variants: [
+          {
+            name: "Allocated",
+            type: "undefined",
+            description: "Resource was allocated.",
+          },
+          {
+            name: "Rejected",
+            type: "undefined",
+            description: "User or host rejected the allocation.",
+          },
+          {
+            name: "NotAvailable",
+            type: "undefined",
+            description: "Resource type is not available on this host.",
           },
         ],
       },
@@ -2480,6 +2618,61 @@ export const versions: ExplorerVersion[] = [
         ],
       },
       {
+        id: "HostJsonrpcMessageSendRequest",
+        name: "HostJsonrpcMessageSendRequest",
+        category: "struct",
+        definition:
+          "interface HostJsonrpcMessageSendRequest { genesisHash: HexString; message: string }",
+        description:
+          "Request to send a JSON-RPC message to a chain identified by its genesis hash.",
+        source: "v0.1",
+        fields: [
+          {
+            name: "genesisHash",
+            type: "HexString",
+            description: "Chain genesis hash.",
+          },
+          {
+            name: "message",
+            type: "string",
+            description: "JSON-RPC message body.",
+          },
+        ],
+      },
+      {
+        id: "HostJsonrpcMessageSubscribeItem",
+        name: "HostJsonrpcMessageSubscribeItem",
+        category: "struct",
+        definition:
+          "interface HostJsonrpcMessageSubscribeItem { message: string }",
+        description: "An inbound JSON-RPC message from the host.",
+        source: "v0.1",
+        fields: [
+          {
+            name: "message",
+            type: "string",
+            description: "JSON-RPC message body.",
+          },
+        ],
+      },
+      {
+        id: "HostJsonrpcMessageSubscribeRequest",
+        name: "HostJsonrpcMessageSubscribeRequest",
+        category: "struct",
+        definition:
+          "interface HostJsonrpcMessageSubscribeRequest { genesisHash: HexString }",
+        description:
+          "Request to subscribe to inbound JSON-RPC messages for a chain.",
+        source: "v0.1",
+        fields: [
+          {
+            name: "genesisHash",
+            type: "HexString",
+            description: "Chain genesis hash.",
+          },
+        ],
+      },
+      {
         id: "HostLocalStorageClearRequest",
         name: "HostLocalStorageClearRequest",
         category: "struct",
@@ -2901,6 +3094,40 @@ export const versions: ExplorerVersion[] = [
         ],
       },
       {
+        id: "HostRequestResourceAllocationRequest",
+        name: "HostRequestResourceAllocationRequest",
+        category: "struct",
+        definition:
+          "interface HostRequestResourceAllocationRequest { resources: Array<AllocatableResource> }",
+        description: "Request to allocate one or more resources.",
+        source: "v0.1",
+        fields: [
+          {
+            name: "resources",
+            type: "Array<AllocatableResource>",
+            description: "Resources to allocate.",
+          },
+        ],
+      },
+      {
+        id: "HostRequestResourceAllocationResponse",
+        name: "HostRequestResourceAllocationResponse",
+        category: "struct",
+        definition:
+          "interface HostRequestResourceAllocationResponse { outcomes: Array<AllocationOutcome> }",
+        description:
+          "Response containing the outcome for each requested resource.",
+        source: "v0.1",
+        fields: [
+          {
+            name: "outcomes",
+            type: "Array<AllocationOutcome>",
+            description:
+              "Per-resource allocation outcomes, in the same order as the request.",
+          },
+        ],
+      },
+      {
         id: "HostSignPayloadError",
         name: "HostSignPayloadError",
         category: "enum",
@@ -3107,6 +3334,21 @@ export const versions: ExplorerVersion[] = [
             name: "payload",
             type: "RawPayload",
             description: "The data to sign.",
+          },
+        ],
+      },
+      {
+        id: "HostThemeSubscribeItem",
+        name: "HostThemeSubscribeItem",
+        category: "struct",
+        definition: "interface HostThemeSubscribeItem { theme: Theme }",
+        description: "Item emitted by the theme subscription.",
+        source: "v0.1",
+        fields: [
+          {
+            name: "theme",
+            type: "Theme",
+            description: "Current theme.",
           },
         ],
       },
@@ -4062,6 +4304,22 @@ export const versions: ExplorerVersion[] = [
         ],
       },
       {
+        id: "ResourceAllocationError",
+        name: "ResourceAllocationError",
+        category: "enum",
+        definition:
+          'type ResourceAllocationError = { tag: "Unknown"; value: { reason: string } }',
+        description: "Resource allocation error.",
+        source: "shared",
+        variants: [
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
+          },
+        ],
+      },
+      {
         id: "RingLocation",
         name: "RingLocation",
         category: "struct",
@@ -4467,6 +4725,26 @@ export const versions: ExplorerVersion[] = [
             name: "color",
             type: "ColorToken",
             description: "Text color.",
+          },
+        ],
+      },
+      {
+        id: "Theme",
+        name: "Theme",
+        category: "enum",
+        definition: 'type Theme = "Light" | "Dark"',
+        description: "Host UI theme.",
+        source: "shared",
+        variants: [
+          {
+            name: "Light",
+            type: "undefined",
+            description: "Light appearance.",
+          },
+          {
+            name: "Dark",
+            type: "undefined",
+            description: "Dark appearance.",
           },
         ],
       },

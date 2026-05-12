@@ -11,6 +11,8 @@ use crate::{CallContext, CallError, Subscription};
 ///
 /// Default methods return [`CallError::HostFailure`] with an `unavailable`
 /// reason. Hosts override only the methods they actually support.
+///
+/// @truapi-display-name=JSON-RPC
 #[async_trait::async_trait]
 pub trait JsonRpc: Send + Sync {
     /// Send a JSON-RPC message to the chain identified by genesis hash.
@@ -21,7 +23,7 @@ pub trait JsonRpc: Send + Sync {
     /// export async function sendJsonRpc(truapi: Client): Promise<void> {
     ///   const result = await truapi.jsonRpc.jsonrpcMessageSend({
     ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     message: '{"jsonrpc":"2.0","id":1,"method":"system_name","params":[]}',
+    ///     message: "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"system_name\",\"params\":[]}",
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;

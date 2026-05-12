@@ -1,5 +1,6 @@
 use super::playground::{playground_type_name, split_playground_docs};
 use super::*;
+use convert_case::Casing;
 use indoc::writedoc;
 
 /// Generates static registry data consumed by the GitHub Pages explorer.
@@ -134,8 +135,8 @@ fn explorer_groups(
             continue;
         }
         groups.push(ExplorerGroupRecord {
-            id: explorer_group_id(&trait_def.name),
-            name: trait_def.name.clone(),
+            id: explorer_group_id(&service_display_name(trait_def)),
+            name: service_display_name(trait_def),
             description: trait_def
                 .docs
                 .as_deref()
@@ -166,8 +167,8 @@ fn explorer_methods(
             methods.push(ExplorerMethodRecord {
                 id: method.name.clone(),
                 name: method.name.clone(),
-                group_id: explorer_group_id(&trait_def.name),
-                group_name: trait_def.name.clone(),
+                group_id: explorer_group_id(&service_display_name(trait_def)),
+                group_name: service_display_name(trait_def),
                 wire_id: wire_ids_for_method(trait_def, method)?.sort_id(),
                 pattern: match method.kind {
                     MethodKind::Request => "unary",
@@ -757,23 +758,5 @@ fn protocol_minor(version: u32) -> String {
 }
 
 fn explorer_group_id(display_name: &str) -> String {
-    to_kebab_case(display_name)
-}
-
-fn to_kebab_case(value: &str) -> String {
-    let mut out = String::new();
-    let mut prev_dash = false;
-    for ch in value.chars() {
-        if ch.is_ascii_alphanumeric() {
-            out.push(ch.to_ascii_lowercase());
-            prev_dash = false;
-        } else if !prev_dash && !out.is_empty() {
-            out.push('-');
-            prev_dash = true;
-        }
-    }
-    if out.ends_with('-') {
-        out.pop();
-    }
-    out
+    display_name.to_case(convert_case::Case::Kebab)
 }

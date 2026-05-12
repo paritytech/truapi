@@ -23,6 +23,8 @@ use crate::{CallContext, CallError};
 /// ever need one, annotate the trait method with the matching id and remove
 /// it from `RESERVED_WIRE_IDS`.
 ///
+/// @truapi-display-name=TrUAPI Calls
+///
 #[async_trait::async_trait]
 pub trait TrUApiCalls: Send + Sync {
     /// Negotiates the wire codec version with the product.
