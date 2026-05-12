@@ -1,13 +1,15 @@
 //! Versioned request and response wrappers for the unified TrUAPI contract.
 //!
 //! Every wire-level request and response is expressed as a versioned enum
-//! whose `V1(..)` arm wraps the per-version shape from [`crate::v01`]. The
-//! codec discriminant is pinned with `#[codec(index = 0)]`.
+//! whose `V<N>(..)` arms wrap the per-version shape from the corresponding
+//! version module. The codec discriminant is pinned with `#[codec(index = N)]`
+//! so adding a future version slot doesn't shift existing versions on the wire.
 
-/// Protocol version identifier.
+/// Protocol version identifier. Each variant matches a `V<N>(..)` arm of the
+/// versioned wrapper enums.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Version {
-    /// The single protocol version.
+    /// Initial protocol version.
     V1,
 }
 
@@ -34,7 +36,6 @@ pub trait IntoVersion: Sized {
 macro_rules! versioned_type {
     (
         $(
-            $(#[$meta:meta])*
             pub enum $name:ident {
                 $($body:tt)*
             }
@@ -43,7 +44,6 @@ macro_rules! versioned_type {
         $(
             versioned_type! {
                 @one
-                $(#[$meta])*
                 pub enum $name {
                     $($body)*
                 }
@@ -53,16 +53,13 @@ macro_rules! versioned_type {
 
     (
         @one
-        $(#[$meta:meta])*
         pub enum $name:ident {
-            $(#[$v1_meta:meta])*
             V1 => $v1:ty $(,)?
         }
     ) => {
-        $(#[$meta])*
+        #[doc = concat!("Versioned envelope for [`", stringify!($name), "`].")]
         #[derive(Debug, Clone, PartialEq, Eq, parity_scale_codec::Encode, parity_scale_codec::Decode)]
         pub enum $name {
-            $(#[$v1_meta])*
             #[codec(index = 0)]
             V1($v1),
         }
@@ -76,16 +73,13 @@ macro_rules! versioned_type {
 
     (
         @one
-        $(#[$meta:meta])*
         pub enum $name:ident {
-            $(#[$v1_meta:meta])*
             V1 $(,)?
         }
     ) => {
-        $(#[$meta])*
+        #[doc = concat!("Versioned envelope for [`", stringify!($name), "`].")]
         #[derive(Debug, Clone, PartialEq, Eq, parity_scale_codec::Encode, parity_scale_codec::Decode)]
         pub enum $name {
-            $(#[$v1_meta])*
             #[codec(index = 0)]
             V1,
         }

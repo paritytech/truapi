@@ -1,6 +1,7 @@
-//! TrUAPI trait and type definitions for the dotli product SDK.
+//! TrUAPI trait and type definitions for the host product SDK.
 //!
-//! All wire types live in [`v01`]. Versioned envelopes are in [`versioned`].
+//! Concrete wire types live in per-version modules (currently [`v01`]).
+//! Versioned envelopes are in [`versioned`].
 
 #![forbid(unsafe_code)]
 
