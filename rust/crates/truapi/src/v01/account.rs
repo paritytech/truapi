@@ -142,8 +142,6 @@ pub struct HostAccountGetResponse {
 pub struct HostGetUserIdResponse {
     /// The user's primary DotNS username.
     pub primary_username: String,
-    /// The user's primary public key.
-    pub public_key: Vec<u8>,
 }
 
 /// Error from [`crate::api::AccountManagement::host_get_user_id`].

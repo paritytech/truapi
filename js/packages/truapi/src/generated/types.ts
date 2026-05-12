@@ -3673,16 +3673,11 @@ export const HostGetUserIdError: S.Codec<HostGetUserIdError> = S.lazy(
 export interface HostGetUserIdResponse {
   /** The user's primary DotNS username. */
   primaryUsername: string;
-  /** The user's primary public key. */
-  publicKey: HexString;
 }
 
 export const HostGetUserIdResponse: S.Codec<HostGetUserIdResponse> = S.lazy(
   (): S.Codec<HostGetUserIdResponse> =>
-    S.Struct({
-      primaryUsername: S.str,
-      publicKey: S.Hex(),
-    }) as S.Codec<HostGetUserIdResponse>,
+    S.Struct({ primaryUsername: S.str }) as S.Codec<HostGetUserIdResponse>,
 );
 
 /**
