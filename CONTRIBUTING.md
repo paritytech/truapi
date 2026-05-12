@@ -3,7 +3,7 @@
 ## Reporting Issues
 
 If you have found what you think is a bug,
-please [file an issue](https://github.com/paritytech/host-api/issues/new/choose).
+please [file an issue](https://github.com/paritytech/truapi/issues/new/choose).
 
 ## Suggesting New Features
 
@@ -25,6 +25,12 @@ For larger changes that need cross-team discussion, use the RFC process:
 4. Open a PR using the **rfc** template (`?template=rfc.md`) and add the `rfc` and `proposal` labels
 5. The PR will be auto-added to the project board for tracking and review
 
+**Important:** RFC PRs must include corresponding changes to the TrUAPI Rust
+interfaces in `rust/crates/truapi/`. A CI check (`check-rfc.yml`) enforces
+this — PRs that touch `docs/rfcs/` without also modifying `rust/crates/truapi/`
+will fail. This ensures every RFC ships with a concrete API change, not just
+prose.
+
 ## Design Documents
 
 Canonical design documentation lives in `docs/design/`. To propose updates or add new design docs:
@@ -35,38 +41,83 @@ Canonical design documentation lives in `docs/design/`. To propose updates or ad
 
 ## Development
 
-If you have been assigned to fix an issue or develop a new feature, please follow these steps to get started:
+### Prerequisites
 
-- Fork this repository.
-- Install dependencies
+- Rust toolchain (stable + nightly for `cargo fmt`)
+- Node.js and npm (for the TypeScript client and explorer)
+- Yarn 1.x (for the playground)
 
-  ```shell
-  npm install
-  ```
+### Repository layout
 
-  - We use [nvm](https://github.com/nvm-sh/nvm) to manage node versions - please make sure to use the version mentioned
-    in `.nvmrc`
+```
+rust/crates/
+  truapi/              Rust trait + type definitions (source of truth)
+  truapi-codegen/      rustdoc JSON → TypeScript client generator
+  truapi-macros/       #[wire(id = N)] proc-macro
+js/packages/
+  truapi/              @parity/truapi TypeScript package (src/generated/ is auto-generated)
+explorer/              Vite documentation explorer (GitHub Pages)
+playground/            Next.js interactive explorer
+hosts/dotli/           dotli host (git submodule)
+scripts/codegen.sh     regenerate the TS client from the Rust crate
+```
 
-    ```shell
-    nvm use
-    ```
+### Getting started
 
-- Build all packages.
+```bash
+# Check out submodules
+git submodule update --init --recursive
 
-  ```shell
-  npm run build
-  ```
+# Build the Rust workspace
+cargo build --workspace
 
-- Run development server.
+# Build the TypeScript client
+( cd js/packages/truapi && npm install && npm run build )
 
-  ```shell
-  npm run build:watch
-  ```
+# Install playground dependencies
+( cd playground && yarn install --frozen-lockfile )
+```
 
-- Implement your changes and tests in files in the `packages/` and `__tests__` directories.
-- Document your changes in the appropriate doc page.
-- Git stage your required changes and commit (see below commit guidelines).
-- Submit PR for review.
+### Making changes to the API
+
+The Rust crate in `rust/crates/truapi/` is the single source of truth for the
+TrUAPI protocol. When you modify traits or types there:
+
+1. Run the codegen script to regenerate the TypeScript client:
+
+   ```bash
+   ./scripts/codegen.sh
+   ```
+
+2. Rebuild the TypeScript package:
+
+   ```bash
+   ( cd js/packages/truapi && npm run build )
+   ```
+
+3. Refresh the playground snapshot (yarn 1.x copies `file:` deps at install time):
+
+   ```bash
+   ( cd playground && rm -rf node_modules && yarn install )
+   ```
+
+4. Commit the regenerated files alongside the Rust changes.
+
+### Verification
+
+```bash
+# Rust
+cargo build --workspace
+cargo +nightly fmt --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+
+# TypeScript client
+( cd js/packages/truapi && npm test )
+
+# Playground
+( cd playground && yarn build && yarn lint )
+```
 
 ## Pull requests
 
