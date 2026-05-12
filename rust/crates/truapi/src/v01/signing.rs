@@ -84,6 +84,27 @@ pub enum HostSignPayloadError {
     Unknown { reason: String },
 }
 
+/// Sign raw bytes with a non-product (legacy) account. The signer field
+/// identifies which legacy account to use.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostSignRawWithLegacyAccountRequest {
+    /// Signer address (SS58 or hex) of the legacy account.
+    pub signer: String,
+    /// The data to sign.
+    pub payload: RawPayload,
+}
+
+/// Sign a Substrate extrinsic payload with a non-product (legacy) account.
+/// Contains the same fields as [`HostSignPayloadRequest`] minus `address`
+/// (replaced by `signer`).
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostSignPayloadWithLegacyAccountRequest {
+    /// Signer address (SS58 or hex) of the legacy account.
+    pub signer: String,
+    /// The extrinsic payload to sign.
+    pub payload: HostSignPayloadRequest,
+}
+
 /// Response containing a created transaction.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostCreateTransactionResponse {

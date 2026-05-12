@@ -67,7 +67,7 @@ export const versions: ExplorerVersion[] = [
         id: "truapi-calls",
         name: "TrUAPI Calls",
         description:
-          "General-purpose TrUAPI methods for feature detection, navigation, and\nnotifications.\n\n# Wire id reservations\n\nThe discriminants below are listed in [`super::RESERVED_WIRE_IDS`] so\ncodegen rejects any `#[wire(...)]` annotation that collides with them.\nSlots are held back for upstream `triangle-js-sdks` methods that TrUAPI\ndoes not implement, but whose ids must remain free to keep our wire-table\npositionally aligned with the canonical host `MessagePayload` enum. If we\never need one, annotate the trait method with the matching id and remove\nit from `RESERVED_WIRE_IDS`.\n\n- 34-35: `host_sign_raw_with_legacy_account` (request, response)\n- 36-37: `host_sign_payload_with_legacy_account` (request, response)\n- 68-69: `remote_preimage_submit` (request, response)\n- 70-71: `host_jsonrpc_message_send` (request, response)\n- 72-75: `host_jsonrpc_message_subscribe` (start, stop, interrupt, receive)\n- 104-107: `host_theme_subscribe` (start, stop, interrupt, receive)\n- 112-113: `host_request_login` (request, response)",
+          "General-purpose TrUAPI methods for feature detection, navigation, and\nnotifications.\n\n# Wire id reservations\n\nThe discriminants below are listed in [`super::RESERVED_WIRE_IDS`] so\ncodegen rejects any `#[wire(...)]` annotation that collides with them.\nSlots are held back for upstream `triangle-js-sdks` methods that TrUAPI\ndoes not implement, but whose ids must remain free to keep our wire-table\npositionally aligned with the canonical host `MessagePayload` enum. If we\never need one, annotate the trait method with the matching id and remove\nit from `RESERVED_WIRE_IDS`.",
         methods: [
           "host_handshake",
           "host_feature_supported",
@@ -102,6 +102,7 @@ export const versions: ExplorerVersion[] = [
           "host_account_get_alias",
           "host_account_create_proof",
           "host_get_legacy_accounts",
+          "host_request_login",
         ],
       },
       {
@@ -112,6 +113,8 @@ export const versions: ExplorerVersion[] = [
         methods: [
           "host_create_transaction",
           "host_create_transaction_with_legacy_account",
+          "host_sign_raw_with_legacy_account",
+          "host_sign_payload_with_legacy_account",
           "host_sign_raw",
           "host_sign_payload",
         ],
@@ -138,6 +141,7 @@ export const versions: ExplorerVersion[] = [
         methods: [
           "remote_statement_store_subscribe",
           "remote_statement_store_create_proof",
+          "remote_statement_store_create_proof_authorized",
           "remote_statement_store_submit",
         ],
       },
@@ -145,8 +149,8 @@ export const versions: ExplorerVersion[] = [
         id: "preimage",
         name: "Preimage",
         description:
-          "Preimage lookup.\n\nThe v01 `remote_preimage_submit` method is intentionally not carried into\nthe unified contract because v02 removed it.\n\nHosts override only if they actually support preimage lookup.",
-        methods: ["remote_preimage_lookup_subscribe"],
+          "Preimage lookup and submission.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
+        methods: ["remote_preimage_lookup_subscribe", "remote_preimage_submit"],
       },
       {
         id: "chain-interaction",
@@ -154,7 +158,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Chain head and transaction interactions.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they can actually service.",
         methods: [
-          "remote_chain_head_follow",
+          "remote_chain_head_follow_subscribe",
           "remote_chain_head_header",
           "remote_chain_head_body",
           "remote_chain_head_storage",
@@ -395,6 +399,35 @@ export const versions: ExplorerVersion[] = [
           'import {\n  type Client,\n  type HostCreateTransactionWithLegacyAccountResponse,\n} from "@parity/truapi";\n\nexport async function createTransactionWithLegacyAccount(\n  truapi: Client,\n): Promise<HostCreateTransactionWithLegacyAccountResponse> {\n  const result = await truapi.signing.createTransactionWithLegacyAccount({\n    payload: {\n      tag: "V1",\n      value: {\n        callData: "0x0000",\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: "0x",\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
+        id: "host_sign_raw_with_legacy_account",
+        name: "host_sign_raw_with_legacy_account",
+        groupId: "signing",
+        groupName: "Signing",
+        wireId: 34,
+        pattern: "unary",
+        request: "HostSignRawWithLegacyAccountRequest",
+        response: "HostSignPayloadResponse",
+        errorType: "HostSignPayloadError",
+        description: "Sign raw bytes with a non-product (legacy) account.",
+        usageExample:
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signRawWithLegacyAccount(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signRawWithLegacyAccount({\n    signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",\n    payload: {\n      tag: "Bytes",\n      value: { bytes: "0x48656c6c6f" },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+      },
+      {
+        id: "host_sign_payload_with_legacy_account",
+        name: "host_sign_payload_with_legacy_account",
+        groupId: "signing",
+        groupName: "Signing",
+        wireId: 36,
+        pattern: "unary",
+        request: "HostSignPayloadWithLegacyAccountRequest",
+        response: "HostSignPayloadResponse",
+        errorType: "HostSignPayloadError",
+        description:
+          "Sign a Substrate extrinsic payload with a non-product (legacy) account.",
+        usageExample:
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signPayloadWithLegacyAccount(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signPayloadWithLegacyAccount({\n    signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",\n    payload: {\n      account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n      blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      blockNumber: "0x00000000",\n      era: "0x00",\n      genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      method: "0x0000",\n      nonce: "0x00000000",\n      signedExtensions: [],\n      specVersion: "0x00000000",\n      tip: "0x00000000000000000000000000000000",\n      transactionVersion: "0x00000000",\n      version: 4,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+      },
+      {
         id: "host_chat_create_room",
         name: "host_chat_create_room",
         groupId: "chat",
@@ -532,8 +565,23 @@ export const versions: ExplorerVersion[] = [
           'import {\n  type Client,\n  type Subscription,\n  type RemotePreimageLookupSubscribeItem,\n} from "@parity/truapi";\n\nexport function lookupPreimage(truapi: Client): Subscription {\n  return truapi.preimage\n    .preimageLookupSubscribe({\n      request: {\n        key: "0x0000000000000000000000000000000000000000000000000000000000000000",\n      },\n    })\n    .subscribe({\n      next: (item: RemotePreimageLookupSubscribeItem) =>\n        console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
-        id: "remote_chain_head_follow",
-        name: "remote_chain_head_follow",
+        id: "remote_preimage_submit",
+        name: "remote_preimage_submit",
+        groupId: "preimage",
+        groupName: "Preimage",
+        wireId: 68,
+        pattern: "unary",
+        request: "HexString",
+        response: "HexString",
+        errorType: "PreimageSubmitError",
+        description:
+          "Submit a preimage. Returns the preimage key (hash) on success.",
+        usageExample:
+          'import {\n  type Client,\n  type HexString,\n} from "@parity/truapi";\n\nexport async function submitPreimage(\n  truapi: Client,\n): Promise<HexString> {\n  const result = await truapi.preimage.preimageSubmit("0xdeadbeef");\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+      },
+      {
+        id: "remote_chain_head_follow_subscribe",
+        name: "remote_chain_head_follow_subscribe",
         groupId: "chain-interaction",
         groupName: "Chain Interaction",
         wireId: 76,
@@ -542,7 +590,7 @@ export const versions: ExplorerVersion[] = [
         response: "RemoteChainHeadFollowItem",
         description: "Follow the chain head and receive block events.",
         usageExample:
-          'import {\n  type Client,\n  type Subscription,\n  type RemoteChainHeadFollowItem,\n} from "@parity/truapi";\n\nexport function followChainHead(truapi: Client): Subscription {\n  return truapi.chainInteraction\n    .chainHeadFollow({\n      request: {\n        genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n        withRuntime: false,\n      },\n    })\n    .subscribe({\n      next: (item: RemoteChainHeadFollowItem) => console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
+          'import {\n  type Client,\n  type Subscription,\n  type RemoteChainHeadFollowItem,\n} from "@parity/truapi";\n\nexport function followChainHead(truapi: Client): Subscription {\n  return truapi.chainInteraction\n    .chainHeadFollowSubscribe({\n      request: {\n        genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n        withRuntime: false,\n      },\n    })\n    .subscribe({\n      next: (item: RemoteChainHeadFollowItem) => console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_chain_head_header",
@@ -713,6 +761,21 @@ export const versions: ExplorerVersion[] = [
           'import { type Client } from "@parity/truapi";\n\nexport async function stopTransactionBroadcast(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainTransactionStop({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
+        id: "host_request_login",
+        name: "host_request_login",
+        groupId: "account-management",
+        groupName: "Account Management",
+        wireId: 112,
+        pattern: "unary",
+        request: "HostRequestLoginRequest",
+        response: "HostRequestLoginResponse",
+        errorType: "HostRequestLoginError",
+        description:
+          'Request the host to present the login flow to the user.\n\nProducts should call this in response to a user action (e.g. tapping a\n"Sign in" button), not automatically on load.',
+        usageExample:
+          'import {\n  type Client,\n  type HostRequestLoginResponse,\n} from "@parity/truapi";\n\nexport async function requestLogin(\n  truapi: Client,\n): Promise<HostRequestLoginResponse> {\n  const result = await truapi.accountManagement.requestLogin({\n    reason: "Sign in to vote on Referendum #42",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+      },
+      {
         id: "host_sign_raw",
         name: "host_sign_raw",
         groupId: "signing",
@@ -739,6 +802,21 @@ export const versions: ExplorerVersion[] = [
         description: "Sign a Substrate extrinsic payload.",
         usageExample:
           'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signPayload(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signPayload({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    blockNumber: "0x00000000",\n    era: "0x00",\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    method: "0x00003448656c6c6f2c20776f726c6421",\n    nonce: "0x00000000",\n    signedExtensions: [],\n    specVersion: "0x00000000",\n    tip: "0x00000000000000000000000000000000",\n    transactionVersion: "0x00000000",\n    version: 4,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+      },
+      {
+        id: "remote_statement_store_create_proof_authorized",
+        name: "remote_statement_store_create_proof_authorized",
+        groupId: "statement-store",
+        groupName: "Statement Store",
+        wireId: 132,
+        pattern: "unary",
+        request: "Statement",
+        response: "RemoteStatementStoreCreateProofResponse",
+        errorType: "RemoteStatementStoreCreateProofError",
+        description:
+          "Create a proof for a statement using a pre-allocated allowance account,\nbypassing the per-call signing prompt.",
+        usageExample:
+          'import {\n  type Client,\n  type RemoteStatementStoreCreateProofResponse,\n} from "@parity/truapi";\n\nexport async function createAuthorizedStatementProof(\n  truapi: Client,\n): Promise<RemoteStatementStoreCreateProofResponse> {\n  const result =\n    await truapi.statementStore.statementStoreCreateProofAuthorized({\n      expiry: 9999999999999n,\n      topics: [],\n    });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
     ],
     dataTypes: [
@@ -2371,6 +2449,64 @@ export const versions: ExplorerVersion[] = [
         ],
       },
       {
+        id: "HostRequestLoginError",
+        name: "HostRequestLoginError",
+        category: "enum",
+        definition:
+          'type HostRequestLoginError = { tag: "Unknown"; value: { reason: string } }',
+        description: "Login request error.",
+        source: "v0.1",
+        variants: [
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
+          },
+        ],
+      },
+      {
+        id: "HostRequestLoginRequest",
+        name: "HostRequestLoginRequest",
+        category: "struct",
+        definition: "interface HostRequestLoginRequest { reason?: string }",
+        description: "Request to present the host login flow.",
+        source: "v0.1",
+        fields: [
+          {
+            name: "reason",
+            type: "string",
+            description:
+              "Optional human-readable reason shown in the login UI.",
+          },
+        ],
+      },
+      {
+        id: "HostRequestLoginResponse",
+        name: "HostRequestLoginResponse",
+        category: "enum",
+        definition:
+          'type HostRequestLoginResponse = { tag: "Success"; value: undefined } | { tag: "AlreadyConnected"; value: undefined } | { tag: "Rejected"; value: undefined }',
+        description: "Result of a login request.",
+        source: "v0.1",
+        variants: [
+          {
+            name: "Success",
+            type: "undefined",
+            description: "User successfully authenticated.",
+          },
+          {
+            name: "AlreadyConnected",
+            type: "undefined",
+            description: "User is already authenticated — no action was taken.",
+          },
+          {
+            name: "Rejected",
+            type: "undefined",
+            description: "User dismissed/rejected the login UI.",
+          },
+        ],
+      },
+      {
         id: "HostSignPayloadError",
         name: "HostSignPayloadError",
         category: "enum",
@@ -2515,6 +2651,28 @@ export const versions: ExplorerVersion[] = [
         ],
       },
       {
+        id: "HostSignPayloadWithLegacyAccountRequest",
+        name: "HostSignPayloadWithLegacyAccountRequest",
+        category: "struct",
+        definition:
+          "interface HostSignPayloadWithLegacyAccountRequest { signer: string; payload: HostSignPayloadRequest }",
+        description:
+          "Sign a Substrate extrinsic payload with a non-product (legacy) account.\nContains the same fields as [`HostSignPayloadRequest`] minus `address`\n(replaced by `signer`).",
+        source: "v0.1",
+        fields: [
+          {
+            name: "signer",
+            type: "string",
+            description: "Signer address (SS58 or hex) of the legacy account.",
+          },
+          {
+            name: "payload",
+            type: "HostSignPayloadRequest",
+            description: "The extrinsic payload to sign.",
+          },
+        ],
+      },
+      {
         id: "HostSignRawRequest",
         name: "HostSignRawRequest",
         category: "struct",
@@ -2530,6 +2688,28 @@ export const versions: ExplorerVersion[] = [
           },
           {
             name: "data",
+            type: "RawPayload",
+            description: "The data to sign.",
+          },
+        ],
+      },
+      {
+        id: "HostSignRawWithLegacyAccountRequest",
+        name: "HostSignRawWithLegacyAccountRequest",
+        category: "struct",
+        definition:
+          "interface HostSignRawWithLegacyAccountRequest { signer: string; payload: RawPayload }",
+        description:
+          "Sign raw bytes with a non-product (legacy) account. The signer field\nidentifies which legacy account to use.",
+        source: "v0.1",
+        fields: [
+          {
+            name: "signer",
+            type: "string",
+            description: "Signer address (SS58 or hex) of the legacy account.",
+          },
+          {
+            name: "payload",
             type: "RawPayload",
             description: "The data to sign.",
           },
@@ -2615,6 +2795,22 @@ export const versions: ExplorerVersion[] = [
             name: "LimitReached",
             type: "undefined",
             description: "Too many concurrent operations.",
+          },
+        ],
+      },
+      {
+        id: "PreimageSubmitError",
+        name: "PreimageSubmitError",
+        category: "enum",
+        definition:
+          'type PreimageSubmitError = { tag: "Unknown"; value: { reason: string } }',
+        description: "Preimage submission error.",
+        source: "shared",
+        variants: [
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
           },
         ],
       },
@@ -2894,7 +3090,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface RemoteChainHeadFollowRequest { genesisHash: HexString; withRuntime: boolean }",
         description:
-          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_follow`].",
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_follow_subscribe`].",
         source: "v0.1",
         fields: [
           {
@@ -3968,7 +4164,7 @@ export const versions: ExplorerVersion[] = [
         id: "truapi-calls",
         name: "TrUAPI Calls",
         description:
-          "General-purpose TrUAPI methods for feature detection, navigation, and\nnotifications.\n\n# Wire id reservations\n\nThe discriminants below are listed in [`super::RESERVED_WIRE_IDS`] so\ncodegen rejects any `#[wire(...)]` annotation that collides with them.\nSlots are held back for upstream `triangle-js-sdks` methods that TrUAPI\ndoes not implement, but whose ids must remain free to keep our wire-table\npositionally aligned with the canonical host `MessagePayload` enum. If we\never need one, annotate the trait method with the matching id and remove\nit from `RESERVED_WIRE_IDS`.\n\n- 34-35: `host_sign_raw_with_legacy_account` (request, response)\n- 36-37: `host_sign_payload_with_legacy_account` (request, response)\n- 68-69: `remote_preimage_submit` (request, response)\n- 70-71: `host_jsonrpc_message_send` (request, response)\n- 72-75: `host_jsonrpc_message_subscribe` (start, stop, interrupt, receive)\n- 104-107: `host_theme_subscribe` (start, stop, interrupt, receive)\n- 112-113: `host_request_login` (request, response)",
+          "General-purpose TrUAPI methods for feature detection, navigation, and\nnotifications.\n\n# Wire id reservations\n\nThe discriminants below are listed in [`super::RESERVED_WIRE_IDS`] so\ncodegen rejects any `#[wire(...)]` annotation that collides with them.\nSlots are held back for upstream `triangle-js-sdks` methods that TrUAPI\ndoes not implement, but whose ids must remain free to keep our wire-table\npositionally aligned with the canonical host `MessagePayload` enum. If we\never need one, annotate the trait method with the matching id and remove\nit from `RESERVED_WIRE_IDS`.",
         methods: [
           "host_handshake",
           "host_feature_supported",
@@ -4004,6 +4200,7 @@ export const versions: ExplorerVersion[] = [
           "host_account_create_proof",
           "host_get_legacy_accounts",
           "host_get_user_id",
+          "host_request_login",
         ],
       },
       {
@@ -4014,6 +4211,8 @@ export const versions: ExplorerVersion[] = [
         methods: [
           "host_create_transaction",
           "host_create_transaction_with_legacy_account",
+          "host_sign_raw_with_legacy_account",
+          "host_sign_payload_with_legacy_account",
           "host_sign_raw",
           "host_sign_payload",
         ],
@@ -4040,6 +4239,7 @@ export const versions: ExplorerVersion[] = [
         methods: [
           "remote_statement_store_subscribe",
           "remote_statement_store_create_proof",
+          "remote_statement_store_create_proof_authorized",
           "remote_statement_store_submit",
         ],
       },
@@ -4047,8 +4247,8 @@ export const versions: ExplorerVersion[] = [
         id: "preimage",
         name: "Preimage",
         description:
-          "Preimage lookup.\n\nThe v01 `remote_preimage_submit` method is intentionally not carried into\nthe unified contract because v02 removed it.\n\nHosts override only if they actually support preimage lookup.",
-        methods: ["remote_preimage_lookup_subscribe"],
+          "Preimage lookup and submission.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
+        methods: ["remote_preimage_lookup_subscribe", "remote_preimage_submit"],
       },
       {
         id: "chain-interaction",
@@ -4056,7 +4256,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Chain head and transaction interactions.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they can actually service.",
         methods: [
-          "remote_chain_head_follow",
+          "remote_chain_head_follow_subscribe",
           "remote_chain_head_header",
           "remote_chain_head_body",
           "remote_chain_head_storage",
@@ -4316,6 +4516,35 @@ export const versions: ExplorerVersion[] = [
           'import {\n  type Client,\n  type HostCreateTransactionWithLegacyAccountResponse,\n} from "@parity/truapi";\n\nexport async function createTransactionWithLegacyAccount(\n  truapi: Client,\n): Promise<HostCreateTransactionWithLegacyAccountResponse> {\n  const result = await truapi.signing.createTransactionWithLegacyAccount({\n    payload: {\n      tag: "V1",\n      value: {\n        callData: "0x0000",\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: "0x",\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
+        id: "host_sign_raw_with_legacy_account",
+        name: "host_sign_raw_with_legacy_account",
+        groupId: "signing",
+        groupName: "Signing",
+        wireId: 34,
+        pattern: "unary",
+        request: "HostSignRawWithLegacyAccountRequest",
+        response: "HostSignPayloadResponse",
+        errorType: "HostSignPayloadError",
+        description: "Sign raw bytes with a non-product (legacy) account.",
+        usageExample:
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signRawWithLegacyAccount(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signRawWithLegacyAccount({\n    signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",\n    payload: {\n      tag: "Bytes",\n      value: { bytes: "0x48656c6c6f" },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+      },
+      {
+        id: "host_sign_payload_with_legacy_account",
+        name: "host_sign_payload_with_legacy_account",
+        groupId: "signing",
+        groupName: "Signing",
+        wireId: 36,
+        pattern: "unary",
+        request: "HostSignPayloadWithLegacyAccountRequest",
+        response: "HostSignPayloadResponse",
+        errorType: "HostSignPayloadError",
+        description:
+          "Sign a Substrate extrinsic payload with a non-product (legacy) account.",
+        usageExample:
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signPayloadWithLegacyAccount(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signPayloadWithLegacyAccount({\n    signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",\n    payload: {\n      account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n      blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      blockNumber: "0x00000000",\n      era: "0x00",\n      genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      method: "0x0000",\n      nonce: "0x00000000",\n      signedExtensions: [],\n      specVersion: "0x00000000",\n      tip: "0x00000000000000000000000000000000",\n      transactionVersion: "0x00000000",\n      version: 4,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+      },
+      {
         id: "host_chat_create_room",
         name: "host_chat_create_room",
         groupId: "chat",
@@ -4453,8 +4682,23 @@ export const versions: ExplorerVersion[] = [
           'import {\n  type Client,\n  type Subscription,\n  type RemotePreimageLookupSubscribeItem,\n} from "@parity/truapi";\n\nexport function lookupPreimage(truapi: Client): Subscription {\n  return truapi.preimage\n    .preimageLookupSubscribe({\n      request: {\n        key: "0x0000000000000000000000000000000000000000000000000000000000000000",\n      },\n    })\n    .subscribe({\n      next: (item: RemotePreimageLookupSubscribeItem) =>\n        console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
-        id: "remote_chain_head_follow",
-        name: "remote_chain_head_follow",
+        id: "remote_preimage_submit",
+        name: "remote_preimage_submit",
+        groupId: "preimage",
+        groupName: "Preimage",
+        wireId: 68,
+        pattern: "unary",
+        request: "HexString",
+        response: "HexString",
+        errorType: "PreimageSubmitError",
+        description:
+          "Submit a preimage. Returns the preimage key (hash) on success.",
+        usageExample:
+          'import {\n  type Client,\n  type HexString,\n} from "@parity/truapi";\n\nexport async function submitPreimage(\n  truapi: Client,\n): Promise<HexString> {\n  const result = await truapi.preimage.preimageSubmit("0xdeadbeef");\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+      },
+      {
+        id: "remote_chain_head_follow_subscribe",
+        name: "remote_chain_head_follow_subscribe",
         groupId: "chain-interaction",
         groupName: "Chain Interaction",
         wireId: 76,
@@ -4463,7 +4707,7 @@ export const versions: ExplorerVersion[] = [
         response: "RemoteChainHeadFollowItem",
         description: "Follow the chain head and receive block events.",
         usageExample:
-          'import {\n  type Client,\n  type Subscription,\n  type RemoteChainHeadFollowItem,\n} from "@parity/truapi";\n\nexport function followChainHead(truapi: Client): Subscription {\n  return truapi.chainInteraction\n    .chainHeadFollow({\n      request: {\n        genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n        withRuntime: false,\n      },\n    })\n    .subscribe({\n      next: (item: RemoteChainHeadFollowItem) => console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
+          'import {\n  type Client,\n  type Subscription,\n  type RemoteChainHeadFollowItem,\n} from "@parity/truapi";\n\nexport function followChainHead(truapi: Client): Subscription {\n  return truapi.chainInteraction\n    .chainHeadFollowSubscribe({\n      request: {\n        genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n        withRuntime: false,\n      },\n    })\n    .subscribe({\n      next: (item: RemoteChainHeadFollowItem) => console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_chain_head_header",
@@ -4663,6 +4907,21 @@ export const versions: ExplorerVersion[] = [
           'import {\n  type Client,\n  type HostGetUserIdResponse,\n} from "@parity/truapi";\n\nexport async function getUserId(\n  truapi: Client,\n): Promise<HostGetUserIdResponse> {\n  const result = await truapi.accountManagement.getUserId();\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
+        id: "host_request_login",
+        name: "host_request_login",
+        groupId: "account-management",
+        groupName: "Account Management",
+        wireId: 112,
+        pattern: "unary",
+        request: "HostRequestLoginRequest",
+        response: "HostRequestLoginResponse",
+        errorType: "HostRequestLoginError",
+        description:
+          'Request the host to present the login flow to the user.\n\nProducts should call this in response to a user action (e.g. tapping a\n"Sign in" button), not automatically on load.',
+        usageExample:
+          'import {\n  type Client,\n  type HostRequestLoginResponse,\n} from "@parity/truapi";\n\nexport async function requestLogin(\n  truapi: Client,\n): Promise<HostRequestLoginResponse> {\n  const result = await truapi.accountManagement.requestLogin({\n    reason: "Sign in to vote on Referendum #42",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+      },
+      {
         id: "host_sign_raw",
         name: "host_sign_raw",
         groupId: "signing",
@@ -4746,6 +5005,21 @@ export const versions: ExplorerVersion[] = [
           "Subscribe to payment lifecycle updates for a specific payment.",
         usageExample:
           'import {\n  type Client,\n  type Subscription,\n  type HostPaymentStatusSubscribeItem,\n} from "@parity/truapi";\n\nexport function watchPaymentStatus(truapi: Client): Subscription {\n  return truapi.payment\n    .paymentStatusSubscribe({\n      request: { paymentId: "payment-id" },\n    })\n    .subscribe({\n      next: (status: HostPaymentStatusSubscribeItem) =>\n        console.log(status),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
+      },
+      {
+        id: "remote_statement_store_create_proof_authorized",
+        name: "remote_statement_store_create_proof_authorized",
+        groupId: "statement-store",
+        groupName: "Statement Store",
+        wireId: 132,
+        pattern: "unary",
+        request: "Statement",
+        response: "RemoteStatementStoreCreateProofResponse",
+        errorType: "RemoteStatementStoreCreateProofError",
+        description:
+          "Create a proof for a statement using a pre-allocated allowance account,\nbypassing the per-call signing prompt.",
+        usageExample:
+          'import {\n  type Client,\n  type RemoteStatementStoreCreateProofResponse,\n} from "@parity/truapi";\n\nexport async function createAuthorizedStatementProof(\n  truapi: Client,\n): Promise<RemoteStatementStoreCreateProofResponse> {\n  const result =\n    await truapi.statementStore.statementStoreCreateProofAuthorized({\n      expiry: 9999999999999n,\n      topics: [],\n    });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
     ],
     dataTypes: [
@@ -6727,6 +7001,64 @@ export const versions: ExplorerVersion[] = [
         ],
       },
       {
+        id: "HostRequestLoginError",
+        name: "HostRequestLoginError",
+        category: "enum",
+        definition:
+          'type HostRequestLoginError = { tag: "Unknown"; value: { reason: string } }',
+        description: "Login request error.",
+        source: "v0.1",
+        variants: [
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
+          },
+        ],
+      },
+      {
+        id: "HostRequestLoginRequest",
+        name: "HostRequestLoginRequest",
+        category: "struct",
+        definition: "interface HostRequestLoginRequest { reason?: string }",
+        description: "Request to present the host login flow.",
+        source: "v0.1",
+        fields: [
+          {
+            name: "reason",
+            type: "string",
+            description:
+              "Optional human-readable reason shown in the login UI.",
+          },
+        ],
+      },
+      {
+        id: "HostRequestLoginResponse",
+        name: "HostRequestLoginResponse",
+        category: "enum",
+        definition:
+          'type HostRequestLoginResponse = { tag: "Success"; value: undefined } | { tag: "AlreadyConnected"; value: undefined } | { tag: "Rejected"; value: undefined }',
+        description: "Result of a login request.",
+        source: "v0.1",
+        variants: [
+          {
+            name: "Success",
+            type: "undefined",
+            description: "User successfully authenticated.",
+          },
+          {
+            name: "AlreadyConnected",
+            type: "undefined",
+            description: "User is already authenticated — no action was taken.",
+          },
+          {
+            name: "Rejected",
+            type: "undefined",
+            description: "User dismissed/rejected the login UI.",
+          },
+        ],
+      },
+      {
         id: "HostSignPayloadError",
         name: "HostSignPayloadError",
         category: "enum",
@@ -6872,6 +7204,28 @@ export const versions: ExplorerVersion[] = [
         ],
       },
       {
+        id: "HostSignPayloadWithLegacyAccountRequest",
+        name: "HostSignPayloadWithLegacyAccountRequest",
+        category: "struct",
+        definition:
+          "interface HostSignPayloadWithLegacyAccountRequest { signer: string; payload: HostSignPayloadRequest }",
+        description:
+          "Sign a Substrate extrinsic payload with a non-product (legacy) account.\nContains the same fields as [`HostSignPayloadRequest`] minus `address`\n(replaced by `signer`).",
+        source: "v0.1",
+        fields: [
+          {
+            name: "signer",
+            type: "string",
+            description: "Signer address (SS58 or hex) of the legacy account.",
+          },
+          {
+            name: "payload",
+            type: "HostSignPayloadRequest",
+            description: "The extrinsic payload to sign.",
+          },
+        ],
+      },
+      {
         id: "HostSignRawRequest",
         name: "HostSignRawRequest",
         category: "struct",
@@ -6890,6 +7244,28 @@ export const versions: ExplorerVersion[] = [
             name: "payload",
             type: "RawPayload",
             description: "The payload to sign.",
+          },
+        ],
+      },
+      {
+        id: "HostSignRawWithLegacyAccountRequest",
+        name: "HostSignRawWithLegacyAccountRequest",
+        category: "struct",
+        definition:
+          "interface HostSignRawWithLegacyAccountRequest { signer: string; payload: RawPayload }",
+        description:
+          "Sign raw bytes with a non-product (legacy) account. The signer field\nidentifies which legacy account to use.",
+        source: "v0.1",
+        fields: [
+          {
+            name: "signer",
+            type: "string",
+            description: "Signer address (SS58 or hex) of the legacy account.",
+          },
+          {
+            name: "payload",
+            type: "RawPayload",
+            description: "The data to sign.",
           },
         ],
       },
@@ -6997,6 +7373,22 @@ export const versions: ExplorerVersion[] = [
             type: "{ ed25519PrivateKey: HexString }",
             description:
               "Fund from a one-time account represented by its private key. This is a\nstandard account holding public funds, not a coin key.",
+          },
+        ],
+      },
+      {
+        id: "PreimageSubmitError",
+        name: "PreimageSubmitError",
+        category: "enum",
+        definition:
+          'type PreimageSubmitError = { tag: "Unknown"; value: { reason: string } }',
+        description: "Preimage submission error.",
+        source: "shared",
+        variants: [
+          {
+            name: "Unknown",
+            type: "{ reason: string }",
+            description: "Catch-all.",
           },
         ],
       },
@@ -7292,7 +7684,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface RemoteChainHeadFollowRequest { genesisHash: HexString; withRuntime: boolean }",
         description:
-          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_follow`].",
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_follow_subscribe`].",
         source: "v0.1",
         fields: [
           {

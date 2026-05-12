@@ -233,12 +233,15 @@ pub mod calls;
 pub mod chain;
 pub mod chat;
 pub mod entropy;
+pub mod jsonrpc;
 pub mod local_storage;
 pub mod payment;
 pub mod permissions;
 pub mod preimage;
+pub mod resource_allocation;
 pub mod signing;
 pub mod statement_store;
+pub mod theme;
 
 #[cfg(test)]
 mod tests {

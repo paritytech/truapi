@@ -13,6 +13,12 @@ versioned_type! {
     pub enum RemoteStatementStoreCreateProofResponse { V1 => v01::RemoteStatementStoreCreateProofResponse }
     /// Versioned wrapper for [`v01::RemoteStatementStoreCreateProofError`] and older versions.
     pub enum RemoteStatementStoreCreateProofError { V1 => v01::RemoteStatementStoreCreateProofError }
+    /// Versioned wrapper for the authorized proof request; uses [`v01::Statement`] directly.
+    pub enum RemoteStatementStoreCreateProofAuthorizedRequest { V1 => v01::Statement }
+    /// Versioned wrapper for the authorized proof response; reuses [`v01::RemoteStatementStoreCreateProofResponse`].
+    pub enum RemoteStatementStoreCreateProofAuthorizedResponse { V1 => v01::RemoteStatementStoreCreateProofResponse }
+    /// Versioned wrapper for the authorized proof error; reuses [`v01::RemoteStatementStoreCreateProofError`].
+    pub enum RemoteStatementStoreCreateProofAuthorizedError { V1 => v01::RemoteStatementStoreCreateProofError }
     /// Versioned wrapper for [`v01::SignedStatement`] and older versions.
     /// The submit request is the signed statement itself; the host SCALE-decodes
     /// it directly without a wrapping field, matching the upstream

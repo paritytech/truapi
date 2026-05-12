@@ -2,6 +2,7 @@
 
 import { err, ok, type Result } from "neverthrow";
 import * as S from "../scale.js";
+import type { HexString } from "../scale.js";
 import type {
   ObservableLike,
   Observer,
@@ -250,6 +251,34 @@ export class AccountManagementClient {
     });
     return result.success ? ok(result.value) : err(result.value);
   }
+
+  /**
+   * Request the host to present the login flow to the user.
+   *
+   * Products should call this in response to a user action (e.g. tapping a
+   * "Sign in" button), not automatically on load.
+   */
+  async requestLogin(
+    request: T.HostRequestLoginRequest,
+  ): Promise<Result<T.HostRequestLoginResponse, T.HostRequestLoginError>> {
+    const result = await this.transport.request<
+      S.ResultPayload<T.HostRequestLoginResponse, T.HostRequestLoginError>
+    >({
+      ids: W.HOST_REQUEST_LOGIN,
+      payload: T.VersionedHostRequestLoginRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V1: [
+            0,
+            S.Result(T.HostRequestLoginResponse, T.HostRequestLoginError),
+          ] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
+  }
 }
 
 /**
@@ -262,14 +291,14 @@ export class ChainInteractionClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
   /** Follow the chain head and receive block events. */
-  chainHeadFollow({
+  chainHeadFollowSubscribe({
     request,
   }: {
     request: T.RemoteChainHeadFollowRequest;
   }): ObservableLike<T.RemoteChainHeadFollowItem> {
     return createObservable<T.RemoteChainHeadFollowItem>({
       transport: this.transport,
-      ids: W.REMOTE_CHAIN_HEAD_FOLLOW,
+      ids: W.REMOTE_CHAIN_HEAD_FOLLOW_SUBSCRIBE,
       payload: T.VersionedRemoteChainHeadFollowRequest.enc({
         tag: "V1",
         value: request,
@@ -737,6 +766,88 @@ export class EntropyDerivationClient {
   }
 }
 
+/**
+ * Host UI theme subscription.
+ *
+ * The default body returns an empty stream; hosts override to push theme
+ * updates.
+ */
+export class HostThemeClient {
+  constructor(private readonly transport: TrUApiTransport) {}
+
+  /** Subscribe to host theme changes (light/dark). */
+  themeSubscribe(): ObservableLike<T.HostThemeSubscribeItem> {
+    return createObservable<T.HostThemeSubscribeItem>({
+      transport: this.transport,
+      ids: W.HOST_THEME_SUBSCRIBE,
+      payload: S.indexedTaggedUnion({ V1: [0, S._void] as const }).enc({
+        tag: "V1",
+        value: undefined,
+      }),
+      decodeItem: (payload) =>
+        (
+          T.VersionedHostThemeSubscribeItem.dec(payload) as {
+            tag: "V1";
+            value: T.HostThemeSubscribeItem;
+          } & T.VersionedHostThemeSubscribeItem
+        ).value,
+    });
+  }
+}
+
+/**
+ * Raw JSON-RPC passthrough to a chain node.
+ *
+ * Default methods return [`CallError::HostFailure`] with an `unavailable`
+ * reason. Hosts override only the methods they actually support.
+ */
+export class JsonRpcClient {
+  constructor(private readonly transport: TrUApiTransport) {}
+
+  /** Send a JSON-RPC message to the chain identified by genesis hash. */
+  async jsonrpcMessageSend(
+    request: T.HostJsonrpcMessageSendRequest,
+  ): Promise<Result<undefined, T.GenericError>> {
+    const result = await this.transport.request<
+      S.ResultPayload<undefined, T.GenericError>
+    >({
+      ids: W.HOST_JSONRPC_MESSAGE_SEND,
+      payload: T.VersionedHostJsonrpcMessageSendRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V1: [0, S.Result(S._void, T.GenericError)] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
+  }
+
+  /** Subscribe to inbound JSON-RPC messages for a chain. */
+  jsonrpcMessageSubscribe({
+    request,
+  }: {
+    request: T.HostJsonrpcMessageSubscribeRequest;
+  }): ObservableLike<T.HostJsonrpcMessageSubscribeItem> {
+    return createObservable<T.HostJsonrpcMessageSubscribeItem>({
+      transport: this.transport,
+      ids: W.HOST_JSONRPC_MESSAGE_SUBSCRIBE,
+      payload: T.VersionedHostJsonrpcMessageSubscribeRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeItem: (payload) =>
+        (
+          T.VersionedHostJsonrpcMessageSubscribeItem.dec(payload) as {
+            tag: "V1";
+            value: T.HostJsonrpcMessageSubscribeItem;
+          } & T.VersionedHostJsonrpcMessageSubscribeItem
+        ).value,
+    });
+  }
+}
+
 /** Local key/value storage scoped to the calling product. */
 export class LocalStorageClient {
   constructor(private readonly transport: TrUApiTransport) {}
@@ -974,12 +1085,10 @@ export class PermissionsClient {
 }
 
 /**
- * Preimage lookup.
+ * Preimage lookup and submission.
  *
- * The v01 `remote_preimage_submit` method is intentionally not carried into
- * the unified contract because v02 removed it.
- *
- * Hosts override only if they actually support preimage lookup.
+ * Default methods return [`CallError::HostFailure`] with an `unavailable`
+ * reason. Hosts override only the methods they actually support.
  */
 export class PreimageClient {
   constructor(private readonly transport: TrUApiTransport) {}
@@ -1005,6 +1114,70 @@ export class PreimageClient {
           } & T.VersionedRemotePreimageLookupSubscribeItem
         ).value,
     });
+  }
+
+  /** Submit a preimage. Returns the preimage key (hash) on success. */
+  async preimageSubmit(
+    request: HexString,
+  ): Promise<Result<HexString, T.PreimageSubmitError>> {
+    const result = await this.transport.request<
+      S.ResultPayload<HexString, T.PreimageSubmitError>
+    >({
+      ids: W.REMOTE_PREIMAGE_SUBMIT,
+      payload: T.VersionedRemotePreimageSubmitRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V1: [0, S.Result(S.Hex(), T.PreimageSubmitError)] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
+  }
+}
+
+/**
+ * Resource pre-allocation (allowance management).
+ *
+ * Default methods return [`CallError::HostFailure`] with an `unavailable`
+ * reason. Hosts override only the methods they actually support.
+ */
+export class ResourceAllocationClient {
+  constructor(private readonly transport: TrUApiTransport) {}
+
+  /**
+   * Request the host to pre-allocate one or more resources (statement store
+   * allowance, bulletin allowance, smart contract allowance, auto-signing).
+   */
+  async requestResourceAllocation(
+    request: T.HostRequestResourceAllocationRequest,
+  ): Promise<
+    Result<T.HostRequestResourceAllocationResponse, T.ResourceAllocationError>
+  > {
+    const result = await this.transport.request<
+      S.ResultPayload<
+        T.HostRequestResourceAllocationResponse,
+        T.ResourceAllocationError
+      >
+    >({
+      ids: W.HOST_REQUEST_RESOURCE_ALLOCATION,
+      payload: T.VersionedHostRequestResourceAllocationRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V1: [
+            0,
+            S.Result(
+              T.HostRequestResourceAllocationResponse,
+              T.ResourceAllocationError,
+            ),
+          ] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
   }
 }
 
@@ -1076,6 +1249,52 @@ export class SigningClient {
               T.HostCreateTransactionWithLegacyAccountResponse,
               T.HostCreateTransactionError,
             ),
+          ] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
+  }
+
+  /** Sign raw bytes with a non-product (legacy) account. */
+  async signRawWithLegacyAccount(
+    request: T.HostSignRawWithLegacyAccountRequest,
+  ): Promise<Result<T.HostSignPayloadResponse, T.HostSignPayloadError>> {
+    const result = await this.transport.request<
+      S.ResultPayload<T.HostSignPayloadResponse, T.HostSignPayloadError>
+    >({
+      ids: W.HOST_SIGN_RAW_WITH_LEGACY_ACCOUNT,
+      payload: T.VersionedHostSignRawWithLegacyAccountRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V1: [
+            0,
+            S.Result(T.HostSignPayloadResponse, T.HostSignPayloadError),
+          ] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
+  }
+
+  /** Sign a Substrate extrinsic payload with a non-product (legacy) account. */
+  async signPayloadWithLegacyAccount(
+    request: T.HostSignPayloadWithLegacyAccountRequest,
+  ): Promise<Result<T.HostSignPayloadResponse, T.HostSignPayloadError>> {
+    const result = await this.transport.request<
+      S.ResultPayload<T.HostSignPayloadResponse, T.HostSignPayloadError>
+    >({
+      ids: W.HOST_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT,
+      payload: T.VersionedHostSignPayloadWithLegacyAccountRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V1: [
+            0,
+            S.Result(T.HostSignPayloadResponse, T.HostSignPayloadError),
           ] as const,
         }).dec(payload).value,
     });
@@ -1193,6 +1412,43 @@ export class StatementStoreClient {
   }
 
   /**
+   * Create a proof for a statement using a pre-allocated allowance account,
+   * bypassing the per-call signing prompt.
+   */
+  async statementStoreCreateProofAuthorized(
+    request: T.Statement,
+  ): Promise<
+    Result<
+      T.RemoteStatementStoreCreateProofResponse,
+      T.RemoteStatementStoreCreateProofError
+    >
+  > {
+    const result = await this.transport.request<
+      S.ResultPayload<
+        T.RemoteStatementStoreCreateProofResponse,
+        T.RemoteStatementStoreCreateProofError
+      >
+    >({
+      ids: W.REMOTE_STATEMENT_STORE_CREATE_PROOF_AUTHORIZED,
+      payload: T.VersionedRemoteStatementStoreCreateProofAuthorizedRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V1: [
+            0,
+            S.Result(
+              T.RemoteStatementStoreCreateProofResponse,
+              T.RemoteStatementStoreCreateProofError,
+            ),
+          ] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
+  }
+
+  /**
    * Submit a signed statement to the network. The request body is the
    * [`SignedStatement`](crate::v01::SignedStatement) directly (no wrapping
    * struct), matching upstream `triangle-js-sdks`.
@@ -1230,14 +1486,6 @@ export class StatementStoreClient {
  * positionally aligned with the canonical host `MessagePayload` enum. If we
  * ever need one, annotate the trait method with the matching id and remove
  * it from `RESERVED_WIRE_IDS`.
- *
- * - 34-35: `host_sign_raw_with_legacy_account` (request, response)
- * - 36-37: `host_sign_payload_with_legacy_account` (request, response)
- * - 68-69: `remote_preimage_submit` (request, response)
- * - 70-71: `host_jsonrpc_message_send` (request, response)
- * - 72-75: `host_jsonrpc_message_subscribe` (start, stop, interrupt, receive)
- * - 104-107: `host_theme_subscribe` (start, stop, interrupt, receive)
- * - 112-113: `host_request_login` (request, response)
  */
 export class TrUApiCallsClient {
   constructor(private readonly transport: TrUApiTransport) {}
@@ -1329,10 +1577,13 @@ export interface TrUApiClient {
   readonly chainInteraction: ChainInteractionClient;
   readonly chat: ChatClient;
   readonly entropyDerivation: EntropyDerivationClient;
+  readonly hostTheme: HostThemeClient;
+  readonly jsonRpc: JsonRpcClient;
   readonly localStorage: LocalStorageClient;
   readonly payment: PaymentClient;
   readonly permissions: PermissionsClient;
   readonly preimage: PreimageClient;
+  readonly resourceAllocation: ResourceAllocationClient;
   readonly signing: SigningClient;
   readonly statementStore: StatementStoreClient;
   readonly trUApiCalls: TrUApiCallsClient;
@@ -1367,10 +1618,13 @@ export function createClient(
     chainInteraction: new ChainInteractionClient(versionedTransport),
     chat: new ChatClient(versionedTransport),
     entropyDerivation: new EntropyDerivationClient(versionedTransport),
+    hostTheme: new HostThemeClient(versionedTransport),
+    jsonRpc: new JsonRpcClient(versionedTransport),
     localStorage: new LocalStorageClient(versionedTransport),
     payment: new PaymentClient(versionedTransport),
     permissions: new PermissionsClient(versionedTransport),
     preimage: new PreimageClient(versionedTransport),
+    resourceAllocation: new ResourceAllocationClient(versionedTransport),
     signing: new SigningClient(versionedTransport),
     statementStore: new StatementStoreClient(versionedTransport),
     trUApiCalls: new TrUApiCallsClient(versionedTransport),

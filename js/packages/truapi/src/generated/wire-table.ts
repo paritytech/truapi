@@ -87,6 +87,16 @@ export const HOST_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT = {
   response: 33,
 } as const satisfies RequestFrameIds;
 
+export const HOST_SIGN_RAW_WITH_LEGACY_ACCOUNT = {
+  request: 34,
+  response: 35,
+} as const satisfies RequestFrameIds;
+
+export const HOST_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT = {
+  request: 36,
+  response: 37,
+} as const satisfies RequestFrameIds;
+
 export const HOST_CHAT_CREATE_ROOM = {
   request: 38,
   response: 39,
@@ -147,7 +157,24 @@ export const REMOTE_PREIMAGE_LOOKUP_SUBSCRIBE = {
   receive: 67,
 } as const satisfies SubscriptionFrameIds;
 
-export const REMOTE_CHAIN_HEAD_FOLLOW = {
+export const REMOTE_PREIMAGE_SUBMIT = {
+  request: 68,
+  response: 69,
+} as const satisfies RequestFrameIds;
+
+export const HOST_JSONRPC_MESSAGE_SEND = {
+  request: 70,
+  response: 71,
+} as const satisfies RequestFrameIds;
+
+export const HOST_JSONRPC_MESSAGE_SUBSCRIBE = {
+  start: 72,
+  stop: 73,
+  interrupt: 74,
+  receive: 75,
+} as const satisfies SubscriptionFrameIds;
+
+export const REMOTE_CHAIN_HEAD_FOLLOW_SUBSCRIBE = {
   start: 76,
   stop: 77,
   interrupt: 78,
@@ -214,6 +241,13 @@ export const REMOTE_CHAIN_TRANSACTION_STOP = {
   response: 103,
 } as const satisfies RequestFrameIds;
 
+export const HOST_THEME_SUBSCRIBE = {
+  start: 104,
+  stop: 105,
+  interrupt: 106,
+  receive: 107,
+} as const satisfies SubscriptionFrameIds;
+
 export const HOST_DERIVE_ENTROPY = {
   request: 108,
   response: 109,
@@ -222,6 +256,11 @@ export const HOST_DERIVE_ENTROPY = {
 export const HOST_GET_USER_ID = {
   request: 110,
   response: 111,
+} as const satisfies RequestFrameIds;
+
+export const HOST_REQUEST_LOGIN = {
+  request: 112,
+  response: 113,
 } as const satisfies RequestFrameIds;
 
 export const HOST_SIGN_RAW = {
@@ -257,3 +296,13 @@ export const HOST_PAYMENT_STATUS_SUBSCRIBE = {
   interrupt: 128,
   receive: 129,
 } as const satisfies SubscriptionFrameIds;
+
+export const HOST_REQUEST_RESOURCE_ALLOCATION = {
+  request: 130,
+  response: 131,
+} as const satisfies RequestFrameIds;
+
+export const REMOTE_STATEMENT_STORE_CREATE_PROOF_AUTHORIZED = {
+  request: 132,
+  response: 133,
+} as const satisfies RequestFrameIds;

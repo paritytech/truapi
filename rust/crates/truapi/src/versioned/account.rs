@@ -31,6 +31,12 @@ versioned_type! {
     pub enum HostGetLegacyAccountsError { V1 => v01::HostAccountGetError }
     /// Versioned wrapper for [`v01::HostAccountConnectionStatusSubscribeItem`] and older versions.
     pub enum HostAccountConnectionStatusSubscribeItem { V1 => v01::HostAccountConnectionStatusSubscribeItem }
+    /// Versioned wrapper for [`v01::HostRequestLoginRequest`].
+    pub enum HostRequestLoginRequest { V1 => v01::HostRequestLoginRequest }
+    /// Versioned wrapper for [`v01::HostRequestLoginResponse`].
+    pub enum HostRequestLoginResponse { V1 => v01::HostRequestLoginResponse }
+    /// Versioned wrapper for [`v01::HostRequestLoginError`].
+    pub enum HostRequestLoginError { V1 => v01::HostRequestLoginError }
     /// Versioned wrapper for unit and older versions.
     pub enum HostGetUserIdRequest { V2 }
     /// Versioned wrapper for [`v02::HostGetUserIdResponse`] and older versions.

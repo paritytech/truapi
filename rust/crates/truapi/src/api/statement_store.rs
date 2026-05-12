@@ -1,10 +1,12 @@
 //! Unified [`StatementStore`] trait.
 
 use crate::versioned::statement_store::{
-    RemoteStatementStoreCreateProofError, RemoteStatementStoreCreateProofRequest,
-    RemoteStatementStoreCreateProofResponse, RemoteStatementStoreSubmitError,
-    RemoteStatementStoreSubmitRequest, RemoteStatementStoreSubscribeItem,
-    RemoteStatementStoreSubscribeRequest,
+    RemoteStatementStoreCreateProofAuthorizedError,
+    RemoteStatementStoreCreateProofAuthorizedRequest,
+    RemoteStatementStoreCreateProofAuthorizedResponse, RemoteStatementStoreCreateProofError,
+    RemoteStatementStoreCreateProofRequest, RemoteStatementStoreCreateProofResponse,
+    RemoteStatementStoreSubmitError, RemoteStatementStoreSubmitRequest,
+    RemoteStatementStoreSubscribeItem, RemoteStatementStoreSubscribeRequest,
 };
 use crate::wire;
 use crate::{CallContext, CallError, Subscription};
@@ -80,6 +82,40 @@ pub trait StatementStore: Send + Sync {
     ) -> Result<
         RemoteStatementStoreCreateProofResponse,
         CallError<RemoteStatementStoreCreateProofError>,
+    > {
+        Err(CallError::unavailable())
+    }
+
+    /// Create a proof for a statement using a pre-allocated allowance account,
+    /// bypassing the per-call signing prompt.
+    ///
+    /// ```truapi-client-example
+    /// import {
+    ///   type Client,
+    ///   type RemoteStatementStoreCreateProofResponse,
+    /// } from "@parity/truapi";
+    ///
+    /// export async function createAuthorizedStatementProof(
+    ///   truapi: Client,
+    /// ): Promise<RemoteStatementStoreCreateProofResponse> {
+    ///   const result =
+    ///     await truapi.statementStore.statementStoreCreateProofAuthorized({
+    ///       expiry: 9999999999999n,
+    ///       topics: [],
+    ///     });
+    ///
+    ///   if (result.isErr()) throw result.error;
+    ///   return result.value;
+    /// }
+    /// ```
+    #[wire(request_id = 132)]
+    async fn remote_statement_store_create_proof_authorized(
+        &self,
+        _cx: &CallContext,
+        _request: RemoteStatementStoreCreateProofAuthorizedRequest,
+    ) -> Result<
+        RemoteStatementStoreCreateProofAuthorizedResponse,
+        CallError<RemoteStatementStoreCreateProofAuthorizedError>,
     > {
         Err(CallError::unavailable())
     }

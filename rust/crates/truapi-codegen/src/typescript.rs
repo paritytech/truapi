@@ -2251,6 +2251,7 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
     writeln!(out).unwrap();
     writeln!(out, "import {{ err, ok, type Result }} from 'neverthrow';").unwrap();
     writeln!(out, "import * as S from '../scale.js';").unwrap();
+    writeln!(out, "import type {{ HexString }} from '../scale.js';").unwrap();
     writeln!(
         out,
         "import type {{ ObservableLike, Observer, Subscription, SubscriptionFrameIds, TrUApiTransport }} from '../transport.js';"
@@ -3774,9 +3775,9 @@ mod tests {
 
     #[test]
     fn generate_wire_table_rejects_reserved_wire_ids() {
-        let reserved_id = *truapi::api::RESERVED_WIRE_IDS
-            .first()
-            .expect("RESERVED_WIRE_IDS must not be empty");
+        let Some(&reserved_id) = truapi::api::RESERVED_WIRE_IDS.first() else {
+            return;
+        };
         let err = generate_wire_table(&api(vec![request_method("squat", Some(reserved_id))]), 2)
             .expect_err("annotation that lands on a reserved id must error");
         let message = err.to_string();

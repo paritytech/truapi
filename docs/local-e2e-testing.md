@@ -206,7 +206,7 @@ iframe via `window.parent` and uses the iframe `postMessage` provider.
    and click **Subscribe**. You should immediately see one or more
    pushed events; clicking **Unsubscribe** must stop them. This proves
    the `_start` / `_receive` / `_stop` lifecycle.
-4. For chain methods, open `Chain Interaction → remote_chain_head_follow`
+4. For chain methods, open `Chain Interaction → remote_chain_head_follow_subscribe`
    and subscribe. The bridge auto-detects dependent methods (header,
    body, storage, call, unpin, continue, stop_operation) and opens an
    ephemeral follow when `followSubscriptionId` is empty — exercising

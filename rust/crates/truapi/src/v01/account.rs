@@ -64,6 +64,31 @@ pub enum HostAccountConnectionStatusSubscribeItem {
     Connected,
 }
 
+/// Result of a login request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+pub enum HostRequestLoginResponse {
+    /// User successfully authenticated.
+    Success,
+    /// User is already authenticated — no action was taken.
+    AlreadyConnected,
+    /// User dismissed/rejected the login UI.
+    Rejected,
+}
+
+/// Request to present the host login flow.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostRequestLoginRequest {
+    /// Optional human-readable reason shown in the login UI.
+    pub reason: Option<String>,
+}
+
+/// Login request error.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum HostRequestLoginError {
+    /// Catch-all.
+    Unknown { reason: String },
+}
+
 /// Error returned when credential/account requests fail.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum HostAccountGetError {

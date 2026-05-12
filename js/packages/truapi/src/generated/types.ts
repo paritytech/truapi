@@ -35,6 +35,41 @@ export const ActionTrigger: S.Codec<ActionTrigger> = S.lazy(
     }) as S.Codec<ActionTrigger>,
 );
 
+/** A resource the product can request the host to pre-allocate. */
+export type AllocatableResource =
+  /** Statement store allowance. */
+  | { tag: "StatementStoreAllowance"; value: undefined }
+  /** Bulletin board allowance. */
+  | { tag: "BulletinAllowance"; value: undefined }
+  /** Smart contract allowance with a derivation index. */
+  | { tag: "SmartContractAllowance"; value: number }
+  /** Auto-signing capability. */
+  | { tag: "AutoSigning"; value: undefined };
+
+export const AllocatableResource: S.Codec<AllocatableResource> = S.lazy(
+  (): S.Codec<AllocatableResource> =>
+    S.Enum({
+      StatementStoreAllowance: S._void,
+      BulletinAllowance: S._void,
+      SmartContractAllowance: S.u32,
+      AutoSigning: S._void,
+    }),
+);
+
+/** Outcome of a resource allocation request. */
+export type AllocationOutcome =
+  /** Resource was allocated. */
+  | { tag: "Allocated"; value: undefined }
+  /** User or host rejected the allocation. */
+  | { tag: "Rejected"; value: undefined }
+  /** Resource type is not available on this host. */
+  | { tag: "NotAvailable"; value: undefined };
+
+export const AllocationOutcome: S.Codec<AllocationOutcome> = S.lazy(
+  (): S.Codec<AllocationOutcome> =>
+    S.Enum({ Allocated: S._void, Rejected: S._void, NotAvailable: S._void }),
+);
+
 /** Layout arrangement (like CSS flexbox `justify-content`). */
 export type Arrangement =
   | { tag: "Start"; value: undefined }
@@ -1108,6 +1143,70 @@ export const VersionedHostHandshakeResponse: S.Codec<VersionedHostHandshakeRespo
       S.indexedTaggedUnion({ V1: [0, S._void] as const }),
   );
 
+/** Versioned wrapper for [`v01::GenericError`]. */
+export type VersionedHostJsonrpcMessageSendError = {
+  tag: "V1";
+  value: GenericError;
+};
+
+export const VersionedHostJsonrpcMessageSendError: S.Codec<VersionedHostJsonrpcMessageSendError> =
+  S.lazy(
+    (): S.Codec<VersionedHostJsonrpcMessageSendError> =>
+      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
+  );
+
+/** Versioned wrapper for [`v01::HostJsonrpcMessageSendRequest`]. */
+export type VersionedHostJsonrpcMessageSendRequest = {
+  tag: "V1";
+  value: HostJsonrpcMessageSendRequest;
+};
+
+export const VersionedHostJsonrpcMessageSendRequest: S.Codec<VersionedHostJsonrpcMessageSendRequest> =
+  S.lazy(
+    (): S.Codec<VersionedHostJsonrpcMessageSendRequest> =>
+      S.indexedTaggedUnion({ V1: [0, HostJsonrpcMessageSendRequest] as const }),
+  );
+
+/** Versioned unit response for JSON-RPC send. */
+export type VersionedHostJsonrpcMessageSendResponse = {
+  tag: "V1";
+  value: undefined;
+};
+
+export const VersionedHostJsonrpcMessageSendResponse: S.Codec<VersionedHostJsonrpcMessageSendResponse> =
+  S.lazy(
+    (): S.Codec<VersionedHostJsonrpcMessageSendResponse> =>
+      S.indexedTaggedUnion({ V1: [0, S._void] as const }),
+  );
+
+/** Versioned wrapper for [`v01::HostJsonrpcMessageSubscribeItem`]. */
+export type VersionedHostJsonrpcMessageSubscribeItem = {
+  tag: "V1";
+  value: HostJsonrpcMessageSubscribeItem;
+};
+
+export const VersionedHostJsonrpcMessageSubscribeItem: S.Codec<VersionedHostJsonrpcMessageSubscribeItem> =
+  S.lazy(
+    (): S.Codec<VersionedHostJsonrpcMessageSubscribeItem> =>
+      S.indexedTaggedUnion({
+        V1: [0, HostJsonrpcMessageSubscribeItem] as const,
+      }),
+  );
+
+/** Versioned wrapper for [`v01::HostJsonrpcMessageSubscribeRequest`]. */
+export type VersionedHostJsonrpcMessageSubscribeRequest = {
+  tag: "V1";
+  value: HostJsonrpcMessageSubscribeRequest;
+};
+
+export const VersionedHostJsonrpcMessageSubscribeRequest: S.Codec<VersionedHostJsonrpcMessageSubscribeRequest> =
+  S.lazy(
+    (): S.Codec<VersionedHostJsonrpcMessageSubscribeRequest> =>
+      S.indexedTaggedUnion({
+        V1: [0, HostJsonrpcMessageSubscribeRequest] as const,
+      }),
+  );
+
 /** Versioned wrapper for [`v01::HostLocalStorageReadError`] and older versions. */
 export type VersionedHostLocalStorageClearError = {
   tag: "V1";
@@ -1436,6 +1535,82 @@ export const VersionedHostPushNotificationResponse: S.Codec<VersionedHostPushNot
       S.indexedTaggedUnion({ V1: [0, S._void] as const }),
   );
 
+/** Versioned wrapper for [`v01::HostRequestLoginError`]. */
+export type VersionedHostRequestLoginError = {
+  tag: "V1";
+  value: HostRequestLoginError;
+};
+
+export const VersionedHostRequestLoginError: S.Codec<VersionedHostRequestLoginError> =
+  S.lazy(
+    (): S.Codec<VersionedHostRequestLoginError> =>
+      S.indexedTaggedUnion({ V1: [0, HostRequestLoginError] as const }),
+  );
+
+/** Versioned wrapper for [`v01::HostRequestLoginRequest`]. */
+export type VersionedHostRequestLoginRequest = {
+  tag: "V1";
+  value: HostRequestLoginRequest;
+};
+
+export const VersionedHostRequestLoginRequest: S.Codec<VersionedHostRequestLoginRequest> =
+  S.lazy(
+    (): S.Codec<VersionedHostRequestLoginRequest> =>
+      S.indexedTaggedUnion({ V1: [0, HostRequestLoginRequest] as const }),
+  );
+
+/** Versioned wrapper for [`v01::HostRequestLoginResponse`]. */
+export type VersionedHostRequestLoginResponse = {
+  tag: "V1";
+  value: HostRequestLoginResponse;
+};
+
+export const VersionedHostRequestLoginResponse: S.Codec<VersionedHostRequestLoginResponse> =
+  S.lazy(
+    (): S.Codec<VersionedHostRequestLoginResponse> =>
+      S.indexedTaggedUnion({ V1: [0, HostRequestLoginResponse] as const }),
+  );
+
+/** Versioned wrapper for [`v01::ResourceAllocationError`]. */
+export type VersionedHostRequestResourceAllocationError = {
+  tag: "V1";
+  value: ResourceAllocationError;
+};
+
+export const VersionedHostRequestResourceAllocationError: S.Codec<VersionedHostRequestResourceAllocationError> =
+  S.lazy(
+    (): S.Codec<VersionedHostRequestResourceAllocationError> =>
+      S.indexedTaggedUnion({ V1: [0, ResourceAllocationError] as const }),
+  );
+
+/** Versioned wrapper for [`v01::HostRequestResourceAllocationRequest`]. */
+export type VersionedHostRequestResourceAllocationRequest = {
+  tag: "V1";
+  value: HostRequestResourceAllocationRequest;
+};
+
+export const VersionedHostRequestResourceAllocationRequest: S.Codec<VersionedHostRequestResourceAllocationRequest> =
+  S.lazy(
+    (): S.Codec<VersionedHostRequestResourceAllocationRequest> =>
+      S.indexedTaggedUnion({
+        V1: [0, HostRequestResourceAllocationRequest] as const,
+      }),
+  );
+
+/** Versioned wrapper for [`v01::HostRequestResourceAllocationResponse`]. */
+export type VersionedHostRequestResourceAllocationResponse = {
+  tag: "V1";
+  value: HostRequestResourceAllocationResponse;
+};
+
+export const VersionedHostRequestResourceAllocationResponse: S.Codec<VersionedHostRequestResourceAllocationResponse> =
+  S.lazy(
+    (): S.Codec<VersionedHostRequestResourceAllocationResponse> =>
+      S.indexedTaggedUnion({
+        V1: [0, HostRequestResourceAllocationResponse] as const,
+      }),
+  );
+
 /** Versioned wrapper for the sign-payload error (shared across v0.1/v0.2). */
 export type VersionedHostSignPayloadError = {
   tag: "V2";
@@ -1472,6 +1647,44 @@ export const VersionedHostSignPayloadResponse: S.Codec<VersionedHostSignPayloadR
       S.indexedTaggedUnion({ V2: [0, HostSignPayloadResponse] as const }),
   );
 
+/** Versioned wrapper for the legacy-account sign-payload error; reuses [`v01::HostSignPayloadError`]. */
+export type VersionedHostSignPayloadWithLegacyAccountError = {
+  tag: "V1";
+  value: HostSignPayloadError;
+};
+
+export const VersionedHostSignPayloadWithLegacyAccountError: S.Codec<VersionedHostSignPayloadWithLegacyAccountError> =
+  S.lazy(
+    (): S.Codec<VersionedHostSignPayloadWithLegacyAccountError> =>
+      S.indexedTaggedUnion({ V1: [0, HostSignPayloadError] as const }),
+  );
+
+/** Versioned wrapper for the legacy-account sign-payload request. */
+export type VersionedHostSignPayloadWithLegacyAccountRequest = {
+  tag: "V1";
+  value: HostSignPayloadWithLegacyAccountRequest;
+};
+
+export const VersionedHostSignPayloadWithLegacyAccountRequest: S.Codec<VersionedHostSignPayloadWithLegacyAccountRequest> =
+  S.lazy(
+    (): S.Codec<VersionedHostSignPayloadWithLegacyAccountRequest> =>
+      S.indexedTaggedUnion({
+        V1: [0, HostSignPayloadWithLegacyAccountRequest] as const,
+      }),
+  );
+
+/** Versioned wrapper for the legacy-account sign-payload response; reuses [`v01::HostSignPayloadResponse`]. */
+export type VersionedHostSignPayloadWithLegacyAccountResponse = {
+  tag: "V1";
+  value: HostSignPayloadResponse;
+};
+
+export const VersionedHostSignPayloadWithLegacyAccountResponse: S.Codec<VersionedHostSignPayloadWithLegacyAccountResponse> =
+  S.lazy(
+    (): S.Codec<VersionedHostSignPayloadWithLegacyAccountResponse> =>
+      S.indexedTaggedUnion({ V1: [0, HostSignPayloadResponse] as const }),
+  );
+
 /** Versioned wrapper for the sign-raw error; reuses [`v01::HostSignPayloadError`]. */
 export type VersionedHostSignRawError = {
   tag: "V2";
@@ -1506,6 +1719,56 @@ export const VersionedHostSignRawResponse: S.Codec<VersionedHostSignRawResponse>
   S.lazy(
     (): S.Codec<VersionedHostSignRawResponse> =>
       S.indexedTaggedUnion({ V2: [0, HostSignPayloadResponse] as const }),
+  );
+
+/** Versioned wrapper for the legacy-account sign-raw error; reuses [`v01::HostSignPayloadError`]. */
+export type VersionedHostSignRawWithLegacyAccountError = {
+  tag: "V1";
+  value: HostSignPayloadError;
+};
+
+export const VersionedHostSignRawWithLegacyAccountError: S.Codec<VersionedHostSignRawWithLegacyAccountError> =
+  S.lazy(
+    (): S.Codec<VersionedHostSignRawWithLegacyAccountError> =>
+      S.indexedTaggedUnion({ V1: [0, HostSignPayloadError] as const }),
+  );
+
+/** Versioned wrapper for [`v01::HostSignRawWithLegacyAccountRequest`]. */
+export type VersionedHostSignRawWithLegacyAccountRequest = {
+  tag: "V1";
+  value: HostSignRawWithLegacyAccountRequest;
+};
+
+export const VersionedHostSignRawWithLegacyAccountRequest: S.Codec<VersionedHostSignRawWithLegacyAccountRequest> =
+  S.lazy(
+    (): S.Codec<VersionedHostSignRawWithLegacyAccountRequest> =>
+      S.indexedTaggedUnion({
+        V1: [0, HostSignRawWithLegacyAccountRequest] as const,
+      }),
+  );
+
+/** Versioned wrapper for the legacy-account sign-raw response; reuses [`v01::HostSignPayloadResponse`]. */
+export type VersionedHostSignRawWithLegacyAccountResponse = {
+  tag: "V1";
+  value: HostSignPayloadResponse;
+};
+
+export const VersionedHostSignRawWithLegacyAccountResponse: S.Codec<VersionedHostSignRawWithLegacyAccountResponse> =
+  S.lazy(
+    (): S.Codec<VersionedHostSignRawWithLegacyAccountResponse> =>
+      S.indexedTaggedUnion({ V1: [0, HostSignPayloadResponse] as const }),
+  );
+
+/** Versioned wrapper for [`v01::HostThemeSubscribeItem`]. */
+export type VersionedHostThemeSubscribeItem = {
+  tag: "V1";
+  value: HostThemeSubscribeItem;
+};
+
+export const VersionedHostThemeSubscribeItem: S.Codec<VersionedHostThemeSubscribeItem> =
+  S.lazy(
+    (): S.Codec<VersionedHostThemeSubscribeItem> =>
+      S.indexedTaggedUnion({ V1: [0, HostThemeSubscribeItem] as const }),
   );
 
 /** Layout and styling modifiers applied to custom renderer components. */
@@ -2268,6 +2531,82 @@ export const VersionedRemotePreimageLookupSubscribeRequest: S.Codec<VersionedRem
       }),
   );
 
+/** Versioned wrapper for [`v01::PreimageSubmitError`]. */
+export type VersionedRemotePreimageSubmitError = {
+  tag: "V1";
+  value: PreimageSubmitError;
+};
+
+export const VersionedRemotePreimageSubmitError: S.Codec<VersionedRemotePreimageSubmitError> =
+  S.lazy(
+    (): S.Codec<VersionedRemotePreimageSubmitError> =>
+      S.indexedTaggedUnion({ V1: [0, PreimageSubmitError] as const }),
+  );
+
+/** Versioned wrapper for the preimage submit request (raw bytes). */
+export type VersionedRemotePreimageSubmitRequest = {
+  tag: "V1";
+  value: HexString;
+};
+
+export const VersionedRemotePreimageSubmitRequest: S.Codec<VersionedRemotePreimageSubmitRequest> =
+  S.lazy(
+    (): S.Codec<VersionedRemotePreimageSubmitRequest> =>
+      S.indexedTaggedUnion({ V1: [0, S.Hex()] as const }),
+  );
+
+/** Versioned wrapper for the preimage submit response (preimage key). */
+export type VersionedRemotePreimageSubmitResponse = {
+  tag: "V1";
+  value: HexString;
+};
+
+export const VersionedRemotePreimageSubmitResponse: S.Codec<VersionedRemotePreimageSubmitResponse> =
+  S.lazy(
+    (): S.Codec<VersionedRemotePreimageSubmitResponse> =>
+      S.indexedTaggedUnion({ V1: [0, S.Hex()] as const }),
+  );
+
+/** Versioned wrapper for the authorized proof error; reuses [`v01::RemoteStatementStoreCreateProofError`]. */
+export type VersionedRemoteStatementStoreCreateProofAuthorizedError = {
+  tag: "V1";
+  value: RemoteStatementStoreCreateProofError;
+};
+
+export const VersionedRemoteStatementStoreCreateProofAuthorizedError: S.Codec<VersionedRemoteStatementStoreCreateProofAuthorizedError> =
+  S.lazy(
+    (): S.Codec<VersionedRemoteStatementStoreCreateProofAuthorizedError> =>
+      S.indexedTaggedUnion({
+        V1: [0, RemoteStatementStoreCreateProofError] as const,
+      }),
+  );
+
+/** Versioned wrapper for the authorized proof request; uses [`v01::Statement`] directly. */
+export type VersionedRemoteStatementStoreCreateProofAuthorizedRequest = {
+  tag: "V1";
+  value: Statement;
+};
+
+export const VersionedRemoteStatementStoreCreateProofAuthorizedRequest: S.Codec<VersionedRemoteStatementStoreCreateProofAuthorizedRequest> =
+  S.lazy(
+    (): S.Codec<VersionedRemoteStatementStoreCreateProofAuthorizedRequest> =>
+      S.indexedTaggedUnion({ V1: [0, Statement] as const }),
+  );
+
+/** Versioned wrapper for the authorized proof response; reuses [`v01::RemoteStatementStoreCreateProofResponse`]. */
+export type VersionedRemoteStatementStoreCreateProofAuthorizedResponse = {
+  tag: "V1";
+  value: RemoteStatementStoreCreateProofResponse;
+};
+
+export const VersionedRemoteStatementStoreCreateProofAuthorizedResponse: S.Codec<VersionedRemoteStatementStoreCreateProofAuthorizedResponse> =
+  S.lazy(
+    (): S.Codec<VersionedRemoteStatementStoreCreateProofAuthorizedResponse> =>
+      S.indexedTaggedUnion({
+        V1: [0, RemoteStatementStoreCreateProofResponse] as const,
+      }),
+  );
+
 /** Versioned wrapper for [`v01::RemoteStatementStoreCreateProofError`] and older versions. */
 export type VersionedRemoteStatementStoreCreateProofError = {
   tag: "V1";
@@ -2369,6 +2708,18 @@ export const VersionedRemoteStatementStoreSubscribeRequest: S.Codec<VersionedRem
         V2: [0, RemoteStatementStoreSubscribeRequest] as const,
       }),
   );
+
+/** Resource allocation error. */
+export type ResourceAllocationError =
+  /** Catch-all. */
+  { tag: "Unknown"; value: { reason: string } };
+
+export const ResourceAllocationError: S.Codec<ResourceAllocationError> = S.lazy(
+  (): S.Codec<ResourceAllocationError> =>
+    S.Enum({
+      Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
+    }),
+);
 
 /** Locates a specific ring on a specific chain for ring VRF operations. */
 export interface RingLocation {
@@ -2670,6 +3021,17 @@ export const TextProps: S.Codec<TextProps> = S.lazy(
       style: S.Option(TypographyStyle),
       color: S.Option(ColorToken),
     }) as S.Codec<TextProps>,
+);
+
+/** Host UI theme. */
+export type Theme =
+  /** Light appearance. */
+  | { tag: "Light"; value: undefined }
+  /** Dark appearance. */
+  | { tag: "Dark"; value: undefined };
+
+export const Theme: S.Codec<Theme> = S.lazy(
+  (): S.Codec<Theme> => S.Enum({ Light: S._void, Dark: S._void }),
 );
 
 /** 32-byte statement topic. */
@@ -3231,6 +3593,49 @@ export const HostHandshakeRequest: S.Codec<HostHandshakeRequest> = S.lazy(
     S.Struct({ codecVersion: S.u8 }) as S.Codec<HostHandshakeRequest>,
 );
 
+/** Request to send a JSON-RPC message to a chain identified by its genesis hash. */
+export interface HostJsonrpcMessageSendRequest {
+  /** Chain genesis hash. */
+  genesisHash: HexString;
+  /** JSON-RPC message body. */
+  message: string;
+}
+
+export const HostJsonrpcMessageSendRequest: S.Codec<HostJsonrpcMessageSendRequest> =
+  S.lazy(
+    (): S.Codec<HostJsonrpcMessageSendRequest> =>
+      S.Struct({
+        genesisHash: S.Hex(),
+        message: S.str,
+      }) as S.Codec<HostJsonrpcMessageSendRequest>,
+  );
+
+/** An inbound JSON-RPC message from the host. */
+export interface HostJsonrpcMessageSubscribeItem {
+  /** JSON-RPC message body. */
+  message: string;
+}
+
+export const HostJsonrpcMessageSubscribeItem: S.Codec<HostJsonrpcMessageSubscribeItem> =
+  S.lazy(
+    (): S.Codec<HostJsonrpcMessageSubscribeItem> =>
+      S.Struct({ message: S.str }) as S.Codec<HostJsonrpcMessageSubscribeItem>,
+  );
+
+/** Request to subscribe to inbound JSON-RPC messages for a chain. */
+export interface HostJsonrpcMessageSubscribeRequest {
+  /** Chain genesis hash. */
+  genesisHash: HexString;
+}
+
+export const HostJsonrpcMessageSubscribeRequest: S.Codec<HostJsonrpcMessageSubscribeRequest> =
+  S.lazy(
+    (): S.Codec<HostJsonrpcMessageSubscribeRequest> =>
+      S.Struct({
+        genesisHash: S.Hex(),
+      }) as S.Codec<HostJsonrpcMessageSubscribeRequest>,
+  );
+
 /** Request to clear a local storage key. */
 export interface HostLocalStorageClearRequest {
   /** Storage key to clear. */
@@ -3345,6 +3750,76 @@ export const HostPushNotificationRequest: S.Codec<HostPushNotificationRequest> =
       }) as S.Codec<HostPushNotificationRequest>,
   );
 
+/** Login request error. */
+export type HostRequestLoginError =
+  /** Catch-all. */
+  { tag: "Unknown"; value: { reason: string } };
+
+export const HostRequestLoginError: S.Codec<HostRequestLoginError> = S.lazy(
+  (): S.Codec<HostRequestLoginError> =>
+    S.Enum({
+      Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
+    }),
+);
+
+/** Request to present the host login flow. */
+export interface HostRequestLoginRequest {
+  /** Optional human-readable reason shown in the login UI. */
+  reason?: string;
+}
+
+export const HostRequestLoginRequest: S.Codec<HostRequestLoginRequest> = S.lazy(
+  (): S.Codec<HostRequestLoginRequest> =>
+    S.Struct({ reason: S.Option(S.str) }) as S.Codec<HostRequestLoginRequest>,
+);
+
+/** Result of a login request. */
+export type HostRequestLoginResponse =
+  /** User successfully authenticated. */
+  | { tag: "Success"; value: undefined }
+  /** User is already authenticated — no action was taken. */
+  | { tag: "AlreadyConnected"; value: undefined }
+  /** User dismissed/rejected the login UI. */
+  | { tag: "Rejected"; value: undefined };
+
+export const HostRequestLoginResponse: S.Codec<HostRequestLoginResponse> =
+  S.lazy(
+    (): S.Codec<HostRequestLoginResponse> =>
+      S.Enum({
+        Success: S._void,
+        AlreadyConnected: S._void,
+        Rejected: S._void,
+      }),
+  );
+
+/** Request to allocate one or more resources. */
+export interface HostRequestResourceAllocationRequest {
+  /** Resources to allocate. */
+  resources: Array<AllocatableResource>;
+}
+
+export const HostRequestResourceAllocationRequest: S.Codec<HostRequestResourceAllocationRequest> =
+  S.lazy(
+    (): S.Codec<HostRequestResourceAllocationRequest> =>
+      S.Struct({
+        resources: S.Vector(AllocatableResource),
+      }) as S.Codec<HostRequestResourceAllocationRequest>,
+  );
+
+/** Response containing the outcome for each requested resource. */
+export interface HostRequestResourceAllocationResponse {
+  /** Per-resource allocation outcomes, in the same order as the request. */
+  outcomes: Array<AllocationOutcome>;
+}
+
+export const HostRequestResourceAllocationResponse: S.Codec<HostRequestResourceAllocationResponse> =
+  S.lazy(
+    (): S.Codec<HostRequestResourceAllocationResponse> =>
+      S.Struct({
+        outcomes: S.Vector(AllocationOutcome),
+      }) as S.Codec<HostRequestResourceAllocationResponse>,
+  );
+
 /** Signing operation error. */
 export type HostSignPayloadError =
   /** Payload could not be deserialized. */
@@ -3380,6 +3855,58 @@ export const HostSignPayloadResponse: S.Codec<HostSignPayloadResponse> = S.lazy(
       signature: S.Hex(),
       signedTransaction: S.Option(S.Hex()),
     }) as S.Codec<HostSignPayloadResponse>,
+);
+
+/**
+ * Sign a Substrate extrinsic payload with a non-product (legacy) account.
+ * Contains the same fields as [`HostSignPayloadRequest`] minus `address`
+ * (replaced by `signer`).
+ */
+export interface HostSignPayloadWithLegacyAccountRequest {
+  /** Signer address (SS58 or hex) of the legacy account. */
+  signer: string;
+  /** The extrinsic payload to sign. */
+  payload: HostSignPayloadRequest;
+}
+
+export const HostSignPayloadWithLegacyAccountRequest: S.Codec<HostSignPayloadWithLegacyAccountRequest> =
+  S.lazy(
+    (): S.Codec<HostSignPayloadWithLegacyAccountRequest> =>
+      S.Struct({
+        signer: S.str,
+        payload: HostSignPayloadRequest,
+      }) as S.Codec<HostSignPayloadWithLegacyAccountRequest>,
+  );
+
+/**
+ * Sign raw bytes with a non-product (legacy) account. The signer field
+ * identifies which legacy account to use.
+ */
+export interface HostSignRawWithLegacyAccountRequest {
+  /** Signer address (SS58 or hex) of the legacy account. */
+  signer: string;
+  /** The data to sign. */
+  payload: RawPayload;
+}
+
+export const HostSignRawWithLegacyAccountRequest: S.Codec<HostSignRawWithLegacyAccountRequest> =
+  S.lazy(
+    (): S.Codec<HostSignRawWithLegacyAccountRequest> =>
+      S.Struct({
+        signer: S.str,
+        payload: RawPayload,
+      }) as S.Codec<HostSignRawWithLegacyAccountRequest>,
+  );
+
+/** Item emitted by the theme subscription. */
+export interface HostThemeSubscribeItem {
+  /** Current theme. */
+  theme: Theme;
+}
+
+export const HostThemeSubscribeItem: S.Codec<HostThemeSubscribeItem> = S.lazy(
+  (): S.Codec<HostThemeSubscribeItem> =>
+    S.Struct({ theme: Theme }) as S.Codec<HostThemeSubscribeItem>,
 );
 
 /**
@@ -3613,7 +4140,7 @@ export const RemoteChainHeadFollowItem: S.Codec<RemoteChainHeadFollowItem> =
       }),
   );
 
-/** Parameters for [`crate::api::ChainInteraction::remote_chain_head_follow`]. */
+/** Parameters for [`crate::api::ChainInteraction::remote_chain_head_follow_subscribe`]. */
 export interface RemoteChainHeadFollowRequest {
   /** Chain genesis hash. */
   genesisHash: HexString;

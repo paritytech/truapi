@@ -127,7 +127,7 @@ pub enum RemoteChainHeadFollowItem {
     Stop,
 }
 
-/// Parameters for [`crate::api::ChainInteraction::remote_chain_head_follow`].
+/// Parameters for [`crate::api::ChainInteraction::remote_chain_head_follow_subscribe`].
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct RemoteChainHeadFollowRequest {
     /// Chain genesis hash.
