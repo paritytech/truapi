@@ -3777,7 +3777,7 @@ mod tests {
     fn generate_wire_table_rejects_reserved_wire_ids() {
         let Some(&reserved_id) = truapi::api::RESERVED_WIRE_IDS.first() else {
             return;
-        };        
+        };
         let err = generate_wire_table(&api(vec![request_method("squat", Some(reserved_id))]), 2)
             .expect_err("annotation that lands on a reserved id must error");
         let message = err.to_string();

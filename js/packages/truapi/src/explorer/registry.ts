@@ -67,7 +67,7 @@ export const versions: ExplorerVersion[] = [
         id: "truapi-calls",
         name: "TrUAPI Calls",
         description:
-          "General-purpose TrUAPI methods for feature detection, navigation, and\nnotifications.\n\n# Wire id reservations\n\nThe discriminants below are listed in [`super::RESERVED_WIRE_IDS`] so\ncodegen rejects any `#[wire(...)]` annotation that collides with them.\nSlots are held back for upstream `triangle-js-sdks` methods that TrUAPI\ndoes not implement, but whose ids must remain free to keep our wire-table\npositionally aligned with the canonical host `MessagePayload` enum. If we\never need one, annotate the trait method with the matching id and remove\nit from `RESERVED_WIRE_IDS`.\n\nAll previously reserved slots have been implemented.",
+          "General-purpose TrUAPI methods for feature detection, navigation, and\nnotifications.\n\n# Wire id reservations\n\nThe discriminants below are listed in [`super::RESERVED_WIRE_IDS`] so\ncodegen rejects any `#[wire(...)]` annotation that collides with them.\nSlots are held back for upstream `triangle-js-sdks` methods that TrUAPI\ndoes not implement, but whose ids must remain free to keep our wire-table\npositionally aligned with the canonical host `MessagePayload` enum. If we\never need one, annotate the trait method with the matching id and remove\nit from `RESERVED_WIRE_IDS`.",
         methods: [
           "host_handshake",
           "host_feature_supported",
@@ -4164,7 +4164,7 @@ export const versions: ExplorerVersion[] = [
         id: "truapi-calls",
         name: "TrUAPI Calls",
         description:
-          "General-purpose TrUAPI methods for feature detection, navigation, and\nnotifications.\n\n# Wire id reservations\n\nThe discriminants below are listed in [`super::RESERVED_WIRE_IDS`] so\ncodegen rejects any `#[wire(...)]` annotation that collides with them.\nSlots are held back for upstream `triangle-js-sdks` methods that TrUAPI\ndoes not implement, but whose ids must remain free to keep our wire-table\npositionally aligned with the canonical host `MessagePayload` enum. If we\never need one, annotate the trait method with the matching id and remove\nit from `RESERVED_WIRE_IDS`.\n\nAll previously reserved slots have been implemented.",
+          "General-purpose TrUAPI methods for feature detection, navigation, and\nnotifications.\n\n# Wire id reservations\n\nThe discriminants below are listed in [`super::RESERVED_WIRE_IDS`] so\ncodegen rejects any `#[wire(...)]` annotation that collides with them.\nSlots are held back for upstream `triangle-js-sdks` methods that TrUAPI\ndoes not implement, but whose ids must remain free to keep our wire-table\npositionally aligned with the canonical host `MessagePayload` enum. If we\never need one, annotate the trait method with the matching id and remove\nit from `RESERVED_WIRE_IDS`.",
         methods: [
           "host_handshake",
           "host_feature_supported",

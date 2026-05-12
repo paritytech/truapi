@@ -1486,8 +1486,6 @@ export class StatementStoreClient {
  * positionally aligned with the canonical host `MessagePayload` enum. If we
  * ever need one, annotate the trait method with the matching id and remove
  * it from `RESERVED_WIRE_IDS`.
- *
- * All previously reserved slots have been implemented.
  */
 export class TrUApiCallsClient {
   constructor(private readonly transport: TrUApiTransport) {}
