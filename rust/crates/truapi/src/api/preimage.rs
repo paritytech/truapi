@@ -2,16 +2,15 @@
 
 use crate::versioned::preimage::{
     RemotePreimageLookupSubscribeItem, RemotePreimageLookupSubscribeRequest,
+    RemotePreimageSubmitError, RemotePreimageSubmitRequest, RemotePreimageSubmitResponse,
 };
 use crate::wire;
-use crate::{CallContext, Subscription};
+use crate::{CallContext, CallError, Subscription};
 
-/// Preimage lookup.
+/// Preimage lookup and submission.
 ///
-/// The v01 `remote_preimage_submit` method is intentionally not carried into
-/// the unified contract because v02 removed it.
-///
-/// Hosts override only if they actually support preimage lookup.
+/// Default methods return [`CallError::HostFailure`] with an `unavailable`
+/// reason. Hosts override only the methods they actually support.
 #[async_trait::async_trait]
 pub trait Preimage: Send + Sync {
     /// Subscribe to preimage lookups for a given key.
@@ -45,5 +44,31 @@ pub trait Preimage: Send + Sync {
         _request: RemotePreimageLookupSubscribeRequest,
     ) -> Subscription<RemotePreimageLookupSubscribeItem> {
         Subscription::empty()
+    }
+
+    /// Submit a preimage. Returns the preimage key (hash) on success.
+    ///
+    /// ```truapi-client-example
+    /// import {
+    ///   type Client,
+    ///   type HexString,
+    /// } from "@parity/truapi";
+    ///
+    /// export async function submitPreimage(
+    ///   truapi: Client,
+    /// ): Promise<HexString> {
+    ///   const result = await truapi.preimage.preimageSubmit("0xdeadbeef");
+    ///
+    ///   if (result.isErr()) throw result.error;
+    ///   return result.value;
+    /// }
+    /// ```
+    #[wire(request_id = 68)]
+    async fn remote_preimage_submit(
+        &self,
+        _cx: &CallContext,
+        _request: RemotePreimageSubmitRequest,
+    ) -> Result<RemotePreimageSubmitResponse, CallError<RemotePreimageSubmitError>> {
+        Err(CallError::unavailable())
     }
 }

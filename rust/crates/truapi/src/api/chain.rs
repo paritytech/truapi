@@ -38,7 +38,7 @@ pub trait ChainInteraction: Send + Sync {
     ///
     /// export function followChainHead(truapi: Client): Subscription {
     ///   return truapi.chainInteraction
-    ///     .chainHeadFollow({
+    ///     .chainHeadFollowSubscribe({
     ///       request: {
     ///         genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///         withRuntime: false,
@@ -52,7 +52,7 @@ pub trait ChainInteraction: Send + Sync {
     /// }
     /// ```
     #[wire(start_id = 76)]
-    async fn remote_chain_head_follow(
+    async fn remote_chain_head_follow_subscribe(
         &self,
         _cx: &CallContext,
         _request: RemoteChainHeadFollowRequest,

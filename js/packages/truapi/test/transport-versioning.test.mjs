@@ -4,7 +4,7 @@ import { createTransport } from "../src/client.ts";
 import { indexedTaggedUnion, Result, str, _void } from "../src/scale.ts";
 import {
   createClient,
-  SubscriptionInterruptedError,
+  SubscriptionError,
 } from "../src/generated/client.ts";
 import * as T from "../src/generated/types.ts";
 import * as W from "../src/generated/wire-table.ts";
@@ -90,7 +90,7 @@ function handshakeResponsePayload(value) {
   expectedFrame.set(expectedPayload, str.enc("p:1").length + 1);
 
   assert.equal(toHex(fixture.sent[0]), toHex(expectedFrame));
-  assert.equal(transport.truapiVersion, 2);
+  assert.equal(transport.truapiVersion, 1);
   assert.equal(transport.codecVersion, 1);
 }
 
@@ -260,7 +260,7 @@ function handshakeResponsePayload(value) {
       payload: {
         id: W.HOST_PAYMENT_BALANCE_SUBSCRIBE.interrupt,
         value: T.VersionedHostPaymentBalanceSubscribeError.enc({
-          tag: "V2",
+          tag: "V1",
           value: reason,
         }),
       },
@@ -271,7 +271,7 @@ function handshakeResponsePayload(value) {
 
   assert.deepEqual(completions, []);
   assert.equal(errors.length, 1);
-  assert.ok(errors[0] instanceof SubscriptionInterruptedError);
+  assert.ok(errors[0] instanceof SubscriptionError);
   assert.deepEqual(errors[0].reason, reason);
   assert.equal(fixture.sent.length, 1);
 }
@@ -306,7 +306,8 @@ function handshakeResponsePayload(value) {
 
   assert.deepEqual(events, []);
   assert.equal(errors.length, 1);
-  assert.ok(errors[0] instanceof Error);
+  assert.ok(errors[0] instanceof SubscriptionError);
+  assert.equal(errors[0].reason, undefined);
   assert.equal(fixture.sent.length, 2);
   const expectedStop = unwrap(
     encodeWireMessage({
@@ -381,10 +382,14 @@ function handshakeResponsePayload(value) {
     error: (error) => errors.push(error),
   });
 
-  fixture.close(new Error("provider closed"));
+  const providerError = new Error("provider closed");
+  fixture.close(providerError);
 
   assert.equal(errors.length, 1);
+  assert.ok(errors[0] instanceof SubscriptionError);
   assert.equal(errors[0].message, "provider closed");
+  assert.equal(errors[0].reason, undefined);
+  assert.equal(errors[0].cause, providerError);
 }
 
 console.log("transport version wrapping tests passed");

@@ -22,7 +22,7 @@ struct Cli {
     /// TrUAPI protocol version for the generated TypeScript package.
     ///
     /// Accepts `V<N>` or `<N>`, for example `V1`, `V2`, or `2`.
-    #[arg(long, default_value = "V2")]
+    #[arg(long, default_value = "V1")]
     version: ProtocolVersionArg,
 
     /// Wire codec version for generated handshake calls.

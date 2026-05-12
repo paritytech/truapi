@@ -4,7 +4,10 @@ use crate::versioned::signing::{
     HostCreateTransactionError, HostCreateTransactionRequest, HostCreateTransactionResponse,
     HostCreateTransactionWithLegacyAccountError, HostCreateTransactionWithLegacyAccountRequest,
     HostCreateTransactionWithLegacyAccountResponse, HostSignPayloadError, HostSignPayloadRequest,
-    HostSignPayloadResponse, HostSignRawError, HostSignRawRequest, HostSignRawResponse,
+    HostSignPayloadResponse, HostSignPayloadWithLegacyAccountError,
+    HostSignPayloadWithLegacyAccountRequest, HostSignPayloadWithLegacyAccountResponse,
+    HostSignRawError, HostSignRawRequest, HostSignRawResponse, HostSignRawWithLegacyAccountError,
+    HostSignRawWithLegacyAccountRequest, HostSignRawWithLegacyAccountResponse,
 };
 use crate::wire;
 use crate::{CallContext, CallError};
@@ -100,6 +103,84 @@ pub trait Signing: Send + Sync {
     ) -> Result<
         HostCreateTransactionWithLegacyAccountResponse,
         CallError<HostCreateTransactionWithLegacyAccountError>,
+    > {
+        Err(CallError::unavailable())
+    }
+
+    /// Sign raw bytes with a non-product (legacy) account.
+    ///
+    /// ```truapi-client-example
+    /// import {
+    ///   type Client,
+    ///   type HostSignPayloadResponse,
+    /// } from "@parity/truapi";
+    ///
+    /// export async function signRawWithLegacyAccount(
+    ///   truapi: Client,
+    /// ): Promise<HostSignPayloadResponse> {
+    ///   const result = await truapi.signing.signRawWithLegacyAccount({
+    ///     signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
+    ///     payload: {
+    ///       tag: "Bytes",
+    ///       value: { bytes: "0x48656c6c6f" },
+    ///     },
+    ///   });
+    ///
+    ///   if (result.isErr()) throw result.error;
+    ///   return result.value;
+    /// }
+    /// ```
+    #[wire(request_id = 34)]
+    async fn host_sign_raw_with_legacy_account(
+        &self,
+        _cx: &CallContext,
+        _request: HostSignRawWithLegacyAccountRequest,
+    ) -> Result<HostSignRawWithLegacyAccountResponse, CallError<HostSignRawWithLegacyAccountError>>
+    {
+        Err(CallError::unavailable())
+    }
+
+    /// Sign a Substrate extrinsic payload with a non-product (legacy) account.
+    ///
+    /// ```truapi-client-example
+    /// import {
+    ///   type Client,
+    ///   type HostSignPayloadResponse,
+    /// } from "@parity/truapi";
+    ///
+    /// export async function signPayloadWithLegacyAccount(
+    ///   truapi: Client,
+    /// ): Promise<HostSignPayloadResponse> {
+    ///   const result = await truapi.signing.signPayloadWithLegacyAccount({
+    ///     signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
+    ///     payload: {
+    ///       account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },
+    ///       blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///       blockNumber: "0x00000000",
+    ///       era: "0x00",
+    ///       genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///       method: "0x0000",
+    ///       nonce: "0x00000000",
+    ///       signedExtensions: [],
+    ///       specVersion: "0x00000000",
+    ///       tip: "0x00000000000000000000000000000000",
+    ///       transactionVersion: "0x00000000",
+    ///       version: 4,
+    ///     },
+    ///   });
+    ///
+    ///   if (result.isErr()) throw result.error;
+    ///   return result.value;
+    /// }
+    /// ```
+    #[wire(request_id = 36)]
+    async fn host_sign_payload_with_legacy_account(
+        &self,
+        _cx: &CallContext,
+        _request: HostSignPayloadWithLegacyAccountRequest,
+    ) -> Result<
+        HostSignPayloadWithLegacyAccountResponse,
+        CallError<HostSignPayloadWithLegacyAccountError>,
     > {
         Err(CallError::unavailable())
     }

@@ -6,7 +6,8 @@ use crate::versioned::account::{
     HostAccountGetAliasRequest, HostAccountGetAliasResponse, HostAccountGetError,
     HostAccountGetRequest, HostAccountGetResponse, HostGetLegacyAccountsError,
     HostGetLegacyAccountsRequest, HostGetLegacyAccountsResponse, HostGetUserIdError,
-    HostGetUserIdRequest, HostGetUserIdResponse,
+    HostGetUserIdRequest, HostGetUserIdResponse, HostRequestLoginError, HostRequestLoginRequest,
+    HostRequestLoginResponse,
 };
 use crate::wire;
 use crate::{CallContext, CallError, Subscription};
@@ -191,6 +192,37 @@ pub trait AccountManagement: Send + Sync {
         _cx: &CallContext,
         _request: HostGetUserIdRequest,
     ) -> Result<HostGetUserIdResponse, CallError<HostGetUserIdError>> {
+        Err(CallError::unavailable())
+    }
+
+    /// Request the host to present the login flow to the user.
+    ///
+    /// Products should call this in response to a user action (e.g. tapping a
+    /// "Sign in" button), not automatically on load.
+    ///
+    /// ```truapi-client-example
+    /// import {
+    ///   type Client,
+    ///   type HostRequestLoginResponse,
+    /// } from "@parity/truapi";
+    ///
+    /// export async function requestLogin(
+    ///   truapi: Client,
+    /// ): Promise<HostRequestLoginResponse> {
+    ///   const result = await truapi.accountManagement.requestLogin({
+    ///     reason: "Sign in to vote on Referendum #42",
+    ///   });
+    ///
+    ///   if (result.isErr()) throw result.error;
+    ///   return result.value;
+    /// }
+    /// ```
+    #[wire(request_id = 112)]
+    async fn host_request_login(
+        &self,
+        _cx: &CallContext,
+        _request: HostRequestLoginRequest,
+    ) -> Result<HostRequestLoginResponse, CallError<HostRequestLoginError>> {
         Err(CallError::unavailable())
     }
 }

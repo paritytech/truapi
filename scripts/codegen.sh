@@ -8,7 +8,7 @@
 #                                     --playground-output js/packages/truapi/src/playground
 #                                     --explorer-output js/packages/truapi/src/explorer
 #                                     --client-examples-output js/packages/truapi/test/generated/examples
-#                                     --version V2
+#                                     --version V1
 #                                     --codec-version 1
 #
 # Run from the repo root.
@@ -25,7 +25,7 @@ cargo run -p truapi-codegen -- \
   --playground-output js/packages/truapi/src/playground \
   --explorer-output js/packages/truapi/src/explorer \
   --client-examples-output js/packages/truapi/test/generated/examples \
-  --version V2 \
+  --version V1 \
   --codec-version 1
 
 npm exec --yes -- prettier --write \

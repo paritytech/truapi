@@ -22,13 +22,6 @@ use crate::{CallContext, CallError};
 /// ever need one, annotate the trait method with the matching id and remove
 /// it from `RESERVED_WIRE_IDS`.
 ///
-/// - 34-35: `host_sign_raw_with_legacy_account` (request, response)
-/// - 36-37: `host_sign_payload_with_legacy_account` (request, response)
-/// - 68-69: `remote_preimage_submit` (request, response)
-/// - 70-71: `host_jsonrpc_message_send` (request, response)
-/// - 72-75: `host_jsonrpc_message_subscribe` (start, stop, interrupt, receive)
-/// - 104-107: `host_theme_subscribe` (start, stop, interrupt, receive)
-/// - 112-113: `host_request_login` (request, response)
 #[async_trait::async_trait]
 pub trait TrUApiCalls: Send + Sync {
     /// Negotiates the wire codec version with the product.
@@ -53,7 +46,7 @@ pub trait TrUApiCalls: Send + Sync {
             Ok(HostHandshakeResponse::V1)
         } else {
             Err(CallError::Domain(HostHandshakeError::V1(
-                crate::v02::HostHandshakeError::UnsupportedProtocolVersion,
+                crate::v01::HostHandshakeError::UnsupportedProtocolVersion,
             )))
         }
     }

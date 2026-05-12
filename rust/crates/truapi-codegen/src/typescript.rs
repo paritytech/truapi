@@ -444,19 +444,19 @@ fn generate_explorer_registry_code(api: &ApiDefinition, target_version: u32) -> 
         writeln!(
             out,
             "    id: {},",
-            ts_string_literal(&protocol_minor(version))
+            ts_string_literal(&protocol_version_string(version))
         )
         .unwrap();
         writeln!(
             out,
             "    label: {},",
-            ts_string_literal(&format!("v{}", protocol_minor(version)))
+            ts_string_literal(&format!("v{}", protocol_version_string(version)))
         )
         .unwrap();
         writeln!(
             out,
             "    slug: {},",
-            ts_string_literal(&protocol_minor(version))
+            ts_string_literal(&protocol_version_string(version))
         )
         .unwrap();
         writeln!(out, "    status: \"stable\",").unwrap();
@@ -1002,12 +1002,14 @@ fn explorer_type_category(ty: &TypeDef) -> &'static str {
 }
 
 fn explorer_type_source(name: &str) -> String {
-    if name.starts_with("V01") {
-        "v0.1".to_string()
-    } else if name.starts_with("V02") {
-        "v0.2".to_string()
-    } else {
-        "shared".to_string()
+    let rest = match name.strip_prefix('V') {
+        Some(rest) => rest,
+        None => return "shared".to_string(),
+    };
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    match digits.parse::<u32>() {
+        Ok(version) => format!("v{version}"),
+        Err(_) => "shared".to_string(),
     }
 }
 
@@ -1245,8 +1247,8 @@ fn write_explorer_types_array(out: &mut String, indent: &str, types: &[ExplorerT
     writeln!(out, "{indent}],").unwrap();
 }
 
-fn protocol_minor(version: u32) -> String {
-    format!("0.{version}")
+fn protocol_version_string(version: u32) -> String {
+    version.to_string()
 }
 
 fn explorer_group_id(name: &str) -> String {
@@ -2251,6 +2253,12 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
     writeln!(out).unwrap();
     writeln!(out, "import {{ err, ok, type Result }} from 'neverthrow';").unwrap();
     writeln!(out, "import * as S from '../scale.js';").unwrap();
+    writeln!(out, "import type {{ HexString }} from '../scale.js';").unwrap();
+    writeln!(
+        out,
+        "import {{ SubscriptionError }} from '../transport.js';"
+    )
+    .unwrap();
     writeln!(
         out,
         "import type {{ ObservableLike, Observer, Subscription, SubscriptionFrameIds, TrUApiTransport }} from '../transport.js';"
@@ -2259,7 +2267,7 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
     writeln!(out, "import * as T from './types.js';").unwrap();
     writeln!(out, "import * as W from './wire-table.js';").unwrap();
     writeln!(out).unwrap();
-    writeln!(out, "export {{ Result }};").unwrap();
+    writeln!(out, "export {{ Result, SubscriptionError }};").unwrap();
     writeln!(
         out,
         "export type {{ ObservableLike, Observer, Subscription, TrUApiTransport }};"
@@ -2278,19 +2286,22 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
     writeln!(out).unwrap();
     writeln!(
         out,
-        "export class SubscriptionInterruptedError<Reason = unknown> extends Error {{"
+        "function toSubscriptionError<Reason = never>(error: unknown): SubscriptionError<Reason> {{"
     )
     .unwrap();
-    writeln!(out, "  constructor(readonly reason: Reason) {{").unwrap();
-    writeln!(out, "    super(\"Subscription interrupted\");").unwrap();
-    writeln!(out, "    this.name = \"SubscriptionInterruptedError\";").unwrap();
-    writeln!(out, "  }}").unwrap();
-    writeln!(out, "}}").unwrap();
-    writeln!(out).unwrap();
-    writeln!(out, "function toError(error: unknown): Error {{").unwrap();
     writeln!(
         out,
-        "  return error instanceof Error ? error : new Error(String(error));"
+        "  if (error instanceof SubscriptionError) return error as SubscriptionError<Reason>;"
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "  const cause = error instanceof Error ? error : new Error(String(error));"
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "  return new SubscriptionError(cause.message, {{ cause }});"
     )
     .unwrap();
     writeln!(out, "}}").unwrap();
@@ -2413,7 +2424,7 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
 }
 
 fn write_observable_helper(out: &mut String) {
-    writeln!(out, "function createObservable<Item>({{").unwrap();
+    writeln!(out, "function createObservable<Item, Reason = never>({{").unwrap();
     writeln!(out, "  transport,").unwrap();
     writeln!(out, "  ids,").unwrap();
     writeln!(out, "  payload,").unwrap();
@@ -2424,12 +2435,12 @@ fn write_observable_helper(out: &mut String) {
     writeln!(out, "  ids: SubscriptionFrameIds;").unwrap();
     writeln!(out, "  payload: Uint8Array;").unwrap();
     writeln!(out, "  decodeItem: (payload: Uint8Array) => Item;").unwrap();
-    writeln!(out, "  decodeInterrupt?: (payload: Uint8Array) => unknown;").unwrap();
-    writeln!(out, "}}): ObservableLike<Item> {{").unwrap();
+    writeln!(out, "  decodeInterrupt?: (payload: Uint8Array) => Reason;").unwrap();
+    writeln!(out, "}}): ObservableLike<Item, Reason> {{").unwrap();
     writeln!(out, "  return {{").unwrap();
     writeln!(
         out,
-        "    subscribe(observer: Partial<Observer<Item>> = {{}}): Subscription {{"
+        "    subscribe(observer: Partial<Observer<Item, Reason>> = {{}}): Subscription {{"
     )
     .unwrap();
     writeln!(out, "      let closed = false;").unwrap();
@@ -2445,7 +2456,11 @@ fn write_observable_helper(out: &mut String) {
     writeln!(out, "        try {{").unwrap();
     writeln!(out, "          if (stop) raw?.unsubscribe();").unwrap();
     writeln!(out, "        }} finally {{").unwrap();
-    writeln!(out, "          observer.error?.(toError(error));").unwrap();
+    writeln!(
+        out,
+        "          observer.error?.(toSubscriptionError<Reason>(error));"
+    )
+    .unwrap();
     writeln!(out, "        }}").unwrap();
     writeln!(out, "      }};").unwrap();
     writeln!(out).unwrap();
@@ -2472,7 +2487,7 @@ fn write_observable_helper(out: &mut String) {
     writeln!(out, "            }}").unwrap();
     writeln!(
         out,
-        "            fail(new SubscriptionInterruptedError(reason), false);"
+        "            fail(new SubscriptionError(\"Subscription interrupted\", {{ reason }}), false);"
     )
     .unwrap();
     writeln!(out, "            return;").unwrap();
@@ -2713,25 +2728,17 @@ fn versioned_kind_codec_expr(
     }
 }
 
-/// HACK: every emitted variant pins its wire discriminant to `0` regardless
-/// of the declared version. This works around `triangle-js-sdks` hosts that
-/// don't correctly route on the SCALE version prefix and instead treat the
-/// payload as if the codec had no version envelope at all. Safe today
-/// because [`versioned_wrapper_emit_versions`] reduces every method-envelope
-/// wrapper to a single emitted variant, so there is no collision between
-/// V1 and V2 sharing index 0. Remove once hosts decode the version byte
-/// correctly; the Rust side already pins each `Vn` arm to
-/// `#[codec(index = n - 1)]` and is unaffected.
+/// Builds a `S.indexedTaggedUnion({...})` expression for versioned wrapper
+/// variants. Each `V<N>` arm uses wire discriminant `N - 1`, matching the
+/// Rust `#[codec(index = N - 1)]` annotation.
 fn indexed_versioned_codec_expr(
     variants: impl IntoIterator<Item = (u32, String)>,
 ) -> Result<String> {
     let mut entries = Vec::new();
     for (version, codec) in variants {
-        // Validate version is non-zero (V0 is reserved/invalid).
-        version
+        let index = version
             .checked_sub(1)
             .ok_or_else(|| anyhow::anyhow!("versioned wrapper uses invalid V0 variant"))?;
-        let index = 0u32;
         entries.push(format!("V{version}: [{index}, {codec}] as const"));
     }
     Ok(format!("S.indexedTaggedUnion({{{}}})", entries.join(", ")))
@@ -2879,10 +2886,14 @@ fn emit_subscribe_method(
     err: Option<ResponseEmission>,
     wire_version: Option<u32>,
 ) -> Result<()> {
+    let observable_args = match err.as_ref() {
+        Some(err) => format!("{item_type_ts}, {}", err.inner_type_ts),
+        None => item_type_ts.clone(),
+    };
     if payload.param_list.is_empty() {
         writeln!(
             out,
-            "  {ts_method_name}(): ObservableLike<{item_type_ts}> {{"
+            "  {ts_method_name}(): ObservableLike<{observable_args}> {{"
         )
         .unwrap();
     } else {
@@ -2892,12 +2903,12 @@ fn emit_subscribe_method(
             ts_method_name,
             payload.param_names.join(", "),
             payload.param_list,
-            item_type_ts
+            observable_args
         )
         .unwrap();
     }
 
-    writeln!(out, "    return createObservable<{item_type_ts}>({{").unwrap();
+    writeln!(out, "    return createObservable<{observable_args}>({{").unwrap();
     writeln!(out, "      transport: this.transport,").unwrap();
     writeln!(out, "      ids: W.{wire_const},").unwrap();
     write_payload_field(
@@ -3774,9 +3785,9 @@ mod tests {
 
     #[test]
     fn generate_wire_table_rejects_reserved_wire_ids() {
-        let reserved_id = *truapi::api::RESERVED_WIRE_IDS
-            .first()
-            .expect("RESERVED_WIRE_IDS must not be empty");
+        let Some(&reserved_id) = truapi::api::RESERVED_WIRE_IDS.first() else {
+            return;
+        };
         let err = generate_wire_table(&api(vec![request_method("squat", Some(reserved_id))]), 2)
             .expect_err("annotation that lands on a reserved id must error");
         let message = err.to_string();

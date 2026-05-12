@@ -2,8 +2,10 @@
 
 import {
   type Client,
-  type Subscription,
+  type HostPaymentStatusSubscribeError,
   type HostPaymentStatusSubscribeItem,
+  type Subscription,
+  type SubscriptionError,
 } from "@parity/truapi";
 
 export function watchPaymentStatus(truapi: Client): Subscription {
@@ -13,7 +15,8 @@ export function watchPaymentStatus(truapi: Client): Subscription {
     })
     .subscribe({
       next: (status: HostPaymentStatusSubscribeItem) => console.log(status),
-      error: (error: Error) => console.error(error),
+      error: (error: SubscriptionError<HostPaymentStatusSubscribeError>) =>
+        console.error(error),
       complete: () => console.log("completed"),
     });
 }
