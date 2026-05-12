@@ -101,7 +101,7 @@ enum SsoMessageContent {
   },
   CreateTransactionResponse {
     responding_to: SsoSessionRequestId,
-    signed_transaction: BSResult<SignedTransaction, String>,
+    signed_transaction: Result<SignedTransaction, String>,
   }
 }
 
