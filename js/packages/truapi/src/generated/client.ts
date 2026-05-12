@@ -3,6 +3,7 @@
 import { err, ok, type Result } from "neverthrow";
 import * as S from "../scale.js";
 import type { HexString } from "../scale.js";
+import { SubscriptionError } from "../transport.js";
 import type {
   ObservableLike,
   Observer,
@@ -13,23 +14,21 @@ import type {
 import * as T from "./types.js";
 import * as W from "./wire-table.js";
 
-export { Result };
+export { Result, SubscriptionError };
 export type { ObservableLike, Observer, Subscription, TrUApiTransport };
 export const TRUAPI_VERSION = 2 as const;
 export const TRUAPI_CODEC_VERSION = 1 as const;
 
-export class SubscriptionInterruptedError<Reason = unknown> extends Error {
-  constructor(readonly reason: Reason) {
-    super("Subscription interrupted");
-    this.name = "SubscriptionInterruptedError";
-  }
+function toSubscriptionError<Reason = never>(
+  error: unknown,
+): SubscriptionError<Reason> {
+  if (error instanceof SubscriptionError)
+    return error as SubscriptionError<Reason>;
+  const cause = error instanceof Error ? error : new Error(String(error));
+  return new SubscriptionError(cause.message, { cause });
 }
 
-function toError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error));
-}
-
-function createObservable<Item>({
+function createObservable<Item, Reason = never>({
   transport,
   ids,
   payload,
@@ -40,10 +39,10 @@ function createObservable<Item>({
   ids: SubscriptionFrameIds;
   payload: Uint8Array;
   decodeItem: (payload: Uint8Array) => Item;
-  decodeInterrupt?: (payload: Uint8Array) => unknown;
-}): ObservableLike<Item> {
+  decodeInterrupt?: (payload: Uint8Array) => Reason;
+}): ObservableLike<Item, Reason> {
   return {
-    subscribe(observer: Partial<Observer<Item>> = {}): Subscription {
+    subscribe(observer: Partial<Observer<Item, Reason>> = {}): Subscription {
       let closed = false;
       let raw: Subscription | undefined;
 
@@ -53,7 +52,7 @@ function createObservable<Item>({
         try {
           if (stop) raw?.unsubscribe();
         } finally {
-          observer.error?.(toError(error));
+          observer.error?.(toSubscriptionError<Reason>(error));
         }
       };
 
@@ -78,7 +77,10 @@ function createObservable<Item>({
               fail(error, false);
               return;
             }
-            fail(new SubscriptionInterruptedError(reason), false);
+            fail(
+              new SubscriptionError("Subscription interrupted", { reason }),
+              false,
+            );
             return;
           }
           closed = true;
@@ -934,8 +936,14 @@ export class PaymentClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
   /** Subscribe to payment balance updates. */
-  paymentBalanceSubscribe(): ObservableLike<T.HostPaymentBalanceSubscribeItem> {
-    return createObservable<T.HostPaymentBalanceSubscribeItem>({
+  paymentBalanceSubscribe(): ObservableLike<
+    T.HostPaymentBalanceSubscribeItem,
+    T.HostPaymentBalanceSubscribeError
+  > {
+    return createObservable<
+      T.HostPaymentBalanceSubscribeItem,
+      T.HostPaymentBalanceSubscribeError
+    >({
       transport: this.transport,
       ids: W.HOST_PAYMENT_BALANCE_SUBSCRIBE,
       payload: T.VersionedHostPaymentBalanceSubscribeRequest.enc({
@@ -987,8 +995,14 @@ export class PaymentClient {
     request,
   }: {
     request: T.HostPaymentStatusSubscribeRequest;
-  }): ObservableLike<T.HostPaymentStatusSubscribeItem> {
-    return createObservable<T.HostPaymentStatusSubscribeItem>({
+  }): ObservableLike<
+    T.HostPaymentStatusSubscribeItem,
+    T.HostPaymentStatusSubscribeError
+  > {
+    return createObservable<
+      T.HostPaymentStatusSubscribeItem,
+      T.HostPaymentStatusSubscribeError
+    >({
       transport: this.transport,
       ids: W.HOST_PAYMENT_STATUS_SUBSCRIBE,
       payload: T.VersionedHostPaymentStatusSubscribeRequest.enc({

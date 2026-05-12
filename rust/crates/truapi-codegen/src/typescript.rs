@@ -2254,13 +2254,18 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
     writeln!(out, "import type {{ HexString }} from '../scale.js';").unwrap();
     writeln!(
         out,
+        "import {{ SubscriptionError }} from '../transport.js';"
+    )
+    .unwrap();
+    writeln!(
+        out,
         "import type {{ ObservableLike, Observer, Subscription, SubscriptionFrameIds, TrUApiTransport }} from '../transport.js';"
     )
     .unwrap();
     writeln!(out, "import * as T from './types.js';").unwrap();
     writeln!(out, "import * as W from './wire-table.js';").unwrap();
     writeln!(out).unwrap();
-    writeln!(out, "export {{ Result }};").unwrap();
+    writeln!(out, "export {{ Result, SubscriptionError }};").unwrap();
     writeln!(
         out,
         "export type {{ ObservableLike, Observer, Subscription, TrUApiTransport }};"
@@ -2279,19 +2284,22 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
     writeln!(out).unwrap();
     writeln!(
         out,
-        "export class SubscriptionInterruptedError<Reason = unknown> extends Error {{"
+        "function toSubscriptionError<Reason = never>(error: unknown): SubscriptionError<Reason> {{"
     )
     .unwrap();
-    writeln!(out, "  constructor(readonly reason: Reason) {{").unwrap();
-    writeln!(out, "    super(\"Subscription interrupted\");").unwrap();
-    writeln!(out, "    this.name = \"SubscriptionInterruptedError\";").unwrap();
-    writeln!(out, "  }}").unwrap();
-    writeln!(out, "}}").unwrap();
-    writeln!(out).unwrap();
-    writeln!(out, "function toError(error: unknown): Error {{").unwrap();
     writeln!(
         out,
-        "  return error instanceof Error ? error : new Error(String(error));"
+        "  if (error instanceof SubscriptionError) return error as SubscriptionError<Reason>;"
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "  const cause = error instanceof Error ? error : new Error(String(error));"
+    )
+    .unwrap();
+    writeln!(
+        out,
+        "  return new SubscriptionError(cause.message, {{ cause }});"
     )
     .unwrap();
     writeln!(out, "}}").unwrap();
@@ -2414,7 +2422,7 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
 }
 
 fn write_observable_helper(out: &mut String) {
-    writeln!(out, "function createObservable<Item>({{").unwrap();
+    writeln!(out, "function createObservable<Item, Reason = never>({{").unwrap();
     writeln!(out, "  transport,").unwrap();
     writeln!(out, "  ids,").unwrap();
     writeln!(out, "  payload,").unwrap();
@@ -2425,12 +2433,12 @@ fn write_observable_helper(out: &mut String) {
     writeln!(out, "  ids: SubscriptionFrameIds;").unwrap();
     writeln!(out, "  payload: Uint8Array;").unwrap();
     writeln!(out, "  decodeItem: (payload: Uint8Array) => Item;").unwrap();
-    writeln!(out, "  decodeInterrupt?: (payload: Uint8Array) => unknown;").unwrap();
-    writeln!(out, "}}): ObservableLike<Item> {{").unwrap();
+    writeln!(out, "  decodeInterrupt?: (payload: Uint8Array) => Reason;").unwrap();
+    writeln!(out, "}}): ObservableLike<Item, Reason> {{").unwrap();
     writeln!(out, "  return {{").unwrap();
     writeln!(
         out,
-        "    subscribe(observer: Partial<Observer<Item>> = {{}}): Subscription {{"
+        "    subscribe(observer: Partial<Observer<Item, Reason>> = {{}}): Subscription {{"
     )
     .unwrap();
     writeln!(out, "      let closed = false;").unwrap();
@@ -2446,7 +2454,11 @@ fn write_observable_helper(out: &mut String) {
     writeln!(out, "        try {{").unwrap();
     writeln!(out, "          if (stop) raw?.unsubscribe();").unwrap();
     writeln!(out, "        }} finally {{").unwrap();
-    writeln!(out, "          observer.error?.(toError(error));").unwrap();
+    writeln!(
+        out,
+        "          observer.error?.(toSubscriptionError<Reason>(error));"
+    )
+    .unwrap();
     writeln!(out, "        }}").unwrap();
     writeln!(out, "      }};").unwrap();
     writeln!(out).unwrap();
@@ -2473,7 +2485,7 @@ fn write_observable_helper(out: &mut String) {
     writeln!(out, "            }}").unwrap();
     writeln!(
         out,
-        "            fail(new SubscriptionInterruptedError(reason), false);"
+        "            fail(new SubscriptionError(\"Subscription interrupted\", {{ reason }}), false);"
     )
     .unwrap();
     writeln!(out, "            return;").unwrap();
@@ -2880,10 +2892,14 @@ fn emit_subscribe_method(
     err: Option<ResponseEmission>,
     wire_version: Option<u32>,
 ) -> Result<()> {
+    let observable_args = match err.as_ref() {
+        Some(err) => format!("{item_type_ts}, {}", err.inner_type_ts),
+        None => item_type_ts.clone(),
+    };
     if payload.param_list.is_empty() {
         writeln!(
             out,
-            "  {ts_method_name}(): ObservableLike<{item_type_ts}> {{"
+            "  {ts_method_name}(): ObservableLike<{observable_args}> {{"
         )
         .unwrap();
     } else {
@@ -2893,12 +2909,12 @@ fn emit_subscribe_method(
             ts_method_name,
             payload.param_names.join(", "),
             payload.param_list,
-            item_type_ts
+            observable_args
         )
         .unwrap();
     }
 
-    writeln!(out, "    return createObservable<{item_type_ts}>({{").unwrap();
+    writeln!(out, "    return createObservable<{observable_args}>({{").unwrap();
     writeln!(out, "      transport: this.transport,").unwrap();
     writeln!(out, "      ids: W.{wire_const},").unwrap();
     write_payload_field(

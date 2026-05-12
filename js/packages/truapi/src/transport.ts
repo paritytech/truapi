@@ -21,19 +21,55 @@ export interface Subscription {
 }
 
 /**
+ * Terminal error delivered through `Observer.error` for every non-normal
+ * subscription end. When the peer interrupted the stream with a typed payload,
+ * `reason` carries the decoded `Reason`; otherwise `reason` is `undefined` and
+ * the underlying transport/decode error is preserved on `cause`.
+ *
+ * Discriminate with `error.reason !== undefined` (or `'reason' in error`).
+ **/
+export class SubscriptionError<Reason = never> extends Error {
+  /**
+   * Typed payload supplied by the peer when it interrupted the subscription.
+   * `undefined` when the stream ended for any other reason (transport close,
+   * decode failure, malformed interrupt payload).
+   **/
+  readonly reason?: Reason;
+
+  constructor(
+    message: string,
+    options?: { reason?: Reason; cause?: unknown },
+  ) {
+    super(
+      message,
+      options?.cause !== undefined ? { cause: options.cause } : undefined,
+    );
+    this.name = "SubscriptionError";
+    if (options?.reason !== undefined) this.reason = options.reason;
+  }
+}
+
+/**
  * Minimal Observable-compatible observer shape used by generated subscription
  * APIs without depending on RxJS.
+ *
+ * `Reason` is the typed interrupt payload for the originating subscription.
+ * Methods without a typed interrupt resolve `Reason` to `never`, leaving
+ * `error.reason` typed as `undefined`.
  **/
-export interface Observer<Item> {
+export interface Observer<Item, Reason = never> {
   /**
    * Called with each successfully decoded subscription item.
    **/
   next(value: Item): void;
 
   /**
-   * Called once when the stream terminates with an error.
+   * Called once when the stream terminates with an error. Inspect
+   * `error.reason` to distinguish a typed peer interrupt from a transport or
+   * decode failure (`error.cause` carries the underlying failure in the
+   * latter case).
    **/
-  error(error: Error): void;
+  error(error: SubscriptionError<Reason>): void;
 
   /**
    * Called once when the peer normally completes the stream.
@@ -44,11 +80,11 @@ export interface Observer<Item> {
 /**
  * Minimal Observable-compatible object returned by generated subscription APIs.
  **/
-export interface ObservableLike<Item> {
+export interface ObservableLike<Item, Reason = never> {
   /**
    * Start the stream and receive `next`, `error`, and `complete` callbacks.
    **/
-  subscribe(observer?: Partial<Observer<Item>>): Subscription;
+  subscribe(observer?: Partial<Observer<Item, Reason>>): Subscription;
 }
 
 /**
