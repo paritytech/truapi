@@ -1002,10 +1002,14 @@ fn explorer_type_category(ty: &TypeDef) -> &'static str {
 }
 
 fn explorer_type_source(name: &str) -> String {
-    if name.starts_with("V01") {
-        "v1".to_string()
-    } else {
-        "shared".to_string()
+    let rest = match name.strip_prefix('V') {
+        Some(rest) => rest,
+        None => return "shared".to_string(),
+    };
+    let digits: String = rest.chars().take_while(|c| c.is_ascii_digit()).collect();
+    match digits.parse::<u32>() {
+        Ok(version) => format!("v{version}"),
+        Err(_) => "shared".to_string(),
     }
 }
 
