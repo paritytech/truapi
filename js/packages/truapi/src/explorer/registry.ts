@@ -58,9 +58,9 @@ export interface ExplorerVersion {
 
 export const versions: ExplorerVersion[] = [
   {
-    id: "0.1",
-    label: "v0.1",
-    slug: "0.1",
+    id: "1",
+    label: "v1",
+    slug: "1",
     status: "stable",
     groups: [
       {
@@ -1771,7 +1771,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostAccountConnectionStatusSubscribeItem = { tag: "Disconnected"; value: undefined } | { tag: "Connected"; value: undefined }',
         description: "User's authentication state.",
-        source: "v0.1",
+        source: "v1",
         variants: [
           {
             name: "Disconnected",
@@ -1790,7 +1790,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostAccountCreateProofError = { tag: "RingNotFound"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Error returned when ring VRF proof creation fails.",
-        source: "v0.1",
+        source: "v1",
         variants: [
           {
             name: "RingNotFound",
@@ -1817,7 +1817,7 @@ export const versions: ExplorerVersion[] = [
           "interface HostAccountCreateProofRequest { productAccountId: ProductAccountId; ringLocation: RingLocation; context: HexString }",
         description:
           "Request to create a ring VRF proof for a product account.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "productAccountId",
@@ -1843,7 +1843,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface HostAccountCreateProofResponse { proof: HexString }",
         description: "Response containing a ring VRF proof.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "proof",
@@ -1860,7 +1860,7 @@ export const versions: ExplorerVersion[] = [
           "interface HostAccountGetAliasRequest { productAccountId: ProductAccountId }",
         description:
           "Request to retrieve a contextual alias for a product account.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "productAccountId",
@@ -1877,7 +1877,7 @@ export const versions: ExplorerVersion[] = [
           "interface HostAccountGetAliasResponse { context: HexString; alias: HexString }",
         description:
           "A privacy-preserving alias derived via ring VRF, bound to a specific context.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "context",
@@ -1898,7 +1898,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostAccountGetError = { tag: "NotConnected"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "DomainNotValid"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Error returned when credential/account requests fail.",
-        source: "v0.1",
+        source: "v1",
         variants: [
           {
             name: "NotConnected",
@@ -1929,7 +1929,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface HostAccountGetRequest { productAccountId: ProductAccountId }",
         description: "Request to retrieve a product-scoped account.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "productAccountId",
@@ -1945,7 +1945,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface HostAccountGetResponse { account: ProductAccount }",
         description: "Response containing a product-scoped account.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "account",
@@ -1961,7 +1961,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface HostChatActionSubscribeItem { roomId: string; peer: string; payload: ChatActionPayload }",
         description: "A chat action received from the host.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "roomId",
@@ -1987,7 +1987,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostChatCreateRoomError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Chat room registration error.",
-        source: "v0.1",
+        source: "v1",
         variants: [
           {
             name: "PermissionDenied",
@@ -2008,7 +2008,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface HostChatCreateRoomRequest { roomId: string; name: string; icon: string }",
         description: "Request to create a chat room.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "roomId",
@@ -2034,7 +2034,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface HostChatCreateRoomResponse { status: ChatRoomRegistrationStatus }",
         description: "Result of a room registration.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "status",
@@ -2050,7 +2050,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface HostChatListSubscribeItem { rooms: Array<ChatRoom> }",
         description: "Item containing the current chat rooms.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "rooms",
@@ -2066,7 +2066,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostChatPostMessageError = { tag: "MessageTooLarge"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Chat message posting error.",
-        source: "v0.1",
+        source: "v1",
         variants: [
           {
             name: "MessageTooLarge",
@@ -2087,7 +2087,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface HostChatPostMessageRequest { roomId: string; payload: ChatMessageContent }",
         description: "Request to post a message to a chat room.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "roomId",
@@ -2108,7 +2108,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface HostChatPostMessageResponse { messageId: string }",
         description: "Result of posting a message.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "messageId",
@@ -2124,7 +2124,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostChatRegisterBotError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Chat bot registration error.",
-        source: "v0.1",
+        source: "v1",
         variants: [
           {
             name: "PermissionDenied",
@@ -2145,7 +2145,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface HostChatRegisterBotRequest { botId: string; name: string; icon: string }",
         description: "Request to register a chat bot.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "botId",
@@ -2171,7 +2171,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface HostChatRegisterBotResponse { status: ChatBotRegistrationStatus }",
         description: "Result of a bot registration.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "status",
@@ -2187,7 +2187,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostCreateTransactionError = { tag: "FailedToDecode"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "NotSupported"; value: { reason: string } } | { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Transaction creation error.",
-        source: "v0.1",
+        source: "v1",
         variants: [
           {
             name: "FailedToDecode",
@@ -2223,7 +2223,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface HostCreateTransactionRequest { productAccountId: ProductAccountId; payload: VersionedTxPayload }",
         description: "Request to create a transaction for a product account.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "productAccountId",
@@ -2244,7 +2244,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface HostCreateTransactionResponse { transaction: HexString }",
         description: "Response containing a created transaction.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "transaction",
@@ -2261,7 +2261,7 @@ export const versions: ExplorerVersion[] = [
           "interface HostCreateTransactionWithLegacyAccountRequest { payload: VersionedTxPayload }",
         description:
           "Request to create a transaction with a non-product account.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "payload",
@@ -2278,7 +2278,7 @@ export const versions: ExplorerVersion[] = [
           "interface HostCreateTransactionWithLegacyAccountResponse { transaction: HexString }",
         description:
           "Response containing a transaction created with a non-product account.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "transaction",
@@ -2295,7 +2295,7 @@ export const versions: ExplorerVersion[] = [
           'type HostDeriveEntropyError = { tag: "Unknown"; value: undefined }',
         description:
           "Error from [`crate::api::EntropyDerivation::host_derive_entropy`].\n\nUnder normal operation the function always succeeds; `Unknown` indicates an\nunrecoverable internal host error.\n\nSee [RFC 0007].\n\n[RFC 0007]: https://github.com/paritytech/triangle-js-sdks/pull/95",
-        source: "v0.1",
+        source: "v1",
         variants: [
           {
             name: "Unknown",
@@ -2310,7 +2310,7 @@ export const versions: ExplorerVersion[] = [
         category: "struct",
         definition: "interface HostDeriveEntropyRequest { context: HexString }",
         description: "Request to derive deterministic entropy.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "context",
@@ -2326,7 +2326,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface HostDeriveEntropyResponse { entropy: HexString }",
         description: "Response containing derived deterministic entropy.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "entropy",
@@ -2343,7 +2343,7 @@ export const versions: ExplorerVersion[] = [
           'type HostDevicePermissionRequest = { tag: "Notifications"; value: undefined } | { tag: "Camera"; value: undefined } | { tag: "Microphone"; value: undefined } | { tag: "Bluetooth"; value: undefined } | { tag: "NFC"; value: undefined } | { tag: "Location"; value: undefined } | { tag: "Clipboard"; value: undefined } | { tag: "OpenUrl"; value: undefined } | { tag: "Biometrics"; value: undefined }',
         description:
           "Device capability to request access to.\n\nExtended with `Notifications`, `NFC`, `Clipboard`, `OpenUrl`, and\n`Biometrics` per [RFC 0001] (JIT permissions).\n\n[RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66",
-        source: "v0.1",
+        source: "v1",
         variants: [
           {
             name: "Notifications",
@@ -2396,7 +2396,7 @@ export const versions: ExplorerVersion[] = [
           "interface HostDevicePermissionResponse { granted: boolean }",
         description:
           "Response indicating whether a device permission was granted.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "granted",
@@ -2412,7 +2412,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostFeatureSupportedRequest = { tag: "Chain"; value: { genesisHash: HexString } }',
         description: "Feature to check for host support.",
-        source: "v0.1",
+        source: "v1",
         variants: [
           {
             name: "Chain",
@@ -2428,7 +2428,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface HostFeatureSupportedResponse { supported: boolean }",
         description: "Response indicating whether a host feature is supported.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "supported",
@@ -2445,7 +2445,7 @@ export const versions: ExplorerVersion[] = [
           "interface HostGetLegacyAccountsResponse { accounts: Array<Account> }",
         description:
           "Response containing all non-product accounts owned by the user.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "accounts",
@@ -2462,7 +2462,7 @@ export const versions: ExplorerVersion[] = [
           'type HostGetUserIdError = { tag: "PermissionDenied"; value: undefined } | { tag: "NotConnected"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description:
           "Error from [`crate::api::AccountManagement::host_get_user_id`].",
-        source: "v0.1",
+        source: "v1",
         variants: [
           {
             name: "PermissionDenied",
@@ -2488,7 +2488,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface HostGetUserIdResponse { primaryUsername: string; publicKey: HexString }",
         description: "The user's primary DotNS account identity.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "primaryUsername",
@@ -2510,7 +2510,7 @@ export const versions: ExplorerVersion[] = [
           'type HostHandshakeError = { tag: "Timeout"; value: undefined } | { tag: "UnsupportedProtocolVersion"; value: undefined } | { tag: "Unknown"; value: GenericErr }',
         description:
           "Handshake error. Mirrors Novasama's `HandshakeErr` byte-for-byte so that\npre-codegen products (built against `@novasamatech/host-api`) can decode\n`host_handshake_response` frames produced by this host.",
-        source: "v0.1",
+        source: "v1",
         variants: [
           {
             name: "Timeout",
@@ -2532,7 +2532,7 @@ export const versions: ExplorerVersion[] = [
         category: "struct",
         definition: "interface HostHandshakeRequest { codecVersion: number }",
         description: "Request to negotiate the wire codec version.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "codecVersion",
@@ -2547,7 +2547,7 @@ export const versions: ExplorerVersion[] = [
         category: "struct",
         definition: "interface HostLocalStorageClearRequest { key: string }",
         description: "Request to clear a local storage key.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "key",
@@ -2563,7 +2563,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostLocalStorageReadError = { tag: "Full"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Local storage operation error.",
-        source: "v0.1",
+        source: "v1",
         variants: [
           {
             name: "Full",
@@ -2583,7 +2583,7 @@ export const versions: ExplorerVersion[] = [
         category: "struct",
         definition: "interface HostLocalStorageReadRequest { key: string }",
         description: "Request to read a local storage value.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "key",
@@ -2599,7 +2599,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface HostLocalStorageReadResponse { value?: HexString }",
         description: "Response containing an optional local storage value.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "value",
@@ -2615,7 +2615,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface HostLocalStorageWriteRequest { key: string; value: HexString }",
         description: "Request to write a value into local storage.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "key",
@@ -2636,7 +2636,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostNavigateToError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Navigation error.",
-        source: "v0.1",
+        source: "v1",
         variants: [
           {
             name: "PermissionDenied",
@@ -2656,7 +2656,7 @@ export const versions: ExplorerVersion[] = [
         category: "struct",
         definition: "interface HostNavigateToRequest { url: string }",
         description: "Request to navigate to a URL.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "url",
@@ -2673,7 +2673,7 @@ export const versions: ExplorerVersion[] = [
           'type HostPaymentBalanceSubscribeError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description:
           "Error from [`crate::api::Payment::host_payment_balance_subscribe`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
-        source: "v0.1",
+        source: "v1",
         variants: [
           {
             name: "PermissionDenied",
@@ -2695,7 +2695,7 @@ export const versions: ExplorerVersion[] = [
           "interface HostPaymentBalanceSubscribeItem { available: Balance }",
         description:
           "Current payment balance state pushed to subscribers.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "available",
@@ -2712,7 +2712,7 @@ export const versions: ExplorerVersion[] = [
           'type HostPaymentRequestError = { tag: "Rejected"; value: undefined } | { tag: "InsufficientBalance"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description:
           "Error from [`crate::api::Payment::host_payment_request`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
-        source: "v0.1",
+        source: "v1",
         variants: [
           {
             name: "Rejected",
@@ -2739,7 +2739,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface HostPaymentRequestRequest { amount: Balance; destination: HexString }",
         description: "Request to initiate a payment to another account.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "amount",
@@ -2760,7 +2760,7 @@ export const versions: ExplorerVersion[] = [
         definition: "interface HostPaymentRequestResponse { id: string }",
         description:
           "Receipt returned after a successful payment request.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "id",
@@ -2777,7 +2777,7 @@ export const versions: ExplorerVersion[] = [
           'type HostPaymentStatusSubscribeError = { tag: "PaymentNotFound"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description:
           "Error from [`crate::api::Payment::host_payment_status_subscribe`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
-        source: "v0.1",
+        source: "v1",
         variants: [
           {
             name: "PaymentNotFound",
@@ -2800,7 +2800,7 @@ export const versions: ExplorerVersion[] = [
           'type HostPaymentStatusSubscribeItem = { tag: "Processing"; value: undefined } | { tag: "Completed"; value: undefined } | { tag: "Failed"; value: { reason: string } }',
         description:
           "Payment lifecycle status pushed to subscribers.\n\nOnce a terminal state (`Completed` or `Failed`) is reached, the host\ndelivers it and may close the subscription.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
-        source: "v0.1",
+        source: "v1",
         variants: [
           {
             name: "Processing",
@@ -2826,7 +2826,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface HostPaymentStatusSubscribeRequest { paymentId: string }",
         description: "Request to subscribe to a payment status.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "paymentId",
@@ -2843,7 +2843,7 @@ export const versions: ExplorerVersion[] = [
           'type HostPaymentTopUpError = { tag: "InsufficientFunds"; value: undefined } | { tag: "InvalidSource"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description:
           "Error from [`crate::api::Payment::host_payment_top_up`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
-        source: "v0.1",
+        source: "v1",
         variants: [
           {
             name: "InsufficientFunds",
@@ -2869,7 +2869,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface HostPaymentTopUpRequest { amount: Balance; source: PaymentTopUpSource }",
         description: "Request to top up the product payment balance.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "amount",
@@ -2890,7 +2890,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface HostPushNotificationRequest { text: string; deeplink?: string }",
         description: "Push notification payload.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "text",
@@ -2911,7 +2911,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostRequestLoginError = { tag: "Unknown"; value: { reason: string } }',
         description: "Login request error.",
-        source: "v0.1",
+        source: "v1",
         variants: [
           {
             name: "Unknown",
@@ -2926,7 +2926,7 @@ export const versions: ExplorerVersion[] = [
         category: "struct",
         definition: "interface HostRequestLoginRequest { reason?: string }",
         description: "Request to present the host login flow.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "reason",
@@ -2943,7 +2943,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostRequestLoginResponse = { tag: "Success"; value: undefined } | { tag: "AlreadyConnected"; value: undefined } | { tag: "Rejected"; value: undefined }',
         description: "Result of a login request.",
-        source: "v0.1",
+        source: "v1",
         variants: [
           {
             name: "Success",
@@ -2969,7 +2969,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type HostSignPayloadError = { tag: "FailedToDecode"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Signing operation error.",
-        source: "v0.1",
+        source: "v1",
         variants: [
           {
             name: "FailedToDecode",
@@ -3001,7 +3001,7 @@ export const versions: ExplorerVersion[] = [
           "interface HostSignPayloadRequest { account: ProductAccountId; blockHash: HexString; blockNumber: HexString; era: HexString; genesisHash: HexString; method: HexString; nonce: HexString; specVersion: HexString; tip: HexString; transactionVersion: HexString; signedExtensions: Array<string>; version: number; assetId?: HexString; metadataHash?: HexString; mode?: number; withSignedTransaction?: boolean }",
         description:
           "Full Substrate extrinsic signing payload with all fields needed for signature\ngeneration.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "account",
@@ -3092,7 +3092,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface HostSignPayloadResponse { signature: HexString; signedTransaction?: HexString }",
         description: "Result of a signing operation.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "signature",
@@ -3114,7 +3114,7 @@ export const versions: ExplorerVersion[] = [
           "interface HostSignPayloadWithLegacyAccountRequest { signer: string; payload: HostSignPayloadRequest }",
         description:
           "Sign a Substrate extrinsic payload with a non-product (legacy) account.\nContains the same fields as [`HostSignPayloadRequest`] minus `address`\n(replaced by `signer`).",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "signer",
@@ -3136,7 +3136,7 @@ export const versions: ExplorerVersion[] = [
           "interface HostSignRawRequest { account: ProductAccountId; payload: RawPayload }",
         description:
           "A raw signing request pairing an account with the payload to sign.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "account",
@@ -3158,7 +3158,7 @@ export const versions: ExplorerVersion[] = [
           "interface HostSignRawWithLegacyAccountRequest { signer: string; payload: RawPayload }",
         description:
           "Sign raw bytes with a non-product (legacy) account. The signer field\nidentifies which legacy account to use.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "signer",
@@ -3342,7 +3342,7 @@ export const versions: ExplorerVersion[] = [
           "interface ProductChatCustomMessageRenderSubscribeRequest { messageId: string; messageType: string; payload: HexString }",
         description:
           "Subscribe payload identifying the chat message to render. The host responds\nwith a stream of [`CustomRendererNode`] trees describing the rendered UI.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "messageId",
@@ -3391,7 +3391,7 @@ export const versions: ExplorerVersion[] = [
           "interface RemoteChainHeadBodyRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_body`].",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "genesisHash",
@@ -3417,7 +3417,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface RemoteChainHeadBodyResponse { operation: OperationStartedResult }",
         description: "Response indicating a block body operation was started.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "operation",
@@ -3434,7 +3434,7 @@ export const versions: ExplorerVersion[] = [
           "interface RemoteChainHeadCallRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString; function: string; callParameters: HexString }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_call`].",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "genesisHash",
@@ -3471,7 +3471,7 @@ export const versions: ExplorerVersion[] = [
           "interface RemoteChainHeadCallResponse { operation: OperationStartedResult }",
         description:
           "Response indicating a runtime call operation was started.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "operation",
@@ -3488,7 +3488,7 @@ export const versions: ExplorerVersion[] = [
           "interface RemoteChainHeadContinueRequest { genesisHash: HexString; followSubscriptionId: string; operationId: string }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_continue`].",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "genesisHash",
@@ -3514,7 +3514,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type RemoteChainHeadFollowItem = { tag: "Initialized"; value: { finalizedBlockHashes: Array<HexString>; finalizedBlockRuntime?: RuntimeType } } | { tag: "NewBlock"; value: { blockHash: HexString; parentBlockHash: HexString; newRuntime?: RuntimeType } } | { tag: "BestBlockChanged"; value: { bestBlockHash: HexString } } | { tag: "Finalized"; value: { finalizedBlockHashes: Array<HexString>; prunedBlockHashes: Array<HexString> } } | { tag: "OperationBodyDone"; value: { operationId: string; value: Array<HexString> } } | { tag: "OperationCallDone"; value: { operationId: string; output: HexString } } | { tag: "OperationStorageItems"; value: { operationId: string; items: Array<StorageResultItem> } } | { tag: "OperationStorageDone"; value: { operationId: string } } | { tag: "OperationWaitingForContinue"; value: { operationId: string } } | { tag: "OperationInaccessible"; value: { operationId: string } } | { tag: "OperationError"; value: { operationId: string; error: string } } | { tag: "Stop"; value: undefined }',
         description: "Events received when following the chain head.",
-        source: "v0.1",
+        source: "v1",
         variants: [
           {
             name: "Initialized",
@@ -3587,7 +3587,7 @@ export const versions: ExplorerVersion[] = [
           "interface RemoteChainHeadFollowRequest { genesisHash: HexString; withRuntime: boolean }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_follow_subscribe`].",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "genesisHash",
@@ -3609,7 +3609,7 @@ export const versions: ExplorerVersion[] = [
           "interface RemoteChainHeadHeaderRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_header`].",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "genesisHash",
@@ -3635,7 +3635,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface RemoteChainHeadHeaderResponse { header?: HexString }",
         description: "Response containing a block header, if available.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "header",
@@ -3652,7 +3652,7 @@ export const versions: ExplorerVersion[] = [
           "interface RemoteChainHeadStopOperationRequest { genesisHash: HexString; followSubscriptionId: string; operationId: string }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_stop_operation`].",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "genesisHash",
@@ -3679,7 +3679,7 @@ export const versions: ExplorerVersion[] = [
           "interface RemoteChainHeadStorageRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString; items: Array<StorageQueryItem>; childTrie?: HexString }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_storage`].",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "genesisHash",
@@ -3716,7 +3716,7 @@ export const versions: ExplorerVersion[] = [
           "interface RemoteChainHeadStorageResponse { operation: OperationStartedResult }",
         description:
           "Response indicating a storage query operation was started.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "operation",
@@ -3733,7 +3733,7 @@ export const versions: ExplorerVersion[] = [
           "interface RemoteChainHeadUnpinRequest { genesisHash: HexString; followSubscriptionId: string; hashes: Array<HexString> }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_head_unpin`].",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "genesisHash",
@@ -3759,7 +3759,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface RemoteChainSpecChainNameRequest { genesisHash: HexString }",
         description: "Request to fetch a chain display name.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "genesisHash",
@@ -3775,7 +3775,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface RemoteChainSpecChainNameResponse { chainName: string }",
         description: "Response containing a chain display name.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "chainName",
@@ -3791,7 +3791,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface RemoteChainSpecGenesisHashRequest { genesisHash: HexString }",
         description: "Request to fetch a chain genesis hash.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "genesisHash",
@@ -3807,7 +3807,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface RemoteChainSpecGenesisHashResponse { genesisHash: HexString }",
         description: "Response containing a chain genesis hash.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "genesisHash",
@@ -3823,7 +3823,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface RemoteChainSpecPropertiesRequest { genesisHash: HexString }",
         description: "Request to fetch chain properties.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "genesisHash",
@@ -3839,7 +3839,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface RemoteChainSpecPropertiesResponse { properties: string }",
         description: "Response containing JSON-encoded chain properties.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "properties",
@@ -3856,7 +3856,7 @@ export const versions: ExplorerVersion[] = [
           "interface RemoteChainTransactionBroadcastRequest { genesisHash: HexString; transaction: HexString }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_broadcast`].",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "genesisHash",
@@ -3878,7 +3878,7 @@ export const versions: ExplorerVersion[] = [
           "interface RemoteChainTransactionBroadcastResponse { operationId?: string }",
         description:
           "Response containing a transaction broadcast operation identifier.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "operationId",
@@ -3895,7 +3895,7 @@ export const versions: ExplorerVersion[] = [
           "interface RemoteChainTransactionStopRequest { genesisHash: HexString; operationId: string }",
         description:
           "Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_stop`].",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "genesisHash",
@@ -3957,7 +3957,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface RemotePermissionRequest { permissions: Array<RemotePermission> }",
         description: "Request containing batched remote-operation permissions.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "permissions",
@@ -3973,7 +3973,7 @@ export const versions: ExplorerVersion[] = [
         definition: "interface RemotePermissionResponse { granted: boolean }",
         description:
           "Response indicating whether a remote permission was granted.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "granted",
@@ -3989,7 +3989,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface RemotePreimageLookupSubscribeItem { value?: HexString }",
         description: "Item containing an optional preimage lookup result.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "value",
@@ -4005,7 +4005,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface RemotePreimageLookupSubscribeRequest { key: HexString }",
         description: "Request to subscribe to preimage lookup results.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "key",
@@ -4021,7 +4021,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type RemoteStatementStoreCreateProofError = { tag: "UnableToSign"; value: undefined } | { tag: "UnknownAccount"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Statement proof creation error.",
-        source: "v0.1",
+        source: "v1",
         variants: [
           {
             name: "UnableToSign",
@@ -4047,7 +4047,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface RemoteStatementStoreCreateProofRequest { productAccountId: ProductAccountId; statement: Statement }",
         description: "Request to create a cryptographic proof for a statement.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "productAccountId",
@@ -4068,7 +4068,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           "interface RemoteStatementStoreCreateProofResponse { proof: StatementProof }",
         description: "Response containing a statement proof.",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "proof",
@@ -4085,7 +4085,7 @@ export const versions: ExplorerVersion[] = [
           "interface RemoteStatementStoreSubscribeItem { statements: Array<SignedStatement>; isComplete: boolean }",
         description:
           "Page of signed statements delivered by the statement store subscription\n(RFC 0008). The `is_complete` flag distinguishes the historical-dump phase\n(`false`) from the live-update phase (`true`).",
-        source: "v0.1",
+        source: "v1",
         fields: [
           {
             name: "statements",
@@ -4108,7 +4108,7 @@ export const versions: ExplorerVersion[] = [
           'type RemoteStatementStoreSubscribeRequest = { tag: "MatchAll"; value: Array<Topic> } | { tag: "MatchAny"; value: Array<Topic> }',
         description:
           "Request to subscribe to statements via a topic filter (RFC 0008).",
-        source: "v0.1",
+        source: "v1",
         variants: [
           {
             name: "MatchAll",
