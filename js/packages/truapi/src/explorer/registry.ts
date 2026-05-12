@@ -2486,7 +2486,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostGetUserIdResponse",
         category: "struct",
         definition:
-          "interface HostGetUserIdResponse { primaryUsername: string; publicKey: HexString }",
+          "interface HostGetUserIdResponse { primaryUsername: string }",
         description: "The user's primary DotNS account identity.",
         source: "v1",
         fields: [
@@ -2494,11 +2494,6 @@ export const versions: ExplorerVersion[] = [
             name: "primaryUsername",
             type: "string",
             description: "The user's primary DotNS username.",
-          },
-          {
-            name: "publicKey",
-            type: "HexString",
-            description: "The user's primary public key.",
           },
         ],
       },
