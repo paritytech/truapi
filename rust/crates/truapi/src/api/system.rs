@@ -3,8 +3,9 @@
 use crate::versioned::system::{
     HostFeatureSupportedError, HostFeatureSupportedRequest, HostFeatureSupportedResponse,
     HostHandshakeError, HostHandshakeRequest, HostHandshakeResponse, HostNavigateToError,
-    HostNavigateToRequest, HostNavigateToResponse, HostPushNotificationError,
-    HostPushNotificationRequest, HostPushNotificationResponse,
+    HostNavigateToRequest, HostNavigateToResponse, HostPushNotificationCancelError,
+    HostPushNotificationCancelRequest, HostPushNotificationCancelResponse,
+    HostPushNotificationError, HostPushNotificationRequest, HostPushNotificationResponse,
 };
 use crate::wire;
 use crate::{CallContext, CallError};
@@ -65,15 +66,29 @@ pub trait System: Send + Sync {
 
     /// Send a push notification to the user.
     ///
-    /// ```ts
-    /// import { type Client } from "@parity/truapi";
+    /// Returns a [`NotificationId`](crate::v01::NotificationId) that can be
+    /// passed to [`host_push_notification_cancel`](Self::host_push_notification_cancel)
+    /// to retract a scheduled notification. When `scheduled_at` is set the host
+    /// persists the notification across restarts and fires it through the
+    /// platform-native scheduler. See [RFC 0019].
     ///
-    /// export async function pushNotification(truapi: Client): Promise<void> {
+    /// [RFC 0019]: https://github.com/paritytech/truapi/blob/main/docs/rfcs/0019-scheduled-notifications.md
+    ///
+    /// ```ts
+    /// import {
+    ///   type Client,
+    ///   type HostPushNotificationResponse,
+    /// } from "@parity/truapi";
+    ///
+    /// export async function pushNotification(
+    ///   truapi: Client,
+    /// ): Promise<HostPushNotificationResponse> {
     ///   const result = await truapi.system.pushNotification({
     ///     text: "Hello!",
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;
+    ///   return result.value;
     /// }
     /// ```
     #[wire(request_id = 4)]
@@ -82,6 +97,33 @@ pub trait System: Send + Sync {
         cx: &CallContext,
         request: HostPushNotificationRequest,
     ) -> Result<HostPushNotificationResponse, CallError<HostPushNotificationError>>;
+
+    /// Cancels a previously issued push notification.
+    ///
+    /// Cancellation is idempotent: returns `Ok(())` whether the notification is
+    /// still pending, already fired, or was never issued. See [RFC 0019].
+    ///
+    /// [RFC 0019]: https://github.com/paritytech/truapi/blob/main/docs/rfcs/0019-scheduled-notifications.md
+    ///
+    /// ```ts
+    /// import { type Client } from "@parity/truapi";
+    ///
+    /// export async function cancelNotification(
+    ///   truapi: Client,
+    /// ): Promise<void> {
+    ///   const result = await truapi.system.pushNotificationCancel({
+    ///     id: 1,
+    ///   });
+    ///
+    ///   if (result.isErr()) throw result.error;
+    /// }
+    /// ```
+    #[wire(request_id = 134)]
+    async fn host_push_notification_cancel(
+        &self,
+        cx: &CallContext,
+        request: HostPushNotificationCancelRequest,
+    ) -> Result<HostPushNotificationCancelResponse, CallError<HostPushNotificationCancelError>>;
 
     /// Request the host to open a URL.
     ///
