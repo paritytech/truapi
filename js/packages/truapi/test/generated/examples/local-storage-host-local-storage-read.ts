@@ -5,7 +5,9 @@ import { type Client, type HexString } from "@parity/truapi";
 export async function readLocalValue(
   truapi: Client,
 ): Promise<HexString | undefined> {
-  const result = await truapi.localStorage.localStorageRead({ key: "test-key" });
+  const result = await truapi.localStorage.localStorageRead({
+    key: "test-key",
+  });
 
   if (result.isErr()) throw result.error;
   return result.value.value;

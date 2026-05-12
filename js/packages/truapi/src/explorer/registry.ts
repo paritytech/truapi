@@ -66,7 +66,8 @@ export const versions: ExplorerVersion[] = [
       {
         id: "truapi-calls",
         name: "TrUAPI Calls",
-        description: "General-purpose TrUAPI methods for feature detection, navigation, and\nnotifications.\n\n# Wire id reservations\n\nThe discriminants below are listed in [`super::RESERVED_WIRE_IDS`] so\ncodegen rejects any `#[wire(...)]` annotation that collides with them.\nSlots are held back for upstream `triangle-js-sdks` methods that TrUAPI\ndoes not implement, but whose ids must remain free to keep our wire-table\npositionally aligned with the canonical host `MessagePayload` enum. If we\never need one, annotate the trait method with the matching id and remove\nit from `RESERVED_WIRE_IDS`.",
+        description:
+          "General-purpose TrUAPI methods for feature detection, navigation, and\nnotifications.\n\n# Wire id reservations\n\nThe discriminants below are listed in [`super::RESERVED_WIRE_IDS`] so\ncodegen rejects any `#[wire(...)]` annotation that collides with them.\nSlots are held back for upstream `triangle-js-sdks` methods that TrUAPI\ndoes not implement, but whose ids must remain free to keep our wire-table\npositionally aligned with the canonical host `MessagePayload` enum. If we\never need one, annotate the trait method with the matching id and remove\nit from `RESERVED_WIRE_IDS`.",
         methods: [
           "host_handshake",
           "host_feature_supported",
@@ -78,10 +79,7 @@ export const versions: ExplorerVersion[] = [
         id: "permissions",
         name: "Permissions",
         description: "Device and remote permission prompts.",
-        methods: [
-          "host_device_permission",
-          "remote_permission",
-        ],
+        methods: ["host_device_permission", "remote_permission"],
       },
       {
         id: "local-storage",
@@ -96,7 +94,8 @@ export const versions: ExplorerVersion[] = [
       {
         id: "account-management",
         name: "Account Management",
-        description: "Account lookup, aliasing, and proof generation.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
+        description:
+          "Account lookup, aliasing, and proof generation.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
         methods: [
           "host_account_connection_status_subscribe",
           "host_account_get",
@@ -110,7 +109,8 @@ export const versions: ExplorerVersion[] = [
       {
         id: "signing",
         name: "Signing",
-        description: "Signing and transaction construction.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
+        description:
+          "Signing and transaction construction.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
         methods: [
           "host_create_transaction",
           "host_create_transaction_with_legacy_account",
@@ -123,7 +123,8 @@ export const versions: ExplorerVersion[] = [
       {
         id: "chat",
         name: "Chat",
-        description: "Chat room, bot, and message APIs.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
+        description:
+          "Chat room, bot, and message APIs.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
         methods: [
           "host_chat_create_room",
           "host_chat_register_bot",
@@ -136,7 +137,8 @@ export const versions: ExplorerVersion[] = [
       {
         id: "statement-store",
         name: "Statement Store",
-        description: "Statement store operations.\n\nDefault request methods return [`CallError::HostFailure`] with an\n`unavailable` reason. Hosts override only the methods they actually support.",
+        description:
+          "Statement store operations.\n\nDefault request methods return [`CallError::HostFailure`] with an\n`unavailable` reason. Hosts override only the methods they actually support.",
         methods: [
           "remote_statement_store_subscribe",
           "remote_statement_store_create_proof",
@@ -147,16 +149,15 @@ export const versions: ExplorerVersion[] = [
       {
         id: "preimage",
         name: "Preimage",
-        description: "Preimage lookup and submission.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
-        methods: [
-          "remote_preimage_lookup_subscribe",
-          "remote_preimage_submit",
-        ],
+        description:
+          "Preimage lookup and submission.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
+        methods: ["remote_preimage_lookup_subscribe", "remote_preimage_submit"],
       },
       {
         id: "chain-interaction",
         name: "Chain Interaction",
-        description: "Chain head and transaction interactions.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they can actually service.",
+        description:
+          "Chain head and transaction interactions.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they can actually service.",
         methods: [
           "remote_chain_head_follow_subscribe",
           "remote_chain_head_header",
@@ -176,7 +177,8 @@ export const versions: ExplorerVersion[] = [
       {
         id: "payment",
         name: "Payment",
-        description: "Payment operations.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
+        description:
+          "Payment operations.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
         methods: [
           "host_payment_balance_subscribe",
           "host_payment_request",
@@ -187,10 +189,9 @@ export const versions: ExplorerVersion[] = [
       {
         id: "entropy-derivation",
         name: "Entropy Derivation",
-        description: "Deterministic entropy derivation.\n\nThe default body returns [`CallError::HostFailure`] with an `unavailable`\nreason; hosts override only if they can derive entropy.",
-        methods: [
-          "host_derive_entropy",
-        ],
+        description:
+          "Deterministic entropy derivation.\n\nThe default body returns [`CallError::HostFailure`] with an `unavailable`\nreason; hosts override only if they can derive entropy.",
+        methods: ["host_derive_entropy"],
       },
     ],
     methods: [
@@ -205,7 +206,8 @@ export const versions: ExplorerVersion[] = [
         response: "undefined",
         errorType: "HostHandshakeError",
         description: "Negotiates the wire codec version with the product.",
-        usageExample: "import { type Client } from \"@parity/truapi\";\n\nexport async function handshake(truapi: Client): Promise<void> {\n  const result = await truapi.trUApiCalls.handshake();\n\n  if (result.isErr()) throw result.error;\n}",
+        usageExample:
+          'import { type Client } from "@parity/truapi";\n\nexport async function handshake(truapi: Client): Promise<void> {\n  const result = await truapi.trUApiCalls.handshake();\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_feature_supported",
@@ -218,7 +220,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostFeatureSupportedResponse",
         errorType: "GenericError",
         description: "Queries whether the host supports a specific feature.",
-        usageExample: "import { type Client } from \"@parity/truapi\";\n\nexport async function supportsChain(truapi: Client): Promise<boolean> {\n  const result = await truapi.trUApiCalls.featureSupported({\n    tag: \"Chain\",\n    value: {\n      genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value.supported;\n}",
+        usageExample:
+          'import { type Client } from "@parity/truapi";\n\nexport async function supportsChain(truapi: Client): Promise<boolean> {\n  const result = await truapi.trUApiCalls.featureSupported({\n    tag: "Chain",\n    value: {\n      genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value.supported;\n}',
       },
       {
         id: "host_push_notification",
@@ -230,8 +233,10 @@ export const versions: ExplorerVersion[] = [
         request: "HostPushNotificationRequest",
         response: "undefined",
         errorType: "GenericError",
-        description: "Sends a push notification to the user, or schedules it for a future\nwall-clock instant. The response carries a per-product\n[`crate::v02::NotificationId`] (v0.2 only) which can later be passed to\n[`Self::host_push_notification_cancel`] to retract a pending\nscheduled delivery.\n\nBehaviour per RFC 0019:\n- If `scheduled_at` is `None`, fire immediately (v0.1 behaviour).\n- If `scheduled_at` is `Some(t)` and `t <= now`, fire immediately.\n- Scheduled notifications MUST survive app and device restart.\n- The host maintains a single shared queue across all installed\n  products with capacity 64; over-cap calls return\n  [`crate::v02::HostPushNotificationError::ScheduleLimitReached`].\n  Immediate notifications do not count against the cap.",
-        usageExample: "import { type Client } from \"@parity/truapi\";\n\nexport async function pushNotification(truapi: Client): Promise<void> {\n  const result = await truapi.trUApiCalls.pushNotification({\n    text: \"Hello!\",\n  });\n\n  if (result.isErr()) throw result.error;\n}",
+        description:
+          "Sends a push notification to the user, or schedules it for a future\nwall-clock instant. The response carries a per-product\n[`crate::v02::NotificationId`] (v0.2 only) which can later be passed to\n[`Self::host_push_notification_cancel`] to retract a pending\nscheduled delivery.\n\nBehaviour per RFC 0019:\n- If `scheduled_at` is `None`, fire immediately (v0.1 behaviour).\n- If `scheduled_at` is `Some(t)` and `t <= now`, fire immediately.\n- Scheduled notifications MUST survive app and device restart.\n- The host maintains a single shared queue across all installed\n  products with capacity 64; over-cap calls return\n  [`crate::v02::HostPushNotificationError::ScheduleLimitReached`].\n  Immediate notifications do not count against the cap.",
+        usageExample:
+          'import { type Client } from "@parity/truapi";\n\nexport async function pushNotification(truapi: Client): Promise<void> {\n  const result = await truapi.trUApiCalls.pushNotification({\n    text: "Hello!",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_navigate_to",
@@ -244,7 +249,8 @@ export const versions: ExplorerVersion[] = [
         response: "undefined",
         errorType: "HostNavigateToError",
         description: "Requests the host to open a URL.",
-        usageExample: "import { type Client } from \"@parity/truapi\";\n\nexport async function navigateToDocs(truapi: Client): Promise<void> {\n  const result = await truapi.trUApiCalls.navigateTo({\n    url: \"https://example.com\",\n  });\n\n  if (result.isErr()) throw result.error;\n}",
+        usageExample:
+          'import { type Client } from "@parity/truapi";\n\nexport async function navigateToDocs(truapi: Client): Promise<void> {\n  const result = await truapi.trUApiCalls.navigateTo({\n    url: "https://example.com",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_device_permission",
@@ -257,7 +263,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostDevicePermissionResponse",
         errorType: "GenericError",
         description: "Request a device-capability permission from the user.",
-        usageExample: "import {\n  type Client,\n  type HostDevicePermissionResponse,\n} from \"@parity/truapi\";\n\nexport async function requestCameraPermission(\n  truapi: Client,\n): Promise<HostDevicePermissionResponse> {\n  const result = await truapi.permissions.devicePermission({\n    tag: \"Camera\",\n    value: undefined,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostDevicePermissionResponse,\n} from "@parity/truapi";\n\nexport async function requestCameraPermission(\n  truapi: Client,\n): Promise<HostDevicePermissionResponse> {\n  const result = await truapi.permissions.devicePermission({\n    tag: "Camera",\n    value: undefined,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_permission",
@@ -270,7 +277,8 @@ export const versions: ExplorerVersion[] = [
         response: "RemotePermissionResponse",
         errorType: "GenericError",
         description: "Request one or more remote-operation permissions.",
-        usageExample: "import {\n  type Client,\n  type RemotePermissionResponse,\n} from \"@parity/truapi\";\n\nexport async function requestRemotePermission(\n  truapi: Client,\n): Promise<RemotePermissionResponse> {\n  const result = await truapi.permissions.permission({\n    permissions: [{ tag: \"Remote\", value: { domains: [\"api.example.com\"] } }],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type RemotePermissionResponse,\n} from "@parity/truapi";\n\nexport async function requestRemotePermission(\n  truapi: Client,\n): Promise<RemotePermissionResponse> {\n  const result = await truapi.permissions.permission({\n    permissions: [{ tag: "Remote", value: { domains: ["api.example.com"] } }],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_local_storage_read",
@@ -283,7 +291,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostLocalStorageReadResponse",
         errorType: "HostLocalStorageReadError",
         description: "Read a value by key.",
-        usageExample: "import { type Client, type HexString } from \"@parity/truapi\";\n\nexport async function readLocalValue(\n  truapi: Client,\n): Promise<HexString | undefined> {\n  const result = await truapi.localStorage.localStorageRead({ key: \"test-key\" });\n\n  if (result.isErr()) throw result.error;\n  return result.value.value;\n}",
+        usageExample:
+          'import { type Client, type HexString } from "@parity/truapi";\n\nexport async function readLocalValue(\n  truapi: Client,\n): Promise<HexString | undefined> {\n  const result = await truapi.localStorage.localStorageRead({ key: "test-key" });\n\n  if (result.isErr()) throw result.error;\n  return result.value.value;\n}',
       },
       {
         id: "host_local_storage_write",
@@ -296,7 +305,8 @@ export const versions: ExplorerVersion[] = [
         response: "undefined",
         errorType: "HostLocalStorageReadError",
         description: "Write a value to a key.",
-        usageExample: "import { type Client } from \"@parity/truapi\";\n\nexport async function writeLocalValue(truapi: Client): Promise<void> {\n  const result = await truapi.localStorage.localStorageWrite({\n    key: \"test-key\",\n    value: \"0x48656c6c6f\",\n  });\n\n  if (result.isErr()) throw result.error;\n}",
+        usageExample:
+          'import { type Client } from "@parity/truapi";\n\nexport async function writeLocalValue(truapi: Client): Promise<void> {\n  const result = await truapi.localStorage.localStorageWrite({\n    key: "test-key",\n    value: "0x48656c6c6f",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_local_storage_clear",
@@ -309,7 +319,8 @@ export const versions: ExplorerVersion[] = [
         response: "undefined",
         errorType: "HostLocalStorageReadError",
         description: "Clear a value by key.",
-        usageExample: "import { type Client } from \"@parity/truapi\";\n\nexport async function clearLocalValue(truapi: Client): Promise<void> {\n  const result = await truapi.localStorage.localStorageClear({ key: \"test-key\" });\n\n  if (result.isErr()) throw result.error;\n}",
+        usageExample:
+          'import { type Client } from "@parity/truapi";\n\nexport async function clearLocalValue(truapi: Client): Promise<void> {\n  const result = await truapi.localStorage.localStorageClear({ key: "test-key" });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_account_connection_status_subscribe",
@@ -321,7 +332,8 @@ export const versions: ExplorerVersion[] = [
         request: "undefined",
         response: "HostAccountConnectionStatusSubscribeItem",
         description: "Subscribe to account connection status changes.",
-        usageExample: "import {\n  type Client,\n  type Subscription,\n  type HostAccountConnectionStatusSubscribeItem,\n} from \"@parity/truapi\";\n\nexport function watchAccountConnection(truapi: Client): Subscription {\n  return truapi.accountManagement.accountConnectionStatusSubscribe().subscribe({\n    next: (status: HostAccountConnectionStatusSubscribeItem) =>\n      console.log(status),\n    error: (error: Error) => console.error(error),\n    complete: () => console.log(\"completed\"),\n  });\n}",
+        usageExample:
+          'import {\n  type Client,\n  type Subscription,\n  type HostAccountConnectionStatusSubscribeItem,\n} from "@parity/truapi";\n\nexport function watchAccountConnection(truapi: Client): Subscription {\n  return truapi.accountManagement.accountConnectionStatusSubscribe().subscribe({\n    next: (status: HostAccountConnectionStatusSubscribeItem) =>\n      console.log(status),\n    error: (error: Error) => console.error(error),\n    complete: () => console.log("completed"),\n  });\n}',
       },
       {
         id: "host_account_get",
@@ -334,7 +346,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostAccountGetResponse",
         errorType: "HostAccountGetError",
         description: "Retrieve a product-scoped account.",
-        usageExample: "import {\n  type Client,\n  type HostAccountGetResponse,\n} from \"@parity/truapi\";\n\nexport async function getAccount(\n  truapi: Client,\n): Promise<HostAccountGetResponse> {\n  const result = await truapi.accountManagement.accountGet({\n    productAccountId: {\n      dotNsIdentifier: \"truapi-playground.dot\",\n      derivationIndex: 0,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostAccountGetResponse,\n} from "@parity/truapi";\n\nexport async function getAccount(\n  truapi: Client,\n): Promise<HostAccountGetResponse> {\n  const result = await truapi.accountManagement.accountGet({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_account_get_alias",
@@ -347,7 +360,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostAccountGetAliasResponse",
         errorType: "HostAccountGetError",
         description: "Retrieve a contextual alias for a product account.",
-        usageExample: "import {\n  type Client,\n  type HostAccountGetAliasResponse,\n} from \"@parity/truapi\";\n\nexport async function getAccountAlias(\n  truapi: Client,\n): Promise<HostAccountGetAliasResponse> {\n  const result = await truapi.accountManagement.accountGetAlias({\n    productAccountId: {\n      dotNsIdentifier: \"truapi-playground.dot\",\n      derivationIndex: 0,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostAccountGetAliasResponse,\n} from "@parity/truapi";\n\nexport async function getAccountAlias(\n  truapi: Client,\n): Promise<HostAccountGetAliasResponse> {\n  const result = await truapi.accountManagement.accountGetAlias({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_account_create_proof",
@@ -360,7 +374,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostAccountCreateProofResponse",
         errorType: "HostAccountCreateProofError",
         description: "Generate a ring VRF proof for a product account.",
-        usageExample: "import {\n  type Client,\n  type HostAccountCreateProofResponse,\n} from \"@parity/truapi\";\n\nexport async function createAccountProof(\n  truapi: Client,\n): Promise<HostAccountCreateProofResponse> {\n  const result = await truapi.accountManagement.accountCreateProof({\n    productAccountId: {\n      dotNsIdentifier: \"truapi-playground.dot\",\n      derivationIndex: 0,\n    },\n    ringLocation: {\n      genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n      ringRootHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n      hints: { palletInstance: 42 },\n    },\n    context: \"0x\",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostAccountCreateProofResponse,\n} from "@parity/truapi";\n\nexport async function createAccountProof(\n  truapi: Client,\n): Promise<HostAccountCreateProofResponse> {\n  const result = await truapi.accountManagement.accountCreateProof({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    ringLocation: {\n      genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      ringRootHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      hints: { palletInstance: 42 },\n    },\n    context: "0x",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_get_legacy_accounts",
@@ -373,7 +388,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostGetLegacyAccountsResponse",
         errorType: "HostAccountGetError",
         description: "List non-product accounts the user owns.",
-        usageExample: "import {\n  type Client,\n  type HostGetLegacyAccountsResponse,\n} from \"@parity/truapi\";\n\nexport async function getLegacyAccounts(\n  truapi: Client,\n): Promise<HostGetLegacyAccountsResponse> {\n  const result = await truapi.accountManagement.getLegacyAccounts();\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostGetLegacyAccountsResponse,\n} from "@parity/truapi";\n\nexport async function getLegacyAccounts(\n  truapi: Client,\n): Promise<HostGetLegacyAccountsResponse> {\n  const result = await truapi.accountManagement.getLegacyAccounts();\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_create_transaction",
@@ -386,7 +402,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostCreateTransactionResponse",
         errorType: "HostCreateTransactionError",
         description: "Construct a signed extrinsic for a product account.",
-        usageExample: "import {\n  type Client,\n  type HostCreateTransactionResponse,\n} from \"@parity/truapi\";\n\nexport async function createTransaction(\n  truapi: Client,\n): Promise<HostCreateTransactionResponse> {\n  const result = await truapi.signing.createTransaction({\n    productAccountId: {\n      dotNsIdentifier: \"truapi-playground.dot\",\n      derivationIndex: 0,\n    },\n    payload: {\n      tag: \"V1\",\n      value: {\n        callData: \"0x0000\",\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: \"0x\",\n          tokenSymbol: \"DOT\",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostCreateTransactionResponse,\n} from "@parity/truapi";\n\nexport async function createTransaction(\n  truapi: Client,\n): Promise<HostCreateTransactionResponse> {\n  const result = await truapi.signing.createTransaction({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    payload: {\n      tag: "V1",\n      value: {\n        callData: "0x0000",\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: "0x",\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_create_transaction_with_legacy_account",
@@ -399,7 +416,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostCreateTransactionWithLegacyAccountResponse",
         errorType: "HostCreateTransactionError",
         description: "Construct a signed extrinsic for a non-product account.",
-        usageExample: "import {\n  type Client,\n  type HostCreateTransactionWithLegacyAccountResponse,\n} from \"@parity/truapi\";\n\nexport async function createTransactionWithLegacyAccount(\n  truapi: Client,\n): Promise<HostCreateTransactionWithLegacyAccountResponse> {\n  const result = await truapi.signing.createTransactionWithLegacyAccount({\n    payload: {\n      tag: \"V1\",\n      value: {\n        callData: \"0x0000\",\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: \"0x\",\n          tokenSymbol: \"DOT\",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostCreateTransactionWithLegacyAccountResponse,\n} from "@parity/truapi";\n\nexport async function createTransactionWithLegacyAccount(\n  truapi: Client,\n): Promise<HostCreateTransactionWithLegacyAccountResponse> {\n  const result = await truapi.signing.createTransactionWithLegacyAccount({\n    payload: {\n      tag: "V1",\n      value: {\n        callData: "0x0000",\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: "0x",\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_sign_raw_with_legacy_account",
@@ -412,7 +430,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostSignPayloadResponse",
         errorType: "HostSignPayloadError",
         description: "Sign raw bytes with a non-product (legacy) account.",
-        usageExample: "import {\n  type Client,\n  type HostSignPayloadResponse,\n} from \"@parity/truapi\";\n\nexport async function signRawWithLegacyAccount(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signRawWithLegacyAccount({\n    signer: \"5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY\",\n    payload: {\n      tag: \"Bytes\",\n      value: { bytes: \"0x48656c6c6f\" },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signRawWithLegacyAccount(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signRawWithLegacyAccount({\n    signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",\n    payload: {\n      tag: "Bytes",\n      value: { bytes: "0x48656c6c6f" },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_sign_payload_with_legacy_account",
@@ -424,8 +443,10 @@ export const versions: ExplorerVersion[] = [
         request: "HostSignPayloadWithLegacyAccountRequest",
         response: "HostSignPayloadResponse",
         errorType: "HostSignPayloadError",
-        description: "Sign a Substrate extrinsic payload with a non-product (legacy) account.",
-        usageExample: "import {\n  type Client,\n  type HostSignPayloadResponse,\n} from \"@parity/truapi\";\n\nexport async function signPayloadWithLegacyAccount(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signPayloadWithLegacyAccount({\n    signer: \"5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY\",\n    payload: {\n      account: { dotNsIdentifier: \"truapi-playground.dot\", derivationIndex: 0 },\n      blockHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n      blockNumber: \"0x00000000\",\n      era: \"0x00\",\n      genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n      method: \"0x0000\",\n      nonce: \"0x00000000\",\n      signedExtensions: [],\n      specVersion: \"0x00000000\",\n      tip: \"0x00000000000000000000000000000000\",\n      transactionVersion: \"0x00000000\",\n      version: 4,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        description:
+          "Sign a Substrate extrinsic payload with a non-product (legacy) account.",
+        usageExample:
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signPayloadWithLegacyAccount(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signPayloadWithLegacyAccount({\n    signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",\n    payload: {\n      account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n      blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      blockNumber: "0x00000000",\n      era: "0x00",\n      genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      method: "0x0000",\n      nonce: "0x00000000",\n      signedExtensions: [],\n      specVersion: "0x00000000",\n      tip: "0x00000000000000000000000000000000",\n      transactionVersion: "0x00000000",\n      version: 4,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_create_room",
@@ -438,7 +459,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostChatCreateRoomResponse",
         errorType: "HostChatCreateRoomError",
         description: "Create a chat room.",
-        usageExample: "import {\n  type Client,\n  type HostChatCreateRoomResponse,\n} from \"@parity/truapi\";\n\nexport async function createRoom(\n  truapi: Client,\n): Promise<HostChatCreateRoomResponse> {\n  const result = await truapi.chat.chatCreateRoom({\n    roomId: \"test-room\",\n    name: \"Test Room\",\n    icon: \"\",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostChatCreateRoomResponse,\n} from "@parity/truapi";\n\nexport async function createRoom(\n  truapi: Client,\n): Promise<HostChatCreateRoomResponse> {\n  const result = await truapi.chat.chatCreateRoom({\n    roomId: "test-room",\n    name: "Test Room",\n    icon: "",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_register_bot",
@@ -451,7 +473,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostChatRegisterBotResponse",
         errorType: "HostChatRegisterBotError",
         description: "Register a chat bot.",
-        usageExample: "import {\n  type Client,\n  type HostChatRegisterBotResponse,\n} from \"@parity/truapi\";\n\nexport async function registerBot(\n  truapi: Client,\n): Promise<HostChatRegisterBotResponse> {\n  const result = await truapi.chat.chatRegisterBot({\n    botId: \"test-bot\",\n    name: \"Test Bot\",\n    icon: \"\",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostChatRegisterBotResponse,\n} from "@parity/truapi";\n\nexport async function registerBot(\n  truapi: Client,\n): Promise<HostChatRegisterBotResponse> {\n  const result = await truapi.chat.chatRegisterBot({\n    botId: "test-bot",\n    name: "Test Bot",\n    icon: "",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_list_subscribe",
@@ -463,7 +486,8 @@ export const versions: ExplorerVersion[] = [
         request: "undefined",
         response: "HostChatListSubscribeItem",
         description: "Subscribe to the list of chat rooms.",
-        usageExample: "import {\n  type Client,\n  type Subscription,\n  type HostChatListSubscribeItem,\n} from \"@parity/truapi\";\n\nexport function watchChatRooms(truapi: Client): Subscription {\n  return truapi.chat.chatListSubscribe().subscribe({\n    next: (rooms: HostChatListSubscribeItem) => console.log(rooms),\n    error: (error: Error) => console.error(error),\n    complete: () => console.log(\"completed\"),\n  });\n}",
+        usageExample:
+          'import {\n  type Client,\n  type Subscription,\n  type HostChatListSubscribeItem,\n} from "@parity/truapi";\n\nexport function watchChatRooms(truapi: Client): Subscription {\n  return truapi.chat.chatListSubscribe().subscribe({\n    next: (rooms: HostChatListSubscribeItem) => console.log(rooms),\n    error: (error: Error) => console.error(error),\n    complete: () => console.log("completed"),\n  });\n}',
       },
       {
         id: "host_chat_post_message",
@@ -476,7 +500,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostChatPostMessageResponse",
         errorType: "HostChatPostMessageError",
         description: "Post a message to a chat room.",
-        usageExample: "import {\n  type Client,\n  type HostChatPostMessageResponse,\n} from \"@parity/truapi\";\n\nexport async function postChatMessage(\n  truapi: Client,\n): Promise<HostChatPostMessageResponse> {\n  const result = await truapi.chat.chatPostMessage({\n    roomId: \"test-room\",\n    payload: { tag: \"Text\", value: { text: \"Hello from playground!\" } },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostChatPostMessageResponse,\n} from "@parity/truapi";\n\nexport async function postChatMessage(\n  truapi: Client,\n): Promise<HostChatPostMessageResponse> {\n  const result = await truapi.chat.chatPostMessage({\n    roomId: "test-room",\n    payload: { tag: "Text", value: { text: "Hello from playground!" } },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_action_subscribe",
@@ -488,7 +513,8 @@ export const versions: ExplorerVersion[] = [
         request: "undefined",
         response: "HostChatActionSubscribeItem",
         description: "Subscribe to received chat actions.",
-        usageExample: "import {\n  type Client,\n  type Subscription,\n  type HostChatActionSubscribeItem,\n} from \"@parity/truapi\";\n\nexport function watchChatActions(truapi: Client): Subscription {\n  return truapi.chat.chatActionSubscribe().subscribe({\n    next: (action: HostChatActionSubscribeItem) =>\n      console.log(action),\n    error: (error: Error) => console.error(error),\n    complete: () => console.log(\"completed\"),\n  });\n}",
+        usageExample:
+          'import {\n  type Client,\n  type Subscription,\n  type HostChatActionSubscribeItem,\n} from "@parity/truapi";\n\nexport function watchChatActions(truapi: Client): Subscription {\n  return truapi.chat.chatActionSubscribe().subscribe({\n    next: (action: HostChatActionSubscribeItem) =>\n      console.log(action),\n    error: (error: Error) => console.error(error),\n    complete: () => console.log("completed"),\n  });\n}',
       },
       {
         id: "product_chat_custom_message_render_subscribe",
@@ -499,8 +525,10 @@ export const versions: ExplorerVersion[] = [
         pattern: "subscription",
         request: "ProductChatCustomMessageRenderSubscribeRequest",
         response: "CustomRendererNode",
-        description: "Subscribe to custom message render requests from the host. Each\nemitted item is a [`CustomRendererNode`](crate::v01::CustomRendererNode)\ntree describing the rendered UI.",
-        usageExample: "import {\n  type Client,\n  type CustomRendererNode,\n  type Subscription,\n} from \"@parity/truapi\";\n\nexport function renderCustomChatMessage(truapi: Client): Subscription {\n  return truapi.chat\n    .chatCustomMessageRenderSubscribe({\n      request: {\n        messageId: \"msg-1\",\n        messageType: \"custom-render-demo\",\n        payload: \"0x\",\n      },\n    })\n    .subscribe({\n      next: (node: CustomRendererNode) => console.log(node),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log(\"completed\"),\n    });\n}",
+        description:
+          "Subscribe to custom message render requests from the host. Each\nemitted item is a [`CustomRendererNode`](crate::v01::CustomRendererNode)\ntree describing the rendered UI.",
+        usageExample:
+          'import {\n  type Client,\n  type CustomRendererNode,\n  type Subscription,\n} from "@parity/truapi";\n\nexport function renderCustomChatMessage(truapi: Client): Subscription {\n  return truapi.chat\n    .chatCustomMessageRenderSubscribe({\n      request: {\n        messageId: "msg-1",\n        messageType: "custom-render-demo",\n        payload: "0x",\n      },\n    })\n    .subscribe({\n      next: (node: CustomRendererNode) => console.log(node),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_statement_store_subscribe",
@@ -512,7 +540,8 @@ export const versions: ExplorerVersion[] = [
         request: "RemoteStatementStoreSubscribeRequest",
         response: "RemoteStatementStoreSubscribeItem",
         description: "Subscribe to statements matching a topic filter.",
-        usageExample: "import {\n  type Client,\n  type Subscription,\n  type RemoteStatementStoreSubscribeItem,\n} from \"@parity/truapi\";\n\nexport function subscribeStatements(truapi: Client): Subscription {\n  return truapi.statementStore\n    .statementStoreSubscribe({\n      request: { tag: \"MatchAll\", value: [] },\n    })\n    .subscribe({\n      next: (statements: RemoteStatementStoreSubscribeItem) =>\n        console.log(statements),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log(\"completed\"),\n    });\n}",
+        usageExample:
+          'import {\n  type Client,\n  type Subscription,\n  type RemoteStatementStoreSubscribeItem,\n} from "@parity/truapi";\n\nexport function subscribeStatements(truapi: Client): Subscription {\n  return truapi.statementStore\n    .statementStoreSubscribe({\n      request: { tag: "MatchAll", value: [] },\n    })\n    .subscribe({\n      next: (statements: RemoteStatementStoreSubscribeItem) =>\n        console.log(statements),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_statement_store_create_proof",
@@ -525,7 +554,8 @@ export const versions: ExplorerVersion[] = [
         response: "RemoteStatementStoreCreateProofResponse",
         errorType: "RemoteStatementStoreCreateProofError",
         description: "Create a proof for a statement.",
-        usageExample: "import {\n  type Client,\n  type RemoteStatementStoreCreateProofResponse,\n} from \"@parity/truapi\";\n\nexport async function createStatementProof(\n  truapi: Client,\n): Promise<RemoteStatementStoreCreateProofResponse> {\n  const result = await truapi.statementStore.statementStoreCreateProof({\n    productAccountId: {\n      dotNsIdentifier: \"truapi-playground.dot\",\n      derivationIndex: 0,\n    },\n    statement: {\n      expiry: 9999999999999n,\n      topics: [],\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type RemoteStatementStoreCreateProofResponse,\n} from "@parity/truapi";\n\nexport async function createStatementProof(\n  truapi: Client,\n): Promise<RemoteStatementStoreCreateProofResponse> {\n  const result = await truapi.statementStore.statementStoreCreateProof({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    statement: {\n      expiry: 9999999999999n,\n      topics: [],\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_statement_store_submit",
@@ -537,8 +567,10 @@ export const versions: ExplorerVersion[] = [
         request: "SignedStatement",
         response: "undefined",
         errorType: "GenericError",
-        description: "Submit a signed statement to the network. The request body is the\n[`SignedStatement`](crate::v01::SignedStatement) directly (no wrapping\nstruct), matching upstream `triangle-js-sdks`.",
-        usageExample: "import { type Client } from \"@parity/truapi\";\n\nexport async function submitStatement(truapi: Client): Promise<void> {\n  const result = await truapi.statementStore.statementStoreSubmit({\n    proof: {\n      tag: \"Sr25519\",\n      value: {\n        signature: \"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\n        signer: \"0x0000000000000000000000000000000000000000000000000000000000000000\",\n      },\n    },\n    topics: [],\n  });\n\n  if (result.isErr()) throw result.error;\n}",
+        description:
+          "Submit a signed statement to the network. The request body is the\n[`SignedStatement`](crate::v01::SignedStatement) directly (no wrapping\nstruct), matching upstream `triangle-js-sdks`.",
+        usageExample:
+          'import { type Client } from "@parity/truapi";\n\nexport async function submitStatement(truapi: Client): Promise<void> {\n  const result = await truapi.statementStore.statementStoreSubmit({\n    proof: {\n      tag: "Sr25519",\n      value: {\n        signature: "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",\n        signer: "0x0000000000000000000000000000000000000000000000000000000000000000",\n      },\n    },\n    topics: [],\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_preimage_lookup_subscribe",
@@ -550,7 +582,8 @@ export const versions: ExplorerVersion[] = [
         request: "RemotePreimageLookupSubscribeRequest",
         response: "RemotePreimageLookupSubscribeItem",
         description: "Subscribe to preimage lookups for a given key.",
-        usageExample: "import {\n  type Client,\n  type Subscription,\n  type RemotePreimageLookupSubscribeItem,\n} from \"@parity/truapi\";\n\nexport function lookupPreimage(truapi: Client): Subscription {\n  return truapi.preimage\n    .preimageLookupSubscribe({\n      request: {\n        key: \"0x0000000000000000000000000000000000000000000000000000000000000000\",\n      },\n    })\n    .subscribe({\n      next: (item: RemotePreimageLookupSubscribeItem) =>\n        console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log(\"completed\"),\n    });\n}",
+        usageExample:
+          'import {\n  type Client,\n  type Subscription,\n  type RemotePreimageLookupSubscribeItem,\n} from "@parity/truapi";\n\nexport function lookupPreimage(truapi: Client): Subscription {\n  return truapi.preimage\n    .preimageLookupSubscribe({\n      request: {\n        key: "0x0000000000000000000000000000000000000000000000000000000000000000",\n      },\n    })\n    .subscribe({\n      next: (item: RemotePreimageLookupSubscribeItem) =>\n        console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_preimage_submit",
@@ -562,8 +595,10 @@ export const versions: ExplorerVersion[] = [
         request: "HexString",
         response: "HexString",
         errorType: "PreimageSubmitError",
-        description: "Submit a preimage. Returns the preimage key (hash) on success.",
-        usageExample: "import {\n  type Client,\n  type HexString,\n} from \"@parity/truapi\";\n\nexport async function submitPreimage(\n  truapi: Client,\n): Promise<HexString> {\n  const result = await truapi.preimage.preimageSubmit(\"0xdeadbeef\");\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        description:
+          "Submit a preimage. Returns the preimage key (hash) on success.",
+        usageExample:
+          'import {\n  type Client,\n  type HexString,\n} from "@parity/truapi";\n\nexport async function submitPreimage(\n  truapi: Client,\n): Promise<HexString> {\n  const result = await truapi.preimage.preimageSubmit("0xdeadbeef");\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_follow_subscribe",
@@ -575,7 +610,8 @@ export const versions: ExplorerVersion[] = [
         request: "RemoteChainHeadFollowRequest",
         response: "RemoteChainHeadFollowItem",
         description: "Follow the chain head and receive block events.",
-        usageExample: "import {\n  type Client,\n  type Subscription,\n  type RemoteChainHeadFollowItem,\n} from \"@parity/truapi\";\n\nexport function followChainHead(truapi: Client): Subscription {\n  return truapi.chainInteraction\n    .chainHeadFollowSubscribe({\n      request: {\n        genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n        withRuntime: false,\n      },\n    })\n    .subscribe({\n      next: (item: RemoteChainHeadFollowItem) => console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log(\"completed\"),\n    });\n}",
+        usageExample:
+          'import {\n  type Client,\n  type Subscription,\n  type RemoteChainHeadFollowItem,\n} from "@parity/truapi";\n\nexport function followChainHead(truapi: Client): Subscription {\n  return truapi.chainInteraction\n    .chainHeadFollowSubscribe({\n      request: {\n        genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n        withRuntime: false,\n      },\n    })\n    .subscribe({\n      next: (item: RemoteChainHeadFollowItem) => console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_chain_head_header",
@@ -588,7 +624,8 @@ export const versions: ExplorerVersion[] = [
         response: "RemoteChainHeadHeaderResponse",
         errorType: "GenericError",
         description: "Fetch a block header.",
-        usageExample: "import {\n  type Client,\n  type RemoteChainHeadHeaderResponse,\n} from \"@parity/truapi\";\n\nexport async function getChainHeadHeader(\n  truapi: Client,\n): Promise<RemoteChainHeadHeaderResponse> {\n  const result = await truapi.chainInteraction.chainHeadHeader({\n    genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n    followSubscriptionId: \"\",\n    hash: \"0x0000000000000000000000000000000000000000000000000000000000000000\",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type RemoteChainHeadHeaderResponse,\n} from "@parity/truapi";\n\nexport async function getChainHeadHeader(\n  truapi: Client,\n): Promise<RemoteChainHeadHeaderResponse> {\n  const result = await truapi.chainInteraction.chainHeadHeader({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    hash: "0x0000000000000000000000000000000000000000000000000000000000000000",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_body",
@@ -601,7 +638,8 @@ export const versions: ExplorerVersion[] = [
         response: "RemoteChainHeadBodyResponse",
         errorType: "GenericError",
         description: "Fetch a block body.",
-        usageExample: "import {\n  type Client,\n  type RemoteChainHeadBodyResponse,\n} from \"@parity/truapi\";\n\nexport async function getChainHeadBody(\n  truapi: Client,\n): Promise<RemoteChainHeadBodyResponse> {\n  const result = await truapi.chainInteraction.chainHeadBody({\n    genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n    followSubscriptionId: \"\",\n    hash: \"0x0000000000000000000000000000000000000000000000000000000000000000\",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type RemoteChainHeadBodyResponse,\n} from "@parity/truapi";\n\nexport async function getChainHeadBody(\n  truapi: Client,\n): Promise<RemoteChainHeadBodyResponse> {\n  const result = await truapi.chainInteraction.chainHeadBody({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    hash: "0x0000000000000000000000000000000000000000000000000000000000000000",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_storage",
@@ -614,7 +652,8 @@ export const versions: ExplorerVersion[] = [
         response: "RemoteChainHeadStorageResponse",
         errorType: "GenericError",
         description: "Query runtime storage at a specific block.",
-        usageExample: "import {\n  type Client,\n  type RemoteChainHeadStorageResponse,\n} from \"@parity/truapi\";\n\nexport async function getChainHeadStorage(\n  truapi: Client,\n): Promise<RemoteChainHeadStorageResponse> {\n  const result = await truapi.chainInteraction.chainHeadStorage({\n    genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n    followSubscriptionId: \"\",\n    hash: \"0x0000000000000000000000000000000000000000000000000000000000000000\",\n    items: [\n      {\n        key: \"0x26aa394eea5630e07c48ae0c9558cef7\",\n        queryType: { tag: \"Value\", value: undefined },\n      },\n    ],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type RemoteChainHeadStorageResponse,\n} from "@parity/truapi";\n\nexport async function getChainHeadStorage(\n  truapi: Client,\n): Promise<RemoteChainHeadStorageResponse> {\n  const result = await truapi.chainInteraction.chainHeadStorage({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    hash: "0x0000000000000000000000000000000000000000000000000000000000000000",\n    items: [\n      {\n        key: "0x26aa394eea5630e07c48ae0c9558cef7",\n        queryType: { tag: "Value", value: undefined },\n      },\n    ],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_call",
@@ -627,7 +666,8 @@ export const versions: ExplorerVersion[] = [
         response: "RemoteChainHeadCallResponse",
         errorType: "GenericError",
         description: "Invoke a runtime call at a specific block.",
-        usageExample: "import {\n  type Client,\n  type RemoteChainHeadCallResponse,\n} from \"@parity/truapi\";\n\nexport async function callChainHeadRuntime(\n  truapi: Client,\n): Promise<RemoteChainHeadCallResponse> {\n  const result = await truapi.chainInteraction.chainHeadCall({\n    genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n    followSubscriptionId: \"\",\n    hash: \"0x0000000000000000000000000000000000000000000000000000000000000000\",\n    function: \"Core_version\",\n    callParameters: \"0x\",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type RemoteChainHeadCallResponse,\n} from "@parity/truapi";\n\nexport async function callChainHeadRuntime(\n  truapi: Client,\n): Promise<RemoteChainHeadCallResponse> {\n  const result = await truapi.chainInteraction.chainHeadCall({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    hash: "0x0000000000000000000000000000000000000000000000000000000000000000",\n    function: "Core_version",\n    callParameters: "0x",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_unpin",
@@ -640,7 +680,8 @@ export const versions: ExplorerVersion[] = [
         response: "undefined",
         errorType: "GenericError",
         description: "Release pinned blocks.",
-        usageExample: "import { type Client } from \"@parity/truapi\";\n\nexport async function unpinChainHead(truapi: Client): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadUnpin({\n    genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n    followSubscriptionId: \"\",\n    hashes: [\n      \"0x0000000000000000000000000000000000000000000000000000000000000000\",\n    ],\n  });\n\n  if (result.isErr()) throw result.error;\n}",
+        usageExample:
+          'import { type Client } from "@parity/truapi";\n\nexport async function unpinChainHead(truapi: Client): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadUnpin({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    hashes: [\n      "0x0000000000000000000000000000000000000000000000000000000000000000",\n    ],\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_chain_head_continue",
@@ -653,7 +694,8 @@ export const versions: ExplorerVersion[] = [
         response: "undefined",
         errorType: "GenericError",
         description: "Continue a paused chain-head operation.",
-        usageExample: "import { type Client } from \"@parity/truapi\";\n\nexport async function continueChainHeadOperation(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadContinue({\n    genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n    followSubscriptionId: \"\",\n    operationId: \"op-id\",\n  });\n\n  if (result.isErr()) throw result.error;\n}",
+        usageExample:
+          'import { type Client } from "@parity/truapi";\n\nexport async function continueChainHeadOperation(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadContinue({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_chain_head_stop_operation",
@@ -666,7 +708,8 @@ export const versions: ExplorerVersion[] = [
         response: "undefined",
         errorType: "GenericError",
         description: "Stop a chain-head operation.",
-        usageExample: "import { type Client } from \"@parity/truapi\";\n\nexport async function stopChainHeadOperation(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadStopOperation({\n    genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n    followSubscriptionId: \"\",\n    operationId: \"op-id\",\n  });\n\n  if (result.isErr()) throw result.error;\n}",
+        usageExample:
+          'import { type Client } from "@parity/truapi";\n\nexport async function stopChainHeadOperation(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadStopOperation({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_chain_spec_genesis_hash",
@@ -679,7 +722,8 @@ export const versions: ExplorerVersion[] = [
         response: "RemoteChainSpecGenesisHashResponse",
         errorType: "GenericError",
         description: "Fetch the canonical genesis hash for a chain.",
-        usageExample: "import {\n  type Client,\n  type RemoteChainSpecGenesisHashResponse,\n} from \"@parity/truapi\";\n\nexport async function getChainGenesisHash(\n  truapi: Client,\n): Promise<RemoteChainSpecGenesisHashResponse> {\n  const result = await truapi.chainInteraction.chainSpecGenesisHash({\n    genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type RemoteChainSpecGenesisHashResponse,\n} from "@parity/truapi";\n\nexport async function getChainGenesisHash(\n  truapi: Client,\n): Promise<RemoteChainSpecGenesisHashResponse> {\n  const result = await truapi.chainInteraction.chainSpecGenesisHash({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_spec_chain_name",
@@ -692,7 +736,8 @@ export const versions: ExplorerVersion[] = [
         response: "RemoteChainSpecChainNameResponse",
         errorType: "GenericError",
         description: "Fetch the display name of a chain.",
-        usageExample: "import {\n  type Client,\n  type RemoteChainSpecChainNameResponse,\n} from \"@parity/truapi\";\n\nexport async function getChainName(\n  truapi: Client,\n): Promise<RemoteChainSpecChainNameResponse> {\n  const result = await truapi.chainInteraction.chainSpecChainName({\n    genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type RemoteChainSpecChainNameResponse,\n} from "@parity/truapi";\n\nexport async function getChainName(\n  truapi: Client,\n): Promise<RemoteChainSpecChainNameResponse> {\n  const result = await truapi.chainInteraction.chainSpecChainName({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_spec_properties",
@@ -705,7 +750,8 @@ export const versions: ExplorerVersion[] = [
         response: "RemoteChainSpecPropertiesResponse",
         errorType: "GenericError",
         description: "Fetch the JSON-encoded properties of a chain.",
-        usageExample: "import {\n  type Client,\n  type RemoteChainSpecPropertiesResponse,\n} from \"@parity/truapi\";\n\nexport async function getChainProperties(\n  truapi: Client,\n): Promise<RemoteChainSpecPropertiesResponse> {\n  const result = await truapi.chainInteraction.chainSpecProperties({\n    genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type RemoteChainSpecPropertiesResponse,\n} from "@parity/truapi";\n\nexport async function getChainProperties(\n  truapi: Client,\n): Promise<RemoteChainSpecPropertiesResponse> {\n  const result = await truapi.chainInteraction.chainSpecProperties({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_transaction_broadcast",
@@ -718,7 +764,8 @@ export const versions: ExplorerVersion[] = [
         response: "RemoteChainTransactionBroadcastResponse",
         errorType: "GenericError",
         description: "Broadcast a signed transaction.",
-        usageExample: "import {\n  type Client,\n  type RemoteChainTransactionBroadcastResponse,\n} from \"@parity/truapi\";\n\nexport async function broadcastTransaction(\n  truapi: Client,\n): Promise<RemoteChainTransactionBroadcastResponse> {\n  const result = await truapi.chainInteraction.chainTransactionBroadcast({\n    genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n    transaction: \"0x\",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type RemoteChainTransactionBroadcastResponse,\n} from "@parity/truapi";\n\nexport async function broadcastTransaction(\n  truapi: Client,\n): Promise<RemoteChainTransactionBroadcastResponse> {\n  const result = await truapi.chainInteraction.chainTransactionBroadcast({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    transaction: "0x",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_transaction_stop",
@@ -731,7 +778,8 @@ export const versions: ExplorerVersion[] = [
         response: "undefined",
         errorType: "GenericError",
         description: "Stop a transaction broadcast.",
-        usageExample: "import { type Client } from \"@parity/truapi\";\n\nexport async function stopTransactionBroadcast(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainTransactionStop({\n    genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n    operationId: \"op-id\",\n  });\n\n  if (result.isErr()) throw result.error;\n}",
+        usageExample:
+          'import { type Client } from "@parity/truapi";\n\nexport async function stopTransactionBroadcast(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainTransactionStop({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_derive_entropy",
@@ -743,8 +791,10 @@ export const versions: ExplorerVersion[] = [
         request: "HostDeriveEntropyRequest",
         response: "HostDeriveEntropyResponse",
         errorType: "HostDeriveEntropyError",
-        description: "Derive 32 bytes of entropy from the user's root BIP-39 entropy for the\ngiven key.",
-        usageExample: "import {\n  type Client,\n  type HostDeriveEntropyResponse,\n} from \"@parity/truapi\";\n\nexport async function deriveEntropy(\n  truapi: Client,\n): Promise<HostDeriveEntropyResponse> {\n  const result = await truapi.entropyDerivation.deriveEntropy({\n    context: \"0x70726f647563742d6b6579\",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        description:
+          "Derive 32 bytes of entropy from the user's root BIP-39 entropy for the\ngiven key.",
+        usageExample:
+          'import {\n  type Client,\n  type HostDeriveEntropyResponse,\n} from "@parity/truapi";\n\nexport async function deriveEntropy(\n  truapi: Client,\n): Promise<HostDeriveEntropyResponse> {\n  const result = await truapi.entropyDerivation.deriveEntropy({\n    context: "0x70726f647563742d6b6579",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_get_user_id",
@@ -757,7 +807,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostGetUserIdResponse",
         errorType: "HostGetUserIdError",
         description: "Fetch the user's primary identity (V0.2+).",
-        usageExample: "import {\n  type Client,\n  type HostGetUserIdResponse,\n} from \"@parity/truapi\";\n\nexport async function getUserId(\n  truapi: Client,\n): Promise<HostGetUserIdResponse> {\n  const result = await truapi.accountManagement.getUserId();\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostGetUserIdResponse,\n} from "@parity/truapi";\n\nexport async function getUserId(\n  truapi: Client,\n): Promise<HostGetUserIdResponse> {\n  const result = await truapi.accountManagement.getUserId();\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_request_login",
@@ -769,8 +820,10 @@ export const versions: ExplorerVersion[] = [
         request: "HostRequestLoginRequest",
         response: "HostRequestLoginResponse",
         errorType: "HostRequestLoginError",
-        description: "Request the host to present the login flow to the user.\n\nProducts should call this in response to a user action (e.g. tapping a\n\"Sign in\" button), not automatically on load.",
-        usageExample: "import {\n  type Client,\n  type HostRequestLoginResponse,\n} from \"@parity/truapi\";\n\nexport async function requestLogin(\n  truapi: Client,\n): Promise<HostRequestLoginResponse> {\n  const result = await truapi.accountManagement.requestLogin({\n    reason: \"Sign in to vote on Referendum #42\",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        description:
+          'Request the host to present the login flow to the user.\n\nProducts should call this in response to a user action (e.g. tapping a\n"Sign in" button), not automatically on load.',
+        usageExample:
+          'import {\n  type Client,\n  type HostRequestLoginResponse,\n} from "@parity/truapi";\n\nexport async function requestLogin(\n  truapi: Client,\n): Promise<HostRequestLoginResponse> {\n  const result = await truapi.accountManagement.requestLogin({\n    reason: "Sign in to vote on Referendum #42",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_sign_raw",
@@ -783,7 +836,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostSignPayloadResponse",
         errorType: "HostSignPayloadError",
         description: "Sign raw bytes or a message.",
-        usageExample: "import {\n  type Client,\n  type HostSignPayloadResponse,\n} from \"@parity/truapi\";\n\nexport async function signRawBytes(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signRaw({\n    account: { dotNsIdentifier: \"truapi-playground.dot\", derivationIndex: 0 },\n    payload: {\n      tag: \"Bytes\",\n      value: {\n        bytes: \"0x48656c6c6f2c20776f726c6421\",\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signRawBytes(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signRaw({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    payload: {\n      tag: "Bytes",\n      value: {\n        bytes: "0x48656c6c6f2c20776f726c6421",\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_sign_payload",
@@ -796,7 +850,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostSignPayloadResponse",
         errorType: "HostSignPayloadError",
         description: "Sign a Substrate extrinsic payload.",
-        usageExample: "import {\n  type Client,\n  type HostSignPayloadResponse,\n} from \"@parity/truapi\";\n\nexport async function signPayload(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signPayload({\n    account: { dotNsIdentifier: \"truapi-playground.dot\", derivationIndex: 0 },\n    blockHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n    blockNumber: \"0x00000000\",\n    era: \"0x00\",\n    genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n    method: \"0x00003448656c6c6f2c20776f726c6421\",\n    nonce: \"0x00000000\",\n    signedExtensions: [],\n    specVersion: \"0x00000000\",\n    tip: \"0x00000000000000000000000000000000\",\n    transactionVersion: \"0x00000000\",\n    version: 4,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signPayload(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signPayload({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    blockNumber: "0x00000000",\n    era: "0x00",\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    method: "0x00003448656c6c6f2c20776f726c6421",\n    nonce: "0x00000000",\n    signedExtensions: [],\n    specVersion: "0x00000000",\n    tip: "0x00000000000000000000000000000000",\n    transactionVersion: "0x00000000",\n    version: 4,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_payment_balance_subscribe",
@@ -809,7 +864,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostPaymentBalanceSubscribeItem",
         errorType: "HostPaymentBalanceSubscribeError",
         description: "Subscribe to payment balance updates.",
-        usageExample: "import {\n  type Client,\n  type HostPaymentBalanceSubscribeError,\n  type HostPaymentBalanceSubscribeItem,\n  type Subscription,\n  type SubscriptionError,\n} from \"@parity/truapi\";\n\nexport function watchPaymentBalance(truapi: Client): Subscription {\n  return truapi.payment.paymentBalanceSubscribe().subscribe({\n    next: (balance: HostPaymentBalanceSubscribeItem) =>\n      console.log(balance),\n    error: (error: SubscriptionError<HostPaymentBalanceSubscribeError>) =>\n      console.error(error),\n    complete: () => console.log(\"completed\"),\n  });\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostPaymentBalanceSubscribeError,\n  type HostPaymentBalanceSubscribeItem,\n  type Subscription,\n  type SubscriptionError,\n} from "@parity/truapi";\n\nexport function watchPaymentBalance(truapi: Client): Subscription {\n  return truapi.payment.paymentBalanceSubscribe().subscribe({\n    next: (balance: HostPaymentBalanceSubscribeItem) =>\n      console.log(balance),\n    error: (error: SubscriptionError<HostPaymentBalanceSubscribeError>) =>\n      console.error(error),\n    complete: () => console.log("completed"),\n  });\n}',
       },
       {
         id: "host_payment_top_up",
@@ -822,7 +878,8 @@ export const versions: ExplorerVersion[] = [
         response: "undefined",
         errorType: "HostPaymentTopUpError",
         description: "Top up the user's payment balance.",
-        usageExample: "import { type Client } from \"@parity/truapi\";\n\nexport async function topUpPaymentBalance(truapi: Client): Promise<void> {\n  const result = await truapi.payment.paymentTopUp({\n    amount: 1000000000000n,\n    source: { tag: \"ProductAccount\", value: { derivationIndex: 0 } },\n  });\n\n  if (result.isErr()) throw result.error;\n}",
+        usageExample:
+          'import { type Client } from "@parity/truapi";\n\nexport async function topUpPaymentBalance(truapi: Client): Promise<void> {\n  const result = await truapi.payment.paymentTopUp({\n    amount: 1000000000000n,\n    source: { tag: "ProductAccount", value: { derivationIndex: 0 } },\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_payment_request",
@@ -835,7 +892,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostPaymentRequestResponse",
         errorType: "HostPaymentRequestError",
         description: "Request a payment from the user.",
-        usageExample: "import {\n  type Client,\n  type HostPaymentRequestResponse,\n} from \"@parity/truapi\";\n\nexport async function requestPayment(\n  truapi: Client,\n): Promise<HostPaymentRequestResponse> {\n  const result = await truapi.payment.paymentRequest({\n    amount: 1000000000000n,\n    destination: \"0x0000000000000000000000000000000000000000000000000000000000000000\",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostPaymentRequestResponse,\n} from "@parity/truapi";\n\nexport async function requestPayment(\n  truapi: Client,\n): Promise<HostPaymentRequestResponse> {\n  const result = await truapi.payment.paymentRequest({\n    amount: 1000000000000n,\n    destination: "0x0000000000000000000000000000000000000000000000000000000000000000",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_payment_status_subscribe",
@@ -847,8 +905,10 @@ export const versions: ExplorerVersion[] = [
         request: "HostPaymentStatusSubscribeRequest",
         response: "HostPaymentStatusSubscribeItem",
         errorType: "HostPaymentStatusSubscribeError",
-        description: "Subscribe to payment lifecycle updates for a specific payment.",
-        usageExample: "import {\n  type Client,\n  type HostPaymentStatusSubscribeError,\n  type HostPaymentStatusSubscribeItem,\n  type Subscription,\n  type SubscriptionError,\n} from \"@parity/truapi\";\n\nexport function watchPaymentStatus(truapi: Client): Subscription {\n  return truapi.payment\n    .paymentStatusSubscribe({\n      request: { paymentId: \"payment-id\" },\n    })\n    .subscribe({\n      next: (status: HostPaymentStatusSubscribeItem) =>\n        console.log(status),\n      error: (error: SubscriptionError<HostPaymentStatusSubscribeError>) =>\n        console.error(error),\n      complete: () => console.log(\"completed\"),\n    });\n}",
+        description:
+          "Subscribe to payment lifecycle updates for a specific payment.",
+        usageExample:
+          'import {\n  type Client,\n  type HostPaymentStatusSubscribeError,\n  type HostPaymentStatusSubscribeItem,\n  type Subscription,\n  type SubscriptionError,\n} from "@parity/truapi";\n\nexport function watchPaymentStatus(truapi: Client): Subscription {\n  return truapi.payment\n    .paymentStatusSubscribe({\n      request: { paymentId: "payment-id" },\n    })\n    .subscribe({\n      next: (status: HostPaymentStatusSubscribeItem) =>\n        console.log(status),\n      error: (error: SubscriptionError<HostPaymentStatusSubscribeError>) =>\n        console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_statement_store_create_proof_authorized",
@@ -860,8 +920,10 @@ export const versions: ExplorerVersion[] = [
         request: "Statement",
         response: "RemoteStatementStoreCreateProofResponse",
         errorType: "RemoteStatementStoreCreateProofError",
-        description: "Create a proof for a statement using a pre-allocated allowance account,\nbypassing the per-call signing prompt.",
-        usageExample: "import {\n  type Client,\n  type RemoteStatementStoreCreateProofResponse,\n} from \"@parity/truapi\";\n\nexport async function createAuthorizedStatementProof(\n  truapi: Client,\n): Promise<RemoteStatementStoreCreateProofResponse> {\n  const result =\n    await truapi.statementStore.statementStoreCreateProofAuthorized({\n      expiry: 9999999999999n,\n      topics: [],\n    });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        description:
+          "Create a proof for a statement using a pre-allocated allowance account,\nbypassing the per-call signing prompt.",
+        usageExample:
+          'import {\n  type Client,\n  type RemoteStatementStoreCreateProofResponse,\n} from "@parity/truapi";\n\nexport async function createAuthorizedStatementProof(\n  truapi: Client,\n): Promise<RemoteStatementStoreCreateProofResponse> {\n  const result =\n    await truapi.statementStore.statementStoreCreateProofAuthorized({\n      expiry: 9999999999999n,\n      topics: [],\n    });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
     ],
     dataTypes: [
@@ -870,7 +932,8 @@ export const versions: ExplorerVersion[] = [
         name: "Account",
         category: "struct",
         definition: "interface Account { publicKey: HexString; name?: string }",
-        description: "An account with its public key and optional display name.\n\nUsed by [`HostGetLegacyAccountsResponse`] for non-product (legacy) accounts\nthat may carry a display name.",
+        description:
+          "An account with its public key and optional display name.\n\nUsed by [`HostGetLegacyAccountsResponse`] for non-product (legacy) accounts\nthat may carry a display name.",
         source: "shared",
         fields: [
           {
@@ -889,7 +952,8 @@ export const versions: ExplorerVersion[] = [
         id: "ActionTrigger",
         name: "ActionTrigger",
         category: "struct",
-        definition: "interface ActionTrigger { messageId: string; actionId: string; payload?: HexString }",
+        definition:
+          "interface ActionTrigger { messageId: string; actionId: string; payload?: HexString }",
         description: "Payload when a user clicks an action button.",
         source: "shared",
         fields: [
@@ -914,7 +978,8 @@ export const versions: ExplorerVersion[] = [
         id: "Arrangement",
         name: "Arrangement",
         category: "enum",
-        definition: "type Arrangement = { tag: \"Start\"; value: undefined } | { tag: \"End\"; value: undefined } | { tag: \"Center\"; value: undefined } | { tag: \"SpaceBetween\"; value: undefined } | { tag: \"SpaceAround\"; value: undefined } | { tag: \"SpaceEvenly\"; value: undefined }",
+        definition:
+          'type Arrangement = { tag: "Start"; value: undefined } | { tag: "End"; value: undefined } | { tag: "Center"; value: undefined } | { tag: "SpaceBetween"; value: undefined } | { tag: "SpaceAround"; value: undefined } | { tag: "SpaceEvenly"; value: undefined }',
         description: "Layout arrangement (like CSS flexbox `justify-content`).",
         source: "shared",
         variants: [
@@ -969,14 +1034,16 @@ export const versions: ExplorerVersion[] = [
         name: "Balance",
         category: "alias",
         definition: "type Balance = bigint",
-        description: "Balance amount for payment operations. Interpreted according to the host's\nsingle fixed payment asset (e.g. pUSD).",
+        description:
+          "Balance amount for payment operations. Interpreted according to the host's\nsingle fixed payment asset (e.g. pUSD).",
         source: "shared",
       },
       {
         id: "BorderStyle",
         name: "BorderStyle",
         category: "struct",
-        definition: "interface BorderStyle { width: bigint; color: ColorToken; shape?: Shape }",
+        definition:
+          "interface BorderStyle { width: bigint; color: ColorToken; shape?: Shape }",
         description: "Border styling.",
         source: "shared",
         fields: [
@@ -1001,7 +1068,8 @@ export const versions: ExplorerVersion[] = [
         id: "BoxProps",
         name: "BoxProps",
         category: "struct",
-        definition: "interface BoxProps { contentAlignment?: ContentAlignment }",
+        definition:
+          "interface BoxProps { contentAlignment?: ContentAlignment }",
         description: "Properties for a [`CustomRendererNode::Box`] container.",
         source: "shared",
         fields: [
@@ -1016,7 +1084,8 @@ export const versions: ExplorerVersion[] = [
         id: "ButtonProps",
         name: "ButtonProps",
         category: "struct",
-        definition: "interface ButtonProps { text: string; variant?: ButtonVariant; clickAction: string }",
+        definition:
+          "interface ButtonProps { text: string; variant?: ButtonVariant; clickAction: string }",
         description: "Properties for a [`CustomRendererNode::Button`].",
         source: "shared",
         fields: [
@@ -1041,7 +1110,8 @@ export const versions: ExplorerVersion[] = [
         id: "ButtonVariant",
         name: "ButtonVariant",
         category: "enum",
-        definition: "type ButtonVariant = { tag: \"Primary\"; value: undefined } | { tag: \"Secondary\"; value: undefined } | { tag: \"Text\"; value: undefined }",
+        definition:
+          'type ButtonVariant = { tag: "Primary"; value: undefined } | { tag: "Secondary"; value: undefined } | { tag: "Text"; value: undefined }',
         description: "Button style variants.",
         source: "shared",
         variants: [
@@ -1083,7 +1153,8 @@ export const versions: ExplorerVersion[] = [
         id: "ChatActionLayout",
         name: "ChatActionLayout",
         category: "enum",
-        definition: "type ChatActionLayout = { tag: \"Column\"; value: undefined } | { tag: \"Grid\"; value: undefined }",
+        definition:
+          'type ChatActionLayout = { tag: "Column"; value: undefined } | { tag: "Grid"; value: undefined }',
         description: "Layout for action buttons.",
         source: "shared",
         variants: [
@@ -1101,7 +1172,8 @@ export const versions: ExplorerVersion[] = [
         id: "ChatActionPayload",
         name: "ChatActionPayload",
         category: "enum",
-        definition: "type ChatActionPayload = { tag: \"MessagePosted\"; value: ChatMessageContent } | { tag: \"ActionTriggered\"; value: ActionTrigger } | { tag: \"Command\"; value: ChatCommand }",
+        definition:
+          'type ChatActionPayload = { tag: "MessagePosted"; value: ChatMessageContent } | { tag: "ActionTriggered"; value: ActionTrigger } | { tag: "Command"; value: ChatCommand }',
         description: "Payload of a received chat action.",
         source: "shared",
         variants: [
@@ -1126,7 +1198,8 @@ export const versions: ExplorerVersion[] = [
         id: "ChatActions",
         name: "ChatActions",
         category: "struct",
-        definition: "interface ChatActions { text?: string; actions: Array<ChatAction>; layout: ChatActionLayout }",
+        definition:
+          "interface ChatActions { text?: string; actions: Array<ChatAction>; layout: ChatActionLayout }",
         description: "A set of action buttons with optional text.",
         source: "shared",
         fields: [
@@ -1151,7 +1224,8 @@ export const versions: ExplorerVersion[] = [
         id: "ChatBotRegistrationStatus",
         name: "ChatBotRegistrationStatus",
         category: "enum",
-        definition: "type ChatBotRegistrationStatus = { tag: \"New\"; value: undefined } | { tag: \"Exists\"; value: undefined }",
+        definition:
+          'type ChatBotRegistrationStatus = { tag: "New"; value: undefined } | { tag: "Exists"; value: undefined }',
         description: "Whether the bot was newly registered or already existed.",
         source: "shared",
         variants: [
@@ -1169,7 +1243,8 @@ export const versions: ExplorerVersion[] = [
         id: "ChatCommand",
         name: "ChatCommand",
         category: "struct",
-        definition: "interface ChatCommand { command: string; payload: string }",
+        definition:
+          "interface ChatCommand { command: string; payload: string }",
         description: "A slash command from a chat user.",
         source: "shared",
         fields: [
@@ -1189,8 +1264,10 @@ export const versions: ExplorerVersion[] = [
         id: "ChatCustomMessage",
         name: "ChatCustomMessage",
         category: "struct",
-        definition: "interface ChatCustomMessage { messageType: string; payload: HexString }",
-        description: "A custom message with application-defined type and binary payload.",
+        definition:
+          "interface ChatCustomMessage { messageType: string; payload: HexString }",
+        description:
+          "A custom message with application-defined type and binary payload.",
         source: "shared",
         fields: [
           {
@@ -1209,7 +1286,8 @@ export const versions: ExplorerVersion[] = [
         id: "ChatFile",
         name: "ChatFile",
         category: "struct",
-        definition: "interface ChatFile { url: string; fileName: string; mimeType: string; sizeBytes: bigint; text?: string }",
+        definition:
+          "interface ChatFile { url: string; fileName: string; mimeType: string; sizeBytes: bigint; text?: string }",
         description: "A file attachment in a chat message.",
         source: "shared",
         fields: [
@@ -1259,7 +1337,8 @@ export const versions: ExplorerVersion[] = [
         id: "ChatMessageContent",
         name: "ChatMessageContent",
         category: "enum",
-        definition: "type ChatMessageContent = { tag: \"Text\"; value: { text: string } } | { tag: \"RichText\"; value: ChatRichText } | { tag: \"Actions\"; value: ChatActions } | { tag: \"File\"; value: ChatFile } | { tag: \"Reaction\"; value: ChatReaction } | { tag: \"ReactionRemoved\"; value: ChatReaction } | { tag: \"Custom\"; value: ChatCustomMessage }",
+        definition:
+          'type ChatMessageContent = { tag: "Text"; value: { text: string } } | { tag: "RichText"; value: ChatRichText } | { tag: "Actions"; value: ChatActions } | { tag: "File"; value: ChatFile } | { tag: "Reaction"; value: ChatReaction } | { tag: "ReactionRemoved"; value: ChatReaction } | { tag: "Custom"; value: ChatCustomMessage }',
         description: "Content of a chat message -- one of several types.",
         source: "shared",
         variants: [
@@ -1304,7 +1383,8 @@ export const versions: ExplorerVersion[] = [
         id: "ChatReaction",
         name: "ChatReaction",
         category: "struct",
-        definition: "interface ChatReaction { messageId: string; emoji: string }",
+        definition:
+          "interface ChatReaction { messageId: string; emoji: string }",
         description: "A reaction to a chat message.",
         source: "shared",
         fields: [
@@ -1324,7 +1404,8 @@ export const versions: ExplorerVersion[] = [
         id: "ChatRichText",
         name: "ChatRichText",
         category: "struct",
-        definition: "interface ChatRichText { text?: string; media: Array<ChatMedia> }",
+        definition:
+          "interface ChatRichText { text?: string; media: Array<ChatMedia> }",
         description: "Rich text message with optional media.",
         source: "shared",
         fields: [
@@ -1344,7 +1425,8 @@ export const versions: ExplorerVersion[] = [
         id: "ChatRoom",
         name: "ChatRoom",
         category: "struct",
-        definition: "interface ChatRoom { roomId: string; participatingAs: ChatRoomParticipation }",
+        definition:
+          "interface ChatRoom { roomId: string; participatingAs: ChatRoomParticipation }",
         description: "A chat room the product participates in.",
         source: "shared",
         fields: [
@@ -1364,7 +1446,8 @@ export const versions: ExplorerVersion[] = [
         id: "ChatRoomParticipation",
         name: "ChatRoomParticipation",
         category: "enum",
-        definition: "type ChatRoomParticipation = { tag: \"RoomHost\"; value: undefined } | { tag: \"Bot\"; value: undefined }",
+        definition:
+          'type ChatRoomParticipation = { tag: "RoomHost"; value: undefined } | { tag: "Bot"; value: undefined }',
         description: "How the product participates in a chat room.",
         source: "shared",
         variants: [
@@ -1382,7 +1465,8 @@ export const versions: ExplorerVersion[] = [
         id: "ChatRoomRegistrationStatus",
         name: "ChatRoomRegistrationStatus",
         category: "enum",
-        definition: "type ChatRoomRegistrationStatus = { tag: \"New\"; value: undefined } | { tag: \"Exists\"; value: undefined }",
+        definition:
+          'type ChatRoomRegistrationStatus = { tag: "New"; value: undefined } | { tag: "Exists"; value: undefined }',
         description: "Whether the room was newly created or already existed.",
         source: "shared",
         variants: [
@@ -1400,7 +1484,8 @@ export const versions: ExplorerVersion[] = [
         id: "ColorToken",
         name: "ColorToken",
         category: "enum",
-        definition: "type ColorToken = { tag: \"TextPrimary\"; value: undefined } | { tag: \"TextSecondary\"; value: undefined } | { tag: \"TextTertiary\"; value: undefined } | { tag: \"BackgroundPrimary\"; value: undefined } | { tag: \"BackgroundSecondary\"; value: undefined } | { tag: \"BackgroundTertiary\"; value: undefined } | { tag: \"Success\"; value: undefined } | { tag: \"Error\"; value: undefined } | { tag: \"Warning\"; value: undefined }",
+        definition:
+          'type ColorToken = { tag: "TextPrimary"; value: undefined } | { tag: "TextSecondary"; value: undefined } | { tag: "TextTertiary"; value: undefined } | { tag: "BackgroundPrimary"; value: undefined } | { tag: "BackgroundSecondary"; value: undefined } | { tag: "BackgroundTertiary"; value: undefined } | { tag: "Success"; value: undefined } | { tag: "Error"; value: undefined } | { tag: "Warning"; value: undefined }',
         description: "Semantic color tokens for theming.",
         source: "shared",
         variants: [
@@ -1446,7 +1531,8 @@ export const versions: ExplorerVersion[] = [
         id: "ColumnProps",
         name: "ColumnProps",
         category: "struct",
-        definition: "interface ColumnProps { horizontalAlignment?: HorizontalAlignment; verticalArrangement?: Arrangement }",
+        definition:
+          "interface ColumnProps { horizontalAlignment?: HorizontalAlignment; verticalArrangement?: Arrangement }",
         description: "Properties for a [`CustomRendererNode::Column`] layout.",
         source: "shared",
         fields: [
@@ -1466,8 +1552,10 @@ export const versions: ExplorerVersion[] = [
         id: "Component",
         name: "Component",
         category: "struct",
-        definition: "interface Component<P> { modifiers: Array<Modifier>; props: P; children: Array<CustomRendererNode> }",
-        description: "A component in the custom renderer UI tree, combining modifiers, typed props,\nand recursive children.",
+        definition:
+          "interface Component<P> { modifiers: Array<Modifier>; props: P; children: Array<CustomRendererNode> }",
+        description:
+          "A component in the custom renderer UI tree, combining modifiers, typed props,\nand recursive children.",
         source: "shared",
         fields: [
           {
@@ -1491,7 +1579,8 @@ export const versions: ExplorerVersion[] = [
         id: "ContentAlignment",
         name: "ContentAlignment",
         category: "enum",
-        definition: "type ContentAlignment = { tag: \"TopStart\"; value: undefined } | { tag: \"TopCenter\"; value: undefined } | { tag: \"TopEnd\"; value: undefined } | { tag: \"CenterStart\"; value: undefined } | { tag: \"Center\"; value: undefined } | { tag: \"CenterEnd\"; value: undefined } | { tag: \"BottomStart\"; value: undefined } | { tag: \"BottomCenter\"; value: undefined } | { tag: \"BottomEnd\"; value: undefined }",
+        definition:
+          'type ContentAlignment = { tag: "TopStart"; value: undefined } | { tag: "TopCenter"; value: undefined } | { tag: "TopEnd"; value: undefined } | { tag: "CenterStart"; value: undefined } | { tag: "Center"; value: undefined } | { tag: "CenterEnd"; value: undefined } | { tag: "BottomStart"; value: undefined } | { tag: "BottomCenter"; value: undefined } | { tag: "BottomEnd"; value: undefined }',
         description: "2D content alignment.",
         source: "shared",
         variants: [
@@ -1537,8 +1626,10 @@ export const versions: ExplorerVersion[] = [
         id: "CustomRendererNode",
         name: "CustomRendererNode",
         category: "enum",
-        definition: "type CustomRendererNode = { tag: \"Nil\"; value: undefined } | { tag: \"String\"; value: { text: string } } | { tag: \"Box\"; value: Component<BoxProps> } | { tag: \"Column\"; value: Component<ColumnProps> } | { tag: \"Row\"; value: Component<RowProps> } | { tag: \"Spacer\"; value: Component<undefined> } | { tag: \"Text\"; value: Component<TextProps> } | { tag: \"Button\"; value: Component<ButtonProps> } | { tag: \"TextField\"; value: Component<TextFieldProps> }",
-        description: "A node in the custom renderer UI tree. Can be nested recursively via the\n`children` field of each [`Component`].",
+        definition:
+          'type CustomRendererNode = { tag: "Nil"; value: undefined } | { tag: "String"; value: { text: string } } | { tag: "Box"; value: Component<BoxProps> } | { tag: "Column"; value: Component<ColumnProps> } | { tag: "Row"; value: Component<RowProps> } | { tag: "Spacer"; value: Component<undefined> } | { tag: "Text"; value: Component<TextProps> } | { tag: "Button"; value: Component<ButtonProps> } | { tag: "TextField"; value: Component<TextFieldProps> }',
+        description:
+          "A node in the custom renderer UI tree. Can be nested recursively via the\n`children` field of each [`Component`].",
         source: "shared",
         variants: [
           {
@@ -1592,8 +1683,10 @@ export const versions: ExplorerVersion[] = [
         id: "Dimensions",
         name: "Dimensions",
         category: "struct",
-        definition: "interface Dimensions { top: bigint; end: bigint; bottom?: bigint; start?: bigint }",
-        description: "CSS-like dimensions: (top, end, bottom, start).\nBottom defaults to top, start defaults to end when `None`.",
+        definition:
+          "interface Dimensions { top: bigint; end: bigint; bottom?: bigint; start?: bigint }",
+        description:
+          "CSS-like dimensions: (top, end, bottom, start).\nBottom defaults to top, start defaults to end when `None`.",
         source: "shared",
         fields: [
           {
@@ -1623,7 +1716,8 @@ export const versions: ExplorerVersion[] = [
         name: "GenericErr",
         category: "struct",
         definition: "interface GenericErr { reason: string }",
-        description: "Generic error payload carrying a human-readable reason string.",
+        description:
+          "Generic error payload carrying a human-readable reason string.",
         source: "shared",
         fields: [
           {
@@ -1636,8 +1730,10 @@ export const versions: ExplorerVersion[] = [
         id: "GenericError",
         name: "GenericError",
         category: "enum",
-        definition: "type GenericError = { tag: \"GenericError\"; value: GenericErr }",
-        description: "Single-variant error enum wrapping [`GenericErr`]. Used by many methods as a\ncatch-all error type.",
+        definition:
+          'type GenericError = { tag: "GenericError"; value: GenericErr }',
+        description:
+          "Single-variant error enum wrapping [`GenericErr`]. Used by many methods as a\ncatch-all error type.",
         source: "shared",
         variants: [
           {
@@ -1650,7 +1746,8 @@ export const versions: ExplorerVersion[] = [
         id: "HorizontalAlignment",
         name: "HorizontalAlignment",
         category: "enum",
-        definition: "type HorizontalAlignment = { tag: \"Start\"; value: undefined } | { tag: \"Center\"; value: undefined } | { tag: \"End\"; value: undefined }",
+        definition:
+          'type HorizontalAlignment = { tag: "Start"; value: undefined } | { tag: "Center"; value: undefined } | { tag: "End"; value: undefined }',
         description: "Horizontal alignment options.",
         source: "shared",
         variants: [
@@ -1672,7 +1769,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostAccountConnectionStatusSubscribeItem",
         name: "HostAccountConnectionStatusSubscribeItem",
         category: "enum",
-        definition: "type HostAccountConnectionStatusSubscribeItem = { tag: \"Disconnected\"; value: undefined } | { tag: \"Connected\"; value: undefined }",
+        definition:
+          'type HostAccountConnectionStatusSubscribeItem = { tag: "Disconnected"; value: undefined } | { tag: "Connected"; value: undefined }',
         description: "User's authentication state.",
         source: "v1",
         variants: [
@@ -1690,7 +1788,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostAccountCreateProofError",
         name: "HostAccountCreateProofError",
         category: "enum",
-        definition: "type HostAccountCreateProofError = { tag: \"RingNotFound\"; value: undefined } | { tag: \"Rejected\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
+        definition:
+          'type HostAccountCreateProofError = { tag: "RingNotFound"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Error returned when ring VRF proof creation fails.",
         source: "v1",
         variants: [
@@ -1715,8 +1814,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostAccountCreateProofRequest",
         name: "HostAccountCreateProofRequest",
         category: "struct",
-        definition: "interface HostAccountCreateProofRequest { productAccountId: ProductAccountId; ringLocation: RingLocation; context: HexString }",
-        description: "Request to create a ring VRF proof for a product account.",
+        definition:
+          "interface HostAccountCreateProofRequest { productAccountId: ProductAccountId; ringLocation: RingLocation; context: HexString }",
+        description:
+          "Request to create a ring VRF proof for a product account.",
         source: "v1",
         fields: [
           {
@@ -1740,7 +1841,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostAccountCreateProofResponse",
         name: "HostAccountCreateProofResponse",
         category: "struct",
-        definition: "interface HostAccountCreateProofResponse { proof: HexString }",
+        definition:
+          "interface HostAccountCreateProofResponse { proof: HexString }",
         description: "Response containing a ring VRF proof.",
         source: "v1",
         fields: [
@@ -1755,8 +1857,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostAccountGetAliasRequest",
         name: "HostAccountGetAliasRequest",
         category: "struct",
-        definition: "interface HostAccountGetAliasRequest { productAccountId: ProductAccountId }",
-        description: "Request to retrieve a contextual alias for a product account.",
+        definition:
+          "interface HostAccountGetAliasRequest { productAccountId: ProductAccountId }",
+        description:
+          "Request to retrieve a contextual alias for a product account.",
         source: "v1",
         fields: [
           {
@@ -1770,8 +1874,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostAccountGetAliasResponse",
         name: "HostAccountGetAliasResponse",
         category: "struct",
-        definition: "interface HostAccountGetAliasResponse { context: HexString; alias: HexString }",
-        description: "A privacy-preserving alias derived via ring VRF, bound to a specific context.",
+        definition:
+          "interface HostAccountGetAliasResponse { context: HexString; alias: HexString }",
+        description:
+          "A privacy-preserving alias derived via ring VRF, bound to a specific context.",
         source: "v1",
         fields: [
           {
@@ -1790,7 +1896,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostAccountGetError",
         name: "HostAccountGetError",
         category: "enum",
-        definition: "type HostAccountGetError = { tag: \"NotConnected\"; value: undefined } | { tag: \"Rejected\"; value: undefined } | { tag: \"DomainNotValid\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
+        definition:
+          'type HostAccountGetError = { tag: "NotConnected"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "DomainNotValid"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Error returned when credential/account requests fail.",
         source: "v1",
         variants: [
@@ -1820,7 +1927,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostAccountGetRequest",
         name: "HostAccountGetRequest",
         category: "struct",
-        definition: "interface HostAccountGetRequest { productAccountId: ProductAccountId }",
+        definition:
+          "interface HostAccountGetRequest { productAccountId: ProductAccountId }",
         description: "Request to retrieve a product-scoped account.",
         source: "v1",
         fields: [
@@ -1835,7 +1943,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostAccountGetResponse",
         name: "HostAccountGetResponse",
         category: "struct",
-        definition: "interface HostAccountGetResponse { account: ProductAccount }",
+        definition:
+          "interface HostAccountGetResponse { account: ProductAccount }",
         description: "Response containing a product-scoped account.",
         source: "v1",
         fields: [
@@ -1850,7 +1959,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostChatActionSubscribeItem",
         name: "HostChatActionSubscribeItem",
         category: "struct",
-        definition: "interface HostChatActionSubscribeItem { roomId: string; peer: string; payload: ChatActionPayload }",
+        definition:
+          "interface HostChatActionSubscribeItem { roomId: string; peer: string; payload: ChatActionPayload }",
         description: "A chat action received from the host.",
         source: "v1",
         fields: [
@@ -1875,7 +1985,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostChatCreateRoomError",
         name: "HostChatCreateRoomError",
         category: "enum",
-        definition: "type HostChatCreateRoomError = { tag: \"PermissionDenied\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
+        definition:
+          'type HostChatCreateRoomError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Chat room registration error.",
         source: "v1",
         variants: [
@@ -1895,7 +2006,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostChatCreateRoomRequest",
         name: "HostChatCreateRoomRequest",
         category: "struct",
-        definition: "interface HostChatCreateRoomRequest { roomId: string; name: string; icon: string }",
+        definition:
+          "interface HostChatCreateRoomRequest { roomId: string; name: string; icon: string }",
         description: "Request to create a chat room.",
         source: "v1",
         fields: [
@@ -1920,7 +2032,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostChatCreateRoomResponse",
         name: "HostChatCreateRoomResponse",
         category: "struct",
-        definition: "interface HostChatCreateRoomResponse { status: ChatRoomRegistrationStatus }",
+        definition:
+          "interface HostChatCreateRoomResponse { status: ChatRoomRegistrationStatus }",
         description: "Result of a room registration.",
         source: "v1",
         fields: [
@@ -1935,7 +2048,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostChatListSubscribeItem",
         name: "HostChatListSubscribeItem",
         category: "struct",
-        definition: "interface HostChatListSubscribeItem { rooms: Array<ChatRoom> }",
+        definition:
+          "interface HostChatListSubscribeItem { rooms: Array<ChatRoom> }",
         description: "Item containing the current chat rooms.",
         source: "v1",
         fields: [
@@ -1950,7 +2064,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostChatPostMessageError",
         name: "HostChatPostMessageError",
         category: "enum",
-        definition: "type HostChatPostMessageError = { tag: \"MessageTooLarge\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
+        definition:
+          'type HostChatPostMessageError = { tag: "MessageTooLarge"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Chat message posting error.",
         source: "v1",
         variants: [
@@ -1970,7 +2085,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostChatPostMessageRequest",
         name: "HostChatPostMessageRequest",
         category: "struct",
-        definition: "interface HostChatPostMessageRequest { roomId: string; payload: ChatMessageContent }",
+        definition:
+          "interface HostChatPostMessageRequest { roomId: string; payload: ChatMessageContent }",
         description: "Request to post a message to a chat room.",
         source: "v1",
         fields: [
@@ -1990,7 +2106,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostChatPostMessageResponse",
         name: "HostChatPostMessageResponse",
         category: "struct",
-        definition: "interface HostChatPostMessageResponse { messageId: string }",
+        definition:
+          "interface HostChatPostMessageResponse { messageId: string }",
         description: "Result of posting a message.",
         source: "v1",
         fields: [
@@ -2005,7 +2122,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostChatRegisterBotError",
         name: "HostChatRegisterBotError",
         category: "enum",
-        definition: "type HostChatRegisterBotError = { tag: \"PermissionDenied\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
+        definition:
+          'type HostChatRegisterBotError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Chat bot registration error.",
         source: "v1",
         variants: [
@@ -2025,7 +2143,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostChatRegisterBotRequest",
         name: "HostChatRegisterBotRequest",
         category: "struct",
-        definition: "interface HostChatRegisterBotRequest { botId: string; name: string; icon: string }",
+        definition:
+          "interface HostChatRegisterBotRequest { botId: string; name: string; icon: string }",
         description: "Request to register a chat bot.",
         source: "v1",
         fields: [
@@ -2050,7 +2169,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostChatRegisterBotResponse",
         name: "HostChatRegisterBotResponse",
         category: "struct",
-        definition: "interface HostChatRegisterBotResponse { status: ChatBotRegistrationStatus }",
+        definition:
+          "interface HostChatRegisterBotResponse { status: ChatBotRegistrationStatus }",
         description: "Result of a bot registration.",
         source: "v1",
         fields: [
@@ -2065,7 +2185,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostCreateTransactionError",
         name: "HostCreateTransactionError",
         category: "enum",
-        definition: "type HostCreateTransactionError = { tag: \"FailedToDecode\"; value: undefined } | { tag: \"Rejected\"; value: undefined } | { tag: \"NotSupported\"; value: { reason: string } } | { tag: \"PermissionDenied\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
+        definition:
+          'type HostCreateTransactionError = { tag: "FailedToDecode"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "NotSupported"; value: { reason: string } } | { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Transaction creation error.",
         source: "v1",
         variants: [
@@ -2100,7 +2221,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostCreateTransactionRequest",
         name: "HostCreateTransactionRequest",
         category: "struct",
-        definition: "interface HostCreateTransactionRequest { productAccountId: ProductAccountId; payload: VersionedTxPayload }",
+        definition:
+          "interface HostCreateTransactionRequest { productAccountId: ProductAccountId; payload: VersionedTxPayload }",
         description: "Request to create a transaction for a product account.",
         source: "v1",
         fields: [
@@ -2120,7 +2242,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostCreateTransactionResponse",
         name: "HostCreateTransactionResponse",
         category: "struct",
-        definition: "interface HostCreateTransactionResponse { transaction: HexString }",
+        definition:
+          "interface HostCreateTransactionResponse { transaction: HexString }",
         description: "Response containing a created transaction.",
         source: "v1",
         fields: [
@@ -2135,8 +2258,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostCreateTransactionWithLegacyAccountRequest",
         name: "HostCreateTransactionWithLegacyAccountRequest",
         category: "struct",
-        definition: "interface HostCreateTransactionWithLegacyAccountRequest { payload: VersionedTxPayload }",
-        description: "Request to create a transaction with a non-product account.",
+        definition:
+          "interface HostCreateTransactionWithLegacyAccountRequest { payload: VersionedTxPayload }",
+        description:
+          "Request to create a transaction with a non-product account.",
         source: "v1",
         fields: [
           {
@@ -2150,8 +2275,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostCreateTransactionWithLegacyAccountResponse",
         name: "HostCreateTransactionWithLegacyAccountResponse",
         category: "struct",
-        definition: "interface HostCreateTransactionWithLegacyAccountResponse { transaction: HexString }",
-        description: "Response containing a transaction created with a non-product account.",
+        definition:
+          "interface HostCreateTransactionWithLegacyAccountResponse { transaction: HexString }",
+        description:
+          "Response containing a transaction created with a non-product account.",
         source: "v1",
         fields: [
           {
@@ -2165,8 +2292,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostDeriveEntropyError",
         name: "HostDeriveEntropyError",
         category: "enum",
-        definition: "type HostDeriveEntropyError = { tag: \"Unknown\"; value: undefined }",
-        description: "Error from [`crate::api::EntropyDerivation::host_derive_entropy`].\n\nUnder normal operation the function always succeeds; `Unknown` indicates an\nunrecoverable internal host error.\n\nSee [RFC 0007].\n\n[RFC 0007]: https://github.com/paritytech/triangle-js-sdks/pull/95",
+        definition:
+          'type HostDeriveEntropyError = { tag: "Unknown"; value: undefined }',
+        description:
+          "Error from [`crate::api::EntropyDerivation::host_derive_entropy`].\n\nUnder normal operation the function always succeeds; `Unknown` indicates an\nunrecoverable internal host error.\n\nSee [RFC 0007].\n\n[RFC 0007]: https://github.com/paritytech/triangle-js-sdks/pull/95",
         source: "v1",
         variants: [
           {
@@ -2195,7 +2324,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostDeriveEntropyResponse",
         name: "HostDeriveEntropyResponse",
         category: "struct",
-        definition: "interface HostDeriveEntropyResponse { entropy: HexString }",
+        definition:
+          "interface HostDeriveEntropyResponse { entropy: HexString }",
         description: "Response containing derived deterministic entropy.",
         source: "v1",
         fields: [
@@ -2210,8 +2340,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostDevicePermissionRequest",
         name: "HostDevicePermissionRequest",
         category: "enum",
-        definition: "type HostDevicePermissionRequest = { tag: \"Notifications\"; value: undefined } | { tag: \"Camera\"; value: undefined } | { tag: \"Microphone\"; value: undefined } | { tag: \"Bluetooth\"; value: undefined } | { tag: \"NFC\"; value: undefined } | { tag: \"Location\"; value: undefined } | { tag: \"Clipboard\"; value: undefined } | { tag: \"OpenUrl\"; value: undefined } | { tag: \"Biometrics\"; value: undefined }",
-        description: "Device capability to request access to.\n\nExtended with `Notifications`, `NFC`, `Clipboard`, `OpenUrl`, and\n`Biometrics` per [RFC 0001] (JIT permissions).\n\n[RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66",
+        definition:
+          'type HostDevicePermissionRequest = { tag: "Notifications"; value: undefined } | { tag: "Camera"; value: undefined } | { tag: "Microphone"; value: undefined } | { tag: "Bluetooth"; value: undefined } | { tag: "NFC"; value: undefined } | { tag: "Location"; value: undefined } | { tag: "Clipboard"; value: undefined } | { tag: "OpenUrl"; value: undefined } | { tag: "Biometrics"; value: undefined }',
+        description:
+          "Device capability to request access to.\n\nExtended with `Notifications`, `NFC`, `Clipboard`, `OpenUrl`, and\n`Biometrics` per [RFC 0001] (JIT permissions).\n\n[RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66",
         source: "v1",
         variants: [
           {
@@ -2261,8 +2393,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostDevicePermissionResponse",
         name: "HostDevicePermissionResponse",
         category: "struct",
-        definition: "interface HostDevicePermissionResponse { granted: boolean }",
-        description: "Response indicating whether a device permission was granted.",
+        definition:
+          "interface HostDevicePermissionResponse { granted: boolean }",
+        description:
+          "Response indicating whether a device permission was granted.",
         source: "v1",
         fields: [
           {
@@ -2276,7 +2410,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostFeatureSupportedRequest",
         name: "HostFeatureSupportedRequest",
         category: "enum",
-        definition: "type HostFeatureSupportedRequest = { tag: \"Chain\"; value: { genesisHash: HexString } }",
+        definition:
+          'type HostFeatureSupportedRequest = { tag: "Chain"; value: { genesisHash: HexString } }',
         description: "Feature to check for host support.",
         source: "v1",
         variants: [
@@ -2291,7 +2426,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostFeatureSupportedResponse",
         name: "HostFeatureSupportedResponse",
         category: "struct",
-        definition: "interface HostFeatureSupportedResponse { supported: boolean }",
+        definition:
+          "interface HostFeatureSupportedResponse { supported: boolean }",
         description: "Response indicating whether a host feature is supported.",
         source: "v1",
         fields: [
@@ -2306,8 +2442,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostGetLegacyAccountsResponse",
         name: "HostGetLegacyAccountsResponse",
         category: "struct",
-        definition: "interface HostGetLegacyAccountsResponse { accounts: Array<Account> }",
-        description: "Response containing all non-product accounts owned by the user.",
+        definition:
+          "interface HostGetLegacyAccountsResponse { accounts: Array<Account> }",
+        description:
+          "Response containing all non-product accounts owned by the user.",
         source: "v1",
         fields: [
           {
@@ -2321,8 +2459,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostGetUserIdError",
         name: "HostGetUserIdError",
         category: "enum",
-        definition: "type HostGetUserIdError = { tag: \"PermissionDenied\"; value: undefined } | { tag: \"NotConnected\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
-        description: "Error from [`crate::api::AccountManagement::host_get_user_id`].",
+        definition:
+          'type HostGetUserIdError = { tag: "PermissionDenied"; value: undefined } | { tag: "NotConnected"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description:
+          "Error from [`crate::api::AccountManagement::host_get_user_id`].",
         source: "v1",
         variants: [
           {
@@ -2346,7 +2486,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostGetUserIdResponse",
         name: "HostGetUserIdResponse",
         category: "struct",
-        definition: "interface HostGetUserIdResponse { primaryUsername: string }",
+        definition:
+          "interface HostGetUserIdResponse { primaryUsername: string }",
         description: "The user's primary DotNS account identity.",
         source: "v1",
         fields: [
@@ -2361,8 +2502,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostHandshakeError",
         name: "HostHandshakeError",
         category: "enum",
-        definition: "type HostHandshakeError = { tag: \"Timeout\"; value: undefined } | { tag: \"UnsupportedProtocolVersion\"; value: undefined } | { tag: \"Unknown\"; value: GenericErr }",
-        description: "Handshake error. Mirrors Novasama's `HandshakeErr` byte-for-byte so that\npre-codegen products (built against `@novasamatech/host-api`) can decode\n`host_handshake_response` frames produced by this host.",
+        definition:
+          'type HostHandshakeError = { tag: "Timeout"; value: undefined } | { tag: "UnsupportedProtocolVersion"; value: undefined } | { tag: "Unknown"; value: GenericErr }',
+        description:
+          "Handshake error. Mirrors Novasama's `HandshakeErr` byte-for-byte so that\npre-codegen products (built against `@novasamatech/host-api`) can decode\n`host_handshake_response` frames produced by this host.",
         source: "v1",
         variants: [
           {
@@ -2413,7 +2556,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostLocalStorageReadError",
         name: "HostLocalStorageReadError",
         category: "enum",
-        definition: "type HostLocalStorageReadError = { tag: \"Full\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
+        definition:
+          'type HostLocalStorageReadError = { tag: "Full"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Local storage operation error.",
         source: "v1",
         variants: [
@@ -2448,7 +2592,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostLocalStorageReadResponse",
         name: "HostLocalStorageReadResponse",
         category: "struct",
-        definition: "interface HostLocalStorageReadResponse { value?: HexString }",
+        definition:
+          "interface HostLocalStorageReadResponse { value?: HexString }",
         description: "Response containing an optional local storage value.",
         source: "v1",
         fields: [
@@ -2463,7 +2608,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostLocalStorageWriteRequest",
         name: "HostLocalStorageWriteRequest",
         category: "struct",
-        definition: "interface HostLocalStorageWriteRequest { key: string; value: HexString }",
+        definition:
+          "interface HostLocalStorageWriteRequest { key: string; value: HexString }",
         description: "Request to write a value into local storage.",
         source: "v1",
         fields: [
@@ -2483,7 +2629,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostNavigateToError",
         name: "HostNavigateToError",
         category: "enum",
-        definition: "type HostNavigateToError = { tag: \"PermissionDenied\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
+        definition:
+          'type HostNavigateToError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Navigation error.",
         source: "v1",
         variants: [
@@ -2518,8 +2665,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostPaymentBalanceSubscribeError",
         name: "HostPaymentBalanceSubscribeError",
         category: "enum",
-        definition: "type HostPaymentBalanceSubscribeError = { tag: \"PermissionDenied\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
-        description: "Error from [`crate::api::Payment::host_payment_balance_subscribe`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
+        definition:
+          'type HostPaymentBalanceSubscribeError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description:
+          "Error from [`crate::api::Payment::host_payment_balance_subscribe`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         source: "v1",
         variants: [
           {
@@ -2538,8 +2687,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostPaymentBalanceSubscribeItem",
         name: "HostPaymentBalanceSubscribeItem",
         category: "struct",
-        definition: "interface HostPaymentBalanceSubscribeItem { available: Balance }",
-        description: "Current payment balance state pushed to subscribers.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
+        definition:
+          "interface HostPaymentBalanceSubscribeItem { available: Balance }",
+        description:
+          "Current payment balance state pushed to subscribers.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         source: "v1",
         fields: [
           {
@@ -2553,8 +2704,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostPaymentRequestError",
         name: "HostPaymentRequestError",
         category: "enum",
-        definition: "type HostPaymentRequestError = { tag: \"Rejected\"; value: undefined } | { tag: \"InsufficientBalance\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
-        description: "Error from [`crate::api::Payment::host_payment_request`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
+        definition:
+          'type HostPaymentRequestError = { tag: "Rejected"; value: undefined } | { tag: "InsufficientBalance"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description:
+          "Error from [`crate::api::Payment::host_payment_request`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         source: "v1",
         variants: [
           {
@@ -2565,7 +2718,8 @@ export const versions: ExplorerVersion[] = [
           {
             name: "InsufficientBalance",
             type: "undefined",
-            description: "User's available balance is not sufficient for the requested amount.",
+            description:
+              "User's available balance is not sufficient for the requested amount.",
           },
           {
             name: "Unknown",
@@ -2578,7 +2732,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostPaymentRequestRequest",
         name: "HostPaymentRequestRequest",
         category: "struct",
-        definition: "interface HostPaymentRequestRequest { amount: Balance; destination: HexString }",
+        definition:
+          "interface HostPaymentRequestRequest { amount: Balance; destination: HexString }",
         description: "Request to initiate a payment to another account.",
         source: "v1",
         fields: [
@@ -2599,7 +2754,8 @@ export const versions: ExplorerVersion[] = [
         name: "HostPaymentRequestResponse",
         category: "struct",
         definition: "interface HostPaymentRequestResponse { id: string }",
-        description: "Receipt returned after a successful payment request.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
+        description:
+          "Receipt returned after a successful payment request.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         source: "v1",
         fields: [
           {
@@ -2613,14 +2769,17 @@ export const versions: ExplorerVersion[] = [
         id: "HostPaymentStatusSubscribeError",
         name: "HostPaymentStatusSubscribeError",
         category: "enum",
-        definition: "type HostPaymentStatusSubscribeError = { tag: \"PaymentNotFound\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
-        description: "Error from [`crate::api::Payment::host_payment_status_subscribe`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
+        definition:
+          'type HostPaymentStatusSubscribeError = { tag: "PaymentNotFound"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description:
+          "Error from [`crate::api::Payment::host_payment_status_subscribe`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         source: "v1",
         variants: [
           {
             name: "PaymentNotFound",
             type: "undefined",
-            description: "Payment ID was not found or does not belong to the current product.",
+            description:
+              "Payment ID was not found or does not belong to the current product.",
           },
           {
             name: "Unknown",
@@ -2633,8 +2792,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostPaymentStatusSubscribeItem",
         name: "HostPaymentStatusSubscribeItem",
         category: "enum",
-        definition: "type HostPaymentStatusSubscribeItem = { tag: \"Processing\"; value: undefined } | { tag: \"Completed\"; value: undefined } | { tag: \"Failed\"; value: { reason: string } }",
-        description: "Payment lifecycle status pushed to subscribers.\n\nOnce a terminal state (`Completed` or `Failed`) is reached, the host\ndelivers it and may close the subscription.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
+        definition:
+          'type HostPaymentStatusSubscribeItem = { tag: "Processing"; value: undefined } | { tag: "Completed"; value: undefined } | { tag: "Failed"; value: { reason: string } }',
+        description:
+          "Payment lifecycle status pushed to subscribers.\n\nOnce a terminal state (`Completed` or `Failed`) is reached, the host\ndelivers it and may close the subscription.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         source: "v1",
         variants: [
           {
@@ -2658,7 +2819,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostPaymentStatusSubscribeRequest",
         name: "HostPaymentStatusSubscribeRequest",
         category: "struct",
-        definition: "interface HostPaymentStatusSubscribeRequest { paymentId: string }",
+        definition:
+          "interface HostPaymentStatusSubscribeRequest { paymentId: string }",
         description: "Request to subscribe to a payment status.",
         source: "v1",
         fields: [
@@ -2673,8 +2835,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostPaymentTopUpError",
         name: "HostPaymentTopUpError",
         category: "enum",
-        definition: "type HostPaymentTopUpError = { tag: \"InsufficientFunds\"; value: undefined } | { tag: \"InvalidSource\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
-        description: "Error from [`crate::api::Payment::host_payment_top_up`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
+        definition:
+          'type HostPaymentTopUpError = { tag: "InsufficientFunds"; value: undefined } | { tag: "InvalidSource"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description:
+          "Error from [`crate::api::Payment::host_payment_top_up`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         source: "v1",
         variants: [
           {
@@ -2698,7 +2862,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostPaymentTopUpRequest",
         name: "HostPaymentTopUpRequest",
         category: "struct",
-        definition: "interface HostPaymentTopUpRequest { amount: Balance; source: PaymentTopUpSource }",
+        definition:
+          "interface HostPaymentTopUpRequest { amount: Balance; source: PaymentTopUpSource }",
         description: "Request to top up the product payment balance.",
         source: "v1",
         fields: [
@@ -2718,7 +2883,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostPushNotificationRequest",
         name: "HostPushNotificationRequest",
         category: "struct",
-        definition: "interface HostPushNotificationRequest { text: string; deeplink?: string }",
+        definition:
+          "interface HostPushNotificationRequest { text: string; deeplink?: string }",
         description: "Push notification payload.",
         source: "v1",
         fields: [
@@ -2738,7 +2904,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostRequestLoginError",
         name: "HostRequestLoginError",
         category: "enum",
-        definition: "type HostRequestLoginError = { tag: \"Unknown\"; value: { reason: string } }",
+        definition:
+          'type HostRequestLoginError = { tag: "Unknown"; value: { reason: string } }',
         description: "Login request error.",
         source: "v1",
         variants: [
@@ -2760,7 +2927,8 @@ export const versions: ExplorerVersion[] = [
           {
             name: "reason",
             type: "string",
-            description: "Optional human-readable reason shown in the login UI.",
+            description:
+              "Optional human-readable reason shown in the login UI.",
           },
         ],
       },
@@ -2768,7 +2936,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostRequestLoginResponse",
         name: "HostRequestLoginResponse",
         category: "enum",
-        definition: "type HostRequestLoginResponse = { tag: \"Success\"; value: undefined } | { tag: \"AlreadyConnected\"; value: undefined } | { tag: \"Rejected\"; value: undefined }",
+        definition:
+          'type HostRequestLoginResponse = { tag: "Success"; value: undefined } | { tag: "AlreadyConnected"; value: undefined } | { tag: "Rejected"; value: undefined }',
         description: "Result of a login request.",
         source: "v1",
         variants: [
@@ -2793,7 +2962,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostSignPayloadError",
         name: "HostSignPayloadError",
         category: "enum",
-        definition: "type HostSignPayloadError = { tag: \"FailedToDecode\"; value: undefined } | { tag: \"Rejected\"; value: undefined } | { tag: \"PermissionDenied\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
+        definition:
+          'type HostSignPayloadError = { tag: "FailedToDecode"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Signing operation error.",
         source: "v1",
         variants: [
@@ -2823,8 +2993,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostSignPayloadRequest",
         name: "HostSignPayloadRequest",
         category: "struct",
-        definition: "interface HostSignPayloadRequest { account: ProductAccountId; blockHash: HexString; blockNumber: HexString; era: HexString; genesisHash: HexString; method: HexString; nonce: HexString; specVersion: HexString; tip: HexString; transactionVersion: HexString; signedExtensions: Array<string>; version: number; assetId?: HexString; metadataHash?: HexString; mode?: number; withSignedTransaction?: boolean }",
-        description: "Full Substrate extrinsic signing payload with all fields needed for signature\ngeneration.",
+        definition:
+          "interface HostSignPayloadRequest { account: ProductAccountId; blockHash: HexString; blockNumber: HexString; era: HexString; genesisHash: HexString; method: HexString; nonce: HexString; specVersion: HexString; tip: HexString; transactionVersion: HexString; signedExtensions: Array<string>; version: number; assetId?: HexString; metadataHash?: HexString; mode?: number; withSignedTransaction?: boolean }",
+        description:
+          "Full Substrate extrinsic signing payload with all fields needed for signature\ngeneration.",
         source: "v1",
         fields: [
           {
@@ -2913,7 +3085,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostSignPayloadResponse",
         name: "HostSignPayloadResponse",
         category: "struct",
-        definition: "interface HostSignPayloadResponse { signature: HexString; signedTransaction?: HexString }",
+        definition:
+          "interface HostSignPayloadResponse { signature: HexString; signedTransaction?: HexString }",
         description: "Result of a signing operation.",
         source: "v1",
         fields: [
@@ -2933,8 +3106,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostSignPayloadWithLegacyAccountRequest",
         name: "HostSignPayloadWithLegacyAccountRequest",
         category: "struct",
-        definition: "interface HostSignPayloadWithLegacyAccountRequest { signer: string; payload: HostSignPayloadRequest }",
-        description: "Sign a Substrate extrinsic payload with a non-product (legacy) account.\nContains the same fields as [`HostSignPayloadRequest`] minus `address`\n(replaced by `signer`).",
+        definition:
+          "interface HostSignPayloadWithLegacyAccountRequest { signer: string; payload: HostSignPayloadRequest }",
+        description:
+          "Sign a Substrate extrinsic payload with a non-product (legacy) account.\nContains the same fields as [`HostSignPayloadRequest`] minus `address`\n(replaced by `signer`).",
         source: "v1",
         fields: [
           {
@@ -2953,8 +3128,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostSignRawRequest",
         name: "HostSignRawRequest",
         category: "struct",
-        definition: "interface HostSignRawRequest { account: ProductAccountId; payload: RawPayload }",
-        description: "A raw signing request pairing an account with the payload to sign.",
+        definition:
+          "interface HostSignRawRequest { account: ProductAccountId; payload: RawPayload }",
+        description:
+          "A raw signing request pairing an account with the payload to sign.",
         source: "v1",
         fields: [
           {
@@ -2973,8 +3150,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostSignRawWithLegacyAccountRequest",
         name: "HostSignRawWithLegacyAccountRequest",
         category: "struct",
-        definition: "interface HostSignRawWithLegacyAccountRequest { signer: string; payload: RawPayload }",
-        description: "Sign raw bytes with a non-product (legacy) account. The signer field\nidentifies which legacy account to use.",
+        definition:
+          "interface HostSignRawWithLegacyAccountRequest { signer: string; payload: RawPayload }",
+        description:
+          "Sign raw bytes with a non-product (legacy) account. The signer field\nidentifies which legacy account to use.",
         source: "v1",
         fields: [
           {
@@ -2993,8 +3172,10 @@ export const versions: ExplorerVersion[] = [
         id: "Modifier",
         name: "Modifier",
         category: "enum",
-        definition: "type Modifier = { tag: \"Margin\"; value: Dimensions } | { tag: \"Padding\"; value: Dimensions } | { tag: \"Background\"; value: Background } | { tag: \"Border\"; value: BorderStyle } | { tag: \"Height\"; value: { height: bigint } } | { tag: \"Width\"; value: { width: bigint } } | { tag: \"MinWidth\"; value: { width: bigint } } | { tag: \"MinHeight\"; value: { height: bigint } } | { tag: \"FillWidth\"; value: { enabled: boolean } } | { tag: \"FillHeight\"; value: { enabled: boolean } }",
-        description: "Layout and styling modifiers applied to custom renderer components.",
+        definition:
+          'type Modifier = { tag: "Margin"; value: Dimensions } | { tag: "Padding"; value: Dimensions } | { tag: "Background"; value: Background } | { tag: "Border"; value: BorderStyle } | { tag: "Height"; value: { height: bigint } } | { tag: "Width"; value: { width: bigint } } | { tag: "MinWidth"; value: { width: bigint } } | { tag: "MinHeight"; value: { height: bigint } } | { tag: "FillWidth"; value: { enabled: boolean } } | { tag: "FillHeight"; value: { enabled: boolean } }',
+        description:
+          "Layout and styling modifiers applied to custom renderer components.",
         source: "shared",
         variants: [
           {
@@ -3053,7 +3234,8 @@ export const versions: ExplorerVersion[] = [
         id: "OperationStartedResult",
         name: "OperationStartedResult",
         category: "enum",
-        definition: "type OperationStartedResult = { tag: \"Started\"; value: { operationId: string } } | { tag: \"LimitReached\"; value: undefined }",
+        definition:
+          'type OperationStartedResult = { tag: "Started"; value: { operationId: string } } | { tag: "LimitReached"; value: undefined }',
         description: "Result of starting a chain operation.",
         source: "shared",
         variants: [
@@ -3073,19 +3255,23 @@ export const versions: ExplorerVersion[] = [
         id: "PaymentTopUpSource",
         name: "PaymentTopUpSource",
         category: "enum",
-        definition: "type PaymentTopUpSource = { tag: \"ProductAccount\"; value: { derivationIndex: number } } | { tag: \"PrivateKey\"; value: { ed25519PrivateKey: HexString } }",
-        description: "Source for a payment top-up operation.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
+        definition:
+          'type PaymentTopUpSource = { tag: "ProductAccount"; value: { derivationIndex: number } } | { tag: "PrivateKey"; value: { ed25519PrivateKey: HexString } }',
+        description:
+          "Source for a payment top-up operation.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         source: "shared",
         variants: [
           {
             name: "ProductAccount",
             type: "{ derivationIndex: number }",
-            description: "Fund from one of the calling product's scoped accounts.",
+            description:
+              "Fund from one of the calling product's scoped accounts.",
           },
           {
             name: "PrivateKey",
             type: "{ ed25519PrivateKey: HexString }",
-            description: "Fund from a one-time account represented by its private key. This is a\nstandard account holding public funds, not a coin key.",
+            description:
+              "Fund from a one-time account represented by its private key. This is a\nstandard account holding public funds, not a coin key.",
           },
         ],
       },
@@ -3093,7 +3279,8 @@ export const versions: ExplorerVersion[] = [
         id: "PreimageSubmitError",
         name: "PreimageSubmitError",
         category: "enum",
-        definition: "type PreimageSubmitError = { tag: \"Unknown\"; value: { reason: string } }",
+        definition:
+          'type PreimageSubmitError = { tag: "Unknown"; value: { reason: string } }',
         description: "Preimage submission error.",
         source: "shared",
         variants: [
@@ -3123,19 +3310,23 @@ export const versions: ExplorerVersion[] = [
         id: "ProductAccountId",
         name: "ProductAccountId",
         category: "struct",
-        definition: "interface ProductAccountId { dotNsIdentifier: string; derivationIndex: number }",
-        description: "Identifies a product-specific account by combining a dotNS domain name with a\nderivation index.",
+        definition:
+          "interface ProductAccountId { dotNsIdentifier: string; derivationIndex: number }",
+        description:
+          "Identifies a product-specific account by combining a dotNS domain name with a\nderivation index.",
         source: "shared",
         fields: [
           {
             name: "dotNsIdentifier",
             type: "string",
-            description: "A dotNS domain name identifier (e.g., `\"my-product.dot\"`).",
+            description:
+              'A dotNS domain name identifier (e.g., `"my-product.dot"`).',
           },
           {
             name: "derivationIndex",
             type: "number",
-            description: "Key derivation index for generating product-specific accounts.",
+            description:
+              "Key derivation index for generating product-specific accounts.",
           },
         ],
       },
@@ -3143,8 +3334,10 @@ export const versions: ExplorerVersion[] = [
         id: "ProductChatCustomMessageRenderSubscribeRequest",
         name: "ProductChatCustomMessageRenderSubscribeRequest",
         category: "struct",
-        definition: "interface ProductChatCustomMessageRenderSubscribeRequest { messageId: string; messageType: string; payload: HexString }",
-        description: "Subscribe payload identifying the chat message to render. The host responds\nwith a stream of [`CustomRendererNode`] trees describing the rendered UI.",
+        definition:
+          "interface ProductChatCustomMessageRenderSubscribeRequest { messageId: string; messageType: string; payload: HexString }",
+        description:
+          "Subscribe payload identifying the chat message to render. The host responds\nwith a stream of [`CustomRendererNode`] trees describing the rendered UI.",
         source: "v1",
         fields: [
           {
@@ -3168,8 +3361,10 @@ export const versions: ExplorerVersion[] = [
         id: "RawPayload",
         name: "RawPayload",
         category: "enum",
-        definition: "type RawPayload = { tag: \"Bytes\"; value: { bytes: HexString } } | { tag: \"Payload\"; value: { payload: string } }",
-        description: "Raw data to sign -- either binary bytes or a string message.",
+        definition:
+          'type RawPayload = { tag: "Bytes"; value: { bytes: HexString } } | { tag: "Payload"; value: { payload: string } }',
+        description:
+          "Raw data to sign -- either binary bytes or a string message.",
         source: "shared",
         variants: [
           {
@@ -3188,8 +3383,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainHeadBodyRequest",
         name: "RemoteChainHeadBodyRequest",
         category: "struct",
-        definition: "interface RemoteChainHeadBodyRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString }",
-        description: "Parameters for [`crate::api::ChainInteraction::remote_chain_head_body`].",
+        definition:
+          "interface RemoteChainHeadBodyRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString }",
+        description:
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_body`].",
         source: "v1",
         fields: [
           {
@@ -3213,7 +3410,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainHeadBodyResponse",
         name: "RemoteChainHeadBodyResponse",
         category: "struct",
-        definition: "interface RemoteChainHeadBodyResponse { operation: OperationStartedResult }",
+        definition:
+          "interface RemoteChainHeadBodyResponse { operation: OperationStartedResult }",
         description: "Response indicating a block body operation was started.",
         source: "v1",
         fields: [
@@ -3228,8 +3426,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainHeadCallRequest",
         name: "RemoteChainHeadCallRequest",
         category: "struct",
-        definition: "interface RemoteChainHeadCallRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString; function: string; callParameters: HexString }",
-        description: "Parameters for [`crate::api::ChainInteraction::remote_chain_head_call`].",
+        definition:
+          "interface RemoteChainHeadCallRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString; function: string; callParameters: HexString }",
+        description:
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_call`].",
         source: "v1",
         fields: [
           {
@@ -3263,8 +3463,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainHeadCallResponse",
         name: "RemoteChainHeadCallResponse",
         category: "struct",
-        definition: "interface RemoteChainHeadCallResponse { operation: OperationStartedResult }",
-        description: "Response indicating a runtime call operation was started.",
+        definition:
+          "interface RemoteChainHeadCallResponse { operation: OperationStartedResult }",
+        description:
+          "Response indicating a runtime call operation was started.",
         source: "v1",
         fields: [
           {
@@ -3278,8 +3480,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainHeadContinueRequest",
         name: "RemoteChainHeadContinueRequest",
         category: "struct",
-        definition: "interface RemoteChainHeadContinueRequest { genesisHash: HexString; followSubscriptionId: string; operationId: string }",
-        description: "Parameters for [`crate::api::ChainInteraction::remote_chain_head_continue`].",
+        definition:
+          "interface RemoteChainHeadContinueRequest { genesisHash: HexString; followSubscriptionId: string; operationId: string }",
+        description:
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_continue`].",
         source: "v1",
         fields: [
           {
@@ -3303,7 +3507,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainHeadFollowItem",
         name: "RemoteChainHeadFollowItem",
         category: "enum",
-        definition: "type RemoteChainHeadFollowItem = { tag: \"Initialized\"; value: { finalizedBlockHashes: Array<HexString>; finalizedBlockRuntime?: RuntimeType } } | { tag: \"NewBlock\"; value: { blockHash: HexString; parentBlockHash: HexString; newRuntime?: RuntimeType } } | { tag: \"BestBlockChanged\"; value: { bestBlockHash: HexString } } | { tag: \"Finalized\"; value: { finalizedBlockHashes: Array<HexString>; prunedBlockHashes: Array<HexString> } } | { tag: \"OperationBodyDone\"; value: { operationId: string; value: Array<HexString> } } | { tag: \"OperationCallDone\"; value: { operationId: string; output: HexString } } | { tag: \"OperationStorageItems\"; value: { operationId: string; items: Array<StorageResultItem> } } | { tag: \"OperationStorageDone\"; value: { operationId: string } } | { tag: \"OperationWaitingForContinue\"; value: { operationId: string } } | { tag: \"OperationInaccessible\"; value: { operationId: string } } | { tag: \"OperationError\"; value: { operationId: string; error: string } } | { tag: \"Stop\"; value: undefined }",
+        definition:
+          'type RemoteChainHeadFollowItem = { tag: "Initialized"; value: { finalizedBlockHashes: Array<HexString>; finalizedBlockRuntime?: RuntimeType } } | { tag: "NewBlock"; value: { blockHash: HexString; parentBlockHash: HexString; newRuntime?: RuntimeType } } | { tag: "BestBlockChanged"; value: { bestBlockHash: HexString } } | { tag: "Finalized"; value: { finalizedBlockHashes: Array<HexString>; prunedBlockHashes: Array<HexString> } } | { tag: "OperationBodyDone"; value: { operationId: string; value: Array<HexString> } } | { tag: "OperationCallDone"; value: { operationId: string; output: HexString } } | { tag: "OperationStorageItems"; value: { operationId: string; items: Array<StorageResultItem> } } | { tag: "OperationStorageDone"; value: { operationId: string } } | { tag: "OperationWaitingForContinue"; value: { operationId: string } } | { tag: "OperationInaccessible"; value: { operationId: string } } | { tag: "OperationError"; value: { operationId: string; error: string } } | { tag: "Stop"; value: undefined }',
         description: "Events received when following the chain head.",
         source: "v1",
         variants: [
@@ -3350,7 +3555,8 @@ export const versions: ExplorerVersion[] = [
           {
             name: "OperationWaitingForContinue",
             type: "{ operationId: string }",
-            description: "Operation paused, needs [`crate::api::ChainInteraction::remote_chain_head_continue`].",
+            description:
+              "Operation paused, needs [`crate::api::ChainInteraction::remote_chain_head_continue`].",
           },
           {
             name: "OperationInaccessible",
@@ -3373,8 +3579,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainHeadFollowRequest",
         name: "RemoteChainHeadFollowRequest",
         category: "struct",
-        definition: "interface RemoteChainHeadFollowRequest { genesisHash: HexString; withRuntime: boolean }",
-        description: "Parameters for [`crate::api::ChainInteraction::remote_chain_head_follow_subscribe`].",
+        definition:
+          "interface RemoteChainHeadFollowRequest { genesisHash: HexString; withRuntime: boolean }",
+        description:
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_follow_subscribe`].",
         source: "v1",
         fields: [
           {
@@ -3393,8 +3601,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainHeadHeaderRequest",
         name: "RemoteChainHeadHeaderRequest",
         category: "struct",
-        definition: "interface RemoteChainHeadHeaderRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString }",
-        description: "Parameters for [`crate::api::ChainInteraction::remote_chain_head_header`].",
+        definition:
+          "interface RemoteChainHeadHeaderRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString }",
+        description:
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_header`].",
         source: "v1",
         fields: [
           {
@@ -3418,7 +3628,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainHeadHeaderResponse",
         name: "RemoteChainHeadHeaderResponse",
         category: "struct",
-        definition: "interface RemoteChainHeadHeaderResponse { header?: HexString }",
+        definition:
+          "interface RemoteChainHeadHeaderResponse { header?: HexString }",
         description: "Response containing a block header, if available.",
         source: "v1",
         fields: [
@@ -3433,8 +3644,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainHeadStopOperationRequest",
         name: "RemoteChainHeadStopOperationRequest",
         category: "struct",
-        definition: "interface RemoteChainHeadStopOperationRequest { genesisHash: HexString; followSubscriptionId: string; operationId: string }",
-        description: "Parameters for [`crate::api::ChainInteraction::remote_chain_head_stop_operation`].",
+        definition:
+          "interface RemoteChainHeadStopOperationRequest { genesisHash: HexString; followSubscriptionId: string; operationId: string }",
+        description:
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_stop_operation`].",
         source: "v1",
         fields: [
           {
@@ -3458,8 +3671,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainHeadStorageRequest",
         name: "RemoteChainHeadStorageRequest",
         category: "struct",
-        definition: "interface RemoteChainHeadStorageRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString; items: Array<StorageQueryItem>; childTrie?: HexString }",
-        description: "Parameters for [`crate::api::ChainInteraction::remote_chain_head_storage`].",
+        definition:
+          "interface RemoteChainHeadStorageRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString; items: Array<StorageQueryItem>; childTrie?: HexString }",
+        description:
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_storage`].",
         source: "v1",
         fields: [
           {
@@ -3493,8 +3708,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainHeadStorageResponse",
         name: "RemoteChainHeadStorageResponse",
         category: "struct",
-        definition: "interface RemoteChainHeadStorageResponse { operation: OperationStartedResult }",
-        description: "Response indicating a storage query operation was started.",
+        definition:
+          "interface RemoteChainHeadStorageResponse { operation: OperationStartedResult }",
+        description:
+          "Response indicating a storage query operation was started.",
         source: "v1",
         fields: [
           {
@@ -3508,8 +3725,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainHeadUnpinRequest",
         name: "RemoteChainHeadUnpinRequest",
         category: "struct",
-        definition: "interface RemoteChainHeadUnpinRequest { genesisHash: HexString; followSubscriptionId: string; hashes: Array<HexString> }",
-        description: "Parameters for [`crate::api::ChainInteraction::remote_chain_head_unpin`].",
+        definition:
+          "interface RemoteChainHeadUnpinRequest { genesisHash: HexString; followSubscriptionId: string; hashes: Array<HexString> }",
+        description:
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_unpin`].",
         source: "v1",
         fields: [
           {
@@ -3533,7 +3752,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainSpecChainNameRequest",
         name: "RemoteChainSpecChainNameRequest",
         category: "struct",
-        definition: "interface RemoteChainSpecChainNameRequest { genesisHash: HexString }",
+        definition:
+          "interface RemoteChainSpecChainNameRequest { genesisHash: HexString }",
         description: "Request to fetch a chain display name.",
         source: "v1",
         fields: [
@@ -3548,7 +3768,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainSpecChainNameResponse",
         name: "RemoteChainSpecChainNameResponse",
         category: "struct",
-        definition: "interface RemoteChainSpecChainNameResponse { chainName: string }",
+        definition:
+          "interface RemoteChainSpecChainNameResponse { chainName: string }",
         description: "Response containing a chain display name.",
         source: "v1",
         fields: [
@@ -3563,7 +3784,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainSpecGenesisHashRequest",
         name: "RemoteChainSpecGenesisHashRequest",
         category: "struct",
-        definition: "interface RemoteChainSpecGenesisHashRequest { genesisHash: HexString }",
+        definition:
+          "interface RemoteChainSpecGenesisHashRequest { genesisHash: HexString }",
         description: "Request to fetch a chain genesis hash.",
         source: "v1",
         fields: [
@@ -3578,7 +3800,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainSpecGenesisHashResponse",
         name: "RemoteChainSpecGenesisHashResponse",
         category: "struct",
-        definition: "interface RemoteChainSpecGenesisHashResponse { genesisHash: HexString }",
+        definition:
+          "interface RemoteChainSpecGenesisHashResponse { genesisHash: HexString }",
         description: "Response containing a chain genesis hash.",
         source: "v1",
         fields: [
@@ -3593,7 +3816,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainSpecPropertiesRequest",
         name: "RemoteChainSpecPropertiesRequest",
         category: "struct",
-        definition: "interface RemoteChainSpecPropertiesRequest { genesisHash: HexString }",
+        definition:
+          "interface RemoteChainSpecPropertiesRequest { genesisHash: HexString }",
         description: "Request to fetch chain properties.",
         source: "v1",
         fields: [
@@ -3608,7 +3832,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainSpecPropertiesResponse",
         name: "RemoteChainSpecPropertiesResponse",
         category: "struct",
-        definition: "interface RemoteChainSpecPropertiesResponse { properties: string }",
+        definition:
+          "interface RemoteChainSpecPropertiesResponse { properties: string }",
         description: "Response containing JSON-encoded chain properties.",
         source: "v1",
         fields: [
@@ -3623,8 +3848,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainTransactionBroadcastRequest",
         name: "RemoteChainTransactionBroadcastRequest",
         category: "struct",
-        definition: "interface RemoteChainTransactionBroadcastRequest { genesisHash: HexString; transaction: HexString }",
-        description: "Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_broadcast`].",
+        definition:
+          "interface RemoteChainTransactionBroadcastRequest { genesisHash: HexString; transaction: HexString }",
+        description:
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_broadcast`].",
         source: "v1",
         fields: [
           {
@@ -3643,8 +3870,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainTransactionBroadcastResponse",
         name: "RemoteChainTransactionBroadcastResponse",
         category: "struct",
-        definition: "interface RemoteChainTransactionBroadcastResponse { operationId?: string }",
-        description: "Response containing a transaction broadcast operation identifier.",
+        definition:
+          "interface RemoteChainTransactionBroadcastResponse { operationId?: string }",
+        description:
+          "Response containing a transaction broadcast operation identifier.",
         source: "v1",
         fields: [
           {
@@ -3658,8 +3887,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainTransactionStopRequest",
         name: "RemoteChainTransactionStopRequest",
         category: "struct",
-        definition: "interface RemoteChainTransactionStopRequest { genesisHash: HexString; operationId: string }",
-        description: "Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_stop`].",
+        definition:
+          "interface RemoteChainTransactionStopRequest { genesisHash: HexString; operationId: string }",
+        description:
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_stop`].",
         source: "v1",
         fields: [
           {
@@ -3678,14 +3909,17 @@ export const versions: ExplorerVersion[] = [
         id: "RemotePermission",
         name: "RemotePermission",
         category: "enum",
-        definition: "type RemotePermission = { tag: \"Remote\"; value: { domains: Array<string> } } | { tag: \"WebRtc\"; value: undefined } | { tag: \"ChainSubmit\"; value: undefined } | { tag: \"PreimageSubmit\"; value: undefined } | { tag: \"StatementSubmit\"; value: undefined }",
-        description: "A single remote-operation permission entry.\n\nThe [`crate::api::Permissions::remote_permission`] method accepts a\n`Vec<RemotePermission>` so products can batch multiple permission requests\ninto a single prompt.\n\nSee [RFC 0001] and [issue #64].\n\n[RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66\n[issue #64]: https://github.com/paritytech/triangle-js-sdks/issues/64",
+        definition:
+          'type RemotePermission = { tag: "Remote"; value: { domains: Array<string> } } | { tag: "WebRtc"; value: undefined } | { tag: "ChainSubmit"; value: undefined } | { tag: "PreimageSubmit"; value: undefined } | { tag: "StatementSubmit"; value: undefined }',
+        description:
+          "A single remote-operation permission entry.\n\nThe [`crate::api::Permissions::remote_permission`] method accepts a\n`Vec<RemotePermission>` so products can batch multiple permission requests\ninto a single prompt.\n\nSee [RFC 0001] and [issue #64].\n\n[RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66\n[issue #64]: https://github.com/paritytech/triangle-js-sdks/issues/64",
         source: "shared",
         variants: [
           {
             name: "Remote",
             type: "{ domains: Array<string> }",
-            description: "HTTP/HTTPS/WS/WSS access to specific domains. Each string is a domain\npattern: `\"api.example.com\"` (exact), `\"*.example.com\"` (wildcard\nsubdomain), or `\"*\"` (all hosts).",
+            description:
+              'HTTP/HTTPS/WS/WSS access to specific domains. Each string is a domain\npattern: `"api.example.com"` (exact), `"*.example.com"` (wildcard\nsubdomain), or `"*"` (all hosts).',
           },
           {
             name: "WebRtc",
@@ -3695,17 +3929,20 @@ export const versions: ExplorerVersion[] = [
           {
             name: "ChainSubmit",
             type: "undefined",
-            description: "Broadcast signed transactions via\n[`crate::api::ChainInteraction::remote_chain_transaction_broadcast`].",
+            description:
+              "Broadcast signed transactions via\n[`crate::api::ChainInteraction::remote_chain_transaction_broadcast`].",
           },
           {
             name: "PreimageSubmit",
             type: "undefined",
-            description: "Submit a preimage via [`crate::api::Preimage::remote_preimage_submit`].",
+            description:
+              "Submit a preimage via [`crate::api::Preimage::remote_preimage_submit`].",
           },
           {
             name: "StatementSubmit",
             type: "undefined",
-            description: "Submit statements via [`crate::api::StatementStore::remote_statement_store_submit`].",
+            description:
+              "Submit statements via [`crate::api::StatementStore::remote_statement_store_submit`].",
           },
         ],
       },
@@ -3713,7 +3950,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemotePermissionRequest",
         name: "RemotePermissionRequest",
         category: "struct",
-        definition: "interface RemotePermissionRequest { permissions: Array<RemotePermission> }",
+        definition:
+          "interface RemotePermissionRequest { permissions: Array<RemotePermission> }",
         description: "Request containing batched remote-operation permissions.",
         source: "v1",
         fields: [
@@ -3729,7 +3967,8 @@ export const versions: ExplorerVersion[] = [
         name: "RemotePermissionResponse",
         category: "struct",
         definition: "interface RemotePermissionResponse { granted: boolean }",
-        description: "Response indicating whether a remote permission was granted.",
+        description:
+          "Response indicating whether a remote permission was granted.",
         source: "v1",
         fields: [
           {
@@ -3743,7 +3982,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemotePreimageLookupSubscribeItem",
         name: "RemotePreimageLookupSubscribeItem",
         category: "struct",
-        definition: "interface RemotePreimageLookupSubscribeItem { value?: HexString }",
+        definition:
+          "interface RemotePreimageLookupSubscribeItem { value?: HexString }",
         description: "Item containing an optional preimage lookup result.",
         source: "v1",
         fields: [
@@ -3758,7 +3998,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemotePreimageLookupSubscribeRequest",
         name: "RemotePreimageLookupSubscribeRequest",
         category: "struct",
-        definition: "interface RemotePreimageLookupSubscribeRequest { key: HexString }",
+        definition:
+          "interface RemotePreimageLookupSubscribeRequest { key: HexString }",
         description: "Request to subscribe to preimage lookup results.",
         source: "v1",
         fields: [
@@ -3773,7 +4014,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteStatementStoreCreateProofError",
         name: "RemoteStatementStoreCreateProofError",
         category: "enum",
-        definition: "type RemoteStatementStoreCreateProofError = { tag: \"UnableToSign\"; value: undefined } | { tag: \"UnknownAccount\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
+        definition:
+          'type RemoteStatementStoreCreateProofError = { tag: "UnableToSign"; value: undefined } | { tag: "UnknownAccount"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Statement proof creation error.",
         source: "v1",
         variants: [
@@ -3798,7 +4040,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteStatementStoreCreateProofRequest",
         name: "RemoteStatementStoreCreateProofRequest",
         category: "struct",
-        definition: "interface RemoteStatementStoreCreateProofRequest { productAccountId: ProductAccountId; statement: Statement }",
+        definition:
+          "interface RemoteStatementStoreCreateProofRequest { productAccountId: ProductAccountId; statement: Statement }",
         description: "Request to create a cryptographic proof for a statement.",
         source: "v1",
         fields: [
@@ -3818,7 +4061,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteStatementStoreCreateProofResponse",
         name: "RemoteStatementStoreCreateProofResponse",
         category: "struct",
-        definition: "interface RemoteStatementStoreCreateProofResponse { proof: StatementProof }",
+        definition:
+          "interface RemoteStatementStoreCreateProofResponse { proof: StatementProof }",
         description: "Response containing a statement proof.",
         source: "v1",
         fields: [
@@ -3833,8 +4077,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteStatementStoreSubscribeItem",
         name: "RemoteStatementStoreSubscribeItem",
         category: "struct",
-        definition: "interface RemoteStatementStoreSubscribeItem { statements: Array<SignedStatement>; isComplete: boolean }",
-        description: "Page of signed statements delivered by the statement store subscription\n(RFC 0008). The `is_complete` flag distinguishes the historical-dump phase\n(`false`) from the live-update phase (`true`).",
+        definition:
+          "interface RemoteStatementStoreSubscribeItem { statements: Array<SignedStatement>; isComplete: boolean }",
+        description:
+          "Page of signed statements delivered by the statement store subscription\n(RFC 0008). The `is_complete` flag distinguishes the historical-dump phase\n(`false`) from the live-update phase (`true`).",
         source: "v1",
         fields: [
           {
@@ -3845,7 +4091,8 @@ export const versions: ExplorerVersion[] = [
           {
             name: "isComplete",
             type: "boolean",
-            description: "`false` while the host is still streaming the historical dump (more\npages to follow). `true` once the dump is complete; all subsequent\npages are also `true` and carry only newly-arrived statements.",
+            description:
+              "`false` while the host is still streaming the historical dump (more\npages to follow). `true` once the dump is complete; all subsequent\npages are also `true` and carry only newly-arrived statements.",
           },
         ],
       },
@@ -3853,8 +4100,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteStatementStoreSubscribeRequest",
         name: "RemoteStatementStoreSubscribeRequest",
         category: "enum",
-        definition: "type RemoteStatementStoreSubscribeRequest = { tag: \"MatchAll\"; value: Array<Topic> } | { tag: \"MatchAny\"; value: Array<Topic> }",
-        description: "Request to subscribe to statements via a topic filter (RFC 0008).",
+        definition:
+          'type RemoteStatementStoreSubscribeRequest = { tag: "MatchAll"; value: Array<Topic> } | { tag: "MatchAny"; value: Array<Topic> }',
+        description:
+          "Request to subscribe to statements via a topic filter (RFC 0008).",
         source: "v1",
         variants: [
           {
@@ -3865,7 +4114,8 @@ export const versions: ExplorerVersion[] = [
           {
             name: "MatchAny",
             type: "Array<Topic>",
-            description: "OR: statement must contain at least one listed topic.",
+            description:
+              "OR: statement must contain at least one listed topic.",
           },
         ],
       },
@@ -3873,8 +4123,10 @@ export const versions: ExplorerVersion[] = [
         id: "RingLocation",
         name: "RingLocation",
         category: "struct",
-        definition: "interface RingLocation { genesisHash: HexString; ringRootHash: HexString; hints?: RingLocationHint }",
-        description: "Locates a specific ring on a specific chain for ring VRF operations.",
+        definition:
+          "interface RingLocation { genesisHash: HexString; ringRootHash: HexString; hints?: RingLocationHint }",
+        description:
+          "Locates a specific ring on a specific chain for ring VRF operations.",
         source: "shared",
         fields: [
           {
@@ -3913,7 +4165,8 @@ export const versions: ExplorerVersion[] = [
         id: "RowProps",
         name: "RowProps",
         category: "struct",
-        definition: "interface RowProps { verticalAlignment?: VerticalAlignment; horizontalArrangement?: Arrangement }",
+        definition:
+          "interface RowProps { verticalAlignment?: VerticalAlignment; horizontalArrangement?: Arrangement }",
         description: "Properties for a [`CustomRendererNode::Row`] layout.",
         source: "shared",
         fields: [
@@ -3953,7 +4206,8 @@ export const versions: ExplorerVersion[] = [
         id: "RuntimeSpec",
         name: "RuntimeSpec",
         category: "struct",
-        definition: "interface RuntimeSpec { specName: string; implName: string; specVersion: number; implVersion: number; transactionVersion?: number; apis: Array<RuntimeApi> }",
+        definition:
+          "interface RuntimeSpec { specName: string; implName: string; specVersion: number; implVersion: number; transactionVersion?: number; apis: Array<RuntimeApi> }",
         description: "Runtime specification metadata.",
         source: "shared",
         fields: [
@@ -3993,7 +4247,8 @@ export const versions: ExplorerVersion[] = [
         id: "RuntimeType",
         name: "RuntimeType",
         category: "enum",
-        definition: "type RuntimeType = { tag: \"Valid\"; value: RuntimeSpec } | { tag: \"Invalid\"; value: { error: string } }",
+        definition:
+          'type RuntimeType = { tag: "Valid"; value: RuntimeSpec } | { tag: "Invalid"; value: { error: string } }',
         description: "Runtime validity check result.",
         source: "shared",
         variants: [
@@ -4013,7 +4268,8 @@ export const versions: ExplorerVersion[] = [
         id: "Shape",
         name: "Shape",
         category: "enum",
-        definition: "type Shape = { tag: \"Rounded\"; value: { radius: bigint } } | { tag: \"Circle\"; value: undefined }",
+        definition:
+          'type Shape = { tag: "Rounded"; value: { radius: bigint } } | { tag: "Circle"; value: undefined }',
         description: "Shape for borders and backgrounds.",
         source: "shared",
         variants: [
@@ -4033,7 +4289,8 @@ export const versions: ExplorerVersion[] = [
         id: "SignedStatement",
         name: "SignedStatement",
         category: "struct",
-        definition: "interface SignedStatement { proof: StatementProof; decryptionKey?: HexString; expiry?: bigint; channel?: HexString; topics: Array<HexString>; data?: HexString }",
+        definition:
+          "interface SignedStatement { proof: StatementProof; decryptionKey?: HexString; expiry?: bigint; channel?: HexString; topics: Array<HexString>; data?: HexString }",
         description: "A statement with a required (not optional) proof.",
         source: "shared",
         fields: [
@@ -4073,7 +4330,8 @@ export const versions: ExplorerVersion[] = [
         id: "Statement",
         name: "Statement",
         category: "struct",
-        definition: "interface Statement { proof?: StatementProof; decryptionKey?: HexString; expiry?: bigint; channel?: HexString; topics: Array<HexString>; data?: HexString }",
+        definition:
+          "interface Statement { proof?: StatementProof; decryptionKey?: HexString; expiry?: bigint; channel?: HexString; topics: Array<HexString>; data?: HexString }",
         description: "A statement with optional proof and metadata.",
         source: "shared",
         fields: [
@@ -4113,7 +4371,8 @@ export const versions: ExplorerVersion[] = [
         id: "StatementProof",
         name: "StatementProof",
         category: "enum",
-        definition: "type StatementProof = { tag: \"Sr25519\"; value: { signature: HexString; signer: HexString } } | { tag: \"Ed25519\"; value: { signature: HexString; signer: HexString } } | { tag: \"Ecdsa\"; value: { signature: HexString; signer: HexString } } | { tag: \"OnChain\"; value: { who: HexString; blockHash: HexString; event: bigint } }",
+        definition:
+          'type StatementProof = { tag: "Sr25519"; value: { signature: HexString; signer: HexString } } | { tag: "Ed25519"; value: { signature: HexString; signer: HexString } } | { tag: "Ecdsa"; value: { signature: HexString; signer: HexString } } | { tag: "OnChain"; value: { who: HexString; blockHash: HexString; event: bigint } }',
         description: "Cryptographic proof for a statement.",
         source: "shared",
         variants: [
@@ -4143,7 +4402,8 @@ export const versions: ExplorerVersion[] = [
         id: "StorageQueryItem",
         name: "StorageQueryItem",
         category: "struct",
-        definition: "interface StorageQueryItem { key: HexString; queryType: StorageQueryType }",
+        definition:
+          "interface StorageQueryItem { key: HexString; queryType: StorageQueryType }",
         description: "A single storage query.",
         source: "shared",
         fields: [
@@ -4163,7 +4423,8 @@ export const versions: ExplorerVersion[] = [
         id: "StorageQueryType",
         name: "StorageQueryType",
         category: "enum",
-        definition: "type StorageQueryType = { tag: \"Value\"; value: undefined } | { tag: \"Hash\"; value: undefined } | { tag: \"ClosestDescendantMerkleValue\"; value: undefined } | { tag: \"DescendantsValues\"; value: undefined } | { tag: \"DescendantsHashes\"; value: undefined }",
+        definition:
+          'type StorageQueryType = { tag: "Value"; value: undefined } | { tag: "Hash"; value: undefined } | { tag: "ClosestDescendantMerkleValue"; value: undefined } | { tag: "DescendantsValues"; value: undefined } | { tag: "DescendantsHashes"; value: undefined }',
         description: "Type of storage query to perform.",
         source: "shared",
         variants: [
@@ -4193,7 +4454,8 @@ export const versions: ExplorerVersion[] = [
         id: "StorageResultItem",
         name: "StorageResultItem",
         category: "struct",
-        definition: "interface StorageResultItem { key: HexString; value?: HexString; hash?: HexString; closestDescendantMerkleValue?: HexString }",
+        definition:
+          "interface StorageResultItem { key: HexString; value?: HexString; hash?: HexString; closestDescendantMerkleValue?: HexString }",
         description: "Result of a storage query.",
         source: "shared",
         fields: [
@@ -4223,7 +4485,8 @@ export const versions: ExplorerVersion[] = [
         id: "TextFieldProps",
         name: "TextFieldProps",
         category: "struct",
-        definition: "interface TextFieldProps { placeholder?: string; initialValue?: string; submitAction: string }",
+        definition:
+          "interface TextFieldProps { placeholder?: string; initialValue?: string; submitAction: string }",
         description: "Properties for a [`CustomRendererNode::TextField`].",
         source: "shared",
         fields: [
@@ -4248,7 +4511,8 @@ export const versions: ExplorerVersion[] = [
         id: "TextProps",
         name: "TextProps",
         category: "struct",
-        definition: "interface TextProps { style?: TypographyStyle; color?: ColorToken }",
+        definition:
+          "interface TextProps { style?: TypographyStyle; color?: ColorToken }",
         description: "Properties for a [`CustomRendererNode::Text`] display.",
         source: "shared",
         fields: [
@@ -4276,7 +4540,8 @@ export const versions: ExplorerVersion[] = [
         id: "TxPayloadContextV1",
         name: "TxPayloadContextV1",
         category: "struct",
-        definition: "interface TxPayloadContextV1 { metadata: HexString; tokenSymbol: string; tokenDecimals: number; bestBlockHeight: number }",
+        definition:
+          "interface TxPayloadContextV1 { metadata: HexString; tokenSymbol: string; tokenDecimals: number; bestBlockHeight: number }",
         description: "Context information for transaction construction.",
         source: "shared",
         fields: [
@@ -4306,14 +4571,15 @@ export const versions: ExplorerVersion[] = [
         id: "TxPayloadExtensionV1",
         name: "TxPayloadExtensionV1",
         category: "struct",
-        definition: "interface TxPayloadExtensionV1 { id: string; extra: HexString; additionalSigned: HexString }",
+        definition:
+          "interface TxPayloadExtensionV1 { id: string; extra: HexString; additionalSigned: HexString }",
         description: "A signed extension for a transaction payload.",
         source: "shared",
         fields: [
           {
             name: "id",
             type: "string",
-            description: "Extension name (e.g., `\"CheckSpecVersion\"`).",
+            description: 'Extension name (e.g., `"CheckSpecVersion"`).',
           },
           {
             name: "extra",
@@ -4331,8 +4597,10 @@ export const versions: ExplorerVersion[] = [
         id: "TxPayloadV1",
         name: "TxPayloadV1",
         category: "struct",
-        definition: "interface TxPayloadV1 { signer?: string; callData: HexString; extensions: Array<TxPayloadExtensionV1>; txExtVersion: number; context: TxPayloadContextV1 }",
-        description: "Version 1 transaction payload with all data needed to construct a signed\nextrinsic.",
+        definition:
+          "interface TxPayloadV1 { signer?: string; callData: HexString; extensions: Array<TxPayloadExtensionV1>; txExtVersion: number; context: TxPayloadContextV1 }",
+        description:
+          "Version 1 transaction payload with all data needed to construct a signed\nextrinsic.",
         source: "shared",
         fields: [
           {
@@ -4366,7 +4634,8 @@ export const versions: ExplorerVersion[] = [
         id: "TypographyStyle",
         name: "TypographyStyle",
         category: "enum",
-        definition: "type TypographyStyle = { tag: \"TitleXL\"; value: undefined } | { tag: \"Headline\"; value: undefined } | { tag: \"BodyM\"; value: undefined } | { tag: \"BodyS\"; value: undefined } | { tag: \"Caption\"; value: undefined }",
+        definition:
+          'type TypographyStyle = { tag: "TitleXL"; value: undefined } | { tag: "Headline"; value: undefined } | { tag: "BodyM"; value: undefined } | { tag: "BodyS"; value: undefined } | { tag: "Caption"; value: undefined }',
         description: "Text typography presets.",
         source: "shared",
         variants: [
@@ -4396,7 +4665,8 @@ export const versions: ExplorerVersion[] = [
         id: "VersionedTxPayload",
         name: "VersionedTxPayload",
         category: "versioned",
-        definition: "type VersionedTxPayload = { tag: \"V1\"; value: TxPayloadV1 }",
+        definition:
+          'type VersionedTxPayload = { tag: "V1"; value: TxPayloadV1 }',
         description: "Versioned transaction payload envelope.",
         source: "shared",
         variants: [
@@ -4411,7 +4681,8 @@ export const versions: ExplorerVersion[] = [
         id: "VerticalAlignment",
         name: "VerticalAlignment",
         category: "enum",
-        definition: "type VerticalAlignment = { tag: \"Top\"; value: undefined } | { tag: \"Center\"; value: undefined } | { tag: \"Bottom\"; value: undefined }",
+        definition:
+          'type VerticalAlignment = { tag: "Top"; value: undefined } | { tag: "Center"; value: undefined } | { tag: "Bottom"; value: undefined }',
         description: "Vertical alignment options.",
         source: "shared",
         variants: [
@@ -4440,7 +4711,8 @@ export const versions: ExplorerVersion[] = [
       {
         id: "truapi-calls",
         name: "TrUAPI Calls",
-        description: "General-purpose TrUAPI methods for feature detection, navigation, and\nnotifications.\n\n# Wire id reservations\n\nThe discriminants below are listed in [`super::RESERVED_WIRE_IDS`] so\ncodegen rejects any `#[wire(...)]` annotation that collides with them.\nSlots are held back for upstream `triangle-js-sdks` methods that TrUAPI\ndoes not implement, but whose ids must remain free to keep our wire-table\npositionally aligned with the canonical host `MessagePayload` enum. If we\never need one, annotate the trait method with the matching id and remove\nit from `RESERVED_WIRE_IDS`.",
+        description:
+          "General-purpose TrUAPI methods for feature detection, navigation, and\nnotifications.\n\n# Wire id reservations\n\nThe discriminants below are listed in [`super::RESERVED_WIRE_IDS`] so\ncodegen rejects any `#[wire(...)]` annotation that collides with them.\nSlots are held back for upstream `triangle-js-sdks` methods that TrUAPI\ndoes not implement, but whose ids must remain free to keep our wire-table\npositionally aligned with the canonical host `MessagePayload` enum. If we\never need one, annotate the trait method with the matching id and remove\nit from `RESERVED_WIRE_IDS`.",
         methods: [
           "host_handshake",
           "host_feature_supported",
@@ -4453,10 +4725,7 @@ export const versions: ExplorerVersion[] = [
         id: "permissions",
         name: "Permissions",
         description: "Device and remote permission prompts.",
-        methods: [
-          "host_device_permission",
-          "remote_permission",
-        ],
+        methods: ["host_device_permission", "remote_permission"],
       },
       {
         id: "local-storage",
@@ -4471,7 +4740,8 @@ export const versions: ExplorerVersion[] = [
       {
         id: "account-management",
         name: "Account Management",
-        description: "Account lookup, aliasing, and proof generation.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
+        description:
+          "Account lookup, aliasing, and proof generation.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
         methods: [
           "host_account_connection_status_subscribe",
           "host_account_get",
@@ -4485,7 +4755,8 @@ export const versions: ExplorerVersion[] = [
       {
         id: "signing",
         name: "Signing",
-        description: "Signing and transaction construction.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
+        description:
+          "Signing and transaction construction.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
         methods: [
           "host_create_transaction",
           "host_create_transaction_with_legacy_account",
@@ -4498,7 +4769,8 @@ export const versions: ExplorerVersion[] = [
       {
         id: "chat",
         name: "Chat",
-        description: "Chat room, bot, and message APIs.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
+        description:
+          "Chat room, bot, and message APIs.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
         methods: [
           "host_chat_create_room",
           "host_chat_register_bot",
@@ -4511,7 +4783,8 @@ export const versions: ExplorerVersion[] = [
       {
         id: "statement-store",
         name: "Statement Store",
-        description: "Statement store operations.\n\nDefault request methods return [`CallError::HostFailure`] with an\n`unavailable` reason. Hosts override only the methods they actually support.",
+        description:
+          "Statement store operations.\n\nDefault request methods return [`CallError::HostFailure`] with an\n`unavailable` reason. Hosts override only the methods they actually support.",
         methods: [
           "remote_statement_store_subscribe",
           "remote_statement_store_create_proof",
@@ -4522,16 +4795,15 @@ export const versions: ExplorerVersion[] = [
       {
         id: "preimage",
         name: "Preimage",
-        description: "Preimage lookup and submission.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
-        methods: [
-          "remote_preimage_lookup_subscribe",
-          "remote_preimage_submit",
-        ],
+        description:
+          "Preimage lookup and submission.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
+        methods: ["remote_preimage_lookup_subscribe", "remote_preimage_submit"],
       },
       {
         id: "chain-interaction",
         name: "Chain Interaction",
-        description: "Chain head and transaction interactions.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they can actually service.",
+        description:
+          "Chain head and transaction interactions.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they can actually service.",
         methods: [
           "remote_chain_head_follow_subscribe",
           "remote_chain_head_header",
@@ -4551,7 +4823,8 @@ export const versions: ExplorerVersion[] = [
       {
         id: "payment",
         name: "Payment",
-        description: "Payment operations.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
+        description:
+          "Payment operations.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
         methods: [
           "host_payment_balance_subscribe",
           "host_payment_request",
@@ -4562,10 +4835,9 @@ export const versions: ExplorerVersion[] = [
       {
         id: "entropy-derivation",
         name: "Entropy Derivation",
-        description: "Deterministic entropy derivation.\n\nThe default body returns [`CallError::HostFailure`] with an `unavailable`\nreason; hosts override only if they can derive entropy.",
-        methods: [
-          "host_derive_entropy",
-        ],
+        description:
+          "Deterministic entropy derivation.\n\nThe default body returns [`CallError::HostFailure`] with an `unavailable`\nreason; hosts override only if they can derive entropy.",
+        methods: ["host_derive_entropy"],
       },
     ],
     methods: [
@@ -4580,7 +4852,8 @@ export const versions: ExplorerVersion[] = [
         response: "undefined",
         errorType: "HostHandshakeError",
         description: "Negotiates the wire codec version with the product.",
-        usageExample: "import { type Client } from \"@parity/truapi\";\n\nexport async function handshake(truapi: Client): Promise<void> {\n  const result = await truapi.trUApiCalls.handshake();\n\n  if (result.isErr()) throw result.error;\n}",
+        usageExample:
+          'import { type Client } from "@parity/truapi";\n\nexport async function handshake(truapi: Client): Promise<void> {\n  const result = await truapi.trUApiCalls.handshake();\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_feature_supported",
@@ -4593,7 +4866,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostFeatureSupportedResponse",
         errorType: "GenericError",
         description: "Queries whether the host supports a specific feature.",
-        usageExample: "import { type Client } from \"@parity/truapi\";\n\nexport async function supportsChain(truapi: Client): Promise<boolean> {\n  const result = await truapi.trUApiCalls.featureSupported({\n    tag: \"Chain\",\n    value: {\n      genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value.supported;\n}",
+        usageExample:
+          'import { type Client } from "@parity/truapi";\n\nexport async function supportsChain(truapi: Client): Promise<boolean> {\n  const result = await truapi.trUApiCalls.featureSupported({\n    tag: "Chain",\n    value: {\n      genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value.supported;\n}',
       },
       {
         id: "host_push_notification",
@@ -4605,8 +4879,10 @@ export const versions: ExplorerVersion[] = [
         request: "NotificationsHostPushNotificationRequest",
         response: "NotificationsHostPushNotificationResponse",
         errorType: "NotificationsHostPushNotificationError",
-        description: "Sends a push notification to the user, or schedules it for a future\nwall-clock instant. The response carries a per-product\n[`crate::v02::NotificationId`] (v0.2 only) which can later be passed to\n[`Self::host_push_notification_cancel`] to retract a pending\nscheduled delivery.\n\nBehaviour per RFC 0019:\n- If `scheduled_at` is `None`, fire immediately (v0.1 behaviour).\n- If `scheduled_at` is `Some(t)` and `t <= now`, fire immediately.\n- Scheduled notifications MUST survive app and device restart.\n- The host maintains a single shared queue across all installed\n  products with capacity 64; over-cap calls return\n  [`crate::v02::HostPushNotificationError::ScheduleLimitReached`].\n  Immediate notifications do not count against the cap.",
-        usageExample: "import { type Client } from \"@parity/truapi\";\n\nexport async function pushNotification(truapi: Client): Promise<void> {\n  const result = await truapi.trUApiCalls.pushNotification({\n    text: \"Hello!\",\n  });\n\n  if (result.isErr()) throw result.error;\n}",
+        description:
+          "Sends a push notification to the user, or schedules it for a future\nwall-clock instant. The response carries a per-product\n[`crate::v02::NotificationId`] (v0.2 only) which can later be passed to\n[`Self::host_push_notification_cancel`] to retract a pending\nscheduled delivery.\n\nBehaviour per RFC 0019:\n- If `scheduled_at` is `None`, fire immediately (v0.1 behaviour).\n- If `scheduled_at` is `Some(t)` and `t <= now`, fire immediately.\n- Scheduled notifications MUST survive app and device restart.\n- The host maintains a single shared queue across all installed\n  products with capacity 64; over-cap calls return\n  [`crate::v02::HostPushNotificationError::ScheduleLimitReached`].\n  Immediate notifications do not count against the cap.",
+        usageExample:
+          'import { type Client } from "@parity/truapi";\n\nexport async function pushNotification(truapi: Client): Promise<void> {\n  const result = await truapi.trUApiCalls.pushNotification({\n    text: "Hello!",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_navigate_to",
@@ -4619,7 +4895,8 @@ export const versions: ExplorerVersion[] = [
         response: "undefined",
         errorType: "HostNavigateToError",
         description: "Requests the host to open a URL.",
-        usageExample: "import { type Client } from \"@parity/truapi\";\n\nexport async function navigateToDocs(truapi: Client): Promise<void> {\n  const result = await truapi.trUApiCalls.navigateTo({\n    url: \"https://example.com\",\n  });\n\n  if (result.isErr()) throw result.error;\n}",
+        usageExample:
+          'import { type Client } from "@parity/truapi";\n\nexport async function navigateToDocs(truapi: Client): Promise<void> {\n  const result = await truapi.trUApiCalls.navigateTo({\n    url: "https://example.com",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_device_permission",
@@ -4632,7 +4909,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostDevicePermissionResponse",
         errorType: "GenericError",
         description: "Request a device-capability permission from the user.",
-        usageExample: "import {\n  type Client,\n  type HostDevicePermissionResponse,\n} from \"@parity/truapi\";\n\nexport async function requestCameraPermission(\n  truapi: Client,\n): Promise<HostDevicePermissionResponse> {\n  const result = await truapi.permissions.devicePermission({\n    tag: \"Camera\",\n    value: undefined,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostDevicePermissionResponse,\n} from "@parity/truapi";\n\nexport async function requestCameraPermission(\n  truapi: Client,\n): Promise<HostDevicePermissionResponse> {\n  const result = await truapi.permissions.devicePermission({\n    tag: "Camera",\n    value: undefined,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_permission",
@@ -4645,7 +4923,8 @@ export const versions: ExplorerVersion[] = [
         response: "RemotePermissionResponse",
         errorType: "GenericError",
         description: "Request one or more remote-operation permissions.",
-        usageExample: "import {\n  type Client,\n  type RemotePermissionResponse,\n} from \"@parity/truapi\";\n\nexport async function requestRemotePermission(\n  truapi: Client,\n): Promise<RemotePermissionResponse> {\n  const result = await truapi.permissions.permission({\n    permissions: [{ tag: \"Remote\", value: { domains: [\"api.example.com\"] } }],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type RemotePermissionResponse,\n} from "@parity/truapi";\n\nexport async function requestRemotePermission(\n  truapi: Client,\n): Promise<RemotePermissionResponse> {\n  const result = await truapi.permissions.permission({\n    permissions: [{ tag: "Remote", value: { domains: ["api.example.com"] } }],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_local_storage_read",
@@ -4658,7 +4937,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostLocalStorageReadResponse",
         errorType: "HostLocalStorageReadError",
         description: "Read a value by key.",
-        usageExample: "import { type Client, type HexString } from \"@parity/truapi\";\n\nexport async function readLocalValue(\n  truapi: Client,\n): Promise<HexString | undefined> {\n  const result = await truapi.localStorage.localStorageRead({ key: \"test-key\" });\n\n  if (result.isErr()) throw result.error;\n  return result.value.value;\n}",
+        usageExample:
+          'import { type Client, type HexString } from "@parity/truapi";\n\nexport async function readLocalValue(\n  truapi: Client,\n): Promise<HexString | undefined> {\n  const result = await truapi.localStorage.localStorageRead({ key: "test-key" });\n\n  if (result.isErr()) throw result.error;\n  return result.value.value;\n}',
       },
       {
         id: "host_local_storage_write",
@@ -4671,7 +4951,8 @@ export const versions: ExplorerVersion[] = [
         response: "undefined",
         errorType: "HostLocalStorageReadError",
         description: "Write a value to a key.",
-        usageExample: "import { type Client } from \"@parity/truapi\";\n\nexport async function writeLocalValue(truapi: Client): Promise<void> {\n  const result = await truapi.localStorage.localStorageWrite({\n    key: \"test-key\",\n    value: \"0x48656c6c6f\",\n  });\n\n  if (result.isErr()) throw result.error;\n}",
+        usageExample:
+          'import { type Client } from "@parity/truapi";\n\nexport async function writeLocalValue(truapi: Client): Promise<void> {\n  const result = await truapi.localStorage.localStorageWrite({\n    key: "test-key",\n    value: "0x48656c6c6f",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_local_storage_clear",
@@ -4684,7 +4965,8 @@ export const versions: ExplorerVersion[] = [
         response: "undefined",
         errorType: "HostLocalStorageReadError",
         description: "Clear a value by key.",
-        usageExample: "import { type Client } from \"@parity/truapi\";\n\nexport async function clearLocalValue(truapi: Client): Promise<void> {\n  const result = await truapi.localStorage.localStorageClear({ key: \"test-key\" });\n\n  if (result.isErr()) throw result.error;\n}",
+        usageExample:
+          'import { type Client } from "@parity/truapi";\n\nexport async function clearLocalValue(truapi: Client): Promise<void> {\n  const result = await truapi.localStorage.localStorageClear({ key: "test-key" });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_account_connection_status_subscribe",
@@ -4696,7 +4978,8 @@ export const versions: ExplorerVersion[] = [
         request: "undefined",
         response: "HostAccountConnectionStatusSubscribeItem",
         description: "Subscribe to account connection status changes.",
-        usageExample: "import {\n  type Client,\n  type Subscription,\n  type HostAccountConnectionStatusSubscribeItem,\n} from \"@parity/truapi\";\n\nexport function watchAccountConnection(truapi: Client): Subscription {\n  return truapi.accountManagement.accountConnectionStatusSubscribe().subscribe({\n    next: (status: HostAccountConnectionStatusSubscribeItem) =>\n      console.log(status),\n    error: (error: Error) => console.error(error),\n    complete: () => console.log(\"completed\"),\n  });\n}",
+        usageExample:
+          'import {\n  type Client,\n  type Subscription,\n  type HostAccountConnectionStatusSubscribeItem,\n} from "@parity/truapi";\n\nexport function watchAccountConnection(truapi: Client): Subscription {\n  return truapi.accountManagement.accountConnectionStatusSubscribe().subscribe({\n    next: (status: HostAccountConnectionStatusSubscribeItem) =>\n      console.log(status),\n    error: (error: Error) => console.error(error),\n    complete: () => console.log("completed"),\n  });\n}',
       },
       {
         id: "host_account_get",
@@ -4709,7 +4992,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostAccountGetResponse",
         errorType: "HostAccountGetError",
         description: "Retrieve a product-scoped account.",
-        usageExample: "import {\n  type Client,\n  type HostAccountGetResponse,\n} from \"@parity/truapi\";\n\nexport async function getAccount(\n  truapi: Client,\n): Promise<HostAccountGetResponse> {\n  const result = await truapi.accountManagement.accountGet({\n    productAccountId: {\n      dotNsIdentifier: \"truapi-playground.dot\",\n      derivationIndex: 0,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostAccountGetResponse,\n} from "@parity/truapi";\n\nexport async function getAccount(\n  truapi: Client,\n): Promise<HostAccountGetResponse> {\n  const result = await truapi.accountManagement.accountGet({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_account_get_alias",
@@ -4722,7 +5006,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostAccountGetAliasResponse",
         errorType: "HostAccountGetError",
         description: "Retrieve a contextual alias for a product account.",
-        usageExample: "import {\n  type Client,\n  type HostAccountGetAliasResponse,\n} from \"@parity/truapi\";\n\nexport async function getAccountAlias(\n  truapi: Client,\n): Promise<HostAccountGetAliasResponse> {\n  const result = await truapi.accountManagement.accountGetAlias({\n    productAccountId: {\n      dotNsIdentifier: \"truapi-playground.dot\",\n      derivationIndex: 0,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostAccountGetAliasResponse,\n} from "@parity/truapi";\n\nexport async function getAccountAlias(\n  truapi: Client,\n): Promise<HostAccountGetAliasResponse> {\n  const result = await truapi.accountManagement.accountGetAlias({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_account_create_proof",
@@ -4735,7 +5020,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostAccountCreateProofResponse",
         errorType: "HostAccountCreateProofError",
         description: "Generate a ring VRF proof for a product account.",
-        usageExample: "import {\n  type Client,\n  type HostAccountCreateProofResponse,\n} from \"@parity/truapi\";\n\nexport async function createAccountProof(\n  truapi: Client,\n): Promise<HostAccountCreateProofResponse> {\n  const result = await truapi.accountManagement.accountCreateProof({\n    productAccountId: {\n      dotNsIdentifier: \"truapi-playground.dot\",\n      derivationIndex: 0,\n    },\n    ringLocation: {\n      genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n      ringRootHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n      hints: { palletInstance: 42 },\n    },\n    context: \"0x\",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostAccountCreateProofResponse,\n} from "@parity/truapi";\n\nexport async function createAccountProof(\n  truapi: Client,\n): Promise<HostAccountCreateProofResponse> {\n  const result = await truapi.accountManagement.accountCreateProof({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    ringLocation: {\n      genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      ringRootHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      hints: { palletInstance: 42 },\n    },\n    context: "0x",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_get_legacy_accounts",
@@ -4748,7 +5034,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostGetLegacyAccountsResponse",
         errorType: "HostAccountGetError",
         description: "List non-product accounts the user owns.",
-        usageExample: "import {\n  type Client,\n  type HostGetLegacyAccountsResponse,\n} from \"@parity/truapi\";\n\nexport async function getLegacyAccounts(\n  truapi: Client,\n): Promise<HostGetLegacyAccountsResponse> {\n  const result = await truapi.accountManagement.getLegacyAccounts();\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostGetLegacyAccountsResponse,\n} from "@parity/truapi";\n\nexport async function getLegacyAccounts(\n  truapi: Client,\n): Promise<HostGetLegacyAccountsResponse> {\n  const result = await truapi.accountManagement.getLegacyAccounts();\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_create_transaction",
@@ -4761,7 +5048,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostCreateTransactionResponse",
         errorType: "HostCreateTransactionError",
         description: "Construct a signed extrinsic for a product account.",
-        usageExample: "import {\n  type Client,\n  type HostCreateTransactionResponse,\n} from \"@parity/truapi\";\n\nexport async function createTransaction(\n  truapi: Client,\n): Promise<HostCreateTransactionResponse> {\n  const result = await truapi.signing.createTransaction({\n    productAccountId: {\n      dotNsIdentifier: \"truapi-playground.dot\",\n      derivationIndex: 0,\n    },\n    payload: {\n      tag: \"V1\",\n      value: {\n        callData: \"0x0000\",\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: \"0x\",\n          tokenSymbol: \"DOT\",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostCreateTransactionResponse,\n} from "@parity/truapi";\n\nexport async function createTransaction(\n  truapi: Client,\n): Promise<HostCreateTransactionResponse> {\n  const result = await truapi.signing.createTransaction({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    payload: {\n      tag: "V1",\n      value: {\n        callData: "0x0000",\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: "0x",\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_create_transaction_with_legacy_account",
@@ -4774,7 +5062,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostCreateTransactionWithLegacyAccountResponse",
         errorType: "HostCreateTransactionError",
         description: "Construct a signed extrinsic for a non-product account.",
-        usageExample: "import {\n  type Client,\n  type HostCreateTransactionWithLegacyAccountResponse,\n} from \"@parity/truapi\";\n\nexport async function createTransactionWithLegacyAccount(\n  truapi: Client,\n): Promise<HostCreateTransactionWithLegacyAccountResponse> {\n  const result = await truapi.signing.createTransactionWithLegacyAccount({\n    payload: {\n      tag: \"V1\",\n      value: {\n        callData: \"0x0000\",\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: \"0x\",\n          tokenSymbol: \"DOT\",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostCreateTransactionWithLegacyAccountResponse,\n} from "@parity/truapi";\n\nexport async function createTransactionWithLegacyAccount(\n  truapi: Client,\n): Promise<HostCreateTransactionWithLegacyAccountResponse> {\n  const result = await truapi.signing.createTransactionWithLegacyAccount({\n    payload: {\n      tag: "V1",\n      value: {\n        callData: "0x0000",\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: "0x",\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_sign_raw_with_legacy_account",
@@ -4787,7 +5076,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostSignPayloadResponse",
         errorType: "HostSignPayloadError",
         description: "Sign raw bytes with a non-product (legacy) account.",
-        usageExample: "import {\n  type Client,\n  type HostSignPayloadResponse,\n} from \"@parity/truapi\";\n\nexport async function signRawWithLegacyAccount(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signRawWithLegacyAccount({\n    signer: \"5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY\",\n    payload: {\n      tag: \"Bytes\",\n      value: { bytes: \"0x48656c6c6f\" },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signRawWithLegacyAccount(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signRawWithLegacyAccount({\n    signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",\n    payload: {\n      tag: "Bytes",\n      value: { bytes: "0x48656c6c6f" },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_sign_payload_with_legacy_account",
@@ -4799,8 +5089,10 @@ export const versions: ExplorerVersion[] = [
         request: "HostSignPayloadWithLegacyAccountRequest",
         response: "HostSignPayloadResponse",
         errorType: "HostSignPayloadError",
-        description: "Sign a Substrate extrinsic payload with a non-product (legacy) account.",
-        usageExample: "import {\n  type Client,\n  type HostSignPayloadResponse,\n} from \"@parity/truapi\";\n\nexport async function signPayloadWithLegacyAccount(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signPayloadWithLegacyAccount({\n    signer: \"5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY\",\n    payload: {\n      account: { dotNsIdentifier: \"truapi-playground.dot\", derivationIndex: 0 },\n      blockHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n      blockNumber: \"0x00000000\",\n      era: \"0x00\",\n      genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n      method: \"0x0000\",\n      nonce: \"0x00000000\",\n      signedExtensions: [],\n      specVersion: \"0x00000000\",\n      tip: \"0x00000000000000000000000000000000\",\n      transactionVersion: \"0x00000000\",\n      version: 4,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        description:
+          "Sign a Substrate extrinsic payload with a non-product (legacy) account.",
+        usageExample:
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signPayloadWithLegacyAccount(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signPayloadWithLegacyAccount({\n    signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",\n    payload: {\n      account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n      blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      blockNumber: "0x00000000",\n      era: "0x00",\n      genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      method: "0x0000",\n      nonce: "0x00000000",\n      signedExtensions: [],\n      specVersion: "0x00000000",\n      tip: "0x00000000000000000000000000000000",\n      transactionVersion: "0x00000000",\n      version: 4,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_create_room",
@@ -4813,7 +5105,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostChatCreateRoomResponse",
         errorType: "HostChatCreateRoomError",
         description: "Create a chat room.",
-        usageExample: "import {\n  type Client,\n  type HostChatCreateRoomResponse,\n} from \"@parity/truapi\";\n\nexport async function createRoom(\n  truapi: Client,\n): Promise<HostChatCreateRoomResponse> {\n  const result = await truapi.chat.chatCreateRoom({\n    roomId: \"test-room\",\n    name: \"Test Room\",\n    icon: \"\",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostChatCreateRoomResponse,\n} from "@parity/truapi";\n\nexport async function createRoom(\n  truapi: Client,\n): Promise<HostChatCreateRoomResponse> {\n  const result = await truapi.chat.chatCreateRoom({\n    roomId: "test-room",\n    name: "Test Room",\n    icon: "",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_register_bot",
@@ -4826,7 +5119,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostChatRegisterBotResponse",
         errorType: "HostChatRegisterBotError",
         description: "Register a chat bot.",
-        usageExample: "import {\n  type Client,\n  type HostChatRegisterBotResponse,\n} from \"@parity/truapi\";\n\nexport async function registerBot(\n  truapi: Client,\n): Promise<HostChatRegisterBotResponse> {\n  const result = await truapi.chat.chatRegisterBot({\n    botId: \"test-bot\",\n    name: \"Test Bot\",\n    icon: \"\",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostChatRegisterBotResponse,\n} from "@parity/truapi";\n\nexport async function registerBot(\n  truapi: Client,\n): Promise<HostChatRegisterBotResponse> {\n  const result = await truapi.chat.chatRegisterBot({\n    botId: "test-bot",\n    name: "Test Bot",\n    icon: "",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_list_subscribe",
@@ -4838,7 +5132,8 @@ export const versions: ExplorerVersion[] = [
         request: "undefined",
         response: "HostChatListSubscribeItem",
         description: "Subscribe to the list of chat rooms.",
-        usageExample: "import {\n  type Client,\n  type Subscription,\n  type HostChatListSubscribeItem,\n} from \"@parity/truapi\";\n\nexport function watchChatRooms(truapi: Client): Subscription {\n  return truapi.chat.chatListSubscribe().subscribe({\n    next: (rooms: HostChatListSubscribeItem) => console.log(rooms),\n    error: (error: Error) => console.error(error),\n    complete: () => console.log(\"completed\"),\n  });\n}",
+        usageExample:
+          'import {\n  type Client,\n  type Subscription,\n  type HostChatListSubscribeItem,\n} from "@parity/truapi";\n\nexport function watchChatRooms(truapi: Client): Subscription {\n  return truapi.chat.chatListSubscribe().subscribe({\n    next: (rooms: HostChatListSubscribeItem) => console.log(rooms),\n    error: (error: Error) => console.error(error),\n    complete: () => console.log("completed"),\n  });\n}',
       },
       {
         id: "host_chat_post_message",
@@ -4851,7 +5146,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostChatPostMessageResponse",
         errorType: "HostChatPostMessageError",
         description: "Post a message to a chat room.",
-        usageExample: "import {\n  type Client,\n  type HostChatPostMessageResponse,\n} from \"@parity/truapi\";\n\nexport async function postChatMessage(\n  truapi: Client,\n): Promise<HostChatPostMessageResponse> {\n  const result = await truapi.chat.chatPostMessage({\n    roomId: \"test-room\",\n    payload: { tag: \"Text\", value: { text: \"Hello from playground!\" } },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostChatPostMessageResponse,\n} from "@parity/truapi";\n\nexport async function postChatMessage(\n  truapi: Client,\n): Promise<HostChatPostMessageResponse> {\n  const result = await truapi.chat.chatPostMessage({\n    roomId: "test-room",\n    payload: { tag: "Text", value: { text: "Hello from playground!" } },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_action_subscribe",
@@ -4863,7 +5159,8 @@ export const versions: ExplorerVersion[] = [
         request: "undefined",
         response: "HostChatActionSubscribeItem",
         description: "Subscribe to received chat actions.",
-        usageExample: "import {\n  type Client,\n  type Subscription,\n  type HostChatActionSubscribeItem,\n} from \"@parity/truapi\";\n\nexport function watchChatActions(truapi: Client): Subscription {\n  return truapi.chat.chatActionSubscribe().subscribe({\n    next: (action: HostChatActionSubscribeItem) =>\n      console.log(action),\n    error: (error: Error) => console.error(error),\n    complete: () => console.log(\"completed\"),\n  });\n}",
+        usageExample:
+          'import {\n  type Client,\n  type Subscription,\n  type HostChatActionSubscribeItem,\n} from "@parity/truapi";\n\nexport function watchChatActions(truapi: Client): Subscription {\n  return truapi.chat.chatActionSubscribe().subscribe({\n    next: (action: HostChatActionSubscribeItem) =>\n      console.log(action),\n    error: (error: Error) => console.error(error),\n    complete: () => console.log("completed"),\n  });\n}',
       },
       {
         id: "product_chat_custom_message_render_subscribe",
@@ -4874,8 +5171,10 @@ export const versions: ExplorerVersion[] = [
         pattern: "subscription",
         request: "ProductChatCustomMessageRenderSubscribeRequest",
         response: "CustomRendererNode",
-        description: "Subscribe to custom message render requests from the host. Each\nemitted item is a [`CustomRendererNode`](crate::v01::CustomRendererNode)\ntree describing the rendered UI.",
-        usageExample: "import {\n  type Client,\n  type CustomRendererNode,\n  type Subscription,\n} from \"@parity/truapi\";\n\nexport function renderCustomChatMessage(truapi: Client): Subscription {\n  return truapi.chat\n    .chatCustomMessageRenderSubscribe({\n      request: {\n        messageId: \"msg-1\",\n        messageType: \"custom-render-demo\",\n        payload: \"0x\",\n      },\n    })\n    .subscribe({\n      next: (node: CustomRendererNode) => console.log(node),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log(\"completed\"),\n    });\n}",
+        description:
+          "Subscribe to custom message render requests from the host. Each\nemitted item is a [`CustomRendererNode`](crate::v01::CustomRendererNode)\ntree describing the rendered UI.",
+        usageExample:
+          'import {\n  type Client,\n  type CustomRendererNode,\n  type Subscription,\n} from "@parity/truapi";\n\nexport function renderCustomChatMessage(truapi: Client): Subscription {\n  return truapi.chat\n    .chatCustomMessageRenderSubscribe({\n      request: {\n        messageId: "msg-1",\n        messageType: "custom-render-demo",\n        payload: "0x",\n      },\n    })\n    .subscribe({\n      next: (node: CustomRendererNode) => console.log(node),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_statement_store_subscribe",
@@ -4887,7 +5186,8 @@ export const versions: ExplorerVersion[] = [
         request: "RemoteStatementStoreSubscribeRequest",
         response: "RemoteStatementStoreSubscribeItem",
         description: "Subscribe to statements matching a topic filter.",
-        usageExample: "import {\n  type Client,\n  type Subscription,\n  type RemoteStatementStoreSubscribeItem,\n} from \"@parity/truapi\";\n\nexport function subscribeStatements(truapi: Client): Subscription {\n  return truapi.statementStore\n    .statementStoreSubscribe({\n      request: { tag: \"MatchAll\", value: [] },\n    })\n    .subscribe({\n      next: (statements: RemoteStatementStoreSubscribeItem) =>\n        console.log(statements),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log(\"completed\"),\n    });\n}",
+        usageExample:
+          'import {\n  type Client,\n  type Subscription,\n  type RemoteStatementStoreSubscribeItem,\n} from "@parity/truapi";\n\nexport function subscribeStatements(truapi: Client): Subscription {\n  return truapi.statementStore\n    .statementStoreSubscribe({\n      request: { tag: "MatchAll", value: [] },\n    })\n    .subscribe({\n      next: (statements: RemoteStatementStoreSubscribeItem) =>\n        console.log(statements),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_statement_store_create_proof",
@@ -4900,7 +5200,8 @@ export const versions: ExplorerVersion[] = [
         response: "RemoteStatementStoreCreateProofResponse",
         errorType: "RemoteStatementStoreCreateProofError",
         description: "Create a proof for a statement.",
-        usageExample: "import {\n  type Client,\n  type RemoteStatementStoreCreateProofResponse,\n} from \"@parity/truapi\";\n\nexport async function createStatementProof(\n  truapi: Client,\n): Promise<RemoteStatementStoreCreateProofResponse> {\n  const result = await truapi.statementStore.statementStoreCreateProof({\n    productAccountId: {\n      dotNsIdentifier: \"truapi-playground.dot\",\n      derivationIndex: 0,\n    },\n    statement: {\n      expiry: 9999999999999n,\n      topics: [],\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type RemoteStatementStoreCreateProofResponse,\n} from "@parity/truapi";\n\nexport async function createStatementProof(\n  truapi: Client,\n): Promise<RemoteStatementStoreCreateProofResponse> {\n  const result = await truapi.statementStore.statementStoreCreateProof({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    statement: {\n      expiry: 9999999999999n,\n      topics: [],\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_statement_store_submit",
@@ -4912,8 +5213,10 @@ export const versions: ExplorerVersion[] = [
         request: "SignedStatement",
         response: "undefined",
         errorType: "GenericError",
-        description: "Submit a signed statement to the network. The request body is the\n[`SignedStatement`](crate::v01::SignedStatement) directly (no wrapping\nstruct), matching upstream `triangle-js-sdks`.",
-        usageExample: "import { type Client } from \"@parity/truapi\";\n\nexport async function submitStatement(truapi: Client): Promise<void> {\n  const result = await truapi.statementStore.statementStoreSubmit({\n    proof: {\n      tag: \"Sr25519\",\n      value: {\n        signature: \"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\n        signer: \"0x0000000000000000000000000000000000000000000000000000000000000000\",\n      },\n    },\n    topics: [],\n  });\n\n  if (result.isErr()) throw result.error;\n}",
+        description:
+          "Submit a signed statement to the network. The request body is the\n[`SignedStatement`](crate::v01::SignedStatement) directly (no wrapping\nstruct), matching upstream `triangle-js-sdks`.",
+        usageExample:
+          'import { type Client } from "@parity/truapi";\n\nexport async function submitStatement(truapi: Client): Promise<void> {\n  const result = await truapi.statementStore.statementStoreSubmit({\n    proof: {\n      tag: "Sr25519",\n      value: {\n        signature: "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",\n        signer: "0x0000000000000000000000000000000000000000000000000000000000000000",\n      },\n    },\n    topics: [],\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_preimage_lookup_subscribe",
@@ -4925,7 +5228,8 @@ export const versions: ExplorerVersion[] = [
         request: "RemotePreimageLookupSubscribeRequest",
         response: "RemotePreimageLookupSubscribeItem",
         description: "Subscribe to preimage lookups for a given key.",
-        usageExample: "import {\n  type Client,\n  type Subscription,\n  type RemotePreimageLookupSubscribeItem,\n} from \"@parity/truapi\";\n\nexport function lookupPreimage(truapi: Client): Subscription {\n  return truapi.preimage\n    .preimageLookupSubscribe({\n      request: {\n        key: \"0x0000000000000000000000000000000000000000000000000000000000000000\",\n      },\n    })\n    .subscribe({\n      next: (item: RemotePreimageLookupSubscribeItem) =>\n        console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log(\"completed\"),\n    });\n}",
+        usageExample:
+          'import {\n  type Client,\n  type Subscription,\n  type RemotePreimageLookupSubscribeItem,\n} from "@parity/truapi";\n\nexport function lookupPreimage(truapi: Client): Subscription {\n  return truapi.preimage\n    .preimageLookupSubscribe({\n      request: {\n        key: "0x0000000000000000000000000000000000000000000000000000000000000000",\n      },\n    })\n    .subscribe({\n      next: (item: RemotePreimageLookupSubscribeItem) =>\n        console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_preimage_submit",
@@ -4937,8 +5241,10 @@ export const versions: ExplorerVersion[] = [
         request: "HexString",
         response: "HexString",
         errorType: "PreimageSubmitError",
-        description: "Submit a preimage. Returns the preimage key (hash) on success.",
-        usageExample: "import {\n  type Client,\n  type HexString,\n} from \"@parity/truapi\";\n\nexport async function submitPreimage(\n  truapi: Client,\n): Promise<HexString> {\n  const result = await truapi.preimage.preimageSubmit(\"0xdeadbeef\");\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        description:
+          "Submit a preimage. Returns the preimage key (hash) on success.",
+        usageExample:
+          'import {\n  type Client,\n  type HexString,\n} from "@parity/truapi";\n\nexport async function submitPreimage(\n  truapi: Client,\n): Promise<HexString> {\n  const result = await truapi.preimage.preimageSubmit("0xdeadbeef");\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_follow_subscribe",
@@ -4950,7 +5256,8 @@ export const versions: ExplorerVersion[] = [
         request: "RemoteChainHeadFollowRequest",
         response: "RemoteChainHeadFollowItem",
         description: "Follow the chain head and receive block events.",
-        usageExample: "import {\n  type Client,\n  type Subscription,\n  type RemoteChainHeadFollowItem,\n} from \"@parity/truapi\";\n\nexport function followChainHead(truapi: Client): Subscription {\n  return truapi.chainInteraction\n    .chainHeadFollowSubscribe({\n      request: {\n        genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n        withRuntime: false,\n      },\n    })\n    .subscribe({\n      next: (item: RemoteChainHeadFollowItem) => console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log(\"completed\"),\n    });\n}",
+        usageExample:
+          'import {\n  type Client,\n  type Subscription,\n  type RemoteChainHeadFollowItem,\n} from "@parity/truapi";\n\nexport function followChainHead(truapi: Client): Subscription {\n  return truapi.chainInteraction\n    .chainHeadFollowSubscribe({\n      request: {\n        genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n        withRuntime: false,\n      },\n    })\n    .subscribe({\n      next: (item: RemoteChainHeadFollowItem) => console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_chain_head_header",
@@ -4963,7 +5270,8 @@ export const versions: ExplorerVersion[] = [
         response: "RemoteChainHeadHeaderResponse",
         errorType: "GenericError",
         description: "Fetch a block header.",
-        usageExample: "import {\n  type Client,\n  type RemoteChainHeadHeaderResponse,\n} from \"@parity/truapi\";\n\nexport async function getChainHeadHeader(\n  truapi: Client,\n): Promise<RemoteChainHeadHeaderResponse> {\n  const result = await truapi.chainInteraction.chainHeadHeader({\n    genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n    followSubscriptionId: \"\",\n    hash: \"0x0000000000000000000000000000000000000000000000000000000000000000\",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type RemoteChainHeadHeaderResponse,\n} from "@parity/truapi";\n\nexport async function getChainHeadHeader(\n  truapi: Client,\n): Promise<RemoteChainHeadHeaderResponse> {\n  const result = await truapi.chainInteraction.chainHeadHeader({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    hash: "0x0000000000000000000000000000000000000000000000000000000000000000",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_body",
@@ -4976,7 +5284,8 @@ export const versions: ExplorerVersion[] = [
         response: "RemoteChainHeadBodyResponse",
         errorType: "GenericError",
         description: "Fetch a block body.",
-        usageExample: "import {\n  type Client,\n  type RemoteChainHeadBodyResponse,\n} from \"@parity/truapi\";\n\nexport async function getChainHeadBody(\n  truapi: Client,\n): Promise<RemoteChainHeadBodyResponse> {\n  const result = await truapi.chainInteraction.chainHeadBody({\n    genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n    followSubscriptionId: \"\",\n    hash: \"0x0000000000000000000000000000000000000000000000000000000000000000\",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type RemoteChainHeadBodyResponse,\n} from "@parity/truapi";\n\nexport async function getChainHeadBody(\n  truapi: Client,\n): Promise<RemoteChainHeadBodyResponse> {\n  const result = await truapi.chainInteraction.chainHeadBody({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    hash: "0x0000000000000000000000000000000000000000000000000000000000000000",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_storage",
@@ -4989,7 +5298,8 @@ export const versions: ExplorerVersion[] = [
         response: "RemoteChainHeadStorageResponse",
         errorType: "GenericError",
         description: "Query runtime storage at a specific block.",
-        usageExample: "import {\n  type Client,\n  type RemoteChainHeadStorageResponse,\n} from \"@parity/truapi\";\n\nexport async function getChainHeadStorage(\n  truapi: Client,\n): Promise<RemoteChainHeadStorageResponse> {\n  const result = await truapi.chainInteraction.chainHeadStorage({\n    genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n    followSubscriptionId: \"\",\n    hash: \"0x0000000000000000000000000000000000000000000000000000000000000000\",\n    items: [\n      {\n        key: \"0x26aa394eea5630e07c48ae0c9558cef7\",\n        queryType: { tag: \"Value\", value: undefined },\n      },\n    ],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type RemoteChainHeadStorageResponse,\n} from "@parity/truapi";\n\nexport async function getChainHeadStorage(\n  truapi: Client,\n): Promise<RemoteChainHeadStorageResponse> {\n  const result = await truapi.chainInteraction.chainHeadStorage({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    hash: "0x0000000000000000000000000000000000000000000000000000000000000000",\n    items: [\n      {\n        key: "0x26aa394eea5630e07c48ae0c9558cef7",\n        queryType: { tag: "Value", value: undefined },\n      },\n    ],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_call",
@@ -5002,7 +5312,8 @@ export const versions: ExplorerVersion[] = [
         response: "RemoteChainHeadCallResponse",
         errorType: "GenericError",
         description: "Invoke a runtime call at a specific block.",
-        usageExample: "import {\n  type Client,\n  type RemoteChainHeadCallResponse,\n} from \"@parity/truapi\";\n\nexport async function callChainHeadRuntime(\n  truapi: Client,\n): Promise<RemoteChainHeadCallResponse> {\n  const result = await truapi.chainInteraction.chainHeadCall({\n    genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n    followSubscriptionId: \"\",\n    hash: \"0x0000000000000000000000000000000000000000000000000000000000000000\",\n    function: \"Core_version\",\n    callParameters: \"0x\",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type RemoteChainHeadCallResponse,\n} from "@parity/truapi";\n\nexport async function callChainHeadRuntime(\n  truapi: Client,\n): Promise<RemoteChainHeadCallResponse> {\n  const result = await truapi.chainInteraction.chainHeadCall({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    hash: "0x0000000000000000000000000000000000000000000000000000000000000000",\n    function: "Core_version",\n    callParameters: "0x",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_head_unpin",
@@ -5015,7 +5326,8 @@ export const versions: ExplorerVersion[] = [
         response: "undefined",
         errorType: "GenericError",
         description: "Release pinned blocks.",
-        usageExample: "import { type Client } from \"@parity/truapi\";\n\nexport async function unpinChainHead(truapi: Client): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadUnpin({\n    genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n    followSubscriptionId: \"\",\n    hashes: [\n      \"0x0000000000000000000000000000000000000000000000000000000000000000\",\n    ],\n  });\n\n  if (result.isErr()) throw result.error;\n}",
+        usageExample:
+          'import { type Client } from "@parity/truapi";\n\nexport async function unpinChainHead(truapi: Client): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadUnpin({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    hashes: [\n      "0x0000000000000000000000000000000000000000000000000000000000000000",\n    ],\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_chain_head_continue",
@@ -5028,7 +5340,8 @@ export const versions: ExplorerVersion[] = [
         response: "undefined",
         errorType: "GenericError",
         description: "Continue a paused chain-head operation.",
-        usageExample: "import { type Client } from \"@parity/truapi\";\n\nexport async function continueChainHeadOperation(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadContinue({\n    genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n    followSubscriptionId: \"\",\n    operationId: \"op-id\",\n  });\n\n  if (result.isErr()) throw result.error;\n}",
+        usageExample:
+          'import { type Client } from "@parity/truapi";\n\nexport async function continueChainHeadOperation(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadContinue({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_chain_head_stop_operation",
@@ -5041,7 +5354,8 @@ export const versions: ExplorerVersion[] = [
         response: "undefined",
         errorType: "GenericError",
         description: "Stop a chain-head operation.",
-        usageExample: "import { type Client } from \"@parity/truapi\";\n\nexport async function stopChainHeadOperation(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadStopOperation({\n    genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n    followSubscriptionId: \"\",\n    operationId: \"op-id\",\n  });\n\n  if (result.isErr()) throw result.error;\n}",
+        usageExample:
+          'import { type Client } from "@parity/truapi";\n\nexport async function stopChainHeadOperation(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainHeadStopOperation({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    followSubscriptionId: "",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "remote_chain_spec_genesis_hash",
@@ -5054,7 +5368,8 @@ export const versions: ExplorerVersion[] = [
         response: "RemoteChainSpecGenesisHashResponse",
         errorType: "GenericError",
         description: "Fetch the canonical genesis hash for a chain.",
-        usageExample: "import {\n  type Client,\n  type RemoteChainSpecGenesisHashResponse,\n} from \"@parity/truapi\";\n\nexport async function getChainGenesisHash(\n  truapi: Client,\n): Promise<RemoteChainSpecGenesisHashResponse> {\n  const result = await truapi.chainInteraction.chainSpecGenesisHash({\n    genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type RemoteChainSpecGenesisHashResponse,\n} from "@parity/truapi";\n\nexport async function getChainGenesisHash(\n  truapi: Client,\n): Promise<RemoteChainSpecGenesisHashResponse> {\n  const result = await truapi.chainInteraction.chainSpecGenesisHash({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_spec_chain_name",
@@ -5067,7 +5382,8 @@ export const versions: ExplorerVersion[] = [
         response: "RemoteChainSpecChainNameResponse",
         errorType: "GenericError",
         description: "Fetch the display name of a chain.",
-        usageExample: "import {\n  type Client,\n  type RemoteChainSpecChainNameResponse,\n} from \"@parity/truapi\";\n\nexport async function getChainName(\n  truapi: Client,\n): Promise<RemoteChainSpecChainNameResponse> {\n  const result = await truapi.chainInteraction.chainSpecChainName({\n    genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type RemoteChainSpecChainNameResponse,\n} from "@parity/truapi";\n\nexport async function getChainName(\n  truapi: Client,\n): Promise<RemoteChainSpecChainNameResponse> {\n  const result = await truapi.chainInteraction.chainSpecChainName({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_spec_properties",
@@ -5080,7 +5396,8 @@ export const versions: ExplorerVersion[] = [
         response: "RemoteChainSpecPropertiesResponse",
         errorType: "GenericError",
         description: "Fetch the JSON-encoded properties of a chain.",
-        usageExample: "import {\n  type Client,\n  type RemoteChainSpecPropertiesResponse,\n} from \"@parity/truapi\";\n\nexport async function getChainProperties(\n  truapi: Client,\n): Promise<RemoteChainSpecPropertiesResponse> {\n  const result = await truapi.chainInteraction.chainSpecProperties({\n    genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type RemoteChainSpecPropertiesResponse,\n} from "@parity/truapi";\n\nexport async function getChainProperties(\n  truapi: Client,\n): Promise<RemoteChainSpecPropertiesResponse> {\n  const result = await truapi.chainInteraction.chainSpecProperties({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_transaction_broadcast",
@@ -5093,7 +5410,8 @@ export const versions: ExplorerVersion[] = [
         response: "RemoteChainTransactionBroadcastResponse",
         errorType: "GenericError",
         description: "Broadcast a signed transaction.",
-        usageExample: "import {\n  type Client,\n  type RemoteChainTransactionBroadcastResponse,\n} from \"@parity/truapi\";\n\nexport async function broadcastTransaction(\n  truapi: Client,\n): Promise<RemoteChainTransactionBroadcastResponse> {\n  const result = await truapi.chainInteraction.chainTransactionBroadcast({\n    genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n    transaction: \"0x\",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type RemoteChainTransactionBroadcastResponse,\n} from "@parity/truapi";\n\nexport async function broadcastTransaction(\n  truapi: Client,\n): Promise<RemoteChainTransactionBroadcastResponse> {\n  const result = await truapi.chainInteraction.chainTransactionBroadcast({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    transaction: "0x",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_chain_transaction_stop",
@@ -5106,7 +5424,8 @@ export const versions: ExplorerVersion[] = [
         response: "undefined",
         errorType: "GenericError",
         description: "Stop a transaction broadcast.",
-        usageExample: "import { type Client } from \"@parity/truapi\";\n\nexport async function stopTransactionBroadcast(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainTransactionStop({\n    genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n    operationId: \"op-id\",\n  });\n\n  if (result.isErr()) throw result.error;\n}",
+        usageExample:
+          'import { type Client } from "@parity/truapi";\n\nexport async function stopTransactionBroadcast(\n  truapi: Client,\n): Promise<void> {\n  const result = await truapi.chainInteraction.chainTransactionStop({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    operationId: "op-id",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_derive_entropy",
@@ -5118,8 +5437,10 @@ export const versions: ExplorerVersion[] = [
         request: "HostDeriveEntropyRequest",
         response: "HostDeriveEntropyResponse",
         errorType: "HostDeriveEntropyError",
-        description: "Derive 32 bytes of entropy from the user's root BIP-39 entropy for the\ngiven key.",
-        usageExample: "import {\n  type Client,\n  type HostDeriveEntropyResponse,\n} from \"@parity/truapi\";\n\nexport async function deriveEntropy(\n  truapi: Client,\n): Promise<HostDeriveEntropyResponse> {\n  const result = await truapi.entropyDerivation.deriveEntropy({\n    context: \"0x70726f647563742d6b6579\",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        description:
+          "Derive 32 bytes of entropy from the user's root BIP-39 entropy for the\ngiven key.",
+        usageExample:
+          'import {\n  type Client,\n  type HostDeriveEntropyResponse,\n} from "@parity/truapi";\n\nexport async function deriveEntropy(\n  truapi: Client,\n): Promise<HostDeriveEntropyResponse> {\n  const result = await truapi.entropyDerivation.deriveEntropy({\n    context: "0x70726f647563742d6b6579",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_get_user_id",
@@ -5132,7 +5453,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostGetUserIdResponse",
         errorType: "HostGetUserIdError",
         description: "Fetch the user's primary identity (V0.2+).",
-        usageExample: "import {\n  type Client,\n  type HostGetUserIdResponse,\n} from \"@parity/truapi\";\n\nexport async function getUserId(\n  truapi: Client,\n): Promise<HostGetUserIdResponse> {\n  const result = await truapi.accountManagement.getUserId();\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostGetUserIdResponse,\n} from "@parity/truapi";\n\nexport async function getUserId(\n  truapi: Client,\n): Promise<HostGetUserIdResponse> {\n  const result = await truapi.accountManagement.getUserId();\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_request_login",
@@ -5144,8 +5466,10 @@ export const versions: ExplorerVersion[] = [
         request: "HostRequestLoginRequest",
         response: "HostRequestLoginResponse",
         errorType: "HostRequestLoginError",
-        description: "Request the host to present the login flow to the user.\n\nProducts should call this in response to a user action (e.g. tapping a\n\"Sign in\" button), not automatically on load.",
-        usageExample: "import {\n  type Client,\n  type HostRequestLoginResponse,\n} from \"@parity/truapi\";\n\nexport async function requestLogin(\n  truapi: Client,\n): Promise<HostRequestLoginResponse> {\n  const result = await truapi.accountManagement.requestLogin({\n    reason: \"Sign in to vote on Referendum #42\",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        description:
+          'Request the host to present the login flow to the user.\n\nProducts should call this in response to a user action (e.g. tapping a\n"Sign in" button), not automatically on load.',
+        usageExample:
+          'import {\n  type Client,\n  type HostRequestLoginResponse,\n} from "@parity/truapi";\n\nexport async function requestLogin(\n  truapi: Client,\n): Promise<HostRequestLoginResponse> {\n  const result = await truapi.accountManagement.requestLogin({\n    reason: "Sign in to vote on Referendum #42",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_sign_raw",
@@ -5158,7 +5482,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostSignPayloadResponse",
         errorType: "HostSignPayloadError",
         description: "Sign raw bytes or a message.",
-        usageExample: "import {\n  type Client,\n  type HostSignPayloadResponse,\n} from \"@parity/truapi\";\n\nexport async function signRawBytes(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signRaw({\n    account: { dotNsIdentifier: \"truapi-playground.dot\", derivationIndex: 0 },\n    payload: {\n      tag: \"Bytes\",\n      value: {\n        bytes: \"0x48656c6c6f2c20776f726c6421\",\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signRawBytes(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signRaw({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    payload: {\n      tag: "Bytes",\n      value: {\n        bytes: "0x48656c6c6f2c20776f726c6421",\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_sign_payload",
@@ -5171,7 +5496,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostSignPayloadResponse",
         errorType: "HostSignPayloadError",
         description: "Sign a Substrate extrinsic payload.",
-        usageExample: "import {\n  type Client,\n  type HostSignPayloadResponse,\n} from \"@parity/truapi\";\n\nexport async function signPayload(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signPayload({\n    account: { dotNsIdentifier: \"truapi-playground.dot\", derivationIndex: 0 },\n    blockHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n    blockNumber: \"0x00000000\",\n    era: \"0x00\",\n    genesisHash: \"0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2\",\n    method: \"0x00003448656c6c6f2c20776f726c6421\",\n    nonce: \"0x00000000\",\n    signedExtensions: [],\n    specVersion: \"0x00000000\",\n    tip: \"0x00000000000000000000000000000000\",\n    transactionVersion: \"0x00000000\",\n    version: 4,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signPayload(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signPayload({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    blockNumber: "0x00000000",\n    era: "0x00",\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    method: "0x00003448656c6c6f2c20776f726c6421",\n    nonce: "0x00000000",\n    signedExtensions: [],\n    specVersion: "0x00000000",\n    tip: "0x00000000000000000000000000000000",\n    transactionVersion: "0x00000000",\n    version: 4,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_payment_balance_subscribe",
@@ -5184,7 +5510,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostPaymentBalanceSubscribeItem",
         errorType: "HostPaymentBalanceSubscribeError",
         description: "Subscribe to payment balance updates.",
-        usageExample: "import {\n  type Client,\n  type HostPaymentBalanceSubscribeError,\n  type HostPaymentBalanceSubscribeItem,\n  type Subscription,\n  type SubscriptionError,\n} from \"@parity/truapi\";\n\nexport function watchPaymentBalance(truapi: Client): Subscription {\n  return truapi.payment.paymentBalanceSubscribe().subscribe({\n    next: (balance: HostPaymentBalanceSubscribeItem) =>\n      console.log(balance),\n    error: (error: SubscriptionError<HostPaymentBalanceSubscribeError>) =>\n      console.error(error),\n    complete: () => console.log(\"completed\"),\n  });\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostPaymentBalanceSubscribeError,\n  type HostPaymentBalanceSubscribeItem,\n  type Subscription,\n  type SubscriptionError,\n} from "@parity/truapi";\n\nexport function watchPaymentBalance(truapi: Client): Subscription {\n  return truapi.payment.paymentBalanceSubscribe().subscribe({\n    next: (balance: HostPaymentBalanceSubscribeItem) =>\n      console.log(balance),\n    error: (error: SubscriptionError<HostPaymentBalanceSubscribeError>) =>\n      console.error(error),\n    complete: () => console.log("completed"),\n  });\n}',
       },
       {
         id: "host_payment_top_up",
@@ -5197,7 +5524,8 @@ export const versions: ExplorerVersion[] = [
         response: "undefined",
         errorType: "HostPaymentTopUpError",
         description: "Top up the user's payment balance.",
-        usageExample: "import { type Client } from \"@parity/truapi\";\n\nexport async function topUpPaymentBalance(truapi: Client): Promise<void> {\n  const result = await truapi.payment.paymentTopUp({\n    amount: 1000000000000n,\n    source: { tag: \"ProductAccount\", value: { derivationIndex: 0 } },\n  });\n\n  if (result.isErr()) throw result.error;\n}",
+        usageExample:
+          'import { type Client } from "@parity/truapi";\n\nexport async function topUpPaymentBalance(truapi: Client): Promise<void> {\n  const result = await truapi.payment.paymentTopUp({\n    amount: 1000000000000n,\n    source: { tag: "ProductAccount", value: { derivationIndex: 0 } },\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_payment_request",
@@ -5210,7 +5538,8 @@ export const versions: ExplorerVersion[] = [
         response: "HostPaymentRequestResponse",
         errorType: "HostPaymentRequestError",
         description: "Request a payment from the user.",
-        usageExample: "import {\n  type Client,\n  type HostPaymentRequestResponse,\n} from \"@parity/truapi\";\n\nexport async function requestPayment(\n  truapi: Client,\n): Promise<HostPaymentRequestResponse> {\n  const result = await truapi.payment.paymentRequest({\n    amount: 1000000000000n,\n    destination: \"0x0000000000000000000000000000000000000000000000000000000000000000\",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        usageExample:
+          'import {\n  type Client,\n  type HostPaymentRequestResponse,\n} from "@parity/truapi";\n\nexport async function requestPayment(\n  truapi: Client,\n): Promise<HostPaymentRequestResponse> {\n  const result = await truapi.payment.paymentRequest({\n    amount: 1000000000000n,\n    destination: "0x0000000000000000000000000000000000000000000000000000000000000000",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_payment_status_subscribe",
@@ -5222,8 +5551,10 @@ export const versions: ExplorerVersion[] = [
         request: "HostPaymentStatusSubscribeRequest",
         response: "HostPaymentStatusSubscribeItem",
         errorType: "HostPaymentStatusSubscribeError",
-        description: "Subscribe to payment lifecycle updates for a specific payment.",
-        usageExample: "import {\n  type Client,\n  type HostPaymentStatusSubscribeError,\n  type HostPaymentStatusSubscribeItem,\n  type Subscription,\n  type SubscriptionError,\n} from \"@parity/truapi\";\n\nexport function watchPaymentStatus(truapi: Client): Subscription {\n  return truapi.payment\n    .paymentStatusSubscribe({\n      request: { paymentId: \"payment-id\" },\n    })\n    .subscribe({\n      next: (status: HostPaymentStatusSubscribeItem) =>\n        console.log(status),\n      error: (error: SubscriptionError<HostPaymentStatusSubscribeError>) =>\n        console.error(error),\n      complete: () => console.log(\"completed\"),\n    });\n}",
+        description:
+          "Subscribe to payment lifecycle updates for a specific payment.",
+        usageExample:
+          'import {\n  type Client,\n  type HostPaymentStatusSubscribeError,\n  type HostPaymentStatusSubscribeItem,\n  type Subscription,\n  type SubscriptionError,\n} from "@parity/truapi";\n\nexport function watchPaymentStatus(truapi: Client): Subscription {\n  return truapi.payment\n    .paymentStatusSubscribe({\n      request: { paymentId: "payment-id" },\n    })\n    .subscribe({\n      next: (status: HostPaymentStatusSubscribeItem) =>\n        console.log(status),\n      error: (error: SubscriptionError<HostPaymentStatusSubscribeError>) =>\n        console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_statement_store_create_proof_authorized",
@@ -5235,8 +5566,10 @@ export const versions: ExplorerVersion[] = [
         request: "Statement",
         response: "RemoteStatementStoreCreateProofResponse",
         errorType: "RemoteStatementStoreCreateProofError",
-        description: "Create a proof for a statement using a pre-allocated allowance account,\nbypassing the per-call signing prompt.",
-        usageExample: "import {\n  type Client,\n  type RemoteStatementStoreCreateProofResponse,\n} from \"@parity/truapi\";\n\nexport async function createAuthorizedStatementProof(\n  truapi: Client,\n): Promise<RemoteStatementStoreCreateProofResponse> {\n  const result =\n    await truapi.statementStore.statementStoreCreateProofAuthorized({\n      expiry: 9999999999999n,\n      topics: [],\n    });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}",
+        description:
+          "Create a proof for a statement using a pre-allocated allowance account,\nbypassing the per-call signing prompt.",
+        usageExample:
+          'import {\n  type Client,\n  type RemoteStatementStoreCreateProofResponse,\n} from "@parity/truapi";\n\nexport async function createAuthorizedStatementProof(\n  truapi: Client,\n): Promise<RemoteStatementStoreCreateProofResponse> {\n  const result =\n    await truapi.statementStore.statementStoreCreateProofAuthorized({\n      expiry: 9999999999999n,\n      topics: [],\n    });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_push_notification_cancel",
@@ -5248,7 +5581,8 @@ export const versions: ExplorerVersion[] = [
         request: "NotificationsHostPushNotificationCancelRequest",
         response: "undefined",
         errorType: "GenericError",
-        description: "Cancels a previously scheduled notification by its\n[`crate::v02::NotificationId`]. Idempotent — succeeds whether the id\nrefers to a pending entry, an already-fired notification, an unknown\nid, or one owned by another product. Introduced in v0.2 (RFC 0019).",
+        description:
+          "Cancels a previously scheduled notification by its\n[`crate::v02::NotificationId`]. Idempotent — succeeds whether the id\nrefers to a pending entry, an already-fired notification, an unknown\nid, or one owned by another product. Introduced in v0.2 (RFC 0019).",
       },
     ],
     dataTypes: [
@@ -5257,7 +5591,8 @@ export const versions: ExplorerVersion[] = [
         name: "Account",
         category: "struct",
         definition: "interface Account { publicKey: HexString; name?: string }",
-        description: "An account with its public key and optional display name.\n\nUsed by [`HostGetLegacyAccountsResponse`] for non-product (legacy) accounts\nthat may carry a display name.",
+        description:
+          "An account with its public key and optional display name.\n\nUsed by [`HostGetLegacyAccountsResponse`] for non-product (legacy) accounts\nthat may carry a display name.",
         source: "shared",
         fields: [
           {
@@ -5276,7 +5611,8 @@ export const versions: ExplorerVersion[] = [
         id: "ActionTrigger",
         name: "ActionTrigger",
         category: "struct",
-        definition: "interface ActionTrigger { messageId: string; actionId: string; payload?: HexString }",
+        definition:
+          "interface ActionTrigger { messageId: string; actionId: string; payload?: HexString }",
         description: "Payload when a user clicks an action button.",
         source: "shared",
         fields: [
@@ -5301,7 +5637,8 @@ export const versions: ExplorerVersion[] = [
         id: "Arrangement",
         name: "Arrangement",
         category: "enum",
-        definition: "type Arrangement = { tag: \"Start\"; value: undefined } | { tag: \"End\"; value: undefined } | { tag: \"Center\"; value: undefined } | { tag: \"SpaceBetween\"; value: undefined } | { tag: \"SpaceAround\"; value: undefined } | { tag: \"SpaceEvenly\"; value: undefined }",
+        definition:
+          'type Arrangement = { tag: "Start"; value: undefined } | { tag: "End"; value: undefined } | { tag: "Center"; value: undefined } | { tag: "SpaceBetween"; value: undefined } | { tag: "SpaceAround"; value: undefined } | { tag: "SpaceEvenly"; value: undefined }',
         description: "Layout arrangement (like CSS flexbox `justify-content`).",
         source: "shared",
         variants: [
@@ -5356,14 +5693,16 @@ export const versions: ExplorerVersion[] = [
         name: "Balance",
         category: "alias",
         definition: "type Balance = bigint",
-        description: "Balance amount for payment operations. Interpreted according to the host's\nsingle fixed payment asset (e.g. pUSD).",
+        description:
+          "Balance amount for payment operations. Interpreted according to the host's\nsingle fixed payment asset (e.g. pUSD).",
         source: "shared",
       },
       {
         id: "BorderStyle",
         name: "BorderStyle",
         category: "struct",
-        definition: "interface BorderStyle { width: bigint; color: ColorToken; shape?: Shape }",
+        definition:
+          "interface BorderStyle { width: bigint; color: ColorToken; shape?: Shape }",
         description: "Border styling.",
         source: "shared",
         fields: [
@@ -5388,7 +5727,8 @@ export const versions: ExplorerVersion[] = [
         id: "BoxProps",
         name: "BoxProps",
         category: "struct",
-        definition: "interface BoxProps { contentAlignment?: ContentAlignment }",
+        definition:
+          "interface BoxProps { contentAlignment?: ContentAlignment }",
         description: "Properties for a [`CustomRendererNode::Box`] container.",
         source: "shared",
         fields: [
@@ -5403,7 +5743,8 @@ export const versions: ExplorerVersion[] = [
         id: "ButtonProps",
         name: "ButtonProps",
         category: "struct",
-        definition: "interface ButtonProps { text: string; variant?: ButtonVariant; clickAction: string }",
+        definition:
+          "interface ButtonProps { text: string; variant?: ButtonVariant; clickAction: string }",
         description: "Properties for a [`CustomRendererNode::Button`].",
         source: "shared",
         fields: [
@@ -5428,7 +5769,8 @@ export const versions: ExplorerVersion[] = [
         id: "ButtonVariant",
         name: "ButtonVariant",
         category: "enum",
-        definition: "type ButtonVariant = { tag: \"Primary\"; value: undefined } | { tag: \"Secondary\"; value: undefined } | { tag: \"Text\"; value: undefined }",
+        definition:
+          'type ButtonVariant = { tag: "Primary"; value: undefined } | { tag: "Secondary"; value: undefined } | { tag: "Text"; value: undefined }',
         description: "Button style variants.",
         source: "shared",
         variants: [
@@ -5470,7 +5812,8 @@ export const versions: ExplorerVersion[] = [
         id: "ChatActionLayout",
         name: "ChatActionLayout",
         category: "enum",
-        definition: "type ChatActionLayout = { tag: \"Column\"; value: undefined } | { tag: \"Grid\"; value: undefined }",
+        definition:
+          'type ChatActionLayout = { tag: "Column"; value: undefined } | { tag: "Grid"; value: undefined }',
         description: "Layout for action buttons.",
         source: "shared",
         variants: [
@@ -5488,7 +5831,8 @@ export const versions: ExplorerVersion[] = [
         id: "ChatActionPayload",
         name: "ChatActionPayload",
         category: "enum",
-        definition: "type ChatActionPayload = { tag: \"MessagePosted\"; value: ChatMessageContent } | { tag: \"ActionTriggered\"; value: ActionTrigger } | { tag: \"Command\"; value: ChatCommand }",
+        definition:
+          'type ChatActionPayload = { tag: "MessagePosted"; value: ChatMessageContent } | { tag: "ActionTriggered"; value: ActionTrigger } | { tag: "Command"; value: ChatCommand }',
         description: "Payload of a received chat action.",
         source: "shared",
         variants: [
@@ -5513,7 +5857,8 @@ export const versions: ExplorerVersion[] = [
         id: "ChatActions",
         name: "ChatActions",
         category: "struct",
-        definition: "interface ChatActions { text?: string; actions: Array<ChatAction>; layout: ChatActionLayout }",
+        definition:
+          "interface ChatActions { text?: string; actions: Array<ChatAction>; layout: ChatActionLayout }",
         description: "A set of action buttons with optional text.",
         source: "shared",
         fields: [
@@ -5538,7 +5883,8 @@ export const versions: ExplorerVersion[] = [
         id: "ChatBotRegistrationStatus",
         name: "ChatBotRegistrationStatus",
         category: "enum",
-        definition: "type ChatBotRegistrationStatus = { tag: \"New\"; value: undefined } | { tag: \"Exists\"; value: undefined }",
+        definition:
+          'type ChatBotRegistrationStatus = { tag: "New"; value: undefined } | { tag: "Exists"; value: undefined }',
         description: "Whether the bot was newly registered or already existed.",
         source: "shared",
         variants: [
@@ -5556,7 +5902,8 @@ export const versions: ExplorerVersion[] = [
         id: "ChatCommand",
         name: "ChatCommand",
         category: "struct",
-        definition: "interface ChatCommand { command: string; payload: string }",
+        definition:
+          "interface ChatCommand { command: string; payload: string }",
         description: "A slash command from a chat user.",
         source: "shared",
         fields: [
@@ -5576,8 +5923,10 @@ export const versions: ExplorerVersion[] = [
         id: "ChatCustomMessage",
         name: "ChatCustomMessage",
         category: "struct",
-        definition: "interface ChatCustomMessage { messageType: string; payload: HexString }",
-        description: "A custom message with application-defined type and binary payload.",
+        definition:
+          "interface ChatCustomMessage { messageType: string; payload: HexString }",
+        description:
+          "A custom message with application-defined type and binary payload.",
         source: "shared",
         fields: [
           {
@@ -5596,7 +5945,8 @@ export const versions: ExplorerVersion[] = [
         id: "ChatFile",
         name: "ChatFile",
         category: "struct",
-        definition: "interface ChatFile { url: string; fileName: string; mimeType: string; sizeBytes: bigint; text?: string }",
+        definition:
+          "interface ChatFile { url: string; fileName: string; mimeType: string; sizeBytes: bigint; text?: string }",
         description: "A file attachment in a chat message.",
         source: "shared",
         fields: [
@@ -5646,7 +5996,8 @@ export const versions: ExplorerVersion[] = [
         id: "ChatMessageContent",
         name: "ChatMessageContent",
         category: "enum",
-        definition: "type ChatMessageContent = { tag: \"Text\"; value: { text: string } } | { tag: \"RichText\"; value: ChatRichText } | { tag: \"Actions\"; value: ChatActions } | { tag: \"File\"; value: ChatFile } | { tag: \"Reaction\"; value: ChatReaction } | { tag: \"ReactionRemoved\"; value: ChatReaction } | { tag: \"Custom\"; value: ChatCustomMessage }",
+        definition:
+          'type ChatMessageContent = { tag: "Text"; value: { text: string } } | { tag: "RichText"; value: ChatRichText } | { tag: "Actions"; value: ChatActions } | { tag: "File"; value: ChatFile } | { tag: "Reaction"; value: ChatReaction } | { tag: "ReactionRemoved"; value: ChatReaction } | { tag: "Custom"; value: ChatCustomMessage }',
         description: "Content of a chat message -- one of several types.",
         source: "shared",
         variants: [
@@ -5691,7 +6042,8 @@ export const versions: ExplorerVersion[] = [
         id: "ChatReaction",
         name: "ChatReaction",
         category: "struct",
-        definition: "interface ChatReaction { messageId: string; emoji: string }",
+        definition:
+          "interface ChatReaction { messageId: string; emoji: string }",
         description: "A reaction to a chat message.",
         source: "shared",
         fields: [
@@ -5711,7 +6063,8 @@ export const versions: ExplorerVersion[] = [
         id: "ChatRichText",
         name: "ChatRichText",
         category: "struct",
-        definition: "interface ChatRichText { text?: string; media: Array<ChatMedia> }",
+        definition:
+          "interface ChatRichText { text?: string; media: Array<ChatMedia> }",
         description: "Rich text message with optional media.",
         source: "shared",
         fields: [
@@ -5731,7 +6084,8 @@ export const versions: ExplorerVersion[] = [
         id: "ChatRoom",
         name: "ChatRoom",
         category: "struct",
-        definition: "interface ChatRoom { roomId: string; participatingAs: ChatRoomParticipation }",
+        definition:
+          "interface ChatRoom { roomId: string; participatingAs: ChatRoomParticipation }",
         description: "A chat room the product participates in.",
         source: "shared",
         fields: [
@@ -5751,7 +6105,8 @@ export const versions: ExplorerVersion[] = [
         id: "ChatRoomParticipation",
         name: "ChatRoomParticipation",
         category: "enum",
-        definition: "type ChatRoomParticipation = { tag: \"RoomHost\"; value: undefined } | { tag: \"Bot\"; value: undefined }",
+        definition:
+          'type ChatRoomParticipation = { tag: "RoomHost"; value: undefined } | { tag: "Bot"; value: undefined }',
         description: "How the product participates in a chat room.",
         source: "shared",
         variants: [
@@ -5769,7 +6124,8 @@ export const versions: ExplorerVersion[] = [
         id: "ChatRoomRegistrationStatus",
         name: "ChatRoomRegistrationStatus",
         category: "enum",
-        definition: "type ChatRoomRegistrationStatus = { tag: \"New\"; value: undefined } | { tag: \"Exists\"; value: undefined }",
+        definition:
+          'type ChatRoomRegistrationStatus = { tag: "New"; value: undefined } | { tag: "Exists"; value: undefined }',
         description: "Whether the room was newly created or already existed.",
         source: "shared",
         variants: [
@@ -5787,7 +6143,8 @@ export const versions: ExplorerVersion[] = [
         id: "ColorToken",
         name: "ColorToken",
         category: "enum",
-        definition: "type ColorToken = { tag: \"TextPrimary\"; value: undefined } | { tag: \"TextSecondary\"; value: undefined } | { tag: \"TextTertiary\"; value: undefined } | { tag: \"BackgroundPrimary\"; value: undefined } | { tag: \"BackgroundSecondary\"; value: undefined } | { tag: \"BackgroundTertiary\"; value: undefined } | { tag: \"Success\"; value: undefined } | { tag: \"Error\"; value: undefined } | { tag: \"Warning\"; value: undefined }",
+        definition:
+          'type ColorToken = { tag: "TextPrimary"; value: undefined } | { tag: "TextSecondary"; value: undefined } | { tag: "TextTertiary"; value: undefined } | { tag: "BackgroundPrimary"; value: undefined } | { tag: "BackgroundSecondary"; value: undefined } | { tag: "BackgroundTertiary"; value: undefined } | { tag: "Success"; value: undefined } | { tag: "Error"; value: undefined } | { tag: "Warning"; value: undefined }',
         description: "Semantic color tokens for theming.",
         source: "shared",
         variants: [
@@ -5833,7 +6190,8 @@ export const versions: ExplorerVersion[] = [
         id: "ColumnProps",
         name: "ColumnProps",
         category: "struct",
-        definition: "interface ColumnProps { horizontalAlignment?: HorizontalAlignment; verticalArrangement?: Arrangement }",
+        definition:
+          "interface ColumnProps { horizontalAlignment?: HorizontalAlignment; verticalArrangement?: Arrangement }",
         description: "Properties for a [`CustomRendererNode::Column`] layout.",
         source: "shared",
         fields: [
@@ -5853,8 +6211,10 @@ export const versions: ExplorerVersion[] = [
         id: "Component",
         name: "Component",
         category: "struct",
-        definition: "interface Component<P> { modifiers: Array<Modifier>; props: P; children: Array<CustomRendererNode> }",
-        description: "A component in the custom renderer UI tree, combining modifiers, typed props,\nand recursive children.",
+        definition:
+          "interface Component<P> { modifiers: Array<Modifier>; props: P; children: Array<CustomRendererNode> }",
+        description:
+          "A component in the custom renderer UI tree, combining modifiers, typed props,\nand recursive children.",
         source: "shared",
         fields: [
           {
@@ -5878,7 +6238,8 @@ export const versions: ExplorerVersion[] = [
         id: "ContentAlignment",
         name: "ContentAlignment",
         category: "enum",
-        definition: "type ContentAlignment = { tag: \"TopStart\"; value: undefined } | { tag: \"TopCenter\"; value: undefined } | { tag: \"TopEnd\"; value: undefined } | { tag: \"CenterStart\"; value: undefined } | { tag: \"Center\"; value: undefined } | { tag: \"CenterEnd\"; value: undefined } | { tag: \"BottomStart\"; value: undefined } | { tag: \"BottomCenter\"; value: undefined } | { tag: \"BottomEnd\"; value: undefined }",
+        definition:
+          'type ContentAlignment = { tag: "TopStart"; value: undefined } | { tag: "TopCenter"; value: undefined } | { tag: "TopEnd"; value: undefined } | { tag: "CenterStart"; value: undefined } | { tag: "Center"; value: undefined } | { tag: "CenterEnd"; value: undefined } | { tag: "BottomStart"; value: undefined } | { tag: "BottomCenter"; value: undefined } | { tag: "BottomEnd"; value: undefined }',
         description: "2D content alignment.",
         source: "shared",
         variants: [
@@ -5924,8 +6285,10 @@ export const versions: ExplorerVersion[] = [
         id: "CustomRendererNode",
         name: "CustomRendererNode",
         category: "enum",
-        definition: "type CustomRendererNode = { tag: \"Nil\"; value: undefined } | { tag: \"String\"; value: { text: string } } | { tag: \"Box\"; value: Component<BoxProps> } | { tag: \"Column\"; value: Component<ColumnProps> } | { tag: \"Row\"; value: Component<RowProps> } | { tag: \"Spacer\"; value: Component<undefined> } | { tag: \"Text\"; value: Component<TextProps> } | { tag: \"Button\"; value: Component<ButtonProps> } | { tag: \"TextField\"; value: Component<TextFieldProps> }",
-        description: "A node in the custom renderer UI tree. Can be nested recursively via the\n`children` field of each [`Component`].",
+        definition:
+          'type CustomRendererNode = { tag: "Nil"; value: undefined } | { tag: "String"; value: { text: string } } | { tag: "Box"; value: Component<BoxProps> } | { tag: "Column"; value: Component<ColumnProps> } | { tag: "Row"; value: Component<RowProps> } | { tag: "Spacer"; value: Component<undefined> } | { tag: "Text"; value: Component<TextProps> } | { tag: "Button"; value: Component<ButtonProps> } | { tag: "TextField"; value: Component<TextFieldProps> }',
+        description:
+          "A node in the custom renderer UI tree. Can be nested recursively via the\n`children` field of each [`Component`].",
         source: "shared",
         variants: [
           {
@@ -5979,8 +6342,10 @@ export const versions: ExplorerVersion[] = [
         id: "Dimensions",
         name: "Dimensions",
         category: "struct",
-        definition: "interface Dimensions { top: bigint; end: bigint; bottom?: bigint; start?: bigint }",
-        description: "CSS-like dimensions: (top, end, bottom, start).\nBottom defaults to top, start defaults to end when `None`.",
+        definition:
+          "interface Dimensions { top: bigint; end: bigint; bottom?: bigint; start?: bigint }",
+        description:
+          "CSS-like dimensions: (top, end, bottom, start).\nBottom defaults to top, start defaults to end when `None`.",
         source: "shared",
         fields: [
           {
@@ -6010,7 +6375,8 @@ export const versions: ExplorerVersion[] = [
         name: "GenericErr",
         category: "struct",
         definition: "interface GenericErr { reason: string }",
-        description: "Generic error payload carrying a human-readable reason string.",
+        description:
+          "Generic error payload carrying a human-readable reason string.",
         source: "shared",
         fields: [
           {
@@ -6023,8 +6389,10 @@ export const versions: ExplorerVersion[] = [
         id: "GenericError",
         name: "GenericError",
         category: "enum",
-        definition: "type GenericError = { tag: \"GenericError\"; value: GenericErr }",
-        description: "Single-variant error enum wrapping [`GenericErr`]. Used by many methods as a\ncatch-all error type.",
+        definition:
+          'type GenericError = { tag: "GenericError"; value: GenericErr }',
+        description:
+          "Single-variant error enum wrapping [`GenericErr`]. Used by many methods as a\ncatch-all error type.",
         source: "shared",
         variants: [
           {
@@ -6037,7 +6405,8 @@ export const versions: ExplorerVersion[] = [
         id: "HorizontalAlignment",
         name: "HorizontalAlignment",
         category: "enum",
-        definition: "type HorizontalAlignment = { tag: \"Start\"; value: undefined } | { tag: \"Center\"; value: undefined } | { tag: \"End\"; value: undefined }",
+        definition:
+          'type HorizontalAlignment = { tag: "Start"; value: undefined } | { tag: "Center"; value: undefined } | { tag: "End"; value: undefined }',
         description: "Horizontal alignment options.",
         source: "shared",
         variants: [
@@ -6059,7 +6428,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostAccountConnectionStatusSubscribeItem",
         name: "HostAccountConnectionStatusSubscribeItem",
         category: "enum",
-        definition: "type HostAccountConnectionStatusSubscribeItem = { tag: \"Disconnected\"; value: undefined } | { tag: \"Connected\"; value: undefined }",
+        definition:
+          'type HostAccountConnectionStatusSubscribeItem = { tag: "Disconnected"; value: undefined } | { tag: "Connected"; value: undefined }',
         description: "User's authentication state.",
         source: "v1",
         variants: [
@@ -6077,7 +6447,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostAccountCreateProofError",
         name: "HostAccountCreateProofError",
         category: "enum",
-        definition: "type HostAccountCreateProofError = { tag: \"RingNotFound\"; value: undefined } | { tag: \"Rejected\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
+        definition:
+          'type HostAccountCreateProofError = { tag: "RingNotFound"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Error returned when ring VRF proof creation fails.",
         source: "v1",
         variants: [
@@ -6102,8 +6473,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostAccountCreateProofRequest",
         name: "HostAccountCreateProofRequest",
         category: "struct",
-        definition: "interface HostAccountCreateProofRequest { productAccountId: ProductAccountId; ringLocation: RingLocation; context: HexString }",
-        description: "Request to create a ring VRF proof for a product account.",
+        definition:
+          "interface HostAccountCreateProofRequest { productAccountId: ProductAccountId; ringLocation: RingLocation; context: HexString }",
+        description:
+          "Request to create a ring VRF proof for a product account.",
         source: "v1",
         fields: [
           {
@@ -6127,7 +6500,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostAccountCreateProofResponse",
         name: "HostAccountCreateProofResponse",
         category: "struct",
-        definition: "interface HostAccountCreateProofResponse { proof: HexString }",
+        definition:
+          "interface HostAccountCreateProofResponse { proof: HexString }",
         description: "Response containing a ring VRF proof.",
         source: "v1",
         fields: [
@@ -6142,8 +6516,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostAccountGetAliasRequest",
         name: "HostAccountGetAliasRequest",
         category: "struct",
-        definition: "interface HostAccountGetAliasRequest { productAccountId: ProductAccountId }",
-        description: "Request to retrieve a contextual alias for a product account.",
+        definition:
+          "interface HostAccountGetAliasRequest { productAccountId: ProductAccountId }",
+        description:
+          "Request to retrieve a contextual alias for a product account.",
         source: "v1",
         fields: [
           {
@@ -6157,8 +6533,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostAccountGetAliasResponse",
         name: "HostAccountGetAliasResponse",
         category: "struct",
-        definition: "interface HostAccountGetAliasResponse { context: HexString; alias: HexString }",
-        description: "A privacy-preserving alias derived via ring VRF, bound to a specific context.",
+        definition:
+          "interface HostAccountGetAliasResponse { context: HexString; alias: HexString }",
+        description:
+          "A privacy-preserving alias derived via ring VRF, bound to a specific context.",
         source: "v1",
         fields: [
           {
@@ -6177,7 +6555,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostAccountGetError",
         name: "HostAccountGetError",
         category: "enum",
-        definition: "type HostAccountGetError = { tag: \"NotConnected\"; value: undefined } | { tag: \"Rejected\"; value: undefined } | { tag: \"DomainNotValid\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
+        definition:
+          'type HostAccountGetError = { tag: "NotConnected"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "DomainNotValid"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Error returned when credential/account requests fail.",
         source: "v1",
         variants: [
@@ -6207,7 +6586,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostAccountGetRequest",
         name: "HostAccountGetRequest",
         category: "struct",
-        definition: "interface HostAccountGetRequest { productAccountId: ProductAccountId }",
+        definition:
+          "interface HostAccountGetRequest { productAccountId: ProductAccountId }",
         description: "Request to retrieve a product-scoped account.",
         source: "v1",
         fields: [
@@ -6222,7 +6602,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostAccountGetResponse",
         name: "HostAccountGetResponse",
         category: "struct",
-        definition: "interface HostAccountGetResponse { account: ProductAccount }",
+        definition:
+          "interface HostAccountGetResponse { account: ProductAccount }",
         description: "Response containing a product-scoped account.",
         source: "v1",
         fields: [
@@ -6237,7 +6618,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostChatActionSubscribeItem",
         name: "HostChatActionSubscribeItem",
         category: "struct",
-        definition: "interface HostChatActionSubscribeItem { roomId: string; peer: string; payload: ChatActionPayload }",
+        definition:
+          "interface HostChatActionSubscribeItem { roomId: string; peer: string; payload: ChatActionPayload }",
         description: "A chat action received from the host.",
         source: "v1",
         fields: [
@@ -6262,7 +6644,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostChatCreateRoomError",
         name: "HostChatCreateRoomError",
         category: "enum",
-        definition: "type HostChatCreateRoomError = { tag: \"PermissionDenied\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
+        definition:
+          'type HostChatCreateRoomError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Chat room registration error.",
         source: "v1",
         variants: [
@@ -6282,7 +6665,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostChatCreateRoomRequest",
         name: "HostChatCreateRoomRequest",
         category: "struct",
-        definition: "interface HostChatCreateRoomRequest { roomId: string; name: string; icon: string }",
+        definition:
+          "interface HostChatCreateRoomRequest { roomId: string; name: string; icon: string }",
         description: "Request to create a chat room.",
         source: "v1",
         fields: [
@@ -6307,7 +6691,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostChatCreateRoomResponse",
         name: "HostChatCreateRoomResponse",
         category: "struct",
-        definition: "interface HostChatCreateRoomResponse { status: ChatRoomRegistrationStatus }",
+        definition:
+          "interface HostChatCreateRoomResponse { status: ChatRoomRegistrationStatus }",
         description: "Result of a room registration.",
         source: "v1",
         fields: [
@@ -6322,7 +6707,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostChatListSubscribeItem",
         name: "HostChatListSubscribeItem",
         category: "struct",
-        definition: "interface HostChatListSubscribeItem { rooms: Array<ChatRoom> }",
+        definition:
+          "interface HostChatListSubscribeItem { rooms: Array<ChatRoom> }",
         description: "Item containing the current chat rooms.",
         source: "v1",
         fields: [
@@ -6337,7 +6723,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostChatPostMessageError",
         name: "HostChatPostMessageError",
         category: "enum",
-        definition: "type HostChatPostMessageError = { tag: \"MessageTooLarge\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
+        definition:
+          'type HostChatPostMessageError = { tag: "MessageTooLarge"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Chat message posting error.",
         source: "v1",
         variants: [
@@ -6357,7 +6744,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostChatPostMessageRequest",
         name: "HostChatPostMessageRequest",
         category: "struct",
-        definition: "interface HostChatPostMessageRequest { roomId: string; payload: ChatMessageContent }",
+        definition:
+          "interface HostChatPostMessageRequest { roomId: string; payload: ChatMessageContent }",
         description: "Request to post a message to a chat room.",
         source: "v1",
         fields: [
@@ -6377,7 +6765,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostChatPostMessageResponse",
         name: "HostChatPostMessageResponse",
         category: "struct",
-        definition: "interface HostChatPostMessageResponse { messageId: string }",
+        definition:
+          "interface HostChatPostMessageResponse { messageId: string }",
         description: "Result of posting a message.",
         source: "v1",
         fields: [
@@ -6392,7 +6781,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostChatRegisterBotError",
         name: "HostChatRegisterBotError",
         category: "enum",
-        definition: "type HostChatRegisterBotError = { tag: \"PermissionDenied\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
+        definition:
+          'type HostChatRegisterBotError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Chat bot registration error.",
         source: "v1",
         variants: [
@@ -6412,7 +6802,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostChatRegisterBotRequest",
         name: "HostChatRegisterBotRequest",
         category: "struct",
-        definition: "interface HostChatRegisterBotRequest { botId: string; name: string; icon: string }",
+        definition:
+          "interface HostChatRegisterBotRequest { botId: string; name: string; icon: string }",
         description: "Request to register a chat bot.",
         source: "v1",
         fields: [
@@ -6437,7 +6828,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostChatRegisterBotResponse",
         name: "HostChatRegisterBotResponse",
         category: "struct",
-        definition: "interface HostChatRegisterBotResponse { status: ChatBotRegistrationStatus }",
+        definition:
+          "interface HostChatRegisterBotResponse { status: ChatBotRegistrationStatus }",
         description: "Result of a bot registration.",
         source: "v1",
         fields: [
@@ -6452,7 +6844,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostCreateTransactionError",
         name: "HostCreateTransactionError",
         category: "enum",
-        definition: "type HostCreateTransactionError = { tag: \"FailedToDecode\"; value: undefined } | { tag: \"Rejected\"; value: undefined } | { tag: \"NotSupported\"; value: { reason: string } } | { tag: \"PermissionDenied\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
+        definition:
+          'type HostCreateTransactionError = { tag: "FailedToDecode"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "NotSupported"; value: { reason: string } } | { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Transaction creation error.",
         source: "v1",
         variants: [
@@ -6487,7 +6880,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostCreateTransactionRequest",
         name: "HostCreateTransactionRequest",
         category: "struct",
-        definition: "interface HostCreateTransactionRequest { productAccountId: ProductAccountId; payload: VersionedTxPayload }",
+        definition:
+          "interface HostCreateTransactionRequest { productAccountId: ProductAccountId; payload: VersionedTxPayload }",
         description: "Request to create a transaction for a product account.",
         source: "v1",
         fields: [
@@ -6507,7 +6901,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostCreateTransactionResponse",
         name: "HostCreateTransactionResponse",
         category: "struct",
-        definition: "interface HostCreateTransactionResponse { transaction: HexString }",
+        definition:
+          "interface HostCreateTransactionResponse { transaction: HexString }",
         description: "Response containing a created transaction.",
         source: "v1",
         fields: [
@@ -6522,8 +6917,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostCreateTransactionWithLegacyAccountRequest",
         name: "HostCreateTransactionWithLegacyAccountRequest",
         category: "struct",
-        definition: "interface HostCreateTransactionWithLegacyAccountRequest { payload: VersionedTxPayload }",
-        description: "Request to create a transaction with a non-product account.",
+        definition:
+          "interface HostCreateTransactionWithLegacyAccountRequest { payload: VersionedTxPayload }",
+        description:
+          "Request to create a transaction with a non-product account.",
         source: "v1",
         fields: [
           {
@@ -6537,8 +6934,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostCreateTransactionWithLegacyAccountResponse",
         name: "HostCreateTransactionWithLegacyAccountResponse",
         category: "struct",
-        definition: "interface HostCreateTransactionWithLegacyAccountResponse { transaction: HexString }",
-        description: "Response containing a transaction created with a non-product account.",
+        definition:
+          "interface HostCreateTransactionWithLegacyAccountResponse { transaction: HexString }",
+        description:
+          "Response containing a transaction created with a non-product account.",
         source: "v1",
         fields: [
           {
@@ -6552,8 +6951,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostDeriveEntropyError",
         name: "HostDeriveEntropyError",
         category: "enum",
-        definition: "type HostDeriveEntropyError = { tag: \"Unknown\"; value: undefined }",
-        description: "Error from [`crate::api::EntropyDerivation::host_derive_entropy`].\n\nUnder normal operation the function always succeeds; `Unknown` indicates an\nunrecoverable internal host error.\n\nSee [RFC 0007].\n\n[RFC 0007]: https://github.com/paritytech/triangle-js-sdks/pull/95",
+        definition:
+          'type HostDeriveEntropyError = { tag: "Unknown"; value: undefined }',
+        description:
+          "Error from [`crate::api::EntropyDerivation::host_derive_entropy`].\n\nUnder normal operation the function always succeeds; `Unknown` indicates an\nunrecoverable internal host error.\n\nSee [RFC 0007].\n\n[RFC 0007]: https://github.com/paritytech/triangle-js-sdks/pull/95",
         source: "v1",
         variants: [
           {
@@ -6582,7 +6983,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostDeriveEntropyResponse",
         name: "HostDeriveEntropyResponse",
         category: "struct",
-        definition: "interface HostDeriveEntropyResponse { entropy: HexString }",
+        definition:
+          "interface HostDeriveEntropyResponse { entropy: HexString }",
         description: "Response containing derived deterministic entropy.",
         source: "v1",
         fields: [
@@ -6597,8 +6999,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostDevicePermissionRequest",
         name: "HostDevicePermissionRequest",
         category: "enum",
-        definition: "type HostDevicePermissionRequest = { tag: \"Notifications\"; value: undefined } | { tag: \"Camera\"; value: undefined } | { tag: \"Microphone\"; value: undefined } | { tag: \"Bluetooth\"; value: undefined } | { tag: \"NFC\"; value: undefined } | { tag: \"Location\"; value: undefined } | { tag: \"Clipboard\"; value: undefined } | { tag: \"OpenUrl\"; value: undefined } | { tag: \"Biometrics\"; value: undefined }",
-        description: "Device capability to request access to.\n\nExtended with `Notifications`, `NFC`, `Clipboard`, `OpenUrl`, and\n`Biometrics` per [RFC 0001] (JIT permissions).\n\n[RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66",
+        definition:
+          'type HostDevicePermissionRequest = { tag: "Notifications"; value: undefined } | { tag: "Camera"; value: undefined } | { tag: "Microphone"; value: undefined } | { tag: "Bluetooth"; value: undefined } | { tag: "NFC"; value: undefined } | { tag: "Location"; value: undefined } | { tag: "Clipboard"; value: undefined } | { tag: "OpenUrl"; value: undefined } | { tag: "Biometrics"; value: undefined }',
+        description:
+          "Device capability to request access to.\n\nExtended with `Notifications`, `NFC`, `Clipboard`, `OpenUrl`, and\n`Biometrics` per [RFC 0001] (JIT permissions).\n\n[RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66",
         source: "v1",
         variants: [
           {
@@ -6648,8 +7052,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostDevicePermissionResponse",
         name: "HostDevicePermissionResponse",
         category: "struct",
-        definition: "interface HostDevicePermissionResponse { granted: boolean }",
-        description: "Response indicating whether a device permission was granted.",
+        definition:
+          "interface HostDevicePermissionResponse { granted: boolean }",
+        description:
+          "Response indicating whether a device permission was granted.",
         source: "v1",
         fields: [
           {
@@ -6663,7 +7069,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostFeatureSupportedRequest",
         name: "HostFeatureSupportedRequest",
         category: "enum",
-        definition: "type HostFeatureSupportedRequest = { tag: \"Chain\"; value: { genesisHash: HexString } }",
+        definition:
+          'type HostFeatureSupportedRequest = { tag: "Chain"; value: { genesisHash: HexString } }',
         description: "Feature to check for host support.",
         source: "v1",
         variants: [
@@ -6678,7 +7085,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostFeatureSupportedResponse",
         name: "HostFeatureSupportedResponse",
         category: "struct",
-        definition: "interface HostFeatureSupportedResponse { supported: boolean }",
+        definition:
+          "interface HostFeatureSupportedResponse { supported: boolean }",
         description: "Response indicating whether a host feature is supported.",
         source: "v1",
         fields: [
@@ -6693,8 +7101,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostGetLegacyAccountsResponse",
         name: "HostGetLegacyAccountsResponse",
         category: "struct",
-        definition: "interface HostGetLegacyAccountsResponse { accounts: Array<Account> }",
-        description: "Response containing all non-product accounts owned by the user.",
+        definition:
+          "interface HostGetLegacyAccountsResponse { accounts: Array<Account> }",
+        description:
+          "Response containing all non-product accounts owned by the user.",
         source: "v1",
         fields: [
           {
@@ -6708,8 +7118,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostGetUserIdError",
         name: "HostGetUserIdError",
         category: "enum",
-        definition: "type HostGetUserIdError = { tag: \"PermissionDenied\"; value: undefined } | { tag: \"NotConnected\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
-        description: "Error from [`crate::api::AccountManagement::host_get_user_id`].",
+        definition:
+          'type HostGetUserIdError = { tag: "PermissionDenied"; value: undefined } | { tag: "NotConnected"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description:
+          "Error from [`crate::api::AccountManagement::host_get_user_id`].",
         source: "v1",
         variants: [
           {
@@ -6733,7 +7145,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostGetUserIdResponse",
         name: "HostGetUserIdResponse",
         category: "struct",
-        definition: "interface HostGetUserIdResponse { primaryUsername: string }",
+        definition:
+          "interface HostGetUserIdResponse { primaryUsername: string }",
         description: "The user's primary DotNS account identity.",
         source: "v1",
         fields: [
@@ -6748,8 +7161,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostHandshakeError",
         name: "HostHandshakeError",
         category: "enum",
-        definition: "type HostHandshakeError = { tag: \"Timeout\"; value: undefined } | { tag: \"UnsupportedProtocolVersion\"; value: undefined } | { tag: \"Unknown\"; value: GenericErr }",
-        description: "Handshake error. Mirrors Novasama's `HandshakeErr` byte-for-byte so that\npre-codegen products (built against `@novasamatech/host-api`) can decode\n`host_handshake_response` frames produced by this host.",
+        definition:
+          'type HostHandshakeError = { tag: "Timeout"; value: undefined } | { tag: "UnsupportedProtocolVersion"; value: undefined } | { tag: "Unknown"; value: GenericErr }',
+        description:
+          "Handshake error. Mirrors Novasama's `HandshakeErr` byte-for-byte so that\npre-codegen products (built against `@novasamatech/host-api`) can decode\n`host_handshake_response` frames produced by this host.",
         source: "v1",
         variants: [
           {
@@ -6800,7 +7215,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostLocalStorageReadError",
         name: "HostLocalStorageReadError",
         category: "enum",
-        definition: "type HostLocalStorageReadError = { tag: \"Full\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
+        definition:
+          'type HostLocalStorageReadError = { tag: "Full"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Local storage operation error.",
         source: "v1",
         variants: [
@@ -6835,7 +7251,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostLocalStorageReadResponse",
         name: "HostLocalStorageReadResponse",
         category: "struct",
-        definition: "interface HostLocalStorageReadResponse { value?: HexString }",
+        definition:
+          "interface HostLocalStorageReadResponse { value?: HexString }",
         description: "Response containing an optional local storage value.",
         source: "v1",
         fields: [
@@ -6850,7 +7267,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostLocalStorageWriteRequest",
         name: "HostLocalStorageWriteRequest",
         category: "struct",
-        definition: "interface HostLocalStorageWriteRequest { key: string; value: HexString }",
+        definition:
+          "interface HostLocalStorageWriteRequest { key: string; value: HexString }",
         description: "Request to write a value into local storage.",
         source: "v1",
         fields: [
@@ -6870,7 +7288,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostNavigateToError",
         name: "HostNavigateToError",
         category: "enum",
-        definition: "type HostNavigateToError = { tag: \"PermissionDenied\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
+        definition:
+          'type HostNavigateToError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Navigation error.",
         source: "v1",
         variants: [
@@ -6905,8 +7324,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostPaymentBalanceSubscribeError",
         name: "HostPaymentBalanceSubscribeError",
         category: "enum",
-        definition: "type HostPaymentBalanceSubscribeError = { tag: \"PermissionDenied\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
-        description: "Error from [`crate::api::Payment::host_payment_balance_subscribe`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
+        definition:
+          'type HostPaymentBalanceSubscribeError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description:
+          "Error from [`crate::api::Payment::host_payment_balance_subscribe`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         source: "v1",
         variants: [
           {
@@ -6925,8 +7346,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostPaymentBalanceSubscribeItem",
         name: "HostPaymentBalanceSubscribeItem",
         category: "struct",
-        definition: "interface HostPaymentBalanceSubscribeItem { available: Balance }",
-        description: "Current payment balance state pushed to subscribers.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
+        definition:
+          "interface HostPaymentBalanceSubscribeItem { available: Balance }",
+        description:
+          "Current payment balance state pushed to subscribers.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         source: "v1",
         fields: [
           {
@@ -6940,8 +7363,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostPaymentRequestError",
         name: "HostPaymentRequestError",
         category: "enum",
-        definition: "type HostPaymentRequestError = { tag: \"Rejected\"; value: undefined } | { tag: \"InsufficientBalance\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
-        description: "Error from [`crate::api::Payment::host_payment_request`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
+        definition:
+          'type HostPaymentRequestError = { tag: "Rejected"; value: undefined } | { tag: "InsufficientBalance"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description:
+          "Error from [`crate::api::Payment::host_payment_request`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         source: "v1",
         variants: [
           {
@@ -6952,7 +7377,8 @@ export const versions: ExplorerVersion[] = [
           {
             name: "InsufficientBalance",
             type: "undefined",
-            description: "User's available balance is not sufficient for the requested amount.",
+            description:
+              "User's available balance is not sufficient for the requested amount.",
           },
           {
             name: "Unknown",
@@ -6965,7 +7391,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostPaymentRequestRequest",
         name: "HostPaymentRequestRequest",
         category: "struct",
-        definition: "interface HostPaymentRequestRequest { amount: Balance; destination: HexString }",
+        definition:
+          "interface HostPaymentRequestRequest { amount: Balance; destination: HexString }",
         description: "Request to initiate a payment to another account.",
         source: "v1",
         fields: [
@@ -6986,7 +7413,8 @@ export const versions: ExplorerVersion[] = [
         name: "HostPaymentRequestResponse",
         category: "struct",
         definition: "interface HostPaymentRequestResponse { id: string }",
-        description: "Receipt returned after a successful payment request.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
+        description:
+          "Receipt returned after a successful payment request.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         source: "v1",
         fields: [
           {
@@ -7000,14 +7428,17 @@ export const versions: ExplorerVersion[] = [
         id: "HostPaymentStatusSubscribeError",
         name: "HostPaymentStatusSubscribeError",
         category: "enum",
-        definition: "type HostPaymentStatusSubscribeError = { tag: \"PaymentNotFound\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
-        description: "Error from [`crate::api::Payment::host_payment_status_subscribe`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
+        definition:
+          'type HostPaymentStatusSubscribeError = { tag: "PaymentNotFound"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description:
+          "Error from [`crate::api::Payment::host_payment_status_subscribe`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         source: "v1",
         variants: [
           {
             name: "PaymentNotFound",
             type: "undefined",
-            description: "Payment ID was not found or does not belong to the current product.",
+            description:
+              "Payment ID was not found or does not belong to the current product.",
           },
           {
             name: "Unknown",
@@ -7020,8 +7451,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostPaymentStatusSubscribeItem",
         name: "HostPaymentStatusSubscribeItem",
         category: "enum",
-        definition: "type HostPaymentStatusSubscribeItem = { tag: \"Processing\"; value: undefined } | { tag: \"Completed\"; value: undefined } | { tag: \"Failed\"; value: { reason: string } }",
-        description: "Payment lifecycle status pushed to subscribers.\n\nOnce a terminal state (`Completed` or `Failed`) is reached, the host\ndelivers it and may close the subscription.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
+        definition:
+          'type HostPaymentStatusSubscribeItem = { tag: "Processing"; value: undefined } | { tag: "Completed"; value: undefined } | { tag: "Failed"; value: { reason: string } }',
+        description:
+          "Payment lifecycle status pushed to subscribers.\n\nOnce a terminal state (`Completed` or `Failed`) is reached, the host\ndelivers it and may close the subscription.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         source: "v1",
         variants: [
           {
@@ -7045,7 +7478,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostPaymentStatusSubscribeRequest",
         name: "HostPaymentStatusSubscribeRequest",
         category: "struct",
-        definition: "interface HostPaymentStatusSubscribeRequest { paymentId: string }",
+        definition:
+          "interface HostPaymentStatusSubscribeRequest { paymentId: string }",
         description: "Request to subscribe to a payment status.",
         source: "v1",
         fields: [
@@ -7060,8 +7494,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostPaymentTopUpError",
         name: "HostPaymentTopUpError",
         category: "enum",
-        definition: "type HostPaymentTopUpError = { tag: \"InsufficientFunds\"; value: undefined } | { tag: \"InvalidSource\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
-        description: "Error from [`crate::api::Payment::host_payment_top_up`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
+        definition:
+          'type HostPaymentTopUpError = { tag: "InsufficientFunds"; value: undefined } | { tag: "InvalidSource"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description:
+          "Error from [`crate::api::Payment::host_payment_top_up`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         source: "v1",
         variants: [
           {
@@ -7085,7 +7521,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostPaymentTopUpRequest",
         name: "HostPaymentTopUpRequest",
         category: "struct",
-        definition: "interface HostPaymentTopUpRequest { amount: Balance; source: PaymentTopUpSource }",
+        definition:
+          "interface HostPaymentTopUpRequest { amount: Balance; source: PaymentTopUpSource }",
         description: "Request to top up the product payment balance.",
         source: "v1",
         fields: [
@@ -7105,7 +7542,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostPushNotificationRequest",
         name: "HostPushNotificationRequest",
         category: "struct",
-        definition: "interface HostPushNotificationRequest { text: string; deeplink?: string }",
+        definition:
+          "interface HostPushNotificationRequest { text: string; deeplink?: string }",
         description: "Push notification payload.",
         source: "v1",
         fields: [
@@ -7125,7 +7563,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostRequestLoginError",
         name: "HostRequestLoginError",
         category: "enum",
-        definition: "type HostRequestLoginError = { tag: \"Unknown\"; value: { reason: string } }",
+        definition:
+          'type HostRequestLoginError = { tag: "Unknown"; value: { reason: string } }',
         description: "Login request error.",
         source: "v1",
         variants: [
@@ -7147,7 +7586,8 @@ export const versions: ExplorerVersion[] = [
           {
             name: "reason",
             type: "string",
-            description: "Optional human-readable reason shown in the login UI.",
+            description:
+              "Optional human-readable reason shown in the login UI.",
           },
         ],
       },
@@ -7155,7 +7595,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostRequestLoginResponse",
         name: "HostRequestLoginResponse",
         category: "enum",
-        definition: "type HostRequestLoginResponse = { tag: \"Success\"; value: undefined } | { tag: \"AlreadyConnected\"; value: undefined } | { tag: \"Rejected\"; value: undefined }",
+        definition:
+          'type HostRequestLoginResponse = { tag: "Success"; value: undefined } | { tag: "AlreadyConnected"; value: undefined } | { tag: "Rejected"; value: undefined }',
         description: "Result of a login request.",
         source: "v1",
         variants: [
@@ -7180,7 +7621,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostSignPayloadError",
         name: "HostSignPayloadError",
         category: "enum",
-        definition: "type HostSignPayloadError = { tag: \"FailedToDecode\"; value: undefined } | { tag: \"Rejected\"; value: undefined } | { tag: \"PermissionDenied\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
+        definition:
+          'type HostSignPayloadError = { tag: "FailedToDecode"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Signing operation error.",
         source: "v1",
         variants: [
@@ -7210,8 +7652,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostSignPayloadRequest",
         name: "HostSignPayloadRequest",
         category: "struct",
-        definition: "interface HostSignPayloadRequest { account: ProductAccountId; blockHash: HexString; blockNumber: HexString; era: HexString; genesisHash: HexString; method: HexString; nonce: HexString; specVersion: HexString; tip: HexString; transactionVersion: HexString; signedExtensions: Array<string>; version: number; assetId?: HexString; metadataHash?: HexString; mode?: number; withSignedTransaction?: boolean }",
-        description: "Full Substrate extrinsic signing payload with all fields needed for signature\ngeneration.",
+        definition:
+          "interface HostSignPayloadRequest { account: ProductAccountId; blockHash: HexString; blockNumber: HexString; era: HexString; genesisHash: HexString; method: HexString; nonce: HexString; specVersion: HexString; tip: HexString; transactionVersion: HexString; signedExtensions: Array<string>; version: number; assetId?: HexString; metadataHash?: HexString; mode?: number; withSignedTransaction?: boolean }",
+        description:
+          "Full Substrate extrinsic signing payload with all fields needed for signature\ngeneration.",
         source: "v1",
         fields: [
           {
@@ -7300,7 +7744,8 @@ export const versions: ExplorerVersion[] = [
         id: "HostSignPayloadResponse",
         name: "HostSignPayloadResponse",
         category: "struct",
-        definition: "interface HostSignPayloadResponse { signature: HexString; signedTransaction?: HexString }",
+        definition:
+          "interface HostSignPayloadResponse { signature: HexString; signedTransaction?: HexString }",
         description: "Result of a signing operation.",
         source: "v1",
         fields: [
@@ -7320,8 +7765,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostSignPayloadWithLegacyAccountRequest",
         name: "HostSignPayloadWithLegacyAccountRequest",
         category: "struct",
-        definition: "interface HostSignPayloadWithLegacyAccountRequest { signer: string; payload: HostSignPayloadRequest }",
-        description: "Sign a Substrate extrinsic payload with a non-product (legacy) account.\nContains the same fields as [`HostSignPayloadRequest`] minus `address`\n(replaced by `signer`).",
+        definition:
+          "interface HostSignPayloadWithLegacyAccountRequest { signer: string; payload: HostSignPayloadRequest }",
+        description:
+          "Sign a Substrate extrinsic payload with a non-product (legacy) account.\nContains the same fields as [`HostSignPayloadRequest`] minus `address`\n(replaced by `signer`).",
         source: "v1",
         fields: [
           {
@@ -7340,8 +7787,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostSignRawRequest",
         name: "HostSignRawRequest",
         category: "struct",
-        definition: "interface HostSignRawRequest { account: ProductAccountId; payload: RawPayload }",
-        description: "A raw signing request pairing an account with the payload to sign.",
+        definition:
+          "interface HostSignRawRequest { account: ProductAccountId; payload: RawPayload }",
+        description:
+          "A raw signing request pairing an account with the payload to sign.",
         source: "v1",
         fields: [
           {
@@ -7360,8 +7809,10 @@ export const versions: ExplorerVersion[] = [
         id: "HostSignRawWithLegacyAccountRequest",
         name: "HostSignRawWithLegacyAccountRequest",
         category: "struct",
-        definition: "interface HostSignRawWithLegacyAccountRequest { signer: string; payload: RawPayload }",
-        description: "Sign raw bytes with a non-product (legacy) account. The signer field\nidentifies which legacy account to use.",
+        definition:
+          "interface HostSignRawWithLegacyAccountRequest { signer: string; payload: RawPayload }",
+        description:
+          "Sign raw bytes with a non-product (legacy) account. The signer field\nidentifies which legacy account to use.",
         source: "v1",
         fields: [
           {
@@ -7380,8 +7831,10 @@ export const versions: ExplorerVersion[] = [
         id: "Modifier",
         name: "Modifier",
         category: "enum",
-        definition: "type Modifier = { tag: \"Margin\"; value: Dimensions } | { tag: \"Padding\"; value: Dimensions } | { tag: \"Background\"; value: Background } | { tag: \"Border\"; value: BorderStyle } | { tag: \"Height\"; value: { height: bigint } } | { tag: \"Width\"; value: { width: bigint } } | { tag: \"MinWidth\"; value: { width: bigint } } | { tag: \"MinHeight\"; value: { height: bigint } } | { tag: \"FillWidth\"; value: { enabled: boolean } } | { tag: \"FillHeight\"; value: { enabled: boolean } }",
-        description: "Layout and styling modifiers applied to custom renderer components.",
+        definition:
+          'type Modifier = { tag: "Margin"; value: Dimensions } | { tag: "Padding"; value: Dimensions } | { tag: "Background"; value: Background } | { tag: "Border"; value: BorderStyle } | { tag: "Height"; value: { height: bigint } } | { tag: "Width"; value: { width: bigint } } | { tag: "MinWidth"; value: { width: bigint } } | { tag: "MinHeight"; value: { height: bigint } } | { tag: "FillWidth"; value: { enabled: boolean } } | { tag: "FillHeight"; value: { enabled: boolean } }',
+        description:
+          "Layout and styling modifiers applied to custom renderer components.",
         source: "shared",
         variants: [
           {
@@ -7441,21 +7894,25 @@ export const versions: ExplorerVersion[] = [
         name: "NotificationId",
         category: "alias",
         definition: "type NotificationId = number",
-        description: "Opaque, host-allocated identifier for a notification. Scope is per-product:\ntwo products may observe the same numeric id referring to unrelated\nnotifications. Products MUST treat the value as opaque.",
+        description:
+          "Opaque, host-allocated identifier for a notification. Scope is per-product:\ntwo products may observe the same numeric id referring to unrelated\nnotifications. Products MUST treat the value as opaque.",
         source: "shared",
       },
       {
         id: "NotificationsHostPushNotificationCancelRequest",
         name: "NotificationsHostPushNotificationCancelRequest",
         category: "struct",
-        definition: "interface NotificationsHostPushNotificationCancelRequest { id: NotificationId }",
-        description: "Request to retract a pending scheduled notification.\n\nCancellation is idempotent: the host MUST return `Ok(())` whether the id\nrefers to a pending scheduled notification, an already-fired one, an\nunknown id, or an id owned by a different product. RFC 0019 §5.",
+        definition:
+          "interface NotificationsHostPushNotificationCancelRequest { id: NotificationId }",
+        description:
+          "Request to retract a pending scheduled notification.\n\nCancellation is idempotent: the host MUST return `Ok(())` whether the id\nrefers to a pending scheduled notification, an already-fired one, an\nunknown id, or an id owned by a different product. RFC 0019 §5.",
         source: "shared",
         fields: [
           {
             name: "id",
             type: "NotificationId",
-            description: "Per-product notification id returned by an earlier\n[`HostPushNotificationResponse`].",
+            description:
+              "Per-product notification id returned by an earlier\n[`HostPushNotificationResponse`].",
           },
         ],
       },
@@ -7463,14 +7920,17 @@ export const versions: ExplorerVersion[] = [
         id: "NotificationsHostPushNotificationError",
         name: "NotificationsHostPushNotificationError",
         category: "enum",
-        definition: "type NotificationsHostPushNotificationError = { tag: \"ScheduleLimitReached\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
-        description: "Domain error variants for [`super::super::api::TrUApiCalls::host_push_notification`].",
+        definition:
+          'type NotificationsHostPushNotificationError = { tag: "ScheduleLimitReached"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+        description:
+          "Domain error variants for [`crate::api::TrUApiCalls::host_push_notification`].",
         source: "shared",
         variants: [
           {
             name: "ScheduleLimitReached",
             type: "undefined",
-            description: "The product has reached the maximum number of pending scheduled\nnotifications. The cap is host-wide across all installed products;\nsee RFC 0019 §\"Limits\".",
+            description:
+              'The product has reached the maximum number of pending scheduled\nnotifications. The cap is host-wide across all installed products;\nsee RFC 0019 §"Limits".',
           },
           {
             name: "Unknown",
@@ -7483,8 +7943,10 @@ export const versions: ExplorerVersion[] = [
         id: "NotificationsHostPushNotificationRequest",
         name: "NotificationsHostPushNotificationRequest",
         category: "struct",
-        definition: "interface NotificationsHostPushNotificationRequest { text: string; deeplink?: string; scheduledAt?: bigint }",
-        description: "Push notification payload. Extends the v0.1 shape with an optional future\nfire instant. If `scheduled_at` is `None` the notification fires\nimmediately, preserving v0.1 behaviour but returning a `NotificationId`.",
+        definition:
+          "interface NotificationsHostPushNotificationRequest { text: string; deeplink?: string; scheduledAt?: bigint }",
+        description:
+          "Push notification payload. Extends the v0.1 shape with an optional future\nfire instant. If `scheduled_at` is `None` the notification fires\nimmediately, preserving v0.1 behaviour but returning a `NotificationId`.",
         source: "shared",
         fields: [
           {
@@ -7500,7 +7962,8 @@ export const versions: ExplorerVersion[] = [
           {
             name: "scheduledAt",
             type: "bigint",
-            description: "Optional Unix timestamp in milliseconds (UTC) at which the\nnotification should fire. `None` fires immediately.",
+            description:
+              "Optional Unix timestamp in milliseconds (UTC) at which the\nnotification should fire. `None` fires immediately.",
           },
         ],
       },
@@ -7508,14 +7971,17 @@ export const versions: ExplorerVersion[] = [
         id: "NotificationsHostPushNotificationResponse",
         name: "NotificationsHostPushNotificationResponse",
         category: "struct",
-        definition: "interface NotificationsHostPushNotificationResponse { id: NotificationId }",
-        description: "Successful response. The id is returned for **every** call — both immediate\nand scheduled — so callers don't branch on the presence of `scheduled_at`.\nFor an immediate notification the id has no operational use (the host has\nalready delivered the notification to the OS) but is still returned for\nshape uniformity.",
+        definition:
+          "interface NotificationsHostPushNotificationResponse { id: NotificationId }",
+        description:
+          "Successful response. The id is returned for **every** call — both immediate\nand scheduled — so callers don't branch on the presence of `scheduled_at`.",
         source: "shared",
         fields: [
           {
             name: "id",
             type: "NotificationId",
-            description: "Per-product identifier the product can later pass to\n[`HostPushNotificationCancelRequest`] to retract the pending delivery.",
+            description:
+              "Per-product identifier the product can later pass to\n[`HostPushNotificationCancelRequest`] to retract the pending delivery.",
           },
         ],
       },
@@ -7523,7 +7989,8 @@ export const versions: ExplorerVersion[] = [
         id: "OperationStartedResult",
         name: "OperationStartedResult",
         category: "enum",
-        definition: "type OperationStartedResult = { tag: \"Started\"; value: { operationId: string } } | { tag: \"LimitReached\"; value: undefined }",
+        definition:
+          'type OperationStartedResult = { tag: "Started"; value: { operationId: string } } | { tag: "LimitReached"; value: undefined }',
         description: "Result of starting a chain operation.",
         source: "shared",
         variants: [
@@ -7543,19 +8010,23 @@ export const versions: ExplorerVersion[] = [
         id: "PaymentTopUpSource",
         name: "PaymentTopUpSource",
         category: "enum",
-        definition: "type PaymentTopUpSource = { tag: \"ProductAccount\"; value: { derivationIndex: number } } | { tag: \"PrivateKey\"; value: { ed25519PrivateKey: HexString } }",
-        description: "Source for a payment top-up operation.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
+        definition:
+          'type PaymentTopUpSource = { tag: "ProductAccount"; value: { derivationIndex: number } } | { tag: "PrivateKey"; value: { ed25519PrivateKey: HexString } }',
+        description:
+          "Source for a payment top-up operation.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         source: "shared",
         variants: [
           {
             name: "ProductAccount",
             type: "{ derivationIndex: number }",
-            description: "Fund from one of the calling product's scoped accounts.",
+            description:
+              "Fund from one of the calling product's scoped accounts.",
           },
           {
             name: "PrivateKey",
             type: "{ ed25519PrivateKey: HexString }",
-            description: "Fund from a one-time account represented by its private key. This is a\nstandard account holding public funds, not a coin key.",
+            description:
+              "Fund from a one-time account represented by its private key. This is a\nstandard account holding public funds, not a coin key.",
           },
         ],
       },
@@ -7563,7 +8034,8 @@ export const versions: ExplorerVersion[] = [
         id: "PreimageSubmitError",
         name: "PreimageSubmitError",
         category: "enum",
-        definition: "type PreimageSubmitError = { tag: \"Unknown\"; value: { reason: string } }",
+        definition:
+          'type PreimageSubmitError = { tag: "Unknown"; value: { reason: string } }',
         description: "Preimage submission error.",
         source: "shared",
         variants: [
@@ -7593,19 +8065,23 @@ export const versions: ExplorerVersion[] = [
         id: "ProductAccountId",
         name: "ProductAccountId",
         category: "struct",
-        definition: "interface ProductAccountId { dotNsIdentifier: string; derivationIndex: number }",
-        description: "Identifies a product-specific account by combining a dotNS domain name with a\nderivation index.",
+        definition:
+          "interface ProductAccountId { dotNsIdentifier: string; derivationIndex: number }",
+        description:
+          "Identifies a product-specific account by combining a dotNS domain name with a\nderivation index.",
         source: "shared",
         fields: [
           {
             name: "dotNsIdentifier",
             type: "string",
-            description: "A dotNS domain name identifier (e.g., `\"my-product.dot\"`).",
+            description:
+              'A dotNS domain name identifier (e.g., `"my-product.dot"`).',
           },
           {
             name: "derivationIndex",
             type: "number",
-            description: "Key derivation index for generating product-specific accounts.",
+            description:
+              "Key derivation index for generating product-specific accounts.",
           },
         ],
       },
@@ -7613,8 +8089,10 @@ export const versions: ExplorerVersion[] = [
         id: "ProductChatCustomMessageRenderSubscribeRequest",
         name: "ProductChatCustomMessageRenderSubscribeRequest",
         category: "struct",
-        definition: "interface ProductChatCustomMessageRenderSubscribeRequest { messageId: string; messageType: string; payload: HexString }",
-        description: "Subscribe payload identifying the chat message to render. The host responds\nwith a stream of [`CustomRendererNode`] trees describing the rendered UI.",
+        definition:
+          "interface ProductChatCustomMessageRenderSubscribeRequest { messageId: string; messageType: string; payload: HexString }",
+        description:
+          "Subscribe payload identifying the chat message to render. The host responds\nwith a stream of [`CustomRendererNode`] trees describing the rendered UI.",
         source: "v1",
         fields: [
           {
@@ -7638,8 +8116,10 @@ export const versions: ExplorerVersion[] = [
         id: "RawPayload",
         name: "RawPayload",
         category: "enum",
-        definition: "type RawPayload = { tag: \"Bytes\"; value: { bytes: HexString } } | { tag: \"Payload\"; value: { payload: string } }",
-        description: "Raw data to sign -- either binary bytes or a string message.",
+        definition:
+          'type RawPayload = { tag: "Bytes"; value: { bytes: HexString } } | { tag: "Payload"; value: { payload: string } }',
+        description:
+          "Raw data to sign -- either binary bytes or a string message.",
         source: "shared",
         variants: [
           {
@@ -7658,8 +8138,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainHeadBodyRequest",
         name: "RemoteChainHeadBodyRequest",
         category: "struct",
-        definition: "interface RemoteChainHeadBodyRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString }",
-        description: "Parameters for [`crate::api::ChainInteraction::remote_chain_head_body`].",
+        definition:
+          "interface RemoteChainHeadBodyRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString }",
+        description:
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_body`].",
         source: "v1",
         fields: [
           {
@@ -7683,7 +8165,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainHeadBodyResponse",
         name: "RemoteChainHeadBodyResponse",
         category: "struct",
-        definition: "interface RemoteChainHeadBodyResponse { operation: OperationStartedResult }",
+        definition:
+          "interface RemoteChainHeadBodyResponse { operation: OperationStartedResult }",
         description: "Response indicating a block body operation was started.",
         source: "v1",
         fields: [
@@ -7698,8 +8181,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainHeadCallRequest",
         name: "RemoteChainHeadCallRequest",
         category: "struct",
-        definition: "interface RemoteChainHeadCallRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString; function: string; callParameters: HexString }",
-        description: "Parameters for [`crate::api::ChainInteraction::remote_chain_head_call`].",
+        definition:
+          "interface RemoteChainHeadCallRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString; function: string; callParameters: HexString }",
+        description:
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_call`].",
         source: "v1",
         fields: [
           {
@@ -7733,8 +8218,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainHeadCallResponse",
         name: "RemoteChainHeadCallResponse",
         category: "struct",
-        definition: "interface RemoteChainHeadCallResponse { operation: OperationStartedResult }",
-        description: "Response indicating a runtime call operation was started.",
+        definition:
+          "interface RemoteChainHeadCallResponse { operation: OperationStartedResult }",
+        description:
+          "Response indicating a runtime call operation was started.",
         source: "v1",
         fields: [
           {
@@ -7748,8 +8235,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainHeadContinueRequest",
         name: "RemoteChainHeadContinueRequest",
         category: "struct",
-        definition: "interface RemoteChainHeadContinueRequest { genesisHash: HexString; followSubscriptionId: string; operationId: string }",
-        description: "Parameters for [`crate::api::ChainInteraction::remote_chain_head_continue`].",
+        definition:
+          "interface RemoteChainHeadContinueRequest { genesisHash: HexString; followSubscriptionId: string; operationId: string }",
+        description:
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_continue`].",
         source: "v1",
         fields: [
           {
@@ -7773,7 +8262,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainHeadFollowItem",
         name: "RemoteChainHeadFollowItem",
         category: "enum",
-        definition: "type RemoteChainHeadFollowItem = { tag: \"Initialized\"; value: { finalizedBlockHashes: Array<HexString>; finalizedBlockRuntime?: RuntimeType } } | { tag: \"NewBlock\"; value: { blockHash: HexString; parentBlockHash: HexString; newRuntime?: RuntimeType } } | { tag: \"BestBlockChanged\"; value: { bestBlockHash: HexString } } | { tag: \"Finalized\"; value: { finalizedBlockHashes: Array<HexString>; prunedBlockHashes: Array<HexString> } } | { tag: \"OperationBodyDone\"; value: { operationId: string; value: Array<HexString> } } | { tag: \"OperationCallDone\"; value: { operationId: string; output: HexString } } | { tag: \"OperationStorageItems\"; value: { operationId: string; items: Array<StorageResultItem> } } | { tag: \"OperationStorageDone\"; value: { operationId: string } } | { tag: \"OperationWaitingForContinue\"; value: { operationId: string } } | { tag: \"OperationInaccessible\"; value: { operationId: string } } | { tag: \"OperationError\"; value: { operationId: string; error: string } } | { tag: \"Stop\"; value: undefined }",
+        definition:
+          'type RemoteChainHeadFollowItem = { tag: "Initialized"; value: { finalizedBlockHashes: Array<HexString>; finalizedBlockRuntime?: RuntimeType } } | { tag: "NewBlock"; value: { blockHash: HexString; parentBlockHash: HexString; newRuntime?: RuntimeType } } | { tag: "BestBlockChanged"; value: { bestBlockHash: HexString } } | { tag: "Finalized"; value: { finalizedBlockHashes: Array<HexString>; prunedBlockHashes: Array<HexString> } } | { tag: "OperationBodyDone"; value: { operationId: string; value: Array<HexString> } } | { tag: "OperationCallDone"; value: { operationId: string; output: HexString } } | { tag: "OperationStorageItems"; value: { operationId: string; items: Array<StorageResultItem> } } | { tag: "OperationStorageDone"; value: { operationId: string } } | { tag: "OperationWaitingForContinue"; value: { operationId: string } } | { tag: "OperationInaccessible"; value: { operationId: string } } | { tag: "OperationError"; value: { operationId: string; error: string } } | { tag: "Stop"; value: undefined }',
         description: "Events received when following the chain head.",
         source: "v1",
         variants: [
@@ -7820,7 +8310,8 @@ export const versions: ExplorerVersion[] = [
           {
             name: "OperationWaitingForContinue",
             type: "{ operationId: string }",
-            description: "Operation paused, needs [`crate::api::ChainInteraction::remote_chain_head_continue`].",
+            description:
+              "Operation paused, needs [`crate::api::ChainInteraction::remote_chain_head_continue`].",
           },
           {
             name: "OperationInaccessible",
@@ -7843,8 +8334,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainHeadFollowRequest",
         name: "RemoteChainHeadFollowRequest",
         category: "struct",
-        definition: "interface RemoteChainHeadFollowRequest { genesisHash: HexString; withRuntime: boolean }",
-        description: "Parameters for [`crate::api::ChainInteraction::remote_chain_head_follow_subscribe`].",
+        definition:
+          "interface RemoteChainHeadFollowRequest { genesisHash: HexString; withRuntime: boolean }",
+        description:
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_follow_subscribe`].",
         source: "v1",
         fields: [
           {
@@ -7863,8 +8356,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainHeadHeaderRequest",
         name: "RemoteChainHeadHeaderRequest",
         category: "struct",
-        definition: "interface RemoteChainHeadHeaderRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString }",
-        description: "Parameters for [`crate::api::ChainInteraction::remote_chain_head_header`].",
+        definition:
+          "interface RemoteChainHeadHeaderRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString }",
+        description:
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_header`].",
         source: "v1",
         fields: [
           {
@@ -7888,7 +8383,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainHeadHeaderResponse",
         name: "RemoteChainHeadHeaderResponse",
         category: "struct",
-        definition: "interface RemoteChainHeadHeaderResponse { header?: HexString }",
+        definition:
+          "interface RemoteChainHeadHeaderResponse { header?: HexString }",
         description: "Response containing a block header, if available.",
         source: "v1",
         fields: [
@@ -7903,8 +8399,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainHeadStopOperationRequest",
         name: "RemoteChainHeadStopOperationRequest",
         category: "struct",
-        definition: "interface RemoteChainHeadStopOperationRequest { genesisHash: HexString; followSubscriptionId: string; operationId: string }",
-        description: "Parameters for [`crate::api::ChainInteraction::remote_chain_head_stop_operation`].",
+        definition:
+          "interface RemoteChainHeadStopOperationRequest { genesisHash: HexString; followSubscriptionId: string; operationId: string }",
+        description:
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_stop_operation`].",
         source: "v1",
         fields: [
           {
@@ -7928,8 +8426,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainHeadStorageRequest",
         name: "RemoteChainHeadStorageRequest",
         category: "struct",
-        definition: "interface RemoteChainHeadStorageRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString; items: Array<StorageQueryItem>; childTrie?: HexString }",
-        description: "Parameters for [`crate::api::ChainInteraction::remote_chain_head_storage`].",
+        definition:
+          "interface RemoteChainHeadStorageRequest { genesisHash: HexString; followSubscriptionId: string; hash: HexString; items: Array<StorageQueryItem>; childTrie?: HexString }",
+        description:
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_storage`].",
         source: "v1",
         fields: [
           {
@@ -7963,8 +8463,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainHeadStorageResponse",
         name: "RemoteChainHeadStorageResponse",
         category: "struct",
-        definition: "interface RemoteChainHeadStorageResponse { operation: OperationStartedResult }",
-        description: "Response indicating a storage query operation was started.",
+        definition:
+          "interface RemoteChainHeadStorageResponse { operation: OperationStartedResult }",
+        description:
+          "Response indicating a storage query operation was started.",
         source: "v1",
         fields: [
           {
@@ -7978,8 +8480,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainHeadUnpinRequest",
         name: "RemoteChainHeadUnpinRequest",
         category: "struct",
-        definition: "interface RemoteChainHeadUnpinRequest { genesisHash: HexString; followSubscriptionId: string; hashes: Array<HexString> }",
-        description: "Parameters for [`crate::api::ChainInteraction::remote_chain_head_unpin`].",
+        definition:
+          "interface RemoteChainHeadUnpinRequest { genesisHash: HexString; followSubscriptionId: string; hashes: Array<HexString> }",
+        description:
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_head_unpin`].",
         source: "v1",
         fields: [
           {
@@ -8003,7 +8507,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainSpecChainNameRequest",
         name: "RemoteChainSpecChainNameRequest",
         category: "struct",
-        definition: "interface RemoteChainSpecChainNameRequest { genesisHash: HexString }",
+        definition:
+          "interface RemoteChainSpecChainNameRequest { genesisHash: HexString }",
         description: "Request to fetch a chain display name.",
         source: "v1",
         fields: [
@@ -8018,7 +8523,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainSpecChainNameResponse",
         name: "RemoteChainSpecChainNameResponse",
         category: "struct",
-        definition: "interface RemoteChainSpecChainNameResponse { chainName: string }",
+        definition:
+          "interface RemoteChainSpecChainNameResponse { chainName: string }",
         description: "Response containing a chain display name.",
         source: "v1",
         fields: [
@@ -8033,7 +8539,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainSpecGenesisHashRequest",
         name: "RemoteChainSpecGenesisHashRequest",
         category: "struct",
-        definition: "interface RemoteChainSpecGenesisHashRequest { genesisHash: HexString }",
+        definition:
+          "interface RemoteChainSpecGenesisHashRequest { genesisHash: HexString }",
         description: "Request to fetch a chain genesis hash.",
         source: "v1",
         fields: [
@@ -8048,7 +8555,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainSpecGenesisHashResponse",
         name: "RemoteChainSpecGenesisHashResponse",
         category: "struct",
-        definition: "interface RemoteChainSpecGenesisHashResponse { genesisHash: HexString }",
+        definition:
+          "interface RemoteChainSpecGenesisHashResponse { genesisHash: HexString }",
         description: "Response containing a chain genesis hash.",
         source: "v1",
         fields: [
@@ -8063,7 +8571,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainSpecPropertiesRequest",
         name: "RemoteChainSpecPropertiesRequest",
         category: "struct",
-        definition: "interface RemoteChainSpecPropertiesRequest { genesisHash: HexString }",
+        definition:
+          "interface RemoteChainSpecPropertiesRequest { genesisHash: HexString }",
         description: "Request to fetch chain properties.",
         source: "v1",
         fields: [
@@ -8078,7 +8587,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainSpecPropertiesResponse",
         name: "RemoteChainSpecPropertiesResponse",
         category: "struct",
-        definition: "interface RemoteChainSpecPropertiesResponse { properties: string }",
+        definition:
+          "interface RemoteChainSpecPropertiesResponse { properties: string }",
         description: "Response containing JSON-encoded chain properties.",
         source: "v1",
         fields: [
@@ -8093,8 +8603,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainTransactionBroadcastRequest",
         name: "RemoteChainTransactionBroadcastRequest",
         category: "struct",
-        definition: "interface RemoteChainTransactionBroadcastRequest { genesisHash: HexString; transaction: HexString }",
-        description: "Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_broadcast`].",
+        definition:
+          "interface RemoteChainTransactionBroadcastRequest { genesisHash: HexString; transaction: HexString }",
+        description:
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_broadcast`].",
         source: "v1",
         fields: [
           {
@@ -8113,8 +8625,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainTransactionBroadcastResponse",
         name: "RemoteChainTransactionBroadcastResponse",
         category: "struct",
-        definition: "interface RemoteChainTransactionBroadcastResponse { operationId?: string }",
-        description: "Response containing a transaction broadcast operation identifier.",
+        definition:
+          "interface RemoteChainTransactionBroadcastResponse { operationId?: string }",
+        description:
+          "Response containing a transaction broadcast operation identifier.",
         source: "v1",
         fields: [
           {
@@ -8128,8 +8642,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteChainTransactionStopRequest",
         name: "RemoteChainTransactionStopRequest",
         category: "struct",
-        definition: "interface RemoteChainTransactionStopRequest { genesisHash: HexString; operationId: string }",
-        description: "Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_stop`].",
+        definition:
+          "interface RemoteChainTransactionStopRequest { genesisHash: HexString; operationId: string }",
+        description:
+          "Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_stop`].",
         source: "v1",
         fields: [
           {
@@ -8148,14 +8664,17 @@ export const versions: ExplorerVersion[] = [
         id: "RemotePermission",
         name: "RemotePermission",
         category: "enum",
-        definition: "type RemotePermission = { tag: \"Remote\"; value: { domains: Array<string> } } | { tag: \"WebRtc\"; value: undefined } | { tag: \"ChainSubmit\"; value: undefined } | { tag: \"PreimageSubmit\"; value: undefined } | { tag: \"StatementSubmit\"; value: undefined }",
-        description: "A single remote-operation permission entry.\n\nThe [`crate::api::Permissions::remote_permission`] method accepts a\n`Vec<RemotePermission>` so products can batch multiple permission requests\ninto a single prompt.\n\nSee [RFC 0001] and [issue #64].\n\n[RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66\n[issue #64]: https://github.com/paritytech/triangle-js-sdks/issues/64",
+        definition:
+          'type RemotePermission = { tag: "Remote"; value: { domains: Array<string> } } | { tag: "WebRtc"; value: undefined } | { tag: "ChainSubmit"; value: undefined } | { tag: "PreimageSubmit"; value: undefined } | { tag: "StatementSubmit"; value: undefined }',
+        description:
+          "A single remote-operation permission entry.\n\nThe [`crate::api::Permissions::remote_permission`] method accepts a\n`Vec<RemotePermission>` so products can batch multiple permission requests\ninto a single prompt.\n\nSee [RFC 0001] and [issue #64].\n\n[RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66\n[issue #64]: https://github.com/paritytech/triangle-js-sdks/issues/64",
         source: "shared",
         variants: [
           {
             name: "Remote",
             type: "{ domains: Array<string> }",
-            description: "HTTP/HTTPS/WS/WSS access to specific domains. Each string is a domain\npattern: `\"api.example.com\"` (exact), `\"*.example.com\"` (wildcard\nsubdomain), or `\"*\"` (all hosts).",
+            description:
+              'HTTP/HTTPS/WS/WSS access to specific domains. Each string is a domain\npattern: `"api.example.com"` (exact), `"*.example.com"` (wildcard\nsubdomain), or `"*"` (all hosts).',
           },
           {
             name: "WebRtc",
@@ -8165,17 +8684,20 @@ export const versions: ExplorerVersion[] = [
           {
             name: "ChainSubmit",
             type: "undefined",
-            description: "Broadcast signed transactions via\n[`crate::api::ChainInteraction::remote_chain_transaction_broadcast`].",
+            description:
+              "Broadcast signed transactions via\n[`crate::api::ChainInteraction::remote_chain_transaction_broadcast`].",
           },
           {
             name: "PreimageSubmit",
             type: "undefined",
-            description: "Submit a preimage via [`crate::api::Preimage::remote_preimage_submit`].",
+            description:
+              "Submit a preimage via [`crate::api::Preimage::remote_preimage_submit`].",
           },
           {
             name: "StatementSubmit",
             type: "undefined",
-            description: "Submit statements via [`crate::api::StatementStore::remote_statement_store_submit`].",
+            description:
+              "Submit statements via [`crate::api::StatementStore::remote_statement_store_submit`].",
           },
         ],
       },
@@ -8183,7 +8705,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemotePermissionRequest",
         name: "RemotePermissionRequest",
         category: "struct",
-        definition: "interface RemotePermissionRequest { permissions: Array<RemotePermission> }",
+        definition:
+          "interface RemotePermissionRequest { permissions: Array<RemotePermission> }",
         description: "Request containing batched remote-operation permissions.",
         source: "v1",
         fields: [
@@ -8199,7 +8722,8 @@ export const versions: ExplorerVersion[] = [
         name: "RemotePermissionResponse",
         category: "struct",
         definition: "interface RemotePermissionResponse { granted: boolean }",
-        description: "Response indicating whether a remote permission was granted.",
+        description:
+          "Response indicating whether a remote permission was granted.",
         source: "v1",
         fields: [
           {
@@ -8213,7 +8737,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemotePreimageLookupSubscribeItem",
         name: "RemotePreimageLookupSubscribeItem",
         category: "struct",
-        definition: "interface RemotePreimageLookupSubscribeItem { value?: HexString }",
+        definition:
+          "interface RemotePreimageLookupSubscribeItem { value?: HexString }",
         description: "Item containing an optional preimage lookup result.",
         source: "v1",
         fields: [
@@ -8228,7 +8753,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemotePreimageLookupSubscribeRequest",
         name: "RemotePreimageLookupSubscribeRequest",
         category: "struct",
-        definition: "interface RemotePreimageLookupSubscribeRequest { key: HexString }",
+        definition:
+          "interface RemotePreimageLookupSubscribeRequest { key: HexString }",
         description: "Request to subscribe to preimage lookup results.",
         source: "v1",
         fields: [
@@ -8243,7 +8769,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteStatementStoreCreateProofError",
         name: "RemoteStatementStoreCreateProofError",
         category: "enum",
-        definition: "type RemoteStatementStoreCreateProofError = { tag: \"UnableToSign\"; value: undefined } | { tag: \"UnknownAccount\"; value: undefined } | { tag: \"Unknown\"; value: { reason: string } }",
+        definition:
+          'type RemoteStatementStoreCreateProofError = { tag: "UnableToSign"; value: undefined } | { tag: "UnknownAccount"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Statement proof creation error.",
         source: "v1",
         variants: [
@@ -8268,7 +8795,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteStatementStoreCreateProofRequest",
         name: "RemoteStatementStoreCreateProofRequest",
         category: "struct",
-        definition: "interface RemoteStatementStoreCreateProofRequest { productAccountId: ProductAccountId; statement: Statement }",
+        definition:
+          "interface RemoteStatementStoreCreateProofRequest { productAccountId: ProductAccountId; statement: Statement }",
         description: "Request to create a cryptographic proof for a statement.",
         source: "v1",
         fields: [
@@ -8288,7 +8816,8 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteStatementStoreCreateProofResponse",
         name: "RemoteStatementStoreCreateProofResponse",
         category: "struct",
-        definition: "interface RemoteStatementStoreCreateProofResponse { proof: StatementProof }",
+        definition:
+          "interface RemoteStatementStoreCreateProofResponse { proof: StatementProof }",
         description: "Response containing a statement proof.",
         source: "v1",
         fields: [
@@ -8303,8 +8832,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteStatementStoreSubscribeItem",
         name: "RemoteStatementStoreSubscribeItem",
         category: "struct",
-        definition: "interface RemoteStatementStoreSubscribeItem { statements: Array<SignedStatement>; isComplete: boolean }",
-        description: "Page of signed statements delivered by the statement store subscription\n(RFC 0008). The `is_complete` flag distinguishes the historical-dump phase\n(`false`) from the live-update phase (`true`).",
+        definition:
+          "interface RemoteStatementStoreSubscribeItem { statements: Array<SignedStatement>; isComplete: boolean }",
+        description:
+          "Page of signed statements delivered by the statement store subscription\n(RFC 0008). The `is_complete` flag distinguishes the historical-dump phase\n(`false`) from the live-update phase (`true`).",
         source: "v1",
         fields: [
           {
@@ -8315,7 +8846,8 @@ export const versions: ExplorerVersion[] = [
           {
             name: "isComplete",
             type: "boolean",
-            description: "`false` while the host is still streaming the historical dump (more\npages to follow). `true` once the dump is complete; all subsequent\npages are also `true` and carry only newly-arrived statements.",
+            description:
+              "`false` while the host is still streaming the historical dump (more\npages to follow). `true` once the dump is complete; all subsequent\npages are also `true` and carry only newly-arrived statements.",
           },
         ],
       },
@@ -8323,8 +8855,10 @@ export const versions: ExplorerVersion[] = [
         id: "RemoteStatementStoreSubscribeRequest",
         name: "RemoteStatementStoreSubscribeRequest",
         category: "enum",
-        definition: "type RemoteStatementStoreSubscribeRequest = { tag: \"MatchAll\"; value: Array<Topic> } | { tag: \"MatchAny\"; value: Array<Topic> }",
-        description: "Request to subscribe to statements via a topic filter (RFC 0008).",
+        definition:
+          'type RemoteStatementStoreSubscribeRequest = { tag: "MatchAll"; value: Array<Topic> } | { tag: "MatchAny"; value: Array<Topic> }',
+        description:
+          "Request to subscribe to statements via a topic filter (RFC 0008).",
         source: "v1",
         variants: [
           {
@@ -8335,7 +8869,8 @@ export const versions: ExplorerVersion[] = [
           {
             name: "MatchAny",
             type: "Array<Topic>",
-            description: "OR: statement must contain at least one listed topic.",
+            description:
+              "OR: statement must contain at least one listed topic.",
           },
         ],
       },
@@ -8343,8 +8878,10 @@ export const versions: ExplorerVersion[] = [
         id: "RingLocation",
         name: "RingLocation",
         category: "struct",
-        definition: "interface RingLocation { genesisHash: HexString; ringRootHash: HexString; hints?: RingLocationHint }",
-        description: "Locates a specific ring on a specific chain for ring VRF operations.",
+        definition:
+          "interface RingLocation { genesisHash: HexString; ringRootHash: HexString; hints?: RingLocationHint }",
+        description:
+          "Locates a specific ring on a specific chain for ring VRF operations.",
         source: "shared",
         fields: [
           {
@@ -8383,7 +8920,8 @@ export const versions: ExplorerVersion[] = [
         id: "RowProps",
         name: "RowProps",
         category: "struct",
-        definition: "interface RowProps { verticalAlignment?: VerticalAlignment; horizontalArrangement?: Arrangement }",
+        definition:
+          "interface RowProps { verticalAlignment?: VerticalAlignment; horizontalArrangement?: Arrangement }",
         description: "Properties for a [`CustomRendererNode::Row`] layout.",
         source: "shared",
         fields: [
@@ -8423,7 +8961,8 @@ export const versions: ExplorerVersion[] = [
         id: "RuntimeSpec",
         name: "RuntimeSpec",
         category: "struct",
-        definition: "interface RuntimeSpec { specName: string; implName: string; specVersion: number; implVersion: number; transactionVersion?: number; apis: Array<RuntimeApi> }",
+        definition:
+          "interface RuntimeSpec { specName: string; implName: string; specVersion: number; implVersion: number; transactionVersion?: number; apis: Array<RuntimeApi> }",
         description: "Runtime specification metadata.",
         source: "shared",
         fields: [
@@ -8463,7 +9002,8 @@ export const versions: ExplorerVersion[] = [
         id: "RuntimeType",
         name: "RuntimeType",
         category: "enum",
-        definition: "type RuntimeType = { tag: \"Valid\"; value: RuntimeSpec } | { tag: \"Invalid\"; value: { error: string } }",
+        definition:
+          'type RuntimeType = { tag: "Valid"; value: RuntimeSpec } | { tag: "Invalid"; value: { error: string } }',
         description: "Runtime validity check result.",
         source: "shared",
         variants: [
@@ -8483,7 +9023,8 @@ export const versions: ExplorerVersion[] = [
         id: "Shape",
         name: "Shape",
         category: "enum",
-        definition: "type Shape = { tag: \"Rounded\"; value: { radius: bigint } } | { tag: \"Circle\"; value: undefined }",
+        definition:
+          'type Shape = { tag: "Rounded"; value: { radius: bigint } } | { tag: "Circle"; value: undefined }',
         description: "Shape for borders and backgrounds.",
         source: "shared",
         variants: [
@@ -8503,7 +9044,8 @@ export const versions: ExplorerVersion[] = [
         id: "SignedStatement",
         name: "SignedStatement",
         category: "struct",
-        definition: "interface SignedStatement { proof: StatementProof; decryptionKey?: HexString; expiry?: bigint; channel?: HexString; topics: Array<HexString>; data?: HexString }",
+        definition:
+          "interface SignedStatement { proof: StatementProof; decryptionKey?: HexString; expiry?: bigint; channel?: HexString; topics: Array<HexString>; data?: HexString }",
         description: "A statement with a required (not optional) proof.",
         source: "shared",
         fields: [
@@ -8543,7 +9085,8 @@ export const versions: ExplorerVersion[] = [
         id: "Statement",
         name: "Statement",
         category: "struct",
-        definition: "interface Statement { proof?: StatementProof; decryptionKey?: HexString; expiry?: bigint; channel?: HexString; topics: Array<HexString>; data?: HexString }",
+        definition:
+          "interface Statement { proof?: StatementProof; decryptionKey?: HexString; expiry?: bigint; channel?: HexString; topics: Array<HexString>; data?: HexString }",
         description: "A statement with optional proof and metadata.",
         source: "shared",
         fields: [
@@ -8583,7 +9126,8 @@ export const versions: ExplorerVersion[] = [
         id: "StatementProof",
         name: "StatementProof",
         category: "enum",
-        definition: "type StatementProof = { tag: \"Sr25519\"; value: { signature: HexString; signer: HexString } } | { tag: \"Ed25519\"; value: { signature: HexString; signer: HexString } } | { tag: \"Ecdsa\"; value: { signature: HexString; signer: HexString } } | { tag: \"OnChain\"; value: { who: HexString; blockHash: HexString; event: bigint } }",
+        definition:
+          'type StatementProof = { tag: "Sr25519"; value: { signature: HexString; signer: HexString } } | { tag: "Ed25519"; value: { signature: HexString; signer: HexString } } | { tag: "Ecdsa"; value: { signature: HexString; signer: HexString } } | { tag: "OnChain"; value: { who: HexString; blockHash: HexString; event: bigint } }',
         description: "Cryptographic proof for a statement.",
         source: "shared",
         variants: [
@@ -8613,7 +9157,8 @@ export const versions: ExplorerVersion[] = [
         id: "StorageQueryItem",
         name: "StorageQueryItem",
         category: "struct",
-        definition: "interface StorageQueryItem { key: HexString; queryType: StorageQueryType }",
+        definition:
+          "interface StorageQueryItem { key: HexString; queryType: StorageQueryType }",
         description: "A single storage query.",
         source: "shared",
         fields: [
@@ -8633,7 +9178,8 @@ export const versions: ExplorerVersion[] = [
         id: "StorageQueryType",
         name: "StorageQueryType",
         category: "enum",
-        definition: "type StorageQueryType = { tag: \"Value\"; value: undefined } | { tag: \"Hash\"; value: undefined } | { tag: \"ClosestDescendantMerkleValue\"; value: undefined } | { tag: \"DescendantsValues\"; value: undefined } | { tag: \"DescendantsHashes\"; value: undefined }",
+        definition:
+          'type StorageQueryType = { tag: "Value"; value: undefined } | { tag: "Hash"; value: undefined } | { tag: "ClosestDescendantMerkleValue"; value: undefined } | { tag: "DescendantsValues"; value: undefined } | { tag: "DescendantsHashes"; value: undefined }',
         description: "Type of storage query to perform.",
         source: "shared",
         variants: [
@@ -8663,7 +9209,8 @@ export const versions: ExplorerVersion[] = [
         id: "StorageResultItem",
         name: "StorageResultItem",
         category: "struct",
-        definition: "interface StorageResultItem { key: HexString; value?: HexString; hash?: HexString; closestDescendantMerkleValue?: HexString }",
+        definition:
+          "interface StorageResultItem { key: HexString; value?: HexString; hash?: HexString; closestDescendantMerkleValue?: HexString }",
         description: "Result of a storage query.",
         source: "shared",
         fields: [
@@ -8693,7 +9240,8 @@ export const versions: ExplorerVersion[] = [
         id: "TextFieldProps",
         name: "TextFieldProps",
         category: "struct",
-        definition: "interface TextFieldProps { placeholder?: string; initialValue?: string; submitAction: string }",
+        definition:
+          "interface TextFieldProps { placeholder?: string; initialValue?: string; submitAction: string }",
         description: "Properties for a [`CustomRendererNode::TextField`].",
         source: "shared",
         fields: [
@@ -8718,7 +9266,8 @@ export const versions: ExplorerVersion[] = [
         id: "TextProps",
         name: "TextProps",
         category: "struct",
-        definition: "interface TextProps { style?: TypographyStyle; color?: ColorToken }",
+        definition:
+          "interface TextProps { style?: TypographyStyle; color?: ColorToken }",
         description: "Properties for a [`CustomRendererNode::Text`] display.",
         source: "shared",
         fields: [
@@ -8746,7 +9295,8 @@ export const versions: ExplorerVersion[] = [
         id: "TxPayloadContextV1",
         name: "TxPayloadContextV1",
         category: "struct",
-        definition: "interface TxPayloadContextV1 { metadata: HexString; tokenSymbol: string; tokenDecimals: number; bestBlockHeight: number }",
+        definition:
+          "interface TxPayloadContextV1 { metadata: HexString; tokenSymbol: string; tokenDecimals: number; bestBlockHeight: number }",
         description: "Context information for transaction construction.",
         source: "shared",
         fields: [
@@ -8776,14 +9326,15 @@ export const versions: ExplorerVersion[] = [
         id: "TxPayloadExtensionV1",
         name: "TxPayloadExtensionV1",
         category: "struct",
-        definition: "interface TxPayloadExtensionV1 { id: string; extra: HexString; additionalSigned: HexString }",
+        definition:
+          "interface TxPayloadExtensionV1 { id: string; extra: HexString; additionalSigned: HexString }",
         description: "A signed extension for a transaction payload.",
         source: "shared",
         fields: [
           {
             name: "id",
             type: "string",
-            description: "Extension name (e.g., `\"CheckSpecVersion\"`).",
+            description: 'Extension name (e.g., `"CheckSpecVersion"`).',
           },
           {
             name: "extra",
@@ -8801,8 +9352,10 @@ export const versions: ExplorerVersion[] = [
         id: "TxPayloadV1",
         name: "TxPayloadV1",
         category: "struct",
-        definition: "interface TxPayloadV1 { signer?: string; callData: HexString; extensions: Array<TxPayloadExtensionV1>; txExtVersion: number; context: TxPayloadContextV1 }",
-        description: "Version 1 transaction payload with all data needed to construct a signed\nextrinsic.",
+        definition:
+          "interface TxPayloadV1 { signer?: string; callData: HexString; extensions: Array<TxPayloadExtensionV1>; txExtVersion: number; context: TxPayloadContextV1 }",
+        description:
+          "Version 1 transaction payload with all data needed to construct a signed\nextrinsic.",
         source: "shared",
         fields: [
           {
@@ -8836,7 +9389,8 @@ export const versions: ExplorerVersion[] = [
         id: "TypographyStyle",
         name: "TypographyStyle",
         category: "enum",
-        definition: "type TypographyStyle = { tag: \"TitleXL\"; value: undefined } | { tag: \"Headline\"; value: undefined } | { tag: \"BodyM\"; value: undefined } | { tag: \"BodyS\"; value: undefined } | { tag: \"Caption\"; value: undefined }",
+        definition:
+          'type TypographyStyle = { tag: "TitleXL"; value: undefined } | { tag: "Headline"; value: undefined } | { tag: "BodyM"; value: undefined } | { tag: "BodyS"; value: undefined } | { tag: "Caption"; value: undefined }',
         description: "Text typography presets.",
         source: "shared",
         variants: [
@@ -8866,7 +9420,8 @@ export const versions: ExplorerVersion[] = [
         id: "VersionedTxPayload",
         name: "VersionedTxPayload",
         category: "versioned",
-        definition: "type VersionedTxPayload = { tag: \"V1\"; value: TxPayloadV1 }",
+        definition:
+          'type VersionedTxPayload = { tag: "V1"; value: TxPayloadV1 }',
         description: "Versioned transaction payload envelope.",
         source: "shared",
         variants: [
@@ -8881,7 +9436,8 @@ export const versions: ExplorerVersion[] = [
         id: "VerticalAlignment",
         name: "VerticalAlignment",
         category: "enum",
-        definition: "type VerticalAlignment = { tag: \"Top\"; value: undefined } | { tag: \"Center\"; value: undefined } | { tag: \"Bottom\"; value: undefined }",
+        definition:
+          'type VerticalAlignment = { tag: "Top"; value: undefined } | { tag: "Center"; value: undefined } | { tag: "Bottom"; value: undefined }',
         description: "Vertical alignment options.",
         source: "shared",
         variants: [
@@ -8909,10 +9465,16 @@ export function getVersion(slug: string): ExplorerVersion | undefined {
   return versions.find((version) => version.slug === slug);
 }
 
-export function getTypeById(version: ExplorerVersion, id: string): ExplorerType | undefined {
+export function getTypeById(
+  version: ExplorerVersion,
+  id: string,
+): ExplorerType | undefined {
   return version.dataTypes.find((typeDef) => typeDef.id === id);
 }
 
-export function getMethodById(version: ExplorerVersion, id: string): ExplorerMethod | undefined {
+export function getMethodById(
+  version: ExplorerVersion,
+  id: string,
+): ExplorerMethod | undefined {
   return version.methods.find((method) => method.id === id);
 }

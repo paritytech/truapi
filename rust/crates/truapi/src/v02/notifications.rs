@@ -23,9 +23,6 @@ pub struct HostPushNotificationRequest {
 
 /// Successful response. The id is returned for **every** call — both immediate
 /// and scheduled — so callers don't branch on the presence of `scheduled_at`.
-/// For an immediate notification the id has no operational use (the host has
-/// already delivered the notification to the OS) but is still returned for
-/// shape uniformity.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostPushNotificationResponse {
     /// Per-product identifier the product can later pass to
@@ -33,7 +30,7 @@ pub struct HostPushNotificationResponse {
     pub id: NotificationId,
 }
 
-/// Domain error variants for [`super::super::api::TrUApiCalls::host_push_notification`].
+/// Domain error variants for [`crate::api::TrUApiCalls::host_push_notification`].
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum HostPushNotificationError {
     /// The product has reached the maximum number of pending scheduled

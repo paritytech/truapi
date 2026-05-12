@@ -189,6 +189,7 @@ pub mod chat;
 pub mod entropy;
 pub mod jsonrpc;
 pub mod local_storage;
+pub mod notifications;
 pub mod payment;
 pub mod permissions;
 pub mod preimage;
@@ -196,10 +197,6 @@ pub mod resource_allocation;
 pub mod signing;
 pub mod statement_store;
 pub mod theme;
-
-/// Notification cancellation, introduced by RFC 0019. The cancel method does
-/// not exist in v0.1, so its envelopes carry only a `V2` arm.
-pub mod notifications;
 
 #[cfg(test)]
 mod tests {
@@ -284,7 +281,7 @@ mod tests {
     #[test]
     fn cancel_envelopes_only_have_v2_arm() {
         // The cancel method did not exist in v0.1, so its discriminant skips
-        // index 0. This pins that decision on the wire.
+        // index 0.
         let request = super::notifications::HostPushNotificationCancelRequest::V2(
             crate::v02::HostPushNotificationCancelRequest { id: 3 },
         );

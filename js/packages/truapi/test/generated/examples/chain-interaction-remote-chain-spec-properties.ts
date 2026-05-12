@@ -9,7 +9,8 @@ export async function getChainProperties(
   truapi: Client,
 ): Promise<RemoteChainSpecPropertiesResponse> {
   const result = await truapi.chainInteraction.chainSpecProperties({
-    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    genesisHash:
+      "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
   });
 
   if (result.isErr()) throw result.error;

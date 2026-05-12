@@ -14,8 +14,10 @@ export async function createAccountProof(
       derivationIndex: 0,
     },
     ringLocation: {
-      genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-      ringRootHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+      genesisHash:
+        "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+      ringRootHash:
+        "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
       hints: { palletInstance: 42 },
     },
     context: "0x",

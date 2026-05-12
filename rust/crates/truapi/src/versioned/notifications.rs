@@ -2,8 +2,7 @@
 //! RFC 0019. The method does not exist in v0.1, so both request and response
 //! envelopes carry only a `V2` arm.
 
-use crate::v01;
-use crate::v02;
+use crate::{v01, v02};
 
 versioned_type! {
     pub enum HostPushNotificationCancelRequest {
