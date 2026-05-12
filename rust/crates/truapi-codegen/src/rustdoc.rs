@@ -42,6 +42,7 @@ pub struct ItemPath {
 #[derive(Debug, PartialEq, Eq)]
 pub struct ApiDefinition {
     pub traits: Vec<TraitDef>,
+    pub public_trait_order: Vec<String>,
     pub types: Vec<TypeDef>,
 }
 
@@ -242,6 +243,7 @@ pub fn extract_api(krate: &Crate) -> Result<ApiDefinition> {
     let trait_candidates = collect_public_candidates(krate, &["trait"]);
     let type_candidates = collect_public_candidates(krate, &["struct", "enum", "type_alias"]);
     let names = build_name_context(&type_candidates);
+    let public_trait_order = extract_public_trait_order(krate)?;
 
     let mut traits = Vec::new();
     for (name, candidates) in trait_candidates {
@@ -304,7 +306,52 @@ pub fn extract_api(krate: &Crate) -> Result<ApiDefinition> {
     traits.sort_by(|a, b| a.name.cmp(&b.name));
     types.sort_by(|a, b| a.name.cmp(&b.name));
 
-    Ok(ApiDefinition { traits, types })
+    Ok(ApiDefinition {
+        traits,
+        public_trait_order,
+        types,
+    })
+}
+
+fn extract_public_trait_order(krate: &Crate) -> Result<Vec<String>> {
+    let Some((item_id, _)) = krate.paths.iter().find(|(_, item_path)| {
+        item_path.crate_id == 0 && item_path.path == ["truapi", "api", "TrUApi"]
+    }) else {
+        bail!("Missing rustdoc path for `truapi::api::TrUApi`");
+    };
+
+    let item = krate
+        .index
+        .get(item_id)
+        .with_context(|| format!("Missing rustdoc item `{item_id}` for `TrUApi`"))?;
+    let trait_inner = item
+        .inner
+        .get("trait")
+        .with_context(|| "Trait `TrUApi` missing rustdoc trait body")?;
+    let bounds = trait_inner
+        .get("bounds")
+        .and_then(|value| value.as_array())
+        .with_context(|| "Trait `TrUApi` missing rustdoc bounds array")?;
+
+    let mut order = Vec::new();
+    for bound in bounds {
+        let Some(trait_bound) = bound.get("trait_bound") else {
+            continue;
+        };
+        let Some(path) = trait_bound
+            .get("trait")
+            .and_then(|value| value.get("path"))
+            .and_then(|value| value.as_str())
+        else {
+            continue;
+        };
+        if path == "Send" || path == "Sync" {
+            continue;
+        }
+        order.push(path.to_string());
+    }
+
+    Ok(order)
 }
 
 fn should_skip_type_name(name: &str) -> bool {

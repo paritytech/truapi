@@ -16,19 +16,10 @@ pub fn generate_client_examples(
     validate_versioned_wrapper_shapes(api)?;
 
     let wrappers = collect_versioned_wrappers(api);
-    let mut traits: Vec<&TraitDef> = api
-        .traits
-        .iter()
-        .filter(|trait_def| service_order(&trait_def.name).is_some())
-        .collect();
-    traits.sort_by_key(|trait_def| {
-        (
-            service_order(&trait_def.name).unwrap_or(usize::MAX),
-            trait_def.name.as_str(),
-        )
-    });
+    let services = public_services(api)?;
 
-    for trait_def in traits {
+    for service in services {
+        let trait_def = service.trait_def;
         let mut methods = included_methods(trait_def, &wrappers, target_version)?;
         methods.sort_by_key(|method| (method_wire_sort_id(method), method.name.as_str()));
 
