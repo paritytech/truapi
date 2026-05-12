@@ -444,19 +444,19 @@ fn generate_explorer_registry_code(api: &ApiDefinition, target_version: u32) -> 
         writeln!(
             out,
             "    id: {},",
-            ts_string_literal(&protocol_minor(version))
+            ts_string_literal(&protocol_version_string(version))
         )
         .unwrap();
         writeln!(
             out,
             "    label: {},",
-            ts_string_literal(&format!("v{}", protocol_minor(version)))
+            ts_string_literal(&format!("v{}", protocol_version_string(version)))
         )
         .unwrap();
         writeln!(
             out,
             "    slug: {},",
-            ts_string_literal(&protocol_minor(version))
+            ts_string_literal(&protocol_version_string(version))
         )
         .unwrap();
         writeln!(out, "    status: \"stable\",").unwrap();
@@ -1003,9 +1003,7 @@ fn explorer_type_category(ty: &TypeDef) -> &'static str {
 
 fn explorer_type_source(name: &str) -> String {
     if name.starts_with("V01") {
-        "v0.1".to_string()
-    } else if name.starts_with("V02") {
-        "v0.2".to_string()
+        "v1".to_string()
     } else {
         "shared".to_string()
     }
@@ -1245,8 +1243,8 @@ fn write_explorer_types_array(out: &mut String, indent: &str, types: &[ExplorerT
     writeln!(out, "{indent}],").unwrap();
 }
 
-fn protocol_minor(version: u32) -> String {
-    format!("0.{version}")
+fn protocol_version_string(version: u32) -> String {
+    version.to_string()
 }
 
 fn explorer_group_id(name: &str) -> String {
