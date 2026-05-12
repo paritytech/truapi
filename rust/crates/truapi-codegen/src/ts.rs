@@ -6,6 +6,7 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{bail, Result};
+use indoc::formatdoc;
 
 use crate::rustdoc::*;
 
@@ -501,11 +502,13 @@ fn generate_wire_table(api: &ApiDefinition, target_version: u32) -> Result<Strin
                 request_id,
                 response_id,
             } => {
-                writeln!(out).unwrap();
-                writeln!(out, "export const {name} = {{").unwrap();
-                writeln!(out, "  request: {request_id},").unwrap();
-                writeln!(out, "  response: {response_id},").unwrap();
-                writeln!(out, "}} as const satisfies RequestFrameIds;").unwrap();
+                out.push('\n');
+                out.push_str(&formatdoc! {"
+                    export const {name} = {{
+                      request: {request_id},
+                      response: {response_id},
+                    }} as const satisfies RequestFrameIds;
+                "});
             }
             ExpandedWireIds::Subscription {
                 start_id,
@@ -513,13 +516,15 @@ fn generate_wire_table(api: &ApiDefinition, target_version: u32) -> Result<Strin
                 interrupt_id,
                 receive_id,
             } => {
-                writeln!(out).unwrap();
-                writeln!(out, "export const {name} = {{").unwrap();
-                writeln!(out, "  start: {start_id},").unwrap();
-                writeln!(out, "  stop: {stop_id},").unwrap();
-                writeln!(out, "  interrupt: {interrupt_id},").unwrap();
-                writeln!(out, "  receive: {receive_id},").unwrap();
-                writeln!(out, "}} as const satisfies SubscriptionFrameIds;").unwrap();
+                out.push('\n');
+                out.push_str(&formatdoc! {"
+                    export const {name} = {{
+                      start: {start_id},
+                      stop: {stop_id},
+                      interrupt: {interrupt_id},
+                      receive: {receive_id},
+                    }} as const satisfies SubscriptionFrameIds;
+                "});
             }
         }
     }
