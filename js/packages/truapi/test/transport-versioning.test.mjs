@@ -90,7 +90,7 @@ function handshakeResponsePayload(value) {
   expectedFrame.set(expectedPayload, str.enc("p:1").length + 1);
 
   assert.equal(toHex(fixture.sent[0]), toHex(expectedFrame));
-  assert.equal(transport.truapiVersion, 2);
+  assert.equal(transport.truapiVersion, 1);
   assert.equal(transport.codecVersion, 1);
 }
 
@@ -260,7 +260,7 @@ function handshakeResponsePayload(value) {
       payload: {
         id: W.HOST_PAYMENT_BALANCE_SUBSCRIBE.interrupt,
         value: T.VersionedHostPaymentBalanceSubscribeError.enc({
-          tag: "V2",
+          tag: "V1",
           value: reason,
         }),
       },

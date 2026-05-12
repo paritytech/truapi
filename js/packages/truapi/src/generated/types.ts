@@ -3,7 +3,12 @@
 import * as S from "../scale.js";
 import type { HexString } from "../scale.js";
 
-/** An account with its public key and optional display name. */
+/**
+ * An account with its public key and optional display name.
+ *
+ * Used by [`HostGetLegacyAccountsResponse`] for non-product (legacy) accounts
+ * that may carry a display name.
+ */
 export interface Account {
   /** The account public key (variable-length bytes). */
   publicKey: HexString;
@@ -597,7 +602,7 @@ export const HorizontalAlignment: S.Codec<HorizontalAlignment> = S.lazy(
     S.Enum({ Start: S._void, Center: S._void, End: S._void }),
 );
 
-/** Versioned wrapper for [`v01::HostAccountConnectionStatusSubscribeItem`] and older versions. */
+/** Versioned wrapper for [`v01::HostAccountConnectionStatusSubscribeItem`]. */
 export type VersionedHostAccountConnectionStatusSubscribeItem = {
   tag: "V1";
   value: HostAccountConnectionStatusSubscribeItem;
@@ -611,7 +616,7 @@ export const VersionedHostAccountConnectionStatusSubscribeItem: S.Codec<Versione
       }),
   );
 
-/** Versioned wrapper for [`v01::HostAccountCreateProofError`] and older versions. */
+/** Versioned wrapper for [`v01::HostAccountCreateProofError`]. */
 export type VersionedHostAccountCreateProofError = {
   tag: "V1";
   value: HostAccountCreateProofError;
@@ -623,7 +628,7 @@ export const VersionedHostAccountCreateProofError: S.Codec<VersionedHostAccountC
       S.indexedTaggedUnion({ V1: [0, HostAccountCreateProofError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostAccountCreateProofRequest`] and older versions. */
+/** Versioned wrapper for [`v01::HostAccountCreateProofRequest`]. */
 export type VersionedHostAccountCreateProofRequest = {
   tag: "V1";
   value: HostAccountCreateProofRequest;
@@ -635,7 +640,7 @@ export const VersionedHostAccountCreateProofRequest: S.Codec<VersionedHostAccoun
       S.indexedTaggedUnion({ V1: [0, HostAccountCreateProofRequest] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostAccountCreateProofResponse`] and older versions. */
+/** Versioned wrapper for [`v01::HostAccountCreateProofResponse`]. */
 export type VersionedHostAccountCreateProofResponse = {
   tag: "V1";
   value: HostAccountCreateProofResponse;
@@ -661,7 +666,7 @@ export const VersionedHostAccountGetAliasError: S.Codec<VersionedHostAccountGetA
       S.indexedTaggedUnion({ V1: [0, HostAccountGetError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostAccountGetAliasRequest`] and older versions. */
+/** Versioned wrapper for [`v01::HostAccountGetAliasRequest`]. */
 export type VersionedHostAccountGetAliasRequest = {
   tag: "V1";
   value: HostAccountGetAliasRequest;
@@ -673,7 +678,7 @@ export const VersionedHostAccountGetAliasRequest: S.Codec<VersionedHostAccountGe
       S.indexedTaggedUnion({ V1: [0, HostAccountGetAliasRequest] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostAccountGetAliasResponse`] and older versions. */
+/** Versioned wrapper for [`v01::HostAccountGetAliasResponse`]. */
 export type VersionedHostAccountGetAliasResponse = {
   tag: "V1";
   value: HostAccountGetAliasResponse;
@@ -685,7 +690,7 @@ export const VersionedHostAccountGetAliasResponse: S.Codec<VersionedHostAccountG
       S.indexedTaggedUnion({ V1: [0, HostAccountGetAliasResponse] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostAccountGetError`] and older versions. */
+/** Versioned wrapper for [`v01::HostAccountGetError`]. */
 export type VersionedHostAccountGetError = {
   tag: "V1";
   value: HostAccountGetError;
@@ -697,7 +702,7 @@ export const VersionedHostAccountGetError: S.Codec<VersionedHostAccountGetError>
       S.indexedTaggedUnion({ V1: [0, HostAccountGetError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostAccountGetRequest`] and older versions. */
+/** Versioned wrapper for [`v01::HostAccountGetRequest`]. */
 export type VersionedHostAccountGetRequest = {
   tag: "V1";
   value: HostAccountGetRequest;
@@ -709,11 +714,7 @@ export const VersionedHostAccountGetRequest: S.Codec<VersionedHostAccountGetRequ
       S.indexedTaggedUnion({ V1: [0, HostAccountGetRequest] as const }),
   );
 
-/**
- * Versioned wrapper for [`v02::HostAccountGetResponse`] and older versions.
- * V0.2 returns [`v02::ProductAccount`] (public key only); V0.1 returned
- * [`v01::Account`] (with optional display name).
- */
+/** Versioned wrapper for [`v01::HostAccountGetResponse`]. */
 export type VersionedHostAccountGetResponse = {
   tag: "V1";
   value: HostAccountGetResponse;
@@ -933,79 +934,79 @@ export const VersionedHostCreateTransactionWithLegacyAccountResponse: S.Codec<Ve
       }),
   );
 
-/** Versioned wrapper for [`v02::HostDeriveEntropyError`] and older versions. */
+/** Versioned wrapper for [`v01::HostDeriveEntropyError`]. */
 export type VersionedHostDeriveEntropyError = {
-  tag: "V2";
+  tag: "V1";
   value: HostDeriveEntropyError;
 };
 
 export const VersionedHostDeriveEntropyError: S.Codec<VersionedHostDeriveEntropyError> =
   S.lazy(
     (): S.Codec<VersionedHostDeriveEntropyError> =>
-      S.indexedTaggedUnion({ V2: [0, HostDeriveEntropyError] as const }),
+      S.indexedTaggedUnion({ V1: [0, HostDeriveEntropyError] as const }),
   );
 
-/** Versioned wrapper for [`v02::HostDeriveEntropyRequest`] and older versions. */
+/** Versioned wrapper for [`v01::HostDeriveEntropyRequest`]. */
 export type VersionedHostDeriveEntropyRequest = {
-  tag: "V2";
+  tag: "V1";
   value: HostDeriveEntropyRequest;
 };
 
 export const VersionedHostDeriveEntropyRequest: S.Codec<VersionedHostDeriveEntropyRequest> =
   S.lazy(
     (): S.Codec<VersionedHostDeriveEntropyRequest> =>
-      S.indexedTaggedUnion({ V2: [0, HostDeriveEntropyRequest] as const }),
+      S.indexedTaggedUnion({ V1: [0, HostDeriveEntropyRequest] as const }),
   );
 
-/** Versioned wrapper for [`v02::HostDeriveEntropyResponse`] and older versions. */
+/** Versioned wrapper for [`v01::HostDeriveEntropyResponse`]. */
 export type VersionedHostDeriveEntropyResponse = {
-  tag: "V2";
+  tag: "V1";
   value: HostDeriveEntropyResponse;
 };
 
 export const VersionedHostDeriveEntropyResponse: S.Codec<VersionedHostDeriveEntropyResponse> =
   S.lazy(
     (): S.Codec<VersionedHostDeriveEntropyResponse> =>
-      S.indexedTaggedUnion({ V2: [0, HostDeriveEntropyResponse] as const }),
+      S.indexedTaggedUnion({ V1: [0, HostDeriveEntropyResponse] as const }),
   );
 
-/** Versioned wrapper for [`v01::GenericError`] and older versions. */
+/** Versioned wrapper for [`v01::GenericError`]. */
 export type VersionedHostDevicePermissionError = {
-  tag: "V2";
+  tag: "V1";
   value: GenericError;
 };
 
 export const VersionedHostDevicePermissionError: S.Codec<VersionedHostDevicePermissionError> =
   S.lazy(
     (): S.Codec<VersionedHostDevicePermissionError> =>
-      S.indexedTaggedUnion({ V2: [0, GenericError] as const }),
+      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
-/** Versioned wrapper for [`v02::HostDevicePermissionRequest`] and older versions. */
+/** Versioned wrapper for [`v01::HostDevicePermissionRequest`]. */
 export type VersionedHostDevicePermissionRequest = {
-  tag: "V2";
+  tag: "V1";
   value: HostDevicePermissionRequest;
 };
 
 export const VersionedHostDevicePermissionRequest: S.Codec<VersionedHostDevicePermissionRequest> =
   S.lazy(
     (): S.Codec<VersionedHostDevicePermissionRequest> =>
-      S.indexedTaggedUnion({ V2: [0, HostDevicePermissionRequest] as const }),
+      S.indexedTaggedUnion({ V1: [0, HostDevicePermissionRequest] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostDevicePermissionResponse`] and older versions. */
+/** Versioned wrapper for [`v01::HostDevicePermissionResponse`]. */
 export type VersionedHostDevicePermissionResponse = {
-  tag: "V2";
+  tag: "V1";
   value: HostDevicePermissionResponse;
 };
 
 export const VersionedHostDevicePermissionResponse: S.Codec<VersionedHostDevicePermissionResponse> =
   S.lazy(
     (): S.Codec<VersionedHostDevicePermissionResponse> =>
-      S.indexedTaggedUnion({ V2: [0, HostDevicePermissionResponse] as const }),
+      S.indexedTaggedUnion({ V1: [0, HostDevicePermissionResponse] as const }),
   );
 
-/** Versioned wrapper for [`v01::GenericError`] and older versions. */
+/** Versioned wrapper for [`v01::GenericError`]. */
 export type VersionedHostFeatureSupportedError = {
   tag: "V1";
   value: GenericError;
@@ -1017,7 +1018,7 @@ export const VersionedHostFeatureSupportedError: S.Codec<VersionedHostFeatureSup
       S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostFeatureSupportedRequest`] and older versions. */
+/** Versioned wrapper for [`v01::HostFeatureSupportedRequest`]. */
 export type VersionedHostFeatureSupportedRequest = {
   tag: "V1";
   value: HostFeatureSupportedRequest;
@@ -1029,7 +1030,7 @@ export const VersionedHostFeatureSupportedRequest: S.Codec<VersionedHostFeatureS
       S.indexedTaggedUnion({ V1: [0, HostFeatureSupportedRequest] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostFeatureSupportedResponse`] and older versions. */
+/** Versioned wrapper for [`v01::HostFeatureSupportedResponse`]. */
 export type VersionedHostFeatureSupportedResponse = {
   tag: "V1";
   value: HostFeatureSupportedResponse;
@@ -1053,7 +1054,7 @@ export const VersionedHostGetLegacyAccountsError: S.Codec<VersionedHostGetLegacy
       S.indexedTaggedUnion({ V1: [0, HostAccountGetError] as const }),
   );
 
-/** Versioned wrapper for unit and older versions. */
+/** Versioned wrapper for unit. */
 export type VersionedHostGetLegacyAccountsRequest = {
   tag: "V1";
   value: undefined;
@@ -1065,7 +1066,7 @@ export const VersionedHostGetLegacyAccountsRequest: S.Codec<VersionedHostGetLega
       S.indexedTaggedUnion({ V1: [0, S._void] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostGetLegacyAccountsResponse`] and older versions. */
+/** Versioned wrapper for [`v01::HostGetLegacyAccountsResponse`]. */
 export type VersionedHostGetLegacyAccountsResponse = {
   tag: "V1";
   value: HostGetLegacyAccountsResponse;
@@ -1077,40 +1078,40 @@ export const VersionedHostGetLegacyAccountsResponse: S.Codec<VersionedHostGetLeg
       S.indexedTaggedUnion({ V1: [0, HostGetLegacyAccountsResponse] as const }),
   );
 
-/** Versioned wrapper for [`v02::HostGetUserIdError`] and older versions. */
+/** Versioned wrapper for [`v01::HostGetUserIdError`]. */
 export type VersionedHostGetUserIdError = {
-  tag: "V2";
+  tag: "V1";
   value: HostGetUserIdError;
 };
 
 export const VersionedHostGetUserIdError: S.Codec<VersionedHostGetUserIdError> =
   S.lazy(
     (): S.Codec<VersionedHostGetUserIdError> =>
-      S.indexedTaggedUnion({ V2: [0, HostGetUserIdError] as const }),
+      S.indexedTaggedUnion({ V1: [0, HostGetUserIdError] as const }),
   );
 
-/** Versioned wrapper for unit and older versions. */
-export type VersionedHostGetUserIdRequest = { tag: "V2"; value: undefined };
+/** Versioned wrapper for unit. */
+export type VersionedHostGetUserIdRequest = { tag: "V1"; value: undefined };
 
 export const VersionedHostGetUserIdRequest: S.Codec<VersionedHostGetUserIdRequest> =
   S.lazy(
     (): S.Codec<VersionedHostGetUserIdRequest> =>
-      S.indexedTaggedUnion({ V2: [0, S._void] as const }),
+      S.indexedTaggedUnion({ V1: [0, S._void] as const }),
   );
 
-/** Versioned wrapper for [`v02::HostGetUserIdResponse`] and older versions. */
+/** Versioned wrapper for [`v01::HostGetUserIdResponse`]. */
 export type VersionedHostGetUserIdResponse = {
-  tag: "V2";
+  tag: "V1";
   value: HostGetUserIdResponse;
 };
 
 export const VersionedHostGetUserIdResponse: S.Codec<VersionedHostGetUserIdResponse> =
   S.lazy(
     (): S.Codec<VersionedHostGetUserIdResponse> =>
-      S.indexedTaggedUnion({ V2: [0, HostGetUserIdResponse] as const }),
+      S.indexedTaggedUnion({ V1: [0, HostGetUserIdResponse] as const }),
   );
 
-/** Versioned wrapper for [`v02::HostHandshakeError`] and older versions. */
+/** Versioned wrapper for [`v01::HostHandshakeError`]. */
 export type VersionedHostHandshakeError = {
   tag: "V1";
   value: HostHandshakeError;
@@ -1122,7 +1123,7 @@ export const VersionedHostHandshakeError: S.Codec<VersionedHostHandshakeError> =
       S.indexedTaggedUnion({ V1: [0, HostHandshakeError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostHandshakeRequest`] and older versions. */
+/** Versioned wrapper for [`v01::HostHandshakeRequest`]. */
 export type VersionedHostHandshakeRequest = {
   tag: "V1";
   value: HostHandshakeRequest;
@@ -1134,7 +1135,7 @@ export const VersionedHostHandshakeRequest: S.Codec<VersionedHostHandshakeReques
       S.indexedTaggedUnion({ V1: [0, HostHandshakeRequest] as const }),
   );
 
-/** Versioned wrapper for unit and older versions. */
+/** Versioned wrapper for unit. */
 export type VersionedHostHandshakeResponse = { tag: "V1"; value: undefined };
 
 export const VersionedHostHandshakeResponse: S.Codec<VersionedHostHandshakeResponse> =
@@ -1315,7 +1316,7 @@ export const VersionedHostLocalStorageWriteResponse: S.Codec<VersionedHostLocalS
       S.indexedTaggedUnion({ V1: [0, S._void] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostNavigateToError`] and older versions. */
+/** Versioned wrapper for [`v01::HostNavigateToError`]. */
 export type VersionedHostNavigateToError = {
   tag: "V1";
   value: HostNavigateToError;
@@ -1327,7 +1328,7 @@ export const VersionedHostNavigateToError: S.Codec<VersionedHostNavigateToError>
       S.indexedTaggedUnion({ V1: [0, HostNavigateToError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostNavigateToRequest`] and older versions. */
+/** Versioned wrapper for [`v01::HostNavigateToRequest`]. */
 export type VersionedHostNavigateToRequest = {
   tag: "V1";
   value: HostNavigateToRequest;
@@ -1339,7 +1340,7 @@ export const VersionedHostNavigateToRequest: S.Codec<VersionedHostNavigateToRequ
       S.indexedTaggedUnion({ V1: [0, HostNavigateToRequest] as const }),
   );
 
-/** Versioned wrapper for unit and older versions. */
+/** Versioned wrapper for unit. */
 export type VersionedHostNavigateToResponse = { tag: "V1"; value: undefined };
 
 export const VersionedHostNavigateToResponse: S.Codec<VersionedHostNavigateToResponse> =
@@ -1348,9 +1349,9 @@ export const VersionedHostNavigateToResponse: S.Codec<VersionedHostNavigateToRes
       S.indexedTaggedUnion({ V1: [0, S._void] as const }),
   );
 
-/** Versioned wrapper for [`v02::HostPaymentBalanceSubscribeError`] and older versions. */
+/** Versioned wrapper for [`v01::HostPaymentBalanceSubscribeError`]. */
 export type VersionedHostPaymentBalanceSubscribeError = {
-  tag: "V2";
+  tag: "V1";
   value: HostPaymentBalanceSubscribeError;
 };
 
@@ -1358,13 +1359,13 @@ export const VersionedHostPaymentBalanceSubscribeError: S.Codec<VersionedHostPay
   S.lazy(
     (): S.Codec<VersionedHostPaymentBalanceSubscribeError> =>
       S.indexedTaggedUnion({
-        V2: [0, HostPaymentBalanceSubscribeError] as const,
+        V1: [0, HostPaymentBalanceSubscribeError] as const,
       }),
   );
 
-/** Versioned wrapper for [`v02::HostPaymentBalanceSubscribeItem`] and older versions. */
+/** Versioned wrapper for [`v01::HostPaymentBalanceSubscribeItem`]. */
 export type VersionedHostPaymentBalanceSubscribeItem = {
-  tag: "V2";
+  tag: "V1";
   value: HostPaymentBalanceSubscribeItem;
 };
 
@@ -1372,61 +1373,61 @@ export const VersionedHostPaymentBalanceSubscribeItem: S.Codec<VersionedHostPaym
   S.lazy(
     (): S.Codec<VersionedHostPaymentBalanceSubscribeItem> =>
       S.indexedTaggedUnion({
-        V2: [0, HostPaymentBalanceSubscribeItem] as const,
+        V1: [0, HostPaymentBalanceSubscribeItem] as const,
       }),
   );
 
-/** Versioned wrapper for unit and older versions. */
+/** Versioned wrapper for unit. */
 export type VersionedHostPaymentBalanceSubscribeRequest = {
-  tag: "V2";
+  tag: "V1";
   value: undefined;
 };
 
 export const VersionedHostPaymentBalanceSubscribeRequest: S.Codec<VersionedHostPaymentBalanceSubscribeRequest> =
   S.lazy(
     (): S.Codec<VersionedHostPaymentBalanceSubscribeRequest> =>
-      S.indexedTaggedUnion({ V2: [0, S._void] as const }),
+      S.indexedTaggedUnion({ V1: [0, S._void] as const }),
   );
 
-/** Versioned wrapper for [`v02::HostPaymentRequestError`] and older versions. */
+/** Versioned wrapper for [`v01::HostPaymentRequestError`]. */
 export type VersionedHostPaymentRequestError = {
-  tag: "V2";
+  tag: "V1";
   value: HostPaymentRequestError;
 };
 
 export const VersionedHostPaymentRequestError: S.Codec<VersionedHostPaymentRequestError> =
   S.lazy(
     (): S.Codec<VersionedHostPaymentRequestError> =>
-      S.indexedTaggedUnion({ V2: [0, HostPaymentRequestError] as const }),
+      S.indexedTaggedUnion({ V1: [0, HostPaymentRequestError] as const }),
   );
 
-/** Versioned wrapper for [`v02::HostPaymentRequestRequest`] and older versions. */
+/** Versioned wrapper for [`v01::HostPaymentRequestRequest`]. */
 export type VersionedHostPaymentRequestRequest = {
-  tag: "V2";
+  tag: "V1";
   value: HostPaymentRequestRequest;
 };
 
 export const VersionedHostPaymentRequestRequest: S.Codec<VersionedHostPaymentRequestRequest> =
   S.lazy(
     (): S.Codec<VersionedHostPaymentRequestRequest> =>
-      S.indexedTaggedUnion({ V2: [0, HostPaymentRequestRequest] as const }),
+      S.indexedTaggedUnion({ V1: [0, HostPaymentRequestRequest] as const }),
   );
 
-/** Versioned wrapper for [`v02::HostPaymentRequestResponse`] and older versions. */
+/** Versioned wrapper for [`v01::HostPaymentRequestResponse`]. */
 export type VersionedHostPaymentRequestResponse = {
-  tag: "V2";
+  tag: "V1";
   value: HostPaymentRequestResponse;
 };
 
 export const VersionedHostPaymentRequestResponse: S.Codec<VersionedHostPaymentRequestResponse> =
   S.lazy(
     (): S.Codec<VersionedHostPaymentRequestResponse> =>
-      S.indexedTaggedUnion({ V2: [0, HostPaymentRequestResponse] as const }),
+      S.indexedTaggedUnion({ V1: [0, HostPaymentRequestResponse] as const }),
   );
 
-/** Versioned wrapper for [`v02::HostPaymentStatusSubscribeError`] and older versions. */
+/** Versioned wrapper for [`v01::HostPaymentStatusSubscribeError`]. */
 export type VersionedHostPaymentStatusSubscribeError = {
-  tag: "V2";
+  tag: "V1";
   value: HostPaymentStatusSubscribeError;
 };
 
@@ -1434,13 +1435,13 @@ export const VersionedHostPaymentStatusSubscribeError: S.Codec<VersionedHostPaym
   S.lazy(
     (): S.Codec<VersionedHostPaymentStatusSubscribeError> =>
       S.indexedTaggedUnion({
-        V2: [0, HostPaymentStatusSubscribeError] as const,
+        V1: [0, HostPaymentStatusSubscribeError] as const,
       }),
   );
 
-/** Versioned wrapper for [`v02::HostPaymentStatusSubscribeItem`] and older versions. */
+/** Versioned wrapper for [`v01::HostPaymentStatusSubscribeItem`]. */
 export type VersionedHostPaymentStatusSubscribeItem = {
-  tag: "V2";
+  tag: "V1";
   value: HostPaymentStatusSubscribeItem;
 };
 
@@ -1448,13 +1449,13 @@ export const VersionedHostPaymentStatusSubscribeItem: S.Codec<VersionedHostPayme
   S.lazy(
     (): S.Codec<VersionedHostPaymentStatusSubscribeItem> =>
       S.indexedTaggedUnion({
-        V2: [0, HostPaymentStatusSubscribeItem] as const,
+        V1: [0, HostPaymentStatusSubscribeItem] as const,
       }),
   );
 
-/** Versioned wrapper for [`v02::HostPaymentStatusSubscribeRequest`] and older versions. */
+/** Versioned wrapper for [`v01::HostPaymentStatusSubscribeRequest`]. */
 export type VersionedHostPaymentStatusSubscribeRequest = {
-  tag: "V2";
+  tag: "V1";
   value: HostPaymentStatusSubscribeRequest;
 };
 
@@ -1462,44 +1463,44 @@ export const VersionedHostPaymentStatusSubscribeRequest: S.Codec<VersionedHostPa
   S.lazy(
     (): S.Codec<VersionedHostPaymentStatusSubscribeRequest> =>
       S.indexedTaggedUnion({
-        V2: [0, HostPaymentStatusSubscribeRequest] as const,
+        V1: [0, HostPaymentStatusSubscribeRequest] as const,
       }),
   );
 
-/** Versioned wrapper for [`v02::HostPaymentTopUpError`] and older versions. */
+/** Versioned wrapper for [`v01::HostPaymentTopUpError`]. */
 export type VersionedHostPaymentTopUpError = {
-  tag: "V2";
+  tag: "V1";
   value: HostPaymentTopUpError;
 };
 
 export const VersionedHostPaymentTopUpError: S.Codec<VersionedHostPaymentTopUpError> =
   S.lazy(
     (): S.Codec<VersionedHostPaymentTopUpError> =>
-      S.indexedTaggedUnion({ V2: [0, HostPaymentTopUpError] as const }),
+      S.indexedTaggedUnion({ V1: [0, HostPaymentTopUpError] as const }),
   );
 
-/** Versioned wrapper for [`v02::HostPaymentTopUpRequest`] and older versions. */
+/** Versioned wrapper for [`v01::HostPaymentTopUpRequest`]. */
 export type VersionedHostPaymentTopUpRequest = {
-  tag: "V2";
+  tag: "V1";
   value: HostPaymentTopUpRequest;
 };
 
 export const VersionedHostPaymentTopUpRequest: S.Codec<VersionedHostPaymentTopUpRequest> =
   S.lazy(
     (): S.Codec<VersionedHostPaymentTopUpRequest> =>
-      S.indexedTaggedUnion({ V2: [0, HostPaymentTopUpRequest] as const }),
+      S.indexedTaggedUnion({ V1: [0, HostPaymentTopUpRequest] as const }),
   );
 
-/** Versioned wrapper for unit and older versions. */
-export type VersionedHostPaymentTopUpResponse = { tag: "V2"; value: undefined };
+/** Versioned wrapper for unit. */
+export type VersionedHostPaymentTopUpResponse = { tag: "V1"; value: undefined };
 
 export const VersionedHostPaymentTopUpResponse: S.Codec<VersionedHostPaymentTopUpResponse> =
   S.lazy(
     (): S.Codec<VersionedHostPaymentTopUpResponse> =>
-      S.indexedTaggedUnion({ V2: [0, S._void] as const }),
+      S.indexedTaggedUnion({ V1: [0, S._void] as const }),
   );
 
-/** Versioned wrapper for [`v01::GenericError`] and older versions. */
+/** Versioned wrapper for [`v01::GenericError`]. */
 export type VersionedHostPushNotificationError = {
   tag: "V1";
   value: GenericError;
@@ -1511,7 +1512,7 @@ export const VersionedHostPushNotificationError: S.Codec<VersionedHostPushNotifi
       S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
-/** Versioned wrapper for [`v01::HostPushNotificationRequest`] and older versions. */
+/** Versioned wrapper for [`v01::HostPushNotificationRequest`]. */
 export type VersionedHostPushNotificationRequest = {
   tag: "V1";
   value: HostPushNotificationRequest;
@@ -1523,7 +1524,7 @@ export const VersionedHostPushNotificationRequest: S.Codec<VersionedHostPushNoti
       S.indexedTaggedUnion({ V1: [0, HostPushNotificationRequest] as const }),
   );
 
-/** Versioned wrapper for unit and older versions. */
+/** Versioned wrapper for unit. */
 export type VersionedHostPushNotificationResponse = {
   tag: "V1";
   value: undefined;
@@ -1611,40 +1612,40 @@ export const VersionedHostRequestResourceAllocationResponse: S.Codec<VersionedHo
       }),
   );
 
-/** Versioned wrapper for the sign-payload error (shared across v0.1/v0.2). */
+/** Versioned wrapper for [`v01::HostSignPayloadError`]. */
 export type VersionedHostSignPayloadError = {
-  tag: "V2";
+  tag: "V1";
   value: HostSignPayloadError;
 };
 
 export const VersionedHostSignPayloadError: S.Codec<VersionedHostSignPayloadError> =
   S.lazy(
     (): S.Codec<VersionedHostSignPayloadError> =>
-      S.indexedTaggedUnion({ V2: [0, HostSignPayloadError] as const }),
+      S.indexedTaggedUnion({ V1: [0, HostSignPayloadError] as const }),
   );
 
-/** Versioned wrapper covering both v0.1 and v0.2 sign-payload requests. */
+/** Versioned wrapper for [`v01::HostSignPayloadRequest`]. */
 export type VersionedHostSignPayloadRequest = {
-  tag: "V2";
+  tag: "V1";
   value: HostSignPayloadRequest;
 };
 
 export const VersionedHostSignPayloadRequest: S.Codec<VersionedHostSignPayloadRequest> =
   S.lazy(
     (): S.Codec<VersionedHostSignPayloadRequest> =>
-      S.indexedTaggedUnion({ V2: [0, HostSignPayloadRequest] as const }),
+      S.indexedTaggedUnion({ V1: [0, HostSignPayloadRequest] as const }),
   );
 
-/** Versioned wrapper for the sign-payload response (shared across v0.1/v0.2). */
+/** Versioned wrapper for [`v01::HostSignPayloadResponse`]. */
 export type VersionedHostSignPayloadResponse = {
-  tag: "V2";
+  tag: "V1";
   value: HostSignPayloadResponse;
 };
 
 export const VersionedHostSignPayloadResponse: S.Codec<VersionedHostSignPayloadResponse> =
   S.lazy(
     (): S.Codec<VersionedHostSignPayloadResponse> =>
-      S.indexedTaggedUnion({ V2: [0, HostSignPayloadResponse] as const }),
+      S.indexedTaggedUnion({ V1: [0, HostSignPayloadResponse] as const }),
   );
 
 /** Versioned wrapper for the legacy-account sign-payload error; reuses [`v01::HostSignPayloadError`]. */
@@ -1659,7 +1660,7 @@ export const VersionedHostSignPayloadWithLegacyAccountError: S.Codec<VersionedHo
       S.indexedTaggedUnion({ V1: [0, HostSignPayloadError] as const }),
   );
 
-/** Versioned wrapper for the legacy-account sign-payload request. */
+/** Versioned wrapper for [`v01::HostSignPayloadWithLegacyAccountRequest`]. */
 export type VersionedHostSignPayloadWithLegacyAccountRequest = {
   tag: "V1";
   value: HostSignPayloadWithLegacyAccountRequest;
@@ -1687,38 +1688,38 @@ export const VersionedHostSignPayloadWithLegacyAccountResponse: S.Codec<Versione
 
 /** Versioned wrapper for the sign-raw error; reuses [`v01::HostSignPayloadError`]. */
 export type VersionedHostSignRawError = {
-  tag: "V2";
+  tag: "V1";
   value: HostSignPayloadError;
 };
 
 export const VersionedHostSignRawError: S.Codec<VersionedHostSignRawError> =
   S.lazy(
     (): S.Codec<VersionedHostSignRawError> =>
-      S.indexedTaggedUnion({ V2: [0, HostSignPayloadError] as const }),
+      S.indexedTaggedUnion({ V1: [0, HostSignPayloadError] as const }),
   );
 
-/** Versioned wrapper covering both v0.1 and v0.2 sign-raw requests. */
+/** Versioned wrapper for [`v01::HostSignRawRequest`]. */
 export type VersionedHostSignRawRequest = {
-  tag: "V2";
+  tag: "V1";
   value: HostSignRawRequest;
 };
 
 export const VersionedHostSignRawRequest: S.Codec<VersionedHostSignRawRequest> =
   S.lazy(
     (): S.Codec<VersionedHostSignRawRequest> =>
-      S.indexedTaggedUnion({ V2: [0, HostSignRawRequest] as const }),
+      S.indexedTaggedUnion({ V1: [0, HostSignRawRequest] as const }),
   );
 
 /** Versioned wrapper for the sign-raw response; reuses [`v01::HostSignPayloadResponse`]. */
 export type VersionedHostSignRawResponse = {
-  tag: "V2";
+  tag: "V1";
   value: HostSignPayloadResponse;
 };
 
 export const VersionedHostSignRawResponse: S.Codec<VersionedHostSignRawResponse> =
   S.lazy(
     (): S.Codec<VersionedHostSignRawResponse> =>
-      S.indexedTaggedUnion({ V2: [0, HostSignPayloadResponse] as const }),
+      S.indexedTaggedUnion({ V1: [0, HostSignPayloadResponse] as const }),
   );
 
 /** Versioned wrapper for the legacy-account sign-raw error; reuses [`v01::HostSignPayloadError`]. */
@@ -1869,13 +1870,7 @@ export const PreimageSubmitError: S.Codec<PreimageSubmitError> = S.lazy(
     }),
 );
 
-/**
- * V0.2 product account: a public key only, no display name.
- *
- * V0.2 replaces V0.1's [`crate::v01::Account`] (which carries `name:
- * Option<String>`) for `host_account_get` responses; the name is no longer
- * returned because it's not bound to the account derivation.
- */
+/** A product account: public key only, no display name. */
 export interface ProductAccount {
   /** The account public key (variable-length bytes). */
   publicKey: HexString;
@@ -2429,9 +2424,9 @@ export const VersionedRemoteChainTransactionStopResponse: S.Codec<VersionedRemot
 /**
  * A single remote-operation permission entry.
  *
- * V0.2: replaces `RemotePermissionRequest`. The [`crate::api::Permissions::remote_permission`] method
- * now accepts a `Vec<RemotePermission>` so products can batch multiple
- * permission requests into a single prompt.
+ * The [`crate::api::Permissions::remote_permission`] method accepts a
+ * `Vec<RemotePermission>` so products can batch multiple permission requests
+ * into a single prompt.
  *
  * See [RFC 0001] and [issue #64].
  *
@@ -2470,37 +2465,37 @@ export const RemotePermission: S.Codec<RemotePermission> = S.lazy(
     }),
 );
 
-/** Versioned wrapper for [`v01::GenericError`] and older versions. */
-export type VersionedRemotePermissionError = { tag: "V2"; value: GenericError };
+/** Versioned wrapper for [`v01::GenericError`]. */
+export type VersionedRemotePermissionError = { tag: "V1"; value: GenericError };
 
 export const VersionedRemotePermissionError: S.Codec<VersionedRemotePermissionError> =
   S.lazy(
     (): S.Codec<VersionedRemotePermissionError> =>
-      S.indexedTaggedUnion({ V2: [0, GenericError] as const }),
+      S.indexedTaggedUnion({ V1: [0, GenericError] as const }),
   );
 
-/** Versioned wrapper for [`v02::RemotePermissionRequest`] and older versions. */
+/** Versioned wrapper for [`v01::RemotePermissionRequest`]. */
 export type VersionedRemotePermissionRequest = {
-  tag: "V2";
+  tag: "V1";
   value: RemotePermissionRequest;
 };
 
 export const VersionedRemotePermissionRequest: S.Codec<VersionedRemotePermissionRequest> =
   S.lazy(
     (): S.Codec<VersionedRemotePermissionRequest> =>
-      S.indexedTaggedUnion({ V2: [0, RemotePermissionRequest] as const }),
+      S.indexedTaggedUnion({ V1: [0, RemotePermissionRequest] as const }),
   );
 
-/** Versioned wrapper for [`v01::RemotePermissionResponse`] and older versions. */
+/** Versioned wrapper for [`v01::RemotePermissionResponse`]. */
 export type VersionedRemotePermissionResponse = {
-  tag: "V2";
+  tag: "V1";
   value: RemotePermissionResponse;
 };
 
 export const VersionedRemotePermissionResponse: S.Codec<VersionedRemotePermissionResponse> =
   S.lazy(
     (): S.Codec<VersionedRemotePermissionResponse> =>
-      S.indexedTaggedUnion({ V2: [0, RemotePermissionResponse] as const }),
+      S.indexedTaggedUnion({ V1: [0, RemotePermissionResponse] as const }),
   );
 
 /** Versioned wrapper for [`v01::RemotePreimageLookupSubscribeItem`] and older versions. */
@@ -2607,7 +2602,7 @@ export const VersionedRemoteStatementStoreCreateProofAuthorizedResponse: S.Codec
       }),
   );
 
-/** Versioned wrapper for [`v01::RemoteStatementStoreCreateProofError`] and older versions. */
+/** Versioned wrapper for [`v01::RemoteStatementStoreCreateProofError`]. */
 export type VersionedRemoteStatementStoreCreateProofError = {
   tag: "V1";
   value: RemoteStatementStoreCreateProofError;
@@ -2621,7 +2616,7 @@ export const VersionedRemoteStatementStoreCreateProofError: S.Codec<VersionedRem
       }),
   );
 
-/** Versioned wrapper for [`v01::RemoteStatementStoreCreateProofRequest`] and older versions. */
+/** Versioned wrapper for [`v01::RemoteStatementStoreCreateProofRequest`]. */
 export type VersionedRemoteStatementStoreCreateProofRequest = {
   tag: "V1";
   value: RemoteStatementStoreCreateProofRequest;
@@ -2635,7 +2630,7 @@ export const VersionedRemoteStatementStoreCreateProofRequest: S.Codec<VersionedR
       }),
   );
 
-/** Versioned wrapper for [`v01::RemoteStatementStoreCreateProofResponse`] and older versions. */
+/** Versioned wrapper for [`v01::RemoteStatementStoreCreateProofResponse`]. */
 export type VersionedRemoteStatementStoreCreateProofResponse = {
   tag: "V1";
   value: RemoteStatementStoreCreateProofResponse;
@@ -2649,10 +2644,7 @@ export const VersionedRemoteStatementStoreCreateProofResponse: S.Codec<Versioned
       }),
   );
 
-/**
- * Versioned wrapper for [`v01::GenericError`] and older versions. Submit
- * has no success payload (`Result<(), GenericError>`), matching upstream.
- */
+/** Versioned wrapper for [`v01::GenericError`]. Submit has no success payload. */
 export type VersionedRemoteStatementStoreSubmitError = {
   tag: "V1";
   value: GenericError;
@@ -2665,10 +2657,9 @@ export const VersionedRemoteStatementStoreSubmitError: S.Codec<VersionedRemoteSt
   );
 
 /**
- * Versioned wrapper for [`v01::SignedStatement`] and older versions.
- * The submit request is the signed statement itself; the host SCALE-decodes
- * it directly without a wrapping field, matching the upstream
- * `triangle-js-sdks` `StatementStoreSubmitV1_request = SignedStatement`.
+ * Versioned wrapper for [`v01::SignedStatement`]. The submit request is the
+ * signed statement itself; the host SCALE-decodes it directly without a
+ * wrapping field.
  */
 export type VersionedRemoteStatementStoreSubmitRequest = {
   tag: "V1";
@@ -2681,9 +2672,9 @@ export const VersionedRemoteStatementStoreSubmitRequest: S.Codec<VersionedRemote
       S.indexedTaggedUnion({ V1: [0, SignedStatement] as const }),
   );
 
-/** Versioned wrapper for [`v02::RemoteStatementStoreSubscribeItem`] and older versions. */
+/** Versioned wrapper for [`v01::RemoteStatementStoreSubscribeItem`]. */
 export type VersionedRemoteStatementStoreSubscribeItem = {
-  tag: "V2";
+  tag: "V1";
   value: RemoteStatementStoreSubscribeItem;
 };
 
@@ -2691,13 +2682,13 @@ export const VersionedRemoteStatementStoreSubscribeItem: S.Codec<VersionedRemote
   S.lazy(
     (): S.Codec<VersionedRemoteStatementStoreSubscribeItem> =>
       S.indexedTaggedUnion({
-        V2: [0, RemoteStatementStoreSubscribeItem] as const,
+        V1: [0, RemoteStatementStoreSubscribeItem] as const,
       }),
   );
 
-/** Versioned wrapper for [`v02::RemoteStatementStoreSubscribeRequest`] and older versions. */
+/** Versioned wrapper for [`v01::RemoteStatementStoreSubscribeRequest`]. */
 export type VersionedRemoteStatementStoreSubscribeRequest = {
-  tag: "V2";
+  tag: "V1";
   value: RemoteStatementStoreSubscribeRequest;
 };
 
@@ -2705,7 +2696,7 @@ export const VersionedRemoteStatementStoreSubscribeRequest: S.Codec<VersionedRem
   S.lazy(
     (): S.Codec<VersionedRemoteStatementStoreSubscribeRequest> =>
       S.indexedTaggedUnion({
-        V2: [0, RemoteStatementStoreSubscribeRequest] as const,
+        V1: [0, RemoteStatementStoreSubscribeRequest] as const,
       }),
   );
 
@@ -3256,13 +3247,13 @@ export const HostAccountGetRequest: S.Codec<HostAccountGetRequest> = S.lazy(
 
 /** Response containing a product-scoped account. */
 export interface HostAccountGetResponse {
-  /** Retrieved account. */
-  account: Account;
+  /** Retrieved product account. */
+  account: ProductAccount;
 }
 
 export const HostAccountGetResponse: S.Codec<HostAccountGetResponse> = S.lazy(
   (): S.Codec<HostAccountGetResponse> =>
-    S.Struct({ account: Account }) as S.Codec<HostAccountGetResponse>,
+    S.Struct({ account: ProductAccount }) as S.Codec<HostAccountGetResponse>,
 );
 
 /** A chat action received from the host. */
@@ -3529,6 +3520,88 @@ export const HostCreateTransactionWithLegacyAccountResponse: S.Codec<HostCreateT
       }) as S.Codec<HostCreateTransactionWithLegacyAccountResponse>,
   );
 
+/**
+ * Error from [`crate::api::EntropyDerivation::host_derive_entropy`].
+ *
+ * Under normal operation the function always succeeds; `Unknown` indicates an
+ * unrecoverable internal host error.
+ *
+ * See [RFC 0007].
+ *
+ * [RFC 0007]: https://github.com/paritytech/triangle-js-sdks/pull/95
+ */
+export type HostDeriveEntropyError =
+  /** An unexpected error occurred in the host. */
+  { tag: "Unknown"; value: undefined };
+
+export const HostDeriveEntropyError: S.Codec<HostDeriveEntropyError> = S.lazy(
+  (): S.Codec<HostDeriveEntropyError> => S.Enum({ Unknown: S._void }),
+);
+
+/** Request to derive deterministic entropy. */
+export interface HostDeriveEntropyRequest {
+  /** Domain-separated derivation context. */
+  context: HexString;
+}
+
+export const HostDeriveEntropyRequest: S.Codec<HostDeriveEntropyRequest> =
+  S.lazy(
+    (): S.Codec<HostDeriveEntropyRequest> =>
+      S.Struct({ context: S.Hex() }) as S.Codec<HostDeriveEntropyRequest>,
+  );
+
+/** Response containing derived deterministic entropy. */
+export interface HostDeriveEntropyResponse {
+  /** 32 bytes of derived entropy. */
+  entropy: HexString;
+}
+
+export const HostDeriveEntropyResponse: S.Codec<HostDeriveEntropyResponse> =
+  S.lazy(
+    (): S.Codec<HostDeriveEntropyResponse> =>
+      S.Struct({ entropy: S.Hex(32) }) as S.Codec<HostDeriveEntropyResponse>,
+  );
+
+/**
+ * Device capability to request access to.
+ *
+ * Extended with `Notifications`, `NFC`, `Clipboard`, `OpenUrl`, and
+ * `Biometrics` per [RFC 0001] (JIT permissions).
+ *
+ * [RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66
+ */
+export type HostDevicePermissionRequest =
+  /** Push notification delivery permission. */
+  | { tag: "Notifications"; value: undefined }
+  | { tag: "Camera"; value: undefined }
+  | { tag: "Microphone"; value: undefined }
+  | { tag: "Bluetooth"; value: undefined }
+  /** Near-field communication access. */
+  | { tag: "NFC"; value: undefined }
+  | { tag: "Location"; value: undefined }
+  /** System clipboard access. */
+  | { tag: "Clipboard"; value: undefined }
+  /** Open a URL in an external browser. */
+  | { tag: "OpenUrl"; value: undefined }
+  /** Biometric authentication (fingerprint, face ID). */
+  | { tag: "Biometrics"; value: undefined };
+
+export const HostDevicePermissionRequest: S.Codec<HostDevicePermissionRequest> =
+  S.lazy(
+    (): S.Codec<HostDevicePermissionRequest> =>
+      S.Enum({
+        Notifications: S._void,
+        Camera: S._void,
+        Microphone: S._void,
+        Bluetooth: S._void,
+        NFC: S._void,
+        Location: S._void,
+        Clipboard: S._void,
+        OpenUrl: S._void,
+        Biometrics: S._void,
+      }),
+  );
+
 /** Response indicating whether a device permission was granted. */
 export interface HostDevicePermissionResponse {
   /** Whether the permission was granted. */
@@ -3581,6 +3654,59 @@ export const HostGetLegacyAccountsResponse: S.Codec<HostGetLegacyAccountsRespons
         accounts: S.Vector(Account),
       }) as S.Codec<HostGetLegacyAccountsResponse>,
   );
+
+/** Error from [`crate::api::AccountManagement::host_get_user_id`]. */
+export type HostGetUserIdError =
+  /** User denied the identity disclosure request. */
+  | { tag: "PermissionDenied"; value: undefined }
+  /** User is not logged in. */
+  | { tag: "NotConnected"; value: undefined }
+  /** Catch-all. */
+  | { tag: "Unknown"; value: { reason: string } };
+
+export const HostGetUserIdError: S.Codec<HostGetUserIdError> = S.lazy(
+  (): S.Codec<HostGetUserIdError> =>
+    S.Enum({
+      PermissionDenied: S._void,
+      NotConnected: S._void,
+      Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
+    }),
+);
+
+/** The user's primary DotNS account identity. */
+export interface HostGetUserIdResponse {
+  /** The user's primary DotNS username. */
+  primaryUsername: string;
+  /** The user's primary public key. */
+  publicKey: HexString;
+}
+
+export const HostGetUserIdResponse: S.Codec<HostGetUserIdResponse> = S.lazy(
+  (): S.Codec<HostGetUserIdResponse> =>
+    S.Struct({
+      primaryUsername: S.str,
+      publicKey: S.Hex(),
+    }) as S.Codec<HostGetUserIdResponse>,
+);
+
+/**
+ * Handshake error. Mirrors Novasama's `HandshakeErr` byte-for-byte so that
+ * pre-codegen products (built against `@novasamatech/host-api`) can decode
+ * `host_handshake_response` frames produced by this host.
+ */
+export type HostHandshakeError =
+  | { tag: "Timeout"; value: undefined }
+  | { tag: "UnsupportedProtocolVersion"; value: undefined }
+  | { tag: "Unknown"; value: GenericErr };
+
+export const HostHandshakeError: S.Codec<HostHandshakeError> = S.lazy(
+  (): S.Codec<HostHandshakeError> =>
+    S.Enum({
+      Timeout: S._void,
+      UnsupportedProtocolVersion: S._void,
+      Unknown: GenericErr,
+    }),
+);
 
 /** Request to negotiate the wire codec version. */
 export interface HostHandshakeRequest {
@@ -3733,6 +3859,211 @@ export const HostNavigateToRequest: S.Codec<HostNavigateToRequest> = S.lazy(
     S.Struct({ url: S.str }) as S.Codec<HostNavigateToRequest>,
 );
 
+/**
+ * Error from [`crate::api::Payment::host_payment_balance_subscribe`].
+ *
+ * See [RFC 0006].
+ *
+ * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+ */
+export type HostPaymentBalanceSubscribeError =
+  /** User denied the balance disclosure request. */
+  | { tag: "PermissionDenied"; value: undefined }
+  /** Catch-all. */
+  | { tag: "Unknown"; value: { reason: string } };
+
+export const HostPaymentBalanceSubscribeError: S.Codec<HostPaymentBalanceSubscribeError> =
+  S.lazy(
+    (): S.Codec<HostPaymentBalanceSubscribeError> =>
+      S.Enum({
+        PermissionDenied: S._void,
+        Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
+      }),
+  );
+
+/**
+ * Current payment balance state pushed to subscribers.
+ *
+ * See [RFC 0006].
+ *
+ * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+ */
+export interface HostPaymentBalanceSubscribeItem {
+  /** Balance that can be spent right now. */
+  available: Balance;
+}
+
+export const HostPaymentBalanceSubscribeItem: S.Codec<HostPaymentBalanceSubscribeItem> =
+  S.lazy(
+    (): S.Codec<HostPaymentBalanceSubscribeItem> =>
+      S.Struct({
+        available: Balance,
+      }) as S.Codec<HostPaymentBalanceSubscribeItem>,
+  );
+
+/**
+ * Error from [`crate::api::Payment::host_payment_request`].
+ *
+ * See [RFC 0006].
+ *
+ * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+ */
+export type HostPaymentRequestError =
+  /** User rejected the payment request. */
+  | { tag: "Rejected"; value: undefined }
+  /** User's available balance is not sufficient for the requested amount. */
+  | { tag: "InsufficientBalance"; value: undefined }
+  /** Catch-all. */
+  | { tag: "Unknown"; value: { reason: string } };
+
+export const HostPaymentRequestError: S.Codec<HostPaymentRequestError> = S.lazy(
+  (): S.Codec<HostPaymentRequestError> =>
+    S.Enum({
+      Rejected: S._void,
+      InsufficientBalance: S._void,
+      Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
+    }),
+);
+
+/** Request to initiate a payment to another account. */
+export interface HostPaymentRequestRequest {
+  /** Amount to pay. */
+  amount: Balance;
+  /** Destination account. */
+  destination: HexString;
+}
+
+export const HostPaymentRequestRequest: S.Codec<HostPaymentRequestRequest> =
+  S.lazy(
+    (): S.Codec<HostPaymentRequestRequest> =>
+      S.Struct({
+        amount: Balance,
+        destination: S.Hex(32),
+      }) as S.Codec<HostPaymentRequestRequest>,
+  );
+
+/**
+ * Receipt returned after a successful payment request.
+ *
+ * See [RFC 0006].
+ *
+ * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+ */
+export interface HostPaymentRequestResponse {
+  /** The assigned payment identifier. */
+  id: string;
+}
+
+export const HostPaymentRequestResponse: S.Codec<HostPaymentRequestResponse> =
+  S.lazy(
+    (): S.Codec<HostPaymentRequestResponse> =>
+      S.Struct({ id: S.str }) as S.Codec<HostPaymentRequestResponse>,
+  );
+
+/**
+ * Error from [`crate::api::Payment::host_payment_status_subscribe`].
+ *
+ * See [RFC 0006].
+ *
+ * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+ */
+export type HostPaymentStatusSubscribeError =
+  /** Payment ID was not found or does not belong to the current product. */
+  | { tag: "PaymentNotFound"; value: undefined }
+  /** Catch-all. */
+  | { tag: "Unknown"; value: { reason: string } };
+
+export const HostPaymentStatusSubscribeError: S.Codec<HostPaymentStatusSubscribeError> =
+  S.lazy(
+    (): S.Codec<HostPaymentStatusSubscribeError> =>
+      S.Enum({
+        PaymentNotFound: S._void,
+        Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
+      }),
+  );
+
+/**
+ * Payment lifecycle status pushed to subscribers.
+ *
+ * Once a terminal state (`Completed` or `Failed`) is reached, the host
+ * delivers it and may close the subscription.
+ *
+ * See [RFC 0006].
+ *
+ * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+ */
+export type HostPaymentStatusSubscribeItem =
+  /** Payment is being processed. */
+  | { tag: "Processing"; value: undefined }
+  /** Payment has been settled successfully. */
+  | { tag: "Completed"; value: undefined }
+  /** Payment has failed. */
+  | { tag: "Failed"; value: { reason: string } };
+
+export const HostPaymentStatusSubscribeItem: S.Codec<HostPaymentStatusSubscribeItem> =
+  S.lazy(
+    (): S.Codec<HostPaymentStatusSubscribeItem> =>
+      S.Enum({
+        Processing: S._void,
+        Completed: S._void,
+        Failed: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
+      }),
+  );
+
+/** Request to subscribe to a payment status. */
+export interface HostPaymentStatusSubscribeRequest {
+  /** Payment identifier to watch. */
+  paymentId: string;
+}
+
+export const HostPaymentStatusSubscribeRequest: S.Codec<HostPaymentStatusSubscribeRequest> =
+  S.lazy(
+    (): S.Codec<HostPaymentStatusSubscribeRequest> =>
+      S.Struct({
+        paymentId: S.str,
+      }) as S.Codec<HostPaymentStatusSubscribeRequest>,
+  );
+
+/**
+ * Error from [`crate::api::Payment::host_payment_top_up`].
+ *
+ * See [RFC 0006].
+ *
+ * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
+ */
+export type HostPaymentTopUpError =
+  /** The source account does not hold sufficient funds. */
+  | { tag: "InsufficientFunds"; value: undefined }
+  /** The source account was not found or is invalid. */
+  | { tag: "InvalidSource"; value: undefined }
+  /** Catch-all. */
+  | { tag: "Unknown"; value: { reason: string } };
+
+export const HostPaymentTopUpError: S.Codec<HostPaymentTopUpError> = S.lazy(
+  (): S.Codec<HostPaymentTopUpError> =>
+    S.Enum({
+      InsufficientFunds: S._void,
+      InvalidSource: S._void,
+      Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
+    }),
+);
+
+/** Request to top up the product payment balance. */
+export interface HostPaymentTopUpRequest {
+  /** Amount to top up. */
+  amount: Balance;
+  /** Funding source for the top-up. */
+  source: PaymentTopUpSource;
+}
+
+export const HostPaymentTopUpRequest: S.Codec<HostPaymentTopUpRequest> = S.lazy(
+  (): S.Codec<HostPaymentTopUpRequest> =>
+    S.Struct({
+      amount: Balance,
+      source: PaymentTopUpSource,
+    }) as S.Codec<HostPaymentTopUpRequest>,
+);
+
 /** Push notification payload. */
 export interface HostPushNotificationRequest {
   /** Notification text. */
@@ -3841,6 +4172,67 @@ export const HostSignPayloadError: S.Codec<HostSignPayloadError> = S.lazy(
     }),
 );
 
+/**
+ * Full Substrate extrinsic signing payload with all fields needed for signature
+ * generation.
+ */
+export interface HostSignPayloadRequest {
+  /** Product account that will sign this payload. */
+  account: ProductAccountId;
+  /** Reference block hash. */
+  blockHash: HexString;
+  /** Reference block number. */
+  blockNumber: HexString;
+  /** Mortality era encoding. */
+  era: HexString;
+  /** Chain genesis hash. */
+  genesisHash: HexString;
+  /** SCALE-encoded call data. */
+  method: HexString;
+  /** Account nonce. */
+  nonce: HexString;
+  /** Runtime spec version. */
+  specVersion: HexString;
+  /** Transaction tip. */
+  tip: HexString;
+  /** Transaction format version. */
+  transactionVersion: HexString;
+  /** Extension identifiers. */
+  signedExtensions: Array<string>;
+  /** Extrinsic version. */
+  version: number;
+  /** For multi-asset tips. */
+  assetId?: HexString;
+  /** CheckMetadataHash extension. */
+  metadataHash?: HexString;
+  /** Metadata mode. */
+  mode?: number;
+  /** Request signed transaction back. */
+  withSignedTransaction?: boolean;
+}
+
+export const HostSignPayloadRequest: S.Codec<HostSignPayloadRequest> = S.lazy(
+  (): S.Codec<HostSignPayloadRequest> =>
+    S.Struct({
+      account: ProductAccountId,
+      blockHash: S.Hex(),
+      blockNumber: S.Hex(),
+      era: S.Hex(),
+      genesisHash: S.Hex(),
+      method: S.Hex(),
+      nonce: S.Hex(),
+      specVersion: S.Hex(),
+      tip: S.Hex(),
+      transactionVersion: S.Hex(),
+      signedExtensions: S.Vector(S.str),
+      version: S.u32,
+      assetId: S.Option(S.Hex()),
+      metadataHash: S.Option(S.Hex()),
+      mode: S.Option(S.u32),
+      withSignedTransaction: S.Option(S.bool),
+    }) as S.Codec<HostSignPayloadRequest>,
+);
+
 /** Result of a signing operation. */
 export interface HostSignPayloadResponse {
   /** The cryptographic signature. */
@@ -3877,6 +4269,22 @@ export const HostSignPayloadWithLegacyAccountRequest: S.Codec<HostSignPayloadWit
         payload: HostSignPayloadRequest,
       }) as S.Codec<HostSignPayloadWithLegacyAccountRequest>,
   );
+
+/** A raw signing request pairing an account with the payload to sign. */
+export interface HostSignRawRequest {
+  /** Product account that will sign this payload. */
+  account: ProductAccountId;
+  /** The payload to sign. */
+  payload: RawPayload;
+}
+
+export const HostSignRawRequest: S.Codec<HostSignRawRequest> = S.lazy(
+  (): S.Codec<HostSignRawRequest> =>
+    S.Struct({
+      account: ProductAccountId,
+      payload: RawPayload,
+    }) as S.Codec<HostSignRawRequest>,
+);
 
 /**
  * Sign raw bytes with a non-product (legacy) account. The signer field
@@ -4403,6 +4811,19 @@ export const RemoteChainTransactionStopRequest: S.Codec<RemoteChainTransactionSt
       }) as S.Codec<RemoteChainTransactionStopRequest>,
   );
 
+/** Request containing batched remote-operation permissions. */
+export interface RemotePermissionRequest {
+  /** Permissions requested by the product. */
+  permissions: Array<RemotePermission>;
+}
+
+export const RemotePermissionRequest: S.Codec<RemotePermissionRequest> = S.lazy(
+  (): S.Codec<RemotePermissionRequest> =>
+    S.Struct({
+      permissions: S.Vector(RemotePermission),
+    }) as S.Codec<RemotePermissionRequest>,
+);
+
 /** Response indicating whether a remote permission was granted. */
 export interface RemotePermissionResponse {
   /** Whether the permission was granted. */
@@ -4494,459 +4915,6 @@ export const RemoteStatementStoreCreateProofResponse: S.Codec<RemoteStatementSto
   );
 
 /**
- * Error from [`crate::api::EntropyDerivation::host_derive_entropy`].
- *
- * Under normal operation the function always succeeds; `Unknown` indicates an
- * unrecoverable internal host error.
- *
- * See [RFC 0007].
- *
- * [RFC 0007]: https://github.com/paritytech/triangle-js-sdks/pull/95
- */
-export type HostDeriveEntropyError =
-  /** An unexpected error occurred in the host. */
-  { tag: "Unknown"; value: undefined };
-
-export const HostDeriveEntropyError: S.Codec<HostDeriveEntropyError> = S.lazy(
-  (): S.Codec<HostDeriveEntropyError> => S.Enum({ Unknown: S._void }),
-);
-
-/** Request to derive deterministic entropy. */
-export interface HostDeriveEntropyRequest {
-  /** Domain-separated derivation context. */
-  context: HexString;
-}
-
-export const HostDeriveEntropyRequest: S.Codec<HostDeriveEntropyRequest> =
-  S.lazy(
-    (): S.Codec<HostDeriveEntropyRequest> =>
-      S.Struct({ context: S.Hex() }) as S.Codec<HostDeriveEntropyRequest>,
-  );
-
-/** Response containing derived deterministic entropy. */
-export interface HostDeriveEntropyResponse {
-  /** 32 bytes of derived entropy. */
-  entropy: HexString;
-}
-
-export const HostDeriveEntropyResponse: S.Codec<HostDeriveEntropyResponse> =
-  S.lazy(
-    (): S.Codec<HostDeriveEntropyResponse> =>
-      S.Struct({ entropy: S.Hex(32) }) as S.Codec<HostDeriveEntropyResponse>,
-  );
-
-/**
- * Device capability to request access to.
- *
- * V0.2: extended with `Notifications`, `NFC`, `Clipboard`, `OpenUrl`, and
- * `Biometrics` per [RFC 0001] (JIT permissions).
- *
- * [RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66
- */
-export type HostDevicePermissionRequest =
-  /** Push notification delivery permission. */
-  | { tag: "Notifications"; value: undefined }
-  | { tag: "Camera"; value: undefined }
-  | { tag: "Microphone"; value: undefined }
-  | { tag: "Bluetooth"; value: undefined }
-  /** Near-field communication access. */
-  | { tag: "NFC"; value: undefined }
-  | { tag: "Location"; value: undefined }
-  /** System clipboard access. */
-  | { tag: "Clipboard"; value: undefined }
-  /** Open a URL in an external browser. */
-  | { tag: "OpenUrl"; value: undefined }
-  /** Biometric authentication (fingerprint, face ID). */
-  | { tag: "Biometrics"; value: undefined };
-
-export const HostDevicePermissionRequest: S.Codec<HostDevicePermissionRequest> =
-  S.lazy(
-    (): S.Codec<HostDevicePermissionRequest> =>
-      S.Enum({
-        Notifications: S._void,
-        Camera: S._void,
-        Microphone: S._void,
-        Bluetooth: S._void,
-        NFC: S._void,
-        Location: S._void,
-        Clipboard: S._void,
-        OpenUrl: S._void,
-        Biometrics: S._void,
-      }),
-  );
-
-/**
- * Error from [`crate::api::AccountManagement::host_get_user_id`].
- *
- * V0.2.
- */
-export type HostGetUserIdError =
-  /** User denied the identity disclosure request. */
-  | { tag: "PermissionDenied"; value: undefined }
-  /** User is not logged in. */
-  | { tag: "NotConnected"; value: undefined }
-  /** Catch-all. */
-  | { tag: "Unknown"; value: { reason: string } };
-
-export const HostGetUserIdError: S.Codec<HostGetUserIdError> = S.lazy(
-  (): S.Codec<HostGetUserIdError> =>
-    S.Enum({
-      PermissionDenied: S._void,
-      NotConnected: S._void,
-      Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
-    }),
-);
-
-/**
- * The user's primary DotNS account identity.
- *
- * V0.2.
- */
-export interface HostGetUserIdResponse {
-  /** The user's primary DotNS username. */
-  primaryUsername: string;
-  /** The user's primary public key. */
-  publicKey: HexString;
-}
-
-export const HostGetUserIdResponse: S.Codec<HostGetUserIdResponse> = S.lazy(
-  (): S.Codec<HostGetUserIdResponse> =>
-    S.Struct({
-      primaryUsername: S.str,
-      publicKey: S.Hex(),
-    }) as S.Codec<HostGetUserIdResponse>,
-);
-
-/**
- * Handshake error. Mirrors Novasama's `HandshakeErr` byte-for-byte so that
- * pre-codegen products (built against `@novasamatech/host-api`) can decode
- * `host_handshake_response` frames produced by this host.
- */
-export type HostHandshakeError =
-  | { tag: "Timeout"; value: undefined }
-  | { tag: "UnsupportedProtocolVersion"; value: undefined }
-  | { tag: "Unknown"; value: GenericErr };
-
-export const HostHandshakeError: S.Codec<HostHandshakeError> = S.lazy(
-  (): S.Codec<HostHandshakeError> =>
-    S.Enum({
-      Timeout: S._void,
-      UnsupportedProtocolVersion: S._void,
-      Unknown: GenericErr,
-    }),
-);
-
-/**
- * Error from [`crate::api::Payment::host_payment_balance_subscribe`].
- *
- * See [RFC 0006].
- *
- * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
- */
-export type HostPaymentBalanceSubscribeError =
-  /** User denied the balance disclosure request. */
-  | { tag: "PermissionDenied"; value: undefined }
-  /** Catch-all. */
-  | { tag: "Unknown"; value: { reason: string } };
-
-export const HostPaymentBalanceSubscribeError: S.Codec<HostPaymentBalanceSubscribeError> =
-  S.lazy(
-    (): S.Codec<HostPaymentBalanceSubscribeError> =>
-      S.Enum({
-        PermissionDenied: S._void,
-        Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
-      }),
-  );
-
-/**
- * Current payment balance state pushed to subscribers.
- *
- * See [RFC 0006]. V0.2: the `pending` field was removed; only `available`
- * remains.
- *
- * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
- */
-export interface HostPaymentBalanceSubscribeItem {
-  /** Balance that can be spent right now. */
-  available: Balance;
-}
-
-export const HostPaymentBalanceSubscribeItem: S.Codec<HostPaymentBalanceSubscribeItem> =
-  S.lazy(
-    (): S.Codec<HostPaymentBalanceSubscribeItem> =>
-      S.Struct({
-        available: Balance,
-      }) as S.Codec<HostPaymentBalanceSubscribeItem>,
-  );
-
-/**
- * Error from [`crate::api::Payment::host_payment_request`].
- *
- * See [RFC 0006].
- *
- * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
- */
-export type HostPaymentRequestError =
-  /** User rejected the payment request. */
-  | { tag: "Rejected"; value: undefined }
-  /** User's available balance is not sufficient for the requested amount. */
-  | { tag: "InsufficientBalance"; value: undefined }
-  /** Catch-all. */
-  | { tag: "Unknown"; value: { reason: string } };
-
-export const HostPaymentRequestError: S.Codec<HostPaymentRequestError> = S.lazy(
-  (): S.Codec<HostPaymentRequestError> =>
-    S.Enum({
-      Rejected: S._void,
-      InsufficientBalance: S._void,
-      Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
-    }),
-);
-
-/** Request to initiate a payment to another account. */
-export interface HostPaymentRequestRequest {
-  /** Amount to pay. */
-  amount: Balance;
-  /** Destination account. */
-  destination: HexString;
-}
-
-export const HostPaymentRequestRequest: S.Codec<HostPaymentRequestRequest> =
-  S.lazy(
-    (): S.Codec<HostPaymentRequestRequest> =>
-      S.Struct({
-        amount: Balance,
-        destination: S.Hex(32),
-      }) as S.Codec<HostPaymentRequestRequest>,
-  );
-
-/**
- * Receipt returned after a successful payment request.
- *
- * See [RFC 0006].
- *
- * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
- */
-export interface HostPaymentRequestResponse {
-  /** The assigned payment identifier. */
-  id: string;
-}
-
-export const HostPaymentRequestResponse: S.Codec<HostPaymentRequestResponse> =
-  S.lazy(
-    (): S.Codec<HostPaymentRequestResponse> =>
-      S.Struct({ id: S.str }) as S.Codec<HostPaymentRequestResponse>,
-  );
-
-/**
- * Error from [`crate::api::Payment::host_payment_status_subscribe`].
- *
- * See [RFC 0006].
- *
- * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
- */
-export type HostPaymentStatusSubscribeError =
-  /** Payment ID was not found or does not belong to the current product. */
-  | { tag: "PaymentNotFound"; value: undefined }
-  /** Catch-all. */
-  | { tag: "Unknown"; value: { reason: string } };
-
-export const HostPaymentStatusSubscribeError: S.Codec<HostPaymentStatusSubscribeError> =
-  S.lazy(
-    (): S.Codec<HostPaymentStatusSubscribeError> =>
-      S.Enum({
-        PaymentNotFound: S._void,
-        Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
-      }),
-  );
-
-/**
- * Payment lifecycle status pushed to subscribers.
- *
- * Once a terminal state (`Completed` or `Failed`) is reached, the host
- * delivers it and may close the subscription.
- *
- * See [RFC 0006].
- *
- * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
- */
-export type HostPaymentStatusSubscribeItem =
-  /** Payment is being processed. */
-  | { tag: "Processing"; value: undefined }
-  /** Payment has been settled successfully. */
-  | { tag: "Completed"; value: undefined }
-  /** Payment has failed. */
-  | { tag: "Failed"; value: { reason: string } };
-
-export const HostPaymentStatusSubscribeItem: S.Codec<HostPaymentStatusSubscribeItem> =
-  S.lazy(
-    (): S.Codec<HostPaymentStatusSubscribeItem> =>
-      S.Enum({
-        Processing: S._void,
-        Completed: S._void,
-        Failed: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
-      }),
-  );
-
-/** Request to subscribe to a payment status. */
-export interface HostPaymentStatusSubscribeRequest {
-  /** Payment identifier to watch. */
-  paymentId: string;
-}
-
-export const HostPaymentStatusSubscribeRequest: S.Codec<HostPaymentStatusSubscribeRequest> =
-  S.lazy(
-    (): S.Codec<HostPaymentStatusSubscribeRequest> =>
-      S.Struct({
-        paymentId: S.str,
-      }) as S.Codec<HostPaymentStatusSubscribeRequest>,
-  );
-
-/**
- * Error from [`crate::api::Payment::host_payment_top_up`].
- *
- * See [RFC 0006].
- *
- * [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
- */
-export type HostPaymentTopUpError =
-  /** The source account does not hold sufficient funds. */
-  | { tag: "InsufficientFunds"; value: undefined }
-  /** The source account was not found or is invalid. */
-  | { tag: "InvalidSource"; value: undefined }
-  /** Catch-all. */
-  | { tag: "Unknown"; value: { reason: string } };
-
-export const HostPaymentTopUpError: S.Codec<HostPaymentTopUpError> = S.lazy(
-  (): S.Codec<HostPaymentTopUpError> =>
-    S.Enum({
-      InsufficientFunds: S._void,
-      InvalidSource: S._void,
-      Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
-    }),
-);
-
-/** Request to top up the product payment balance. */
-export interface HostPaymentTopUpRequest {
-  /** Amount to top up. */
-  amount: Balance;
-  /** Funding source for the top-up. */
-  source: PaymentTopUpSource;
-}
-
-export const HostPaymentTopUpRequest: S.Codec<HostPaymentTopUpRequest> = S.lazy(
-  (): S.Codec<HostPaymentTopUpRequest> =>
-    S.Struct({
-      amount: Balance,
-      source: PaymentTopUpSource,
-    }) as S.Codec<HostPaymentTopUpRequest>,
-);
-
-/**
- * Full Substrate extrinsic signing payload with all fields needed for signature
- * generation.
- */
-export interface HostSignPayloadRequest {
-  /**
-   * Product account that will sign this payload.
-   *
-   * V0.2: replaces the previous `address: String` field per [RFC 0005],
-   * aligning with all other TrUAPI account-related methods.
-   *
-   * [RFC 0005]: https://github.com/paritytech/triangle-js-sdks/pull/82
-   */
-  account: ProductAccountId;
-  /** Reference block hash. */
-  blockHash: HexString;
-  /** Reference block number. */
-  blockNumber: HexString;
-  /** Mortality era encoding. */
-  era: HexString;
-  /** Chain genesis hash. */
-  genesisHash: HexString;
-  /** SCALE-encoded call data. */
-  method: HexString;
-  /** Account nonce. */
-  nonce: HexString;
-  /** Runtime spec version. */
-  specVersion: HexString;
-  /** Transaction tip. */
-  tip: HexString;
-  /** Transaction format version. */
-  transactionVersion: HexString;
-  /** Extension identifiers. */
-  signedExtensions: Array<string>;
-  /** Extrinsic version. */
-  version: number;
-  /** For multi-asset tips. */
-  assetId?: HexString;
-  /** CheckMetadataHash extension. */
-  metadataHash?: HexString;
-  /** Metadata mode. */
-  mode?: number;
-  /** Request signed transaction back. */
-  withSignedTransaction?: boolean;
-}
-
-export const HostSignPayloadRequest: S.Codec<HostSignPayloadRequest> = S.lazy(
-  (): S.Codec<HostSignPayloadRequest> =>
-    S.Struct({
-      account: ProductAccountId,
-      blockHash: S.Hex(),
-      blockNumber: S.Hex(),
-      era: S.Hex(),
-      genesisHash: S.Hex(),
-      method: S.Hex(),
-      nonce: S.Hex(),
-      specVersion: S.Hex(),
-      tip: S.Hex(),
-      transactionVersion: S.Hex(),
-      signedExtensions: S.Vector(S.str),
-      version: S.u32,
-      assetId: S.Option(S.Hex()),
-      metadataHash: S.Option(S.Hex()),
-      mode: S.Option(S.u32),
-      withSignedTransaction: S.Option(S.bool),
-    }) as S.Codec<HostSignPayloadRequest>,
-);
-
-/**
- * A raw signing request pairing an account with the payload to sign.
- *
- * V0.2: `address` replaced with `account: ProductAccountId` per [RFC 0005];
- * the `data` field was also renamed to `payload`.
- *
- * [RFC 0005]: https://github.com/paritytech/triangle-js-sdks/pull/82
- */
-export interface HostSignRawRequest {
-  /** Product account that will sign this payload. */
-  account: ProductAccountId;
-  /** The payload to sign. */
-  payload: RawPayload;
-}
-
-export const HostSignRawRequest: S.Codec<HostSignRawRequest> = S.lazy(
-  (): S.Codec<HostSignRawRequest> =>
-    S.Struct({
-      account: ProductAccountId,
-      payload: RawPayload,
-    }) as S.Codec<HostSignRawRequest>,
-);
-
-/** Request containing batched remote-operation permissions. */
-export interface RemotePermissionRequest {
-  /** Permissions requested by the product. */
-  permissions: Array<RemotePermission>;
-}
-
-export const RemotePermissionRequest: S.Codec<RemotePermissionRequest> = S.lazy(
-  (): S.Codec<RemotePermissionRequest> =>
-    S.Struct({
-      permissions: S.Vector(RemotePermission),
-    }) as S.Codec<RemotePermissionRequest>,
-);
-
-/**
  * Page of signed statements delivered by the statement store subscription
  * (RFC 0008). The `is_complete` flag distinguishes the historical-dump phase
  * (`false`) from the live-update phase (`true`).
@@ -4984,22 +4952,13 @@ export const RemoteStatementStoreSubscribeRequest: S.Codec<RemoteStatementStoreS
       S.Enum({ MatchAll: S.Vector(Topic), MatchAny: S.Vector(Topic) }),
   );
 
-/**
- * Protocol version identifier. Each variant matches a `V<N>(..)` arm of the
- * versioned wrapper enums.
- */
+/** Protocol version identifier. */
 export type Version =
-  /** Pre-RFC-0001 protocol shipped by `@novasamatech/host-api@0.6.x`. */
-  | { tag: "V1"; value: undefined }
-  /** RFC-0001 protocol. */
-  | { tag: "V2"; value: undefined };
+  /** The single protocol version. */
+  { tag: "V1"; value: undefined };
 
 export const Version: S.Codec<Version> = S.lazy(
-  (): S.Codec<Version> =>
-    S.indexedTaggedUnion({
-      V1: [0, S._void] as const,
-      V2: [0, S._void] as const,
-    }),
+  (): S.Codec<Version> => S.indexedTaggedUnion({ V1: [0, S._void] as const }),
 );
 
 /** Versioned transaction payload envelope. */

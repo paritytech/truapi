@@ -2714,25 +2714,17 @@ fn versioned_kind_codec_expr(
     }
 }
 
-/// HACK: every emitted variant pins its wire discriminant to `0` regardless
-/// of the declared version. This works around `triangle-js-sdks` hosts that
-/// don't correctly route on the SCALE version prefix and instead treat the
-/// payload as if the codec had no version envelope at all. Safe today
-/// because [`versioned_wrapper_emit_versions`] reduces every method-envelope
-/// wrapper to a single emitted variant, so there is no collision between
-/// V1 and V2 sharing index 0. Remove once hosts decode the version byte
-/// correctly; the Rust side already pins each `Vn` arm to
-/// `#[codec(index = n - 1)]` and is unaffected.
+/// Builds a `S.indexedTaggedUnion({...})` expression for versioned wrapper
+/// variants. Each `V<N>` arm uses wire discriminant `N - 1`, matching the
+/// Rust `#[codec(index = N - 1)]` annotation.
 fn indexed_versioned_codec_expr(
     variants: impl IntoIterator<Item = (u32, String)>,
 ) -> Result<String> {
     let mut entries = Vec::new();
     for (version, codec) in variants {
-        // Validate version is non-zero (V0 is reserved/invalid).
-        version
+        let index = version
             .checked_sub(1)
             .ok_or_else(|| anyhow::anyhow!("versioned wrapper uses invalid V0 variant"))?;
-        let index = 0u32;
         entries.push(format!("V{version}: [{index}, {codec}] as const"));
     }
     Ok(format!("S.indexedTaggedUnion({{{}}})", entries.join(", ")))

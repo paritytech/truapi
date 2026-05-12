@@ -46,7 +46,7 @@ pub trait TrUApiCalls: Send + Sync {
             Ok(HostHandshakeResponse::V1)
         } else {
             Err(CallError::Domain(HostHandshakeError::V1(
-                crate::v02::HostHandshakeError::UnsupportedProtocolVersion,
+                crate::v01::HostHandshakeError::UnsupportedProtocolVersion,
             )))
         }
     }

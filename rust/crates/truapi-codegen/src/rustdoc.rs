@@ -350,9 +350,6 @@ fn disambiguated_type_name(simple_name: &str, path: &[String]) -> String {
     if path.iter().any(|segment| segment == "v01") {
         return format!("V01{simple_name}");
     }
-    if path.iter().any(|segment| segment == "v02") {
-        return format!("V02{simple_name}");
-    }
     let module = path
         .iter()
         .rev()
