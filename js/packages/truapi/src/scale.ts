@@ -7,6 +7,7 @@
 
 import {
   Bytes,
+  Enum,
   createCodec,
   createDecoder,
   enhanceCodec,
@@ -88,6 +89,31 @@ export function Hex(length?: number): Codec<HexString> {
 }
 
 /**
+ * Same wire format as `scale-ts`'s `Enum`, but exposes `value` as optional in
+ * the public TS type when the variant codec is `Codec<undefined>`. Lets unit
+ * variants of mixed enums round-trip as `{ tag: "X" }` (no `value` key).
+ */
+export function TaggedUnion<O extends TaggedUnionCodecs>(
+  inner: O,
+): Codec<TaggedUnionValue<O>> {
+  return Enum(inner) as unknown as Codec<TaggedUnionValue<O>>;
+}
+
+type TaggedUnionCodecs = {
+  [Sym: symbol]: never;
+  [Num: number]: never;
+  [Str: string]: Codec<any>;
+};
+
+type TaggedUnionValue<O extends TaggedUnionCodecs> = {
+  [K in keyof O & string]: O[K] extends Codec<infer T>
+    ? [T] extends [undefined]
+      ? { tag: K; value?: undefined }
+      : { tag: K; value: T }
+    : never;
+}[keyof O & string];
+
+/**
  * Enum without payloads — maps string labels to SCALE discriminant bytes.
  *
  * `scale-ts` models `Enum({ Foo: _void, Bar: _void })` as tagged objects. For
@@ -135,7 +161,9 @@ type IndexedVariantValue<
   K extends keyof Variants & string,
 > =
   Variants[K] extends IndexedVariantCodec<infer T>
-    ? { tag: K; value: T }
+    ? [T] extends [undefined]
+      ? { tag: K; value?: undefined }
+      : { tag: K; value: T }
     : never;
 
 /**

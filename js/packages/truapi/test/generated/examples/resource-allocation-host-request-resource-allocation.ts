@@ -9,10 +9,7 @@ export async function requestAllocation(
   truapi: Client,
 ): Promise<HostRequestResourceAllocationResponse> {
   const result = await truapi.resourceAllocation.requestResourceAllocation({
-    resources: [
-      { tag: "StatementStoreAllowance", value: undefined },
-      { tag: "AutoSigning", value: undefined },
-    ],
+    resources: [{ tag: "StatementStoreAllowance" }, { tag: "AutoSigning" }],
   });
 
   if (result.isErr()) throw result.error;

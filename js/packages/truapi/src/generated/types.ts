@@ -43,17 +43,17 @@ export const ActionTrigger: S.Codec<ActionTrigger> = S.lazy(
 /** A resource the product can request the host to pre-allocate. */
 export type AllocatableResource =
   /** Statement store allowance. */
-  | { tag: "StatementStoreAllowance"; value: undefined }
+  | { tag: "StatementStoreAllowance"; value?: undefined }
   /** Bulletin board allowance. */
-  | { tag: "BulletinAllowance"; value: undefined }
+  | { tag: "BulletinAllowance"; value?: undefined }
   /** Smart contract allowance with a derivation index. */
   | { tag: "SmartContractAllowance"; value: number }
   /** Auto-signing capability. */
-  | { tag: "AutoSigning"; value: undefined };
+  | { tag: "AutoSigning"; value?: undefined };
 
 export const AllocatableResource: S.Codec<AllocatableResource> = S.lazy(
   (): S.Codec<AllocatableResource> =>
-    S.Enum({
+    S.TaggedUnion({
       StatementStoreAllowance: S._void,
       BulletinAllowance: S._void,
       SmartContractAllowance: S.u32,
@@ -203,7 +203,7 @@ export type ChatActionPayload =
 
 export const ChatActionPayload: S.Codec<ChatActionPayload> = S.lazy(
   (): S.Codec<ChatActionPayload> =>
-    S.Enum({
+    S.TaggedUnion({
       MessagePosted: ChatMessageContent,
       ActionTriggered: ActionTrigger,
       Command: ChatCommand,
@@ -318,7 +318,7 @@ export type ChatMessageContent =
 
 export const ChatMessageContent: S.Codec<ChatMessageContent> = S.lazy(
   (): S.Codec<ChatMessageContent> =>
-    S.Enum({
+    S.TaggedUnion({
       Text: S.Struct({ text: S.str }) as S.Codec<{ text: string }>,
       RichText: ChatRichText,
       Actions: ChatActions,
@@ -489,7 +489,7 @@ export const ContentAlignment: S.Codec<ContentAlignment> = S.lazy(
  */
 export type CustomRendererNode =
   /** Empty node. */
-  | { tag: "Nil"; value: undefined }
+  | { tag: "Nil"; value?: undefined }
   /** Raw text string. */
   | { tag: "String"; value: { text: string } }
   /** Generic container. */
@@ -509,7 +509,7 @@ export type CustomRendererNode =
 
 export const CustomRendererNode: S.Codec<CustomRendererNode> = S.lazy(
   (): S.Codec<CustomRendererNode> =>
-    S.Enum({
+    S.TaggedUnion({
       Nil: S._void,
       String: S.Struct({ text: S.str }) as S.Codec<{ text: string }>,
       Box: Component(BoxProps),
@@ -563,7 +563,7 @@ export const GenericErr: S.Codec<GenericErr> = S.lazy(
 export type GenericError = { tag: "GenericError"; value: GenericErr };
 
 export const GenericError: S.Codec<GenericError> = S.lazy(
-  (): S.Codec<GenericError> => S.Enum({ GenericError: GenericErr }),
+  (): S.Codec<GenericError> => S.TaggedUnion({ GenericError: GenericErr }),
 );
 
 /** Horizontal alignment options. */
@@ -1028,7 +1028,7 @@ export const VersionedHostGetLegacyAccountsError: S.Codec<VersionedHostGetLegacy
 /** Versioned envelope for [`HostGetLegacyAccountsRequest`]. */
 export type VersionedHostGetLegacyAccountsRequest = {
   tag: "V1";
-  value: undefined;
+  value?: undefined;
 };
 
 export const VersionedHostGetLegacyAccountsRequest: S.Codec<VersionedHostGetLegacyAccountsRequest> =
@@ -1062,7 +1062,7 @@ export const VersionedHostGetUserIdError: S.Codec<VersionedHostGetUserIdError> =
   );
 
 /** Versioned envelope for [`HostGetUserIdRequest`]. */
-export type VersionedHostGetUserIdRequest = { tag: "V1"; value: undefined };
+export type VersionedHostGetUserIdRequest = { tag: "V1"; value?: undefined };
 
 export const VersionedHostGetUserIdRequest: S.Codec<VersionedHostGetUserIdRequest> =
   S.lazy(
@@ -1107,7 +1107,7 @@ export const VersionedHostHandshakeRequest: S.Codec<VersionedHostHandshakeReques
   );
 
 /** Versioned envelope for [`HostHandshakeResponse`]. */
-export type VersionedHostHandshakeResponse = { tag: "V1"; value: undefined };
+export type VersionedHostHandshakeResponse = { tag: "V1"; value?: undefined };
 
 export const VersionedHostHandshakeResponse: S.Codec<VersionedHostHandshakeResponse> =
   S.lazy(
@@ -1142,7 +1142,7 @@ export const VersionedHostJsonrpcMessageSendRequest: S.Codec<VersionedHostJsonrp
 /** Versioned envelope for [`HostJsonrpcMessageSendResponse`]. */
 export type VersionedHostJsonrpcMessageSendResponse = {
   tag: "V1";
-  value: undefined;
+  value?: undefined;
 };
 
 export const VersionedHostJsonrpcMessageSendResponse: S.Codec<VersionedHostJsonrpcMessageSendResponse> =
@@ -1206,7 +1206,7 @@ export const VersionedHostLocalStorageClearRequest: S.Codec<VersionedHostLocalSt
 /** Versioned envelope for [`HostLocalStorageClearResponse`]. */
 export type VersionedHostLocalStorageClearResponse = {
   tag: "V1";
-  value: undefined;
+  value?: undefined;
 };
 
 export const VersionedHostLocalStorageClearResponse: S.Codec<VersionedHostLocalStorageClearResponse> =
@@ -1278,7 +1278,7 @@ export const VersionedHostLocalStorageWriteRequest: S.Codec<VersionedHostLocalSt
 /** Versioned envelope for [`HostLocalStorageWriteResponse`]. */
 export type VersionedHostLocalStorageWriteResponse = {
   tag: "V1";
-  value: undefined;
+  value?: undefined;
 };
 
 export const VersionedHostLocalStorageWriteResponse: S.Codec<VersionedHostLocalStorageWriteResponse> =
@@ -1312,7 +1312,7 @@ export const VersionedHostNavigateToRequest: S.Codec<VersionedHostNavigateToRequ
   );
 
 /** Versioned envelope for [`HostNavigateToResponse`]. */
-export type VersionedHostNavigateToResponse = { tag: "V1"; value: undefined };
+export type VersionedHostNavigateToResponse = { tag: "V1"; value?: undefined };
 
 export const VersionedHostNavigateToResponse: S.Codec<VersionedHostNavigateToResponse> =
   S.lazy(
@@ -1351,7 +1351,7 @@ export const VersionedHostPaymentBalanceSubscribeItem: S.Codec<VersionedHostPaym
 /** Versioned envelope for [`HostPaymentBalanceSubscribeRequest`]. */
 export type VersionedHostPaymentBalanceSubscribeRequest = {
   tag: "V1";
-  value: undefined;
+  value?: undefined;
 };
 
 export const VersionedHostPaymentBalanceSubscribeRequest: S.Codec<VersionedHostPaymentBalanceSubscribeRequest> =
@@ -1463,7 +1463,10 @@ export const VersionedHostPaymentTopUpRequest: S.Codec<VersionedHostPaymentTopUp
   );
 
 /** Versioned envelope for [`HostPaymentTopUpResponse`]. */
-export type VersionedHostPaymentTopUpResponse = { tag: "V1"; value: undefined };
+export type VersionedHostPaymentTopUpResponse = {
+  tag: "V1";
+  value?: undefined;
+};
 
 export const VersionedHostPaymentTopUpResponse: S.Codec<VersionedHostPaymentTopUpResponse> =
   S.lazy(
@@ -1498,7 +1501,7 @@ export const VersionedHostPushNotificationRequest: S.Codec<VersionedHostPushNoti
 /** Versioned envelope for [`HostPushNotificationResponse`]. */
 export type VersionedHostPushNotificationResponse = {
   tag: "V1";
-  value: undefined;
+  value?: undefined;
 };
 
 export const VersionedHostPushNotificationResponse: S.Codec<VersionedHostPushNotificationResponse> =
@@ -1768,7 +1771,7 @@ export type Modifier =
 
 export const Modifier: S.Codec<Modifier> = S.lazy(
   (): S.Codec<Modifier> =>
-    S.Enum({
+    S.TaggedUnion({
       Margin: Dimensions,
       Padding: Dimensions,
       Background: Background,
@@ -1789,11 +1792,11 @@ export type OperationStartedResult =
   /** Operation started successfully. */
   | { tag: "Started"; value: { operationId: string } }
   /** Too many concurrent operations. */
-  | { tag: "LimitReached"; value: undefined };
+  | { tag: "LimitReached"; value?: undefined };
 
 export const OperationStartedResult: S.Codec<OperationStartedResult> = S.lazy(
   (): S.Codec<OperationStartedResult> =>
-    S.Enum({
+    S.TaggedUnion({
       Started: S.Struct({ operationId: S.str }) as S.Codec<{
         operationId: string;
       }>,
@@ -1819,7 +1822,7 @@ export type PaymentTopUpSource =
 
 export const PaymentTopUpSource: S.Codec<PaymentTopUpSource> = S.lazy(
   (): S.Codec<PaymentTopUpSource> =>
-    S.Enum({
+    S.TaggedUnion({
       ProductAccount: S.Struct({ derivationIndex: S.u32 }) as S.Codec<{
         derivationIndex: number;
       }>,
@@ -1836,7 +1839,7 @@ export type PreimageSubmitError =
 
 export const PreimageSubmitError: S.Codec<PreimageSubmitError> = S.lazy(
   (): S.Codec<PreimageSubmitError> =>
-    S.Enum({
+    S.TaggedUnion({
       Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
     }),
 );
@@ -1906,7 +1909,7 @@ export type RawPayload =
 
 export const RawPayload: S.Codec<RawPayload> = S.lazy(
   (): S.Codec<RawPayload> =>
-    S.Enum({
+    S.TaggedUnion({
       Bytes: S.Struct({ bytes: S.Hex() }) as S.Codec<{ bytes: HexString }>,
       Payload: S.Struct({ payload: S.str }) as S.Codec<{ payload: string }>,
     }),
@@ -2013,7 +2016,7 @@ export const VersionedRemoteChainHeadContinueRequest: S.Codec<VersionedRemoteCha
 /** Versioned envelope for [`RemoteChainHeadContinueResponse`]. */
 export type VersionedRemoteChainHeadContinueResponse = {
   tag: "V1";
-  value: undefined;
+  value?: undefined;
 };
 
 export const VersionedRemoteChainHeadContinueResponse: S.Codec<VersionedRemoteChainHeadContinueResponse> =
@@ -2111,7 +2114,7 @@ export const VersionedRemoteChainHeadStopOperationRequest: S.Codec<VersionedRemo
 /** Versioned envelope for [`RemoteChainHeadStopOperationResponse`]. */
 export type VersionedRemoteChainHeadStopOperationResponse = {
   tag: "V1";
-  value: undefined;
+  value?: undefined;
 };
 
 export const VersionedRemoteChainHeadStopOperationResponse: S.Codec<VersionedRemoteChainHeadStopOperationResponse> =
@@ -2185,7 +2188,7 @@ export const VersionedRemoteChainHeadUnpinRequest: S.Codec<VersionedRemoteChainH
 /** Versioned envelope for [`RemoteChainHeadUnpinResponse`]. */
 export type VersionedRemoteChainHeadUnpinResponse = {
   tag: "V1";
-  value: undefined;
+  value?: undefined;
 };
 
 export const VersionedRemoteChainHeadUnpinResponse: S.Codec<VersionedRemoteChainHeadUnpinResponse> =
@@ -2383,7 +2386,7 @@ export const VersionedRemoteChainTransactionStopRequest: S.Codec<VersionedRemote
 /** Versioned envelope for [`RemoteChainTransactionStopResponse`]. */
 export type VersionedRemoteChainTransactionStopResponse = {
   tag: "V1";
-  value: undefined;
+  value?: undefined;
 };
 
 export const VersionedRemoteChainTransactionStopResponse: S.Codec<VersionedRemoteChainTransactionStopResponse> =
@@ -2412,20 +2415,20 @@ export type RemotePermission =
    */
   | { tag: "Remote"; value: { domains: Array<string> } }
   /** WebRTC access, can expose the user's IP address. */
-  | { tag: "WebRtc"; value: undefined }
+  | { tag: "WebRtc"; value?: undefined }
   /**
    * Broadcast signed transactions via
    * [`crate::api::ChainInteraction::remote_chain_transaction_broadcast`].
    */
-  | { tag: "ChainSubmit"; value: undefined }
+  | { tag: "ChainSubmit"; value?: undefined }
   /** Submit a preimage via [`crate::api::Preimage::remote_preimage_submit`]. */
-  | { tag: "PreimageSubmit"; value: undefined }
+  | { tag: "PreimageSubmit"; value?: undefined }
   /** Submit statements via [`crate::api::StatementStore::remote_statement_store_submit`]. */
-  | { tag: "StatementSubmit"; value: undefined };
+  | { tag: "StatementSubmit"; value?: undefined };
 
 export const RemotePermission: S.Codec<RemotePermission> = S.lazy(
   (): S.Codec<RemotePermission> =>
-    S.Enum({
+    S.TaggedUnion({
       Remote: S.Struct({ domains: S.Vector(S.str) }) as S.Codec<{
         domains: Array<string>;
       }>,
@@ -2674,7 +2677,7 @@ export type ResourceAllocationError =
 
 export const ResourceAllocationError: S.Codec<ResourceAllocationError> = S.lazy(
   (): S.Codec<ResourceAllocationError> =>
-    S.Enum({
+    S.TaggedUnion({
       Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
     }),
 );
@@ -2775,7 +2778,7 @@ export type RuntimeType =
 
 export const RuntimeType: S.Codec<RuntimeType> = S.lazy(
   (): S.Codec<RuntimeType> =>
-    S.Enum({
+    S.TaggedUnion({
       Valid: RuntimeSpec,
       Invalid: S.Struct({ error: S.str }) as S.Codec<{ error: string }>,
     }),
@@ -2786,11 +2789,11 @@ export type Shape =
   /** Border radius value. */
   | { tag: "Rounded"; value: { radius: bigint } }
   /** Circular shape. */
-  | { tag: "Circle"; value: undefined };
+  | { tag: "Circle"; value?: undefined };
 
 export const Shape: S.Codec<Shape> = S.lazy(
   (): S.Codec<Shape> =>
-    S.Enum({
+    S.TaggedUnion({
       Rounded: S.Struct({ radius: S.u64 }) as S.Codec<{ radius: bigint }>,
       Circle: S._void,
     }),
@@ -2868,7 +2871,7 @@ export type StatementProof =
 
 export const StatementProof: S.Codec<StatementProof> = S.lazy(
   (): S.Codec<StatementProof> =>
-    S.Enum({
+    S.TaggedUnion({
       Sr25519: S.Struct({
         signature: S.Hex(64),
         signer: S.Hex(32),
@@ -3089,16 +3092,16 @@ export const HostAccountConnectionStatusSubscribeItem: S.Codec<HostAccountConnec
 /** Error returned when ring VRF proof creation fails. */
 export type HostAccountCreateProofError =
   /** Ring not available at the specified location. */
-  | { tag: "RingNotFound"; value: undefined }
+  | { tag: "RingNotFound"; value?: undefined }
   /** User or host rejected. */
-  | { tag: "Rejected"; value: undefined }
+  | { tag: "Rejected"; value?: undefined }
   /** Catch-all. */
   | { tag: "Unknown"; value: { reason: string } };
 
 export const HostAccountCreateProofError: S.Codec<HostAccountCreateProofError> =
   S.lazy(
     (): S.Codec<HostAccountCreateProofError> =>
-      S.Enum({
+      S.TaggedUnion({
         RingNotFound: S._void,
         Rejected: S._void,
         Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
@@ -3171,17 +3174,17 @@ export const HostAccountGetAliasResponse: S.Codec<HostAccountGetAliasResponse> =
 /** Error returned when credential/account requests fail. */
 export type HostAccountGetError =
   /** User is not logged in. */
-  | { tag: "NotConnected"; value: undefined }
+  | { tag: "NotConnected"; value?: undefined }
   /** User or host rejected the request. */
-  | { tag: "Rejected"; value: undefined }
+  | { tag: "Rejected"; value?: undefined }
   /** Domain identifier is invalid. */
-  | { tag: "DomainNotValid"; value: undefined }
+  | { tag: "DomainNotValid"; value?: undefined }
   /** Catch-all error with reason. */
   | { tag: "Unknown"; value: { reason: string } };
 
 export const HostAccountGetError: S.Codec<HostAccountGetError> = S.lazy(
   (): S.Codec<HostAccountGetError> =>
-    S.Enum({
+    S.TaggedUnion({
       NotConnected: S._void,
       Rejected: S._void,
       DomainNotValid: S._void,
@@ -3236,13 +3239,13 @@ export const HostChatActionSubscribeItem: S.Codec<HostChatActionSubscribeItem> =
 /** Chat room registration error. */
 export type HostChatCreateRoomError =
   /** Not allowed. */
-  | { tag: "PermissionDenied"; value: undefined }
+  | { tag: "PermissionDenied"; value?: undefined }
   /** Catch-all. */
   | { tag: "Unknown"; value: { reason: string } };
 
 export const HostChatCreateRoomError: S.Codec<HostChatCreateRoomError> = S.lazy(
   (): S.Codec<HostChatCreateRoomError> =>
-    S.Enum({
+    S.TaggedUnion({
       PermissionDenied: S._void,
       Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
     }),
@@ -3299,14 +3302,14 @@ export const HostChatListSubscribeItem: S.Codec<HostChatListSubscribeItem> =
 /** Chat message posting error. */
 export type HostChatPostMessageError =
   /** Message exceeded size limit. */
-  | { tag: "MessageTooLarge"; value: undefined }
+  | { tag: "MessageTooLarge"; value?: undefined }
   /** Catch-all. */
   | { tag: "Unknown"; value: { reason: string } };
 
 export const HostChatPostMessageError: S.Codec<HostChatPostMessageError> =
   S.lazy(
     (): S.Codec<HostChatPostMessageError> =>
-      S.Enum({
+      S.TaggedUnion({
         MessageTooLarge: S._void,
         Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
       }),
@@ -3344,14 +3347,14 @@ export const HostChatPostMessageResponse: S.Codec<HostChatPostMessageResponse> =
 /** Chat bot registration error. */
 export type HostChatRegisterBotError =
   /** Not allowed. */
-  | { tag: "PermissionDenied"; value: undefined }
+  | { tag: "PermissionDenied"; value?: undefined }
   /** Catch-all. */
   | { tag: "Unknown"; value: { reason: string } };
 
 export const HostChatRegisterBotError: S.Codec<HostChatRegisterBotError> =
   S.lazy(
     (): S.Codec<HostChatRegisterBotError> =>
-      S.Enum({
+      S.TaggedUnion({
         PermissionDenied: S._void,
         Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
       }),
@@ -3394,20 +3397,20 @@ export const HostChatRegisterBotResponse: S.Codec<HostChatRegisterBotResponse> =
 /** Transaction creation error. */
 export type HostCreateTransactionError =
   /** Payload could not be deserialized. */
-  | { tag: "FailedToDecode"; value: undefined }
+  | { tag: "FailedToDecode"; value?: undefined }
   /** User rejected. */
-  | { tag: "Rejected"; value: undefined }
+  | { tag: "Rejected"; value?: undefined }
   /** Unsupported payload version or extension. */
   | { tag: "NotSupported"; value: { reason: string } }
   /** Not authenticated. */
-  | { tag: "PermissionDenied"; value: undefined }
+  | { tag: "PermissionDenied"; value?: undefined }
   /** Catch-all. */
   | { tag: "Unknown"; value: { reason: string } };
 
 export const HostCreateTransactionError: S.Codec<HostCreateTransactionError> =
   S.lazy(
     (): S.Codec<HostCreateTransactionError> =>
-      S.Enum({
+      S.TaggedUnion({
         FailedToDecode: S._void,
         Rejected: S._void,
         NotSupported: S.Struct({ reason: S.str }) as S.Codec<{
@@ -3572,7 +3575,7 @@ export type HostFeatureSupportedRequest =
 export const HostFeatureSupportedRequest: S.Codec<HostFeatureSupportedRequest> =
   S.lazy(
     (): S.Codec<HostFeatureSupportedRequest> =>
-      S.Enum({
+      S.TaggedUnion({
         Chain: S.Struct({ genesisHash: S.Hex() }) as S.Codec<{
           genesisHash: HexString;
         }>,
@@ -3608,15 +3611,15 @@ export const HostGetLegacyAccountsResponse: S.Codec<HostGetLegacyAccountsRespons
 /** Error from [`crate::api::AccountManagement::host_get_user_id`]. */
 export type HostGetUserIdError =
   /** User denied the identity disclosure request. */
-  | { tag: "PermissionDenied"; value: undefined }
+  | { tag: "PermissionDenied"; value?: undefined }
   /** User is not logged in. */
-  | { tag: "NotConnected"; value: undefined }
+  | { tag: "NotConnected"; value?: undefined }
   /** Catch-all. */
   | { tag: "Unknown"; value: { reason: string } };
 
 export const HostGetUserIdError: S.Codec<HostGetUserIdError> = S.lazy(
   (): S.Codec<HostGetUserIdError> =>
-    S.Enum({
+    S.TaggedUnion({
       PermissionDenied: S._void,
       NotConnected: S._void,
       Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
@@ -3645,13 +3648,13 @@ export const HostGetUserIdResponse: S.Codec<HostGetUserIdResponse> = S.lazy(
  * `host_handshake_response` frames produced by this host.
  */
 export type HostHandshakeError =
-  | { tag: "Timeout"; value: undefined }
-  | { tag: "UnsupportedProtocolVersion"; value: undefined }
+  | { tag: "Timeout"; value?: undefined }
+  | { tag: "UnsupportedProtocolVersion"; value?: undefined }
   | { tag: "Unknown"; value: GenericErr };
 
 export const HostHandshakeError: S.Codec<HostHandshakeError> = S.lazy(
   (): S.Codec<HostHandshakeError> =>
-    S.Enum({
+    S.TaggedUnion({
       Timeout: S._void,
       UnsupportedProtocolVersion: S._void,
       Unknown: GenericErr,
@@ -3727,14 +3730,14 @@ export const HostLocalStorageClearRequest: S.Codec<HostLocalStorageClearRequest>
 /** Local storage operation error. */
 export type HostLocalStorageReadError =
   /** Storage quota exceeded. */
-  | { tag: "Full"; value: undefined }
+  | { tag: "Full"; value?: undefined }
   /** Catch-all. */
   | { tag: "Unknown"; value: { reason: string } };
 
 export const HostLocalStorageReadError: S.Codec<HostLocalStorageReadError> =
   S.lazy(
     (): S.Codec<HostLocalStorageReadError> =>
-      S.Enum({
+      S.TaggedUnion({
         Full: S._void,
         Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
       }),
@@ -3786,13 +3789,13 @@ export const HostLocalStorageWriteRequest: S.Codec<HostLocalStorageWriteRequest>
 /** Navigation error. */
 export type HostNavigateToError =
   /** Navigation not allowed. */
-  | { tag: "PermissionDenied"; value: undefined }
+  | { tag: "PermissionDenied"; value?: undefined }
   /** Catch-all. */
   | { tag: "Unknown"; value: { reason: string } };
 
 export const HostNavigateToError: S.Codec<HostNavigateToError> = S.lazy(
   (): S.Codec<HostNavigateToError> =>
-    S.Enum({
+    S.TaggedUnion({
       PermissionDenied: S._void,
       Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
     }),
@@ -3818,14 +3821,14 @@ export const HostNavigateToRequest: S.Codec<HostNavigateToRequest> = S.lazy(
  */
 export type HostPaymentBalanceSubscribeError =
   /** User denied the balance disclosure request. */
-  | { tag: "PermissionDenied"; value: undefined }
+  | { tag: "PermissionDenied"; value?: undefined }
   /** Catch-all. */
   | { tag: "Unknown"; value: { reason: string } };
 
 export const HostPaymentBalanceSubscribeError: S.Codec<HostPaymentBalanceSubscribeError> =
   S.lazy(
     (): S.Codec<HostPaymentBalanceSubscribeError> =>
-      S.Enum({
+      S.TaggedUnion({
         PermissionDenied: S._void,
         Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
       }),
@@ -3860,15 +3863,15 @@ export const HostPaymentBalanceSubscribeItem: S.Codec<HostPaymentBalanceSubscrib
  */
 export type HostPaymentRequestError =
   /** User rejected the payment request. */
-  | { tag: "Rejected"; value: undefined }
+  | { tag: "Rejected"; value?: undefined }
   /** User's available balance is not sufficient for the requested amount. */
-  | { tag: "InsufficientBalance"; value: undefined }
+  | { tag: "InsufficientBalance"; value?: undefined }
   /** Catch-all. */
   | { tag: "Unknown"; value: { reason: string } };
 
 export const HostPaymentRequestError: S.Codec<HostPaymentRequestError> = S.lazy(
   (): S.Codec<HostPaymentRequestError> =>
-    S.Enum({
+    S.TaggedUnion({
       Rejected: S._void,
       InsufficientBalance: S._void,
       Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
@@ -3919,14 +3922,14 @@ export const HostPaymentRequestResponse: S.Codec<HostPaymentRequestResponse> =
  */
 export type HostPaymentStatusSubscribeError =
   /** Payment ID was not found or does not belong to the current product. */
-  | { tag: "PaymentNotFound"; value: undefined }
+  | { tag: "PaymentNotFound"; value?: undefined }
   /** Catch-all. */
   | { tag: "Unknown"; value: { reason: string } };
 
 export const HostPaymentStatusSubscribeError: S.Codec<HostPaymentStatusSubscribeError> =
   S.lazy(
     (): S.Codec<HostPaymentStatusSubscribeError> =>
-      S.Enum({
+      S.TaggedUnion({
         PaymentNotFound: S._void,
         Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
       }),
@@ -3944,16 +3947,16 @@ export const HostPaymentStatusSubscribeError: S.Codec<HostPaymentStatusSubscribe
  */
 export type HostPaymentStatusSubscribeItem =
   /** Payment is being processed. */
-  | { tag: "Processing"; value: undefined }
+  | { tag: "Processing"; value?: undefined }
   /** Payment has been settled successfully. */
-  | { tag: "Completed"; value: undefined }
+  | { tag: "Completed"; value?: undefined }
   /** Payment has failed. */
   | { tag: "Failed"; value: { reason: string } };
 
 export const HostPaymentStatusSubscribeItem: S.Codec<HostPaymentStatusSubscribeItem> =
   S.lazy(
     (): S.Codec<HostPaymentStatusSubscribeItem> =>
-      S.Enum({
+      S.TaggedUnion({
         Processing: S._void,
         Completed: S._void,
         Failed: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
@@ -3983,15 +3986,15 @@ export const HostPaymentStatusSubscribeRequest: S.Codec<HostPaymentStatusSubscri
  */
 export type HostPaymentTopUpError =
   /** The source account does not hold sufficient funds. */
-  | { tag: "InsufficientFunds"; value: undefined }
+  | { tag: "InsufficientFunds"; value?: undefined }
   /** The source account was not found or is invalid. */
-  | { tag: "InvalidSource"; value: undefined }
+  | { tag: "InvalidSource"; value?: undefined }
   /** Catch-all. */
   | { tag: "Unknown"; value: { reason: string } };
 
 export const HostPaymentTopUpError: S.Codec<HostPaymentTopUpError> = S.lazy(
   (): S.Codec<HostPaymentTopUpError> =>
-    S.Enum({
+    S.TaggedUnion({
       InsufficientFunds: S._void,
       InvalidSource: S._void,
       Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
@@ -4038,7 +4041,7 @@ export type HostRequestLoginError =
 
 export const HostRequestLoginError: S.Codec<HostRequestLoginError> = S.lazy(
   (): S.Codec<HostRequestLoginError> =>
-    S.Enum({
+    S.TaggedUnion({
       Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
     }),
 );
@@ -4097,17 +4100,17 @@ export const HostRequestResourceAllocationResponse: S.Codec<HostRequestResourceA
 /** Signing operation error. */
 export type HostSignPayloadError =
   /** Payload could not be deserialized. */
-  | { tag: "FailedToDecode"; value: undefined }
+  | { tag: "FailedToDecode"; value?: undefined }
   /** User rejected signing. */
-  | { tag: "Rejected"; value: undefined }
+  | { tag: "Rejected"; value?: undefined }
   /** Not authenticated. */
-  | { tag: "PermissionDenied"; value: undefined }
+  | { tag: "PermissionDenied"; value?: undefined }
   /** Catch-all. */
   | { tag: "Unknown"; value: { reason: string } };
 
 export const HostSignPayloadError: S.Codec<HostSignPayloadError> = S.lazy(
   (): S.Codec<HostSignPayloadError> =>
-    S.Enum({
+    S.TaggedUnion({
       FailedToDecode: S._void,
       Rejected: S._void,
       PermissionDenied: S._void,
@@ -4430,12 +4433,12 @@ export type RemoteChainHeadFollowItem =
   /** Operation failed. */
   | { tag: "OperationError"; value: { operationId: string; error: string } }
   /** Subscription terminated by server. */
-  | { tag: "Stop"; value: undefined };
+  | { tag: "Stop"; value?: undefined };
 
 export const RemoteChainHeadFollowItem: S.Codec<RemoteChainHeadFollowItem> =
   S.lazy(
     (): S.Codec<RemoteChainHeadFollowItem> =>
-      S.Enum({
+      S.TaggedUnion({
         Initialized: S.Struct({
           finalizedBlockHashes: S.Vector(S.Hex()),
           finalizedBlockRuntime: S.Option(RuntimeType),
@@ -4810,16 +4813,16 @@ export const RemotePreimageLookupSubscribeRequest: S.Codec<RemotePreimageLookupS
 /** Statement proof creation error. */
 export type RemoteStatementStoreCreateProofError =
   /** Signing operation failed. */
-  | { tag: "UnableToSign"; value: undefined }
+  | { tag: "UnableToSign"; value?: undefined }
   /** Account not recognized. */
-  | { tag: "UnknownAccount"; value: undefined }
+  | { tag: "UnknownAccount"; value?: undefined }
   /** Catch-all. */
   | { tag: "Unknown"; value: { reason: string } };
 
 export const RemoteStatementStoreCreateProofError: S.Codec<RemoteStatementStoreCreateProofError> =
   S.lazy(
     (): S.Codec<RemoteStatementStoreCreateProofError> =>
-      S.Enum({
+      S.TaggedUnion({
         UnableToSign: S._void,
         UnknownAccount: S._void,
         Unknown: S.Struct({ reason: S.str }) as S.Codec<{ reason: string }>,
@@ -4892,7 +4895,7 @@ export type RemoteStatementStoreSubscribeRequest =
 export const RemoteStatementStoreSubscribeRequest: S.Codec<RemoteStatementStoreSubscribeRequest> =
   S.lazy(
     (): S.Codec<RemoteStatementStoreSubscribeRequest> =>
-      S.Enum({ MatchAll: S.Vector(Topic), MatchAny: S.Vector(Topic) }),
+      S.TaggedUnion({ MatchAll: S.Vector(Topic), MatchAny: S.Vector(Topic) }),
   );
 
 /**
@@ -4901,7 +4904,7 @@ export const RemoteStatementStoreSubscribeRequest: S.Codec<RemoteStatementStoreS
  */
 export type Version =
   /** Initial protocol version. */
-  { tag: "V1"; value: undefined };
+  { tag: "V1"; value?: undefined };
 
 export const Version: S.Codec<Version> = S.lazy(
   (): S.Codec<Version> => S.indexedTaggedUnion({ V1: [0, S._void] as const }),

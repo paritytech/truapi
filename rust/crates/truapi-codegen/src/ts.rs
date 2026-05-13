@@ -1449,13 +1449,7 @@ fn write_type_definition(
                         }
                     }
                     write_jsdoc(out, "  ", variant.docs.as_deref());
-                    writeln!(
-                        out,
-                        "  | {{ tag: \"{}\"; value: {} }}",
-                        variant.name,
-                        variant_value_type(&variant.fields)?
-                    )
-                    .unwrap();
+                    writeln!(out, "  | {}", enum_variant_ts_type(variant)?).unwrap();
                 }
                 writeln!(out, ";").unwrap();
             }
@@ -1592,7 +1586,7 @@ fn type_codec_expr(ty: &TypeDef, type_name: &str, ctx: &CodecContext) -> Result<
                     })
                     .collect::<Result<Vec<_>>>()?
                     .join(", ");
-                Ok(format!("S.Enum({{{variants}}})"))
+                Ok(format!("S.TaggedUnion({{{variants}}})"))
             }
         }
     }
@@ -1646,6 +1640,21 @@ fn variant_value_type(fields: &VariantFields) -> Result<String> {
         VariantFields::Unnamed(types) => unnamed_fields_type(types),
         VariantFields::Named(fields) => inline_object_type(fields, false),
     }
+}
+
+/// Renders the public TS type for a single enum variant. Unit variants mark
+/// `value` optional (`value?: undefined`) so consumers can write
+/// `{ tag: "X" }` while the codec round-trip (`{ tag, value: undefined }`)
+/// still type-checks.
+fn enum_variant_ts_type(variant: &VariantDef) -> Result<String> {
+    Ok(match &variant.fields {
+        VariantFields::Unit => format!("{{ tag: \"{}\"; value?: undefined }}", variant.name),
+        fields => format!(
+            "{{ tag: \"{}\"; value: {} }}",
+            variant.name,
+            variant_value_type(fields)?
+        ),
+    })
 }
 
 fn variant_codec_expr(

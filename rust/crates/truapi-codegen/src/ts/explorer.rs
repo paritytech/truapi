@@ -486,13 +486,7 @@ fn explorer_type_definition(
                 .filter(|variant| {
                     version_number(&variant.name).is_none_or(|version| version <= target_version)
                 })
-                .map(|variant| {
-                    Ok(format!(
-                        "{{ tag: \"{}\"; value: {} }}",
-                        variant.name,
-                        variant_value_type(&variant.fields)?
-                    ))
-                })
+                .map(enum_variant_ts_type)
                 .collect::<Result<Vec<_>>>()?
                 .join(" | ");
             Ok(format!("type {display_name}{generic_decl} = {rendered}"))

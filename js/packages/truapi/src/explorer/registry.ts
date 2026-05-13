@@ -932,7 +932,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Request the host to pre-allocate one or more resources (statement store\nallowance, bulletin allowance, smart contract allowance, auto-signing).",
         usageExample:
-          'import {\n  type Client,\n  type HostRequestResourceAllocationResponse,\n} from "@parity/truapi";\n\nexport async function requestAllocation(\n  truapi: Client,\n): Promise<HostRequestResourceAllocationResponse> {\n  const result =\n    await truapi.resourceAllocation.requestResourceAllocation({\n      resources: [\n        { tag: "StatementStoreAllowance", value: undefined },\n        { tag: "AutoSigning", value: undefined },\n      ],\n    });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostRequestResourceAllocationResponse,\n} from "@parity/truapi";\n\nexport async function requestAllocation(\n  truapi: Client,\n): Promise<HostRequestResourceAllocationResponse> {\n  const result =\n    await truapi.resourceAllocation.requestResourceAllocation({\n      resources: [\n        { tag: "StatementStoreAllowance" },\n        { tag: "AutoSigning" },\n      ],\n    });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_statement_store_create_proof_authorized",
@@ -1003,7 +1003,7 @@ export const versions: ExplorerVersion[] = [
         name: "AllocatableResource",
         category: "enum",
         definition:
-          'type AllocatableResource = { tag: "StatementStoreAllowance"; value: undefined } | { tag: "BulletinAllowance"; value: undefined } | { tag: "SmartContractAllowance"; value: number } | { tag: "AutoSigning"; value: undefined }',
+          'type AllocatableResource = { tag: "StatementStoreAllowance"; value?: undefined } | { tag: "BulletinAllowance"; value?: undefined } | { tag: "SmartContractAllowance"; value: number } | { tag: "AutoSigning"; value?: undefined }',
         description:
           "A resource the product can request the host to pre-allocate.",
         source: "shared",
@@ -1704,7 +1704,7 @@ export const versions: ExplorerVersion[] = [
         name: "CustomRendererNode",
         category: "enum",
         definition:
-          'type CustomRendererNode = { tag: "Nil"; value: undefined } | { tag: "String"; value: { text: string } } | { tag: "Box"; value: Component<BoxProps> } | { tag: "Column"; value: Component<ColumnProps> } | { tag: "Row"; value: Component<RowProps> } | { tag: "Spacer"; value: Component<undefined> } | { tag: "Text"; value: Component<TextProps> } | { tag: "Button"; value: Component<ButtonProps> } | { tag: "TextField"; value: Component<TextFieldProps> }',
+          'type CustomRendererNode = { tag: "Nil"; value?: undefined } | { tag: "String"; value: { text: string } } | { tag: "Box"; value: Component<BoxProps> } | { tag: "Column"; value: Component<ColumnProps> } | { tag: "Row"; value: Component<RowProps> } | { tag: "Spacer"; value: Component<undefined> } | { tag: "Text"; value: Component<TextProps> } | { tag: "Button"; value: Component<ButtonProps> } | { tag: "TextField"; value: Component<TextFieldProps> }',
         description:
           "A node in the custom renderer UI tree. Can be nested recursively via the\n`children` field of each [`Component`].",
         source: "shared",
@@ -1865,7 +1865,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostAccountCreateProofError",
         category: "enum",
         definition:
-          'type HostAccountCreateProofError = { tag: "RingNotFound"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+          'type HostAccountCreateProofError = { tag: "RingNotFound"; value?: undefined } | { tag: "Rejected"; value?: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Error returned when ring VRF proof creation fails.",
         source: "v0.1",
         variants: [
@@ -1973,7 +1973,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostAccountGetError",
         category: "enum",
         definition:
-          'type HostAccountGetError = { tag: "NotConnected"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "DomainNotValid"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+          'type HostAccountGetError = { tag: "NotConnected"; value?: undefined } | { tag: "Rejected"; value?: undefined } | { tag: "DomainNotValid"; value?: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Error returned when credential/account requests fail.",
         source: "v0.1",
         variants: [
@@ -2062,7 +2062,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostChatCreateRoomError",
         category: "enum",
         definition:
-          'type HostChatCreateRoomError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+          'type HostChatCreateRoomError = { tag: "PermissionDenied"; value?: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Chat room registration error.",
         source: "v0.1",
         variants: [
@@ -2141,7 +2141,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostChatPostMessageError",
         category: "enum",
         definition:
-          'type HostChatPostMessageError = { tag: "MessageTooLarge"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+          'type HostChatPostMessageError = { tag: "MessageTooLarge"; value?: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Chat message posting error.",
         source: "v0.1",
         variants: [
@@ -2199,7 +2199,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostChatRegisterBotError",
         category: "enum",
         definition:
-          'type HostChatRegisterBotError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+          'type HostChatRegisterBotError = { tag: "PermissionDenied"; value?: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Chat bot registration error.",
         source: "v0.1",
         variants: [
@@ -2262,7 +2262,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostCreateTransactionError",
         category: "enum",
         definition:
-          'type HostCreateTransactionError = { tag: "FailedToDecode"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "NotSupported"; value: { reason: string } } | { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+          'type HostCreateTransactionError = { tag: "FailedToDecode"; value?: undefined } | { tag: "Rejected"; value?: undefined } | { tag: "NotSupported"; value: { reason: string } } | { tag: "PermissionDenied"; value?: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Transaction creation error.",
         source: "v0.1",
         variants: [
@@ -2535,7 +2535,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostGetUserIdError",
         category: "enum",
         definition:
-          'type HostGetUserIdError = { tag: "PermissionDenied"; value: undefined } | { tag: "NotConnected"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+          'type HostGetUserIdError = { tag: "PermissionDenied"; value?: undefined } | { tag: "NotConnected"; value?: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description:
           "Error from [`crate::api::AccountManagement::host_get_user_id`].",
         source: "v0.1",
@@ -2583,7 +2583,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostHandshakeError",
         category: "enum",
         definition:
-          'type HostHandshakeError = { tag: "Timeout"; value: undefined } | { tag: "UnsupportedProtocolVersion"; value: undefined } | { tag: "Unknown"; value: GenericErr }',
+          'type HostHandshakeError = { tag: "Timeout"; value?: undefined } | { tag: "UnsupportedProtocolVersion"; value?: undefined } | { tag: "Unknown"; value: GenericErr }',
         description:
           "Handshake error. Mirrors Novasama's `HandshakeErr` byte-for-byte so that\npre-codegen products (built against `@novasamatech/host-api`) can decode\n`host_handshake_response` frames produced by this host.",
         source: "v0.1",
@@ -2692,7 +2692,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostLocalStorageReadError",
         category: "enum",
         definition:
-          'type HostLocalStorageReadError = { tag: "Full"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+          'type HostLocalStorageReadError = { tag: "Full"; value?: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Local storage operation error.",
         source: "v0.1",
         variants: [
@@ -2765,7 +2765,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostNavigateToError",
         category: "enum",
         definition:
-          'type HostNavigateToError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+          'type HostNavigateToError = { tag: "PermissionDenied"; value?: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Navigation error.",
         source: "v0.1",
         variants: [
@@ -2801,7 +2801,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostPaymentBalanceSubscribeError",
         category: "enum",
         definition:
-          'type HostPaymentBalanceSubscribeError = { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+          'type HostPaymentBalanceSubscribeError = { tag: "PermissionDenied"; value?: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description:
           "Error from [`crate::api::Payment::host_payment_balance_subscribe`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         source: "v0.1",
@@ -2840,7 +2840,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostPaymentRequestError",
         category: "enum",
         definition:
-          'type HostPaymentRequestError = { tag: "Rejected"; value: undefined } | { tag: "InsufficientBalance"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+          'type HostPaymentRequestError = { tag: "Rejected"; value?: undefined } | { tag: "InsufficientBalance"; value?: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description:
           "Error from [`crate::api::Payment::host_payment_request`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         source: "v0.1",
@@ -2905,7 +2905,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostPaymentStatusSubscribeError",
         category: "enum",
         definition:
-          'type HostPaymentStatusSubscribeError = { tag: "PaymentNotFound"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+          'type HostPaymentStatusSubscribeError = { tag: "PaymentNotFound"; value?: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description:
           "Error from [`crate::api::Payment::host_payment_status_subscribe`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         source: "v0.1",
@@ -2928,7 +2928,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostPaymentStatusSubscribeItem",
         category: "enum",
         definition:
-          'type HostPaymentStatusSubscribeItem = { tag: "Processing"; value: undefined } | { tag: "Completed"; value: undefined } | { tag: "Failed"; value: { reason: string } }',
+          'type HostPaymentStatusSubscribeItem = { tag: "Processing"; value?: undefined } | { tag: "Completed"; value?: undefined } | { tag: "Failed"; value: { reason: string } }',
         description:
           "Payment lifecycle status pushed to subscribers.\n\nOnce a terminal state (`Completed` or `Failed`) is reached, the host\ndelivers it and may close the subscription.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         source: "v0.1",
@@ -2971,7 +2971,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostPaymentTopUpError",
         category: "enum",
         definition:
-          'type HostPaymentTopUpError = { tag: "InsufficientFunds"; value: undefined } | { tag: "InvalidSource"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+          'type HostPaymentTopUpError = { tag: "InsufficientFunds"; value?: undefined } | { tag: "InvalidSource"; value?: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description:
           "Error from [`crate::api::Payment::host_payment_top_up`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
         source: "v0.1",
@@ -3132,7 +3132,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostSignPayloadError",
         category: "enum",
         definition:
-          'type HostSignPayloadError = { tag: "FailedToDecode"; value: undefined } | { tag: "Rejected"; value: undefined } | { tag: "PermissionDenied"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+          'type HostSignPayloadError = { tag: "FailedToDecode"; value?: undefined } | { tag: "Rejected"; value?: undefined } | { tag: "PermissionDenied"; value?: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Signing operation error.",
         source: "v0.1",
         variants: [
@@ -3419,7 +3419,7 @@ export const versions: ExplorerVersion[] = [
         name: "OperationStartedResult",
         category: "enum",
         definition:
-          'type OperationStartedResult = { tag: "Started"; value: { operationId: string } } | { tag: "LimitReached"; value: undefined }',
+          'type OperationStartedResult = { tag: "Started"; value: { operationId: string } } | { tag: "LimitReached"; value?: undefined }',
         description: "Result of starting a chain operation.",
         source: "shared",
         variants: [
@@ -3692,7 +3692,7 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteChainHeadFollowItem",
         category: "enum",
         definition:
-          'type RemoteChainHeadFollowItem = { tag: "Initialized"; value: { finalizedBlockHashes: Array<HexString>; finalizedBlockRuntime?: RuntimeType } } | { tag: "NewBlock"; value: { blockHash: HexString; parentBlockHash: HexString; newRuntime?: RuntimeType } } | { tag: "BestBlockChanged"; value: { bestBlockHash: HexString } } | { tag: "Finalized"; value: { finalizedBlockHashes: Array<HexString>; prunedBlockHashes: Array<HexString> } } | { tag: "OperationBodyDone"; value: { operationId: string; value: Array<HexString> } } | { tag: "OperationCallDone"; value: { operationId: string; output: HexString } } | { tag: "OperationStorageItems"; value: { operationId: string; items: Array<StorageResultItem> } } | { tag: "OperationStorageDone"; value: { operationId: string } } | { tag: "OperationWaitingForContinue"; value: { operationId: string } } | { tag: "OperationInaccessible"; value: { operationId: string } } | { tag: "OperationError"; value: { operationId: string; error: string } } | { tag: "Stop"; value: undefined }',
+          'type RemoteChainHeadFollowItem = { tag: "Initialized"; value: { finalizedBlockHashes: Array<HexString>; finalizedBlockRuntime?: RuntimeType } } | { tag: "NewBlock"; value: { blockHash: HexString; parentBlockHash: HexString; newRuntime?: RuntimeType } } | { tag: "BestBlockChanged"; value: { bestBlockHash: HexString } } | { tag: "Finalized"; value: { finalizedBlockHashes: Array<HexString>; prunedBlockHashes: Array<HexString> } } | { tag: "OperationBodyDone"; value: { operationId: string; value: Array<HexString> } } | { tag: "OperationCallDone"; value: { operationId: string; output: HexString } } | { tag: "OperationStorageItems"; value: { operationId: string; items: Array<StorageResultItem> } } | { tag: "OperationStorageDone"; value: { operationId: string } } | { tag: "OperationWaitingForContinue"; value: { operationId: string } } | { tag: "OperationInaccessible"; value: { operationId: string } } | { tag: "OperationError"; value: { operationId: string; error: string } } | { tag: "Stop"; value?: undefined }',
         description: "Events received when following the chain head.",
         source: "v0.1",
         variants: [
@@ -4094,7 +4094,7 @@ export const versions: ExplorerVersion[] = [
         name: "RemotePermission",
         category: "enum",
         definition:
-          'type RemotePermission = { tag: "Remote"; value: { domains: Array<string> } } | { tag: "WebRtc"; value: undefined } | { tag: "ChainSubmit"; value: undefined } | { tag: "PreimageSubmit"; value: undefined } | { tag: "StatementSubmit"; value: undefined }',
+          'type RemotePermission = { tag: "Remote"; value: { domains: Array<string> } } | { tag: "WebRtc"; value?: undefined } | { tag: "ChainSubmit"; value?: undefined } | { tag: "PreimageSubmit"; value?: undefined } | { tag: "StatementSubmit"; value?: undefined }',
         description:
           "A single remote-operation permission entry.\n\nThe [`crate::api::Permissions::remote_permission`] method accepts a\n`Vec<RemotePermission>` so products can batch multiple permission requests\ninto a single prompt.\n\nSee [RFC 0001] and [issue #64].\n\n[RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66\n[issue #64]: https://github.com/paritytech/triangle-js-sdks/issues/64",
         source: "shared",
@@ -4199,7 +4199,7 @@ export const versions: ExplorerVersion[] = [
         name: "RemoteStatementStoreCreateProofError",
         category: "enum",
         definition:
-          'type RemoteStatementStoreCreateProofError = { tag: "UnableToSign"; value: undefined } | { tag: "UnknownAccount"; value: undefined } | { tag: "Unknown"; value: { reason: string } }',
+          'type RemoteStatementStoreCreateProofError = { tag: "UnableToSign"; value?: undefined } | { tag: "UnknownAccount"; value?: undefined } | { tag: "Unknown"; value: { reason: string } }',
         description: "Statement proof creation error.",
         source: "v0.1",
         variants: [
@@ -4469,7 +4469,7 @@ export const versions: ExplorerVersion[] = [
         name: "Shape",
         category: "enum",
         definition:
-          'type Shape = { tag: "Rounded"; value: { radius: bigint } } | { tag: "Circle"; value: undefined }',
+          'type Shape = { tag: "Rounded"; value: { radius: bigint } } | { tag: "Circle"; value?: undefined }',
         description: "Shape for borders and backgrounds.",
         source: "shared",
         variants: [
