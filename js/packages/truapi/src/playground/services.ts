@@ -61,6 +61,39 @@ export const services: ServiceInfo[] = [
     name: "Chain Interaction",
     methods: [
       {
+        name: "host_create_transaction",
+        type: "unary",
+        description: "Construct a signed extrinsic for a product account.",
+        requestDescription: "HostCreateTransactionRequest",
+        defaultRequest:
+          '{\n  "payload": {\n    "tag": "V1",\n    "value": {\n      "callData": "0x0000",\n      "context": {\n        "bestBlockHeight": 0,\n        "metadata": "0x",\n        "tokenDecimals": 10,\n        "tokenSymbol": "DOT"\n      },\n      "extensions": [],\n      "txExtVersion": 0\n    }\n  },\n  "productAccountId": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  }\n}',
+      },
+      {
+        name: "host_create_transaction_with_legacy_account",
+        type: "unary",
+        description: "Construct a signed extrinsic for a non-product account.",
+        requestDescription: "HostCreateTransactionWithLegacyAccountRequest",
+        defaultRequest:
+          '{\n  "payload": {\n    "tag": "V1",\n    "value": {\n      "callData": "0x0000",\n      "context": {\n        "bestBlockHeight": 0,\n        "metadata": "0x",\n        "tokenDecimals": 10,\n        "tokenSymbol": "DOT"\n      },\n      "extensions": [],\n      "txExtVersion": 0\n    }\n  }\n}',
+      },
+      {
+        name: "host_sign_raw_with_legacy_account",
+        type: "unary",
+        description: "Sign raw bytes with a non-product (legacy) account.",
+        requestDescription: "HostSignRawWithLegacyAccountRequest",
+        defaultRequest:
+          '{\n  "payload": {\n    "tag": "Bytes",\n    "value": {\n      "bytes": "0x48656c6c6f"\n    }\n  },\n  "signer": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"\n}',
+      },
+      {
+        name: "host_sign_payload_with_legacy_account",
+        type: "unary",
+        description:
+          "Sign a Substrate extrinsic payload with a non-product (legacy) account.",
+        requestDescription: "HostSignPayloadWithLegacyAccountRequest",
+        defaultRequest:
+          '{\n  "payload": {\n    "account": {\n      "derivationIndex": 0,\n      "dotNsIdentifier": "truapi-playground.dot"\n    },\n    "blockHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    "blockNumber": "0x00000000",\n    "era": "0x00",\n    "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    "method": "0x0000",\n    "nonce": "0x00000000",\n    "signedExtensions": [],\n    "specVersion": "0x00000000",\n    "tip": "0x00000000000000000000000000000000",\n    "transactionVersion": "0x00000000",\n    "version": 4\n  },\n  "signer": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"\n}',
+      },
+      {
         name: "host_jsonrpc_message_send",
         type: "unary",
         description:
@@ -180,6 +213,22 @@ export const services: ServiceInfo[] = [
         requestDescription: "RemoteChainTransactionStopRequest",
         defaultRequest:
           '{\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "operationId": "op-id"\n}',
+      },
+      {
+        name: "host_sign_raw",
+        type: "unary",
+        description: "Sign raw bytes or a message.",
+        requestDescription: "HostSignRawRequest",
+        defaultRequest:
+          '{\n  "account": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  },\n  "payload": {\n    "tag": "Bytes",\n    "value": {\n      "bytes": "0x48656c6c6f2c20776f726c6421"\n    }\n  }\n}',
+      },
+      {
+        name: "host_sign_payload",
+        type: "unary",
+        description: "Sign a Substrate extrinsic payload.",
+        requestDescription: "HostSignPayloadRequest",
+        defaultRequest:
+          '{\n  "account": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  },\n  "blockHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "blockNumber": "0x00000000",\n  "era": "0x00",\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "method": "0x00003448656c6c6f2c20776f726c6421",\n  "nonce": "0x00000000",\n  "signedExtensions": [],\n  "specVersion": "0x00000000",\n  "tip": "0x00000000000000000000000000000000",\n  "transactionVersion": "0x00000000",\n  "version": 4\n}',
       },
     ],
   },
@@ -316,74 +365,6 @@ export const services: ServiceInfo[] = [
     ],
   },
   {
-    name: "Resource Allocation",
-    methods: [
-      {
-        name: "host_request_resource_allocation",
-        type: "unary",
-        description:
-          "Request the host to pre-allocate one or more resources (statement store\nallowance, bulletin allowance, smart contract allowance, auto-signing).",
-        requestDescription: "HostRequestResourceAllocationRequest",
-        defaultRequest:
-          '{\n  "resources": [\n    {\n      "tag": "StatementStoreAllowance"\n    },\n    {\n      "tag": "AutoSigning"\n    }\n  ]\n}',
-      },
-    ],
-  },
-  {
-    name: "Signing",
-    methods: [
-      {
-        name: "host_create_transaction",
-        type: "unary",
-        description: "Construct a signed extrinsic for a product account.",
-        requestDescription: "HostCreateTransactionRequest",
-        defaultRequest:
-          '{\n  "payload": {\n    "tag": "V1",\n    "value": {\n      "callData": "0x0000",\n      "context": {\n        "bestBlockHeight": 0,\n        "metadata": "0x",\n        "tokenDecimals": 10,\n        "tokenSymbol": "DOT"\n      },\n      "extensions": [],\n      "txExtVersion": 0\n    }\n  },\n  "productAccountId": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  }\n}',
-      },
-      {
-        name: "host_create_transaction_with_legacy_account",
-        type: "unary",
-        description: "Construct a signed extrinsic for a non-product account.",
-        requestDescription: "HostCreateTransactionWithLegacyAccountRequest",
-        defaultRequest:
-          '{\n  "payload": {\n    "tag": "V1",\n    "value": {\n      "callData": "0x0000",\n      "context": {\n        "bestBlockHeight": 0,\n        "metadata": "0x",\n        "tokenDecimals": 10,\n        "tokenSymbol": "DOT"\n      },\n      "extensions": [],\n      "txExtVersion": 0\n    }\n  }\n}',
-      },
-      {
-        name: "host_sign_raw_with_legacy_account",
-        type: "unary",
-        description: "Sign raw bytes with a non-product (legacy) account.",
-        requestDescription: "HostSignRawWithLegacyAccountRequest",
-        defaultRequest:
-          '{\n  "payload": {\n    "tag": "Bytes",\n    "value": {\n      "bytes": "0x48656c6c6f"\n    }\n  },\n  "signer": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"\n}',
-      },
-      {
-        name: "host_sign_payload_with_legacy_account",
-        type: "unary",
-        description:
-          "Sign a Substrate extrinsic payload with a non-product (legacy) account.",
-        requestDescription: "HostSignPayloadWithLegacyAccountRequest",
-        defaultRequest:
-          '{\n  "payload": {\n    "account": {\n      "derivationIndex": 0,\n      "dotNsIdentifier": "truapi-playground.dot"\n    },\n    "blockHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    "blockNumber": "0x00000000",\n    "era": "0x00",\n    "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    "method": "0x0000",\n    "nonce": "0x00000000",\n    "signedExtensions": [],\n    "specVersion": "0x00000000",\n    "tip": "0x00000000000000000000000000000000",\n    "transactionVersion": "0x00000000",\n    "version": 4\n  },\n  "signer": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"\n}',
-      },
-      {
-        name: "host_sign_raw",
-        type: "unary",
-        description: "Sign raw bytes or a message.",
-        requestDescription: "HostSignRawRequest",
-        defaultRequest:
-          '{\n  "account": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  },\n  "payload": {\n    "tag": "Bytes",\n    "value": {\n      "bytes": "0x48656c6c6f2c20776f726c6421"\n    }\n  }\n}',
-      },
-      {
-        name: "host_sign_payload",
-        type: "unary",
-        description: "Sign a Substrate extrinsic payload.",
-        requestDescription: "HostSignPayloadRequest",
-        defaultRequest:
-          '{\n  "account": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  },\n  "blockHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "blockNumber": "0x00000000",\n  "era": "0x00",\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "method": "0x00003448656c6c6f2c20776f726c6421",\n  "nonce": "0x00000000",\n  "signedExtensions": [],\n  "specVersion": "0x00000000",\n  "tip": "0x00000000000000000000000000000000",\n  "transactionVersion": "0x00000000",\n  "version": 4\n}',
-      },
-    ],
-  },
-  {
     name: "Statement Store",
     methods: [
       {
@@ -480,6 +461,15 @@ export const services: ServiceInfo[] = [
           "Derive 32 bytes of entropy from the user's root BIP-39 entropy for the\ngiven key.",
         requestDescription: "HostDeriveEntropyRequest",
         defaultRequest: '{\n  "context": "0x70726f647563742d6b6579"\n}',
+      },
+      {
+        name: "host_request_resource_allocation",
+        type: "unary",
+        description:
+          "Request the host to pre-allocate one or more resources (statement store\nallowance, bulletin allowance, smart contract allowance, auto-signing).",
+        requestDescription: "HostRequestResourceAllocationRequest",
+        defaultRequest:
+          '{\n  "resources": [\n    {\n      "tag": "StatementStoreAllowance"\n    },\n    {\n      "tag": "AutoSigning"\n    }\n  ]\n}',
       },
     ],
   },

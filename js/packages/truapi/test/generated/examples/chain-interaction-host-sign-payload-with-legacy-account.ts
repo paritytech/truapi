@@ -5,7 +5,7 @@ import { type Client, type HostSignPayloadResponse } from "@parity/truapi";
 export async function signPayloadWithLegacyAccount(
   truapi: Client,
 ): Promise<HostSignPayloadResponse> {
-  const result = await truapi.signing.signPayloadWithLegacyAccount({
+  const result = await truapi.chainInteraction.signPayloadWithLegacyAccount({
     signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
     payload: {
       account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },

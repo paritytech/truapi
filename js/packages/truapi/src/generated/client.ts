@@ -284,13 +284,124 @@ export class AccountManagementClient {
 }
 
 /**
- * Chain head and transaction interactions.
+ * Chain interaction, signing, and transaction construction.
  *
  * Default methods return [`CallError::HostFailure`] with an `unavailable`
  * reason. Hosts override only the methods they can actually service.
  */
 export class ChainInteractionClient {
   constructor(private readonly transport: TrUApiTransport) {}
+
+  /** Construct a signed extrinsic for a product account. */
+  async createTransaction(
+    request: T.HostCreateTransactionRequest,
+  ): Promise<
+    Result<T.HostCreateTransactionResponse, T.HostCreateTransactionError>
+  > {
+    const result = await this.transport.request<
+      S.ResultPayload<
+        T.HostCreateTransactionResponse,
+        T.HostCreateTransactionError
+      >
+    >({
+      ids: W.HOST_CREATE_TRANSACTION,
+      payload: T.VersionedHostCreateTransactionRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V1: [
+            0,
+            S.Result(
+              T.HostCreateTransactionResponse,
+              T.HostCreateTransactionError,
+            ),
+          ] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
+  }
+
+  /** Construct a signed extrinsic for a non-product account. */
+  async createTransactionWithLegacyAccount(
+    request: T.HostCreateTransactionWithLegacyAccountRequest,
+  ): Promise<
+    Result<
+      T.HostCreateTransactionWithLegacyAccountResponse,
+      T.HostCreateTransactionError
+    >
+  > {
+    const result = await this.transport.request<
+      S.ResultPayload<
+        T.HostCreateTransactionWithLegacyAccountResponse,
+        T.HostCreateTransactionError
+      >
+    >({
+      ids: W.HOST_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT,
+      payload: T.VersionedHostCreateTransactionWithLegacyAccountRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V1: [
+            0,
+            S.Result(
+              T.HostCreateTransactionWithLegacyAccountResponse,
+              T.HostCreateTransactionError,
+            ),
+          ] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
+  }
+
+  /** Sign raw bytes with a non-product (legacy) account. */
+  async signRawWithLegacyAccount(
+    request: T.HostSignRawWithLegacyAccountRequest,
+  ): Promise<Result<T.HostSignPayloadResponse, T.HostSignPayloadError>> {
+    const result = await this.transport.request<
+      S.ResultPayload<T.HostSignPayloadResponse, T.HostSignPayloadError>
+    >({
+      ids: W.HOST_SIGN_RAW_WITH_LEGACY_ACCOUNT,
+      payload: T.VersionedHostSignRawWithLegacyAccountRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V1: [
+            0,
+            S.Result(T.HostSignPayloadResponse, T.HostSignPayloadError),
+          ] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
+  }
+
+  /** Sign a Substrate extrinsic payload with a non-product (legacy) account. */
+  async signPayloadWithLegacyAccount(
+    request: T.HostSignPayloadWithLegacyAccountRequest,
+  ): Promise<Result<T.HostSignPayloadResponse, T.HostSignPayloadError>> {
+    const result = await this.transport.request<
+      S.ResultPayload<T.HostSignPayloadResponse, T.HostSignPayloadError>
+    >({
+      ids: W.HOST_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT,
+      payload: T.VersionedHostSignPayloadWithLegacyAccountRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V1: [
+            0,
+            S.Result(T.HostSignPayloadResponse, T.HostSignPayloadError),
+          ] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
+  }
 
   /** Follow the chain head and receive block events. */
   chainHeadFollowSubscribe({
@@ -622,6 +733,49 @@ export class ChainInteractionClient {
           } & T.VersionedHostJsonrpcMessageSubscribeItem
         ).value,
     });
+  }
+
+  /** Sign raw bytes or a message. */
+  async signRaw(
+    request: T.HostSignRawRequest,
+  ): Promise<Result<T.HostSignPayloadResponse, T.HostSignPayloadError>> {
+    const result = await this.transport.request<
+      S.ResultPayload<T.HostSignPayloadResponse, T.HostSignPayloadError>
+    >({
+      ids: W.HOST_SIGN_RAW,
+      payload: T.VersionedHostSignRawRequest.enc({ tag: "V1", value: request }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V1: [
+            0,
+            S.Result(T.HostSignPayloadResponse, T.HostSignPayloadError),
+          ] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
+  }
+
+  /** Sign a Substrate extrinsic payload. */
+  async signPayload(
+    request: T.HostSignPayloadRequest,
+  ): Promise<Result<T.HostSignPayloadResponse, T.HostSignPayloadError>> {
+    const result = await this.transport.request<
+      S.ResultPayload<T.HostSignPayloadResponse, T.HostSignPayloadError>
+    >({
+      ids: W.HOST_SIGN_PAYLOAD,
+      payload: T.VersionedHostSignPayloadRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V1: [
+            0,
+            S.Result(T.HostSignPayloadResponse, T.HostSignPayloadError),
+          ] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
   }
 }
 
@@ -1026,214 +1180,6 @@ export class PreimageClient {
 }
 
 /**
- * Resource pre-allocation (allowance management).
- *
- * Default methods return [`CallError::HostFailure`] with an `unavailable`
- * reason. Hosts override only the methods they actually support.
- */
-export class ResourceAllocationClient {
-  constructor(private readonly transport: TrUApiTransport) {}
-
-  /**
-   * Request the host to pre-allocate one or more resources (statement store
-   * allowance, bulletin allowance, smart contract allowance, auto-signing).
-   */
-  async requestResourceAllocation(
-    request: T.HostRequestResourceAllocationRequest,
-  ): Promise<
-    Result<T.HostRequestResourceAllocationResponse, T.ResourceAllocationError>
-  > {
-    const result = await this.transport.request<
-      S.ResultPayload<
-        T.HostRequestResourceAllocationResponse,
-        T.ResourceAllocationError
-      >
-    >({
-      ids: W.HOST_REQUEST_RESOURCE_ALLOCATION,
-      payload: T.VersionedHostRequestResourceAllocationRequest.enc({
-        tag: "V1",
-        value: request,
-      }),
-      decodeResponse: (payload) =>
-        S.indexedTaggedUnion({
-          V1: [
-            0,
-            S.Result(
-              T.HostRequestResourceAllocationResponse,
-              T.ResourceAllocationError,
-            ),
-          ] as const,
-        }).dec(payload).value,
-    });
-    return result.success ? ok(result.value) : err(result.value);
-  }
-}
-
-/**
- * Signing and transaction construction.
- *
- * Default methods return [`CallError::HostFailure`] with an `unavailable`
- * reason. Hosts override only the methods they actually support.
- */
-export class SigningClient {
-  constructor(private readonly transport: TrUApiTransport) {}
-
-  /** Construct a signed extrinsic for a product account. */
-  async createTransaction(
-    request: T.HostCreateTransactionRequest,
-  ): Promise<
-    Result<T.HostCreateTransactionResponse, T.HostCreateTransactionError>
-  > {
-    const result = await this.transport.request<
-      S.ResultPayload<
-        T.HostCreateTransactionResponse,
-        T.HostCreateTransactionError
-      >
-    >({
-      ids: W.HOST_CREATE_TRANSACTION,
-      payload: T.VersionedHostCreateTransactionRequest.enc({
-        tag: "V1",
-        value: request,
-      }),
-      decodeResponse: (payload) =>
-        S.indexedTaggedUnion({
-          V1: [
-            0,
-            S.Result(
-              T.HostCreateTransactionResponse,
-              T.HostCreateTransactionError,
-            ),
-          ] as const,
-        }).dec(payload).value,
-    });
-    return result.success ? ok(result.value) : err(result.value);
-  }
-
-  /** Construct a signed extrinsic for a non-product account. */
-  async createTransactionWithLegacyAccount(
-    request: T.HostCreateTransactionWithLegacyAccountRequest,
-  ): Promise<
-    Result<
-      T.HostCreateTransactionWithLegacyAccountResponse,
-      T.HostCreateTransactionError
-    >
-  > {
-    const result = await this.transport.request<
-      S.ResultPayload<
-        T.HostCreateTransactionWithLegacyAccountResponse,
-        T.HostCreateTransactionError
-      >
-    >({
-      ids: W.HOST_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT,
-      payload: T.VersionedHostCreateTransactionWithLegacyAccountRequest.enc({
-        tag: "V1",
-        value: request,
-      }),
-      decodeResponse: (payload) =>
-        S.indexedTaggedUnion({
-          V1: [
-            0,
-            S.Result(
-              T.HostCreateTransactionWithLegacyAccountResponse,
-              T.HostCreateTransactionError,
-            ),
-          ] as const,
-        }).dec(payload).value,
-    });
-    return result.success ? ok(result.value) : err(result.value);
-  }
-
-  /** Sign raw bytes with a non-product (legacy) account. */
-  async signRawWithLegacyAccount(
-    request: T.HostSignRawWithLegacyAccountRequest,
-  ): Promise<Result<T.HostSignPayloadResponse, T.HostSignPayloadError>> {
-    const result = await this.transport.request<
-      S.ResultPayload<T.HostSignPayloadResponse, T.HostSignPayloadError>
-    >({
-      ids: W.HOST_SIGN_RAW_WITH_LEGACY_ACCOUNT,
-      payload: T.VersionedHostSignRawWithLegacyAccountRequest.enc({
-        tag: "V1",
-        value: request,
-      }),
-      decodeResponse: (payload) =>
-        S.indexedTaggedUnion({
-          V1: [
-            0,
-            S.Result(T.HostSignPayloadResponse, T.HostSignPayloadError),
-          ] as const,
-        }).dec(payload).value,
-    });
-    return result.success ? ok(result.value) : err(result.value);
-  }
-
-  /** Sign a Substrate extrinsic payload with a non-product (legacy) account. */
-  async signPayloadWithLegacyAccount(
-    request: T.HostSignPayloadWithLegacyAccountRequest,
-  ): Promise<Result<T.HostSignPayloadResponse, T.HostSignPayloadError>> {
-    const result = await this.transport.request<
-      S.ResultPayload<T.HostSignPayloadResponse, T.HostSignPayloadError>
-    >({
-      ids: W.HOST_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT,
-      payload: T.VersionedHostSignPayloadWithLegacyAccountRequest.enc({
-        tag: "V1",
-        value: request,
-      }),
-      decodeResponse: (payload) =>
-        S.indexedTaggedUnion({
-          V1: [
-            0,
-            S.Result(T.HostSignPayloadResponse, T.HostSignPayloadError),
-          ] as const,
-        }).dec(payload).value,
-    });
-    return result.success ? ok(result.value) : err(result.value);
-  }
-
-  /** Sign raw bytes or a message. */
-  async signRaw(
-    request: T.HostSignRawRequest,
-  ): Promise<Result<T.HostSignPayloadResponse, T.HostSignPayloadError>> {
-    const result = await this.transport.request<
-      S.ResultPayload<T.HostSignPayloadResponse, T.HostSignPayloadError>
-    >({
-      ids: W.HOST_SIGN_RAW,
-      payload: T.VersionedHostSignRawRequest.enc({ tag: "V1", value: request }),
-      decodeResponse: (payload) =>
-        S.indexedTaggedUnion({
-          V1: [
-            0,
-            S.Result(T.HostSignPayloadResponse, T.HostSignPayloadError),
-          ] as const,
-        }).dec(payload).value,
-    });
-    return result.success ? ok(result.value) : err(result.value);
-  }
-
-  /** Sign a Substrate extrinsic payload. */
-  async signPayload(
-    request: T.HostSignPayloadRequest,
-  ): Promise<Result<T.HostSignPayloadResponse, T.HostSignPayloadError>> {
-    const result = await this.transport.request<
-      S.ResultPayload<T.HostSignPayloadResponse, T.HostSignPayloadError>
-    >({
-      ids: W.HOST_SIGN_PAYLOAD,
-      payload: T.VersionedHostSignPayloadRequest.enc({
-        tag: "V1",
-        value: request,
-      }),
-      decodeResponse: (payload) =>
-        S.indexedTaggedUnion({
-          V1: [
-            0,
-            S.Result(T.HostSignPayloadResponse, T.HostSignPayloadError),
-          ] as const,
-        }).dec(payload).value,
-    });
-    return result.success ? ok(result.value) : err(result.value);
-  }
-}
-
-/**
  * Statement store operations.
  *
  * Default request methods return [`CallError::HostFailure`] with an
@@ -1362,8 +1308,8 @@ export class StatementStoreClient {
 }
 
 /**
- * General-purpose TrUAPI methods for feature detection, navigation, and
- * notifications.
+ * General-purpose TrUAPI methods for feature detection, navigation,
+ * notifications, and host-managed capabilities.
  *
  * # Wire id reservations
  *
@@ -1549,6 +1495,40 @@ export class SystemClient {
     });
     return result.success ? ok(result.value) : err(result.value);
   }
+
+  /**
+   * Request the host to pre-allocate one or more resources (statement store
+   * allowance, bulletin allowance, smart contract allowance, auto-signing).
+   */
+  async requestResourceAllocation(
+    request: T.HostRequestResourceAllocationRequest,
+  ): Promise<
+    Result<T.HostRequestResourceAllocationResponse, T.ResourceAllocationError>
+  > {
+    const result = await this.transport.request<
+      S.ResultPayload<
+        T.HostRequestResourceAllocationResponse,
+        T.ResourceAllocationError
+      >
+    >({
+      ids: W.HOST_REQUEST_RESOURCE_ALLOCATION,
+      payload: T.VersionedHostRequestResourceAllocationRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V1: [
+            0,
+            S.Result(
+              T.HostRequestResourceAllocationResponse,
+              T.ResourceAllocationError,
+            ),
+          ] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
+  }
 }
 
 export interface TrUApiClient {
@@ -1558,8 +1538,6 @@ export interface TrUApiClient {
   readonly localStorage: LocalStorageClient;
   readonly payment: PaymentClient;
   readonly preimage: PreimageClient;
-  readonly resourceAllocation: ResourceAllocationClient;
-  readonly signing: SigningClient;
   readonly statementStore: StatementStoreClient;
   readonly system: SystemClient;
 }
@@ -1595,8 +1573,6 @@ export function createClient(
     localStorage: new LocalStorageClient(versionedTransport),
     payment: new PaymentClient(versionedTransport),
     preimage: new PreimageClient(versionedTransport),
-    resourceAllocation: new ResourceAllocationClient(versionedTransport),
-    signing: new SigningClient(versionedTransport),
     statementStore: new StatementStoreClient(versionedTransport),
     system: new SystemClient(versionedTransport),
   };

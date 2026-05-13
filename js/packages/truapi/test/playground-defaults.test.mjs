@@ -12,8 +12,6 @@ const serviceFields = {
   "Local Storage": "localStorage",
   Payment: "payment",
   Preimage: "preimage",
-  "Resource Allocation": "resourceAllocation",
-  Signing: "signing",
   "Statement Store": "statementStore",
   System: "system",
 };

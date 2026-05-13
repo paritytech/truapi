@@ -2,13 +2,17 @@
 
 import {
   type Client,
-  type HostCreateTransactionWithLegacyAccountResponse,
+  type HostCreateTransactionResponse,
 } from "@parity/truapi";
 
-export async function createTransactionWithLegacyAccount(
+export async function createTransaction(
   truapi: Client,
-): Promise<HostCreateTransactionWithLegacyAccountResponse> {
-  const result = await truapi.signing.createTransactionWithLegacyAccount({
+): Promise<HostCreateTransactionResponse> {
+  const result = await truapi.chainInteraction.createTransaction({
+    productAccountId: {
+      dotNsIdentifier: "truapi-playground.dot",
+      derivationIndex: 0,
+    },
     payload: {
       tag: "V1",
       value: {

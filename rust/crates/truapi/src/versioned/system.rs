@@ -25,4 +25,7 @@ versioned_type! {
     pub enum HostDeriveEntropyRequest { V1 => v01::HostDeriveEntropyRequest }
     pub enum HostDeriveEntropyResponse { V1 => v01::HostDeriveEntropyResponse }
     pub enum HostDeriveEntropyError { V1 => v01::HostDeriveEntropyError }
+    pub enum HostRequestResourceAllocationRequest { V1 => v01::HostRequestResourceAllocationRequest }
+    pub enum HostRequestResourceAllocationResponse { V1 => v01::HostRequestResourceAllocationResponse }
+    pub enum HostRequestResourceAllocationError { V1 => v01::ResourceAllocationError }
 }

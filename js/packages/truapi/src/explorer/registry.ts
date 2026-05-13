@@ -27,8 +27,12 @@ export const versions: ExplorerVersion[] = [
         id: "chain-interaction",
         name: "Chain Interaction",
         description:
-          "Chain head and transaction interactions.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they can actually service.",
+          "Chain interaction, signing, and transaction construction.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they can actually service.",
         methods: [
+          "host_create_transaction",
+          "host_create_transaction_with_legacy_account",
+          "host_sign_raw_with_legacy_account",
+          "host_sign_payload_with_legacy_account",
           "remote_chain_head_follow_subscribe",
           "remote_chain_head_header",
           "remote_chain_head_body",
@@ -44,6 +48,8 @@ export const versions: ExplorerVersion[] = [
           "remote_chain_transaction_stop",
           "host_jsonrpc_message_send",
           "host_jsonrpc_message_subscribe",
+          "host_sign_raw",
+          "host_sign_payload",
         ],
       },
       {
@@ -90,27 +96,6 @@ export const versions: ExplorerVersion[] = [
         methods: ["remote_preimage_lookup_subscribe", "remote_preimage_submit"],
       },
       {
-        id: "resource-allocation",
-        name: "Resource Allocation",
-        description:
-          "Resource pre-allocation (allowance management).\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
-        methods: ["host_request_resource_allocation"],
-      },
-      {
-        id: "signing",
-        name: "Signing",
-        description:
-          "Signing and transaction construction.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
-        methods: [
-          "host_create_transaction",
-          "host_create_transaction_with_legacy_account",
-          "host_sign_raw_with_legacy_account",
-          "host_sign_payload_with_legacy_account",
-          "host_sign_raw",
-          "host_sign_payload",
-        ],
-      },
-      {
         id: "statement-store",
         name: "Statement Store",
         description:
@@ -126,7 +111,7 @@ export const versions: ExplorerVersion[] = [
         id: "system",
         name: "System",
         description:
-          "General-purpose TrUAPI methods for feature detection, navigation, and\nnotifications.\n\n# Wire id reservations\n\nThe discriminants below are listed in [`super::RESERVED_WIRE_IDS`] so\ncodegen rejects any `#[wire(...)]` annotation that collides with them.\nSlots are held back for upstream `triangle-js-sdks` methods that TrUAPI\ndoes not implement, but whose ids must remain free to keep our wire-table\npositionally aligned with the canonical host `MessagePayload` enum. If we\never need one, annotate the trait method with the matching id and remove\nit from `RESERVED_WIRE_IDS`.",
+          "General-purpose TrUAPI methods for feature detection, navigation,\nnotifications, and host-managed capabilities.\n\n# Wire id reservations\n\nThe discriminants below are listed in [`super::RESERVED_WIRE_IDS`] so\ncodegen rejects any `#[wire(...)]` annotation that collides with them.\nSlots are held back for upstream `triangle-js-sdks` methods that TrUAPI\ndoes not implement, but whose ids must remain free to keep our wire-table\npositionally aligned with the canonical host `MessagePayload` enum. If we\never need one, annotate the trait method with the matching id and remove\nit from `RESERVED_WIRE_IDS`.",
         methods: [
           "host_handshake",
           "host_feature_supported",
@@ -136,6 +121,7 @@ export const versions: ExplorerVersion[] = [
           "remote_permission",
           "host_theme_subscribe",
           "host_derive_entropy",
+          "host_request_resource_allocation",
         ],
       },
     ],
@@ -338,8 +324,8 @@ export const versions: ExplorerVersion[] = [
       {
         id: "host_create_transaction",
         name: "host_create_transaction",
-        groupId: "signing",
-        groupName: "Signing",
+        groupId: "chain-interaction",
+        groupName: "Chain Interaction",
         wireId: 30,
         pattern: "unary",
         request: "HostCreateTransactionRequest",
@@ -347,13 +333,13 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostCreateTransactionError",
         description: "Construct a signed extrinsic for a product account.",
         usageExample:
-          'import {\n  type Client,\n  type HostCreateTransactionResponse,\n} from "@parity/truapi";\n\nexport async function createTransaction(\n  truapi: Client,\n): Promise<HostCreateTransactionResponse> {\n  const result = await truapi.signing.createTransaction({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    payload: {\n      tag: "V1",\n      value: {\n        callData: "0x0000",\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: "0x",\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostCreateTransactionResponse,\n} from "@parity/truapi";\n\nexport async function createTransaction(\n  truapi: Client,\n): Promise<HostCreateTransactionResponse> {\n  const result = await truapi.chainInteraction.createTransaction({\n    productAccountId: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    payload: {\n      tag: "V1",\n      value: {\n        callData: "0x0000",\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: "0x",\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_create_transaction_with_legacy_account",
         name: "host_create_transaction_with_legacy_account",
-        groupId: "signing",
-        groupName: "Signing",
+        groupId: "chain-interaction",
+        groupName: "Chain Interaction",
         wireId: 32,
         pattern: "unary",
         request: "HostCreateTransactionWithLegacyAccountRequest",
@@ -361,13 +347,13 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostCreateTransactionError",
         description: "Construct a signed extrinsic for a non-product account.",
         usageExample:
-          'import {\n  type Client,\n  type HostCreateTransactionWithLegacyAccountResponse,\n} from "@parity/truapi";\n\nexport async function createTransactionWithLegacyAccount(\n  truapi: Client,\n): Promise<HostCreateTransactionWithLegacyAccountResponse> {\n  const result = await truapi.signing.createTransactionWithLegacyAccount({\n    payload: {\n      tag: "V1",\n      value: {\n        callData: "0x0000",\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: "0x",\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostCreateTransactionWithLegacyAccountResponse,\n} from "@parity/truapi";\n\nexport async function createTransactionWithLegacyAccount(\n  truapi: Client,\n): Promise<HostCreateTransactionWithLegacyAccountResponse> {\n  const result = await truapi.chainInteraction.createTransactionWithLegacyAccount({\n    payload: {\n      tag: "V1",\n      value: {\n        callData: "0x0000",\n        extensions: [],\n        txExtVersion: 0,\n        context: {\n          metadata: "0x",\n          tokenSymbol: "DOT",\n          tokenDecimals: 10,\n          bestBlockHeight: 0,\n        },\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_sign_raw_with_legacy_account",
         name: "host_sign_raw_with_legacy_account",
-        groupId: "signing",
-        groupName: "Signing",
+        groupId: "chain-interaction",
+        groupName: "Chain Interaction",
         wireId: 34,
         pattern: "unary",
         request: "HostSignRawWithLegacyAccountRequest",
@@ -375,13 +361,13 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostSignPayloadError",
         description: "Sign raw bytes with a non-product (legacy) account.",
         usageExample:
-          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signRawWithLegacyAccount(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signRawWithLegacyAccount({\n    signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",\n    payload: {\n      tag: "Bytes",\n      value: { bytes: "0x48656c6c6f" },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signRawWithLegacyAccount(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.chainInteraction.signRawWithLegacyAccount({\n    signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",\n    payload: {\n      tag: "Bytes",\n      value: { bytes: "0x48656c6c6f" },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_sign_payload_with_legacy_account",
         name: "host_sign_payload_with_legacy_account",
-        groupId: "signing",
-        groupName: "Signing",
+        groupId: "chain-interaction",
+        groupName: "Chain Interaction",
         wireId: 36,
         pattern: "unary",
         request: "HostSignPayloadWithLegacyAccountRequest",
@@ -390,7 +376,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Sign a Substrate extrinsic payload with a non-product (legacy) account.",
         usageExample:
-          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signPayloadWithLegacyAccount(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signPayloadWithLegacyAccount({\n    signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",\n    payload: {\n      account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n      blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      blockNumber: "0x00000000",\n      era: "0x00",\n      genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      method: "0x0000",\n      nonce: "0x00000000",\n      signedExtensions: [],\n      specVersion: "0x00000000",\n      tip: "0x00000000000000000000000000000000",\n      transactionVersion: "0x00000000",\n      version: 4,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signPayloadWithLegacyAccount(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.chainInteraction.signPayloadWithLegacyAccount({\n    signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",\n    payload: {\n      account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n      blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      blockNumber: "0x00000000",\n      era: "0x00",\n      genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      method: "0x0000",\n      nonce: "0x00000000",\n      signedExtensions: [],\n      specVersion: "0x00000000",\n      tip: "0x00000000000000000000000000000000",\n      transactionVersion: "0x00000000",\n      version: 4,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_chat_create_room",
@@ -813,8 +799,8 @@ export const versions: ExplorerVersion[] = [
       {
         id: "host_sign_raw",
         name: "host_sign_raw",
-        groupId: "signing",
-        groupName: "Signing",
+        groupId: "chain-interaction",
+        groupName: "Chain Interaction",
         wireId: 114,
         pattern: "unary",
         request: "HostSignRawRequest",
@@ -822,13 +808,13 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostSignPayloadError",
         description: "Sign raw bytes or a message.",
         usageExample:
-          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signRawBytes(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signRaw({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    payload: {\n      tag: "Bytes",\n      value: {\n        bytes: "0x48656c6c6f2c20776f726c6421",\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signRawBytes(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.chainInteraction.signRaw({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    payload: {\n      tag: "Bytes",\n      value: {\n        bytes: "0x48656c6c6f2c20776f726c6421",\n      },\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_sign_payload",
         name: "host_sign_payload",
-        groupId: "signing",
-        groupName: "Signing",
+        groupId: "chain-interaction",
+        groupName: "Chain Interaction",
         wireId: 116,
         pattern: "unary",
         request: "HostSignPayloadRequest",
@@ -836,7 +822,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostSignPayloadError",
         description: "Sign a Substrate extrinsic payload.",
         usageExample:
-          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signPayload(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.signing.signPayload({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    blockNumber: "0x00000000",\n    era: "0x00",\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    method: "0x00003448656c6c6f2c20776f726c6421",\n    nonce: "0x00000000",\n    signedExtensions: [],\n    specVersion: "0x00000000",\n    tip: "0x00000000000000000000000000000000",\n    transactionVersion: "0x00000000",\n    version: 4,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostSignPayloadResponse,\n} from "@parity/truapi";\n\nexport async function signPayload(\n  truapi: Client,\n): Promise<HostSignPayloadResponse> {\n  const result = await truapi.chainInteraction.signPayload({\n    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },\n    blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    blockNumber: "0x00000000",\n    era: "0x00",\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    method: "0x00003448656c6c6f2c20776f726c6421",\n    nonce: "0x00000000",\n    signedExtensions: [],\n    specVersion: "0x00000000",\n    tip: "0x00000000000000000000000000000000",\n    transactionVersion: "0x00000000",\n    version: 4,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_payment_balance_subscribe",
@@ -898,8 +884,8 @@ export const versions: ExplorerVersion[] = [
       {
         id: "host_request_resource_allocation",
         name: "host_request_resource_allocation",
-        groupId: "resource-allocation",
-        groupName: "Resource Allocation",
+        groupId: "system",
+        groupName: "System",
         wireId: 130,
         pattern: "unary",
         request: "HostRequestResourceAllocationRequest",
@@ -908,7 +894,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Request the host to pre-allocate one or more resources (statement store\nallowance, bulletin allowance, smart contract allowance, auto-signing).",
         usageExample:
-          'import {\n  type Client,\n  type HostRequestResourceAllocationResponse,\n} from "@parity/truapi";\n\nexport async function requestAllocation(\n  truapi: Client,\n): Promise<HostRequestResourceAllocationResponse> {\n  const result =\n    await truapi.resourceAllocation.requestResourceAllocation({\n      resources: [\n        { tag: "StatementStoreAllowance" },\n        { tag: "AutoSigning" },\n      ],\n    });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostRequestResourceAllocationResponse,\n} from "@parity/truapi";\n\nexport async function requestAllocation(\n  truapi: Client,\n): Promise<HostRequestResourceAllocationResponse> {\n  const result =\n    await truapi.system.requestResourceAllocation({\n      resources: [\n        { tag: "StatementStoreAllowance" },\n        { tag: "AutoSigning" },\n      ],\n    });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_statement_store_create_proof_authorized",

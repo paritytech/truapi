@@ -98,8 +98,6 @@ pub mod chat;
 pub mod local_storage;
 pub mod payment;
 pub mod preimage;
-pub mod resource_allocation;
-pub mod signing;
 pub mod statement_store;
 pub mod system;
 

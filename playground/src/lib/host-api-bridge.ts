@@ -100,13 +100,31 @@ const methodMap: Record<string, [keyof TrUApiClient, string, boolean]> = {
     false,
   ],
 
-  // Signing
-  "Signing/host_sign_payload": ["signing", "signPayload", false],
-  "Signing/host_sign_raw": ["signing", "signRaw", false],
-  "Signing/host_create_transaction": ["signing", "createTransaction", false],
-  "Signing/host_create_transaction_with_legacy_account": [
-    "signing",
+  // Chain Interaction
+  "Chain Interaction/host_create_transaction": [
+    "chainInteraction",
+    "createTransaction",
+    false,
+  ],
+  "Chain Interaction/host_create_transaction_with_legacy_account": [
+    "chainInteraction",
     "createTransactionWithLegacyAccount",
+    false,
+  ],
+  "Chain Interaction/host_sign_raw_with_legacy_account": [
+    "chainInteraction",
+    "signRawWithLegacyAccount",
+    false,
+  ],
+  "Chain Interaction/host_sign_payload_with_legacy_account": [
+    "chainInteraction",
+    "signPayloadWithLegacyAccount",
+    false,
+  ],
+  "Chain Interaction/host_sign_raw": ["chainInteraction", "signRaw", false],
+  "Chain Interaction/host_sign_payload": [
+    "chainInteraction",
+    "signPayload",
     false,
   ],
 
@@ -146,7 +164,6 @@ const methodMap: Record<string, [keyof TrUApiClient, string, boolean]> = {
     true,
   ],
 
-  // Chain Interaction
   "Chain Interaction/remote_chain_head_follow_subscribe": [
     "chainInteraction",
     "chainHeadFollowSubscribe",
@@ -220,6 +237,12 @@ const methodMap: Record<string, [keyof TrUApiClient, string, boolean]> = {
   "Chain Interaction/remote_chain_transaction_stop": [
     "chainInteraction",
     "chainTransactionStop",
+    false,
+  ],
+
+  "System/host_request_resource_allocation": [
+    "system",
+    "requestResourceAllocation",
     false,
   ],
 

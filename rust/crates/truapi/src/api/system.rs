@@ -6,14 +6,16 @@ use crate::versioned::system::{
     HostFeatureSupportedError, HostFeatureSupportedRequest, HostFeatureSupportedResponse,
     HostHandshakeError, HostHandshakeRequest, HostHandshakeResponse, HostNavigateToError,
     HostNavigateToRequest, HostNavigateToResponse, HostPushNotificationError,
-    HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem,
-    RemotePermissionError, RemotePermissionRequest, RemotePermissionResponse,
+    HostPushNotificationRequest, HostPushNotificationResponse,
+    HostRequestResourceAllocationError, HostRequestResourceAllocationRequest,
+    HostRequestResourceAllocationResponse, HostThemeSubscribeItem, RemotePermissionError,
+    RemotePermissionRequest, RemotePermissionResponse,
 };
 use crate::wire;
 use crate::{CallContext, CallError, Subscription};
 
-/// General-purpose TrUAPI methods for feature detection, navigation, and
-/// notifications.
+/// General-purpose TrUAPI methods for feature detection, navigation,
+/// notifications, and host-managed capabilities.
 ///
 /// # Wire id reservations
 ///
@@ -216,6 +218,42 @@ pub trait System: Send + Sync {
         _cx: &CallContext,
         _request: HostDeriveEntropyRequest,
     ) -> Result<HostDeriveEntropyResponse, CallError<HostDeriveEntropyError>> {
+        Err(CallError::unavailable())
+    }
+
+    /// Request the host to pre-allocate one or more resources (statement store
+    /// allowance, bulletin allowance, smart contract allowance, auto-signing).
+    ///
+    /// ```truapi-client-example
+    /// import {
+    ///   type Client,
+    ///   type HostRequestResourceAllocationResponse,
+    /// } from "@parity/truapi";
+    ///
+    /// export async function requestAllocation(
+    ///   truapi: Client,
+    /// ): Promise<HostRequestResourceAllocationResponse> {
+    ///   const result =
+    ///     await truapi.system.requestResourceAllocation({
+    ///       resources: [
+    ///         { tag: "StatementStoreAllowance" },
+    ///         { tag: "AutoSigning" },
+    ///       ],
+    ///     });
+    ///
+    ///   if (result.isErr()) throw result.error;
+    ///   return result.value;
+    /// }
+    /// ```
+    #[wire(request_id = 130)]
+    async fn host_request_resource_allocation(
+        &self,
+        _cx: &CallContext,
+        _request: HostRequestResourceAllocationRequest,
+    ) -> Result<
+        HostRequestResourceAllocationResponse,
+        CallError<HostRequestResourceAllocationError>,
+    > {
         Err(CallError::unavailable())
     }
 }

@@ -34,8 +34,6 @@ pub mod chat;
 pub mod local_storage;
 pub mod payment;
 pub mod preimage;
-pub mod resource_allocation;
-pub mod signing;
 pub mod statement_store;
 pub mod system;
 
@@ -45,8 +43,6 @@ pub use chat::Chat;
 pub use local_storage::LocalStorage;
 pub use payment::Payment;
 pub use preimage::Preimage;
-pub use resource_allocation::ResourceAllocation;
-pub use signing::Signing;
 pub use statement_store::StatementStore;
 pub use system::System;
 
@@ -60,8 +56,6 @@ pub trait TrUApi:
     + LocalStorage
     + Payment
     + Preimage
-    + ResourceAllocation
-    + Signing
     + StatementStore
     + System
     + Send
@@ -76,8 +70,6 @@ impl<T> TrUApi for T where
         + LocalStorage
         + Payment
         + Preimage
-        + ResourceAllocation
-        + Signing
         + StatementStore
         + System
         + Send

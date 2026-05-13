@@ -16,10 +16,13 @@ export const EXCLUDED_METHODS = new Set([
   "System/host_push_notification",
   "System/host_device_permission",
   "System/remote_permission",
-  "Signing/host_sign_payload",
-  "Signing/host_sign_raw",
-  "Signing/host_create_transaction",
-  "Signing/host_create_transaction_with_legacy_account",
+  "System/host_request_resource_allocation",
+  "Chain Interaction/host_sign_payload",
+  "Chain Interaction/host_sign_raw",
+  "Chain Interaction/host_sign_raw_with_legacy_account",
+  "Chain Interaction/host_sign_payload_with_legacy_account",
+  "Chain Interaction/host_create_transaction",
+  "Chain Interaction/host_create_transaction_with_legacy_account",
   "Account Management/host_account_get_alias",
 ]);
 
@@ -31,6 +34,15 @@ const CONCURRENCY = 6;
 // Each chain-head method depends on a live follow subscription on the host
 // side; running the service serially avoids fanning out concurrent follows.
 const SERIAL_SERVICES = new Set(["Chain Interaction"]);
+const LONG_TIMEOUT_METHODS = new Set([
+  "System/host_request_resource_allocation",
+  "Chain Interaction/host_sign_payload",
+  "Chain Interaction/host_sign_raw",
+  "Chain Interaction/host_sign_raw_with_legacy_account",
+  "Chain Interaction/host_sign_payload_with_legacy_account",
+  "Chain Interaction/host_create_transaction",
+  "Chain Interaction/host_create_transaction_with_legacy_account",
+]);
 
 const STATEMENT_STORE_SERVICE = "Statement Store";
 const STATEMENT_CREATE_PROOF_METHOD = "remote_statement_store_create_proof";
@@ -196,8 +208,9 @@ async function runOne({
     }
   }
 
-  const timeoutMs =
-    serviceName === "Signing" ? SIGNING_TIMEOUT_MS : UNARY_TIMEOUT_MS;
+  const timeoutMs = LONG_TIMEOUT_METHODS.has(id)
+    ? SIGNING_TIMEOUT_MS
+    : UNARY_TIMEOUT_MS;
   const requestStr = stringify(req);
   const { result, output } = binding.isStream
     ? await testSubscription(binding.subscribe, req)

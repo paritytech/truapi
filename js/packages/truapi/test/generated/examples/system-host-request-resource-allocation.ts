@@ -8,7 +8,7 @@ import {
 export async function requestAllocation(
   truapi: Client,
 ): Promise<HostRequestResourceAllocationResponse> {
-  const result = await truapi.resourceAllocation.requestResourceAllocation({
+  const result = await truapi.system.requestResourceAllocation({
     resources: [{ tag: "StatementStoreAllowance" }, { tag: "AutoSigning" }],
   });
 

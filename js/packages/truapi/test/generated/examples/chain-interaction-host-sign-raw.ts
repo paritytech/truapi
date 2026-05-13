@@ -2,14 +2,16 @@
 
 import { type Client, type HostSignPayloadResponse } from "@parity/truapi";
 
-export async function signRawWithLegacyAccount(
+export async function signRawBytes(
   truapi: Client,
 ): Promise<HostSignPayloadResponse> {
-  const result = await truapi.signing.signRawWithLegacyAccount({
-    signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
+  const result = await truapi.chainInteraction.signRaw({
+    account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },
     payload: {
       tag: "Bytes",
-      value: { bytes: "0x48656c6c6f" },
+      value: {
+        bytes: "0x48656c6c6f2c20776f726c6421",
+      },
     },
   });
 
