@@ -580,6 +580,49 @@ export class ChainInteractionClient {
     });
     return result.success ? ok(result.value) : err(result.value);
   }
+
+  /** Send a JSON-RPC message to the chain identified by genesis hash. */
+  async jsonrpcMessageSend(
+    request: T.HostJsonrpcMessageSendRequest,
+  ): Promise<Result<undefined, T.GenericError>> {
+    const result = await this.transport.request<
+      S.ResultPayload<undefined, T.GenericError>
+    >({
+      ids: W.HOST_JSONRPC_MESSAGE_SEND,
+      payload: T.VersionedHostJsonrpcMessageSendRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V1: [0, S.Result(S._void, T.GenericError)] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
+  }
+
+  /** Subscribe to inbound JSON-RPC messages for a chain. */
+  jsonrpcMessageSubscribe({
+    request,
+  }: {
+    request: T.HostJsonrpcMessageSubscribeRequest;
+  }): ObservableLike<T.HostJsonrpcMessageSubscribeItem> {
+    return createObservable<T.HostJsonrpcMessageSubscribeItem>({
+      transport: this.transport,
+      ids: W.HOST_JSONRPC_MESSAGE_SUBSCRIBE,
+      payload: T.VersionedHostJsonrpcMessageSubscribeRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeItem: (payload) =>
+        (
+          T.VersionedHostJsonrpcMessageSubscribeItem.dec(payload) as {
+            tag: "V1";
+            value: T.HostJsonrpcMessageSubscribeItem;
+          } & T.VersionedHostJsonrpcMessageSubscribeItem
+        ).value,
+    });
+  }
 }
 
 /**
@@ -727,124 +770,6 @@ export class ChatClient {
             tag: "V1";
             value: T.CustomRendererNode;
           } & T.VersionedProductChatCustomMessageRenderSubscribeItem
-        ).value,
-    });
-  }
-}
-
-/**
- * Deterministic entropy derivation.
- *
- * The default body returns [`CallError::HostFailure`] with an `unavailable`
- * reason; hosts override only if they can derive entropy.
- */
-export class EntropyDerivationClient {
-  constructor(private readonly transport: TrUApiTransport) {}
-
-  /**
-   * Derive 32 bytes of entropy from the user's root BIP-39 entropy for the
-   * given key.
-   */
-  async deriveEntropy(
-    request: T.HostDeriveEntropyRequest,
-  ): Promise<Result<T.HostDeriveEntropyResponse, T.HostDeriveEntropyError>> {
-    const result = await this.transport.request<
-      S.ResultPayload<T.HostDeriveEntropyResponse, T.HostDeriveEntropyError>
-    >({
-      ids: W.HOST_DERIVE_ENTROPY,
-      payload: T.VersionedHostDeriveEntropyRequest.enc({
-        tag: "V1",
-        value: request,
-      }),
-      decodeResponse: (payload) =>
-        S.indexedTaggedUnion({
-          V1: [
-            0,
-            S.Result(T.HostDeriveEntropyResponse, T.HostDeriveEntropyError),
-          ] as const,
-        }).dec(payload).value,
-    });
-    return result.success ? ok(result.value) : err(result.value);
-  }
-}
-
-/**
- * Host UI theme subscription.
- *
- * The default body returns an empty stream; hosts override to push theme
- * updates.
- */
-export class HostThemeClient {
-  constructor(private readonly transport: TrUApiTransport) {}
-
-  /** Subscribe to host theme changes (light/dark). */
-  themeSubscribe(): ObservableLike<T.HostThemeSubscribeItem> {
-    return createObservable<T.HostThemeSubscribeItem>({
-      transport: this.transport,
-      ids: W.HOST_THEME_SUBSCRIBE,
-      payload: S.indexedTaggedUnion({ V1: [0, S._void] as const }).enc({
-        tag: "V1",
-        value: undefined,
-      }),
-      decodeItem: (payload) =>
-        (
-          T.VersionedHostThemeSubscribeItem.dec(payload) as {
-            tag: "V1";
-            value: T.HostThemeSubscribeItem;
-          } & T.VersionedHostThemeSubscribeItem
-        ).value,
-    });
-  }
-}
-
-/**
- * Raw JSON-RPC passthrough to a chain node.
- *
- * Default methods return [`CallError::HostFailure`] with an `unavailable`
- * reason. Hosts override only the methods they actually support.
- */
-export class JsonRpcClient {
-  constructor(private readonly transport: TrUApiTransport) {}
-
-  /** Send a JSON-RPC message to the chain identified by genesis hash. */
-  async jsonrpcMessageSend(
-    request: T.HostJsonrpcMessageSendRequest,
-  ): Promise<Result<undefined, T.GenericError>> {
-    const result = await this.transport.request<
-      S.ResultPayload<undefined, T.GenericError>
-    >({
-      ids: W.HOST_JSONRPC_MESSAGE_SEND,
-      payload: T.VersionedHostJsonrpcMessageSendRequest.enc({
-        tag: "V1",
-        value: request,
-      }),
-      decodeResponse: (payload) =>
-        S.indexedTaggedUnion({
-          V1: [0, S.Result(S._void, T.GenericError)] as const,
-        }).dec(payload).value,
-    });
-    return result.success ? ok(result.value) : err(result.value);
-  }
-
-  /** Subscribe to inbound JSON-RPC messages for a chain. */
-  jsonrpcMessageSubscribe({
-    request,
-  }: {
-    request: T.HostJsonrpcMessageSubscribeRequest;
-  }): ObservableLike<T.HostJsonrpcMessageSubscribeItem> {
-    return createObservable<T.HostJsonrpcMessageSubscribeItem>({
-      transport: this.transport,
-      ids: W.HOST_JSONRPC_MESSAGE_SUBSCRIBE,
-      payload: T.VersionedHostJsonrpcMessageSubscribeRequest.enc({
-        tag: "V1",
-        value: request,
-      }),
-      decodeItem: (payload) =>
-        (
-          T.VersionedHostJsonrpcMessageSubscribeItem.dec(payload) as {
-            tag: "V1";
-            value: T.HostJsonrpcMessageSubscribeItem;
-          } & T.VersionedHostJsonrpcMessageSubscribeItem
         ).value,
     });
   }
@@ -1041,57 +966,6 @@ export class PaymentClient {
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
           V1: [0, S.Result(S._void, T.HostPaymentTopUpError)] as const,
-        }).dec(payload).value,
-    });
-    return result.success ? ok(result.value) : err(result.value);
-  }
-}
-
-/** Device and remote permission prompts. */
-export class PermissionsClient {
-  constructor(private readonly transport: TrUApiTransport) {}
-
-  /** Request a device-capability permission from the user. */
-  async devicePermission(
-    request: T.HostDevicePermissionRequest,
-  ): Promise<Result<T.HostDevicePermissionResponse, T.GenericError>> {
-    const result = await this.transport.request<
-      S.ResultPayload<T.HostDevicePermissionResponse, T.GenericError>
-    >({
-      ids: W.HOST_DEVICE_PERMISSION,
-      payload: T.VersionedHostDevicePermissionRequest.enc({
-        tag: "V1",
-        value: request,
-      }),
-      decodeResponse: (payload) =>
-        S.indexedTaggedUnion({
-          V1: [
-            0,
-            S.Result(T.HostDevicePermissionResponse, T.GenericError),
-          ] as const,
-        }).dec(payload).value,
-    });
-    return result.success ? ok(result.value) : err(result.value);
-  }
-
-  /** Request one or more remote-operation permissions. */
-  async permission(
-    request: T.RemotePermissionRequest,
-  ): Promise<Result<T.RemotePermissionResponse, T.GenericError>> {
-    const result = await this.transport.request<
-      S.ResultPayload<T.RemotePermissionResponse, T.GenericError>
-    >({
-      ids: W.REMOTE_PERMISSION,
-      payload: T.VersionedRemotePermissionRequest.enc({
-        tag: "V1",
-        value: request,
-      }),
-      decodeResponse: (payload) =>
-        S.indexedTaggedUnion({
-          V1: [
-            0,
-            S.Result(T.RemotePermissionResponse, T.GenericError),
-          ] as const,
         }).dec(payload).value,
     });
     return result.success ? ok(result.value) : err(result.value);
@@ -1584,18 +1458,105 @@ export class SystemClient {
     });
     return result.success ? ok(result.value) : err(result.value);
   }
+
+  /** Request a device-capability permission from the user. */
+  async devicePermission(
+    request: T.HostDevicePermissionRequest,
+  ): Promise<Result<T.HostDevicePermissionResponse, T.GenericError>> {
+    const result = await this.transport.request<
+      S.ResultPayload<T.HostDevicePermissionResponse, T.GenericError>
+    >({
+      ids: W.HOST_DEVICE_PERMISSION,
+      payload: T.VersionedHostDevicePermissionRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V1: [
+            0,
+            S.Result(T.HostDevicePermissionResponse, T.GenericError),
+          ] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
+  }
+
+  /** Request one or more remote-operation permissions. */
+  async permission(
+    request: T.RemotePermissionRequest,
+  ): Promise<Result<T.RemotePermissionResponse, T.GenericError>> {
+    const result = await this.transport.request<
+      S.ResultPayload<T.RemotePermissionResponse, T.GenericError>
+    >({
+      ids: W.REMOTE_PERMISSION,
+      payload: T.VersionedRemotePermissionRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V1: [
+            0,
+            S.Result(T.RemotePermissionResponse, T.GenericError),
+          ] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
+  }
+
+  /** Subscribe to host theme changes (light/dark). */
+  themeSubscribe(): ObservableLike<T.HostThemeSubscribeItem> {
+    return createObservable<T.HostThemeSubscribeItem>({
+      transport: this.transport,
+      ids: W.HOST_THEME_SUBSCRIBE,
+      payload: S.indexedTaggedUnion({ V1: [0, S._void] as const }).enc({
+        tag: "V1",
+        value: undefined,
+      }),
+      decodeItem: (payload) =>
+        (
+          T.VersionedHostThemeSubscribeItem.dec(payload) as {
+            tag: "V1";
+            value: T.HostThemeSubscribeItem;
+          } & T.VersionedHostThemeSubscribeItem
+        ).value,
+    });
+  }
+
+  /**
+   * Derive 32 bytes of entropy from the user's root BIP-39 entropy for the
+   * given key.
+   */
+  async deriveEntropy(
+    request: T.HostDeriveEntropyRequest,
+  ): Promise<Result<T.HostDeriveEntropyResponse, T.HostDeriveEntropyError>> {
+    const result = await this.transport.request<
+      S.ResultPayload<T.HostDeriveEntropyResponse, T.HostDeriveEntropyError>
+    >({
+      ids: W.HOST_DERIVE_ENTROPY,
+      payload: T.VersionedHostDeriveEntropyRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V1: [
+            0,
+            S.Result(T.HostDeriveEntropyResponse, T.HostDeriveEntropyError),
+          ] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
+  }
 }
 
 export interface TrUApiClient {
   readonly accountManagement: AccountManagementClient;
   readonly chainInteraction: ChainInteractionClient;
   readonly chat: ChatClient;
-  readonly entropyDerivation: EntropyDerivationClient;
-  readonly hostTheme: HostThemeClient;
-  readonly jsonRpc: JsonRpcClient;
   readonly localStorage: LocalStorageClient;
   readonly payment: PaymentClient;
-  readonly permissions: PermissionsClient;
   readonly preimage: PreimageClient;
   readonly resourceAllocation: ResourceAllocationClient;
   readonly signing: SigningClient;
@@ -1631,12 +1592,8 @@ export function createClient(
     accountManagement: new AccountManagementClient(versionedTransport),
     chainInteraction: new ChainInteractionClient(versionedTransport),
     chat: new ChatClient(versionedTransport),
-    entropyDerivation: new EntropyDerivationClient(versionedTransport),
-    hostTheme: new HostThemeClient(versionedTransport),
-    jsonRpc: new JsonRpcClient(versionedTransport),
     localStorage: new LocalStorageClient(versionedTransport),
     payment: new PaymentClient(versionedTransport),
-    permissions: new PermissionsClient(versionedTransport),
     preimage: new PreimageClient(versionedTransport),
     resourceAllocation: new ResourceAllocationClient(versionedTransport),
     signing: new SigningClient(versionedTransport),

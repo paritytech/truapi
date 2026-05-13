@@ -1,13 +1,16 @@
 //! Unified [`System`] trait.
 
 use crate::versioned::system::{
+    HostDeriveEntropyError, HostDeriveEntropyRequest, HostDeriveEntropyResponse,
+    HostDevicePermissionError, HostDevicePermissionRequest, HostDevicePermissionResponse,
     HostFeatureSupportedError, HostFeatureSupportedRequest, HostFeatureSupportedResponse,
     HostHandshakeError, HostHandshakeRequest, HostHandshakeResponse, HostNavigateToError,
     HostNavigateToRequest, HostNavigateToResponse, HostPushNotificationError,
-    HostPushNotificationRequest, HostPushNotificationResponse,
+    HostPushNotificationRequest, HostPushNotificationResponse, HostThemeSubscribeItem,
+    RemotePermissionError, RemotePermissionRequest, RemotePermissionResponse,
 };
 use crate::wire;
-use crate::{CallContext, CallError};
+use crate::{CallContext, CallError, Subscription};
 
 /// General-purpose TrUAPI methods for feature detection, navigation, and
 /// notifications.
@@ -114,4 +117,105 @@ pub trait System: Send + Sync {
         cx: &CallContext,
         request: HostNavigateToRequest,
     ) -> Result<HostNavigateToResponse, CallError<HostNavigateToError>>;
+
+    /// Request a device-capability permission from the user.
+    ///
+    /// ```truapi-client-example
+    /// import {
+    ///   type Client,
+    ///   type HostDevicePermissionResponse,
+    /// } from "@parity/truapi";
+    ///
+    /// export async function requestCameraPermission(
+    ///   truapi: Client,
+    /// ): Promise<HostDevicePermissionResponse> {
+    ///   const result = await truapi.system.devicePermission("Camera");
+    ///
+    ///   if (result.isErr()) throw result.error;
+    ///   return result.value;
+    /// }
+    /// ```
+    #[wire(request_id = 8)]
+    async fn host_device_permission(
+        &self,
+        cx: &CallContext,
+        request: HostDevicePermissionRequest,
+    ) -> Result<HostDevicePermissionResponse, CallError<HostDevicePermissionError>>;
+
+    /// Request one or more remote-operation permissions.
+    ///
+    /// ```truapi-client-example
+    /// import {
+    ///   type Client,
+    ///   type RemotePermissionResponse,
+    /// } from "@parity/truapi";
+    ///
+    /// export async function requestRemotePermission(
+    ///   truapi: Client,
+    /// ): Promise<RemotePermissionResponse> {
+    ///   const result = await truapi.system.permission({
+    ///     permissions: [{ tag: "Remote", value: { domains: ["api.example.com"] } }],
+    ///   });
+    ///
+    ///   if (result.isErr()) throw result.error;
+    ///   return result.value;
+    /// }
+    /// ```
+    #[wire(request_id = 10)]
+    async fn remote_permission(
+        &self,
+        cx: &CallContext,
+        request: RemotePermissionRequest,
+    ) -> Result<RemotePermissionResponse, CallError<RemotePermissionError>>;
+
+    /// Subscribe to host theme changes (light/dark).
+    ///
+    /// ```truapi-client-example
+    /// import {
+    ///   type Client,
+    ///   type Subscription,
+    ///   type HostThemeSubscribeItem,
+    /// } from "@parity/truapi";
+    ///
+    /// export function watchTheme(truapi: Client): Subscription {
+    ///   return truapi.system.themeSubscribe().subscribe({
+    ///     next: (theme: HostThemeSubscribeItem) => console.log(theme),
+    ///     error: (error: Error) => console.error(error),
+    ///     complete: () => console.log("completed"),
+    ///   });
+    /// }
+    /// ```
+    #[wire(start_id = 104)]
+    async fn host_theme_subscribe(&self, _cx: &CallContext) -> Subscription<HostThemeSubscribeItem> {
+        Subscription::empty()
+    }
+
+    /// Derive 32 bytes of entropy from the user's root BIP-39 entropy for the
+    /// given key.
+    ///
+    /// ```truapi-client-example
+    /// import {
+    ///   type Client,
+    ///   type HostDeriveEntropyResponse,
+    /// } from "@parity/truapi";
+    ///
+    /// export async function deriveEntropy(
+    ///   truapi: Client,
+    /// ): Promise<HostDeriveEntropyResponse> {
+    ///   const result = await truapi.system.deriveEntropy({
+    ///     context: "0x70726f647563742d6b6579",
+    ///   });
+    ///
+    ///   if (result.isErr()) throw result.error;
+    ///   return result.value;
+    /// }
+    /// ```
+    #[wire(request_id = 108)]
+    async fn host_derive_entropy(
+        &self,
+        _cx: &CallContext,
+        _request: HostDeriveEntropyRequest,
+    ) -> Result<HostDeriveEntropyResponse, CallError<HostDeriveEntropyError>> {
+        Err(CallError::unavailable())
+    }
 }

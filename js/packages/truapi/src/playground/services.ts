@@ -61,6 +61,23 @@ export const services: ServiceInfo[] = [
     name: "Chain Interaction",
     methods: [
       {
+        name: "host_jsonrpc_message_send",
+        type: "unary",
+        description:
+          "Send a JSON-RPC message to the chain identified by genesis hash.",
+        requestDescription: "HostJsonrpcMessageSendRequest",
+        defaultRequest:
+          '{\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "message": "{\\"jsonrpc\\":\\"2.0\\",\\"id\\":1,\\"method\\":\\"system_name\\",\\"params\\":[]}"\n}',
+      },
+      {
+        name: "host_jsonrpc_message_subscribe",
+        type: "subscription",
+        description: "Subscribe to inbound JSON-RPC messages for a chain.",
+        requestDescription: "HostJsonrpcMessageSubscribeRequest",
+        defaultRequest:
+          '{\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2"\n}',
+      },
+      {
         name: "remote_chain_head_follow_subscribe",
         type: "subscription",
         description: "Follow the chain head and receive block events.",
@@ -217,52 +234,6 @@ export const services: ServiceInfo[] = [
     ],
   },
   {
-    name: "Entropy Derivation",
-    methods: [
-      {
-        name: "host_derive_entropy",
-        type: "unary",
-        description:
-          "Derive 32 bytes of entropy from the user's root BIP-39 entropy for the\ngiven key.",
-        requestDescription: "HostDeriveEntropyRequest",
-        defaultRequest: '{\n  "context": "0x70726f647563742d6b6579"\n}',
-      },
-    ],
-  },
-  {
-    name: "Host Theme",
-    methods: [
-      {
-        name: "host_theme_subscribe",
-        type: "subscription",
-        description: "Subscribe to host theme changes (light/dark).",
-        noParams: true,
-      },
-    ],
-  },
-  {
-    name: "JSON-RPC",
-    methods: [
-      {
-        name: "host_jsonrpc_message_send",
-        type: "unary",
-        description:
-          "Send a JSON-RPC message to the chain identified by genesis hash.",
-        requestDescription: "HostJsonrpcMessageSendRequest",
-        defaultRequest:
-          '{\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "message": "{\\"jsonrpc\\":\\"2.0\\",\\"id\\":1,\\"method\\":\\"system_name\\",\\"params\\":[]}"\n}',
-      },
-      {
-        name: "host_jsonrpc_message_subscribe",
-        type: "subscription",
-        description: "Subscribe to inbound JSON-RPC messages for a chain.",
-        requestDescription: "HostJsonrpcMessageSubscribeRequest",
-        defaultRequest:
-          '{\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2"\n}',
-      },
-    ],
-  },
-  {
     name: "Local Storage",
     methods: [
       {
@@ -320,27 +291,6 @@ export const services: ServiceInfo[] = [
           "Subscribe to payment lifecycle updates for a specific payment.",
         requestDescription: "HostPaymentStatusSubscribeRequest",
         defaultRequest: '{\n  "paymentId": "payment-id"\n}',
-      },
-    ],
-  },
-  {
-    name: "Permissions",
-    methods: [
-      {
-        name: "host_device_permission",
-        type: "unary",
-        description: "Request a device-capability permission from the user.",
-        requestDescription:
-          "Enum values: Notifications / Camera / Microphone / Bluetooth / NFC / Location / Clipboard / OpenUrl / Biometrics",
-        defaultRequest: '"Camera"',
-      },
-      {
-        name: "remote_permission",
-        type: "unary",
-        description: "Request one or more remote-operation permissions.",
-        requestDescription: "RemotePermissionRequest",
-        defaultRequest:
-          '{\n  "permissions": [\n    {\n      "tag": "Remote",\n      "value": {\n        "domains": [\n          "api.example.com"\n        ]\n      }\n    }\n  ]\n}',
       },
     ],
   },
@@ -500,6 +450,36 @@ export const services: ServiceInfo[] = [
         description: "Requests the host to open a URL.",
         requestDescription: "HostNavigateToRequest",
         defaultRequest: '{\n  "url": "https://example.com"\n}',
+      },
+      {
+        name: "host_device_permission",
+        type: "unary",
+        description: "Request a device-capability permission from the user.",
+        requestDescription:
+          "Enum values: Notifications / Camera / Microphone / Bluetooth / NFC / Location / Clipboard / OpenUrl / Biometrics",
+        defaultRequest: '"Camera"',
+      },
+      {
+        name: "remote_permission",
+        type: "unary",
+        description: "Request one or more remote-operation permissions.",
+        requestDescription: "RemotePermissionRequest",
+        defaultRequest:
+          '{\n  "permissions": [\n    {\n      "tag": "Remote",\n      "value": {\n        "domains": [\n          "api.example.com"\n        ]\n      }\n    }\n  ]\n}',
+      },
+      {
+        name: "host_theme_subscribe",
+        type: "subscription",
+        description: "Subscribe to host theme changes (light/dark).",
+        noParams: true,
+      },
+      {
+        name: "host_derive_entropy",
+        type: "unary",
+        description:
+          "Derive 32 bytes of entropy from the user's root BIP-39 entropy for the\ngiven key.",
+        requestDescription: "HostDeriveEntropyRequest",
+        defaultRequest: '{\n  "context": "0x70726f647563742d6b6579"\n}',
       },
     ],
   },

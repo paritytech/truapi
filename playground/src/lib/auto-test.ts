@@ -14,8 +14,8 @@ export interface TestEntry {
 export const EXCLUDED_METHODS = new Set([
   "System/host_navigate_to",
   "System/host_push_notification",
-  "Permissions/host_device_permission",
-  "Permissions/remote_permission",
+  "System/host_device_permission",
+  "System/remote_permission",
   "Signing/host_sign_payload",
   "Signing/host_sign_raw",
   "Signing/host_create_transaction",
@@ -117,8 +117,8 @@ async function testSubscription(
 // fields arrive at the bridge as { bytes: "0x..." } envelopes.
 async function fetchStatementProof(services: ServiceInfo[]): Promise<unknown> {
   const proofMethod = services
-    .find((s) => s.name === STATEMENT_STORE_SERVICE)
-    ?.methods.find((m) => m.name === STATEMENT_CREATE_PROOF_METHOD);
+    .find((s: ServiceInfo) => s.name === STATEMENT_STORE_SERVICE)
+    ?.methods.find((m: MethodInfo) => m.name === STATEMENT_CREATE_PROOF_METHOD);
   if (!proofMethod) return undefined;
 
   const binding = getMethodBinding(
@@ -213,8 +213,8 @@ export async function runSingleTest(
   onUpdate: (id: string, entry: TestEntry) => void,
   requestOverride?: string,
 ): Promise<void> {
-  const svc = services.find((s) => s.name === serviceName);
-  const method = svc?.methods.find((m) => m.name === methodName);
+  const svc = services.find((s: ServiceInfo) => s.name === serviceName);
+  const method = svc?.methods.find((m: MethodInfo) => m.name === methodName);
   if (!svc || !method) return;
   // Empty exclude set so a manual retry overrides the disruptive-method filter.
   await runOne({

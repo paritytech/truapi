@@ -3,6 +3,11 @@
 use crate::v01;
 
 versioned_type! {
+    pub enum HostJsonrpcMessageSendRequest { V1 => v01::HostJsonrpcMessageSendRequest }
+    pub enum HostJsonrpcMessageSendResponse { V1 }
+    pub enum HostJsonrpcMessageSendError { V1 => v01::GenericError }
+    pub enum HostJsonrpcMessageSubscribeRequest { V1 => v01::HostJsonrpcMessageSubscribeRequest }
+    pub enum HostJsonrpcMessageSubscribeItem { V1 => v01::HostJsonrpcMessageSubscribeItem }
     pub enum RemoteChainHeadFollowRequest { V1 => v01::RemoteChainHeadFollowRequest }
     pub enum RemoteChainHeadFollowItem { V1 => v01::RemoteChainHeadFollowItem }
     pub enum RemoteChainHeadHeaderRequest { V1 => v01::RemoteChainHeadHeaderRequest }

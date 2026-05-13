@@ -2398,7 +2398,7 @@ export const VersionedRemoteChainTransactionStopResponse: S.Codec<VersionedRemot
 /**
  * A single remote-operation permission entry.
  *
- * The [`crate::api::Permissions::remote_permission`] method accepts a
+ * The [`crate::api::System::remote_permission`] method accepts a
  * `Vec<RemotePermission>` so products can batch multiple permission requests
  * into a single prompt.
  *
@@ -3481,7 +3481,7 @@ export const HostCreateTransactionWithLegacyAccountResponse: S.Codec<HostCreateT
   );
 
 /**
- * Error from [`crate::api::EntropyDerivation::host_derive_entropy`].
+ * Error from [`crate::api::System::host_derive_entropy`].
  *
  * Under normal operation the function always succeeds; `Unknown` indicates an
  * unrecoverable internal host error.
@@ -3630,16 +3630,11 @@ export const HostGetUserIdError: S.Codec<HostGetUserIdError> = S.lazy(
 export interface HostGetUserIdResponse {
   /** The user's primary DotNS username. */
   primaryUsername: string;
-  /** The user's primary public key. */
-  publicKey: HexString;
 }
 
 export const HostGetUserIdResponse: S.Codec<HostGetUserIdResponse> = S.lazy(
   (): S.Codec<HostGetUserIdResponse> =>
-    S.Struct({
-      primaryUsername: S.str,
-      publicKey: S.Hex(),
-    }) as S.Codec<HostGetUserIdResponse>,
+    S.Struct({ primaryUsername: S.str }) as S.Codec<HostGetUserIdResponse>,
 );
 
 /**

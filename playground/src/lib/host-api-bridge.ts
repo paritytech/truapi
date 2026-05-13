@@ -46,14 +46,10 @@ const methodMap: Record<string, [keyof TrUApiClient, string, boolean]> = {
     "pushNotification",
     false,
   ],
-
-  // Permissions
-  "Permissions/host_device_permission": [
-    "permissions",
-    "devicePermission",
-    false,
-  ],
-  "Permissions/remote_permission": ["permissions", "permission", false],
+  "System/host_device_permission": ["system", "devicePermission", false],
+  "System/remote_permission": ["system", "permission", false],
+  "System/host_theme_subscribe": ["system", "themeSubscribe", true],
+  "System/host_derive_entropy": ["system", "deriveEntropy", false],
 
   // Local Storage
   "Local Storage/host_local_storage_read": [
@@ -156,6 +152,16 @@ const methodMap: Record<string, [keyof TrUApiClient, string, boolean]> = {
     "chainHeadFollowSubscribe",
     true,
   ],
+  "Chain Interaction/host_jsonrpc_message_send": [
+    "chainInteraction",
+    "jsonrpcMessageSend",
+    false,
+  ],
+  "Chain Interaction/host_jsonrpc_message_subscribe": [
+    "chainInteraction",
+    "jsonrpcMessageSubscribe",
+    true,
+  ],
   "Chain Interaction/remote_chain_head_header": [
     "chainInteraction",
     "chainHeadHeader",
@@ -229,13 +235,6 @@ const methodMap: Record<string, [keyof TrUApiClient, string, boolean]> = {
     "payment",
     "paymentStatusSubscribe",
     true,
-  ],
-
-  // Entropy
-  "Entropy Derivation/host_derive_entropy": [
-    "entropyDerivation",
-    "deriveEntropy",
-    false,
   ],
 };
 

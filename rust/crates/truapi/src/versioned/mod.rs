@@ -95,17 +95,13 @@ macro_rules! versioned_type {
 pub mod account;
 pub mod chain;
 pub mod chat;
-pub mod entropy;
-pub mod jsonrpc;
 pub mod local_storage;
 pub mod payment;
-pub mod permissions;
 pub mod preimage;
 pub mod resource_allocation;
 pub mod signing;
 pub mod statement_store;
 pub mod system;
-pub mod theme;
 
 #[cfg(test)]
 mod tests {
@@ -113,7 +109,7 @@ mod tests {
 
     #[test]
     fn v1_discriminant_is_zero() {
-        let v1 = super::permissions::HostDevicePermissionRequest::V1(
+        let v1 = super::system::HostDevicePermissionRequest::V1(
             crate::v01::HostDevicePermissionRequest::Camera,
         );
         assert_eq!(v1.encode()[0], 0, "V1 must encode discriminant 0");

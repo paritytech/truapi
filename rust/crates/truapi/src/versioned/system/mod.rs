@@ -15,4 +15,14 @@ versioned_type! {
     pub enum HostPushNotificationRequest { V1 => v01::HostPushNotificationRequest }
     pub enum HostPushNotificationResponse { V1 }
     pub enum HostPushNotificationError { V1 => v01::GenericError }
+    pub enum HostDevicePermissionRequest { V1 => v01::HostDevicePermissionRequest }
+    pub enum HostDevicePermissionResponse { V1 => v01::HostDevicePermissionResponse }
+    pub enum HostDevicePermissionError { V1 => v01::GenericError }
+    pub enum RemotePermissionRequest { V1 => v01::RemotePermissionRequest }
+    pub enum RemotePermissionResponse { V1 => v01::RemotePermissionResponse }
+    pub enum RemotePermissionError { V1 => v01::GenericError }
+    pub enum HostThemeSubscribeItem { V1 => v01::HostThemeSubscribeItem }
+    pub enum HostDeriveEntropyRequest { V1 => v01::HostDeriveEntropyRequest }
+    pub enum HostDeriveEntropyResponse { V1 => v01::HostDeriveEntropyResponse }
+    pub enum HostDeriveEntropyError { V1 => v01::HostDeriveEntropyError }
 }

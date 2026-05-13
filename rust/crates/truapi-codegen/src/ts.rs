@@ -319,6 +319,8 @@ fn generate_index() -> String {
     "export * from './types.js';\nexport * from './client.js';\n".to_string()
 }
 
+
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExpandedWireIds {
     Request {
@@ -365,22 +367,6 @@ impl ExpandedWireIds {
     }
 }
 
-fn wire_const_name(method_name: &str) -> String {
-    method_name.to_case(Case::UpperSnake)
-}
-
-fn ts_example_file_stem(name: &str) -> String {
-    name.to_case(Case::Kebab)
-}
-
-fn method_wire_sort_id(method: &MethodDef) -> u8 {
-    method
-        .wire
-        .request_id
-        .or(method.wire.start_id)
-        .unwrap_or(u8::MAX)
-}
-
 fn trim_doc_lines(lines: &[&str]) -> Option<String> {
     let mut start = 0;
     let mut end = lines.len();
@@ -404,6 +390,22 @@ fn trim_doc_lines(lines: &[&str]) -> Option<String> {
 
 fn ts_string_literal(value: &str) -> String {
     serde_json::to_string(value).expect("string serialization is infallible")
+}
+
+fn wire_const_name(method_name: &str) -> String {
+    method_name.to_case(Case::UpperSnake)
+}
+
+fn ts_example_file_stem(name: &str) -> String {
+    name.to_case(Case::Kebab)
+}
+
+fn method_wire_sort_id(method: &MethodDef) -> u8 {
+    method
+        .wire
+        .request_id
+        .or(method.wire.start_id)
+        .unwrap_or(u8::MAX)
 }
 
 fn generate_wire_table(api: &ApiDefinition, target_version: u32) -> Result<String> {

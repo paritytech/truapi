@@ -5,7 +5,7 @@ import { type Client, type RemotePermissionResponse } from "@parity/truapi";
 export async function requestRemotePermission(
   truapi: Client,
 ): Promise<RemotePermissionResponse> {
-  const result = await truapi.permissions.permission({
+  const result = await truapi.system.permission({
     permissions: [{ tag: "Remote", value: { domains: ["api.example.com"] } }],
   });
 

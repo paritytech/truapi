@@ -5,7 +5,7 @@ import { type Client, type HostDevicePermissionResponse } from "@parity/truapi";
 export async function requestCameraPermission(
   truapi: Client,
 ): Promise<HostDevicePermissionResponse> {
-  const result = await truapi.permissions.devicePermission("Camera");
+  const result = await truapi.system.devicePermission("Camera");
 
   if (result.isErr()) throw result.error;
   return result.value;

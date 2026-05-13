@@ -5,7 +5,7 @@ import { type Client, type HostDeriveEntropyResponse } from "@parity/truapi";
 export async function deriveEntropy(
   truapi: Client,
 ): Promise<HostDeriveEntropyResponse> {
-  const result = await truapi.entropyDerivation.deriveEntropy({
+  const result = await truapi.system.deriveEntropy({
     context: "0x70726f647563742d6b6579",
   });
 

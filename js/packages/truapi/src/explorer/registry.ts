@@ -42,6 +42,8 @@ export const versions: ExplorerVersion[] = [
           "remote_chain_spec_properties",
           "remote_chain_transaction_broadcast",
           "remote_chain_transaction_stop",
+          "host_jsonrpc_message_send",
+          "host_jsonrpc_message_subscribe",
         ],
       },
       {
@@ -56,30 +58,6 @@ export const versions: ExplorerVersion[] = [
           "host_chat_post_message",
           "host_chat_action_subscribe",
           "product_chat_custom_message_render_subscribe",
-        ],
-      },
-      {
-        id: "entropy-derivation",
-        name: "Entropy Derivation",
-        description:
-          "Deterministic entropy derivation.\n\nThe default body returns [`CallError::HostFailure`] with an `unavailable`\nreason; hosts override only if they can derive entropy.",
-        methods: ["host_derive_entropy"],
-      },
-      {
-        id: "host-theme",
-        name: "Host Theme",
-        description:
-          "Host UI theme subscription.\n\nThe default body returns an empty stream; hosts override to push theme\nupdates.",
-        methods: ["host_theme_subscribe"],
-      },
-      {
-        id: "json-rpc",
-        name: "JSON-RPC",
-        description:
-          "Raw JSON-RPC passthrough to a chain node.\n\nDefault methods return [`CallError::HostFailure`] with an `unavailable`\nreason. Hosts override only the methods they actually support.",
-        methods: [
-          "host_jsonrpc_message_send",
-          "host_jsonrpc_message_subscribe",
         ],
       },
       {
@@ -103,12 +81,6 @@ export const versions: ExplorerVersion[] = [
           "host_payment_status_subscribe",
           "host_payment_top_up",
         ],
-      },
-      {
-        id: "permissions",
-        name: "Permissions",
-        description: "Device and remote permission prompts.",
-        methods: ["host_device_permission", "remote_permission"],
       },
       {
         id: "preimage",
@@ -160,6 +132,10 @@ export const versions: ExplorerVersion[] = [
           "host_feature_supported",
           "host_push_notification",
           "host_navigate_to",
+          "host_device_permission",
+          "remote_permission",
+          "host_theme_subscribe",
+          "host_derive_entropy",
         ],
       },
     ],
@@ -223,8 +199,8 @@ export const versions: ExplorerVersion[] = [
       {
         id: "host_device_permission",
         name: "host_device_permission",
-        groupId: "permissions",
-        groupName: "Permissions",
+        groupId: "system",
+        groupName: "System",
         wireId: 8,
         pattern: "unary",
         request: "HostDevicePermissionRequest",
@@ -232,13 +208,13 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Request a device-capability permission from the user.",
         usageExample:
-          'import {\n  type Client,\n  type HostDevicePermissionResponse,\n} from "@parity/truapi";\n\nexport async function requestCameraPermission(\n  truapi: Client,\n): Promise<HostDevicePermissionResponse> {\n  const result = await truapi.permissions.devicePermission("Camera");\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostDevicePermissionResponse,\n} from "@parity/truapi";\n\nexport async function requestCameraPermission(\n  truapi: Client,\n): Promise<HostDevicePermissionResponse> {\n  const result = await truapi.system.devicePermission("Camera");\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_permission",
         name: "remote_permission",
-        groupId: "permissions",
-        groupName: "Permissions",
+        groupId: "system",
+        groupName: "System",
         wireId: 10,
         pattern: "unary",
         request: "RemotePermissionRequest",
@@ -246,7 +222,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Request one or more remote-operation permissions.",
         usageExample:
-          'import {\n  type Client,\n  type RemotePermissionResponse,\n} from "@parity/truapi";\n\nexport async function requestRemotePermission(\n  truapi: Client,\n): Promise<RemotePermissionResponse> {\n  const result = await truapi.permissions.permission({\n    permissions: [{ tag: "Remote", value: { domains: ["api.example.com"] } }],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type RemotePermissionResponse,\n} from "@parity/truapi";\n\nexport async function requestRemotePermission(\n  truapi: Client,\n): Promise<RemotePermissionResponse> {\n  const result = await truapi.system.permission({\n    permissions: [{ tag: "Remote", value: { domains: ["api.example.com"] } }],\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_local_storage_read",
@@ -571,8 +547,8 @@ export const versions: ExplorerVersion[] = [
       {
         id: "host_jsonrpc_message_send",
         name: "host_jsonrpc_message_send",
-        groupId: "json-rpc",
-        groupName: "JSON-RPC",
+        groupId: "chain-interaction",
+        groupName: "Chain Interaction",
         wireId: 70,
         pattern: "unary",
         request: "HostJsonrpcMessageSendRequest",
@@ -581,20 +557,20 @@ export const versions: ExplorerVersion[] = [
         description:
           "Send a JSON-RPC message to the chain identified by genesis hash.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function sendJsonRpc(truapi: Client): Promise<void> {\n  const result = await truapi.jsonRpc.jsonrpcMessageSend({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    message: "{\\"jsonrpc\\":\\"2.0\\",\\"id\\":1,\\"method\\":\\"system_name\\",\\"params\\":[]}",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function sendJsonRpc(truapi: Client): Promise<void> {\n  const result = await truapi.chainInteraction.jsonrpcMessageSend({\n    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    message: "{\\"jsonrpc\\":\\"2.0\\",\\"id\\":1,\\"method\\":\\"system_name\\",\\"params\\":[]}",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_jsonrpc_message_subscribe",
         name: "host_jsonrpc_message_subscribe",
-        groupId: "json-rpc",
-        groupName: "JSON-RPC",
+        groupId: "chain-interaction",
+        groupName: "Chain Interaction",
         wireId: 72,
         pattern: "subscription",
         request: "HostJsonrpcMessageSubscribeRequest",
         response: "HostJsonrpcMessageSubscribeItem",
         description: "Subscribe to inbound JSON-RPC messages for a chain.",
         usageExample:
-          'import {\n  type Client,\n  type Subscription,\n  type HostJsonrpcMessageSubscribeItem,\n} from "@parity/truapi";\n\nexport function subscribeJsonRpc(truapi: Client): Subscription {\n  return truapi.jsonRpc\n    .jsonrpcMessageSubscribe({\n      request: {\n        genesisHash:\n          "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      },\n    })\n    .subscribe({\n      next: (item: HostJsonrpcMessageSubscribeItem) =>\n        console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
+          'import {\n  type Client,\n  type Subscription,\n  type HostJsonrpcMessageSubscribeItem,\n} from "@parity/truapi";\n\nexport function subscribeJsonRpc(truapi: Client): Subscription {\n  return truapi.chainInteraction\n    .jsonrpcMessageSubscribe({\n      request: {\n        genesisHash:\n          "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n      },\n    })\n    .subscribe({\n      next: (item: HostJsonrpcMessageSubscribeItem) =>\n        console.log(item),\n      error: (error: Error) => console.error(error),\n      complete: () => console.log("completed"),\n    });\n}',
       },
       {
         id: "remote_chain_head_follow_subscribe",
@@ -780,21 +756,21 @@ export const versions: ExplorerVersion[] = [
       {
         id: "host_theme_subscribe",
         name: "host_theme_subscribe",
-        groupId: "host-theme",
-        groupName: "Host Theme",
+        groupId: "system",
+        groupName: "System",
         wireId: 104,
         pattern: "subscription",
         request: "undefined",
         response: "HostThemeSubscribeItem",
         description: "Subscribe to host theme changes (light/dark).",
         usageExample:
-          'import {\n  type Client,\n  type Subscription,\n  type HostThemeSubscribeItem,\n} from "@parity/truapi";\n\nexport function watchTheme(truapi: Client): Subscription {\n  return truapi.hostTheme.themeSubscribe().subscribe({\n    next: (theme: HostThemeSubscribeItem) => console.log(theme),\n    error: (error: Error) => console.error(error),\n    complete: () => console.log("completed"),\n  });\n}',
+          'import {\n  type Client,\n  type Subscription,\n  type HostThemeSubscribeItem,\n} from "@parity/truapi";\n\nexport function watchTheme(truapi: Client): Subscription {\n  return truapi.system.themeSubscribe().subscribe({\n    next: (theme: HostThemeSubscribeItem) => console.log(theme),\n    error: (error: Error) => console.error(error),\n    complete: () => console.log("completed"),\n  });\n}',
       },
       {
         id: "host_derive_entropy",
         name: "host_derive_entropy",
-        groupId: "entropy-derivation",
-        groupName: "Entropy Derivation",
+        groupId: "system",
+        groupName: "System",
         wireId: 108,
         pattern: "unary",
         request: "HostDeriveEntropyRequest",
@@ -803,7 +779,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Derive 32 bytes of entropy from the user's root BIP-39 entropy for the\ngiven key.",
         usageExample:
-          'import {\n  type Client,\n  type HostDeriveEntropyResponse,\n} from "@parity/truapi";\n\nexport async function deriveEntropy(\n  truapi: Client,\n): Promise<HostDeriveEntropyResponse> {\n  const result = await truapi.entropyDerivation.deriveEntropy({\n    context: "0x70726f647563742d6b6579",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostDeriveEntropyResponse,\n} from "@parity/truapi";\n\nexport async function deriveEntropy(\n  truapi: Client,\n): Promise<HostDeriveEntropyResponse> {\n  const result = await truapi.system.deriveEntropy({\n    context: "0x70726f647563742d6b6579",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_get_user_id",
@@ -2370,7 +2346,7 @@ export const versions: ExplorerVersion[] = [
         category: "enum",
         definition: 'type HostDeriveEntropyError = "Unknown"',
         description:
-          "Error from [`crate::api::EntropyDerivation::host_derive_entropy`].\n\nUnder normal operation the function always succeeds; `Unknown` indicates an\nunrecoverable internal host error.\n\nSee [RFC 0007].\n\n[RFC 0007]: https://github.com/paritytech/triangle-js-sdks/pull/95",
+          "Error from [`crate::api::System::host_derive_entropy`].\n\nUnder normal operation the function always succeeds; `Unknown` indicates an\nunrecoverable internal host error.\n\nSee [RFC 0007].\n\n[RFC 0007]: https://github.com/paritytech/triangle-js-sdks/pull/95",
         source: "v0.1",
         variants: [
           {
@@ -2562,7 +2538,7 @@ export const versions: ExplorerVersion[] = [
         name: "HostGetUserIdResponse",
         category: "struct",
         definition:
-          "interface HostGetUserIdResponse { primaryUsername: string; publicKey: HexString }",
+          "interface HostGetUserIdResponse { primaryUsername: string }",
         description: "The user's primary DotNS account identity.",
         source: "v0.1",
         fields: [
@@ -2570,11 +2546,6 @@ export const versions: ExplorerVersion[] = [
             name: "primaryUsername",
             type: "string",
             description: "The user's primary DotNS username.",
-          },
-          {
-            name: "publicKey",
-            type: "HexString",
-            description: "The user's primary public key.",
           },
         ],
       },
@@ -4096,7 +4067,7 @@ export const versions: ExplorerVersion[] = [
         definition:
           'type RemotePermission = { tag: "Remote"; value: { domains: Array<string> } } | { tag: "WebRtc"; value?: undefined } | { tag: "ChainSubmit"; value?: undefined } | { tag: "PreimageSubmit"; value?: undefined } | { tag: "StatementSubmit"; value?: undefined }',
         description:
-          "A single remote-operation permission entry.\n\nThe [`crate::api::Permissions::remote_permission`] method accepts a\n`Vec<RemotePermission>` so products can batch multiple permission requests\ninto a single prompt.\n\nSee [RFC 0001] and [issue #64].\n\n[RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66\n[issue #64]: https://github.com/paritytech/triangle-js-sdks/issues/64",
+          "A single remote-operation permission entry.\n\nThe [`crate::api::System::remote_permission`] method accepts a\n`Vec<RemotePermission>` so products can batch multiple permission requests\ninto a single prompt.\n\nSee [RFC 0001] and [issue #64].\n\n[RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66\n[issue #64]: https://github.com/paritytech/triangle-js-sdks/issues/64",
         source: "shared",
         variants: [
           {

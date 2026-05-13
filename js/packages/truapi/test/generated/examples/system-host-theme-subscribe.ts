@@ -7,7 +7,7 @@ import {
 } from "@parity/truapi";
 
 export function watchTheme(truapi: Client): Subscription {
-  return truapi.hostTheme.themeSubscribe().subscribe({
+  return truapi.system.themeSubscribe().subscribe({
     next: (theme: HostThemeSubscribeItem) => console.log(theme),
     error: (error: Error) => console.error(error),
     complete: () => console.log("completed"),

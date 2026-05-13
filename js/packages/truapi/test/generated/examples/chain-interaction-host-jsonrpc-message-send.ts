@@ -3,7 +3,7 @@
 import { type Client } from "@parity/truapi";
 
 export async function sendJsonRpc(truapi: Client): Promise<void> {
-  const result = await truapi.jsonRpc.jsonrpcMessageSend({
+  const result = await truapi.chainInteraction.jsonrpcMessageSend({
     genesisHash:
       "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     message: '{"jsonrpc":"2.0","id":1,"method":"system_name","params":[]}',

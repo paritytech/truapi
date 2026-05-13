@@ -7,7 +7,7 @@ import {
 } from "@parity/truapi";
 
 export function subscribeJsonRpc(truapi: Client): Subscription {
-  return truapi.jsonRpc
+  return truapi.chainInteraction
     .jsonrpcMessageSubscribe({
       request: {
         genesisHash:
