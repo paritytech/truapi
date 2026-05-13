@@ -801,8 +801,7 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
             writeln!(out).unwrap();
         }
 
-        writeln!(out, "}}").unwrap();
-        writeln!(out).unwrap();
+        writeln!(out, "}}\n").unwrap();
     }
 
     writeln!(out, "export interface TrUApiClient {{").unwrap();
@@ -975,15 +974,11 @@ fn write_payload_field(
     wire_version: Option<u32>,
     value_expr: &str,
 ) {
-    if let Some(version) = wire_version {
-        writeln!(
-            out,
-            "{indent}payload: {codec_expr}.enc({{ tag: \"V{version}\", value: {value_expr} }}),"
-        )
-        .unwrap();
-    } else {
-        writeln!(out, "{indent}payload: {codec_expr}.enc({value_expr}),").unwrap();
-    }
+    let arg = match wire_version {
+        Some(version) => format!("{{ tag: \"V{version}\", value: {value_expr} }}"),
+        None => value_expr.to_string(),
+    };
+    writeln!(out, "{indent}payload: {codec_expr}.enc({arg}),").unwrap();
 }
 
 /// Lowered method payload: the TS param list, the inner value expression, and
@@ -1245,19 +1240,12 @@ fn emit_method(
                 payload.wire_version,
                 request_expr,
             );
-            if wire_version.is_some() {
-                writeln!(
-                    out,
-                    "      decodeResponse: (payload) => {response_codec}.dec(payload).value,"
-                )
-                .unwrap();
-            } else {
-                writeln!(
-                    out,
-                    "      decodeResponse: (payload) => {response_codec}.dec(payload),"
-                )
-                .unwrap();
-            }
+            let value_suffix = if wire_version.is_some() { ".value" } else { "" };
+            writeln!(
+                out,
+                "      decodeResponse: (payload) => {response_codec}.dec(payload){value_suffix},"
+            )
+            .unwrap();
             writedoc!(
                 out,
                 "
@@ -1411,9 +1399,7 @@ fn write_type_definition(
         TypeDefKind::Alias(type_ref) => {
             writeln!(
                 out,
-                "export type {}{} = {};",
-                emitted_name,
-                generic_decl,
+                "export type {emitted_name}{generic_decl} = {};",
                 ts_type(type_ref)?
             )
             .unwrap();
@@ -1424,15 +1410,9 @@ fn write_type_definition(
                 let (ts_name, optional) = ts_field_name(&field.name, &field.type_ref);
                 write_jsdoc(out, "  ", field.docs.as_deref());
                 if optional {
-                    writeln!(
-                        out,
-                        "  {}?: {};",
-                        ts_name,
-                        ts_inner_option(&field.type_ref)?
-                    )
-                    .unwrap();
+                    writeln!(out, "  {ts_name}?: {};", ts_inner_option(&field.type_ref)?).unwrap();
                 } else {
-                    writeln!(out, "  {}: {};", ts_name, ts_type(&field.type_ref)?).unwrap();
+                    writeln!(out, "  {ts_name}: {};", ts_type(&field.type_ref)?).unwrap();
                 }
             }
             writeln!(out, "}}").unwrap();
@@ -1440,9 +1420,7 @@ fn write_type_definition(
         TypeDefKind::TupleStruct(fields) => {
             writeln!(
                 out,
-                "export type {}{} = {};",
-                emitted_name,
-                generic_decl,
+                "export type {emitted_name}{generic_decl} = {};",
                 unnamed_fields_type(fields)?
             )
             .unwrap();
@@ -1451,9 +1429,7 @@ fn write_type_definition(
             if is_unit_only_enum(ty) {
                 writeln!(
                     out,
-                    "export type {}{} = {};",
-                    emitted_name,
-                    generic_decl,
+                    "export type {emitted_name}{generic_decl} = {};",
                     unit_enum_union_type(variants)?
                 )
                 .unwrap();
@@ -1521,13 +1497,10 @@ fn write_codec_definition(
                     })
                     .collect::<Result<Vec<_>>>()?,
             )?;
+            let type_name = top_level_type_name(&emitted_name, &ty.generic_params);
             writeln!(
                 out,
-                "export const {}: S.Codec<{}> = S.lazy((): S.Codec<{}> => {});",
-                emitted_name,
-                top_level_type_name(&emitted_name, &ty.generic_params),
-                top_level_type_name(&emitted_name, &ty.generic_params),
-                codec_expr
+                "export const {emitted_name}: S.Codec<{type_name}> = S.lazy((): S.Codec<{type_name}> => {codec_expr});",
             )
             .unwrap();
             return Ok(());
@@ -1537,13 +1510,10 @@ fn write_codec_definition(
             .map(String::as_str)
             .unwrap_or(&ty.name);
         let type_name = top_level_type_name(emitted_name, &ty.generic_params);
+        let codec_expr = type_codec_expr(ty, &type_name, &ctx)?;
         writeln!(
             out,
-            "export const {}: S.Codec<{}> = S.lazy((): S.Codec<{}> => {});",
-            emitted_name,
-            type_name,
-            type_name,
-            type_codec_expr(ty, &type_name, &ctx)?
+            "export const {emitted_name}: S.Codec<{type_name}> = S.lazy((): S.Codec<{type_name}> => {codec_expr});",
         )
         .unwrap();
         return Ok(());
@@ -1575,26 +1545,20 @@ fn write_codec_definition(
         )
         .unwrap();
     }
-    writeln!(
+    let function_name = aliases
+        .get(&ty.name)
+        .map(String::as_str)
+        .unwrap_or(&ty.name);
+    let codec_body = type_codec_expr(ty, &type_name, &ctx)?;
+    writedoc!(
         out,
-        "export function {}{}({}): S.Codec<{}> {{",
-        aliases
-            .get(&ty.name)
-            .map(String::as_str)
-            .unwrap_or(&ty.name),
-        generic_decl,
-        codec_params,
-        type_name
+        "
+        export function {function_name}{generic_decl}({codec_params}): S.Codec<{type_name}> {{
+          return S.lazy((): S.Codec<{type_name}> => {codec_body});
+        }}
+        ",
     )
     .unwrap();
-    writeln!(
-        out,
-        "  return S.lazy((): S.Codec<{}> => {});",
-        type_name,
-        type_codec_expr(ty, &type_name, &ctx)?
-    )
-    .unwrap();
-    writeln!(out, "}}").unwrap();
 
     Ok(())
 }
