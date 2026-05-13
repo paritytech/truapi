@@ -12,7 +12,6 @@ use crate::{CallContext, CallError, Subscription};
 /// Default methods return [`CallError::HostFailure`] with an `unavailable`
 /// reason. Hosts override only the methods they actually support.
 ///
-/// @truapi-display-name=JSON-RPC
 #[async_trait::async_trait]
 pub trait JsonRpc: Send + Sync {
     /// Send a JSON-RPC message to the chain identified by genesis hash.

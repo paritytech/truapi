@@ -93,7 +93,6 @@ macro_rules! versioned_type {
 }
 
 pub mod account;
-pub mod calls;
 pub mod chain;
 pub mod chat;
 pub mod entropy;
@@ -105,6 +104,7 @@ pub mod preimage;
 pub mod resource_allocation;
 pub mod signing;
 pub mod statement_store;
+pub mod system;
 pub mod theme;
 
 #[cfg(test)]
@@ -121,8 +121,8 @@ mod tests {
 
     #[test]
     fn unit_response_roundtrip() {
-        let original = super::calls::HostNavigateToResponse::V1;
-        let decoded = super::calls::HostNavigateToResponse::decode(&mut &original.encode()[..])
+        let original = super::system::HostNavigateToResponse::V1;
+        let decoded = super::system::HostNavigateToResponse::decode(&mut &original.encode()[..])
             .expect("decode");
         assert_eq!(original, decoded);
     }

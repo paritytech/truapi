@@ -3,7 +3,7 @@
 import { type Client } from "@parity/truapi";
 
 export async function supportsChain(truapi: Client): Promise<boolean> {
-  const result = await truapi.trUApiCalls.featureSupported({
+  const result = await truapi.system.featureSupported({
     tag: "Chain",
     value: {
       genesisHash:

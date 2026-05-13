@@ -19,7 +19,7 @@ const serviceFields = {
   "Resource Allocation": "resourceAllocation",
   Signing: "signing",
   "Statement Store": "statementStore",
-  "TrUAPI Calls": "trUApiCalls",
+  System: "system",
 };
 
 function methodField(methodName) {

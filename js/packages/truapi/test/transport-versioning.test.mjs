@@ -108,7 +108,7 @@ function handshakeResponsePayload(value) {
   const transport = createTransport(fixture.provider);
   const client = createClient(transport);
 
-  void client.trUApiCalls.handshake();
+  void client.system.handshake();
 
   const expectedPayload = T.VersionedHostHandshakeRequest.enc({
     tag: "V1",
@@ -130,7 +130,7 @@ function handshakeResponsePayload(value) {
   const transport = createTransport(fixture.provider);
   const client = createClient(transport);
 
-  const response = client.trUApiCalls.handshake();
+  const response = client.system.handshake();
   const frame = unwrap(
     encodeWireMessage({
       requestId: "p:1",

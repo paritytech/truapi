@@ -1,4 +1,4 @@
-//! Versioned wrappers for [`TrUApiCalls`](crate::api::TrUApiCalls) methods.
+//! Versioned wrappers for [`System`](crate::api::System) methods.
 
 use crate::v01;
 

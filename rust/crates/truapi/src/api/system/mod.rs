@@ -1,6 +1,6 @@
-//! Unified [`TrUApiCalls`] trait.
+//! Unified [`System`] trait.
 
-use crate::versioned::calls::{
+use crate::versioned::system::{
     HostFeatureSupportedError, HostFeatureSupportedRequest, HostFeatureSupportedResponse,
     HostHandshakeError, HostHandshakeRequest, HostHandshakeResponse, HostNavigateToError,
     HostNavigateToRequest, HostNavigateToResponse, HostPushNotificationError,
@@ -22,17 +22,15 @@ use crate::{CallContext, CallError};
 /// ever need one, annotate the trait method with the matching id and remove
 /// it from `RESERVED_WIRE_IDS`.
 ///
-/// @truapi-display-name=TrUAPI Calls
-///
 #[async_trait::async_trait]
-pub trait TrUApiCalls: Send + Sync {
+pub trait System: Send + Sync {
     /// Negotiates the wire codec version with the product.
     ///
     /// ```truapi-client-example
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function handshake(truapi: Client): Promise<void> {
-    ///   const result = await truapi.trUApiCalls.handshake();
+    ///   const result = await truapi.system.handshake();
     ///
     ///   if (result.isErr()) throw result.error;
     /// }
@@ -59,7 +57,7 @@ pub trait TrUApiCalls: Send + Sync {
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function supportsChain(truapi: Client): Promise<boolean> {
-    ///   const result = await truapi.trUApiCalls.featureSupported({
+    ///   const result = await truapi.system.featureSupported({
     ///     tag: "Chain",
     ///     value: {
     ///       genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
@@ -83,7 +81,7 @@ pub trait TrUApiCalls: Send + Sync {
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function pushNotification(truapi: Client): Promise<void> {
-    ///   const result = await truapi.trUApiCalls.pushNotification({
+    ///   const result = await truapi.system.pushNotification({
     ///     text: "Hello!",
     ///   });
     ///
@@ -103,7 +101,7 @@ pub trait TrUApiCalls: Send + Sync {
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function navigateToDocs(truapi: Client): Promise<void> {
-    ///   const result = await truapi.trUApiCalls.navigateTo({
+    ///   const result = await truapi.system.navigateTo({
     ///     url: "https://example.com",
     ///   });
     ///

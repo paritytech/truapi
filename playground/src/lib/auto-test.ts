@@ -12,8 +12,8 @@ export interface TestEntry {
 }
 
 export const EXCLUDED_METHODS = new Set([
-  "TrUAPI Calls/host_navigate_to",
-  "TrUAPI Calls/host_push_notification",
+  "System/host_navigate_to",
+  "System/host_push_notification",
   "Permissions/host_device_permission",
   "Permissions/remote_permission",
   "Signing/host_sign_payload",

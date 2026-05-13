@@ -33,16 +33,16 @@ export type MethodBinding =
 // Observable-like object whose `subscribe` call returns the transport-assigned
 // subscription id.
 const methodMap: Record<string, [keyof TrUApiClient, string, boolean]> = {
-  // TrUAPI Calls
-  "TrUAPI Calls/host_handshake": ["trUApiCalls", "handshake", false],
-  "TrUAPI Calls/host_feature_supported": [
-    "trUApiCalls",
+  // System
+  "System/host_handshake": ["system", "handshake", false],
+  "System/host_feature_supported": [
+    "system",
     "featureSupported",
     false,
   ],
-  "TrUAPI Calls/host_navigate_to": ["trUApiCalls", "navigateTo", false],
-  "TrUAPI Calls/host_push_notification": [
-    "trUApiCalls",
+  "System/host_navigate_to": ["system", "navigateTo", false],
+  "System/host_push_notification": [
+    "system",
     "pushNotification",
     false,
   ],

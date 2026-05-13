@@ -1501,7 +1501,7 @@ export class StatementStoreClient {
  * ever need one, annotate the trait method with the matching id and remove
  * it from `RESERVED_WIRE_IDS`.
  */
-export class TrUApiCallsClient {
+export class SystemClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
   /** Negotiates the wire codec version with the product. */
@@ -1600,7 +1600,7 @@ export interface TrUApiClient {
   readonly resourceAllocation: ResourceAllocationClient;
   readonly signing: SigningClient;
   readonly statementStore: StatementStoreClient;
-  readonly trUApiCalls: TrUApiCallsClient;
+  readonly system: SystemClient;
 }
 
 export type Client = TrUApiClient;
@@ -1641,6 +1641,6 @@ export function createClient(
     resourceAllocation: new ResourceAllocationClient(versionedTransport),
     signing: new SigningClient(versionedTransport),
     statementStore: new StatementStoreClient(versionedTransport),
-    trUApiCalls: new TrUApiCallsClient(versionedTransport),
+    system: new SystemClient(versionedTransport),
   };
 }

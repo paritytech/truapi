@@ -3,7 +3,7 @@
 import { type Client } from "@parity/truapi";
 
 export async function navigateToDocs(truapi: Client): Promise<void> {
-  const result = await truapi.trUApiCalls.navigateTo({
+  const result = await truapi.system.navigateTo({
     url: "https://example.com",
   });
 

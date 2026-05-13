@@ -1975,10 +1975,29 @@ fn codec_param_name(name: &str) -> String {
 }
 
 fn service_display_name(trait_def: &TraitDef) -> String {
-    trait_def
-        .display_name
-        .clone()
-        .unwrap_or_else(|| trait_def.name.to_case(Case::Title))
+    humanize_service_name(&trait_def.name)
+}
+
+fn humanize_service_name(name: &str) -> String {
+    let display_name = name
+        .to_case(Case::Title)
+        .split_whitespace()
+        .map(|word| match word {
+            "Api" => "API".to_string(),
+            "Id" => "ID".to_string(),
+            "Json" => "JSON".to_string(),
+            "Rpc" => "RPC".to_string(),
+            "Url" => "URL".to_string(),
+            _ => word.to_string(),
+        })
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    if display_name == "JSON RPC" {
+        "JSON-RPC".to_string()
+    } else {
+        display_name
+    }
 }
 
 fn strip_prefix(name: &str) -> String {
@@ -2012,6 +2031,23 @@ mod tests {
         }
     }
 
+    #[test]
+    fn service_display_name_formats_known_acronyms() {
+        let json_rpc = TraitDef {
+            name: "JsonRpc".to_string(),
+            methods: Vec::new(),
+            docs: None,
+        };
+        let system = TraitDef {
+            name: "System".to_string(),
+            methods: Vec::new(),
+            docs: None,
+        };
+
+        assert_eq!(service_display_name(&json_rpc), "JSON-RPC");
+        assert_eq!(service_display_name(&system), "System");
+    }
+
     fn request_method(name: &str, wire_id: Option<u8>) -> MethodDef {
         MethodDef {
             name: name.to_string(),
@@ -2041,7 +2077,6 @@ mod tests {
         ApiDefinition {
             traits: vec![TraitDef {
                 name: "Example".to_string(),
-                display_name: None,
                 methods,
                 docs: None,
             }],
@@ -2330,7 +2365,6 @@ mod tests {
         let api = ApiDefinition {
             traits: vec![TraitDef {
                 name: "Example".to_string(),
-                display_name: None,
                 methods: vec![
                     request_method_with_wrappers(
                         "legacy",
@@ -2376,7 +2410,6 @@ mod tests {
             traits: vec![
                 TraitDef {
                     name: "Legacy".to_string(),
-                    display_name: None,
                     methods: vec![request_method_with_wrappers(
                         "legacy_call",
                         Some(2),
@@ -2388,7 +2421,6 @@ mod tests {
                 },
                 TraitDef {
                     name: "FutureOnly".to_string(),
-                    display_name: None,
                     methods: vec![request_method_with_wrappers(
                         "future_call",
                         Some(4),
@@ -2425,7 +2457,6 @@ mod tests {
         let api = ApiDefinition {
             traits: vec![TraitDef {
                 name: "Example".to_string(),
-                display_name: None,
                 methods: vec![MethodDef {
                     name: "example_call".to_string(),
                     kind: MethodKind::Request,
@@ -2471,7 +2502,6 @@ mod tests {
         let api = ApiDefinition {
             traits: vec![TraitDef {
                 name: "Example".to_string(),
-                display_name: None,
                 methods: vec![MethodDef {
                     name: "example_call".to_string(),
                     kind: MethodKind::Request,
@@ -2514,7 +2544,6 @@ mod tests {
         let api = ApiDefinition {
             traits: vec![TraitDef {
                 name: "Example".to_string(),
-                display_name: None,
                 methods: vec![MethodDef {
                     name: "example_call".to_string(),
                     kind: MethodKind::Request,

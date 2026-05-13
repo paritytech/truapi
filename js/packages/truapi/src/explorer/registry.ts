@@ -151,8 +151,8 @@ export const versions: ExplorerVersion[] = [
         ],
       },
       {
-        id: "tr-uapi-calls",
-        name: "TrUAPI Calls",
+        id: "system",
+        name: "System",
         description:
           "General-purpose TrUAPI methods for feature detection, navigation, and\nnotifications.\n\n# Wire id reservations\n\nThe discriminants below are listed in [`super::RESERVED_WIRE_IDS`] so\ncodegen rejects any `#[wire(...)]` annotation that collides with them.\nSlots are held back for upstream `triangle-js-sdks` methods that TrUAPI\ndoes not implement, but whose ids must remain free to keep our wire-table\npositionally aligned with the canonical host `MessagePayload` enum. If we\never need one, annotate the trait method with the matching id and remove\nit from `RESERVED_WIRE_IDS`.",
         methods: [
@@ -167,8 +167,8 @@ export const versions: ExplorerVersion[] = [
       {
         id: "host_handshake",
         name: "host_handshake",
-        groupId: "tr-uapi-calls",
-        groupName: "TrUAPI Calls",
+        groupId: "system",
+        groupName: "System",
         wireId: 0,
         pattern: "unary",
         request: "undefined",
@@ -176,13 +176,13 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostHandshakeError",
         description: "Negotiates the wire codec version with the product.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function handshake(truapi: Client): Promise<void> {\n  const result = await truapi.trUApiCalls.handshake();\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function handshake(truapi: Client): Promise<void> {\n  const result = await truapi.system.handshake();\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_feature_supported",
         name: "host_feature_supported",
-        groupId: "tr-uapi-calls",
-        groupName: "TrUAPI Calls",
+        groupId: "system",
+        groupName: "System",
         wireId: 2,
         pattern: "unary",
         request: "HostFeatureSupportedRequest",
@@ -190,13 +190,13 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Queries whether the host supports a specific feature.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function supportsChain(truapi: Client): Promise<boolean> {\n  const result = await truapi.trUApiCalls.featureSupported({\n    tag: "Chain",\n    value: {\n      genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value.supported;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function supportsChain(truapi: Client): Promise<boolean> {\n  const result = await truapi.system.featureSupported({\n    tag: "Chain",\n    value: {\n      genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value.supported;\n}',
       },
       {
         id: "host_push_notification",
         name: "host_push_notification",
-        groupId: "tr-uapi-calls",
-        groupName: "TrUAPI Calls",
+        groupId: "system",
+        groupName: "System",
         wireId: 4,
         pattern: "unary",
         request: "HostPushNotificationRequest",
@@ -204,13 +204,13 @@ export const versions: ExplorerVersion[] = [
         errorType: "GenericError",
         description: "Sends a push notification to the user.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function pushNotification(truapi: Client): Promise<void> {\n  const result = await truapi.trUApiCalls.pushNotification({\n    text: "Hello!",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function pushNotification(truapi: Client): Promise<void> {\n  const result = await truapi.system.pushNotification({\n    text: "Hello!",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_navigate_to",
         name: "host_navigate_to",
-        groupId: "tr-uapi-calls",
-        groupName: "TrUAPI Calls",
+        groupId: "system",
+        groupName: "System",
         wireId: 6,
         pattern: "unary",
         request: "HostNavigateToRequest",
@@ -218,7 +218,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostNavigateToError",
         description: "Requests the host to open a URL.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function navigateToDocs(truapi: Client): Promise<void> {\n  const result = await truapi.trUApiCalls.navigateTo({\n    url: "https://example.com",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function navigateToDocs(truapi: Client): Promise<void> {\n  const result = await truapi.system.navigateTo({\n    url: "https://example.com",\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_device_permission",

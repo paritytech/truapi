@@ -25,11 +25,10 @@
 /// enum. `truapi-codegen` links this crate at compile time and rejects any
 /// `#[wire(...)]` annotation whose id falls in the reserved set.
 ///
-/// Slot owners are documented on [`calls::TrUApiCalls`].
+/// Slot owners are documented on [`system::System`].
 pub const RESERVED_WIRE_IDS: &[u8] = &[];
 
 pub mod account;
-pub mod calls;
 pub mod chain;
 pub mod chat;
 pub mod entropy;
@@ -41,10 +40,10 @@ pub mod preimage;
 pub mod resource_allocation;
 pub mod signing;
 pub mod statement_store;
+pub mod system;
 pub mod theme;
 
 pub use account::AccountManagement;
-pub use calls::TrUApiCalls;
 pub use chain::ChainInteraction;
 pub use chat::Chat;
 pub use entropy::EntropyDerivation;
@@ -56,6 +55,7 @@ pub use preimage::Preimage;
 pub use resource_allocation::ResourceAllocation;
 pub use signing::Signing;
 pub use statement_store::StatementStore;
+pub use system::System;
 pub use theme::HostTheme;
 
 /// The unified TrUAPI contract. Composes every sub-trait so a host can be
@@ -75,7 +75,7 @@ pub trait TrUApi:
     + ResourceAllocation
     + Signing
     + StatementStore
-    + TrUApiCalls
+    + System
     + Send
     + Sync
 {
@@ -95,7 +95,7 @@ impl<T> TrUApi for T where
         + ResourceAllocation
         + Signing
         + StatementStore
-        + TrUApiCalls
+        + System
         + Send
         + Sync
 {

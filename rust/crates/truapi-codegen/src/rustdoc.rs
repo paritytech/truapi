@@ -51,8 +51,6 @@ pub struct ApiDefinition {
 pub struct TraitDef {
     /// Trait name as it appears in source.
     pub name: String,
-    /// Optional display-name override from trait doc markers.
-    pub display_name: Option<String>,
     /// Methods declared on the trait, in declaration order.
     pub methods: Vec<MethodDef>,
     /// Rustdoc comment on the trait, with hidden codegen markers stripped.
@@ -546,7 +544,6 @@ fn extract_trait(
 
     Ok(TraitDef {
         name,
-        display_name: item.docs.as_deref().and_then(extract_trait_display_name),
         methods,
         docs: clean_docs(item.docs.as_deref()),
     })
@@ -693,21 +690,7 @@ pub fn clean_docs(docs: Option<&str>) -> Option<String> {
 
 fn is_codegen_doc_marker(line: &str) -> bool {
     let line = line.trim_start();
-    line.starts_with("@wire_") || line.starts_with("@truapi-display-name=")
-}
-
-fn extract_trait_display_name(docs: &str) -> Option<String> {
-    for line in docs.lines() {
-        let line = line.trim_start();
-        let Some(value) = line.strip_prefix("@truapi-display-name=") else {
-            continue;
-        };
-        let value = value.trim();
-        if !value.is_empty() {
-            return Some(value.to_string());
-        }
-    }
-    None
+    line.starts_with("@wire_")
 }
 
 /// Extracts `@wire_<name>_id=N` markers from a doc comment block. Annotated
@@ -1354,13 +1337,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn clean_docs_strips_display_name_marker_and_preserves_override() {
-        let docs = "Trait summary.\n\n@truapi-display-name=JSON-RPC\n";
+    fn clean_docs_strips_wire_markers() {
+        let docs = "Trait summary.\n\n@wire_request_id=7\n";
 
         assert_eq!(clean_docs(Some(docs)).as_deref(), Some("Trait summary."));
-        assert_eq!(
-            extract_trait_display_name(docs).as_deref(),
-            Some("JSON-RPC")
-        );
     }
 }

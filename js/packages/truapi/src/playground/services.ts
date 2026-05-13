@@ -471,7 +471,7 @@ export const services: ServiceInfo[] = [
     ],
   },
   {
-    name: "TrUAPI Calls",
+    name: "System",
     methods: [
       {
         name: "host_handshake",

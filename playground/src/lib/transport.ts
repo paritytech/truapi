@@ -203,7 +203,7 @@ export function subscribeConnectionStatus(
     setStatus("connecting");
     try {
       const handshake = ensureClient()
-        .trUApiCalls.handshake()
+        .system.handshake()
         .then((result) => result.isOk());
       const timeout = new Promise<boolean>((resolve) =>
         setTimeout(() => resolve(false), HANDSHAKE_TIMEOUT_MS),
