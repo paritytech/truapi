@@ -28,8 +28,8 @@ pub trait ResourceAllocation: Send + Sync {
     ///   const result =
     ///     await truapi.resourceAllocation.requestResourceAllocation({
     ///       resources: [
-    ///         { tag: "StatementStoreAllowance", value: null },
-    ///         { tag: "AutoSigning", value: null },
+    ///         { tag: "StatementStoreAllowance", value: undefined },
+    ///         { tag: "AutoSigning", value: undefined },
     ///       ],
     ///     });
     ///

@@ -12,7 +12,6 @@ use crate::{CallContext, CallError};
 /// General-purpose TrUAPI methods for feature detection, navigation, and
 /// notifications.
 ///
-///
 /// # Wire id reservations
 ///
 /// The discriminants below are listed in [`super::RESERVED_WIRE_IDS`] so

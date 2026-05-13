@@ -154,7 +154,7 @@ export const versions: ExplorerVersion[] = [
         id: "tr-uapi-calls",
         name: "TrUAPI Calls",
         description:
-          "General-purpose TrUAPI methods for feature detection, navigation, and\nnotifications.\n\n\n# Wire id reservations\n\nThe discriminants below are listed in [`super::RESERVED_WIRE_IDS`] so\ncodegen rejects any `#[wire(...)]` annotation that collides with them.\nSlots are held back for upstream `triangle-js-sdks` methods that TrUAPI\ndoes not implement, but whose ids must remain free to keep our wire-table\npositionally aligned with the canonical host `MessagePayload` enum. If we\never need one, annotate the trait method with the matching id and remove\nit from `RESERVED_WIRE_IDS`.",
+          "General-purpose TrUAPI methods for feature detection, navigation, and\nnotifications.\n\n# Wire id reservations\n\nThe discriminants below are listed in [`super::RESERVED_WIRE_IDS`] so\ncodegen rejects any `#[wire(...)]` annotation that collides with them.\nSlots are held back for upstream `triangle-js-sdks` methods that TrUAPI\ndoes not implement, but whose ids must remain free to keep our wire-table\npositionally aligned with the canonical host `MessagePayload` enum. If we\never need one, annotate the trait method with the matching id and remove\nit from `RESERVED_WIRE_IDS`.",
         methods: [
           "host_handshake",
           "host_feature_supported",
@@ -932,7 +932,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Request the host to pre-allocate one or more resources (statement store\nallowance, bulletin allowance, smart contract allowance, auto-signing).",
         usageExample:
-          'import {\n  type Client,\n  type HostRequestResourceAllocationResponse,\n} from "@parity/truapi";\n\nexport async function requestAllocation(\n  truapi: Client,\n): Promise<HostRequestResourceAllocationResponse> {\n  const result =\n    await truapi.resourceAllocation.requestResourceAllocation({\n      resources: [\n        { tag: "StatementStoreAllowance", value: null },\n        { tag: "AutoSigning", value: null },\n      ],\n    });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostRequestResourceAllocationResponse,\n} from "@parity/truapi";\n\nexport async function requestAllocation(\n  truapi: Client,\n): Promise<HostRequestResourceAllocationResponse> {\n  const result =\n    await truapi.resourceAllocation.requestResourceAllocation({\n      resources: [\n        { tag: "StatementStoreAllowance", value: undefined },\n        { tag: "AutoSigning", value: undefined },\n      ],\n    });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "remote_statement_store_create_proof_authorized",

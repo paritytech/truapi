@@ -375,7 +375,7 @@ export const services: ServiceInfo[] = [
           "Request the host to pre-allocate one or more resources (statement store\nallowance, bulletin allowance, smart contract allowance, auto-signing).",
         requestDescription: "HostRequestResourceAllocationRequest",
         defaultRequest:
-          '{\n  "resources": [\n    {\n      "tag": "StatementStoreAllowance",\n      "value": null\n    },\n    {\n      "tag": "AutoSigning",\n      "value": null\n    }\n  ]\n}',
+          '{\n  "resources": [\n    {\n      "tag": "StatementStoreAllowance"\n    },\n    {\n      "tag": "AutoSigning"\n    }\n  ]\n}',
       },
     ],
   },

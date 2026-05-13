@@ -1358,6 +1358,9 @@ mod tests {
         let docs = "Trait summary.\n\n@truapi-display-name=JSON-RPC\n";
 
         assert_eq!(clean_docs(Some(docs)).as_deref(), Some("Trait summary."));
-        assert_eq!(extract_trait_display_name(docs).as_deref(), Some("JSON-RPC"));
+        assert_eq!(
+            extract_trait_display_name(docs).as_deref(),
+            Some("JSON-RPC")
+        );
     }
 }

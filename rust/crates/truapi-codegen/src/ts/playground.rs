@@ -206,29 +206,8 @@ fn extract_default_request_from_client_example(
     };
     let json = ts_request_to_playground_json(request);
     validate_default_request(method_name, "truapi-client-example", &json)?;
-    let value = collapse_tag_only_objects(serde_json::from_str::<serde_json::Value>(&json)?);
+    let value = serde_json::from_str::<serde_json::Value>(&json)?;
     Ok(Some(serde_json::to_string_pretty(&value)?))
-}
-
-fn collapse_tag_only_objects(value: serde_json::Value) -> serde_json::Value {
-    match value {
-        serde_json::Value::Array(items) => {
-            serde_json::Value::Array(items.into_iter().map(collapse_tag_only_objects).collect())
-        }
-        serde_json::Value::Object(mut map) => {
-            if map.len() == 1 {
-                if let Some(serde_json::Value::String(tag)) = map.remove("tag") {
-                    return serde_json::Value::String(tag);
-                }
-            }
-            serde_json::Value::Object(
-                map.into_iter()
-                    .map(|(key, value)| (key, collapse_tag_only_objects(value)))
-                    .collect(),
-            )
-        }
-        other => other,
-    }
 }
 
 fn extract_request_property(argument: &str) -> Option<&str> {
