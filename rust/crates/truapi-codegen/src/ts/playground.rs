@@ -354,7 +354,6 @@ fn find_matching_delimiter(
 }
 
 fn ts_request_to_playground_json(input: &str) -> String {
-    let input = input.replace("new Uint8Array()", "\"0x\"");
     let input = normalize_single_quoted_strings(&input);
     let input = quote_unquoted_object_keys(&input);
     let input = quote_bigint_literals(&input);
@@ -614,6 +613,43 @@ fn remove_trailing_commas(input: &str) -> String {
         i += 1;
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ts_request_to_playground_json;
+    use serde_json::json;
+
+    #[test]
+    fn ts_request_to_playground_json_normalizes_ts_style_literals() {
+        let input = r#"{
+            roomId: 'room-1',
+            message: '{"jsonrpc":"2.0","id":1}',
+            amount: 42n,
+            bytes: "0x",
+            optional: {
+                value: undefined,
+                keep: 'ok',
+            },
+        }"#;
+
+        let actual = ts_request_to_playground_json(input);
+        let parsed: serde_json::Value =
+            serde_json::from_str(&actual).expect("normalized request should be valid JSON");
+
+        assert_eq!(
+            parsed,
+            json!({
+                "roomId": "room-1",
+                "message": r#"{"jsonrpc":"2.0","id":1}"#,
+                "amount": "42n",
+                "bytes": "0x",
+                "optional": {
+                    "keep": "ok"
+                }
+            })
+        );
+    }
 }
 
 pub(super) fn playground_type_name(value: &str) -> String {
