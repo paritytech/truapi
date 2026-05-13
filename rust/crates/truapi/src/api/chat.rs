@@ -10,7 +10,7 @@ use crate::versioned::chat::{
 use crate::wire;
 use crate::{CallContext, CallError, Subscription};
 
-/// Chat and custom-renderer methods.
+/// Chat room, bot, and message APIs.
 #[async_trait::async_trait]
 pub trait Chat: Send + Sync {
     /// Create a chat room.

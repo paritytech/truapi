@@ -48,7 +48,7 @@ When the Rust trait surface changes, rerun:
 ```
 
 That will repopulate `js/packages/truapi/src/generated/`. Commit the regenerated files alongside the Rust changes.
-It also regenerates playground metadata in `js/packages/truapi/src/playground/` and explorer metadata in `js/packages/truapi/src/explorer/`.
+It also regenerates playground metadata in `js/packages/truapi/src/playground/codegen/` and explorer metadata in `js/packages/truapi/src/explorer/codegen/`.
 After regenerating, rebuild the client and refresh the playground's link copy:
 
 ```bash

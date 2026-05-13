@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 
 import { createClient } from "../src/generated/client.ts";
-import { services } from "../src/playground/services.ts";
+import { services } from "../src/playground/codegen/services.ts";
 
 const ENCODED = Symbol("payload encoded");
 

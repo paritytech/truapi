@@ -27,16 +27,16 @@
       "import": "./dist/index.js"
     },
     "./playground/services": {
-      "types": "./dist/playground/services.d.ts",
-      "import": "./dist/playground/services.js"
+      "types": "./dist/playground/codegen/services.d.ts",
+      "import": "./dist/playground/codegen/services.js"
     },
     "./playground/services-types": {
       "types": "./dist/playground/services-types.d.ts",
       "import": "./dist/playground/services-types.js"
     },
     "./explorer/registry": {
-      "types": "./dist/explorer/registry.d.ts",
-      "import": "./dist/explorer/registry.js"
+      "types": "./dist/explorer/codegen/registry.d.ts",
+      "import": "./dist/explorer/codegen/registry.js"
     },
     "./explorer/types": {
       "types": "./dist/explorer/types.d.ts",

@@ -572,7 +572,7 @@ export class ChainClient {
   }
 }
 
-/** Chat and custom-renderer methods. */
+/** Chat room, bot, and message APIs. */
 export class ChatClient {
   constructor(private readonly transport: TrUApiTransport) {}
 

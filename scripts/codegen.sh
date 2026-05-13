@@ -43,6 +43,6 @@ fi
 npm run build --prefix js/packages/truapi
 
 echo "Generated client at js/packages/truapi/src/generated/"
-echo "Generated playground metadata at js/packages/truapi/src/playground/"
-echo "Generated explorer registry at js/packages/truapi/src/explorer/"
+echo "Generated playground metadata at js/packages/truapi/src/playground/codegen/"
+echo "Generated explorer registry at js/packages/truapi/src/explorer/codegen/"
 echo "Generated client examples at js/packages/truapi/test/generated/examples/"
