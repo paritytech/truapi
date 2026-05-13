@@ -355,10 +355,65 @@ fn find_matching_delimiter(
 
 fn ts_request_to_playground_json(input: &str) -> String {
     let input = input.replace("new Uint8Array()", "\"0x\"");
+    let input = normalize_single_quoted_strings(&input);
     let input = quote_unquoted_object_keys(&input);
     let input = quote_bigint_literals(&input);
     let input = remove_undefined_object_properties(&input);
     remove_trailing_commas(&input)
+}
+
+/// Rewrite single-quoted TypeScript string literals as double-quoted JSON strings,
+/// escaping any inner `"` so that examples like `message: '{"jsonrpc":"2.0"}'`
+/// survive the JSON validation downstream.
+fn normalize_single_quoted_strings(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out = String::with_capacity(input.len());
+    let mut i = 0usize;
+    while i < bytes.len() {
+        let b = bytes[i];
+        match b {
+            b'"' | b'`' => {
+                out.push(b as char);
+                i += 1;
+                while i < bytes.len() {
+                    let c = bytes[i];
+                    out.push(c as char);
+                    i += 1;
+                    if c == b && bytes.get(i.wrapping_sub(2)) != Some(&b'\\') {
+                        break;
+                    }
+                }
+            }
+            b'\'' => {
+                out.push('"');
+                i += 1;
+                while i < bytes.len() {
+                    let c = bytes[i];
+                    if c == b'\'' && bytes.get(i.wrapping_sub(1)) != Some(&b'\\') {
+                        out.push('"');
+                        i += 1;
+                        break;
+                    }
+                    if c == b'"' {
+                        out.push('\\');
+                        out.push('"');
+                    } else if c == b'\\' && bytes.get(i + 1) == Some(&b'\'') {
+                        out.push('\'');
+                        i += 2;
+                        continue;
+                    } else {
+                        out.push(c as char);
+                    }
+                    i += 1;
+                }
+            }
+            _ => {
+                out.push(b as char);
+                i += 1;
+            }
+        }
+    }
+    out
 }
 
 fn remove_undefined_object_properties(input: &str) -> String {

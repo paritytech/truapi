@@ -1,11 +1,12 @@
 //! Unified [`StatementStore`] trait.
 
 use crate::versioned::statement_store::{
-    RemoteStatementStoreCreateProofAuthorizedError, RemoteStatementStoreCreateProofAuthorizedRequest,
+    RemoteStatementStoreCreateProofAuthorizedError,
+    RemoteStatementStoreCreateProofAuthorizedRequest,
     RemoteStatementStoreCreateProofAuthorizedResponse, RemoteStatementStoreCreateProofError,
     RemoteStatementStoreCreateProofRequest, RemoteStatementStoreCreateProofResponse,
-    RemoteStatementStoreSubmitError, RemoteStatementStoreSubmitRequest, RemoteStatementStoreSubscribeItem,
-    RemoteStatementStoreSubscribeRequest,
+    RemoteStatementStoreSubmitError, RemoteStatementStoreSubmitRequest,
+    RemoteStatementStoreSubscribeItem, RemoteStatementStoreSubscribeRequest,
 };
 use crate::wire;
 use crate::{CallContext, CallError, Subscription};
@@ -75,8 +76,10 @@ pub trait StatementStore: Send + Sync {
         &self,
         _cx: &CallContext,
         _request: RemoteStatementStoreCreateProofRequest,
-    ) -> Result<RemoteStatementStoreCreateProofResponse, CallError<RemoteStatementStoreCreateProofError>>
-    {
+    ) -> Result<
+        RemoteStatementStoreCreateProofResponse,
+        CallError<RemoteStatementStoreCreateProofError>,
+    > {
         Err(CallError::unavailable())
     }
 

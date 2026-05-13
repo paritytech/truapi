@@ -62,7 +62,9 @@ pub enum RemoteChainHeadFollowItem {
         parent_block_hash: Vec<u8>,
         new_runtime: Option<RuntimeType>,
     },
-    BestBlockChanged { best_block_hash: Vec<u8> },
+    BestBlockChanged {
+        best_block_hash: Vec<u8>,
+    },
     Finalized {
         finalized_block_hashes: Vec<Vec<u8>>,
         pruned_block_hashes: Vec<Vec<u8>>,
@@ -79,10 +81,19 @@ pub enum RemoteChainHeadFollowItem {
         operation_id: String,
         items: Vec<StorageResultItem>,
     },
-    OperationStorageDone { operation_id: String },
-    OperationWaitingForContinue { operation_id: String },
-    OperationInaccessible { operation_id: String },
-    OperationError { operation_id: String, error: String },
+    OperationStorageDone {
+        operation_id: String,
+    },
+    OperationWaitingForContinue {
+        operation_id: String,
+    },
+    OperationInaccessible {
+        operation_id: String,
+    },
+    OperationError {
+        operation_id: String,
+        error: String,
+    },
     Stop,
 }
 

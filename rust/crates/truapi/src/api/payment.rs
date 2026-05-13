@@ -39,8 +39,10 @@ pub trait Payment: Send + Sync {
         &self,
         _cx: &CallContext,
         _request: HostPaymentBalanceSubscribeRequest,
-    ) -> Result<Subscription<HostPaymentBalanceSubscribeItem>, CallError<HostPaymentBalanceSubscribeError>>
-    {
+    ) -> Result<
+        Subscription<HostPaymentBalanceSubscribeItem>,
+        CallError<HostPaymentBalanceSubscribeError>,
+    > {
         Err(CallError::unavailable())
     }
 
@@ -103,8 +105,10 @@ pub trait Payment: Send + Sync {
         &self,
         _cx: &CallContext,
         _request: HostPaymentStatusSubscribeRequest,
-    ) -> Result<Subscription<HostPaymentStatusSubscribeItem>, CallError<HostPaymentStatusSubscribeError>>
-    {
+    ) -> Result<
+        Subscription<HostPaymentStatusSubscribeItem>,
+        CallError<HostPaymentStatusSubscribeError>,
+    > {
         Err(CallError::unavailable())
     }
 

@@ -2,13 +2,19 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   ChevronDown,
+  Cpu,
   Database,
+  Dice5,
+  FileSignature,
   FileText,
   HardDrive,
   Image,
   Link,
+  Lock,
   MessageSquare,
+  Palette,
   PenTool,
+  Send,
   User,
   Wallet,
   X,
@@ -19,15 +25,21 @@ import { versionedMethodRoutePath } from "../lib/routes";
 import { useVersion } from "../contexts/VersionContext";
 
 const groupIcons: Record<string, ReactNode> = {
-  system: <Zap size={15} />,
-  "local-storage": <HardDrive size={15} />,
-  "account-management": <User size={15} />,
-  signing: <PenTool size={15} />,
+  account: <User size={15} />,
+  chain: <Link size={15} />,
   chat: <MessageSquare size={15} />,
-  "statement-store": <FileText size={15} />,
-  preimage: <Image size={15} />,
-  "chain-interaction": <Link size={15} />,
+  entropy: <Dice5 size={15} />,
+  "json-rpc": <Send size={15} />,
+  "local-storage": <HardDrive size={15} />,
   payment: <Wallet size={15} />,
+  permissions: <Lock size={15} />,
+  preimage: <Image size={15} />,
+  "resource-allocation": <Cpu size={15} />,
+  signing: <PenTool size={15} />,
+  "statement-store": <FileText size={15} />,
+  system: <Zap size={15} />,
+  theme: <Palette size={15} />,
+  transaction: <FileSignature size={15} />,
 };
 
 export default function Sidebar({
