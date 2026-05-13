@@ -17,11 +17,13 @@ pub enum AllocationOutcome {
 
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostRequestResourceAllocationRequest {
+    /// Resources to allocate.
     pub resources: Vec<AllocatableResource>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostRequestResourceAllocationResponse {
+    /// Per-resource allocation outcomes, in the same order as the request.
     pub outcomes: Vec<AllocationOutcome>,
 }
 
