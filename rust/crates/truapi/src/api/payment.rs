@@ -34,7 +34,7 @@ pub trait Payment: Send + Sync {
     ///   });
     /// }
     /// ```
-    #[wire(start_id = 38)]
+    #[wire(start_id = 118)]
     async fn balance_subscribe(
         &self,
         _cx: &CallContext,
@@ -66,7 +66,7 @@ pub trait Payment: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(request_id = 42)]
+    #[wire(request_id = 124)]
     async fn request(
         &self,
         _cx: &CallContext,
@@ -100,7 +100,7 @@ pub trait Payment: Send + Sync {
     ///     });
     /// }
     /// ```
-    #[wire(start_id = 44)]
+    #[wire(start_id = 126)]
     async fn status_subscribe(
         &self,
         _cx: &CallContext,
@@ -126,7 +126,7 @@ pub trait Payment: Send + Sync {
     ///   if (result.isErr()) throw result.error;
     /// }
     /// ```
-    #[wire(request_id = 48)]
+    #[wire(request_id = 122)]
     async fn top_up(
         &self,
         _cx: &CallContext,

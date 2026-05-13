@@ -71,7 +71,7 @@ pub trait StatementStore: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(request_id = 62)]
+    #[wire(request_id = 60)]
     async fn create_proof(
         &self,
         _cx: &CallContext,
@@ -105,7 +105,7 @@ pub trait StatementStore: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(request_id = 64)]
+    #[wire(request_id = 132)]
     async fn create_proof_authorized(
         &self,
         _cx: &CallContext,
@@ -139,7 +139,7 @@ pub trait StatementStore: Send + Sync {
     ///   if (result.isErr()) throw result.error;
     /// }
     /// ```
-    #[wire(request_id = 68)]
+    #[wire(request_id = 62)]
     async fn submit(
         &self,
         _cx: &CallContext,

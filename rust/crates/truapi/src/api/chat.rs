@@ -34,7 +34,7 @@ pub trait Chat: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(request_id = 118)]
+    #[wire(request_id = 38)]
     async fn create_room(
         &self,
         _cx: &CallContext,
@@ -64,7 +64,7 @@ pub trait Chat: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(request_id = 120)]
+    #[wire(request_id = 40)]
     async fn register_bot(
         &self,
         _cx: &CallContext,
@@ -90,7 +90,7 @@ pub trait Chat: Send + Sync {
     ///   });
     /// }
     /// ```
-    #[wire(start_id = 122)]
+    #[wire(start_id = 42)]
     async fn list_subscribe(&self, _cx: &CallContext) -> Subscription<HostChatListSubscribeItem> {
         Subscription::empty()
     }
@@ -115,7 +115,7 @@ pub trait Chat: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(request_id = 126)]
+    #[wire(request_id = 46)]
     async fn post_message(
         &self,
         _cx: &CallContext,
@@ -142,7 +142,7 @@ pub trait Chat: Send + Sync {
     ///   });
     /// }
     /// ```
-    #[wire(start_id = 132)]
+    #[wire(start_id = 48)]
     async fn action_subscribe(
         &self,
         _cx: &CallContext,
@@ -177,7 +177,7 @@ pub trait Chat: Send + Sync {
     ///     });
     /// }
     /// ```
-    #[wire(start_id = 138)]
+    #[wire(start_id = 52)]
     async fn custom_message_render_subscribe(
         &self,
         _cx: &CallContext,

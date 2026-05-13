@@ -34,7 +34,7 @@ pub trait Preimage: Send + Sync {
     ///     });
     /// }
     /// ```
-    #[wire(start_id = 50)]
+    #[wire(start_id = 64)]
     async fn lookup_subscribe(
         &self,
         _cx: &CallContext,
@@ -60,7 +60,7 @@ pub trait Preimage: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(request_id = 54)]
+    #[wire(request_id = 68)]
     async fn submit(
         &self,
         _cx: &CallContext,
