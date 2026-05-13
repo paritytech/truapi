@@ -10,10 +10,7 @@ use crate::versioned::chat::{
 use crate::wire;
 use crate::{CallContext, CallError, Subscription};
 
-/// Chat room, bot, and message APIs.
-///
-/// Default methods return [`CallError::HostFailure`] with an `unavailable`
-/// reason. Hosts override only the methods they actually support.
+/// Chat and custom-renderer methods.
 #[async_trait::async_trait]
 pub trait Chat: Send + Sync {
     /// Create a chat room.
@@ -27,7 +24,7 @@ pub trait Chat: Send + Sync {
     /// export async function createRoom(
     ///   truapi: Client,
     /// ): Promise<HostChatCreateRoomResponse> {
-    ///   const result = await truapi.chat.chatCreateRoom({
+    ///   const result = await truapi.chat.createRoom({
     ///     roomId: "test-room",
     ///     name: "Test Room",
     ///     icon: "",
@@ -37,8 +34,8 @@ pub trait Chat: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(request_id = 38)]
-    async fn host_chat_create_room(
+    #[wire(request_id = 118)]
+    async fn create_room(
         &self,
         _cx: &CallContext,
         _request: HostChatCreateRoomRequest,
@@ -57,7 +54,7 @@ pub trait Chat: Send + Sync {
     /// export async function registerBot(
     ///   truapi: Client,
     /// ): Promise<HostChatRegisterBotResponse> {
-    ///   const result = await truapi.chat.chatRegisterBot({
+    ///   const result = await truapi.chat.registerBot({
     ///     botId: "test-bot",
     ///     name: "Test Bot",
     ///     icon: "",
@@ -67,8 +64,8 @@ pub trait Chat: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(request_id = 40)]
-    async fn host_chat_register_bot(
+    #[wire(request_id = 120)]
+    async fn register_bot(
         &self,
         _cx: &CallContext,
         _request: HostChatRegisterBotRequest,
@@ -86,18 +83,15 @@ pub trait Chat: Send + Sync {
     /// } from "@parity/truapi";
     ///
     /// export function watchChatRooms(truapi: Client): Subscription {
-    ///   return truapi.chat.chatListSubscribe().subscribe({
+    ///   return truapi.chat.listSubscribe().subscribe({
     ///     next: (rooms: HostChatListSubscribeItem) => console.log(rooms),
     ///     error: (error: Error) => console.error(error),
     ///     complete: () => console.log("completed"),
     ///   });
     /// }
     /// ```
-    #[wire(start_id = 42)]
-    async fn host_chat_list_subscribe(
-        &self,
-        _cx: &CallContext,
-    ) -> Subscription<HostChatListSubscribeItem> {
+    #[wire(start_id = 122)]
+    async fn list_subscribe(&self, _cx: &CallContext) -> Subscription<HostChatListSubscribeItem> {
         Subscription::empty()
     }
 
@@ -112,7 +106,7 @@ pub trait Chat: Send + Sync {
     /// export async function postChatMessage(
     ///   truapi: Client,
     /// ): Promise<HostChatPostMessageResponse> {
-    ///   const result = await truapi.chat.chatPostMessage({
+    ///   const result = await truapi.chat.postMessage({
     ///     roomId: "test-room",
     ///     payload: { tag: "Text", value: { text: "Hello from playground!" } },
     ///   });
@@ -121,8 +115,8 @@ pub trait Chat: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(request_id = 46)]
-    async fn host_chat_post_message(
+    #[wire(request_id = 126)]
+    async fn post_message(
         &self,
         _cx: &CallContext,
         _request: HostChatPostMessageRequest,
@@ -140,7 +134,7 @@ pub trait Chat: Send + Sync {
     /// } from "@parity/truapi";
     ///
     /// export function watchChatActions(truapi: Client): Subscription {
-    ///   return truapi.chat.chatActionSubscribe().subscribe({
+    ///   return truapi.chat.actionSubscribe().subscribe({
     ///     next: (action: HostChatActionSubscribeItem) =>
     ///       console.log(action),
     ///     error: (error: Error) => console.error(error),
@@ -148,8 +142,8 @@ pub trait Chat: Send + Sync {
     ///   });
     /// }
     /// ```
-    #[wire(start_id = 48)]
-    async fn host_chat_action_subscribe(
+    #[wire(start_id = 132)]
+    async fn action_subscribe(
         &self,
         _cx: &CallContext,
     ) -> Subscription<HostChatActionSubscribeItem> {
@@ -169,7 +163,7 @@ pub trait Chat: Send + Sync {
     ///
     /// export function renderCustomChatMessage(truapi: Client): Subscription {
     ///   return truapi.chat
-    ///     .chatCustomMessageRenderSubscribe({
+    ///     .customMessageRenderSubscribe({
     ///       request: {
     ///         messageId: "msg-1",
     ///         messageType: "custom-render-demo",
@@ -183,8 +177,8 @@ pub trait Chat: Send + Sync {
     ///     });
     /// }
     /// ```
-    #[wire(start_id = 52)]
-    async fn product_chat_custom_message_render_subscribe(
+    #[wire(start_id = 138)]
+    async fn custom_message_render_subscribe(
         &self,
         _cx: &CallContext,
         _request: ProductChatCustomMessageRenderSubscribeRequest,

@@ -47,7 +47,7 @@ function unwrap(result, message) {
   const encoded = unwrap(
     encodeWireMessage({
       requestId: "p:1",
-      payload: { id: W.HOST_HANDSHAKE.request, value: inner },
+      payload: { id: W.SYSTEM_HANDSHAKE.request, value: inner },
     }),
     "encode handshake_request",
   );
@@ -72,7 +72,7 @@ function unwrap(result, message) {
   const encoded = unwrap(
     encodeWireMessage({
       requestId: "p:1",
-      payload: { id: W.HOST_ACCOUNT_GET.request, value: inner },
+      payload: { id: W.ACCOUNT_GET_ACCOUNT.request, value: inner },
     }),
     "encode account_get_request",
   );
@@ -97,7 +97,7 @@ function unwrap(result, message) {
   const encoded = unwrap(
     encodeWireMessage({
       requestId: "p:1",
-      payload: { id: W.HOST_LOCAL_STORAGE_READ.request, value: inner },
+      payload: { id: W.LOCAL_STORAGE_READ.request, value: inner },
     }),
     "encode local_storage_read_request",
   );
@@ -106,7 +106,7 @@ function unwrap(result, message) {
     "decode local_storage_read_request",
   );
   assert.equal(decoded.requestId, "p:1");
-  assert.equal(decoded.payload.id, W.HOST_LOCAL_STORAGE_READ.request);
+  assert.equal(decoded.payload.id, W.LOCAL_STORAGE_READ.request);
   assert.equal(toHex(decoded.payload.value), toHex(inner));
 }
 
@@ -137,7 +137,7 @@ function unwrap(result, message) {
   const encoded = unwrap(
     encodeWireMessage({
       requestId: longId,
-      payload: { id: W.HOST_ACCOUNT_GET.request, value: inner },
+      payload: { id: W.ACCOUNT_GET_ACCOUNT.request, value: inner },
     }),
     "encode long-id account_get_request",
   );
@@ -149,7 +149,7 @@ function unwrap(result, message) {
     "decode long-id account_get_request",
   );
   assert.equal(decoded.requestId, longId);
-  assert.equal(decoded.payload.id, W.HOST_ACCOUNT_GET.request);
+  assert.equal(decoded.payload.id, W.ACCOUNT_GET_ACCOUNT.request);
   assert.equal(toHex(decoded.payload.value), toHex(inner));
 }
 

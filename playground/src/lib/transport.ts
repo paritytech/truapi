@@ -263,8 +263,8 @@ export function openEphemeralFollow(
   return new Promise((resolve, reject) => {
     let settled = false;
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-    const sub = client.chainInteraction
-      .chainHeadFollowSubscribe({
+    const sub = client.chain
+      .followHeadSubscribe({
         request: { genesisHash, withRuntime },
       })
       .subscribe({

@@ -1,12 +1,13 @@
 import { AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Navigate, useNavigate, useParams } from "react-router-dom";
 import CodeBlock from "../components/CodeBlock";
 import PatternBadge from "../components/PatternBadge";
 import { TypeString } from "../components/TypeLink";
 import { useVersion } from "../contexts/VersionContext";
+import { versionedMethodRoutePath } from "../lib/routes";
 
 export default function MethodPage() {
-  const { id } = useParams<{ id: string }>();
+  const { groupId, id } = useParams<{ groupId: string; id: string }>();
   const navigate = useNavigate();
   const { getMethodById, getGroupById, methods, versionPrefix } = useVersion();
   const method = getMethodById(id || "");
@@ -16,6 +17,15 @@ export default function MethodPage() {
       <div className="flex h-64 items-center justify-center">
         <p className="text-slate-400">Method not found</p>
       </div>
+    );
+  }
+
+  if (groupId && groupId !== method.groupId) {
+    return (
+      <Navigate
+        to={versionedMethodRoutePath(versionPrefix, method)}
+        replace
+      />
     );
   }
 
@@ -53,9 +63,7 @@ export default function MethodPage() {
         <span>/</span>
         {groupMethods[0] ? (
           <button
-            onClick={() =>
-              navigate(`${versionPrefix}/method/${groupMethods[0].id}`)
-            }
+            onClick={() => navigate(versionedMethodRoutePath(versionPrefix, groupMethods[0]))}
             className="transition-colors hover:text-white"
             type="button"
           >
@@ -130,7 +138,7 @@ export default function MethodPage() {
       <div className="flex items-center justify-between border-t border-slate-700/40 pt-6 animate-fade-in stagger-4">
         {previous ? (
           <button
-            onClick={() => navigate(`${versionPrefix}/method/${previous.id}`)}
+            onClick={() => navigate(versionedMethodRoutePath(versionPrefix, previous))}
             className="group flex items-center gap-2 text-sm text-slate-400 transition-colors hover:text-white"
             type="button"
           >
@@ -148,7 +156,7 @@ export default function MethodPage() {
         )}
         {next ? (
           <button
-            onClick={() => navigate(`${versionPrefix}/method/${next.id}`)}
+            onClick={() => navigate(versionedMethodRoutePath(versionPrefix, next))}
             className="group flex items-center gap-2 text-sm text-slate-400 transition-colors hover:text-white"
             type="button"
           >

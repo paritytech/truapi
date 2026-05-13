@@ -19,14 +19,14 @@ pub trait LocalStorage: Send + Sync {
     /// export async function readLocalValue(
     ///   truapi: Client,
     /// ): Promise<HexString | undefined> {
-    ///   const result = await truapi.localStorage.localStorageRead({ key: "test-key" });
+    ///   const result = await truapi.localStorage.read({ key: "test-key" });
     ///
     ///   if (result.isErr()) throw result.error;
     ///   return result.value.value;
     /// }
     /// ```
     #[wire(request_id = 12)]
-    async fn host_local_storage_read(
+    async fn read(
         &self,
         cx: &CallContext,
         request: HostLocalStorageReadRequest,
@@ -38,7 +38,7 @@ pub trait LocalStorage: Send + Sync {
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function writeLocalValue(truapi: Client): Promise<void> {
-    ///   const result = await truapi.localStorage.localStorageWrite({
+    ///   const result = await truapi.localStorage.write({
     ///     key: "test-key",
     ///     value: "0x48656c6c6f",
     ///   });
@@ -47,7 +47,7 @@ pub trait LocalStorage: Send + Sync {
     /// }
     /// ```
     #[wire(request_id = 14)]
-    async fn host_local_storage_write(
+    async fn write(
         &self,
         cx: &CallContext,
         request: HostLocalStorageWriteRequest,
@@ -59,13 +59,13 @@ pub trait LocalStorage: Send + Sync {
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function clearLocalValue(truapi: Client): Promise<void> {
-    ///   const result = await truapi.localStorage.localStorageClear({ key: "test-key" });
+    ///   const result = await truapi.localStorage.clear({ key: "test-key" });
     ///
     ///   if (result.isErr()) throw result.error;
     /// }
     /// ```
     #[wire(request_id = 16)]
-    async fn host_local_storage_clear(
+    async fn clear(
         &self,
         cx: &CallContext,
         request: HostLocalStorageClearRequest,

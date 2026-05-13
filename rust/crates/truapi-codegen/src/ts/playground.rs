@@ -560,27 +560,6 @@ fn remove_trailing_commas(input: &str) -> String {
     out
 }
 
-fn trim_doc_lines(lines: &[&str]) -> Option<String> {
-    let mut start = 0;
-    let mut end = lines.len();
-    while start < end && lines[start].trim().is_empty() {
-        start += 1;
-    }
-    while end > start && lines[end - 1].trim().is_empty() {
-        end -= 1;
-    }
-    if start == end {
-        return None;
-    }
-    Some(
-        lines[start..end]
-            .iter()
-            .map(|line| line.strip_prefix(' ').unwrap_or(line).trim_end())
-            .collect::<Vec<_>>()
-            .join("\n"),
-    )
-}
-
 pub(super) fn playground_type_name(value: &str) -> String {
     value.replace("T.", "")
 }

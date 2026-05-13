@@ -3,16 +3,16 @@ import type { ServiceInfo } from "./services-types.js";
 
 export const services: ServiceInfo[] = [
   {
-    name: "Account Management",
+    name: "Account",
     methods: [
       {
-        name: "host_account_connection_status_subscribe",
+        name: "connection_status_subscribe",
         type: "subscription",
         description: "Subscribe to account connection status changes.",
         noParams: true,
       },
       {
-        name: "host_account_get",
+        name: "get_account",
         type: "unary",
         description: "Retrieve a product-scoped account.",
         requestDescription: "HostAccountGetRequest",
@@ -20,7 +20,7 @@ export const services: ServiceInfo[] = [
           '{\n  "productAccountId": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  }\n}',
       },
       {
-        name: "host_account_get_alias",
+        name: "get_account_alias",
         type: "unary",
         description: "Retrieve a contextual alias for a product account.",
         requestDescription: "HostAccountGetAliasRequest",
@@ -28,7 +28,7 @@ export const services: ServiceInfo[] = [
           '{\n  "productAccountId": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  }\n}',
       },
       {
-        name: "host_account_create_proof",
+        name: "create_account_proof",
         type: "unary",
         description: "Generate a ring VRF proof for a product account.",
         requestDescription: "HostAccountCreateProofRequest",
@@ -36,19 +36,19 @@ export const services: ServiceInfo[] = [
           '{\n  "context": "0x",\n  "productAccountId": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  },\n  "ringLocation": {\n    "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    "hints": {\n      "palletInstance": 42\n    },\n    "ringRootHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2"\n  }\n}',
       },
       {
-        name: "host_get_legacy_accounts",
+        name: "get_legacy_accounts",
         type: "unary",
         description: "List non-product accounts the user owns.",
         noParams: true,
       },
       {
-        name: "host_get_user_id",
+        name: "get_user_id",
         type: "unary",
-        description: "Fetch the user's primary identity (V0.2+).",
+        description: "Fetch the user's primary identity.",
         noParams: true,
       },
       {
-        name: "host_request_login",
+        name: "request_login",
         type: "unary",
         description:
           'Request the host to present the login flow to the user.\n\nProducts should call this in response to a user action (e.g. tapping a\n"Sign in" button), not automatically on load.',
@@ -58,60 +58,10 @@ export const services: ServiceInfo[] = [
     ],
   },
   {
-    name: "Chain Interaction",
+    name: "Chain",
     methods: [
       {
-        name: "host_create_transaction",
-        type: "unary",
-        description: "Construct a signed extrinsic for a product account.",
-        requestDescription: "HostCreateTransactionRequest",
-        defaultRequest:
-          '{\n  "payload": {\n    "tag": "V1",\n    "value": {\n      "callData": "0x0000",\n      "context": {\n        "bestBlockHeight": 0,\n        "metadata": "0x",\n        "tokenDecimals": 10,\n        "tokenSymbol": "DOT"\n      },\n      "extensions": [],\n      "txExtVersion": 0\n    }\n  },\n  "productAccountId": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  }\n}',
-      },
-      {
-        name: "host_create_transaction_with_legacy_account",
-        type: "unary",
-        description: "Construct a signed extrinsic for a non-product account.",
-        requestDescription: "HostCreateTransactionWithLegacyAccountRequest",
-        defaultRequest:
-          '{\n  "payload": {\n    "tag": "V1",\n    "value": {\n      "callData": "0x0000",\n      "context": {\n        "bestBlockHeight": 0,\n        "metadata": "0x",\n        "tokenDecimals": 10,\n        "tokenSymbol": "DOT"\n      },\n      "extensions": [],\n      "txExtVersion": 0\n    }\n  }\n}',
-      },
-      {
-        name: "host_sign_raw_with_legacy_account",
-        type: "unary",
-        description: "Sign raw bytes with a non-product (legacy) account.",
-        requestDescription: "HostSignRawWithLegacyAccountRequest",
-        defaultRequest:
-          '{\n  "payload": {\n    "tag": "Bytes",\n    "value": {\n      "bytes": "0x48656c6c6f"\n    }\n  },\n  "signer": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"\n}',
-      },
-      {
-        name: "host_sign_payload_with_legacy_account",
-        type: "unary",
-        description:
-          "Sign a Substrate extrinsic payload with a non-product (legacy) account.",
-        requestDescription: "HostSignPayloadWithLegacyAccountRequest",
-        defaultRequest:
-          '{\n  "payload": {\n    "account": {\n      "derivationIndex": 0,\n      "dotNsIdentifier": "truapi-playground.dot"\n    },\n    "blockHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    "blockNumber": "0x00000000",\n    "era": "0x00",\n    "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    "method": "0x0000",\n    "nonce": "0x00000000",\n    "signedExtensions": [],\n    "specVersion": "0x00000000",\n    "tip": "0x00000000000000000000000000000000",\n    "transactionVersion": "0x00000000",\n    "version": 4\n  },\n  "signer": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"\n}',
-      },
-      {
-        name: "host_jsonrpc_message_send",
-        type: "unary",
-        description:
-          "Send a JSON-RPC message to the chain identified by genesis hash.",
-        requestDescription: "HostJsonrpcMessageSendRequest",
-        defaultRequest:
-          '{\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "message": "{\\"jsonrpc\\":\\"2.0\\",\\"id\\":1,\\"method\\":\\"system_name\\",\\"params\\":[]}"\n}',
-      },
-      {
-        name: "host_jsonrpc_message_subscribe",
-        type: "subscription",
-        description: "Subscribe to inbound JSON-RPC messages for a chain.",
-        requestDescription: "HostJsonrpcMessageSubscribeRequest",
-        defaultRequest:
-          '{\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2"\n}',
-      },
-      {
-        name: "remote_chain_head_follow_subscribe",
+        name: "follow_head_subscribe",
         type: "subscription",
         description: "Follow the chain head and receive block events.",
         requestDescription: "RemoteChainHeadFollowRequest",
@@ -119,7 +69,7 @@ export const services: ServiceInfo[] = [
           '{\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "withRuntime": false\n}',
       },
       {
-        name: "remote_chain_head_header",
+        name: "get_head_header",
         type: "unary",
         description: "Fetch a block header.",
         requestDescription: "RemoteChainHeadHeaderRequest",
@@ -127,7 +77,7 @@ export const services: ServiceInfo[] = [
           '{\n  "followSubscriptionId": "",\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "hash": "0x0000000000000000000000000000000000000000000000000000000000000000"\n}',
       },
       {
-        name: "remote_chain_head_body",
+        name: "get_head_body",
         type: "unary",
         description: "Fetch a block body.",
         requestDescription: "RemoteChainHeadBodyRequest",
@@ -135,7 +85,7 @@ export const services: ServiceInfo[] = [
           '{\n  "followSubscriptionId": "",\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "hash": "0x0000000000000000000000000000000000000000000000000000000000000000"\n}',
       },
       {
-        name: "remote_chain_head_storage",
+        name: "get_head_storage",
         type: "unary",
         description: "Query runtime storage at a specific block.",
         requestDescription: "RemoteChainHeadStorageRequest",
@@ -143,7 +93,7 @@ export const services: ServiceInfo[] = [
           '{\n  "followSubscriptionId": "",\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "hash": "0x0000000000000000000000000000000000000000000000000000000000000000",\n  "items": [\n    {\n      "key": "0x26aa394eea5630e07c48ae0c9558cef7",\n      "queryType": "Value"\n    }\n  ]\n}',
       },
       {
-        name: "remote_chain_head_call",
+        name: "call_head",
         type: "unary",
         description: "Invoke a runtime call at a specific block.",
         requestDescription: "RemoteChainHeadCallRequest",
@@ -151,7 +101,7 @@ export const services: ServiceInfo[] = [
           '{\n  "callParameters": "0x",\n  "followSubscriptionId": "",\n  "function": "Core_version",\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "hash": "0x0000000000000000000000000000000000000000000000000000000000000000"\n}',
       },
       {
-        name: "remote_chain_head_unpin",
+        name: "unpin_head",
         type: "unary",
         description: "Release pinned blocks.",
         requestDescription: "RemoteChainHeadUnpinRequest",
@@ -159,7 +109,7 @@ export const services: ServiceInfo[] = [
           '{\n  "followSubscriptionId": "",\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "hashes": [\n    "0x0000000000000000000000000000000000000000000000000000000000000000"\n  ]\n}',
       },
       {
-        name: "remote_chain_head_continue",
+        name: "continue_head",
         type: "unary",
         description: "Continue a paused chain-head operation.",
         requestDescription: "RemoteChainHeadContinueRequest",
@@ -167,7 +117,7 @@ export const services: ServiceInfo[] = [
           '{\n  "followSubscriptionId": "",\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "operationId": "op-id"\n}',
       },
       {
-        name: "remote_chain_head_stop_operation",
+        name: "stop_head_operation",
         type: "unary",
         description: "Stop a chain-head operation.",
         requestDescription: "RemoteChainHeadStopOperationRequest",
@@ -175,7 +125,7 @@ export const services: ServiceInfo[] = [
           '{\n  "followSubscriptionId": "",\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "operationId": "op-id"\n}',
       },
       {
-        name: "remote_chain_spec_genesis_hash",
+        name: "get_spec_genesis_hash",
         type: "unary",
         description: "Fetch the canonical genesis hash for a chain.",
         requestDescription: "RemoteChainSpecGenesisHashRequest",
@@ -183,7 +133,7 @@ export const services: ServiceInfo[] = [
           '{\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2"\n}',
       },
       {
-        name: "remote_chain_spec_chain_name",
+        name: "get_spec_chain_name",
         type: "unary",
         description: "Fetch the display name of a chain.",
         requestDescription: "RemoteChainSpecChainNameRequest",
@@ -191,7 +141,7 @@ export const services: ServiceInfo[] = [
           '{\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2"\n}',
       },
       {
-        name: "remote_chain_spec_properties",
+        name: "get_spec_properties",
         type: "unary",
         description: "Fetch the JSON-encoded properties of a chain.",
         requestDescription: "RemoteChainSpecPropertiesRequest",
@@ -199,7 +149,7 @@ export const services: ServiceInfo[] = [
           '{\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2"\n}',
       },
       {
-        name: "remote_chain_transaction_broadcast",
+        name: "broadcast_transaction",
         type: "unary",
         description: "Broadcast a signed transaction.",
         requestDescription: "RemoteChainTransactionBroadcastRequest",
@@ -207,28 +157,12 @@ export const services: ServiceInfo[] = [
           '{\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "transaction": "0x"\n}',
       },
       {
-        name: "remote_chain_transaction_stop",
+        name: "stop_transaction",
         type: "unary",
         description: "Stop a transaction broadcast.",
         requestDescription: "RemoteChainTransactionStopRequest",
         defaultRequest:
           '{\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "operationId": "op-id"\n}',
-      },
-      {
-        name: "host_sign_raw",
-        type: "unary",
-        description: "Sign raw bytes or a message.",
-        requestDescription: "HostSignRawRequest",
-        defaultRequest:
-          '{\n  "account": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  },\n  "payload": {\n    "tag": "Bytes",\n    "value": {\n      "bytes": "0x48656c6c6f2c20776f726c6421"\n    }\n  }\n}',
-      },
-      {
-        name: "host_sign_payload",
-        type: "unary",
-        description: "Sign a Substrate extrinsic payload.",
-        requestDescription: "HostSignPayloadRequest",
-        defaultRequest:
-          '{\n  "account": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  },\n  "blockHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "blockNumber": "0x00000000",\n  "era": "0x00",\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "method": "0x00003448656c6c6f2c20776f726c6421",\n  "nonce": "0x00000000",\n  "signedExtensions": [],\n  "specVersion": "0x00000000",\n  "tip": "0x00000000000000000000000000000000",\n  "transactionVersion": "0x00000000",\n  "version": 4\n}',
       },
     ],
   },
@@ -236,7 +170,7 @@ export const services: ServiceInfo[] = [
     name: "Chat",
     methods: [
       {
-        name: "host_chat_create_room",
+        name: "create_room",
         type: "unary",
         description: "Create a chat room.",
         requestDescription: "HostChatCreateRoomRequest",
@@ -244,7 +178,7 @@ export const services: ServiceInfo[] = [
           '{\n  "icon": "",\n  "name": "Test Room",\n  "roomId": "test-room"\n}',
       },
       {
-        name: "host_chat_register_bot",
+        name: "register_bot",
         type: "unary",
         description: "Register a chat bot.",
         requestDescription: "HostChatRegisterBotRequest",
@@ -252,13 +186,13 @@ export const services: ServiceInfo[] = [
           '{\n  "botId": "test-bot",\n  "icon": "",\n  "name": "Test Bot"\n}',
       },
       {
-        name: "host_chat_list_subscribe",
+        name: "list_subscribe",
         type: "subscription",
         description: "Subscribe to the list of chat rooms.",
         noParams: true,
       },
       {
-        name: "host_chat_post_message",
+        name: "post_message",
         type: "unary",
         description: "Post a message to a chat room.",
         requestDescription: "HostChatPostMessageRequest",
@@ -266,13 +200,13 @@ export const services: ServiceInfo[] = [
           '{\n  "payload": {\n    "tag": "Text",\n    "value": {\n      "text": "Hello from playground!"\n    }\n  },\n  "roomId": "test-room"\n}',
       },
       {
-        name: "host_chat_action_subscribe",
+        name: "action_subscribe",
         type: "subscription",
         description: "Subscribe to received chat actions.",
         noParams: true,
       },
       {
-        name: "product_chat_custom_message_render_subscribe",
+        name: "custom_message_render_subscribe",
         type: "subscription",
         description:
           "Subscribe to custom message render requests from the host. Each\nemitted item is a [`CustomRendererNode`](crate::v01::CustomRendererNode)\ntree describing the rendered UI.",
@@ -283,24 +217,57 @@ export const services: ServiceInfo[] = [
     ],
   },
   {
+    name: "Entropy",
+    methods: [
+      {
+        name: "derive",
+        type: "unary",
+        description: "Derive deterministic entropy.",
+        requestDescription: "HostDeriveEntropyRequest",
+        defaultRequest: '{\n  "context": "0x70726f647563742d6b6579"\n}',
+      },
+    ],
+  },
+  {
+    name: "JSON-RPC",
+    methods: [
+      {
+        name: "send_message",
+        type: "unary",
+        description: "Send a JSON-RPC message.",
+        requestDescription: "HostJsonrpcMessageSendRequest",
+        defaultRequest:
+          '{\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "message": "{\\"jsonrpc\\":\\"2.0\\",\\"id\\":1,\\"method\\":\\"system_name\\",\\"params\\":[]}"\n}',
+      },
+      {
+        name: "subscribe_messages",
+        type: "subscription",
+        description: "Subscribe to inbound JSON-RPC messages.",
+        requestDescription: "HostJsonrpcMessageSubscribeRequest",
+        defaultRequest:
+          '{\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2"\n}',
+      },
+    ],
+  },
+  {
     name: "Local Storage",
     methods: [
       {
-        name: "host_local_storage_read",
+        name: "read",
         type: "unary",
         description: "Read a value by key.",
         requestDescription: "HostLocalStorageReadRequest",
         defaultRequest: '{\n  "key": "test-key"\n}',
       },
       {
-        name: "host_local_storage_write",
+        name: "write",
         type: "unary",
         description: "Write a value to a key.",
         requestDescription: "HostLocalStorageWriteRequest",
         defaultRequest: '{\n  "key": "test-key",\n  "value": "0x48656c6c6f"\n}',
       },
       {
-        name: "host_local_storage_clear",
+        name: "clear",
         type: "unary",
         description: "Clear a value by key.",
         requestDescription: "HostLocalStorageClearRequest",
@@ -312,21 +279,13 @@ export const services: ServiceInfo[] = [
     name: "Payment",
     methods: [
       {
-        name: "host_payment_balance_subscribe",
+        name: "balance_subscribe",
         type: "subscription",
         description: "Subscribe to payment balance updates.",
         noParams: true,
       },
       {
-        name: "host_payment_top_up",
-        type: "unary",
-        description: "Top up the user's payment balance.",
-        requestDescription: "HostPaymentTopUpRequest",
-        defaultRequest:
-          '{\n  "amount": "1000000000000n",\n  "source": {\n    "tag": "ProductAccount",\n    "value": {\n      "derivationIndex": 0\n    }\n  }\n}',
-      },
-      {
-        name: "host_payment_request",
+        name: "request",
         type: "unary",
         description: "Request a payment from the user.",
         requestDescription: "HostPaymentRequestRequest",
@@ -334,12 +293,41 @@ export const services: ServiceInfo[] = [
           '{\n  "amount": "1000000000000n",\n  "destination": "0x0000000000000000000000000000000000000000000000000000000000000000"\n}',
       },
       {
-        name: "host_payment_status_subscribe",
+        name: "status_subscribe",
         type: "subscription",
         description:
           "Subscribe to payment lifecycle updates for a specific payment.",
         requestDescription: "HostPaymentStatusSubscribeRequest",
         defaultRequest: '{\n  "paymentId": "payment-id"\n}',
+      },
+      {
+        name: "top_up",
+        type: "unary",
+        description: "Top up the user's payment balance.",
+        requestDescription: "HostPaymentTopUpRequest",
+        defaultRequest:
+          '{\n  "amount": "1000000000000n",\n  "source": {\n    "tag": "ProductAccount",\n    "value": {\n      "derivationIndex": 0\n    }\n  }\n}',
+      },
+    ],
+  },
+  {
+    name: "Permissions",
+    methods: [
+      {
+        name: "request_device_permission",
+        type: "unary",
+        description: "Request a device-capability permission from the user.",
+        requestDescription:
+          "Enum values: Notifications / Camera / Microphone / Bluetooth / NFC / Location / Clipboard / OpenUrl / Biometrics",
+        defaultRequest: '"Camera"',
+      },
+      {
+        name: "request_remote_permission",
+        type: "unary",
+        description: "Request one or more remote-operation permissions.",
+        requestDescription: "RemotePermissionRequest",
+        defaultRequest:
+          '{\n  "permissions": [\n    {\n      "tag": "Remote",\n      "value": {\n        "domains": [\n          "api.example.com"\n        ]\n      }\n    }\n  ]\n}',
       },
     ],
   },
@@ -347,7 +335,7 @@ export const services: ServiceInfo[] = [
     name: "Preimage",
     methods: [
       {
-        name: "remote_preimage_lookup_subscribe",
+        name: "lookup_subscribe",
         type: "subscription",
         description: "Subscribe to preimage lookups for a given key.",
         requestDescription: "RemotePreimageLookupSubscribeRequest",
@@ -355,7 +343,7 @@ export const services: ServiceInfo[] = [
           '{\n  "key": "0x0000000000000000000000000000000000000000000000000000000000000000"\n}',
       },
       {
-        name: "remote_preimage_submit",
+        name: "submit",
         type: "unary",
         description:
           "Submit a preimage. Returns the preimage key (hash) on success.",
@@ -365,17 +353,67 @@ export const services: ServiceInfo[] = [
     ],
   },
   {
+    name: "Resource Allocation",
+    methods: [
+      {
+        name: "request",
+        type: "unary",
+        description: "Request the host to pre-allocate one or more resources.",
+        requestDescription: "HostRequestResourceAllocationRequest",
+        defaultRequest:
+          '{\n  "resources": [\n    {\n      "tag": "StatementStoreAllowance"\n    },\n    {\n      "tag": "AutoSigning"\n    }\n  ]\n}',
+      },
+    ],
+  },
+  {
+    name: "Signing",
+    methods: [
+      {
+        name: "sign_raw_with_legacy_account",
+        type: "unary",
+        description: "Sign raw bytes with a non-product account.",
+        requestDescription: "HostSignRawWithLegacyAccountRequest",
+        defaultRequest:
+          '{\n  "payload": {\n    "tag": "Bytes",\n    "value": {\n      "bytes": "0x48656c6c6f"\n    }\n  },\n  "signer": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"\n}',
+      },
+      {
+        name: "sign_payload_with_legacy_account",
+        type: "unary",
+        description: "Sign an extrinsic payload with a non-product account.",
+        requestDescription: "HostSignPayloadWithLegacyAccountRequest",
+        defaultRequest:
+          '{\n  "payload": {\n    "account": {\n      "derivationIndex": 0,\n      "dotNsIdentifier": "truapi-playground.dot"\n    },\n    "blockHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    "blockNumber": "0x00000000",\n    "era": "0x00",\n    "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n    "method": "0x0000",\n    "nonce": "0x00000000",\n    "signedExtensions": [],\n    "specVersion": "0x00000000",\n    "tip": "0x00000000000000000000000000000000",\n    "transactionVersion": "0x00000000",\n    "version": 4\n  },\n  "signer": "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY"\n}',
+      },
+      {
+        name: "sign_raw",
+        type: "unary",
+        description: "Sign raw bytes or a message.",
+        requestDescription: "HostSignRawRequest",
+        defaultRequest:
+          '{\n  "account": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  },\n  "payload": {\n    "tag": "Bytes",\n    "value": {\n      "bytes": "0x48656c6c6f2c20776f726c6421"\n    }\n  }\n}',
+      },
+      {
+        name: "sign_payload",
+        type: "unary",
+        description: "Sign an extrinsic payload.",
+        requestDescription: "HostSignPayloadRequest",
+        defaultRequest:
+          '{\n  "account": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  },\n  "blockHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "blockNumber": "0x00000000",\n  "era": "0x00",\n  "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",\n  "method": "0x00003448656c6c6f2c20776f726c6421",\n  "nonce": "0x00000000",\n  "signedExtensions": [],\n  "specVersion": "0x00000000",\n  "tip": "0x00000000000000000000000000000000",\n  "transactionVersion": "0x00000000",\n  "version": 4\n}',
+      },
+    ],
+  },
+  {
     name: "Statement Store",
     methods: [
       {
-        name: "remote_statement_store_subscribe",
+        name: "subscribe",
         type: "subscription",
         description: "Subscribe to statements matching a topic filter.",
         requestDescription: "RemoteStatementStoreSubscribeRequest",
         defaultRequest: '{\n  "tag": "MatchAll",\n  "value": []\n}',
       },
       {
-        name: "remote_statement_store_create_proof",
+        name: "create_proof",
         type: "unary",
         description: "Create a proof for a statement.",
         requestDescription: "RemoteStatementStoreCreateProofRequest",
@@ -383,7 +421,15 @@ export const services: ServiceInfo[] = [
           '{\n  "productAccountId": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  },\n  "statement": {\n    "expiry": "9999999999999n",\n    "topics": []\n  }\n}',
       },
       {
-        name: "remote_statement_store_submit",
+        name: "create_proof_authorized",
+        type: "unary",
+        description:
+          "Create a proof for a statement using a pre-allocated allowance account,\nbypassing the per-call signing prompt.",
+        requestDescription: "Statement",
+        defaultRequest: '{\n  "expiry": "9999999999999n",\n  "topics": []\n}',
+      },
+      {
+        name: "submit",
         type: "unary",
         description:
           "Submit a signed statement to the network. The request body is the\n[`SignedStatement`](crate::v01::SignedStatement) directly (no wrapping\nstruct), matching upstream `triangle-js-sdks`.",
@@ -391,85 +437,71 @@ export const services: ServiceInfo[] = [
         defaultRequest:
           '{\n  "proof": {\n    "tag": "Sr25519",\n    "value": {\n      "signature": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",\n      "signer": "0x0000000000000000000000000000000000000000000000000000000000000000"\n    }\n  },\n  "topics": []\n}',
       },
-      {
-        name: "remote_statement_store_create_proof_authorized",
-        type: "unary",
-        description:
-          "Create a proof for a statement using a pre-allocated allowance account,\nbypassing the per-call signing prompt.",
-        requestDescription: "Statement",
-        defaultRequest: '{\n  "expiry": "9999999999999n",\n  "topics": []\n}',
-      },
     ],
   },
   {
     name: "System",
     methods: [
       {
-        name: "host_handshake",
+        name: "handshake",
         type: "unary",
-        description: "Negotiates the wire codec version with the product.",
-        noParams: true,
+        description: "Negotiate the wire codec version with the product.",
+        requestDescription: "HostHandshakeRequest",
       },
       {
-        name: "host_feature_supported",
+        name: "feature_supported",
         type: "unary",
-        description: "Queries whether the host supports a specific feature.",
+        description: "Query whether the host supports a specific feature.",
         requestDescription: "HostFeatureSupportedRequest",
         defaultRequest:
           '{\n  "tag": "Chain",\n  "value": {\n    "genesisHash": "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2"\n  }\n}',
       },
       {
-        name: "host_push_notification",
+        name: "push_notification",
         type: "unary",
-        description: "Sends a push notification to the user.",
+        description: "Send a push notification to the user.",
         requestDescription: "HostPushNotificationRequest",
         defaultRequest: '{\n  "text": "Hello!"\n}',
       },
       {
-        name: "host_navigate_to",
+        name: "navigate_to",
         type: "unary",
-        description: "Requests the host to open a URL.",
+        description: "Request the host to open a URL.",
         requestDescription: "HostNavigateToRequest",
         defaultRequest: '{\n  "url": "https://example.com"\n}',
       },
+    ],
+  },
+  {
+    name: "Theme",
+    methods: [
       {
-        name: "host_device_permission",
-        type: "unary",
-        description: "Request a device-capability permission from the user.",
-        requestDescription:
-          "Enum values: Notifications / Camera / Microphone / Bluetooth / NFC / Location / Clipboard / OpenUrl / Biometrics",
-        defaultRequest: '"Camera"',
-      },
-      {
-        name: "remote_permission",
-        type: "unary",
-        description: "Request one or more remote-operation permissions.",
-        requestDescription: "RemotePermissionRequest",
-        defaultRequest:
-          '{\n  "permissions": [\n    {\n      "tag": "Remote",\n      "value": {\n        "domains": [\n          "api.example.com"\n        ]\n      }\n    }\n  ]\n}',
-      },
-      {
-        name: "host_theme_subscribe",
+        name: "subscribe",
         type: "subscription",
-        description: "Subscribe to host theme changes (light/dark).",
+        description: "Subscribe to host theme changes.",
         noParams: true,
       },
+    ],
+  },
+  {
+    name: "Transaction",
+    methods: [
       {
-        name: "host_derive_entropy",
+        name: "create",
         type: "unary",
-        description:
-          "Derive 32 bytes of entropy from the user's root BIP-39 entropy for the\ngiven key.",
-        requestDescription: "HostDeriveEntropyRequest",
-        defaultRequest: '{\n  "context": "0x70726f647563742d6b6579"\n}',
+        description: "Construct a signed transaction for a product account.",
+        requestDescription: "HostCreateTransactionRequest",
+        defaultRequest:
+          '{\n  "payload": {\n    "tag": "V1",\n    "value": {\n      "callData": "0x0000",\n      "context": {\n        "bestBlockHeight": 0,\n        "metadata": "0x",\n        "tokenDecimals": 10,\n        "tokenSymbol": "DOT"\n      },\n      "extensions": [],\n      "txExtVersion": 0\n    }\n  },\n  "productAccountId": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  }\n}',
       },
       {
-        name: "host_request_resource_allocation",
+        name: "create_with_legacy_account",
         type: "unary",
         description:
-          "Request the host to pre-allocate one or more resources (statement store\nallowance, bulletin allowance, smart contract allowance, auto-signing).",
-        requestDescription: "HostRequestResourceAllocationRequest",
+          "Construct a signed transaction for a non-product account.",
+        requestDescription: "HostCreateTransactionWithLegacyAccountRequest",
         defaultRequest:
-          '{\n  "resources": [\n    {\n      "tag": "StatementStoreAllowance"\n    },\n    {\n      "tag": "AutoSigning"\n    }\n  ]\n}',
+          '{\n  "payload": {\n    "tag": "V1",\n    "value": {\n      "callData": "0x0000",\n      "context": {\n        "bestBlockHeight": 0,\n        "metadata": "0x",\n        "tokenDecimals": 10,\n        "tokenSymbol": "DOT"\n      },\n      "extensions": [],\n      "txExtVersion": 0\n    }\n  }\n}',
       },
     ],
   },

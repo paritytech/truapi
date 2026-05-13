@@ -1,6 +1,6 @@
 # truapi
 
-*Source of truth for the TrUAPI protocol: shared traits, versioned types, and the wire dispatch table.*
+_Source of truth for the TrUAPI protocol: shared traits, versioned types, and the wire dispatch table._
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](../../../LICENSE)
 
@@ -27,12 +27,12 @@ Wire ids are part of the public protocol after F1: existing ids are append-only.
 
 ## Key modules
 
-| Module | Role |
-| ------ | ---- |
-| `v02` | Current protocol-facing types. |
-| `versioned` | Request, response, and subscription item wrappers for the unified trait surface. |
-| `api` | Unified domain traits (`AccountManagement`, `ChainInteraction`, `Chat`, ...) and the composed `TrUApi` trait. |
-| `failure` | Framework-level `CallError<D>` and lifecycle context types. |
+| Module      | Role                                                                                     |
+| ----------- | ---------------------------------------------------------------------------------------- |
+| `v02`       | Current protocol-facing types.                                                           |
+| `versioned` | Request, response, and subscription item wrappers for the unified trait surface.         |
+| `api`       | Unified domain traits (`Account`, `Chain`, `Chat`, ...) and the composed `TrUApi` trait. |
+| `failure`   | Framework-level `CallError<D>` and lifecycle context types.                              |
 
 ## Example
 
@@ -40,7 +40,7 @@ Implement one or more of the unified sub-traits. `TrUApi` is a blanket trait ove
 
 ```rust
 use truapi::{CallContext, CallError, Subscription};
-use truapi::api::{AccountManagement, TrUApi};
+use truapi::api::{Account, TrUApi};
 use truapi::versioned::account::{
     HostAccountConnectionStatusSubscribeItem,
     HostAccountGetError,
@@ -52,8 +52,8 @@ use truapi::v01::Account;
 struct MyHost;
 
 #[async_trait::async_trait]
-impl AccountManagement for MyHost {
-    async fn host_account_get(
+impl Account for MyHost {
+    async fn get_account(
         &self,
         _cx: &CallContext,
         _request: HostAccountGetRequest,
@@ -64,7 +64,7 @@ impl AccountManagement for MyHost {
         }))
     }
 
-    async fn host_account_connection_status_subscribe(
+    async fn connection_status_subscribe(
         &self,
         _cx: &CallContext,
     ) -> Subscription<HostAccountConnectionStatusSubscribeItem> {

@@ -6,22 +6,20 @@ import {
   FileText,
   HardDrive,
   Image,
-  Key,
   Link,
   MessageSquare,
   PenTool,
-  Shield,
   User,
   Wallet,
   X,
   Zap,
 } from "lucide-react";
 import { versions } from "../data/registry";
+import { versionedMethodRoutePath } from "../lib/routes";
 import { useVersion } from "../contexts/VersionContext";
 
 const groupIcons: Record<string, ReactNode> = {
-  "truapi-calls": <Zap size={15} />,
-  permissions: <Shield size={15} />,
+  system: <Zap size={15} />,
   "local-storage": <HardDrive size={15} />,
   "account-management": <User size={15} />,
   signing: <PenTool size={15} />,
@@ -30,7 +28,6 @@ const groupIcons: Record<string, ReactNode> = {
   preimage: <Image size={15} />,
   "chain-interaction": <Link size={15} />,
   payment: <Wallet size={15} />,
-  "entropy-derivation": <Key size={15} />,
 };
 
 export default function Sidebar({
@@ -207,7 +204,7 @@ export default function Sidebar({
             const isExpanded = expandedGroups.has(group.id);
             const groupMethods = methods.filter((m) => m.groupId === group.id);
             const hasActive = groupMethods.some(
-              (m) => currentPath === `${versionPrefix}/method/${m.id}`,
+              (m) => currentPath === versionedMethodRoutePath(versionPrefix, m),
             );
             return (
               <div key={group.id} className="mb-0.5">
@@ -247,14 +244,15 @@ export default function Sidebar({
                 {isExpanded && (
                   <div className="ml-4 border-l border-slate-700/50 pl-2 animate-slide-down">
                     {groupMethods.map((method) => {
-                      const isActive =
-                        currentPath === `${versionPrefix}/method/${method.id}`;
+                      const methodPath = versionedMethodRoutePath(
+                        versionPrefix,
+                        method,
+                      );
+                      const isActive = currentPath === methodPath;
                       return (
                         <button
                           key={method.id}
-                          onClick={() =>
-                            handleNav(`${versionPrefix}/method/${method.id}`)
-                          }
+                          onClick={() => handleNav(methodPath)}
                           className={`w-full text-left px-2 py-1 rounded text-xs font-mono truncate transition-all duration-150 ${
                             isActive
                               ? "bg-pink-500/15 text-pink-300 font-medium shadow-[inset_3px_0_0_0_theme(colors.pink.500)] -ml-[1px] pl-[9px]"

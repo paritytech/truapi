@@ -1,4 +1,4 @@
-//! Unified [`Payment`] trait (V0.2+).
+//! Unified [`Payment`] trait.
 
 use crate::versioned::payment::{
     HostPaymentBalanceSubscribeError, HostPaymentBalanceSubscribeItem,
@@ -10,10 +10,7 @@ use crate::versioned::payment::{
 use crate::wire;
 use crate::{CallContext, CallError, Subscription};
 
-/// Payment operations.
-///
-/// Default methods return [`CallError::HostFailure`] with an `unavailable`
-/// reason. Hosts override only the methods they actually support.
+/// Payment request and balance/status subscription methods.
 #[async_trait::async_trait]
 pub trait Payment: Send + Sync {
     /// Subscribe to payment balance updates.
@@ -28,7 +25,7 @@ pub trait Payment: Send + Sync {
     /// } from "@parity/truapi";
     ///
     /// export function watchPaymentBalance(truapi: Client): Subscription {
-    ///   return truapi.payment.paymentBalanceSubscribe().subscribe({
+    ///   return truapi.payment.balanceSubscribe().subscribe({
     ///     next: (balance: HostPaymentBalanceSubscribeItem) =>
     ///       console.log(balance),
     ///     error: (error: SubscriptionError<HostPaymentBalanceSubscribeError>) =>
@@ -37,15 +34,13 @@ pub trait Payment: Send + Sync {
     ///   });
     /// }
     /// ```
-    #[wire(start_id = 118)]
-    async fn host_payment_balance_subscribe(
+    #[wire(start_id = 38)]
+    async fn balance_subscribe(
         &self,
         _cx: &CallContext,
         _request: HostPaymentBalanceSubscribeRequest,
-    ) -> Result<
-        Subscription<HostPaymentBalanceSubscribeItem>,
-        CallError<HostPaymentBalanceSubscribeError>,
-    > {
+    ) -> Result<Subscription<HostPaymentBalanceSubscribeItem>, CallError<HostPaymentBalanceSubscribeError>>
+    {
         Err(CallError::unavailable())
     }
 
@@ -60,7 +55,7 @@ pub trait Payment: Send + Sync {
     /// export async function requestPayment(
     ///   truapi: Client,
     /// ): Promise<HostPaymentRequestResponse> {
-    ///   const result = await truapi.payment.paymentRequest({
+    ///   const result = await truapi.payment.request({
     ///     amount: 1000000000000n,
     ///     destination: "0x0000000000000000000000000000000000000000000000000000000000000000",
     ///   });
@@ -69,8 +64,8 @@ pub trait Payment: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(request_id = 124)]
-    async fn host_payment_request(
+    #[wire(request_id = 42)]
+    async fn request(
         &self,
         _cx: &CallContext,
         _request: HostPaymentRequestRequest,
@@ -91,7 +86,7 @@ pub trait Payment: Send + Sync {
     ///
     /// export function watchPaymentStatus(truapi: Client): Subscription {
     ///   return truapi.payment
-    ///     .paymentStatusSubscribe({
+    ///     .statusSubscribe({
     ///       request: { paymentId: "payment-id" },
     ///     })
     ///     .subscribe({
@@ -103,15 +98,13 @@ pub trait Payment: Send + Sync {
     ///     });
     /// }
     /// ```
-    #[wire(start_id = 126)]
-    async fn host_payment_status_subscribe(
+    #[wire(start_id = 44)]
+    async fn status_subscribe(
         &self,
         _cx: &CallContext,
         _request: HostPaymentStatusSubscribeRequest,
-    ) -> Result<
-        Subscription<HostPaymentStatusSubscribeItem>,
-        CallError<HostPaymentStatusSubscribeError>,
-    > {
+    ) -> Result<Subscription<HostPaymentStatusSubscribeItem>, CallError<HostPaymentStatusSubscribeError>>
+    {
         Err(CallError::unavailable())
     }
 
@@ -121,7 +114,7 @@ pub trait Payment: Send + Sync {
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function topUpPaymentBalance(truapi: Client): Promise<void> {
-    ///   const result = await truapi.payment.paymentTopUp({
+    ///   const result = await truapi.payment.topUp({
     ///     amount: 1000000000000n,
     ///     source: { tag: "ProductAccount", value: { derivationIndex: 0 } },
     ///   });
@@ -129,8 +122,8 @@ pub trait Payment: Send + Sync {
     ///   if (result.isErr()) throw result.error;
     /// }
     /// ```
-    #[wire(request_id = 122)]
-    async fn host_payment_top_up(
+    #[wire(request_id = 48)]
+    async fn top_up(
         &self,
         _cx: &CallContext,
         _request: HostPaymentTopUpRequest,

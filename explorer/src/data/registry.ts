@@ -1,12 +1,11 @@
+import { versions as generatedVersions } from "@parity/truapi/explorer/registry";
 import {
-  defaultVersion as generatedDefaultVersion,
   getVersion as getGeneratedVersion,
-  versions as generatedVersions,
   type ExplorerGroup,
   type ExplorerMethod,
   type ExplorerType,
   type ExplorerVersion,
-} from "@parity/truapi/explorer/registry";
+} from "@parity/truapi/explorer/types";
 
 export type Pattern =
   | "request-response"
@@ -136,12 +135,10 @@ function toVersion(version: ExplorerVersion): VersionMeta {
 }
 
 export const versions: VersionMeta[] = generatedVersions.map(toVersion);
-export const defaultVersion: VersionMeta =
-  versions.find((version) => version.slug === generatedDefaultVersion.slug) ??
-  versions[versions.length - 1];
+export const defaultVersion: VersionMeta = versions[versions.length - 1];
 
 export function getVersion(slug: string): VersionMeta | undefined {
-  const generated = getGeneratedVersion(slug);
+  const generated = getGeneratedVersion(generatedVersions, slug);
   if (!generated) return undefined;
   return versions.find((version) => version.slug === generated.slug);
 }

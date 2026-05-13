@@ -40,15 +40,10 @@ export const ActionTrigger: S.Codec<ActionTrigger> = S.lazy(
     }) as S.Codec<ActionTrigger>,
 );
 
-/** A resource the product can request the host to pre-allocate. */
 export type AllocatableResource =
-  /** Statement store allowance. */
   | { tag: "StatementStoreAllowance"; value?: undefined }
-  /** Bulletin board allowance. */
   | { tag: "BulletinAllowance"; value?: undefined }
-  /** Smart contract allowance with a derivation index. */
   | { tag: "SmartContractAllowance"; value: number }
-  /** Auto-signing capability. */
   | { tag: "AutoSigning"; value?: undefined };
 
 export const AllocatableResource: S.Codec<AllocatableResource> = S.lazy(
@@ -61,7 +56,6 @@ export const AllocatableResource: S.Codec<AllocatableResource> = S.lazy(
     }),
 );
 
-/** Outcome of a resource allocation request. */
 export type AllocationOutcome = "Allocated" | "Rejected" | "NotAvailable";
 
 export const AllocationOutcome: S.Codec<AllocationOutcome> = S.lazy(
@@ -1787,11 +1781,8 @@ export const Modifier: S.Codec<Modifier> = S.lazy(
     }),
 );
 
-/** Result of starting a chain operation. */
 export type OperationStartedResult =
-  /** Operation started successfully. */
   | { tag: "Started"; value: { operationId: string } }
-  /** Too many concurrent operations. */
   | { tag: "LimitReached"; value?: undefined };
 
 export const OperationStartedResult: S.Codec<OperationStartedResult> = S.lazy(
@@ -1900,11 +1891,8 @@ export const VersionedProductChatCustomMessageRenderSubscribeRequest: S.Codec<Ve
       }),
   );
 
-/** Raw data to sign -- either binary bytes or a string message. */
 export type RawPayload =
-  /** Raw binary data to sign. */
   | { tag: "Bytes"; value: { bytes: HexString } }
-  /** String message to sign. */
   | { tag: "Payload"; value: { payload: string } };
 
 export const RawPayload: S.Codec<RawPayload> = S.lazy(
@@ -2395,35 +2383,11 @@ export const VersionedRemoteChainTransactionStopResponse: S.Codec<VersionedRemot
       S.indexedTaggedUnion({ V1: [0, S._void] as const }),
   );
 
-/**
- * A single remote-operation permission entry.
- *
- * The [`crate::api::System::remote_permission`] method accepts a
- * `Vec<RemotePermission>` so products can batch multiple permission requests
- * into a single prompt.
- *
- * See [RFC 0001] and [issue #64].
- *
- * [RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66
- * [issue #64]: https://github.com/paritytech/triangle-js-sdks/issues/64
- */
 export type RemotePermission =
-  /**
-   * HTTP/HTTPS/WS/WSS access to specific domains. Each string is a domain
-   * pattern: `"api.example.com"` (exact), `"*.example.com"` (wildcard
-   * subdomain), or `"*"` (all hosts).
-   */
   | { tag: "Remote"; value: { domains: Array<string> } }
-  /** WebRTC access, can expose the user's IP address. */
   | { tag: "WebRtc"; value?: undefined }
-  /**
-   * Broadcast signed transactions via
-   * [`crate::api::ChainInteraction::remote_chain_transaction_broadcast`].
-   */
   | { tag: "ChainSubmit"; value?: undefined }
-  /** Submit a preimage via [`crate::api::Preimage::remote_preimage_submit`]. */
   | { tag: "PreimageSubmit"; value?: undefined }
-  /** Submit statements via [`crate::api::StatementStore::remote_statement_store_submit`]. */
   | { tag: "StatementSubmit"; value?: undefined };
 
 export const RemotePermission: S.Codec<RemotePermission> = S.lazy(
@@ -2670,10 +2634,10 @@ export const VersionedRemoteStatementStoreSubscribeRequest: S.Codec<VersionedRem
       }),
   );
 
-/** Resource allocation error. */
-export type ResourceAllocationError =
-  /** Catch-all. */
-  { tag: "Unknown"; value: { reason: string } };
+export type ResourceAllocationError = {
+  tag: "Unknown";
+  value: { reason: string };
+};
 
 export const ResourceAllocationError: S.Codec<ResourceAllocationError> = S.lazy(
   (): S.Codec<ResourceAllocationError> =>
@@ -2728,11 +2692,8 @@ export const RowProps: S.Codec<RowProps> = S.lazy(
     }) as S.Codec<RowProps>,
 );
 
-/** A runtime API identified by name and version. */
 export interface RuntimeApi {
-  /** Runtime API name. */
   name: string;
-  /** Runtime API version. */
   version: number;
 }
 
@@ -2741,19 +2702,12 @@ export const RuntimeApi: S.Codec<RuntimeApi> = S.lazy(
     S.Struct({ name: S.str, version: S.u32 }) as S.Codec<RuntimeApi>,
 );
 
-/** Runtime specification metadata. */
 export interface RuntimeSpec {
-  /** Specification name. */
   specName: string;
-  /** Implementation name. */
   implName: string;
-  /** Spec version number. */
   specVersion: number;
-  /** Implementation version. */
   implVersion: number;
-  /** Transaction format version. */
   transactionVersion?: number;
-  /** Supported runtime APIs. */
   apis: Array<RuntimeApi>;
 }
 
@@ -2769,11 +2723,8 @@ export const RuntimeSpec: S.Codec<RuntimeSpec> = S.lazy(
     }) as S.Codec<RuntimeSpec>,
 );
 
-/** Runtime validity check result. */
 export type RuntimeType =
-  /** Valid runtime with spec. */
   | { tag: "Valid"; value: RuntimeSpec }
-  /** Invalid runtime with error. */
   | { tag: "Invalid"; value: { error: string } };
 
 export const RuntimeType: S.Codec<RuntimeType> = S.lazy(
@@ -2892,11 +2843,8 @@ export const StatementProof: S.Codec<StatementProof> = S.lazy(
     }),
 );
 
-/** A single storage query. */
 export interface StorageQueryItem {
-  /** Storage key to query. */
   key: HexString;
-  /** What to return. */
   queryType: StorageQueryType;
 }
 
@@ -2908,7 +2856,6 @@ export const StorageQueryItem: S.Codec<StorageQueryItem> = S.lazy(
     }) as S.Codec<StorageQueryItem>,
 );
 
-/** Type of storage query to perform. */
 export type StorageQueryType =
   | "Value"
   | "Hash"
@@ -2927,15 +2874,10 @@ export const StorageQueryType: S.Codec<StorageQueryType> = S.lazy(
     ),
 );
 
-/** Result of a storage query. */
 export interface StorageResultItem {
-  /** The queried key. */
   key: HexString;
-  /** Value, if requested. */
   value?: HexString;
-  /** Hash, if requested. */
   hash?: HexString;
-  /** Merkle value, if requested. */
   closestDescendantMerkleValue?: HexString;
 }
 
@@ -2984,7 +2926,6 @@ export const TextProps: S.Codec<TextProps> = S.lazy(
     }) as S.Codec<TextProps>,
 );
 
-/** Host UI theme. */
 export type Theme = "Light" | "Dark";
 
 export const Theme: S.Codec<Theme> = S.lazy(
@@ -2996,15 +2937,10 @@ export type Topic = HexString;
 
 export const Topic: S.Codec<Topic> = S.lazy((): S.Codec<Topic> => S.Hex(32));
 
-/** Context information for transaction construction. */
 export interface TxPayloadContextV1 {
-  /** `RuntimeMetadataPrefixed` blob (SCALE). */
   metadata: HexString;
-  /** Native token symbol. */
   tokenSymbol: string;
-  /** Native token decimals. */
   tokenDecimals: number;
-  /** Highest known block number. */
   bestBlockHeight: number;
 }
 
@@ -3018,13 +2954,9 @@ export const TxPayloadContextV1: S.Codec<TxPayloadContextV1> = S.lazy(
     }) as S.Codec<TxPayloadContextV1>,
 );
 
-/** A signed extension for a transaction payload. */
 export interface TxPayloadExtensionV1 {
-  /** Extension name (e.g., `"CheckSpecVersion"`). */
   id: string;
-  /** SCALE-encoded extra data (in extrinsic body). */
   extra: HexString;
-  /** SCALE-encoded implicit data (signed, not in body). */
   additionalSigned: HexString;
 }
 
@@ -3037,20 +2969,11 @@ export const TxPayloadExtensionV1: S.Codec<TxPayloadExtensionV1> = S.lazy(
     }) as S.Codec<TxPayloadExtensionV1>,
 );
 
-/**
- * Version 1 transaction payload with all data needed to construct a signed
- * extrinsic.
- */
 export interface TxPayloadV1 {
-  /** Signer hint (address/name), `None` = host picks. */
   signer?: string;
-  /** SCALE-encoded Call data. */
   callData: HexString;
-  /** Signed extensions. */
   extensions: Array<TxPayloadExtensionV1>;
-  /** 0 for Extrinsic V4, any for V5. */
   txExtVersion: number;
-  /** Transaction context. */
   context: TxPayloadContextV1;
 }
 
@@ -3394,17 +3317,11 @@ export const HostChatRegisterBotResponse: S.Codec<HostChatRegisterBotResponse> =
       }) as S.Codec<HostChatRegisterBotResponse>,
   );
 
-/** Transaction creation error. */
 export type HostCreateTransactionError =
-  /** Payload could not be deserialized. */
   | { tag: "FailedToDecode"; value?: undefined }
-  /** User rejected. */
   | { tag: "Rejected"; value?: undefined }
-  /** Unsupported payload version or extension. */
   | { tag: "NotSupported"; value: { reason: string } }
-  /** Not authenticated. */
   | { tag: "PermissionDenied"; value?: undefined }
-  /** Catch-all. */
   | { tag: "Unknown"; value: { reason: string } };
 
 export const HostCreateTransactionError: S.Codec<HostCreateTransactionError> =
@@ -3421,11 +3338,8 @@ export const HostCreateTransactionError: S.Codec<HostCreateTransactionError> =
       }),
   );
 
-/** Request to create a transaction for a product account. */
 export interface HostCreateTransactionRequest {
-  /** Product account that will sign the transaction. */
   productAccountId: ProductAccountId;
-  /** Versioned transaction payload. */
   payload: VersionedTxPayload;
 }
 
@@ -3438,9 +3352,7 @@ export const HostCreateTransactionRequest: S.Codec<HostCreateTransactionRequest>
       }) as S.Codec<HostCreateTransactionRequest>,
   );
 
-/** Response containing a created transaction. */
 export interface HostCreateTransactionResponse {
-  /** SCALE-encoded signed transaction. */
   transaction: HexString;
 }
 
@@ -3452,9 +3364,7 @@ export const HostCreateTransactionResponse: S.Codec<HostCreateTransactionRespons
       }) as S.Codec<HostCreateTransactionResponse>,
   );
 
-/** Request to create a transaction with a non-product account. */
 export interface HostCreateTransactionWithLegacyAccountRequest {
-  /** Versioned transaction payload to sign. */
   payload: VersionedTxPayload;
 }
 
@@ -3466,9 +3376,7 @@ export const HostCreateTransactionWithLegacyAccountRequest: S.Codec<HostCreateTr
       }) as S.Codec<HostCreateTransactionWithLegacyAccountRequest>,
   );
 
-/** Response containing a transaction created with a non-product account. */
 export interface HostCreateTransactionWithLegacyAccountResponse {
-  /** SCALE-encoded signed transaction. */
   transaction: HexString;
 }
 
@@ -3480,25 +3388,13 @@ export const HostCreateTransactionWithLegacyAccountResponse: S.Codec<HostCreateT
       }) as S.Codec<HostCreateTransactionWithLegacyAccountResponse>,
   );
 
-/**
- * Error from [`crate::api::System::host_derive_entropy`].
- *
- * Under normal operation the function always succeeds; `Unknown` indicates an
- * unrecoverable internal host error.
- *
- * See [RFC 0007].
- *
- * [RFC 0007]: https://github.com/paritytech/triangle-js-sdks/pull/95
- */
 export type HostDeriveEntropyError = "Unknown";
 
 export const HostDeriveEntropyError: S.Codec<HostDeriveEntropyError> = S.lazy(
   (): S.Codec<HostDeriveEntropyError> => S.Status("Unknown"),
 );
 
-/** Request to derive deterministic entropy. */
 export interface HostDeriveEntropyRequest {
-  /** Domain-separated derivation context. */
   context: HexString;
 }
 
@@ -3508,9 +3404,7 @@ export const HostDeriveEntropyRequest: S.Codec<HostDeriveEntropyRequest> =
       S.Struct({ context: S.Hex() }) as S.Codec<HostDeriveEntropyRequest>,
   );
 
-/** Response containing derived deterministic entropy. */
 export interface HostDeriveEntropyResponse {
-  /** 32 bytes of derived entropy. */
   entropy: HexString;
 }
 
@@ -3520,14 +3414,6 @@ export const HostDeriveEntropyResponse: S.Codec<HostDeriveEntropyResponse> =
       S.Struct({ entropy: S.Hex(32) }) as S.Codec<HostDeriveEntropyResponse>,
   );
 
-/**
- * Device capability to request access to.
- *
- * Extended with `Notifications`, `NFC`, `Clipboard`, `OpenUrl`, and
- * `Biometrics` per [RFC 0001] (JIT permissions).
- *
- * [RFC 0001]: https://github.com/paritytech/triangle-js-sdks/pull/66
- */
 export type HostDevicePermissionRequest =
   | "Notifications"
   | "Camera"
@@ -3555,9 +3441,7 @@ export const HostDevicePermissionRequest: S.Codec<HostDevicePermissionRequest> =
       ),
   );
 
-/** Response indicating whether a device permission was granted. */
 export interface HostDevicePermissionResponse {
-  /** Whether the permission was granted. */
   granted: boolean;
 }
 
@@ -3567,10 +3451,10 @@ export const HostDevicePermissionResponse: S.Codec<HostDevicePermissionResponse>
       S.Struct({ granted: S.bool }) as S.Codec<HostDevicePermissionResponse>,
   );
 
-/** Feature to check for host support. */
-export type HostFeatureSupportedRequest =
-  /** Is this blockchain supported? */
-  { tag: "Chain"; value: { genesisHash: HexString } };
+export type HostFeatureSupportedRequest = {
+  tag: "Chain";
+  value: { genesisHash: HexString };
+};
 
 export const HostFeatureSupportedRequest: S.Codec<HostFeatureSupportedRequest> =
   S.lazy(
@@ -3582,9 +3466,7 @@ export const HostFeatureSupportedRequest: S.Codec<HostFeatureSupportedRequest> =
       }),
   );
 
-/** Response indicating whether a host feature is supported. */
 export interface HostFeatureSupportedResponse {
-  /** Whether the feature is supported. */
   supported: boolean;
 }
 
@@ -3608,7 +3490,7 @@ export const HostGetLegacyAccountsResponse: S.Codec<HostGetLegacyAccountsRespons
       }) as S.Codec<HostGetLegacyAccountsResponse>,
   );
 
-/** Error from [`crate::api::AccountManagement::host_get_user_id`]. */
+/** Error from [`crate::api::Account::get_user_id`]. */
 export type HostGetUserIdError =
   /** User denied the identity disclosure request. */
   | { tag: "PermissionDenied"; value?: undefined }
@@ -3637,11 +3519,6 @@ export const HostGetUserIdResponse: S.Codec<HostGetUserIdResponse> = S.lazy(
     S.Struct({ primaryUsername: S.str }) as S.Codec<HostGetUserIdResponse>,
 );
 
-/**
- * Handshake error. Mirrors Novasama's `HandshakeErr` byte-for-byte so that
- * pre-codegen products (built against `@novasamatech/host-api`) can decode
- * `host_handshake_response` frames produced by this host.
- */
 export type HostHandshakeError =
   | { tag: "Timeout"; value?: undefined }
   | { tag: "UnsupportedProtocolVersion"; value?: undefined }
@@ -3656,9 +3533,7 @@ export const HostHandshakeError: S.Codec<HostHandshakeError> = S.lazy(
     }),
 );
 
-/** Request to negotiate the wire codec version. */
 export interface HostHandshakeRequest {
-  /** Wire codec version requested by the peer. */
   codecVersion: number;
 }
 
@@ -3667,11 +3542,8 @@ export const HostHandshakeRequest: S.Codec<HostHandshakeRequest> = S.lazy(
     S.Struct({ codecVersion: S.u8 }) as S.Codec<HostHandshakeRequest>,
 );
 
-/** Request to send a JSON-RPC message to a chain identified by its genesis hash. */
 export interface HostJsonrpcMessageSendRequest {
-  /** Chain genesis hash. */
   genesisHash: HexString;
-  /** JSON-RPC message body. */
   message: string;
 }
 
@@ -3684,9 +3556,7 @@ export const HostJsonrpcMessageSendRequest: S.Codec<HostJsonrpcMessageSendReques
       }) as S.Codec<HostJsonrpcMessageSendRequest>,
   );
 
-/** An inbound JSON-RPC message from the host. */
 export interface HostJsonrpcMessageSubscribeItem {
-  /** JSON-RPC message body. */
   message: string;
 }
 
@@ -3696,9 +3566,7 @@ export const HostJsonrpcMessageSubscribeItem: S.Codec<HostJsonrpcMessageSubscrib
       S.Struct({ message: S.str }) as S.Codec<HostJsonrpcMessageSubscribeItem>,
   );
 
-/** Request to subscribe to inbound JSON-RPC messages for a chain. */
 export interface HostJsonrpcMessageSubscribeRequest {
-  /** Chain genesis hash. */
   genesisHash: HexString;
 }
 
@@ -3781,11 +3649,8 @@ export const HostLocalStorageWriteRequest: S.Codec<HostLocalStorageWriteRequest>
       }) as S.Codec<HostLocalStorageWriteRequest>,
   );
 
-/** Navigation error. */
 export type HostNavigateToError =
-  /** Navigation not allowed. */
   | { tag: "PermissionDenied"; value?: undefined }
-  /** Catch-all. */
   | { tag: "Unknown"; value: { reason: string } };
 
 export const HostNavigateToError: S.Codec<HostNavigateToError> = S.lazy(
@@ -3796,9 +3661,7 @@ export const HostNavigateToError: S.Codec<HostNavigateToError> = S.lazy(
     }),
 );
 
-/** Request to navigate to a URL. */
 export interface HostNavigateToRequest {
-  /** URL to open. */
   url: string;
 }
 
@@ -3808,7 +3671,7 @@ export const HostNavigateToRequest: S.Codec<HostNavigateToRequest> = S.lazy(
 );
 
 /**
- * Error from [`crate::api::Payment::host_payment_balance_subscribe`].
+ * Error from [`crate::api::Payment::balance_subscribe`].
  *
  * See [RFC 0006].
  *
@@ -3850,7 +3713,7 @@ export const HostPaymentBalanceSubscribeItem: S.Codec<HostPaymentBalanceSubscrib
   );
 
 /**
- * Error from [`crate::api::Payment::host_payment_request`].
+ * Error from [`crate::api::Payment::request`].
  *
  * See [RFC 0006].
  *
@@ -3909,7 +3772,7 @@ export const HostPaymentRequestResponse: S.Codec<HostPaymentRequestResponse> =
   );
 
 /**
- * Error from [`crate::api::Payment::host_payment_status_subscribe`].
+ * Error from [`crate::api::Payment::status_subscribe`].
  *
  * See [RFC 0006].
  *
@@ -3973,7 +3836,7 @@ export const HostPaymentStatusSubscribeRequest: S.Codec<HostPaymentStatusSubscri
   );
 
 /**
- * Error from [`crate::api::Payment::host_payment_top_up`].
+ * Error from [`crate::api::Payment::top_up`].
  *
  * See [RFC 0006].
  *
@@ -4012,11 +3875,8 @@ export const HostPaymentTopUpRequest: S.Codec<HostPaymentTopUpRequest> = S.lazy(
     }) as S.Codec<HostPaymentTopUpRequest>,
 );
 
-/** Push notification payload. */
 export interface HostPushNotificationRequest {
-  /** Notification text. */
   text: string;
-  /** Optional URL to open on tap. */
   deeplink?: string;
 }
 
@@ -4064,9 +3924,7 @@ export const HostRequestLoginResponse: S.Codec<HostRequestLoginResponse> =
       S.Status("Success", "AlreadyConnected", "Rejected"),
   );
 
-/** Request to allocate one or more resources. */
 export interface HostRequestResourceAllocationRequest {
-  /** Resources to allocate. */
   resources: Array<AllocatableResource>;
 }
 
@@ -4078,9 +3936,7 @@ export const HostRequestResourceAllocationRequest: S.Codec<HostRequestResourceAl
       }) as S.Codec<HostRequestResourceAllocationRequest>,
   );
 
-/** Response containing the outcome for each requested resource. */
 export interface HostRequestResourceAllocationResponse {
-  /** Per-resource allocation outcomes, in the same order as the request. */
   outcomes: Array<AllocationOutcome>;
 }
 
@@ -4092,15 +3948,10 @@ export const HostRequestResourceAllocationResponse: S.Codec<HostRequestResourceA
       }) as S.Codec<HostRequestResourceAllocationResponse>,
   );
 
-/** Signing operation error. */
 export type HostSignPayloadError =
-  /** Payload could not be deserialized. */
   | { tag: "FailedToDecode"; value?: undefined }
-  /** User rejected signing. */
   | { tag: "Rejected"; value?: undefined }
-  /** Not authenticated. */
   | { tag: "PermissionDenied"; value?: undefined }
-  /** Catch-all. */
   | { tag: "Unknown"; value: { reason: string } };
 
 export const HostSignPayloadError: S.Codec<HostSignPayloadError> = S.lazy(
@@ -4113,42 +3964,22 @@ export const HostSignPayloadError: S.Codec<HostSignPayloadError> = S.lazy(
     }),
 );
 
-/**
- * Full Substrate extrinsic signing payload with all fields needed for signature
- * generation.
- */
 export interface HostSignPayloadRequest {
-  /** Product account that will sign this payload. */
   account: ProductAccountId;
-  /** Reference block hash. */
   blockHash: HexString;
-  /** Reference block number. */
   blockNumber: HexString;
-  /** Mortality era encoding. */
   era: HexString;
-  /** Chain genesis hash. */
   genesisHash: HexString;
-  /** SCALE-encoded call data. */
   method: HexString;
-  /** Account nonce. */
   nonce: HexString;
-  /** Runtime spec version. */
   specVersion: HexString;
-  /** Transaction tip. */
   tip: HexString;
-  /** Transaction format version. */
   transactionVersion: HexString;
-  /** Extension identifiers. */
   signedExtensions: Array<string>;
-  /** Extrinsic version. */
   version: number;
-  /** For multi-asset tips. */
   assetId?: HexString;
-  /** CheckMetadataHash extension. */
   metadataHash?: HexString;
-  /** Metadata mode. */
   mode?: number;
-  /** Request signed transaction back. */
   withSignedTransaction?: boolean;
 }
 
@@ -4174,11 +4005,8 @@ export const HostSignPayloadRequest: S.Codec<HostSignPayloadRequest> = S.lazy(
     }) as S.Codec<HostSignPayloadRequest>,
 );
 
-/** Result of a signing operation. */
 export interface HostSignPayloadResponse {
-  /** The cryptographic signature. */
   signature: HexString;
-  /** Full signed transaction, if requested. */
   signedTransaction?: HexString;
 }
 
@@ -4190,15 +4018,8 @@ export const HostSignPayloadResponse: S.Codec<HostSignPayloadResponse> = S.lazy(
     }) as S.Codec<HostSignPayloadResponse>,
 );
 
-/**
- * Sign a Substrate extrinsic payload with a non-product (legacy) account.
- * Contains the same fields as [`HostSignPayloadRequest`] minus `address`
- * (replaced by `signer`).
- */
 export interface HostSignPayloadWithLegacyAccountRequest {
-  /** Signer address (SS58 or hex) of the legacy account. */
   signer: string;
-  /** The extrinsic payload to sign. */
   payload: HostSignPayloadRequest;
 }
 
@@ -4211,11 +4032,8 @@ export const HostSignPayloadWithLegacyAccountRequest: S.Codec<HostSignPayloadWit
       }) as S.Codec<HostSignPayloadWithLegacyAccountRequest>,
   );
 
-/** A raw signing request pairing an account with the payload to sign. */
 export interface HostSignRawRequest {
-  /** Product account that will sign this payload. */
   account: ProductAccountId;
-  /** The payload to sign. */
   payload: RawPayload;
 }
 
@@ -4227,14 +4045,8 @@ export const HostSignRawRequest: S.Codec<HostSignRawRequest> = S.lazy(
     }) as S.Codec<HostSignRawRequest>,
 );
 
-/**
- * Sign raw bytes with a non-product (legacy) account. The signer field
- * identifies which legacy account to use.
- */
 export interface HostSignRawWithLegacyAccountRequest {
-  /** Signer address (SS58 or hex) of the legacy account. */
   signer: string;
-  /** The data to sign. */
   payload: RawPayload;
 }
 
@@ -4247,9 +4059,7 @@ export const HostSignRawWithLegacyAccountRequest: S.Codec<HostSignRawWithLegacyA
       }) as S.Codec<HostSignRawWithLegacyAccountRequest>,
   );
 
-/** Item emitted by the theme subscription. */
 export interface HostThemeSubscribeItem {
-  /** Current theme. */
   theme: Theme;
 }
 
@@ -4281,13 +4091,9 @@ export const ProductChatCustomMessageRenderSubscribeRequest: S.Codec<ProductChat
       }) as S.Codec<ProductChatCustomMessageRenderSubscribeRequest>,
   );
 
-/** Parameters for [`crate::api::ChainInteraction::remote_chain_head_body`]. */
 export interface RemoteChainHeadBodyRequest {
-  /** Chain genesis hash. */
   genesisHash: HexString;
-  /** Follow subscription identifier. */
   followSubscriptionId: string;
-  /** Block hash. */
   hash: HexString;
 }
 
@@ -4301,9 +4107,7 @@ export const RemoteChainHeadBodyRequest: S.Codec<RemoteChainHeadBodyRequest> =
       }) as S.Codec<RemoteChainHeadBodyRequest>,
   );
 
-/** Response indicating a block body operation was started. */
 export interface RemoteChainHeadBodyResponse {
-  /** Started operation result. */
   operation: OperationStartedResult;
 }
 
@@ -4315,17 +4119,11 @@ export const RemoteChainHeadBodyResponse: S.Codec<RemoteChainHeadBodyResponse> =
       }) as S.Codec<RemoteChainHeadBodyResponse>,
   );
 
-/** Parameters for [`crate::api::ChainInteraction::remote_chain_head_call`]. */
 export interface RemoteChainHeadCallRequest {
-  /** Chain genesis hash. */
   genesisHash: HexString;
-  /** Follow subscription identifier. */
   followSubscriptionId: string;
-  /** Block hash. */
   hash: HexString;
-  /** Runtime API function name. */
   function: string;
-  /** SCALE-encoded call parameters. */
   callParameters: HexString;
 }
 
@@ -4341,9 +4139,7 @@ export const RemoteChainHeadCallRequest: S.Codec<RemoteChainHeadCallRequest> =
       }) as S.Codec<RemoteChainHeadCallRequest>,
   );
 
-/** Response indicating a runtime call operation was started. */
 export interface RemoteChainHeadCallResponse {
-  /** Started operation result. */
   operation: OperationStartedResult;
 }
 
@@ -4355,13 +4151,9 @@ export const RemoteChainHeadCallResponse: S.Codec<RemoteChainHeadCallResponse> =
       }) as S.Codec<RemoteChainHeadCallResponse>,
   );
 
-/** Parameters for [`crate::api::ChainInteraction::remote_chain_head_continue`]. */
 export interface RemoteChainHeadContinueRequest {
-  /** Chain genesis hash. */
   genesisHash: HexString;
-  /** Follow subscription identifier. */
   followSubscriptionId: string;
-  /** Operation identifier. */
   operationId: string;
 }
 
@@ -4375,9 +4167,7 @@ export const RemoteChainHeadContinueRequest: S.Codec<RemoteChainHeadContinueRequ
       }) as S.Codec<RemoteChainHeadContinueRequest>,
   );
 
-/** Events received when following the chain head. */
 export type RemoteChainHeadFollowItem =
-  /** Initial state with finalized blocks. */
   | {
       tag: "Initialized";
       value: {
@@ -4385,7 +4175,6 @@ export type RemoteChainHeadFollowItem =
         finalizedBlockRuntime?: RuntimeType;
       };
     }
-  /** A new block was produced. */
   | {
       tag: "NewBlock";
       value: {
@@ -4394,9 +4183,7 @@ export type RemoteChainHeadFollowItem =
         newRuntime?: RuntimeType;
       };
     }
-  /** Best block changed. */
   | { tag: "BestBlockChanged"; value: { bestBlockHash: HexString } }
-  /** Blocks were finalized. */
   | {
       tag: "Finalized";
       value: {
@@ -4404,30 +4191,22 @@ export type RemoteChainHeadFollowItem =
         prunedBlockHashes: Array<HexString>;
       };
     }
-  /** Body fetch completed. */
   | {
       tag: "OperationBodyDone";
       value: { operationId: string; value: Array<HexString> };
     }
-  /** Runtime call completed. */
   | {
       tag: "OperationCallDone";
       value: { operationId: string; output: HexString };
     }
-  /** Storage results batch. */
   | {
       tag: "OperationStorageItems";
       value: { operationId: string; items: Array<StorageResultItem> };
     }
-  /** Storage query completed. */
   | { tag: "OperationStorageDone"; value: { operationId: string } }
-  /** Operation paused, needs [`crate::api::ChainInteraction::remote_chain_head_continue`]. */
   | { tag: "OperationWaitingForContinue"; value: { operationId: string } }
-  /** Block became inaccessible. */
   | { tag: "OperationInaccessible"; value: { operationId: string } }
-  /** Operation failed. */
   | { tag: "OperationError"; value: { operationId: string; error: string } }
-  /** Subscription terminated by server. */
   | { tag: "Stop"; value?: undefined };
 
 export const RemoteChainHeadFollowItem: S.Codec<RemoteChainHeadFollowItem> =
@@ -4489,11 +4268,8 @@ export const RemoteChainHeadFollowItem: S.Codec<RemoteChainHeadFollowItem> =
       }),
   );
 
-/** Parameters for [`crate::api::ChainInteraction::remote_chain_head_follow_subscribe`]. */
 export interface RemoteChainHeadFollowRequest {
-  /** Chain genesis hash. */
   genesisHash: HexString;
-  /** Whether to include runtime information in events. */
   withRuntime: boolean;
 }
 
@@ -4506,13 +4282,9 @@ export const RemoteChainHeadFollowRequest: S.Codec<RemoteChainHeadFollowRequest>
       }) as S.Codec<RemoteChainHeadFollowRequest>,
   );
 
-/** Parameters for [`crate::api::ChainInteraction::remote_chain_head_header`]. */
 export interface RemoteChainHeadHeaderRequest {
-  /** Chain genesis hash. */
   genesisHash: HexString;
-  /** Follow subscription identifier. */
   followSubscriptionId: string;
-  /** Block hash. */
   hash: HexString;
 }
 
@@ -4526,9 +4298,7 @@ export const RemoteChainHeadHeaderRequest: S.Codec<RemoteChainHeadHeaderRequest>
       }) as S.Codec<RemoteChainHeadHeaderRequest>,
   );
 
-/** Response containing a block header, if available. */
 export interface RemoteChainHeadHeaderResponse {
-  /** SCALE-encoded block header. */
   header?: HexString;
 }
 
@@ -4540,13 +4310,9 @@ export const RemoteChainHeadHeaderResponse: S.Codec<RemoteChainHeadHeaderRespons
       }) as S.Codec<RemoteChainHeadHeaderResponse>,
   );
 
-/** Parameters for [`crate::api::ChainInteraction::remote_chain_head_stop_operation`]. */
 export interface RemoteChainHeadStopOperationRequest {
-  /** Chain genesis hash. */
   genesisHash: HexString;
-  /** Follow subscription identifier. */
   followSubscriptionId: string;
-  /** Operation identifier. */
   operationId: string;
 }
 
@@ -4560,17 +4326,11 @@ export const RemoteChainHeadStopOperationRequest: S.Codec<RemoteChainHeadStopOpe
       }) as S.Codec<RemoteChainHeadStopOperationRequest>,
   );
 
-/** Parameters for [`crate::api::ChainInteraction::remote_chain_head_storage`]. */
 export interface RemoteChainHeadStorageRequest {
-  /** Chain genesis hash. */
   genesisHash: HexString;
-  /** Follow subscription identifier. */
   followSubscriptionId: string;
-  /** Block hash. */
   hash: HexString;
-  /** Storage items to query. */
   items: Array<StorageQueryItem>;
-  /** Optional child trie. */
   childTrie?: HexString;
 }
 
@@ -4586,9 +4346,7 @@ export const RemoteChainHeadStorageRequest: S.Codec<RemoteChainHeadStorageReques
       }) as S.Codec<RemoteChainHeadStorageRequest>,
   );
 
-/** Response indicating a storage query operation was started. */
 export interface RemoteChainHeadStorageResponse {
-  /** Started operation result. */
   operation: OperationStartedResult;
 }
 
@@ -4600,13 +4358,9 @@ export const RemoteChainHeadStorageResponse: S.Codec<RemoteChainHeadStorageRespo
       }) as S.Codec<RemoteChainHeadStorageResponse>,
   );
 
-/** Parameters for [`crate::api::ChainInteraction::remote_chain_head_unpin`]. */
 export interface RemoteChainHeadUnpinRequest {
-  /** Chain genesis hash. */
   genesisHash: HexString;
-  /** Follow subscription identifier. */
   followSubscriptionId: string;
-  /** Block hashes to unpin. */
   hashes: Array<HexString>;
 }
 
@@ -4620,9 +4374,7 @@ export const RemoteChainHeadUnpinRequest: S.Codec<RemoteChainHeadUnpinRequest> =
       }) as S.Codec<RemoteChainHeadUnpinRequest>,
   );
 
-/** Request to fetch a chain display name. */
 export interface RemoteChainSpecChainNameRequest {
-  /** Chain genesis hash. */
   genesisHash: HexString;
 }
 
@@ -4634,9 +4386,7 @@ export const RemoteChainSpecChainNameRequest: S.Codec<RemoteChainSpecChainNameRe
       }) as S.Codec<RemoteChainSpecChainNameRequest>,
   );
 
-/** Response containing a chain display name. */
 export interface RemoteChainSpecChainNameResponse {
-  /** Chain display name. */
   chainName: string;
 }
 
@@ -4648,9 +4398,7 @@ export const RemoteChainSpecChainNameResponse: S.Codec<RemoteChainSpecChainNameR
       }) as S.Codec<RemoteChainSpecChainNameResponse>,
   );
 
-/** Request to fetch a chain genesis hash. */
 export interface RemoteChainSpecGenesisHashRequest {
-  /** Chain genesis hash requested by the product. */
   genesisHash: HexString;
 }
 
@@ -4662,9 +4410,7 @@ export const RemoteChainSpecGenesisHashRequest: S.Codec<RemoteChainSpecGenesisHa
       }) as S.Codec<RemoteChainSpecGenesisHashRequest>,
   );
 
-/** Response containing a chain genesis hash. */
 export interface RemoteChainSpecGenesisHashResponse {
-  /** Chain genesis hash. */
   genesisHash: HexString;
 }
 
@@ -4676,9 +4422,7 @@ export const RemoteChainSpecGenesisHashResponse: S.Codec<RemoteChainSpecGenesisH
       }) as S.Codec<RemoteChainSpecGenesisHashResponse>,
   );
 
-/** Request to fetch chain properties. */
 export interface RemoteChainSpecPropertiesRequest {
-  /** Chain genesis hash. */
   genesisHash: HexString;
 }
 
@@ -4690,9 +4434,7 @@ export const RemoteChainSpecPropertiesRequest: S.Codec<RemoteChainSpecProperties
       }) as S.Codec<RemoteChainSpecPropertiesRequest>,
   );
 
-/** Response containing JSON-encoded chain properties. */
 export interface RemoteChainSpecPropertiesResponse {
-  /** JSON-encoded properties. */
   properties: string;
 }
 
@@ -4704,11 +4446,8 @@ export const RemoteChainSpecPropertiesResponse: S.Codec<RemoteChainSpecPropertie
       }) as S.Codec<RemoteChainSpecPropertiesResponse>,
   );
 
-/** Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_broadcast`]. */
 export interface RemoteChainTransactionBroadcastRequest {
-  /** Chain genesis hash. */
   genesisHash: HexString;
-  /** Signed transaction bytes. */
   transaction: HexString;
 }
 
@@ -4721,9 +4460,7 @@ export const RemoteChainTransactionBroadcastRequest: S.Codec<RemoteChainTransact
       }) as S.Codec<RemoteChainTransactionBroadcastRequest>,
   );
 
-/** Response containing a transaction broadcast operation identifier. */
 export interface RemoteChainTransactionBroadcastResponse {
-  /** Broadcast operation identifier, if available. */
   operationId?: string;
 }
 
@@ -4735,11 +4472,8 @@ export const RemoteChainTransactionBroadcastResponse: S.Codec<RemoteChainTransac
       }) as S.Codec<RemoteChainTransactionBroadcastResponse>,
   );
 
-/** Parameters for [`crate::api::ChainInteraction::remote_chain_transaction_stop`]. */
 export interface RemoteChainTransactionStopRequest {
-  /** Chain genesis hash. */
   genesisHash: HexString;
-  /** Operation identifier of the broadcast to stop. */
   operationId: string;
 }
 
@@ -4752,9 +4486,7 @@ export const RemoteChainTransactionStopRequest: S.Codec<RemoteChainTransactionSt
       }) as S.Codec<RemoteChainTransactionStopRequest>,
   );
 
-/** Request containing batched remote-operation permissions. */
 export interface RemotePermissionRequest {
-  /** Permissions requested by the product. */
   permissions: Array<RemotePermission>;
 }
 
@@ -4765,9 +4497,7 @@ export const RemotePermissionRequest: S.Codec<RemotePermissionRequest> = S.lazy(
     }) as S.Codec<RemotePermissionRequest>,
 );
 
-/** Response indicating whether a remote permission was granted. */
 export interface RemotePermissionResponse {
-  /** Whether the permission was granted. */
   granted: boolean;
 }
 
@@ -4893,10 +4623,6 @@ export const RemoteStatementStoreSubscribeRequest: S.Codec<RemoteStatementStoreS
       S.TaggedUnion({ MatchAll: S.Vector(Topic), MatchAny: S.Vector(Topic) }),
   );
 
-/**
- * Protocol version identifier. Each variant matches a `V<N>(..)` arm of the
- * versioned wrapper enums.
- */
 export type Version =
   /** Initial protocol version. */
   { tag: "V1"; value?: undefined };
@@ -4905,10 +4631,7 @@ export const Version: S.Codec<Version> = S.lazy(
   (): S.Codec<Version> => S.indexedTaggedUnion({ V1: [0, S._void] as const }),
 );
 
-/** Versioned transaction payload envelope. */
-export type VersionedTxPayload =
-  /** Version 1 payload. */
-  { tag: "V1"; value: TxPayloadV1 };
+export type VersionedTxPayload = { tag: "V1"; value: TxPayloadV1 };
 
 export const VersionedTxPayload: S.Codec<VersionedTxPayload> = S.lazy(
   (): S.Codec<VersionedTxPayload> =>

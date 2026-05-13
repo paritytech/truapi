@@ -30,9 +30,17 @@
       "types": "./dist/playground/services.d.ts",
       "import": "./dist/playground/services.js"
     },
+    "./playground/services-types": {
+      "types": "./dist/playground/services-types.d.ts",
+      "import": "./dist/playground/services-types.js"
+    },
     "./explorer/registry": {
       "types": "./dist/explorer/registry.d.ts",
       "import": "./dist/explorer/registry.js"
+    },
+    "./explorer/types": {
+      "types": "./dist/explorer/types.d.ts",
+      "import": "./dist/explorer/types.js"
     }
   },
   "scripts": {

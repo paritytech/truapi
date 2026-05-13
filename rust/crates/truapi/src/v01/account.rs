@@ -144,7 +144,7 @@ pub struct HostGetUserIdResponse {
     pub primary_username: String,
 }
 
-/// Error from [`crate::api::AccountManagement::host_get_user_id`].
+/// Error from [`crate::api::Account::get_user_id`].
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum HostGetUserIdError {
     /// User denied the identity disclosure request.

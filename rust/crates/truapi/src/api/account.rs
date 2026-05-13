@@ -1,4 +1,4 @@
-//! Unified [`AccountManagement`] trait.
+//! Unified [`Account`] trait.
 
 use crate::versioned::account::{
     HostAccountConnectionStatusSubscribeItem, HostAccountCreateProofError,
@@ -13,11 +13,8 @@ use crate::wire;
 use crate::{CallContext, CallError, Subscription};
 
 /// Account lookup, aliasing, and proof generation.
-///
-/// Default methods return [`CallError::HostFailure`] with an `unavailable`
-/// reason. Hosts override only the methods they actually support.
 #[async_trait::async_trait]
-pub trait AccountManagement: Send + Sync {
+pub trait Account: Send + Sync {
     /// Subscribe to account connection status changes.
     ///
     /// ```truapi-client-example
@@ -28,7 +25,7 @@ pub trait AccountManagement: Send + Sync {
     /// } from "@parity/truapi";
     ///
     /// export function watchAccountConnection(truapi: Client): Subscription {
-    ///   return truapi.accountManagement.accountConnectionStatusSubscribe().subscribe({
+    ///   return truapi.account.connectionStatusSubscribe().subscribe({
     ///     next: (status: HostAccountConnectionStatusSubscribeItem) =>
     ///       console.log(status),
     ///     error: (error: Error) => console.error(error),
@@ -37,7 +34,7 @@ pub trait AccountManagement: Send + Sync {
     /// }
     /// ```
     #[wire(start_id = 18)]
-    async fn host_account_connection_status_subscribe(
+    async fn connection_status_subscribe(
         &self,
         _cx: &CallContext,
     ) -> Subscription<HostAccountConnectionStatusSubscribeItem> {
@@ -47,15 +44,12 @@ pub trait AccountManagement: Send + Sync {
     /// Retrieve a product-scoped account.
     ///
     /// ```truapi-client-example
-    /// import {
-    ///   type Client,
-    ///   type HostAccountGetResponse,
-    /// } from "@parity/truapi";
+    /// import { type Client, type HostAccountGetResponse } from "@parity/truapi";
     ///
     /// export async function getAccount(
     ///   truapi: Client,
     /// ): Promise<HostAccountGetResponse> {
-    ///   const result = await truapi.accountManagement.accountGet({
+    ///   const result = await truapi.account.getAccount({
     ///     productAccountId: {
     ///       dotNsIdentifier: "truapi-playground.dot",
     ///       derivationIndex: 0,
@@ -67,7 +61,7 @@ pub trait AccountManagement: Send + Sync {
     /// }
     /// ```
     #[wire(request_id = 22)]
-    async fn host_account_get(
+    async fn get_account(
         &self,
         _cx: &CallContext,
         _request: HostAccountGetRequest,
@@ -86,7 +80,7 @@ pub trait AccountManagement: Send + Sync {
     /// export async function getAccountAlias(
     ///   truapi: Client,
     /// ): Promise<HostAccountGetAliasResponse> {
-    ///   const result = await truapi.accountManagement.accountGetAlias({
+    ///   const result = await truapi.account.getAccountAlias({
     ///     productAccountId: {
     ///       dotNsIdentifier: "truapi-playground.dot",
     ///       derivationIndex: 0,
@@ -98,7 +92,7 @@ pub trait AccountManagement: Send + Sync {
     /// }
     /// ```
     #[wire(request_id = 24)]
-    async fn host_account_get_alias(
+    async fn get_account_alias(
         &self,
         _cx: &CallContext,
         _request: HostAccountGetAliasRequest,
@@ -117,7 +111,7 @@ pub trait AccountManagement: Send + Sync {
     /// export async function createAccountProof(
     ///   truapi: Client,
     /// ): Promise<HostAccountCreateProofResponse> {
-    ///   const result = await truapi.accountManagement.accountCreateProof({
+    ///   const result = await truapi.account.createAccountProof({
     ///     productAccountId: {
     ///       dotNsIdentifier: "truapi-playground.dot",
     ///       derivationIndex: 0,
@@ -135,7 +129,7 @@ pub trait AccountManagement: Send + Sync {
     /// }
     /// ```
     #[wire(request_id = 26)]
-    async fn host_account_create_proof(
+    async fn create_account_proof(
         &self,
         _cx: &CallContext,
         _request: HostAccountCreateProofRequest,
@@ -154,14 +148,14 @@ pub trait AccountManagement: Send + Sync {
     /// export async function getLegacyAccounts(
     ///   truapi: Client,
     /// ): Promise<HostGetLegacyAccountsResponse> {
-    ///   const result = await truapi.accountManagement.getLegacyAccounts();
+    ///   const result = await truapi.account.getLegacyAccounts();
     ///
     ///   if (result.isErr()) throw result.error;
     ///   return result.value;
     /// }
     /// ```
     #[wire(request_id = 28)]
-    async fn host_get_legacy_accounts(
+    async fn get_legacy_accounts(
         &self,
         _cx: &CallContext,
         _request: HostGetLegacyAccountsRequest,
@@ -169,7 +163,7 @@ pub trait AccountManagement: Send + Sync {
         Err(CallError::unavailable())
     }
 
-    /// Fetch the user's primary identity (V0.2+).
+    /// Fetch the user's primary identity.
     ///
     /// ```truapi-client-example
     /// import {
@@ -180,14 +174,14 @@ pub trait AccountManagement: Send + Sync {
     /// export async function getUserId(
     ///   truapi: Client,
     /// ): Promise<HostGetUserIdResponse> {
-    ///   const result = await truapi.accountManagement.getUserId();
+    ///   const result = await truapi.account.getUserId();
     ///
     ///   if (result.isErr()) throw result.error;
     ///   return result.value;
     /// }
     /// ```
     #[wire(request_id = 110)]
-    async fn host_get_user_id(
+    async fn get_user_id(
         &self,
         _cx: &CallContext,
         _request: HostGetUserIdRequest,
@@ -209,7 +203,7 @@ pub trait AccountManagement: Send + Sync {
     /// export async function requestLogin(
     ///   truapi: Client,
     /// ): Promise<HostRequestLoginResponse> {
-    ///   const result = await truapi.accountManagement.requestLogin({
+    ///   const result = await truapi.account.requestLogin({
     ///     reason: "Sign in to vote on Referendum #42",
     ///   });
     ///
@@ -218,7 +212,7 @@ pub trait AccountManagement: Send + Sync {
     /// }
     /// ```
     #[wire(request_id = 112)]
-    async fn host_request_login(
+    async fn request_login(
         &self,
         _cx: &CallContext,
         _request: HostRequestLoginRequest,

@@ -1,6 +1,10 @@
 use super::playground::split_playground_docs;
 use super::*;
 
+fn ts_example_file_stem(name: &str) -> String {
+    name.to_case(Case::Kebab)
+}
+
 /// Generates standalone TypeScript files for every `truapi-client-example`
 /// rustdoc block so package CI can typecheck examples against public exports.
 pub fn generate_client_examples(

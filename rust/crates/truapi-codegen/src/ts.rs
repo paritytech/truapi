@@ -233,7 +233,7 @@ fn write_jsdoc(out: &mut String, indent: &str, docs: Option<&str>) {
         return;
     }
     if lines.len() == 1 {
-        writeln!(out, "{}/** {} */", indent, lines[0]).unwrap();
+        writeln!(out, "{indent}/** {line} */", line = lines[0]).unwrap();
         return;
     }
     writeln!(out, "{indent}/**").unwrap();
@@ -319,8 +319,6 @@ fn generate_index() -> String {
     "export * from './types.js';\nexport * from './client.js';\n".to_string()
 }
 
-
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ExpandedWireIds {
     Request {
@@ -392,14 +390,12 @@ fn ts_string_literal(value: &str) -> String {
     serde_json::to_string(value).expect("string serialization is infallible")
 }
 
-fn wire_const_name(method_name: &str) -> String {
-    method_name.to_case(Case::UpperSnake)
+fn wire_const_name(trait_name: &str, method_name: &str) -> String {
+    format!("{trait_name}_{method_name}").to_case(Case::UpperSnake)
 }
 
-fn ts_example_file_stem(name: &str) -> String {
-    name.to_case(Case::Kebab)
-}
-
+/// Sort key for stable, wire-id-ordered method emission shared by the playground,
+/// explorer, and examples submodules.
 fn method_wire_sort_id(method: &MethodDef) -> u8 {
     method
         .wire
@@ -430,7 +426,7 @@ fn generate_wire_table(api: &ApiDefinition, target_version: u32) -> Result<Strin
                     bail!("wire id {id} reused: `{existing}` and `{tag}` collide");
                 }
             }
-            constants.push((wire_const_name(&method.name), wire_ids));
+            constants.push((wire_const_name(&trait_def.name, &method.name), wire_ids));
         }
     }
 
@@ -776,11 +772,10 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
 
     let ctx = CodecContext::default();
     let wrappers = collect_versioned_wrappers(api);
+    let services = public_services(api)?;
 
-    for trait_def in &api.traits {
-        if trait_def.name == "TrUApi" {
-            continue;
-        }
+    for service in &services {
+        let trait_def = service.trait_def;
         let methods = included_methods(trait_def, &wrappers, target_version)?;
         if methods.is_empty() {
             continue;
@@ -799,7 +794,7 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
         .unwrap();
 
         for method in methods {
-            emit_method(&mut out, method, &wrappers, &ctx, target_version)?;
+            emit_method(&mut out, trait_def, method, &wrappers, &ctx, target_version)?;
             writeln!(out).unwrap();
         }
 
@@ -807,15 +802,18 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
     }
 
     writeln!(out, "export interface TrUApiClient {{").unwrap();
-    for trait_def in &api.traits {
-        if trait_def.name == "TrUApi" {
-            continue;
-        }
+    for service in &services {
+        let trait_def = service.trait_def;
         if included_methods(trait_def, &wrappers, target_version)?.is_empty() {
             continue;
         }
         let field = to_camel_case(&trait_def.name);
-        writeln!(out, "  readonly {}: {}Client;", field, trait_def.name).unwrap();
+        writeln!(
+            out,
+            "  readonly {field}: {name}Client;",
+            name = trait_def.name
+        )
+        .unwrap();
     }
     writedoc!(
         out,
@@ -843,10 +841,8 @@ fn generate_client(api: &ApiDefinition, target_version: u32, codec_version: u8) 
         "#
     )
     .unwrap();
-    for trait_def in &api.traits {
-        if trait_def.name == "TrUApi" {
-            continue;
-        }
+    for service in &services {
+        let trait_def = service.trait_def;
         if included_methods(trait_def, &wrappers, target_version)?.is_empty() {
             continue;
         }
@@ -1174,7 +1170,10 @@ fn indexed_versioned_codec_expr(
             .ok_or_else(|| anyhow::anyhow!("versioned wrapper uses invalid V0 variant"))?;
         entries.push(format!("V{version}: [{index}, {codec}] as const"));
     }
-    Ok(format!("S.indexedTaggedUnion({{{}}})", entries.join(", ")))
+    Ok(format!(
+        "S.indexedTaggedUnion({{{entries}}})",
+        entries = entries.join(", ")
+    ))
 }
 
 fn versioned_result_codec_expr(version: u32, ok_codec: &str, err_codec: &str) -> Result<String> {
@@ -1183,20 +1182,21 @@ fn versioned_result_codec_expr(version: u32, ok_codec: &str, err_codec: &str) ->
 
 fn emit_method(
     out: &mut String,
+    trait_def: &TraitDef,
     method: &MethodDef,
     wrappers: &HashMap<String, VersionedWrapper>,
     ctx: &CodecContext,
     target_version: u32,
 ) -> Result<()> {
     let ts_method_name = to_camel_case(&strip_prefix(&method.name));
-    let wire_const = wire_const_name(&method.name);
+    let wire_const = wire_const_name(&trait_def.name, &method.name);
     let wire_version = method_wire_version(method, wrappers, target_version)?;
     let payload = emit_payload(&method.params, wrappers, ctx, wire_version)?;
     write_jsdoc(out, "  ", method.docs.as_deref());
 
     match (&method.kind, &method.return_type) {
         (MethodKind::Request, ReturnType::Result { ok, err }) => {
-            let is_handshake = method.name == "host_handshake";
+            let is_handshake = trait_def.name == "System" && method.name == "handshake";
             let response = emit_response(ok, wrappers, ctx, wire_version)?;
             let error = emit_error_response(err, wrappers, ctx, wire_version)?;
             let response_codec = match wire_version {
@@ -2265,14 +2265,18 @@ mod tests {
         )
         .expect("generate wire table");
 
-        assert!(source.contains("export const STREAM = {"));
+        assert!(source.contains("export const EXAMPLE_STREAM = {"));
         assert!(source.contains("  start: 2,"));
         assert!(source.contains("  receive: 5,"));
-        assert!(source.contains("export const LATER = {"));
+        assert!(source.contains("export const EXAMPLE_LATER = {"));
         assert!(source.contains("  request: 10,"));
         assert!(
-            source.find("export const STREAM").expect("stream entry")
-                < source.find("export const LATER").expect("later entry")
+            source
+                .find("export const EXAMPLE_STREAM")
+                .expect("stream entry")
+                < source
+                    .find("export const EXAMPLE_LATER")
+                    .expect("later entry")
         );
     }
 
@@ -2327,10 +2331,10 @@ mod tests {
 
         let source = generate_wire_table(&api(vec![request, subscription]), 2).expect("wire table");
 
-        assert!(source.contains("export const CUSTOM_REQUEST = {"));
+        assert!(source.contains("export const EXAMPLE_CUSTOM_REQUEST = {"));
         assert!(source.contains("  request: 2,"));
         assert!(source.contains("  response: 9,"));
-        assert!(source.contains("export const CUSTOM_STREAM = {"));
+        assert!(source.contains("export const EXAMPLE_CUSTOM_STREAM = {"));
         assert!(source.contains("  start: 20,"));
         assert!(source.contains("  stop: 30,"));
         assert!(source.contains("  interrupt: 31,"));
@@ -2400,7 +2404,7 @@ mod tests {
 
         let source = generate_wire_table(&api, 1).expect("generate wire table");
 
-        assert!(source.contains("export const LEGACY = {"));
+        assert!(source.contains("export const EXAMPLE_LEGACY = {"));
         assert!(source.contains("  request: 2,"));
         assert!(!source.contains("FUTURE"));
         assert!(!source.contains("FUTURE_STREAM"));
@@ -2433,7 +2437,7 @@ mod tests {
                     docs: None,
                 },
             ],
-            public_trait_order: Vec::new(),
+            public_trait_order: vec!["Legacy".to_string(), "FutureOnly".to_string()],
             types: vec![
                 versioned_tuple_wrapper_variants("LegacyRequest", &[(1, "LegacyRequestV1")]),
                 versioned_tuple_wrapper_variants("LegacyResponse", &[(1, "LegacyResponseV1")]),
@@ -2481,7 +2485,7 @@ mod tests {
                 }],
                 docs: None,
             }],
-            public_trait_order: Vec::new(),
+            public_trait_order: vec!["Example".to_string()],
             types: vec![
                 versioned_tuple_wrapper("ExampleRequest", "LegacyRequest", "LatestRequest"),
                 versioned_tuple_wrapper("ExampleResponse", "LegacyResponse", "LatestResponse"),
@@ -2526,7 +2530,7 @@ mod tests {
                 }],
                 docs: None,
             }],
-            public_trait_order: Vec::new(),
+            public_trait_order: vec!["Example".to_string()],
             types: vec![
                 versioned_tuple_wrapper_variants("ExampleRequest", &[(1, "LegacyRequest")]),
                 versioned_tuple_wrapper("ExampleResponse", "LegacyResponse", "LatestResponse"),

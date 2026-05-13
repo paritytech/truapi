@@ -1,6 +1,6 @@
 # @parity/truapi
 
-*Typed TypeScript client for products that talk to a TrUAPI host.*
+_Typed TypeScript client for products that talk to a TrUAPI host._
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](../../../LICENSE)
 [![Types](https://img.shields.io/badge/types-included-3178C6?style=flat-square&logo=typescript)](./package.json)

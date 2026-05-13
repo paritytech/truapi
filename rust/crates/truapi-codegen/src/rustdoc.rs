@@ -42,6 +42,9 @@ pub struct ItemPath {
 #[derive(Debug, PartialEq, Eq)]
 pub struct ApiDefinition {
     pub traits: Vec<TraitDef>,
+    /// Names of the public service traits in `TrUApi` super-trait declaration
+    /// order (excluding `Send`/`Sync`). Drives stable, source-order emission of
+    /// services in the playground, explorer, examples, and client modules.
     pub public_trait_order: Vec<String>,
     pub types: Vec<TypeDef>,
 }

@@ -1,17 +1,9 @@
 import { services as generatedServices } from "@parity/truapi/playground/services";
+import type {
+  MethodInfo,
+  ServiceInfo,
+} from "@parity/truapi/playground/services-types";
 
-export interface MethodInfo {
-  name: string;
-  type: "unary" | "subscription";
-  description?: string;
-  requestDescription?: string;
-  defaultRequest?: string;
-  noParams?: boolean;
-}
-
-export interface ServiceInfo {
-  name: string;
-  methods: MethodInfo[];
-}
+export type { MethodInfo, ServiceInfo };
 
 export const services: ServiceInfo[] = generatedServices;

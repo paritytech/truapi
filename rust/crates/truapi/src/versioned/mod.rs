@@ -1,33 +1,21 @@
 //! Versioned request and response wrappers for the unified TrUAPI contract.
-//!
-//! Every wire-level request and response is expressed as a versioned enum
-//! whose `V<N>(..)` arms wrap the per-version shape from the corresponding
-//! version module. The codec discriminant is pinned with `#[codec(index = N)]`
-//! so adding a future version slot doesn't shift existing versions on the wire.
 
-/// Protocol version identifier. Each variant matches a `V<N>(..)` arm of the
-/// versioned wrapper enums.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Version {
     /// Initial protocol version.
     V1,
 }
 
-/// Latest known protocol version.
 pub mod latest {
     use super::Version;
 
-    /// The latest protocol version.
     pub const VERSION: Version = Version::V1;
 }
 
-/// Convert a versioned wrapper into a different version of itself.
 #[allow(clippy::result_unit_err)]
 pub trait IntoVersion: Sized {
-    /// Consume `self` and return same value expressed in some particular `version`.
     fn into_version(self, version: Version) -> Result<Self, ()>;
 
-    /// Consume `self` and return same value expressed the latest version.
     fn into_latest(self) -> Result<Self, ()> {
         self.into_version(latest::VERSION)
     }
@@ -95,11 +83,18 @@ macro_rules! versioned_type {
 pub mod account;
 pub mod chain;
 pub mod chat;
+pub mod entropy;
+pub mod jsonrpc;
 pub mod local_storage;
 pub mod payment;
+pub mod permissions;
 pub mod preimage;
+pub mod resource_allocation;
+pub mod signing;
 pub mod statement_store;
 pub mod system;
+pub mod theme;
+pub mod transaction;
 
 #[cfg(test)]
 mod tests {
@@ -107,7 +102,7 @@ mod tests {
 
     #[test]
     fn v1_discriminant_is_zero() {
-        let v1 = super::system::HostDevicePermissionRequest::V1(
+        let v1 = super::permissions::HostDevicePermissionRequest::V1(
             crate::v01::HostDevicePermissionRequest::Camera,
         );
         assert_eq!(v1.encode()[0], 0, "V1 must encode discriminant 0");

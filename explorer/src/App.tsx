@@ -18,6 +18,7 @@ import {
 import Sidebar from "./components/Sidebar";
 import { VersionProvider, useVersion } from "./contexts/VersionContext";
 import { defaultVersion, getVersion } from "./data/registry";
+import { methodRoutePath, versionedMethodRoutePath } from "./lib/routes";
 import MethodPage from "./pages/MethodPage";
 import OverviewPage from "./pages/OverviewPage";
 import TypeDetailPage from "./pages/TypeDetailPage";
@@ -92,9 +93,10 @@ function SearchModal({
   }, [query, methods, dataTypes]);
 
   const go = (r: { type: string; id: string }) => {
+    const method = methods.find((item) => item.id === r.id);
     navigate(
-      r.type === "method"
-        ? `${versionPrefix}/method/${r.id}`
+      r.type === "method" && method
+        ? versionedMethodRoutePath(versionPrefix, method)
         : `${versionPrefix}/type/${r.id}`,
     );
     onClose();
@@ -356,7 +358,8 @@ function VersionedAppInner() {
         <div className="px-4 py-6 lg:px-8 lg:py-8 animate-fade-in relative z-[1]">
           <Routes>
             <Route path="/" element={<OverviewPage />} />
-            <Route path="/method/:id" element={<MethodPage />} />
+            <Route path="/method/:groupId/:id" element={<MethodPage />} />
+            <Route path="/method/:id" element={<MethodLegacyRedirect />} />
             <Route path="/types" element={<TypesPage />} />
             <Route path="/type/:id" element={<TypeDetailPage />} />
           </Routes>
@@ -368,10 +371,33 @@ function VersionedAppInner() {
   );
 }
 
+function MethodLegacyRedirect() {
+  const { id } = useParams<{ id: string }>();
+  const { getMethodById, versionPrefix } = useVersion();
+  const method = getMethodById(id || "");
+  if (!method) return <Navigate to={`${versionPrefix}/`} replace />;
+  return (
+    <Navigate to={versionedMethodRoutePath(versionPrefix, method)} replace />
+  );
+}
+
 function LegacyRedirect() {
   const location = useLocation();
   return (
     <Navigate to={`/v/${defaultVersion.slug}${location.pathname}`} replace />
+  );
+}
+
+function LegacyVersionedMethodRedirect() {
+  const { groupId, id } = useParams<{ groupId: string; id: string }>();
+  if (!groupId || !id) {
+    return <Navigate to={`/v/${defaultVersion.slug}/`} replace />;
+  }
+  return (
+    <Navigate
+      to={`/v/${defaultVersion.slug}${methodRoutePath({ groupId, id })}`}
+      replace
+    />
   );
 }
 
@@ -383,6 +409,7 @@ export default function App() {
         element={<Navigate to={`/v/${defaultVersion.slug}/`} replace />}
       />
       <Route path="/v/:version/*" element={<VersionedApp />} />
+      <Route path="/method/:groupId/:id" element={<LegacyVersionedMethodRedirect />} />
       <Route path="/method/:id" element={<LegacyRedirect />} />
       <Route
         path="/types"

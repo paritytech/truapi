@@ -43,7 +43,5 @@ export async function selectMethod(
   service: string,
   method: string,
 ): Promise<void> {
-  await frame
-    .locator(`[data-testid="method-${service}-${method}"]`)
-    .click();
+  await frame.locator(`[data-testid="method-${service}-${method}"]`).click();
 }

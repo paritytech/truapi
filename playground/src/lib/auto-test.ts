@@ -12,18 +12,18 @@ export interface TestEntry {
 }
 
 export const EXCLUDED_METHODS = new Set([
-  "System/host_navigate_to",
-  "System/host_push_notification",
-  "System/host_device_permission",
-  "System/remote_permission",
-  "System/host_request_resource_allocation",
-  "Chain Interaction/host_sign_payload",
-  "Chain Interaction/host_sign_raw",
-  "Chain Interaction/host_sign_raw_with_legacy_account",
-  "Chain Interaction/host_sign_payload_with_legacy_account",
-  "Chain Interaction/host_create_transaction",
-  "Chain Interaction/host_create_transaction_with_legacy_account",
-  "Account Management/host_account_get_alias",
+  "System/navigate_to",
+  "System/push_notification",
+  "Permissions/request_device_permission",
+  "Permissions/request_remote_permission",
+  "Resource Allocation/request",
+  "Signing/sign_payload",
+  "Signing/sign_raw",
+  "Signing/sign_raw_with_legacy_account",
+  "Signing/sign_payload_with_legacy_account",
+  "Transaction/create",
+  "Transaction/create_with_legacy_account",
+  "Account/get_account_alias",
 ]);
 
 const UNARY_TIMEOUT_MS = 2_000;
@@ -33,20 +33,20 @@ const SUBSCRIPTION_TIMEOUT_MS = 6_000;
 const CONCURRENCY = 6;
 // Each chain-head method depends on a live follow subscription on the host
 // side; running the service serially avoids fanning out concurrent follows.
-const SERIAL_SERVICES = new Set(["Chain Interaction"]);
+const SERIAL_SERVICES = new Set(["Chain"]);
 const LONG_TIMEOUT_METHODS = new Set([
-  "System/host_request_resource_allocation",
-  "Chain Interaction/host_sign_payload",
-  "Chain Interaction/host_sign_raw",
-  "Chain Interaction/host_sign_raw_with_legacy_account",
-  "Chain Interaction/host_sign_payload_with_legacy_account",
-  "Chain Interaction/host_create_transaction",
-  "Chain Interaction/host_create_transaction_with_legacy_account",
+  "Resource Allocation/request",
+  "Signing/sign_payload",
+  "Signing/sign_raw",
+  "Signing/sign_raw_with_legacy_account",
+  "Signing/sign_payload_with_legacy_account",
+  "Transaction/create",
+  "Transaction/create_with_legacy_account",
 ]);
 
 const STATEMENT_STORE_SERVICE = "Statement Store";
-const STATEMENT_CREATE_PROOF_METHOD = "remote_statement_store_create_proof";
-const STATEMENT_SUBMIT_ID = "Statement Store/remote_statement_store_submit";
+const STATEMENT_CREATE_PROOF_METHOD = "create_proof";
+const STATEMENT_SUBMIT_ID = "Statement Store/submit";
 
 function parseRequest(method: MethodInfo): unknown {
   if (method.noParams) return null;

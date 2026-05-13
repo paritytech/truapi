@@ -7,7 +7,6 @@ import {
   FileText,
   HardDrive,
   Image,
-  Key,
   Layers,
   Link,
   MessageSquare,
@@ -15,16 +14,15 @@ import {
   PenTool,
   Radio,
   RotateCcw,
-  Shield,
   User,
   Wallet,
   Zap,
 } from "lucide-react";
+import { versionedMethodRoutePath } from "../lib/routes";
 import { useVersion } from "../contexts/VersionContext";
 
 const groupIcons: Record<string, ReactNode> = {
-  "truapi-calls": <Zap size={20} />,
-  permissions: <Shield size={20} />,
+  system: <Zap size={20} />,
   "local-storage": <HardDrive size={20} />,
   "account-management": <User size={20} />,
   signing: <PenTool size={20} />,
@@ -33,7 +31,6 @@ const groupIcons: Record<string, ReactNode> = {
   preimage: <Image size={20} />,
   "chain-interaction": <Link size={20} />,
   payment: <Wallet size={20} />,
-  "entropy-derivation": <Key size={20} />,
 };
 
 const C = ({ children }: { children: ReactNode }) => (
@@ -203,7 +200,8 @@ export default function OverviewPage() {
                 className="bg-slate-800/30 border border-slate-700/40 rounded-xl p-5 card-hover cursor-pointer group animate-slide-up"
                 style={{ animationDelay: `${0.4 + idx * 0.04}s` }}
                 onClick={() =>
-                  navigate(`${versionPrefix}/method/${groupMethods[0]?.id}`)
+                  groupMethods[0] &&
+                  navigate(versionedMethodRoutePath(versionPrefix, groupMethods[0]))
                 }
               >
                 <div className="flex items-start gap-4">
@@ -231,7 +229,7 @@ export default function OverviewPage() {
                           key={m.id}
                           onClick={(e) => {
                             e.stopPropagation();
-                            navigate(`${versionPrefix}/method/${m.id}`);
+                            navigate(versionedMethodRoutePath(versionPrefix, m));
                           }}
                           className="text-xs font-mono bg-slate-700/40 hover:bg-slate-700/70 text-slate-300 px-2 py-0.5 rounded transition-colors"
                           type="button"

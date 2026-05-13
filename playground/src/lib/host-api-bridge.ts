@@ -33,231 +33,107 @@ export type MethodBinding =
 // Observable-like object whose `subscribe` call returns the transport-assigned
 // subscription id.
 const methodMap: Record<string, [keyof TrUApiClient, string, boolean]> = {
-  // System
-  "System/host_handshake": ["system", "handshake", false],
-  "System/host_feature_supported": [
-    "system",
-    "featureSupported",
-    false,
-  ],
-  "System/host_navigate_to": ["system", "navigateTo", false],
-  "System/host_push_notification": [
-    "system",
-    "pushNotification",
-    false,
-  ],
-  "System/host_device_permission": ["system", "devicePermission", false],
-  "System/remote_permission": ["system", "permission", false],
-  "System/host_theme_subscribe": ["system", "themeSubscribe", true],
-  "System/host_derive_entropy": ["system", "deriveEntropy", false],
-
-  // Local Storage
-  "Local Storage/host_local_storage_read": [
-    "localStorage",
-    "localStorageRead",
-    false,
-  ],
-  "Local Storage/host_local_storage_write": [
-    "localStorage",
-    "localStorageWrite",
-    false,
-  ],
-  "Local Storage/host_local_storage_clear": [
-    "localStorage",
-    "localStorageClear",
-    false,
-  ],
-
-  // Account Management
-  "Account Management/host_account_get": [
-    "accountManagement",
-    "accountGet",
-    false,
-  ],
-  "Account Management/host_account_get_alias": [
-    "accountManagement",
-    "accountGetAlias",
-    false,
-  ],
-  "Account Management/host_account_create_proof": [
-    "accountManagement",
-    "accountCreateProof",
-    false,
-  ],
-  "Account Management/host_get_legacy_accounts": [
-    "accountManagement",
-    "getLegacyAccounts",
-    false,
-  ],
-  "Account Management/host_account_connection_status_subscribe": [
-    "accountManagement",
-    "accountConnectionStatusSubscribe",
+  "Account/connection_status_subscribe": [
+    "account",
+    "connectionStatusSubscribe",
     true,
   ],
-  "Account Management/host_get_user_id": [
-    "accountManagement",
-    "getUserId",
+  "Account/get_account": ["account", "getAccount", false],
+  "Account/get_account_alias": ["account", "getAccountAlias", false],
+  "Account/create_account_proof": ["account", "createAccountProof", false],
+  "Account/get_legacy_accounts": ["account", "getLegacyAccounts", false],
+  "Account/get_user_id": ["account", "getUserId", false],
+  "Account/request_login": ["account", "requestLogin", false],
+
+  "Chain/follow_head_subscribe": ["chain", "followHeadSubscribe", true],
+  "Chain/get_head_header": ["chain", "getHeadHeader", false],
+  "Chain/get_head_body": ["chain", "getHeadBody", false],
+  "Chain/get_head_storage": ["chain", "getHeadStorage", false],
+  "Chain/call_head": ["chain", "callHead", false],
+  "Chain/unpin_head": ["chain", "unpinHead", false],
+  "Chain/continue_head": ["chain", "continueHead", false],
+  "Chain/stop_head_operation": ["chain", "stopHeadOperation", false],
+  "Chain/get_spec_genesis_hash": ["chain", "getSpecGenesisHash", false],
+  "Chain/get_spec_chain_name": ["chain", "getSpecChainName", false],
+  "Chain/get_spec_properties": ["chain", "getSpecProperties", false],
+  "Chain/broadcast_transaction": ["chain", "broadcastTransaction", false],
+  "Chain/stop_transaction": ["chain", "stopTransaction", false],
+
+  "Chat/create_room": ["chat", "createRoom", false],
+  "Chat/register_bot": ["chat", "registerBot", false],
+  "Chat/list_subscribe": ["chat", "listSubscribe", true],
+  "Chat/post_message": ["chat", "postMessage", false],
+  "Chat/action_subscribe": ["chat", "actionSubscribe", true],
+  "Chat/custom_message_render_subscribe": [
+    "chat",
+    "customMessageRenderSubscribe",
+    true,
+  ],
+
+  "Entropy/derive": ["entropy", "derive", false],
+
+  "JSON-RPC/send_message": ["jsonRpc", "sendMessage", false],
+  "JSON-RPC/subscribe_messages": ["jsonRpc", "subscribeMessages", true],
+
+  "Local Storage/read": ["localStorage", "read", false],
+  "Local Storage/write": ["localStorage", "write", false],
+  "Local Storage/clear": ["localStorage", "clear", false],
+
+  "Payment/balance_subscribe": ["payment", "balanceSubscribe", true],
+  "Payment/request": ["payment", "request", false],
+  "Payment/status_subscribe": ["payment", "statusSubscribe", true],
+  "Payment/top_up": ["payment", "topUp", false],
+
+  "Permissions/request_device_permission": [
+    "permissions",
+    "requestDevicePermission",
+    false,
+  ],
+  "Permissions/request_remote_permission": [
+    "permissions",
+    "requestRemotePermission",
     false,
   ],
 
-  // Chain Interaction
-  "Chain Interaction/host_create_transaction": [
-    "chainInteraction",
-    "createTransaction",
-    false,
-  ],
-  "Chain Interaction/host_create_transaction_with_legacy_account": [
-    "chainInteraction",
-    "createTransactionWithLegacyAccount",
-    false,
-  ],
-  "Chain Interaction/host_sign_raw_with_legacy_account": [
-    "chainInteraction",
+  "Preimage/lookup_subscribe": ["preimage", "lookupSubscribe", true],
+  "Preimage/submit": ["preimage", "submit", false],
+
+  "Resource Allocation/request": ["resourceAllocation", "request", false],
+
+  "Signing/sign_raw_with_legacy_account": [
+    "signing",
     "signRawWithLegacyAccount",
     false,
   ],
-  "Chain Interaction/host_sign_payload_with_legacy_account": [
-    "chainInteraction",
+  "Signing/sign_payload_with_legacy_account": [
+    "signing",
     "signPayloadWithLegacyAccount",
     false,
   ],
-  "Chain Interaction/host_sign_raw": ["chainInteraction", "signRaw", false],
-  "Chain Interaction/host_sign_payload": [
-    "chainInteraction",
-    "signPayload",
-    false,
-  ],
+  "Signing/sign_raw": ["signing", "signRaw", false],
+  "Signing/sign_payload": ["signing", "signPayload", false],
 
-  // Chat
-  "Chat/host_chat_create_room": ["chat", "chatCreateRoom", false],
-  "Chat/host_chat_register_bot": ["chat", "chatRegisterBot", false],
-  "Chat/host_chat_post_message": ["chat", "chatPostMessage", false],
-  "Chat/host_chat_list_subscribe": ["chat", "chatListSubscribe", true],
-  "Chat/host_chat_action_subscribe": ["chat", "chatActionSubscribe", true],
-  "Chat/product_chat_custom_message_render_subscribe": [
-    "chat",
-    "chatCustomMessageRenderSubscribe",
-    true,
-  ],
-
-  // Statement Store
-  "Statement Store/remote_statement_store_subscribe": [
+  "Statement Store/subscribe": ["statementStore", "subscribe", true],
+  "Statement Store/create_proof": ["statementStore", "createProof", false],
+  "Statement Store/create_proof_authorized": [
     "statementStore",
-    "statementStoreSubscribe",
-    true,
-  ],
-  "Statement Store/remote_statement_store_create_proof": [
-    "statementStore",
-    "statementStoreCreateProof",
+    "createProofAuthorized",
     false,
   ],
-  "Statement Store/remote_statement_store_submit": [
-    "statementStore",
-    "statementStoreSubmit",
-    false,
-  ],
+  "Statement Store/submit": ["statementStore", "submit", false],
 
-  // Preimage
-  "Preimage/remote_preimage_lookup_subscribe": [
-    "preimage",
-    "preimageLookupSubscribe",
-    true,
-  ],
+  "System/handshake": ["system", "handshake", false],
+  "System/feature_supported": ["system", "featureSupported", false],
+  "System/push_notification": ["system", "pushNotification", false],
+  "System/navigate_to": ["system", "navigateTo", false],
 
-  "Chain Interaction/remote_chain_head_follow_subscribe": [
-    "chainInteraction",
-    "chainHeadFollowSubscribe",
-    true,
-  ],
-  "Chain Interaction/host_jsonrpc_message_send": [
-    "chainInteraction",
-    "jsonrpcMessageSend",
-    false,
-  ],
-  "Chain Interaction/host_jsonrpc_message_subscribe": [
-    "chainInteraction",
-    "jsonrpcMessageSubscribe",
-    true,
-  ],
-  "Chain Interaction/remote_chain_head_header": [
-    "chainInteraction",
-    "chainHeadHeader",
-    false,
-  ],
-  "Chain Interaction/remote_chain_head_body": [
-    "chainInteraction",
-    "chainHeadBody",
-    false,
-  ],
-  "Chain Interaction/remote_chain_head_storage": [
-    "chainInteraction",
-    "chainHeadStorage",
-    false,
-  ],
-  "Chain Interaction/remote_chain_head_call": [
-    "chainInteraction",
-    "chainHeadCall",
-    false,
-  ],
-  "Chain Interaction/remote_chain_head_unpin": [
-    "chainInteraction",
-    "chainHeadUnpin",
-    false,
-  ],
-  "Chain Interaction/remote_chain_head_continue": [
-    "chainInteraction",
-    "chainHeadContinue",
-    false,
-  ],
-  "Chain Interaction/remote_chain_head_stop_operation": [
-    "chainInteraction",
-    "chainHeadStopOperation",
-    false,
-  ],
-  "Chain Interaction/remote_chain_spec_genesis_hash": [
-    "chainInteraction",
-    "chainSpecGenesisHash",
-    false,
-  ],
-  "Chain Interaction/remote_chain_spec_chain_name": [
-    "chainInteraction",
-    "chainSpecChainName",
-    false,
-  ],
-  "Chain Interaction/remote_chain_spec_properties": [
-    "chainInteraction",
-    "chainSpecProperties",
-    false,
-  ],
-  "Chain Interaction/remote_chain_transaction_broadcast": [
-    "chainInteraction",
-    "chainTransactionBroadcast",
-    false,
-  ],
-  "Chain Interaction/remote_chain_transaction_stop": [
-    "chainInteraction",
-    "chainTransactionStop",
-    false,
-  ],
+  "Theme/subscribe": ["theme", "subscribe", true],
 
-  "System/host_request_resource_allocation": [
-    "system",
-    "requestResourceAllocation",
+  "Transaction/create": ["transaction", "create", false],
+  "Transaction/create_with_legacy_account": [
+    "transaction",
+    "createWithLegacyAccount",
     false,
-  ],
-
-  // Payment
-  "Payment/host_payment_balance_subscribe": [
-    "payment",
-    "paymentBalanceSubscribe",
-    true,
-  ],
-  "Payment/host_payment_top_up": ["payment", "paymentTopUp", false],
-  "Payment/host_payment_request": ["payment", "paymentRequest", false],
-  "Payment/host_payment_status_subscribe": [
-    "payment",
-    "paymentStatusSubscribe",
-    true,
   ],
 };
 
@@ -268,13 +144,13 @@ const methodMap: Record<string, [keyof TrUApiClient, string, boolean]> = {
 // unsubscribes once the dependent call (and any matching operation events)
 // settle.
 const CHAIN_HEAD_DEPENDENT = new Set<string>([
-  "Chain Interaction/remote_chain_head_header",
-  "Chain Interaction/remote_chain_head_body",
-  "Chain Interaction/remote_chain_head_storage",
-  "Chain Interaction/remote_chain_head_call",
-  "Chain Interaction/remote_chain_head_unpin",
-  "Chain Interaction/remote_chain_head_continue",
-  "Chain Interaction/remote_chain_head_stop_operation",
+  "Chain/get_head_header",
+  "Chain/get_head_body",
+  "Chain/get_head_storage",
+  "Chain/call_head",
+  "Chain/unpin_head",
+  "Chain/continue_head",
+  "Chain/stop_head_operation",
 ]);
 
 const ZERO_HASH =
@@ -312,10 +188,7 @@ const OPERATION_AWAITERS: Record<
   string,
   (ctx: OperationAwaiterCtx) => Promise<Record<string, unknown>>
 > = {
-  "Chain Interaction/remote_chain_head_body": async ({
-    follow,
-    operationId,
-  }) => {
+  "Chain/get_head_body": async ({ follow, operationId }) => {
     const result = await awaitChainHeadOperation(follow, operationId, [
       "OperationBodyDone",
       "OperationError",
@@ -323,10 +196,7 @@ const OPERATION_AWAITERS: Record<
     ]);
     return { result };
   },
-  "Chain Interaction/remote_chain_head_call": async ({
-    follow,
-    operationId,
-  }) => {
+  "Chain/call_head": async ({ follow, operationId }) => {
     const result = await awaitChainHeadOperation(follow, operationId, [
       "OperationCallDone",
       "OperationError",
@@ -334,15 +204,12 @@ const OPERATION_AWAITERS: Record<
     ]);
     return { result };
   },
-  "Chain Interaction/remote_chain_head_storage": async ({
-    follow,
-    operationId,
-  }) => {
+  "Chain/get_head_storage": async ({ follow, operationId }) => {
     const client = getClient();
     const result = await awaitChainHeadStorage(follow, operationId, {
       onWaitingForContinue: () => {
         Promise.resolve(
-          client.chainInteraction.chainHeadContinue({
+          client.chain.continueHead({
             genesisHash: follow.genesisHash,
             followSubscriptionId: follow.subscriptionId,
             operationId,

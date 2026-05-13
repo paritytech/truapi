@@ -1,20 +1,16 @@
 //! Unified [`StatementStore`] trait.
 
 use crate::versioned::statement_store::{
-    RemoteStatementStoreCreateProofAuthorizedError,
-    RemoteStatementStoreCreateProofAuthorizedRequest,
+    RemoteStatementStoreCreateProofAuthorizedError, RemoteStatementStoreCreateProofAuthorizedRequest,
     RemoteStatementStoreCreateProofAuthorizedResponse, RemoteStatementStoreCreateProofError,
     RemoteStatementStoreCreateProofRequest, RemoteStatementStoreCreateProofResponse,
-    RemoteStatementStoreSubmitError, RemoteStatementStoreSubmitRequest,
-    RemoteStatementStoreSubscribeItem, RemoteStatementStoreSubscribeRequest,
+    RemoteStatementStoreSubmitError, RemoteStatementStoreSubmitRequest, RemoteStatementStoreSubscribeItem,
+    RemoteStatementStoreSubscribeRequest,
 };
 use crate::wire;
 use crate::{CallContext, CallError, Subscription};
 
-/// Statement store operations.
-///
-/// Default request methods return [`CallError::HostFailure`] with an
-/// `unavailable` reason. Hosts override only the methods they actually support.
+/// Statement store methods.
 #[async_trait::async_trait]
 pub trait StatementStore: Send + Sync {
     /// Subscribe to statements matching a topic filter.
@@ -28,7 +24,7 @@ pub trait StatementStore: Send + Sync {
     ///
     /// export function subscribeStatements(truapi: Client): Subscription {
     ///   return truapi.statementStore
-    ///     .statementStoreSubscribe({
+    ///     .subscribe({
     ///       request: { tag: "MatchAll", value: [] },
     ///     })
     ///     .subscribe({
@@ -40,7 +36,7 @@ pub trait StatementStore: Send + Sync {
     /// }
     /// ```
     #[wire(start_id = 56)]
-    async fn remote_statement_store_subscribe(
+    async fn subscribe(
         &self,
         _cx: &CallContext,
         _request: RemoteStatementStoreSubscribeRequest,
@@ -59,7 +55,7 @@ pub trait StatementStore: Send + Sync {
     /// export async function createStatementProof(
     ///   truapi: Client,
     /// ): Promise<RemoteStatementStoreCreateProofResponse> {
-    ///   const result = await truapi.statementStore.statementStoreCreateProof({
+    ///   const result = await truapi.statementStore.createProof({
     ///     productAccountId: {
     ///       dotNsIdentifier: "truapi-playground.dot",
     ///       derivationIndex: 0,
@@ -74,15 +70,13 @@ pub trait StatementStore: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(request_id = 60)]
-    async fn remote_statement_store_create_proof(
+    #[wire(request_id = 62)]
+    async fn create_proof(
         &self,
         _cx: &CallContext,
         _request: RemoteStatementStoreCreateProofRequest,
-    ) -> Result<
-        RemoteStatementStoreCreateProofResponse,
-        CallError<RemoteStatementStoreCreateProofError>,
-    > {
+    ) -> Result<RemoteStatementStoreCreateProofResponse, CallError<RemoteStatementStoreCreateProofError>>
+    {
         Err(CallError::unavailable())
     }
 
@@ -99,7 +93,7 @@ pub trait StatementStore: Send + Sync {
     ///   truapi: Client,
     /// ): Promise<RemoteStatementStoreCreateProofResponse> {
     ///   const result =
-    ///     await truapi.statementStore.statementStoreCreateProofAuthorized({
+    ///     await truapi.statementStore.createProofAuthorized({
     ///       expiry: 9999999999999n,
     ///       topics: [],
     ///     });
@@ -108,8 +102,8 @@ pub trait StatementStore: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(request_id = 132)]
-    async fn remote_statement_store_create_proof_authorized(
+    #[wire(request_id = 64)]
+    async fn create_proof_authorized(
         &self,
         _cx: &CallContext,
         _request: RemoteStatementStoreCreateProofAuthorizedRequest,
@@ -128,7 +122,7 @@ pub trait StatementStore: Send + Sync {
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function submitStatement(truapi: Client): Promise<void> {
-    ///   const result = await truapi.statementStore.statementStoreSubmit({
+    ///   const result = await truapi.statementStore.submit({
     ///     proof: {
     ///       tag: "Sr25519",
     ///       value: {
@@ -142,8 +136,8 @@ pub trait StatementStore: Send + Sync {
     ///   if (result.isErr()) throw result.error;
     /// }
     /// ```
-    #[wire(request_id = 62)]
-    async fn remote_statement_store_submit(
+    #[wire(request_id = 68)]
+    async fn submit(
         &self,
         _cx: &CallContext,
         _request: RemoteStatementStoreSubmitRequest,

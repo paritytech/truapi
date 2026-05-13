@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import { useNavigate, useParams } from "react-router-dom";
 import { TypeString } from "../components/TypeLink";
 import { useVersion } from "../contexts/VersionContext";
+import { versionedMethodRoutePath } from "../lib/routes";
 
 export default function TypeDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -175,7 +176,9 @@ export default function TypeDetailPage() {
             {referencingMethods.map((method) => (
               <button
                 key={method.id}
-                onClick={() => navigate(`${versionPrefix}/method/${method.id}`)}
+                onClick={() =>
+                  navigate(versionedMethodRoutePath(versionPrefix, method))
+                }
                 className="inline-flex items-center gap-1.5 rounded-md border border-slate-600/30 bg-slate-700/30 px-3 py-1.5 font-mono text-xs text-slate-300 transition-all duration-150 hover:bg-slate-700/50 hover:text-white hover:shadow-[0_2px_8px_rgba(0,0,0,0.2)]"
                 type="button"
               >

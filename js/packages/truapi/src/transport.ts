@@ -36,10 +36,7 @@ export class SubscriptionError<Reason = never> extends Error {
    **/
   readonly reason?: Reason;
 
-  constructor(
-    message: string,
-    options?: { reason?: Reason; cause?: unknown },
-  ) {
+  constructor(message: string, options?: { reason?: Reason; cause?: unknown }) {
     super(
       message,
       options?.cause !== undefined ? { cause: options.cause } : undefined,

@@ -7,10 +7,7 @@ use crate::versioned::preimage::{
 use crate::wire;
 use crate::{CallContext, CallError, Subscription};
 
-/// Preimage lookup and submission.
-///
-/// Default methods return [`CallError::HostFailure`] with an `unavailable`
-/// reason. Hosts override only the methods they actually support.
+/// Preimage lookup and submission methods.
 #[async_trait::async_trait]
 pub trait Preimage: Send + Sync {
     /// Subscribe to preimage lookups for a given key.
@@ -24,7 +21,7 @@ pub trait Preimage: Send + Sync {
     ///
     /// export function lookupPreimage(truapi: Client): Subscription {
     ///   return truapi.preimage
-    ///     .preimageLookupSubscribe({
+    ///     .lookupSubscribe({
     ///       request: {
     ///         key: "0x0000000000000000000000000000000000000000000000000000000000000000",
     ///       },
@@ -37,8 +34,8 @@ pub trait Preimage: Send + Sync {
     ///     });
     /// }
     /// ```
-    #[wire(start_id = 64)]
-    async fn remote_preimage_lookup_subscribe(
+    #[wire(start_id = 50)]
+    async fn lookup_subscribe(
         &self,
         _cx: &CallContext,
         _request: RemotePreimageLookupSubscribeRequest,
@@ -57,14 +54,14 @@ pub trait Preimage: Send + Sync {
     /// export async function submitPreimage(
     ///   truapi: Client,
     /// ): Promise<HexString> {
-    ///   const result = await truapi.preimage.preimageSubmit("0xdeadbeef");
+    ///   const result = await truapi.preimage.submit("0xdeadbeef");
     ///
     ///   if (result.isErr()) throw result.error;
     ///   return result.value;
     /// }
     /// ```
-    #[wire(request_id = 68)]
-    async fn remote_preimage_submit(
+    #[wire(request_id = 54)]
+    async fn submit(
         &self,
         _cx: &CallContext,
         _request: RemotePreimageSubmitRequest,

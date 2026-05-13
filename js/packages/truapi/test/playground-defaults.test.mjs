@@ -6,19 +6,25 @@ import { services } from "../src/playground/services.ts";
 const ENCODED = Symbol("payload encoded");
 
 const serviceFields = {
-  "Account Management": "accountManagement",
-  "Chain Interaction": "chainInteraction",
+  Account: "account",
+  Chain: "chain",
   Chat: "chat",
+  Entropy: "entropy",
+  "JSON-RPC": "jsonRpc",
   "Local Storage": "localStorage",
   Payment: "payment",
+  Permissions: "permissions",
   Preimage: "preimage",
+  "Resource Allocation": "resourceAllocation",
+  Signing: "signing",
   "Statement Store": "statementStore",
   System: "system",
+  Theme: "theme",
+  Transaction: "transaction",
 };
 
 function methodField(methodName) {
-  const withoutPrefix = methodName.replace(/^(host|remote|product)_/, "");
-  return withoutPrefix.replace(/_([a-z])/g, (_, ch) => ch.toUpperCase());
+  return methodName.replace(/_([a-z])/g, (_, ch) => ch.toUpperCase());
 }
 
 function normalizeForScale(value) {

@@ -460,9 +460,9 @@ fn explorer_type_definition(
                 .map(|field| {
                     let (name, optional) = ts_field_name(&field.name, &field.type_ref);
                     if optional {
-                        Ok(format!("{}?: {}", name, ts_inner_option(&field.type_ref)?))
+                        Ok(format!("{name}?: {}", ts_inner_option(&field.type_ref)?))
                     } else {
-                        Ok(format!("{}: {}", name, ts_type(&field.type_ref)?))
+                        Ok(format!("{name}: {}", ts_type(&field.type_ref)?))
                     }
                 })
                 .collect::<Result<Vec<_>>>()?
