@@ -12,6 +12,7 @@ created: 2026-03-13
 | ------ | ------------------------------------------------------------------------ | -------- | ------------- | --------------------------------------------------------------- |
 | 0001   | [RFC Template](0001-template.md)                                         | —        | —             | —                                                               |
 | 0002   | [Permission Model for Host API](0002-permission-model.md)                | accepted | @johnthecat   | [#66](https://github.com/paritytech/triangle-js-sdks/pull/66)   |
+| 0002   | [Chat Extension v2](0002-chat-extension-v2.md)                           | draft    | @valentunn    | [#79](https://github.com/paritytech/triangle-js-sdks/pull/79)   |
 | 0006   | [Payment Host API](0006-payments.md)                                     | accepted | @valentunn    | [#94](https://github.com/paritytech/triangle-js-sdks/pull/94)   |
 | 0007   | [Deterministic Entropy Derivation](0007-derive-entropy.md)               | accepted | @valentunn    | [#95](https://github.com/paritytech/triangle-js-sdks/pull/95)   |
 | 0008   | [Statement Store Host API v0.2](0008-statement-store.md)                 | accepted | @johnthecat   | [#118](https://github.com/paritytech/triangle-js-sdks/pull/118) |
