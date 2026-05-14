@@ -3,6 +3,7 @@
 pub mod account;
 pub mod chain;
 pub mod chat;
+pub mod coin_payment;
 pub mod entropy;
 pub mod jsonrpc;
 pub mod local_storage;
@@ -18,6 +19,7 @@ pub mod theme;
 pub use account::Account;
 pub use chain::Chain;
 pub use chat::Chat;
+pub use coin_payment::CoinPayment;
 pub use entropy::Entropy;
 pub use jsonrpc::JsonRpc;
 pub use local_storage::LocalStorage;
@@ -35,6 +37,7 @@ pub trait TrUApi:
     Account
     + Chain
     + Chat
+    + CoinPayment
     + Entropy
     + JsonRpc
     + LocalStorage
@@ -55,6 +58,7 @@ impl<T> TrUApi for T where
     T: Account
         + Chain
         + Chat
+        + CoinPayment
         + Entropy
         + JsonRpc
         + LocalStorage

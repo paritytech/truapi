@@ -83,6 +83,7 @@ macro_rules! versioned_type {
 pub mod account;
 pub mod chain;
 pub mod chat;
+pub mod coin_payment;
 pub mod entropy;
 pub mod jsonrpc;
 pub mod local_storage;
