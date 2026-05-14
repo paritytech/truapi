@@ -19,5 +19,6 @@ created: 2026-03-13
 | 0010   | [Root account access Host API](0010-get-root-account.md)                 | accepted | @johnthecat   | [#126](https://github.com/paritytech/triangle-js-sdks/pull/126) |
 | 0010   | [W3S Allowance Management](0010-allowance.md)                            | draft    | @valentunn    | —                                                               |
 | 0011   | [Simple Group Chat](0011-simple-group-chat.md)                           | draft    | @filvecchiato | [#131](https://github.com/paritytech/triangle-js-sdks/pull/131) |
-| 0015   | [Get User Primary DotNS Name](0015-get-user-id.md)                      | draft    | @valentunn    | [#144](https://github.com/paritytech/triangle-js-sdks/pull/144) |
+| 0015   | [Get User Primary DotNS Name](0015-get-user-id.md)                       | draft    | @valentunn    | [#144](https://github.com/paritytech/triangle-js-sdks/pull/144) |
+| 0016   | [Product Session Restore Host API](0016-product-session-restore.md)      | draft    | @replghost    | —                                                               |
 | 0019   | [Scheduled Push Notifications](0019-scheduled-notifications.md)          | draft    | @johnthecat   |                                                                 |
