@@ -4,12 +4,14 @@
 pub enum Version {
     /// Initial protocol version.
     V1,
+    /// Adds RFC 0017 purse selectors to payment methods.
+    V2,
 }
 
 pub mod latest {
     use super::Version;
 
-    pub const VERSION: Version = Version::V1;
+    pub const VERSION: Version = Version::V2;
 }
 
 #[allow(clippy::result_unit_err)]
@@ -70,6 +72,52 @@ macro_rules! versioned_type {
         pub enum $name {
             #[codec(index = 0)]
             V1,
+        }
+
+        impl $crate::versioned::IntoVersion for $name {
+            fn into_version(self, _version: $crate::versioned::Version) -> Result<Self, ()> {
+                Ok(self)
+            }
+        }
+    };
+
+    // V1 unit + V2 with payload.
+    (
+        @one
+        pub enum $name:ident {
+            V1, V2 => $v2:ty $(,)?
+        }
+    ) => {
+        #[doc = concat!("Versioned envelope for [`", stringify!($name), "`].")]
+        #[derive(Debug, Clone, PartialEq, Eq, parity_scale_codec::Encode, parity_scale_codec::Decode)]
+        pub enum $name {
+            #[codec(index = 0)]
+            V1,
+            #[codec(index = 1)]
+            V2($v2),
+        }
+
+        impl $crate::versioned::IntoVersion for $name {
+            fn into_version(self, _version: $crate::versioned::Version) -> Result<Self, ()> {
+                Ok(self)
+            }
+        }
+    };
+
+    // V1 with payload + V2 with payload.
+    (
+        @one
+        pub enum $name:ident {
+            V1 => $v1:ty, V2 => $v2:ty $(,)?
+        }
+    ) => {
+        #[doc = concat!("Versioned envelope for [`", stringify!($name), "`].")]
+        #[derive(Debug, Clone, PartialEq, Eq, parity_scale_codec::Encode, parity_scale_codec::Decode)]
+        pub enum $name {
+            #[codec(index = 0)]
+            V1($v1),
+            #[codec(index = 1)]
+            V2($v2),
         }
 
         impl $crate::versioned::IntoVersion for $name {

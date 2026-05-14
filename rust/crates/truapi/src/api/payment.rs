@@ -24,17 +24,13 @@ pub trait Payment: Send + Sync {
     /// } from "@parity/truapi";
     ///
     /// export function watchPaymentBalance(truapi: Client): Subscription {
-    ///   return truapi.payment
-    ///     .balanceSubscribe({
-    ///       request: {},
-    ///     })
-    ///     .subscribe({
-    ///       next: (balance: HostPaymentBalanceSubscribeItem) =>
-    ///         console.log(balance),
-    ///       error: (error: SubscriptionError<HostPaymentBalanceSubscribeError>) =>
-    ///         console.error(error),
-    ///       complete: () => console.log("completed"),
-    ///     });
+    ///   return truapi.payment.balanceSubscribe().subscribe({
+    ///     next: (balance: HostPaymentBalanceSubscribeItem) =>
+    ///       console.log(balance),
+    ///     error: (error: SubscriptionError<HostPaymentBalanceSubscribeError>) =>
+    ///       console.error(error),
+    ///     complete: () => console.log("completed"),
+    ///   });
     /// }
     /// ```
     #[wire(start_id = 118)]
