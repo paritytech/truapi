@@ -1,6 +1,6 @@
 ---
 name: regen-codegen
-description: Regenerate the @parity/truapi TypeScript client and playground/explorer metadata from the truapi crate's rustdoc JSON. Use whenever the Rust trait surface changes.
+description: Regenerate the @parity/truapi TypeScript client and playground metadata from the truapi crate's rustdoc JSON. Use whenever the Rust trait surface changes.
 ---
 
 # Regenerate the TypeScript client
@@ -14,7 +14,7 @@ not change rustdoc output) or purely TS-side.
 ```
 
 Expected output: `Generated client at js/packages/truapi/src/generated/`,
-`Generated playground metadata ...`, `Generated explorer registry ...`.
+`Generated playground metadata ...`.
 
 The script is `cargo +nightly rustdoc --output-format json` →
 `truapi-codegen` → `prettier --write` → `npm run build` in
@@ -24,8 +24,7 @@ The script is `cargo +nightly rustdoc --output-format json` →
 
 ```bash
 git status js/packages/truapi/src/generated \
-           js/packages/truapi/src/playground \
-           js/packages/truapi/src/explorer
+           js/packages/truapi/src/playground
 git diff   js/packages/truapi/src/generated/
 ```
 

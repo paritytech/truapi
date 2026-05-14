@@ -106,7 +106,7 @@ pub enum HostPaymentStatusSubscribeItem {
     },
 }
 
-/// Error from [`crate::api::Payment::host_payment_balance_subscribe`].
+/// Error from [`crate::api::Payment::balance_subscribe`].
 ///
 /// See [RFC 0006].
 ///
@@ -119,7 +119,7 @@ pub enum HostPaymentBalanceSubscribeError {
     Unknown { reason: String },
 }
 
-/// Error from [`crate::api::Payment::host_payment_top_up`].
+/// Error from [`crate::api::Payment::top_up`].
 ///
 /// See [RFC 0006].
 ///
@@ -134,7 +134,7 @@ pub enum HostPaymentTopUpError {
     Unknown { reason: String },
 }
 
-/// Error from [`crate::api::Payment::host_payment_request`].
+/// Error from [`crate::api::Payment::request`].
 ///
 /// See [RFC 0006].
 ///
@@ -149,7 +149,7 @@ pub enum HostPaymentRequestError {
     Unknown { reason: String },
 }
 
-/// Error from [`crate::api::Payment::host_payment_status_subscribe`].
+/// Error from [`crate::api::Payment::status_subscribe`].
 ///
 /// See [RFC 0006].
 ///

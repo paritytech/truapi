@@ -1,27 +1,22 @@
 import assert from "node:assert/strict";
 
 import { createClient } from "../src/generated/client.ts";
-import { services } from "../src/playground/services.ts";
+import { services } from "../src/playground/codegen/services.ts";
 
 const ENCODED = Symbol("payload encoded");
 
-const serviceFields = {
-  "TrUAPI Calls": "trUApiCalls",
-  Permissions: "permissions",
-  "Local Storage": "localStorage",
-  "Account Management": "accountManagement",
-  Signing: "signing",
-  Chat: "chat",
-  "Statement Store": "statementStore",
-  Preimage: "preimage",
-  "Chain Interaction": "chainInteraction",
-  Payment: "payment",
-  "Entropy Derivation": "entropyDerivation",
-};
-
 function methodField(methodName) {
-  const withoutPrefix = methodName.replace(/^(host|remote|product)_/, "");
-  return withoutPrefix.replace(/_([a-z])/g, (_, ch) => ch.toUpperCase());
+  return methodName.replace(/_([a-z])/g, (_, ch) => ch.toUpperCase());
+}
+
+function serviceField(serviceName) {
+  const words = serviceName.match(/[A-Za-z0-9]+/g) ?? [];
+  return words
+    .map((word) => word.toLowerCase())
+    .map((word, index) =>
+      index === 0 ? word : word[0].toUpperCase() + word.slice(1),
+    )
+    .join("");
 }
 
 function normalizeForScale(value) {
@@ -52,9 +47,9 @@ const client = createClient({
 });
 
 for (const service of services) {
-  const serviceField = serviceFields[service.name];
-  assert.ok(serviceField, `missing client service mapping for ${service.name}`);
-  const serviceClient = client[serviceField];
+  const clientField = serviceField(service.name);
+  assert.ok(clientField, `missing client service mapping for ${service.name}`);
+  const serviceClient = client[clientField];
 
   for (const method of service.methods) {
     if (!method.defaultRequest) continue;

@@ -1,11 +1,10 @@
 [package]
 name = "truapi"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 description = "TrUAPI trait and type definitions"
 
 [dependencies]
-async-trait = "0.1"
 futures = "0.3"
 hex = "0.4"
 parity-scale-codec = { version = "3", features = ["derive"] }

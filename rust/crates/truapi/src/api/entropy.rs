@@ -1,4 +1,4 @@
-//! Unified [`EntropyDerivation`] trait (V0.2+).
+//! Unified [`Entropy`] trait.
 
 use crate::versioned::entropy::{
     HostDeriveEntropyError, HostDeriveEntropyRequest, HostDeriveEntropyResponse,
@@ -7,15 +7,10 @@ use crate::wire;
 use crate::{CallContext, CallError};
 
 /// Deterministic entropy derivation.
-///
-/// The default body returns [`CallError::HostFailure`] with an `unavailable`
-/// reason; hosts override only if they can derive entropy.
-#[async_trait::async_trait]
-pub trait EntropyDerivation: Send + Sync {
-    /// Derive 32 bytes of entropy from the user's root BIP-39 entropy for the
-    /// given key.
+pub trait Entropy: Send + Sync {
+    /// Derive deterministic entropy.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostDeriveEntropyResponse,
@@ -24,7 +19,7 @@ pub trait EntropyDerivation: Send + Sync {
     /// export async function deriveEntropy(
     ///   truapi: Client,
     /// ): Promise<HostDeriveEntropyResponse> {
-    ///   const result = await truapi.entropyDerivation.deriveEntropy({
+    ///   const result = await truapi.entropy.derive({
     ///     context: "0x70726f647563742d6b6579",
     ///   });
     ///
@@ -33,7 +28,7 @@ pub trait EntropyDerivation: Send + Sync {
     /// }
     /// ```
     #[wire(request_id = 108)]
-    async fn host_derive_entropy(
+    async fn derive(
         &self,
         _cx: &CallContext,
         _request: HostDeriveEntropyRequest,

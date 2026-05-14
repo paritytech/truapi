@@ -76,31 +76,31 @@ pub enum CoinPaymentError {
     Internal,
 }
 
-/// Error from `host_coin_payment_create_purse`.
+/// Error from [`crate::api::CoinPayment::create_purse`].
 pub type HostCoinPaymentCreatePurseError = CoinPaymentError;
 
-/// Error from `host_coin_payment_query_purse`.
+/// Error from [`crate::api::CoinPayment::query_purse`].
 pub type HostCoinPaymentQueryPurseError = CoinPaymentError;
 
-/// Error from `host_coin_payment_rebalance_purse`.
+/// Error from [`crate::api::CoinPayment::rebalance_purse`].
 pub type HostCoinPaymentRebalancePurseError = CoinPaymentError;
 
-/// Error from `host_coin_payment_delete_purse`.
+/// Error from [`crate::api::CoinPayment::delete_purse`].
 pub type HostCoinPaymentDeletePurseError = CoinPaymentError;
 
-/// Error from `host_coin_payment_create_receivable`.
+/// Error from [`crate::api::CoinPayment::create_receivable`].
 pub type HostCoinPaymentCreateReceivableError = CoinPaymentError;
 
-/// Error from `host_coin_payment_create_cheque`.
+/// Error from [`crate::api::CoinPayment::create_cheque`].
 pub type HostCoinPaymentCreateChequeError = CoinPaymentError;
 
-/// Error from `host_coin_payment_deposit`.
+/// Error from [`crate::api::CoinPayment::deposit`].
 pub type HostCoinPaymentDepositError = CoinPaymentError;
 
-/// Error from `host_coin_payment_refund`.
+/// Error from [`crate::api::CoinPayment::refund`].
 pub type HostCoinPaymentRefundError = CoinPaymentError;
 
-/// Error from `host_coin_payment_listen_for`.
+/// Error from [`crate::api::CoinPayment::listen_for`].
 pub type HostCoinPaymentListenForError = CoinPaymentError;
 
 /// Product-visible clearing reference for reconciliation and receipts.
@@ -264,7 +264,7 @@ pub struct HostCoinPaymentListenForRequest {
     pub receivable: CoinPaymentReceivable,
 }
 
-/// Stream item for `host_coin_payment_listen_for`.
+/// Stream item for [`crate::api::CoinPayment::listen_for`].
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum HostCoinPaymentListenForItem {
     /// Handoff channel suitable for inclusion in an invoice.

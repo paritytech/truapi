@@ -1,16 +1,12 @@
 import { expect, test } from "@playwright/test";
-import {
-  openPlaygroundInDotli,
-  selectMethod,
-  waitForOnline,
-} from "./helpers";
+import { openPlaygroundInDotli, selectMethod, waitForOnline } from "./helpers";
 
 test.describe("unary call", () => {
-  test("host_account_get returns a successful response", async ({ page }) => {
+  test("get_account returns a successful response", async ({ page }) => {
     const frame = await openPlaygroundInDotli(page);
     await waitForOnline(frame);
 
-    await selectMethod(frame, "Account Management", "host_account_get");
+    await selectMethod(frame, "Account", "get_account");
 
     // Click `Call method`. The button is keyed on `data-testid` so it
     // is robust to label/glyph changes.

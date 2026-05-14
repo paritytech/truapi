@@ -1,33 +1,21 @@
 //! Versioned request and response wrappers for the unified TrUAPI contract.
-//!
-//! Every wire-level request and response is expressed as a versioned enum
-//! whose `V<N>(..)` arms wrap the per-version shape from the corresponding
-//! version module. The codec discriminant is pinned with `#[codec(index = N)]`
-//! so adding a future version slot doesn't shift existing versions on the wire.
 
-/// Protocol version identifier. Each variant matches a `V<N>(..)` arm of the
-/// versioned wrapper enums.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Version {
     /// Initial protocol version.
     V1,
 }
 
-/// Latest known protocol version.
 pub mod latest {
     use super::Version;
 
-    /// The latest protocol version.
     pub const VERSION: Version = Version::V1;
 }
 
-/// Convert a versioned wrapper into a different version of itself.
 #[allow(clippy::result_unit_err)]
 pub trait IntoVersion: Sized {
-    /// Consume `self` and return same value expressed in some particular `version`.
     fn into_version(self, version: Version) -> Result<Self, ()>;
 
-    /// Consume `self` and return same value expressed the latest version.
     fn into_latest(self) -> Result<Self, ()> {
         self.into_version(latest::VERSION)
     }
@@ -93,7 +81,6 @@ macro_rules! versioned_type {
 }
 
 pub mod account;
-pub mod calls;
 pub mod chain;
 pub mod chat;
 pub mod coin_payment;
@@ -106,6 +93,7 @@ pub mod preimage;
 pub mod resource_allocation;
 pub mod signing;
 pub mod statement_store;
+pub mod system;
 pub mod theme;
 
 #[cfg(test)]
@@ -122,8 +110,8 @@ mod tests {
 
     #[test]
     fn unit_response_roundtrip() {
-        let original = super::calls::HostNavigateToResponse::V1;
-        let decoded = super::calls::HostNavigateToResponse::decode(&mut &original.encode()[..])
+        let original = super::system::HostNavigateToResponse::V1;
+        let decoded = super::system::HostNavigateToResponse::decode(&mut &original.encode()[..])
             .expect("decode");
         assert_eq!(original, decoded);
     }

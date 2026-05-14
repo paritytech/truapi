@@ -12,15 +12,18 @@ export interface TestEntry {
 }
 
 export const EXCLUDED_METHODS = new Set([
-  "TrUAPI Calls/host_navigate_to",
-  "TrUAPI Calls/host_push_notification",
-  "Permissions/host_device_permission",
-  "Permissions/remote_permission",
-  "Signing/host_sign_payload",
-  "Signing/host_sign_raw",
-  "Signing/host_create_transaction",
-  "Signing/host_create_transaction_with_legacy_account",
-  "Account Management/host_account_get_alias",
+  "System/navigate_to",
+  "System/push_notification",
+  "Permissions/request_device_permission",
+  "Permissions/request_remote_permission",
+  "Resource Allocation/request",
+  "Signing/sign_payload",
+  "Signing/sign_raw",
+  "Signing/sign_raw_with_legacy_account",
+  "Signing/sign_payload_with_legacy_account",
+  "Signing/create_transaction",
+  "Signing/create_transaction_with_legacy_account",
+  "Account/get_account_alias",
 ]);
 
 const UNARY_TIMEOUT_MS = 2_000;
@@ -30,11 +33,20 @@ const SUBSCRIPTION_TIMEOUT_MS = 6_000;
 const CONCURRENCY = 6;
 // Each chain-head method depends on a live follow subscription on the host
 // side; running the service serially avoids fanning out concurrent follows.
-const SERIAL_SERVICES = new Set(["Chain Interaction"]);
+const SERIAL_SERVICES = new Set(["Chain"]);
+const LONG_TIMEOUT_METHODS = new Set([
+  "Resource Allocation/request",
+  "Signing/sign_payload",
+  "Signing/sign_raw",
+  "Signing/sign_raw_with_legacy_account",
+  "Signing/sign_payload_with_legacy_account",
+  "Signing/create_transaction",
+  "Signing/create_transaction_with_legacy_account",
+]);
 
 const STATEMENT_STORE_SERVICE = "Statement Store";
-const STATEMENT_CREATE_PROOF_METHOD = "remote_statement_store_create_proof";
-const STATEMENT_SUBMIT_ID = "Statement Store/remote_statement_store_submit";
+const STATEMENT_CREATE_PROOF_METHOD = "create_proof";
+const STATEMENT_SUBMIT_ID = "Statement Store/submit";
 
 function parseRequest(method: MethodInfo): unknown {
   if (method.noParams) return null;
@@ -117,8 +129,8 @@ async function testSubscription(
 // fields arrive at the bridge as { bytes: "0x..." } envelopes.
 async function fetchStatementProof(services: ServiceInfo[]): Promise<unknown> {
   const proofMethod = services
-    .find((s) => s.name === STATEMENT_STORE_SERVICE)
-    ?.methods.find((m) => m.name === STATEMENT_CREATE_PROOF_METHOD);
+    .find((s: ServiceInfo) => s.name === STATEMENT_STORE_SERVICE)
+    ?.methods.find((m: MethodInfo) => m.name === STATEMENT_CREATE_PROOF_METHOD);
   if (!proofMethod) return undefined;
 
   const binding = getMethodBinding(
@@ -196,8 +208,9 @@ async function runOne({
     }
   }
 
-  const timeoutMs =
-    serviceName === "Signing" ? SIGNING_TIMEOUT_MS : UNARY_TIMEOUT_MS;
+  const timeoutMs = LONG_TIMEOUT_METHODS.has(id)
+    ? SIGNING_TIMEOUT_MS
+    : UNARY_TIMEOUT_MS;
   const requestStr = stringify(req);
   const { result, output } = binding.isStream
     ? await testSubscription(binding.subscribe, req)
@@ -213,8 +226,8 @@ export async function runSingleTest(
   onUpdate: (id: string, entry: TestEntry) => void,
   requestOverride?: string,
 ): Promise<void> {
-  const svc = services.find((s) => s.name === serviceName);
-  const method = svc?.methods.find((m) => m.name === methodName);
+  const svc = services.find((s: ServiceInfo) => s.name === serviceName);
+  const method = svc?.methods.find((m: MethodInfo) => m.name === methodName);
   if (!svc || !method) return;
   // Empty exclude set so a manual retry overrides the disruptive-method filter.
   await runOne({

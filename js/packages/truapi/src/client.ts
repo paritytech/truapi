@@ -206,7 +206,7 @@ export function createTransport(
     }
     const { requestId, payload } = decoded.value;
 
-    if (payload.id === W.HOST_HANDSHAKE.request) {
+    if (payload.id === W.SYSTEM_HANDSHAKE.request) {
       // Auto-respond to inbound `host_handshake_request` frames.
       //
       // Legacy hosts shipping `@novasamatech/host-api@0.6.x` (e.g. dotli)
@@ -236,7 +236,7 @@ export function createTransport(
         send({
           requestId,
           payload: {
-            id: W.HOST_HANDSHAKE.response,
+            id: W.SYSTEM_HANDSHAKE.response,
             value: response,
           },
         });

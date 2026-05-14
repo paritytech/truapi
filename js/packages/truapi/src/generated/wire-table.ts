@@ -5,357 +5,357 @@ import type { RequestFrameIds, SubscriptionFrameIds } from "../transport.js";
 // Wire-protocol discriminants. Method ordering is part of the
 // protocol; only ever append or explicitly reserve gaps.
 
-export const HOST_HANDSHAKE = {
+export const SYSTEM_HANDSHAKE = {
   request: 0,
   response: 1,
 } as const satisfies RequestFrameIds;
 
-export const HOST_FEATURE_SUPPORTED = {
+export const SYSTEM_FEATURE_SUPPORTED = {
   request: 2,
   response: 3,
 } as const satisfies RequestFrameIds;
 
-export const HOST_PUSH_NOTIFICATION = {
+export const SYSTEM_PUSH_NOTIFICATION = {
   request: 4,
   response: 5,
 } as const satisfies RequestFrameIds;
 
-export const HOST_NAVIGATE_TO = {
+export const SYSTEM_NAVIGATE_TO = {
   request: 6,
   response: 7,
 } as const satisfies RequestFrameIds;
 
-export const HOST_DEVICE_PERMISSION = {
+export const PERMISSIONS_REQUEST_DEVICE_PERMISSION = {
   request: 8,
   response: 9,
 } as const satisfies RequestFrameIds;
 
-export const REMOTE_PERMISSION = {
+export const PERMISSIONS_REQUEST_REMOTE_PERMISSION = {
   request: 10,
   response: 11,
 } as const satisfies RequestFrameIds;
 
-export const HOST_LOCAL_STORAGE_READ = {
+export const LOCAL_STORAGE_READ = {
   request: 12,
   response: 13,
 } as const satisfies RequestFrameIds;
 
-export const HOST_LOCAL_STORAGE_WRITE = {
+export const LOCAL_STORAGE_WRITE = {
   request: 14,
   response: 15,
 } as const satisfies RequestFrameIds;
 
-export const HOST_LOCAL_STORAGE_CLEAR = {
+export const LOCAL_STORAGE_CLEAR = {
   request: 16,
   response: 17,
 } as const satisfies RequestFrameIds;
 
-export const HOST_ACCOUNT_CONNECTION_STATUS_SUBSCRIBE = {
+export const ACCOUNT_CONNECTION_STATUS_SUBSCRIBE = {
   start: 18,
   stop: 19,
   interrupt: 20,
   receive: 21,
 } as const satisfies SubscriptionFrameIds;
 
-export const HOST_ACCOUNT_GET = {
+export const ACCOUNT_GET_ACCOUNT = {
   request: 22,
   response: 23,
 } as const satisfies RequestFrameIds;
 
-export const HOST_ACCOUNT_GET_ALIAS = {
+export const ACCOUNT_GET_ACCOUNT_ALIAS = {
   request: 24,
   response: 25,
 } as const satisfies RequestFrameIds;
 
-export const HOST_ACCOUNT_CREATE_PROOF = {
+export const ACCOUNT_CREATE_ACCOUNT_PROOF = {
   request: 26,
   response: 27,
 } as const satisfies RequestFrameIds;
 
-export const HOST_GET_LEGACY_ACCOUNTS = {
+export const ACCOUNT_GET_LEGACY_ACCOUNTS = {
   request: 28,
   response: 29,
 } as const satisfies RequestFrameIds;
 
-export const HOST_CREATE_TRANSACTION = {
+export const SIGNING_CREATE_TRANSACTION = {
   request: 30,
   response: 31,
 } as const satisfies RequestFrameIds;
 
-export const HOST_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT = {
+export const SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT = {
   request: 32,
   response: 33,
 } as const satisfies RequestFrameIds;
 
-export const HOST_SIGN_RAW_WITH_LEGACY_ACCOUNT = {
+export const SIGNING_SIGN_RAW_WITH_LEGACY_ACCOUNT = {
   request: 34,
   response: 35,
 } as const satisfies RequestFrameIds;
 
-export const HOST_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT = {
+export const SIGNING_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT = {
   request: 36,
   response: 37,
 } as const satisfies RequestFrameIds;
 
-export const HOST_CHAT_CREATE_ROOM = {
+export const CHAT_CREATE_ROOM = {
   request: 38,
   response: 39,
 } as const satisfies RequestFrameIds;
 
-export const HOST_CHAT_REGISTER_BOT = {
+export const CHAT_REGISTER_BOT = {
   request: 40,
   response: 41,
 } as const satisfies RequestFrameIds;
 
-export const HOST_CHAT_LIST_SUBSCRIBE = {
+export const CHAT_LIST_SUBSCRIBE = {
   start: 42,
   stop: 43,
   interrupt: 44,
   receive: 45,
 } as const satisfies SubscriptionFrameIds;
 
-export const HOST_CHAT_POST_MESSAGE = {
+export const CHAT_POST_MESSAGE = {
   request: 46,
   response: 47,
 } as const satisfies RequestFrameIds;
 
-export const HOST_CHAT_ACTION_SUBSCRIBE = {
+export const CHAT_ACTION_SUBSCRIBE = {
   start: 48,
   stop: 49,
   interrupt: 50,
   receive: 51,
 } as const satisfies SubscriptionFrameIds;
 
-export const PRODUCT_CHAT_CUSTOM_MESSAGE_RENDER_SUBSCRIBE = {
+export const CHAT_CUSTOM_MESSAGE_RENDER_SUBSCRIBE = {
   start: 52,
   stop: 53,
   interrupt: 54,
   receive: 55,
 } as const satisfies SubscriptionFrameIds;
 
-export const REMOTE_STATEMENT_STORE_SUBSCRIBE = {
+export const STATEMENT_STORE_SUBSCRIBE = {
   start: 56,
   stop: 57,
   interrupt: 58,
   receive: 59,
 } as const satisfies SubscriptionFrameIds;
 
-export const REMOTE_STATEMENT_STORE_CREATE_PROOF = {
+export const STATEMENT_STORE_CREATE_PROOF = {
   request: 60,
   response: 61,
 } as const satisfies RequestFrameIds;
 
-export const REMOTE_STATEMENT_STORE_SUBMIT = {
+export const STATEMENT_STORE_SUBMIT = {
   request: 62,
   response: 63,
 } as const satisfies RequestFrameIds;
 
-export const REMOTE_PREIMAGE_LOOKUP_SUBSCRIBE = {
+export const PREIMAGE_LOOKUP_SUBSCRIBE = {
   start: 64,
   stop: 65,
   interrupt: 66,
   receive: 67,
 } as const satisfies SubscriptionFrameIds;
 
-export const REMOTE_PREIMAGE_SUBMIT = {
+export const PREIMAGE_SUBMIT = {
   request: 68,
   response: 69,
 } as const satisfies RequestFrameIds;
 
-export const HOST_JSONRPC_MESSAGE_SEND = {
+export const JSON_RPC_SEND_MESSAGE = {
   request: 70,
   response: 71,
 } as const satisfies RequestFrameIds;
 
-export const HOST_JSONRPC_MESSAGE_SUBSCRIBE = {
+export const JSON_RPC_SUBSCRIBE_MESSAGES = {
   start: 72,
   stop: 73,
   interrupt: 74,
   receive: 75,
 } as const satisfies SubscriptionFrameIds;
 
-export const REMOTE_CHAIN_HEAD_FOLLOW_SUBSCRIBE = {
+export const CHAIN_FOLLOW_HEAD_SUBSCRIBE = {
   start: 76,
   stop: 77,
   interrupt: 78,
   receive: 79,
 } as const satisfies SubscriptionFrameIds;
 
-export const REMOTE_CHAIN_HEAD_HEADER = {
+export const CHAIN_GET_HEAD_HEADER = {
   request: 80,
   response: 81,
 } as const satisfies RequestFrameIds;
 
-export const REMOTE_CHAIN_HEAD_BODY = {
+export const CHAIN_GET_HEAD_BODY = {
   request: 82,
   response: 83,
 } as const satisfies RequestFrameIds;
 
-export const REMOTE_CHAIN_HEAD_STORAGE = {
+export const CHAIN_GET_HEAD_STORAGE = {
   request: 84,
   response: 85,
 } as const satisfies RequestFrameIds;
 
-export const REMOTE_CHAIN_HEAD_CALL = {
+export const CHAIN_CALL_HEAD = {
   request: 86,
   response: 87,
 } as const satisfies RequestFrameIds;
 
-export const REMOTE_CHAIN_HEAD_UNPIN = {
+export const CHAIN_UNPIN_HEAD = {
   request: 88,
   response: 89,
 } as const satisfies RequestFrameIds;
 
-export const REMOTE_CHAIN_HEAD_CONTINUE = {
+export const CHAIN_CONTINUE_HEAD = {
   request: 90,
   response: 91,
 } as const satisfies RequestFrameIds;
 
-export const REMOTE_CHAIN_HEAD_STOP_OPERATION = {
+export const CHAIN_STOP_HEAD_OPERATION = {
   request: 92,
   response: 93,
 } as const satisfies RequestFrameIds;
 
-export const REMOTE_CHAIN_SPEC_GENESIS_HASH = {
+export const CHAIN_GET_SPEC_GENESIS_HASH = {
   request: 94,
   response: 95,
 } as const satisfies RequestFrameIds;
 
-export const REMOTE_CHAIN_SPEC_CHAIN_NAME = {
+export const CHAIN_GET_SPEC_CHAIN_NAME = {
   request: 96,
   response: 97,
 } as const satisfies RequestFrameIds;
 
-export const REMOTE_CHAIN_SPEC_PROPERTIES = {
+export const CHAIN_GET_SPEC_PROPERTIES = {
   request: 98,
   response: 99,
 } as const satisfies RequestFrameIds;
 
-export const REMOTE_CHAIN_TRANSACTION_BROADCAST = {
+export const CHAIN_BROADCAST_TRANSACTION = {
   request: 100,
   response: 101,
 } as const satisfies RequestFrameIds;
 
-export const REMOTE_CHAIN_TRANSACTION_STOP = {
+export const CHAIN_STOP_TRANSACTION = {
   request: 102,
   response: 103,
 } as const satisfies RequestFrameIds;
 
-export const HOST_THEME_SUBSCRIBE = {
+export const THEME_SUBSCRIBE = {
   start: 104,
   stop: 105,
   interrupt: 106,
   receive: 107,
 } as const satisfies SubscriptionFrameIds;
 
-export const HOST_DERIVE_ENTROPY = {
+export const ENTROPY_DERIVE = {
   request: 108,
   response: 109,
 } as const satisfies RequestFrameIds;
 
-export const HOST_GET_USER_ID = {
+export const ACCOUNT_GET_USER_ID = {
   request: 110,
   response: 111,
 } as const satisfies RequestFrameIds;
 
-export const HOST_REQUEST_LOGIN = {
+export const ACCOUNT_REQUEST_LOGIN = {
   request: 112,
   response: 113,
 } as const satisfies RequestFrameIds;
 
-export const HOST_SIGN_RAW = {
+export const SIGNING_SIGN_RAW = {
   request: 114,
   response: 115,
 } as const satisfies RequestFrameIds;
 
-export const HOST_SIGN_PAYLOAD = {
+export const SIGNING_SIGN_PAYLOAD = {
   request: 116,
   response: 117,
 } as const satisfies RequestFrameIds;
 
-export const HOST_PAYMENT_BALANCE_SUBSCRIBE = {
+export const PAYMENT_BALANCE_SUBSCRIBE = {
   start: 118,
   stop: 119,
   interrupt: 120,
   receive: 121,
 } as const satisfies SubscriptionFrameIds;
 
-export const HOST_PAYMENT_TOP_UP = {
+export const PAYMENT_TOP_UP = {
   request: 122,
   response: 123,
 } as const satisfies RequestFrameIds;
 
-export const HOST_PAYMENT_REQUEST = {
+export const PAYMENT_REQUEST = {
   request: 124,
   response: 125,
 } as const satisfies RequestFrameIds;
 
-export const HOST_PAYMENT_STATUS_SUBSCRIBE = {
+export const PAYMENT_STATUS_SUBSCRIBE = {
   start: 126,
   stop: 127,
   interrupt: 128,
   receive: 129,
 } as const satisfies SubscriptionFrameIds;
 
-export const HOST_REQUEST_RESOURCE_ALLOCATION = {
+export const RESOURCE_ALLOCATION_REQUEST = {
   request: 130,
   response: 131,
 } as const satisfies RequestFrameIds;
 
-export const REMOTE_STATEMENT_STORE_CREATE_PROOF_AUTHORIZED = {
+export const STATEMENT_STORE_CREATE_PROOF_AUTHORIZED = {
   request: 132,
   response: 133,
 } as const satisfies RequestFrameIds;
 
-export const HOST_COIN_PAYMENT_CREATE_PURSE = {
+export const COIN_PAYMENT_CREATE_PURSE = {
   request: 134,
   response: 135,
 } as const satisfies RequestFrameIds;
 
-export const HOST_COIN_PAYMENT_QUERY_PURSE = {
+export const COIN_PAYMENT_QUERY_PURSE = {
   request: 136,
   response: 137,
 } as const satisfies RequestFrameIds;
 
-export const HOST_COIN_PAYMENT_REBALANCE_PURSE = {
+export const COIN_PAYMENT_REBALANCE_PURSE = {
   start: 138,
   stop: 139,
   interrupt: 140,
   receive: 141,
 } as const satisfies SubscriptionFrameIds;
 
-export const HOST_COIN_PAYMENT_DELETE_PURSE = {
+export const COIN_PAYMENT_DELETE_PURSE = {
   start: 142,
   stop: 143,
   interrupt: 144,
   receive: 145,
 } as const satisfies SubscriptionFrameIds;
 
-export const HOST_COIN_PAYMENT_CREATE_RECEIVABLE = {
+export const COIN_PAYMENT_CREATE_RECEIVABLE = {
   request: 146,
   response: 147,
 } as const satisfies RequestFrameIds;
 
-export const HOST_COIN_PAYMENT_CREATE_CHEQUE = {
+export const COIN_PAYMENT_CREATE_CHEQUE = {
   request: 148,
   response: 149,
 } as const satisfies RequestFrameIds;
 
-export const HOST_COIN_PAYMENT_DEPOSIT = {
+export const COIN_PAYMENT_DEPOSIT = {
   start: 150,
   stop: 151,
   interrupt: 152,
   receive: 153,
 } as const satisfies SubscriptionFrameIds;
 
-export const HOST_COIN_PAYMENT_REFUND = {
+export const COIN_PAYMENT_REFUND = {
   start: 154,
   stop: 155,
   interrupt: 156,
   receive: 157,
 } as const satisfies SubscriptionFrameIds;
 
-export const HOST_COIN_PAYMENT_LISTEN_FOR = {
+export const COIN_PAYMENT_LISTEN_FOR = {
   start: 158,
   stop: 159,
   interrupt: 160,

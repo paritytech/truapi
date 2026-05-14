@@ -1,4 +1,4 @@
-import type { ServiceInfo } from "@/src/lib/services";
+import type { MethodInfo, ServiceInfo } from "@/src/lib/services";
 import { isMethodSupported } from "@/src/lib/host-api-bridge";
 import type { TestEntry } from "@/src/lib/auto-test";
 import { AUTO_TEST_ID } from "@/src/lib/auto-test";
@@ -82,7 +82,7 @@ export function ServiceTable({
                 <span className="service__count">{svc.methods.length}</span>
               </div>
               <div>
-                {svc.methods.map((m) => {
+                {svc.methods.map((m: MethodInfo) => {
                   const supported = isMethodSupported(svc.name, m.name);
                   const isActive =
                     activeMethod?.service === svc.name &&

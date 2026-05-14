@@ -1,18 +1,14 @@
-//! Unified [`HostTheme`] trait.
+//! Unified [`Theme`] trait.
 
 use crate::versioned::theme::HostThemeSubscribeItem;
 use crate::wire;
 use crate::{CallContext, Subscription};
 
-/// Host UI theme subscription.
-///
-/// The default body returns an empty stream; hosts override to push theme
-/// updates.
-#[async_trait::async_trait]
-pub trait HostTheme: Send + Sync {
-    /// Subscribe to host theme changes (light/dark).
+/// Host theme subscription.
+pub trait Theme: Send + Sync {
+    /// Subscribe to host theme changes.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type Subscription,
@@ -20,7 +16,7 @@ pub trait HostTheme: Send + Sync {
     /// } from "@parity/truapi";
     ///
     /// export function watchTheme(truapi: Client): Subscription {
-    ///   return truapi.hostTheme.themeSubscribe().subscribe({
+    ///   return truapi.theme.subscribe().subscribe({
     ///     next: (theme: HostThemeSubscribeItem) => console.log(theme),
     ///     error: (error: Error) => console.error(error),
     ///     complete: () => console.log("completed"),
@@ -28,10 +24,7 @@ pub trait HostTheme: Send + Sync {
     /// }
     /// ```
     #[wire(start_id = 104)]
-    async fn host_theme_subscribe(
-        &self,
-        _cx: &CallContext,
-    ) -> Subscription<HostThemeSubscribeItem> {
+    async fn subscribe(&self, _cx: &CallContext) -> Subscription<HostThemeSubscribeItem> {
         Subscription::empty()
     }
 }

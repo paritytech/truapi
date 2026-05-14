@@ -3,7 +3,7 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashMap};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 
 /// Parsed rustdoc crate. IDs are integers but serialized as string keys in JSON maps.
@@ -42,6 +42,10 @@ pub struct ItemPath {
 #[derive(Debug, PartialEq, Eq)]
 pub struct ApiDefinition {
     pub traits: Vec<TraitDef>,
+    /// Names of the public service traits in `TrUApi` super-trait declaration
+    /// order (excluding `Send`/`Sync`). Drives stable, source-order emission of
+    /// services in the playground, examples, and client modules.
+    pub public_trait_order: Vec<String>,
     pub types: Vec<TypeDef>,
 }
 
@@ -242,6 +246,7 @@ pub fn extract_api(krate: &Crate) -> Result<ApiDefinition> {
     let trait_candidates = collect_public_candidates(krate, &["trait"]);
     let type_candidates = collect_public_candidates(krate, &["struct", "enum", "type_alias"]);
     let names = build_name_context(&type_candidates);
+    let public_trait_order = extract_public_trait_order(krate)?;
 
     let mut traits = Vec::new();
     for (name, candidates) in trait_candidates {
@@ -304,7 +309,52 @@ pub fn extract_api(krate: &Crate) -> Result<ApiDefinition> {
     traits.sort_by(|a, b| a.name.cmp(&b.name));
     types.sort_by(|a, b| a.name.cmp(&b.name));
 
-    Ok(ApiDefinition { traits, types })
+    Ok(ApiDefinition {
+        traits,
+        public_trait_order,
+        types,
+    })
+}
+
+fn extract_public_trait_order(krate: &Crate) -> Result<Vec<String>> {
+    let Some((item_id, _)) = krate.paths.iter().find(|(_, item_path)| {
+        item_path.crate_id == 0 && item_path.path == ["truapi", "api", "TrUApi"]
+    }) else {
+        bail!("Missing rustdoc path for `truapi::api::TrUApi`");
+    };
+
+    let item = krate
+        .index
+        .get(item_id)
+        .with_context(|| format!("Missing rustdoc item `{item_id}` for `TrUApi`"))?;
+    let trait_inner = item
+        .inner
+        .get("trait")
+        .with_context(|| "Trait `TrUApi` missing rustdoc trait body")?;
+    let bounds = trait_inner
+        .get("bounds")
+        .and_then(|value| value.as_array())
+        .with_context(|| "Trait `TrUApi` missing rustdoc bounds array")?;
+
+    let mut order = Vec::new();
+    for bound in bounds {
+        let Some(trait_bound) = bound.get("trait_bound") else {
+            continue;
+        };
+        let Some(path) = trait_bound
+            .get("trait")
+            .and_then(|value| value.get("path"))
+            .and_then(|value| value.as_str())
+        else {
+            continue;
+        };
+        if path == "Send" || path == "Sync" {
+            continue;
+        }
+        order.push(path.to_string());
+    }
+
+    Ok(order)
 }
 
 fn should_skip_type_name(name: &str) -> bool {
@@ -518,8 +568,7 @@ fn extract_method(item_id: &str, item: &Item, names: &NameContext) -> Result<Opt
     let raw_output = sig
         .get("output")
         .with_context(|| format!("Method `{name}` missing rustdoc return type"))?;
-    let output = unwrap_async_trait_future(raw_output)
-        .with_context(|| format!("Method `{name}` return type not in async_trait shape"))?;
+    let output = raw_output;
 
     let (kind, return_type) = if is_result_subscription_return(output) {
         (
@@ -673,90 +722,6 @@ fn extract_wire_attrs(docs: &str) -> WireAttrs {
         }
     }
     attrs
-}
-
-/// Unwrap the `async_trait` expansion `Pin<Box<dyn Future<Output = T> + Send>>`
-/// back to `T`. Bails with a structured error pointing at the rustdoc field
-/// that did not match expectations, so a future rustdoc-format change is
-/// surfaced loudly instead of being silently treated as a sync return type.
-fn unwrap_async_trait_future(output: &serde_json::Value) -> Result<&serde_json::Value> {
-    const SHAPE: &str = "rustdoc async_trait return shape changed";
-    let pin = output
-        .get("resolved_path")
-        .with_context(|| format!("{SHAPE}: expected resolved_path on return type"))?;
-    let pin_path = pin
-        .get("path")
-        .and_then(|p| p.as_str())
-        .with_context(|| format!("{SHAPE}: expected `path` on Pin resolved_path"))?;
-    if path_suffix(pin_path) != "Pin" {
-        bail!("{SHAPE}: expected `Pin<..>` outer wrapper, got `{pin_path}`");
-    }
-    let boxed = pin
-        .get("args")
-        .and_then(|a| a.get("angle_bracketed"))
-        .and_then(|a| a.get("args"))
-        .and_then(|a| a.as_array())
-        .and_then(|a| a.first())
-        .and_then(|a| a.get("type"))
-        .with_context(|| format!("{SHAPE}: expected Pin generic argument"))?;
-    let box_path = boxed
-        .get("resolved_path")
-        .with_context(|| format!("{SHAPE}: expected resolved_path inside Pin<..>"))?;
-    let box_path_str = box_path
-        .get("path")
-        .and_then(|p| p.as_str())
-        .with_context(|| format!("{SHAPE}: expected `path` on Box resolved_path"))?;
-    if path_suffix(box_path_str) != "Box" {
-        bail!("{SHAPE}: expected `Pin<Box<..>>`, got `Pin<{box_path_str}<..>>`");
-    }
-    let dyn_trait = box_path
-        .get("args")
-        .and_then(|a| a.get("angle_bracketed"))
-        .and_then(|a| a.get("args"))
-        .and_then(|a| a.as_array())
-        .and_then(|a| a.first())
-        .and_then(|a| a.get("type"))
-        .and_then(|a| a.get("dyn_trait"))
-        .with_context(|| format!("{SHAPE}: expected `dyn Trait` inside Box<..>"))?;
-    let traits = dyn_trait
-        .get("traits")
-        .and_then(|a| a.as_array())
-        .with_context(|| format!("{SHAPE}: expected `traits` array on dyn_trait"))?;
-    for entry in traits {
-        let trait_ref = entry
-            .get("trait")
-            .with_context(|| format!("{SHAPE}: dyn_trait entry missing `trait`"))?;
-        let trait_path = trait_ref
-            .get("path")
-            .and_then(|p| p.as_str())
-            .with_context(|| format!("{SHAPE}: dyn_trait `trait` missing `path`"))?;
-        if path_suffix(trait_path) != "Future" {
-            continue;
-        }
-        let constraints = trait_ref
-            .get("args")
-            .and_then(|a| a.get("angle_bracketed"))
-            .and_then(|a| a.get("constraints"))
-            .and_then(|a| a.as_array())
-            .with_context(|| format!("{SHAPE}: Future trait missing constraints"))?;
-        for constraint in constraints {
-            let name = constraint
-                .get("name")
-                .and_then(|n| n.as_str())
-                .with_context(|| format!("{SHAPE}: Future constraint missing `name`"))?;
-            if name == "Output" {
-                return constraint
-                    .get("binding")
-                    .and_then(|b| b.get("equality"))
-                    .and_then(|e| e.get("type"))
-                    .with_context(|| {
-                        format!("{SHAPE}: Future Output constraint missing equality type")
-                    });
-            }
-        }
-        bail!("{SHAPE}: Future trait constraints did not include `Output = T`");
-    }
-    bail!("{SHAPE}: dyn_trait did not reference Future")
 }
 
 fn path_suffix(path: &str) -> &str {
@@ -1283,4 +1248,16 @@ fn summarize_json(value: &serde_json::Value) -> String {
         text.push_str("...");
     }
     text
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clean_docs_strips_wire_markers() {
+        let docs = "Trait summary.\n\n@wire_request_id=7\n";
+
+        assert_eq!(clean_docs(Some(docs)).as_deref(), Some("Trait summary."));
+    }
 }

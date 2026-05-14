@@ -7,19 +7,15 @@ use crate::versioned::jsonrpc::{
 use crate::wire;
 use crate::{CallContext, CallError, Subscription};
 
-/// Raw JSON-RPC passthrough to a chain node.
-///
-/// Default methods return [`CallError::HostFailure`] with an `unavailable`
-/// reason. Hosts override only the methods they actually support.
-#[async_trait::async_trait]
+/// JSON-RPC transport methods.
 pub trait JsonRpc: Send + Sync {
-    /// Send a JSON-RPC message to the chain identified by genesis hash.
+    /// Send a JSON-RPC message.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function sendJsonRpc(truapi: Client): Promise<void> {
-    ///   const result = await truapi.jsonRpc.jsonrpcMessageSend({
+    ///   const result = await truapi.jsonRpc.sendMessage({
     ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///     message: '{"jsonrpc":"2.0","id":1,"method":"system_name","params":[]}',
     ///   });
@@ -28,7 +24,7 @@ pub trait JsonRpc: Send + Sync {
     /// }
     /// ```
     #[wire(request_id = 70)]
-    async fn host_jsonrpc_message_send(
+    async fn send_message(
         &self,
         _cx: &CallContext,
         _request: HostJsonrpcMessageSendRequest,
@@ -36,9 +32,9 @@ pub trait JsonRpc: Send + Sync {
         Err(CallError::unavailable())
     }
 
-    /// Subscribe to inbound JSON-RPC messages for a chain.
+    /// Subscribe to inbound JSON-RPC messages.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type Subscription,
@@ -47,7 +43,7 @@ pub trait JsonRpc: Send + Sync {
     ///
     /// export function subscribeJsonRpc(truapi: Client): Subscription {
     ///   return truapi.jsonRpc
-    ///     .jsonrpcMessageSubscribe({
+    ///     .subscribeMessages({
     ///       request: {
     ///         genesisHash:
     ///           "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
@@ -62,7 +58,7 @@ pub trait JsonRpc: Send + Sync {
     /// }
     /// ```
     #[wire(start_id = 72)]
-    async fn host_jsonrpc_message_subscribe(
+    async fn subscribe_messages(
         &self,
         _cx: &CallContext,
         _request: HostJsonrpcMessageSubscribeRequest,

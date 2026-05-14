@@ -1,6 +1,6 @@
 # TrUAPI Playground
 
-*Browse, edit, and call every TrUAPI method live against a connected Polkadot host.*
+_Browse, edit, and call every TrUAPI method live against a connected Polkadot host._
 
 The playground is an interactive reference for the TrUAPI: every method grouped by domain, with live request payload editing, one-click calls, and live subscriptions. It must be opened from inside a TrUAPI host so it can talk to the host over the wire.
 
