@@ -5,7 +5,7 @@ use std::fmt::Write;
 use std::fs;
 use std::path::Path;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use convert_case::{Case, Casing};
 use indoc::{formatdoc, writedoc};
 
@@ -198,12 +198,11 @@ fn versioned_wrapper_for<'a>(
     ty: &'a TypeRef,
     wrappers: &'a HashMap<String, VersionedWrapper>,
 ) -> Option<(&'a str, &'a VersionedWrapper)> {
-    if let TypeRef::Named { name, args } = ty {
-        if args.is_empty() {
-            if let Some(wrapper) = wrappers.get(name) {
-                return Some((name.as_str(), wrapper));
-            }
-        }
+    if let TypeRef::Named { name, args } = ty
+        && args.is_empty()
+        && let Some(wrapper) = wrappers.get(name)
+    {
+        return Some((name.as_str(), wrapper));
     }
     None
 }
@@ -998,37 +997,36 @@ fn emit_payload(
     // TS side callers pass the inner value directly, but we re-wrap before
     // handing bytes to the transport. The host-side dispatcher decodes the
     // full wrapper (variant byte included) from the wire payload.
-    if params.len() == 1 {
-        if let Some((wrapper_name, wrapper)) = versioned_wrapper_for(&params[0].type_ref, wrappers)
-        {
-            let version = wire_version.ok_or_else(|| {
-                anyhow::anyhow!("versioned wrapper `{wrapper_name}` has no selected wire version")
-            })?;
-            let wrapper = wrapper.variants.get(&version).ok_or_else(|| {
-                anyhow::anyhow!("versioned wrapper `{wrapper_name}` has no V{version} variant")
-            })?;
-            return match &wrapper.kind {
-                VersionedKind::Unit => Ok(PayloadEmission {
-                    param_list: String::new(),
-                    param_names: Vec::new(),
-                    inner_type_ts: "undefined".to_string(),
-                    value_expr: "undefined".to_string(),
+    if params.len() == 1
+        && let Some((wrapper_name, wrapper)) = versioned_wrapper_for(&params[0].type_ref, wrappers)
+    {
+        let version = wire_version.ok_or_else(|| {
+            anyhow::anyhow!("versioned wrapper `{wrapper_name}` has no selected wire version")
+        })?;
+        let wrapper = wrapper.variants.get(&version).ok_or_else(|| {
+            anyhow::anyhow!("versioned wrapper `{wrapper_name}` has no V{version} variant")
+        })?;
+        return match &wrapper.kind {
+            VersionedKind::Unit => Ok(PayloadEmission {
+                param_list: String::new(),
+                param_names: Vec::new(),
+                inner_type_ts: "undefined".to_string(),
+                value_expr: "undefined".to_string(),
+                wire_codec_expr: format!("T.{}", versioned_wrapper_ts_name(wrapper_name)),
+                wire_version: Some(wrapper.version),
+            }),
+            VersionedKind::Tuple(inner) => {
+                let inner_ts = ts_type_qualified(inner)?;
+                Ok(PayloadEmission {
+                    param_list: format!("request: {inner_ts}"),
+                    param_names: vec!["request".to_string()],
+                    inner_type_ts: inner_ts,
+                    value_expr: "request".to_string(),
                     wire_codec_expr: format!("T.{}", versioned_wrapper_ts_name(wrapper_name)),
                     wire_version: Some(wrapper.version),
-                }),
-                VersionedKind::Tuple(inner) => {
-                    let inner_ts = ts_type_qualified(inner)?;
-                    Ok(PayloadEmission {
-                        param_list: format!("request: {inner_ts}"),
-                        param_names: vec!["request".to_string()],
-                        inner_type_ts: inner_ts,
-                        value_expr: "request".to_string(),
-                        wire_codec_expr: format!("T.{}", versioned_wrapper_ts_name(wrapper_name)),
-                        wire_version: Some(wrapper.version),
-                    })
-                }
-            };
-        }
+                })
+            }
+        };
     }
 
     if params.is_empty() {
@@ -2320,9 +2318,10 @@ mod tests {
         request.wire.start_id = Some(4);
         let err = generate_wire_table(&api(vec![request]), 2)
             .expect_err("request with start id must error");
-        assert!(err
-            .to_string()
-            .contains("must not use subscription wire ids"));
+        assert!(
+            err.to_string()
+                .contains("must not use subscription wire ids")
+        );
 
         let mut subscription = subscription_method("bad_stream", Some(10));
         subscription.wire.request_id = Some(12);
@@ -2471,8 +2470,11 @@ mod tests {
         // target version. The codegen prefers the newest shared variant so
         // callers see the latest request/response shape the host advertises.
         assert!(client_source.contains("request: T.LatestRequest"));
-        assert!(client_source
-            .contains("payload: T.VersionedExampleRequest.enc({ tag: \"V2\", value: request }),"));
+        assert!(
+            client_source.contains(
+                "payload: T.VersionedExampleRequest.enc({ tag: \"V2\", value: request }),"
+            )
+        );
         assert!(client_source.contains("Promise<Result<T.LatestResponse, undefined>>"));
     }
 
@@ -2513,8 +2515,11 @@ mod tests {
         let client_source = generate_client(&api, 2, 1).expect("generate client");
 
         assert!(client_source.contains("request: T.LegacyRequest"));
-        assert!(client_source
-            .contains("payload: T.VersionedExampleRequest.enc({ tag: \"V1\", value: request }),"));
+        assert!(
+            client_source.contains(
+                "payload: T.VersionedExampleRequest.enc({ tag: \"V1\", value: request }),"
+            )
+        );
         assert!(client_source.contains("Promise<Result<T.LegacyResponse, undefined>>"));
     }
 

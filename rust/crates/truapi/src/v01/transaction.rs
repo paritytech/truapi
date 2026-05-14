@@ -60,5 +60,7 @@ pub enum HostCreateTransactionError {
         reason: String,
     },
     PermissionDenied,
-    Unknown { reason: String },
+    Unknown {
+        reason: String,
+    },
 }

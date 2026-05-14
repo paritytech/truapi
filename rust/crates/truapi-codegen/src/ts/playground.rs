@@ -354,7 +354,7 @@ fn find_matching_delimiter(
 }
 
 fn ts_request_to_playground_json(input: &str) -> String {
-    let input = normalize_single_quoted_strings(&input);
+    let input = normalize_single_quoted_strings(input);
     let input = quote_unquoted_object_keys(&input);
     let input = quote_bigint_literals(&input);
     let input = remove_undefined_object_properties(&input);
@@ -615,6 +615,34 @@ fn remove_trailing_commas(input: &str) -> String {
     out
 }
 
+pub(super) fn playground_type_name(value: &str) -> String {
+    value.replace("T.", "")
+}
+
+fn playground_request_description(
+    api: &ApiDefinition,
+    aliases: &BTreeMap<String, String>,
+    value: &str,
+) -> String {
+    let value = playground_type_name(value);
+    api.types
+        .iter()
+        .filter(|ty| {
+            aliases
+                .get(&ty.name)
+                .map(String::as_str)
+                .unwrap_or(&ty.name)
+                == value
+        })
+        .find_map(|ty| match &ty.kind {
+            TypeDefKind::Enum(variants) if is_unit_only_enum(ty) => {
+                Some(unit_enum_summary(variants))
+            }
+            _ => None,
+        })
+        .unwrap_or(value)
+}
+
 #[cfg(test)]
 mod tests {
     use super::ts_request_to_playground_json;
@@ -650,32 +678,4 @@ mod tests {
             })
         );
     }
-}
-
-pub(super) fn playground_type_name(value: &str) -> String {
-    value.replace("T.", "")
-}
-
-fn playground_request_description(
-    api: &ApiDefinition,
-    aliases: &BTreeMap<String, String>,
-    value: &str,
-) -> String {
-    let value = playground_type_name(value);
-    api.types
-        .iter()
-        .filter(|ty| {
-            aliases
-                .get(&ty.name)
-                .map(String::as_str)
-                .unwrap_or(&ty.name)
-                == value
-        })
-        .find_map(|ty| match &ty.kind {
-            TypeDefKind::Enum(variants) if is_unit_only_enum(ty) => {
-                Some(unit_enum_summary(variants))
-            }
-            _ => None,
-        })
-        .unwrap_or(value)
 }
