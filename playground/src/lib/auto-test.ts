@@ -21,8 +21,8 @@ export const EXCLUDED_METHODS = new Set([
   "Signing/sign_raw",
   "Signing/sign_raw_with_legacy_account",
   "Signing/sign_payload_with_legacy_account",
-  "Transaction/create",
-  "Transaction/create_with_legacy_account",
+  "Signing/create_transaction",
+  "Signing/create_transaction_with_legacy_account",
   "Account/get_account_alias",
 ]);
 
@@ -40,8 +40,8 @@ const LONG_TIMEOUT_METHODS = new Set([
   "Signing/sign_raw",
   "Signing/sign_raw_with_legacy_account",
   "Signing/sign_payload_with_legacy_account",
-  "Transaction/create",
-  "Transaction/create_with_legacy_account",
+  "Signing/create_transaction",
+  "Signing/create_transaction_with_legacy_account",
 ]);
 
 const STATEMENT_STORE_SERVICE = "Statement Store";

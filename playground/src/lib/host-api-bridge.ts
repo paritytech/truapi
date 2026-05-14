@@ -129,10 +129,10 @@ const methodMap: Record<string, [keyof TrUApiClient, string, boolean]> = {
 
   "Theme/subscribe": ["theme", "subscribe", true],
 
-  "Transaction/create": ["transaction", "create", false],
-  "Transaction/create_with_legacy_account": [
-    "transaction",
-    "createWithLegacyAccount",
+  "Signing/create_transaction": ["signing", "createTransaction", false],
+  "Signing/create_transaction_with_legacy_account": [
+    "signing",
+    "createTransactionWithLegacyAccount",
     false,
   ],
 };
