@@ -1,0 +1,135 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    if: github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Check release preconditions
+        id: check
+        run: |
+          author=$(git log -1 --format='%an')
+          if [ "$author" = "truapi-release-bot[bot]" ]; then
+            echo "Skipping: last commit was the release bot."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if ! ls .changeset/*.md 2>/dev/null | grep -qv README.md; then
+            echo "Skipping: no pending changesets."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "proceed=true" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: gate
+    if: needs.gate.outputs.proceed == 'true'
+    runs-on: ubuntu-latest
+    environment: main
+    permissions:
+      contents: write
+    steps:
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      # Install both root and workspace deps in one shot.
+      # --ignore-scripts skips the @parity/truapi `prepare` hook here;
+      # the explicit Build step below runs codegen + tsc deterministically.
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Version packages
+        run: npx changeset version
+
+      - name: Build @parity/truapi
+        run: npm run build --prefix js/packages/truapi
+
+      # Normalize only the files changeset version touched, so the bot's
+      # commit doesn't drag unrelated formatting changes.
+      - name: Format versioned files
+        run: npx prettier --write 'js/packages/*/package.json' 'js/packages/*/CHANGELOG.md'
+
+      - name: Commit version changes
+        run: |
+          git config user.name "truapi-release-bot[bot]"
+          git config user.email "${{ secrets.APP_ID }}+truapi-release-bot[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet || git commit -m "chore: version packages"
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Tag versioned packages
+        run: |
+          for pkg in js/packages/*/package.json; do
+            name=$(jq -r '.name' "$pkg")
+            version=$(jq -r '.version' "$pkg")
+            tag="${name}@${version}"
+            if git rev-parse --verify --quiet "refs/tags/$tag" >/dev/null; then
+              echo "Tag $tag already exists; skipping."
+              continue
+            fi
+            git tag "$tag"
+            git push origin "$tag"
+          done
+
+      - name: Pack publishable packages
+        run: |
+          mkdir -p artifacts
+          for pkg in js/packages/*/package.json; do
+            dir=$(dirname "$pkg")
+            (cd "$dir" && npm pack --pack-destination "$GITHUB_WORKSPACE/artifacts/")
+          done
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: package
+          path: artifacts/*.tgz
+
+      - name: Publish via npm_publish_automation
+        uses: octokit/request-action@v2.x
+        with:
+          route: POST /repos/paritytech/npm_publish_automation/actions/workflows/publish.yml/dispatches
+          ref: main
+          inputs: '${{ format(''{{ "repo": "{0}", "run_id": "{1}" }}'', github.repository, github.run_id) }}'
+        env:
+          GITHUB_TOKEN: ${{ secrets.NPM_PUBLISH_AUTOMATION_TOKEN }}
