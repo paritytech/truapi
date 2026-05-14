@@ -3,24 +3,23 @@
 use crate::versioned::signing::{
     HostCreateTransactionError, HostCreateTransactionRequest, HostCreateTransactionResponse,
     HostCreateTransactionWithLegacyAccountError, HostCreateTransactionWithLegacyAccountRequest,
-    HostCreateTransactionWithLegacyAccountResponse, HostSignPayloadError, HostSignPayloadRequest,
-    HostSignPayloadResponse, HostSignPayloadWithLegacyAccountError,
-    HostSignPayloadWithLegacyAccountRequest, HostSignPayloadWithLegacyAccountResponse,
-    HostSignRawError, HostSignRawRequest, HostSignRawResponse, HostSignRawWithLegacyAccountError,
-    HostSignRawWithLegacyAccountRequest, HostSignRawWithLegacyAccountResponse,
+    HostCreateTransactionWithLegacyAccountResponse,
+};
+use crate::versioned::signing::{
+    HostSignPayloadError, HostSignPayloadRequest, HostSignPayloadResponse,
+    HostSignPayloadWithLegacyAccountError, HostSignPayloadWithLegacyAccountRequest,
+    HostSignPayloadWithLegacyAccountResponse, HostSignRawError, HostSignRawRequest,
+    HostSignRawResponse, HostSignRawWithLegacyAccountError, HostSignRawWithLegacyAccountRequest,
+    HostSignRawWithLegacyAccountResponse,
 };
 use crate::wire;
 use crate::{CallContext, CallError};
 
-/// Signing and transaction construction.
-///
-/// Default methods return [`CallError::HostFailure`] with an `unavailable`
-/// reason. Hosts override only the methods they actually support.
-#[async_trait::async_trait]
+/// Signing operations.
 pub trait Signing: Send + Sync {
-    /// Construct a signed extrinsic for a product account.
+    /// Construct a signed transaction for a product account.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostCreateTransactionResponse,
@@ -55,7 +54,7 @@ pub trait Signing: Send + Sync {
     /// }
     /// ```
     #[wire(request_id = 30)]
-    async fn host_create_transaction(
+    async fn create_transaction(
         &self,
         _cx: &CallContext,
         _request: HostCreateTransactionRequest,
@@ -63,9 +62,9 @@ pub trait Signing: Send + Sync {
         Err(CallError::unavailable())
     }
 
-    /// Construct a signed extrinsic for a non-product account.
+    /// Construct a signed transaction for a non-product account.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostCreateTransactionWithLegacyAccountResponse,
@@ -96,7 +95,7 @@ pub trait Signing: Send + Sync {
     /// }
     /// ```
     #[wire(request_id = 32)]
-    async fn host_create_transaction_with_legacy_account(
+    async fn create_transaction_with_legacy_account(
         &self,
         _cx: &CallContext,
         _request: HostCreateTransactionWithLegacyAccountRequest,
@@ -107,9 +106,9 @@ pub trait Signing: Send + Sync {
         Err(CallError::unavailable())
     }
 
-    /// Sign raw bytes with a non-product (legacy) account.
+    /// Sign raw bytes with a non-product account.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostSignPayloadResponse,
@@ -131,7 +130,7 @@ pub trait Signing: Send + Sync {
     /// }
     /// ```
     #[wire(request_id = 34)]
-    async fn host_sign_raw_with_legacy_account(
+    async fn sign_raw_with_legacy_account(
         &self,
         _cx: &CallContext,
         _request: HostSignRawWithLegacyAccountRequest,
@@ -140,9 +139,9 @@ pub trait Signing: Send + Sync {
         Err(CallError::unavailable())
     }
 
-    /// Sign a Substrate extrinsic payload with a non-product (legacy) account.
+    /// Sign an extrinsic payload with a non-product account.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostSignPayloadResponse,
@@ -174,7 +173,7 @@ pub trait Signing: Send + Sync {
     /// }
     /// ```
     #[wire(request_id = 36)]
-    async fn host_sign_payload_with_legacy_account(
+    async fn sign_payload_with_legacy_account(
         &self,
         _cx: &CallContext,
         _request: HostSignPayloadWithLegacyAccountRequest,
@@ -187,7 +186,7 @@ pub trait Signing: Send + Sync {
 
     /// Sign raw bytes or a message.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostSignPayloadResponse,
@@ -211,7 +210,7 @@ pub trait Signing: Send + Sync {
     /// }
     /// ```
     #[wire(request_id = 114)]
-    async fn host_sign_raw(
+    async fn sign_raw(
         &self,
         _cx: &CallContext,
         _request: HostSignRawRequest,
@@ -219,9 +218,9 @@ pub trait Signing: Send + Sync {
         Err(CallError::unavailable())
     }
 
-    /// Sign a Substrate extrinsic payload.
+    /// Sign an extrinsic payload.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostSignPayloadResponse,
@@ -250,7 +249,7 @@ pub trait Signing: Send + Sync {
     /// }
     /// ```
     #[wire(request_id = 116)]
-    async fn host_sign_payload(
+    async fn sign_payload(
         &self,
         _cx: &CallContext,
         _request: HostSignPayloadRequest,

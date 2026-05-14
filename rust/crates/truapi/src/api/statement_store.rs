@@ -11,15 +11,11 @@ use crate::versioned::statement_store::{
 use crate::wire;
 use crate::{CallContext, CallError, Subscription};
 
-/// Statement store operations.
-///
-/// Default request methods return [`CallError::HostFailure`] with an
-/// `unavailable` reason. Hosts override only the methods they actually support.
-#[async_trait::async_trait]
+/// Statement store methods.
 pub trait StatementStore: Send + Sync {
     /// Subscribe to statements matching a topic filter.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type Subscription,
@@ -28,7 +24,7 @@ pub trait StatementStore: Send + Sync {
     ///
     /// export function subscribeStatements(truapi: Client): Subscription {
     ///   return truapi.statementStore
-    ///     .statementStoreSubscribe({
+    ///     .subscribe({
     ///       request: { tag: "MatchAll", value: [] },
     ///     })
     ///     .subscribe({
@@ -40,7 +36,7 @@ pub trait StatementStore: Send + Sync {
     /// }
     /// ```
     #[wire(start_id = 56)]
-    async fn remote_statement_store_subscribe(
+    async fn subscribe(
         &self,
         _cx: &CallContext,
         _request: RemoteStatementStoreSubscribeRequest,
@@ -50,7 +46,7 @@ pub trait StatementStore: Send + Sync {
 
     /// Create a proof for a statement.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type RemoteStatementStoreCreateProofResponse,
@@ -59,7 +55,7 @@ pub trait StatementStore: Send + Sync {
     /// export async function createStatementProof(
     ///   truapi: Client,
     /// ): Promise<RemoteStatementStoreCreateProofResponse> {
-    ///   const result = await truapi.statementStore.statementStoreCreateProof({
+    ///   const result = await truapi.statementStore.createProof({
     ///     productAccountId: {
     ///       dotNsIdentifier: "truapi-playground.dot",
     ///       derivationIndex: 0,
@@ -75,7 +71,7 @@ pub trait StatementStore: Send + Sync {
     /// }
     /// ```
     #[wire(request_id = 60)]
-    async fn remote_statement_store_create_proof(
+    async fn create_proof(
         &self,
         _cx: &CallContext,
         _request: RemoteStatementStoreCreateProofRequest,
@@ -89,7 +85,7 @@ pub trait StatementStore: Send + Sync {
     /// Create a proof for a statement using a pre-allocated allowance account,
     /// bypassing the per-call signing prompt.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type RemoteStatementStoreCreateProofResponse,
@@ -99,7 +95,7 @@ pub trait StatementStore: Send + Sync {
     ///   truapi: Client,
     /// ): Promise<RemoteStatementStoreCreateProofResponse> {
     ///   const result =
-    ///     await truapi.statementStore.statementStoreCreateProofAuthorized({
+    ///     await truapi.statementStore.createProofAuthorized({
     ///       expiry: 9999999999999n,
     ///       topics: [],
     ///     });
@@ -109,7 +105,7 @@ pub trait StatementStore: Send + Sync {
     /// }
     /// ```
     #[wire(request_id = 132)]
-    async fn remote_statement_store_create_proof_authorized(
+    async fn create_proof_authorized(
         &self,
         _cx: &CallContext,
         _request: RemoteStatementStoreCreateProofAuthorizedRequest,
@@ -124,11 +120,11 @@ pub trait StatementStore: Send + Sync {
     /// [`SignedStatement`](crate::v01::SignedStatement) directly (no wrapping
     /// struct), matching upstream `triangle-js-sdks`.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function submitStatement(truapi: Client): Promise<void> {
-    ///   const result = await truapi.statementStore.statementStoreSubmit({
+    ///   const result = await truapi.statementStore.submit({
     ///     proof: {
     ///       tag: "Sr25519",
     ///       value: {
@@ -143,7 +139,7 @@ pub trait StatementStore: Send + Sync {
     /// }
     /// ```
     #[wire(request_id = 62)]
-    async fn remote_statement_store_submit(
+    async fn submit(
         &self,
         _cx: &CallContext,
         _request: RemoteStatementStoreSubmitRequest,

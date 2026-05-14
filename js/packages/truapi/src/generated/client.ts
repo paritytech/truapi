@@ -103,20 +103,15 @@ function createObservable<Item, Reason = never>({
   };
 }
 
-/**
- * Account lookup, aliasing, and proof generation.
- *
- * Default methods return [`CallError::HostFailure`] with an `unavailable`
- * reason. Hosts override only the methods they actually support.
- */
-export class AccountManagementClient {
+/** Account lookup, aliasing, and proof generation. */
+export class AccountClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
   /** Subscribe to account connection status changes. */
-  accountConnectionStatusSubscribe(): ObservableLike<T.HostAccountConnectionStatusSubscribeItem> {
+  connectionStatusSubscribe(): ObservableLike<T.HostAccountConnectionStatusSubscribeItem> {
     return createObservable<T.HostAccountConnectionStatusSubscribeItem>({
       transport: this.transport,
-      ids: W.HOST_ACCOUNT_CONNECTION_STATUS_SUBSCRIBE,
+      ids: W.ACCOUNT_CONNECTION_STATUS_SUBSCRIBE,
       payload: S.indexedTaggedUnion({ V1: [0, S._void] as const }).enc({
         tag: "V1",
         value: undefined,
@@ -132,13 +127,13 @@ export class AccountManagementClient {
   }
 
   /** Retrieve a product-scoped account. */
-  async accountGet(
+  async getAccount(
     request: T.HostAccountGetRequest,
   ): Promise<Result<T.HostAccountGetResponse, T.HostAccountGetError>> {
     const result = await this.transport.request<
       S.ResultPayload<T.HostAccountGetResponse, T.HostAccountGetError>
     >({
-      ids: W.HOST_ACCOUNT_GET,
+      ids: W.ACCOUNT_GET_ACCOUNT,
       payload: T.VersionedHostAccountGetRequest.enc({
         tag: "V1",
         value: request,
@@ -155,13 +150,13 @@ export class AccountManagementClient {
   }
 
   /** Retrieve a contextual alias for a product account. */
-  async accountGetAlias(
+  async getAccountAlias(
     request: T.HostAccountGetAliasRequest,
   ): Promise<Result<T.HostAccountGetAliasResponse, T.HostAccountGetError>> {
     const result = await this.transport.request<
       S.ResultPayload<T.HostAccountGetAliasResponse, T.HostAccountGetError>
     >({
-      ids: W.HOST_ACCOUNT_GET_ALIAS,
+      ids: W.ACCOUNT_GET_ACCOUNT_ALIAS,
       payload: T.VersionedHostAccountGetAliasRequest.enc({
         tag: "V1",
         value: request,
@@ -178,7 +173,7 @@ export class AccountManagementClient {
   }
 
   /** Generate a ring VRF proof for a product account. */
-  async accountCreateProof(
+  async createAccountProof(
     request: T.HostAccountCreateProofRequest,
   ): Promise<
     Result<T.HostAccountCreateProofResponse, T.HostAccountCreateProofError>
@@ -189,7 +184,7 @@ export class AccountManagementClient {
         T.HostAccountCreateProofError
       >
     >({
-      ids: W.HOST_ACCOUNT_CREATE_PROOF,
+      ids: W.ACCOUNT_CREATE_ACCOUNT_PROOF,
       payload: T.VersionedHostAccountCreateProofRequest.enc({
         tag: "V1",
         value: request,
@@ -215,7 +210,7 @@ export class AccountManagementClient {
     const result = await this.transport.request<
       S.ResultPayload<T.HostGetLegacyAccountsResponse, T.HostAccountGetError>
     >({
-      ids: W.HOST_GET_LEGACY_ACCOUNTS,
+      ids: W.ACCOUNT_GET_LEGACY_ACCOUNTS,
       payload: T.VersionedHostGetLegacyAccountsRequest.enc({
         tag: "V1",
         value: undefined,
@@ -231,14 +226,14 @@ export class AccountManagementClient {
     return result.success ? ok(result.value) : err(result.value);
   }
 
-  /** Fetch the user's primary identity (V0.2+). */
+  /** Fetch the user's primary identity. */
   async getUserId(): Promise<
     Result<T.HostGetUserIdResponse, T.HostGetUserIdError>
   > {
     const result = await this.transport.request<
       S.ResultPayload<T.HostGetUserIdResponse, T.HostGetUserIdError>
     >({
-      ids: W.HOST_GET_USER_ID,
+      ids: W.ACCOUNT_GET_USER_ID,
       payload: T.VersionedHostGetUserIdRequest.enc({
         tag: "V1",
         value: undefined,
@@ -266,7 +261,7 @@ export class AccountManagementClient {
     const result = await this.transport.request<
       S.ResultPayload<T.HostRequestLoginResponse, T.HostRequestLoginError>
     >({
-      ids: W.HOST_REQUEST_LOGIN,
+      ids: W.ACCOUNT_REQUEST_LOGIN,
       payload: T.VersionedHostRequestLoginRequest.enc({
         tag: "V1",
         value: request,
@@ -283,24 +278,19 @@ export class AccountManagementClient {
   }
 }
 
-/**
- * Chain head and transaction interactions.
- *
- * Default methods return [`CallError::HostFailure`] with an `unavailable`
- * reason. Hosts override only the methods they can actually service.
- */
-export class ChainInteractionClient {
+/** Chain interaction methods. */
+export class ChainClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
   /** Follow the chain head and receive block events. */
-  chainHeadFollowSubscribe({
+  followHeadSubscribe({
     request,
   }: {
     request: T.RemoteChainHeadFollowRequest;
   }): ObservableLike<T.RemoteChainHeadFollowItem> {
     return createObservable<T.RemoteChainHeadFollowItem>({
       transport: this.transport,
-      ids: W.REMOTE_CHAIN_HEAD_FOLLOW_SUBSCRIBE,
+      ids: W.CHAIN_FOLLOW_HEAD_SUBSCRIBE,
       payload: T.VersionedRemoteChainHeadFollowRequest.enc({
         tag: "V1",
         value: request,
@@ -316,13 +306,13 @@ export class ChainInteractionClient {
   }
 
   /** Fetch a block header. */
-  async chainHeadHeader(
+  async getHeadHeader(
     request: T.RemoteChainHeadHeaderRequest,
   ): Promise<Result<T.RemoteChainHeadHeaderResponse, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<T.RemoteChainHeadHeaderResponse, T.GenericError>
     >({
-      ids: W.REMOTE_CHAIN_HEAD_HEADER,
+      ids: W.CHAIN_GET_HEAD_HEADER,
       payload: T.VersionedRemoteChainHeadHeaderRequest.enc({
         tag: "V1",
         value: request,
@@ -339,13 +329,13 @@ export class ChainInteractionClient {
   }
 
   /** Fetch a block body. */
-  async chainHeadBody(
+  async getHeadBody(
     request: T.RemoteChainHeadBodyRequest,
   ): Promise<Result<T.RemoteChainHeadBodyResponse, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<T.RemoteChainHeadBodyResponse, T.GenericError>
     >({
-      ids: W.REMOTE_CHAIN_HEAD_BODY,
+      ids: W.CHAIN_GET_HEAD_BODY,
       payload: T.VersionedRemoteChainHeadBodyRequest.enc({
         tag: "V1",
         value: request,
@@ -362,13 +352,13 @@ export class ChainInteractionClient {
   }
 
   /** Query runtime storage at a specific block. */
-  async chainHeadStorage(
+  async getHeadStorage(
     request: T.RemoteChainHeadStorageRequest,
   ): Promise<Result<T.RemoteChainHeadStorageResponse, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<T.RemoteChainHeadStorageResponse, T.GenericError>
     >({
-      ids: W.REMOTE_CHAIN_HEAD_STORAGE,
+      ids: W.CHAIN_GET_HEAD_STORAGE,
       payload: T.VersionedRemoteChainHeadStorageRequest.enc({
         tag: "V1",
         value: request,
@@ -385,13 +375,13 @@ export class ChainInteractionClient {
   }
 
   /** Invoke a runtime call at a specific block. */
-  async chainHeadCall(
+  async callHead(
     request: T.RemoteChainHeadCallRequest,
   ): Promise<Result<T.RemoteChainHeadCallResponse, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<T.RemoteChainHeadCallResponse, T.GenericError>
     >({
-      ids: W.REMOTE_CHAIN_HEAD_CALL,
+      ids: W.CHAIN_CALL_HEAD,
       payload: T.VersionedRemoteChainHeadCallRequest.enc({
         tag: "V1",
         value: request,
@@ -408,13 +398,13 @@ export class ChainInteractionClient {
   }
 
   /** Release pinned blocks. */
-  async chainHeadUnpin(
+  async unpinHead(
     request: T.RemoteChainHeadUnpinRequest,
   ): Promise<Result<undefined, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.GenericError>
     >({
-      ids: W.REMOTE_CHAIN_HEAD_UNPIN,
+      ids: W.CHAIN_UNPIN_HEAD,
       payload: T.VersionedRemoteChainHeadUnpinRequest.enc({
         tag: "V1",
         value: request,
@@ -428,13 +418,13 @@ export class ChainInteractionClient {
   }
 
   /** Continue a paused chain-head operation. */
-  async chainHeadContinue(
+  async continueHead(
     request: T.RemoteChainHeadContinueRequest,
   ): Promise<Result<undefined, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.GenericError>
     >({
-      ids: W.REMOTE_CHAIN_HEAD_CONTINUE,
+      ids: W.CHAIN_CONTINUE_HEAD,
       payload: T.VersionedRemoteChainHeadContinueRequest.enc({
         tag: "V1",
         value: request,
@@ -448,13 +438,13 @@ export class ChainInteractionClient {
   }
 
   /** Stop a chain-head operation. */
-  async chainHeadStopOperation(
+  async stopHeadOperation(
     request: T.RemoteChainHeadStopOperationRequest,
   ): Promise<Result<undefined, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.GenericError>
     >({
-      ids: W.REMOTE_CHAIN_HEAD_STOP_OPERATION,
+      ids: W.CHAIN_STOP_HEAD_OPERATION,
       payload: T.VersionedRemoteChainHeadStopOperationRequest.enc({
         tag: "V1",
         value: request,
@@ -468,13 +458,13 @@ export class ChainInteractionClient {
   }
 
   /** Fetch the canonical genesis hash for a chain. */
-  async chainSpecGenesisHash(
+  async getSpecGenesisHash(
     request: T.RemoteChainSpecGenesisHashRequest,
   ): Promise<Result<T.RemoteChainSpecGenesisHashResponse, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<T.RemoteChainSpecGenesisHashResponse, T.GenericError>
     >({
-      ids: W.REMOTE_CHAIN_SPEC_GENESIS_HASH,
+      ids: W.CHAIN_GET_SPEC_GENESIS_HASH,
       payload: T.VersionedRemoteChainSpecGenesisHashRequest.enc({
         tag: "V1",
         value: request,
@@ -491,13 +481,13 @@ export class ChainInteractionClient {
   }
 
   /** Fetch the display name of a chain. */
-  async chainSpecChainName(
+  async getSpecChainName(
     request: T.RemoteChainSpecChainNameRequest,
   ): Promise<Result<T.RemoteChainSpecChainNameResponse, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<T.RemoteChainSpecChainNameResponse, T.GenericError>
     >({
-      ids: W.REMOTE_CHAIN_SPEC_CHAIN_NAME,
+      ids: W.CHAIN_GET_SPEC_CHAIN_NAME,
       payload: T.VersionedRemoteChainSpecChainNameRequest.enc({
         tag: "V1",
         value: request,
@@ -514,13 +504,13 @@ export class ChainInteractionClient {
   }
 
   /** Fetch the JSON-encoded properties of a chain. */
-  async chainSpecProperties(
+  async getSpecProperties(
     request: T.RemoteChainSpecPropertiesRequest,
   ): Promise<Result<T.RemoteChainSpecPropertiesResponse, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<T.RemoteChainSpecPropertiesResponse, T.GenericError>
     >({
-      ids: W.REMOTE_CHAIN_SPEC_PROPERTIES,
+      ids: W.CHAIN_GET_SPEC_PROPERTIES,
       payload: T.VersionedRemoteChainSpecPropertiesRequest.enc({
         tag: "V1",
         value: request,
@@ -537,7 +527,7 @@ export class ChainInteractionClient {
   }
 
   /** Broadcast a signed transaction. */
-  async chainTransactionBroadcast(
+  async broadcastTransaction(
     request: T.RemoteChainTransactionBroadcastRequest,
   ): Promise<
     Result<T.RemoteChainTransactionBroadcastResponse, T.GenericError>
@@ -545,7 +535,7 @@ export class ChainInteractionClient {
     const result = await this.transport.request<
       S.ResultPayload<T.RemoteChainTransactionBroadcastResponse, T.GenericError>
     >({
-      ids: W.REMOTE_CHAIN_TRANSACTION_BROADCAST,
+      ids: W.CHAIN_BROADCAST_TRANSACTION,
       payload: T.VersionedRemoteChainTransactionBroadcastRequest.enc({
         tag: "V1",
         value: request,
@@ -562,13 +552,13 @@ export class ChainInteractionClient {
   }
 
   /** Stop a transaction broadcast. */
-  async chainTransactionStop(
+  async stopTransaction(
     request: T.RemoteChainTransactionStopRequest,
   ): Promise<Result<undefined, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.GenericError>
     >({
-      ids: W.REMOTE_CHAIN_TRANSACTION_STOP,
+      ids: W.CHAIN_STOP_TRANSACTION,
       payload: T.VersionedRemoteChainTransactionStopRequest.enc({
         tag: "V1",
         value: request,
@@ -582,23 +572,18 @@ export class ChainInteractionClient {
   }
 }
 
-/**
- * Chat room, bot, and message APIs.
- *
- * Default methods return [`CallError::HostFailure`] with an `unavailable`
- * reason. Hosts override only the methods they actually support.
- */
+/** Chat room, bot, and message APIs. */
 export class ChatClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
   /** Create a chat room. */
-  async chatCreateRoom(
+  async createRoom(
     request: T.HostChatCreateRoomRequest,
   ): Promise<Result<T.HostChatCreateRoomResponse, T.HostChatCreateRoomError>> {
     const result = await this.transport.request<
       S.ResultPayload<T.HostChatCreateRoomResponse, T.HostChatCreateRoomError>
     >({
-      ids: W.HOST_CHAT_CREATE_ROOM,
+      ids: W.CHAT_CREATE_ROOM,
       payload: T.VersionedHostChatCreateRoomRequest.enc({
         tag: "V1",
         value: request,
@@ -615,7 +600,7 @@ export class ChatClient {
   }
 
   /** Register a chat bot. */
-  async chatRegisterBot(
+  async registerBot(
     request: T.HostChatRegisterBotRequest,
   ): Promise<
     Result<T.HostChatRegisterBotResponse, T.HostChatRegisterBotError>
@@ -623,7 +608,7 @@ export class ChatClient {
     const result = await this.transport.request<
       S.ResultPayload<T.HostChatRegisterBotResponse, T.HostChatRegisterBotError>
     >({
-      ids: W.HOST_CHAT_REGISTER_BOT,
+      ids: W.CHAT_REGISTER_BOT,
       payload: T.VersionedHostChatRegisterBotRequest.enc({
         tag: "V1",
         value: request,
@@ -640,10 +625,10 @@ export class ChatClient {
   }
 
   /** Subscribe to the list of chat rooms. */
-  chatListSubscribe(): ObservableLike<T.HostChatListSubscribeItem> {
+  listSubscribe(): ObservableLike<T.HostChatListSubscribeItem> {
     return createObservable<T.HostChatListSubscribeItem>({
       transport: this.transport,
-      ids: W.HOST_CHAT_LIST_SUBSCRIBE,
+      ids: W.CHAT_LIST_SUBSCRIBE,
       payload: S.indexedTaggedUnion({ V1: [0, S._void] as const }).enc({
         tag: "V1",
         value: undefined,
@@ -659,7 +644,7 @@ export class ChatClient {
   }
 
   /** Post a message to a chat room. */
-  async chatPostMessage(
+  async postMessage(
     request: T.HostChatPostMessageRequest,
   ): Promise<
     Result<T.HostChatPostMessageResponse, T.HostChatPostMessageError>
@@ -667,7 +652,7 @@ export class ChatClient {
     const result = await this.transport.request<
       S.ResultPayload<T.HostChatPostMessageResponse, T.HostChatPostMessageError>
     >({
-      ids: W.HOST_CHAT_POST_MESSAGE,
+      ids: W.CHAT_POST_MESSAGE,
       payload: T.VersionedHostChatPostMessageRequest.enc({
         tag: "V1",
         value: request,
@@ -684,10 +669,10 @@ export class ChatClient {
   }
 
   /** Subscribe to received chat actions. */
-  chatActionSubscribe(): ObservableLike<T.HostChatActionSubscribeItem> {
+  actionSubscribe(): ObservableLike<T.HostChatActionSubscribeItem> {
     return createObservable<T.HostChatActionSubscribeItem>({
       transport: this.transport,
-      ids: W.HOST_CHAT_ACTION_SUBSCRIBE,
+      ids: W.CHAT_ACTION_SUBSCRIBE,
       payload: S.indexedTaggedUnion({ V1: [0, S._void] as const }).enc({
         tag: "V1",
         value: undefined,
@@ -707,14 +692,14 @@ export class ChatClient {
    * emitted item is a [`CustomRendererNode`](crate::v01::CustomRendererNode)
    * tree describing the rendered UI.
    */
-  chatCustomMessageRenderSubscribe({
+  customMessageRenderSubscribe({
     request,
   }: {
     request: T.ProductChatCustomMessageRenderSubscribeRequest;
   }): ObservableLike<T.CustomRendererNode> {
     return createObservable<T.CustomRendererNode>({
       transport: this.transport,
-      ids: W.PRODUCT_CHAT_CUSTOM_MESSAGE_RENDER_SUBSCRIBE,
+      ids: W.CHAT_CUSTOM_MESSAGE_RENDER_SUBSCRIBE,
       payload: T.VersionedProductChatCustomMessageRenderSubscribeRequest.enc({
         tag: "V1",
         value: request,
@@ -732,26 +717,18 @@ export class ChatClient {
   }
 }
 
-/**
- * Deterministic entropy derivation.
- *
- * The default body returns [`CallError::HostFailure`] with an `unavailable`
- * reason; hosts override only if they can derive entropy.
- */
-export class EntropyDerivationClient {
+/** Deterministic entropy derivation. */
+export class EntropyClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
-  /**
-   * Derive 32 bytes of entropy from the user's root BIP-39 entropy for the
-   * given key.
-   */
-  async deriveEntropy(
+  /** Derive deterministic entropy. */
+  async derive(
     request: T.HostDeriveEntropyRequest,
   ): Promise<Result<T.HostDeriveEntropyResponse, T.HostDeriveEntropyError>> {
     const result = await this.transport.request<
       S.ResultPayload<T.HostDeriveEntropyResponse, T.HostDeriveEntropyError>
     >({
-      ids: W.HOST_DERIVE_ENTROPY,
+      ids: W.ENTROPY_DERIVE,
       payload: T.VersionedHostDeriveEntropyRequest.enc({
         tag: "V1",
         value: request,
@@ -768,52 +745,18 @@ export class EntropyDerivationClient {
   }
 }
 
-/**
- * Host UI theme subscription.
- *
- * The default body returns an empty stream; hosts override to push theme
- * updates.
- */
-export class HostThemeClient {
-  constructor(private readonly transport: TrUApiTransport) {}
-
-  /** Subscribe to host theme changes (light/dark). */
-  themeSubscribe(): ObservableLike<T.HostThemeSubscribeItem> {
-    return createObservable<T.HostThemeSubscribeItem>({
-      transport: this.transport,
-      ids: W.HOST_THEME_SUBSCRIBE,
-      payload: S.indexedTaggedUnion({ V1: [0, S._void] as const }).enc({
-        tag: "V1",
-        value: undefined,
-      }),
-      decodeItem: (payload) =>
-        (
-          T.VersionedHostThemeSubscribeItem.dec(payload) as {
-            tag: "V1";
-            value: T.HostThemeSubscribeItem;
-          } & T.VersionedHostThemeSubscribeItem
-        ).value,
-    });
-  }
-}
-
-/**
- * Raw JSON-RPC passthrough to a chain node.
- *
- * Default methods return [`CallError::HostFailure`] with an `unavailable`
- * reason. Hosts override only the methods they actually support.
- */
+/** JSON-RPC transport methods. */
 export class JsonRpcClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
-  /** Send a JSON-RPC message to the chain identified by genesis hash. */
-  async jsonrpcMessageSend(
+  /** Send a JSON-RPC message. */
+  async sendMessage(
     request: T.HostJsonrpcMessageSendRequest,
   ): Promise<Result<undefined, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.GenericError>
     >({
-      ids: W.HOST_JSONRPC_MESSAGE_SEND,
+      ids: W.JSON_RPC_SEND_MESSAGE,
       payload: T.VersionedHostJsonrpcMessageSendRequest.enc({
         tag: "V1",
         value: request,
@@ -826,15 +769,15 @@ export class JsonRpcClient {
     return result.success ? ok(result.value) : err(result.value);
   }
 
-  /** Subscribe to inbound JSON-RPC messages for a chain. */
-  jsonrpcMessageSubscribe({
+  /** Subscribe to inbound JSON-RPC messages. */
+  subscribeMessages({
     request,
   }: {
     request: T.HostJsonrpcMessageSubscribeRequest;
   }): ObservableLike<T.HostJsonrpcMessageSubscribeItem> {
     return createObservable<T.HostJsonrpcMessageSubscribeItem>({
       transport: this.transport,
-      ids: W.HOST_JSONRPC_MESSAGE_SUBSCRIBE,
+      ids: W.JSON_RPC_SUBSCRIBE_MESSAGES,
       payload: T.VersionedHostJsonrpcMessageSubscribeRequest.enc({
         tag: "V1",
         value: request,
@@ -855,7 +798,7 @@ export class LocalStorageClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
   /** Read a value by key. */
-  async localStorageRead(
+  async read(
     request: T.HostLocalStorageReadRequest,
   ): Promise<
     Result<T.HostLocalStorageReadResponse, T.HostLocalStorageReadError>
@@ -866,7 +809,7 @@ export class LocalStorageClient {
         T.HostLocalStorageReadError
       >
     >({
-      ids: W.HOST_LOCAL_STORAGE_READ,
+      ids: W.LOCAL_STORAGE_READ,
       payload: T.VersionedHostLocalStorageReadRequest.enc({
         tag: "V1",
         value: request,
@@ -886,13 +829,13 @@ export class LocalStorageClient {
   }
 
   /** Write a value to a key. */
-  async localStorageWrite(
+  async write(
     request: T.HostLocalStorageWriteRequest,
   ): Promise<Result<undefined, T.HostLocalStorageReadError>> {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.HostLocalStorageReadError>
     >({
-      ids: W.HOST_LOCAL_STORAGE_WRITE,
+      ids: W.LOCAL_STORAGE_WRITE,
       payload: T.VersionedHostLocalStorageWriteRequest.enc({
         tag: "V1",
         value: request,
@@ -906,13 +849,13 @@ export class LocalStorageClient {
   }
 
   /** Clear a value by key. */
-  async localStorageClear(
+  async clear(
     request: T.HostLocalStorageClearRequest,
   ): Promise<Result<undefined, T.HostLocalStorageReadError>> {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.HostLocalStorageReadError>
     >({
-      ids: W.HOST_LOCAL_STORAGE_CLEAR,
+      ids: W.LOCAL_STORAGE_CLEAR,
       payload: T.VersionedHostLocalStorageClearRequest.enc({
         tag: "V1",
         value: request,
@@ -926,17 +869,12 @@ export class LocalStorageClient {
   }
 }
 
-/**
- * Payment operations.
- *
- * Default methods return [`CallError::HostFailure`] with an `unavailable`
- * reason. Hosts override only the methods they actually support.
- */
+/** Payment request and balance/status subscription methods. */
 export class PaymentClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
   /** Subscribe to payment balance updates. */
-  paymentBalanceSubscribe(): ObservableLike<
+  balanceSubscribe(): ObservableLike<
     T.HostPaymentBalanceSubscribeItem,
     T.HostPaymentBalanceSubscribeError
   > {
@@ -945,7 +883,7 @@ export class PaymentClient {
       T.HostPaymentBalanceSubscribeError
     >({
       transport: this.transport,
-      ids: W.HOST_PAYMENT_BALANCE_SUBSCRIBE,
+      ids: W.PAYMENT_BALANCE_SUBSCRIBE,
       payload: T.VersionedHostPaymentBalanceSubscribeRequest.enc({
         tag: "V1",
         value: undefined,
@@ -968,13 +906,13 @@ export class PaymentClient {
   }
 
   /** Request a payment from the user. */
-  async paymentRequest(
+  async request(
     request: T.HostPaymentRequestRequest,
   ): Promise<Result<T.HostPaymentRequestResponse, T.HostPaymentRequestError>> {
     const result = await this.transport.request<
       S.ResultPayload<T.HostPaymentRequestResponse, T.HostPaymentRequestError>
     >({
-      ids: W.HOST_PAYMENT_REQUEST,
+      ids: W.PAYMENT_REQUEST,
       payload: T.VersionedHostPaymentRequestRequest.enc({
         tag: "V1",
         value: request,
@@ -991,7 +929,7 @@ export class PaymentClient {
   }
 
   /** Subscribe to payment lifecycle updates for a specific payment. */
-  paymentStatusSubscribe({
+  statusSubscribe({
     request,
   }: {
     request: T.HostPaymentStatusSubscribeRequest;
@@ -1004,7 +942,7 @@ export class PaymentClient {
       T.HostPaymentStatusSubscribeError
     >({
       transport: this.transport,
-      ids: W.HOST_PAYMENT_STATUS_SUBSCRIBE,
+      ids: W.PAYMENT_STATUS_SUBSCRIBE,
       payload: T.VersionedHostPaymentStatusSubscribeRequest.enc({
         tag: "V1",
         value: request,
@@ -1027,13 +965,13 @@ export class PaymentClient {
   }
 
   /** Top up the user's payment balance. */
-  async paymentTopUp(
+  async topUp(
     request: T.HostPaymentTopUpRequest,
   ): Promise<Result<undefined, T.HostPaymentTopUpError>> {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.HostPaymentTopUpError>
     >({
-      ids: W.HOST_PAYMENT_TOP_UP,
+      ids: W.PAYMENT_TOP_UP,
       payload: T.VersionedHostPaymentTopUpRequest.enc({
         tag: "V1",
         value: request,
@@ -1047,18 +985,18 @@ export class PaymentClient {
   }
 }
 
-/** Device and remote permission prompts. */
+/** Permission request methods. */
 export class PermissionsClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
   /** Request a device-capability permission from the user. */
-  async devicePermission(
+  async requestDevicePermission(
     request: T.HostDevicePermissionRequest,
   ): Promise<Result<T.HostDevicePermissionResponse, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<T.HostDevicePermissionResponse, T.GenericError>
     >({
-      ids: W.HOST_DEVICE_PERMISSION,
+      ids: W.PERMISSIONS_REQUEST_DEVICE_PERMISSION,
       payload: T.VersionedHostDevicePermissionRequest.enc({
         tag: "V1",
         value: request,
@@ -1075,13 +1013,13 @@ export class PermissionsClient {
   }
 
   /** Request one or more remote-operation permissions. */
-  async permission(
+  async requestRemotePermission(
     request: T.RemotePermissionRequest,
   ): Promise<Result<T.RemotePermissionResponse, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<T.RemotePermissionResponse, T.GenericError>
     >({
-      ids: W.REMOTE_PERMISSION,
+      ids: W.PERMISSIONS_REQUEST_REMOTE_PERMISSION,
       payload: T.VersionedRemotePermissionRequest.enc({
         tag: "V1",
         value: request,
@@ -1098,24 +1036,19 @@ export class PermissionsClient {
   }
 }
 
-/**
- * Preimage lookup and submission.
- *
- * Default methods return [`CallError::HostFailure`] with an `unavailable`
- * reason. Hosts override only the methods they actually support.
- */
+/** Preimage lookup and submission methods. */
 export class PreimageClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
   /** Subscribe to preimage lookups for a given key. */
-  preimageLookupSubscribe({
+  lookupSubscribe({
     request,
   }: {
     request: T.RemotePreimageLookupSubscribeRequest;
   }): ObservableLike<T.RemotePreimageLookupSubscribeItem> {
     return createObservable<T.RemotePreimageLookupSubscribeItem>({
       transport: this.transport,
-      ids: W.REMOTE_PREIMAGE_LOOKUP_SUBSCRIBE,
+      ids: W.PREIMAGE_LOOKUP_SUBSCRIBE,
       payload: T.VersionedRemotePreimageLookupSubscribeRequest.enc({
         tag: "V1",
         value: request,
@@ -1131,13 +1064,13 @@ export class PreimageClient {
   }
 
   /** Submit a preimage. Returns the preimage key (hash) on success. */
-  async preimageSubmit(
+  async submit(
     request: HexString,
   ): Promise<Result<HexString, T.PreimageSubmitError>> {
     const result = await this.transport.request<
       S.ResultPayload<HexString, T.PreimageSubmitError>
     >({
-      ids: W.REMOTE_PREIMAGE_SUBMIT,
+      ids: W.PREIMAGE_SUBMIT,
       payload: T.VersionedRemotePreimageSubmitRequest.enc({
         tag: "V1",
         value: request,
@@ -1151,20 +1084,12 @@ export class PreimageClient {
   }
 }
 
-/**
- * Resource pre-allocation (allowance management).
- *
- * Default methods return [`CallError::HostFailure`] with an `unavailable`
- * reason. Hosts override only the methods they actually support.
- */
+/** Resource pre-allocation (allowance management). */
 export class ResourceAllocationClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
-  /**
-   * Request the host to pre-allocate one or more resources (statement store
-   * allowance, bulletin allowance, smart contract allowance, auto-signing).
-   */
-  async requestResourceAllocation(
+  /** Request the host to pre-allocate one or more resources. */
+  async request(
     request: T.HostRequestResourceAllocationRequest,
   ): Promise<
     Result<T.HostRequestResourceAllocationResponse, T.ResourceAllocationError>
@@ -1175,7 +1100,7 @@ export class ResourceAllocationClient {
         T.ResourceAllocationError
       >
     >({
-      ids: W.HOST_REQUEST_RESOURCE_ALLOCATION,
+      ids: W.RESOURCE_ALLOCATION_REQUEST,
       payload: T.VersionedHostRequestResourceAllocationRequest.enc({
         tag: "V1",
         value: request,
@@ -1195,16 +1120,11 @@ export class ResourceAllocationClient {
   }
 }
 
-/**
- * Signing and transaction construction.
- *
- * Default methods return [`CallError::HostFailure`] with an `unavailable`
- * reason. Hosts override only the methods they actually support.
- */
+/** Signing operations. */
 export class SigningClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
-  /** Construct a signed extrinsic for a product account. */
+  /** Construct a signed transaction for a product account. */
   async createTransaction(
     request: T.HostCreateTransactionRequest,
   ): Promise<
@@ -1216,7 +1136,7 @@ export class SigningClient {
         T.HostCreateTransactionError
       >
     >({
-      ids: W.HOST_CREATE_TRANSACTION,
+      ids: W.SIGNING_CREATE_TRANSACTION,
       payload: T.VersionedHostCreateTransactionRequest.enc({
         tag: "V1",
         value: request,
@@ -1235,7 +1155,7 @@ export class SigningClient {
     return result.success ? ok(result.value) : err(result.value);
   }
 
-  /** Construct a signed extrinsic for a non-product account. */
+  /** Construct a signed transaction for a non-product account. */
   async createTransactionWithLegacyAccount(
     request: T.HostCreateTransactionWithLegacyAccountRequest,
   ): Promise<
@@ -1250,7 +1170,7 @@ export class SigningClient {
         T.HostCreateTransactionError
       >
     >({
-      ids: W.HOST_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT,
+      ids: W.SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT,
       payload: T.VersionedHostCreateTransactionWithLegacyAccountRequest.enc({
         tag: "V1",
         value: request,
@@ -1269,14 +1189,14 @@ export class SigningClient {
     return result.success ? ok(result.value) : err(result.value);
   }
 
-  /** Sign raw bytes with a non-product (legacy) account. */
+  /** Sign raw bytes with a non-product account. */
   async signRawWithLegacyAccount(
     request: T.HostSignRawWithLegacyAccountRequest,
   ): Promise<Result<T.HostSignPayloadResponse, T.HostSignPayloadError>> {
     const result = await this.transport.request<
       S.ResultPayload<T.HostSignPayloadResponse, T.HostSignPayloadError>
     >({
-      ids: W.HOST_SIGN_RAW_WITH_LEGACY_ACCOUNT,
+      ids: W.SIGNING_SIGN_RAW_WITH_LEGACY_ACCOUNT,
       payload: T.VersionedHostSignRawWithLegacyAccountRequest.enc({
         tag: "V1",
         value: request,
@@ -1292,14 +1212,14 @@ export class SigningClient {
     return result.success ? ok(result.value) : err(result.value);
   }
 
-  /** Sign a Substrate extrinsic payload with a non-product (legacy) account. */
+  /** Sign an extrinsic payload with a non-product account. */
   async signPayloadWithLegacyAccount(
     request: T.HostSignPayloadWithLegacyAccountRequest,
   ): Promise<Result<T.HostSignPayloadResponse, T.HostSignPayloadError>> {
     const result = await this.transport.request<
       S.ResultPayload<T.HostSignPayloadResponse, T.HostSignPayloadError>
     >({
-      ids: W.HOST_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT,
+      ids: W.SIGNING_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT,
       payload: T.VersionedHostSignPayloadWithLegacyAccountRequest.enc({
         tag: "V1",
         value: request,
@@ -1322,7 +1242,7 @@ export class SigningClient {
     const result = await this.transport.request<
       S.ResultPayload<T.HostSignPayloadResponse, T.HostSignPayloadError>
     >({
-      ids: W.HOST_SIGN_RAW,
+      ids: W.SIGNING_SIGN_RAW,
       payload: T.VersionedHostSignRawRequest.enc({ tag: "V1", value: request }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
@@ -1335,14 +1255,14 @@ export class SigningClient {
     return result.success ? ok(result.value) : err(result.value);
   }
 
-  /** Sign a Substrate extrinsic payload. */
+  /** Sign an extrinsic payload. */
   async signPayload(
     request: T.HostSignPayloadRequest,
   ): Promise<Result<T.HostSignPayloadResponse, T.HostSignPayloadError>> {
     const result = await this.transport.request<
       S.ResultPayload<T.HostSignPayloadResponse, T.HostSignPayloadError>
     >({
-      ids: W.HOST_SIGN_PAYLOAD,
+      ids: W.SIGNING_SIGN_PAYLOAD,
       payload: T.VersionedHostSignPayloadRequest.enc({
         tag: "V1",
         value: request,
@@ -1359,24 +1279,19 @@ export class SigningClient {
   }
 }
 
-/**
- * Statement store operations.
- *
- * Default request methods return [`CallError::HostFailure`] with an
- * `unavailable` reason. Hosts override only the methods they actually support.
- */
+/** Statement store methods. */
 export class StatementStoreClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
   /** Subscribe to statements matching a topic filter. */
-  statementStoreSubscribe({
+  subscribe({
     request,
   }: {
     request: T.RemoteStatementStoreSubscribeRequest;
   }): ObservableLike<T.RemoteStatementStoreSubscribeItem> {
     return createObservable<T.RemoteStatementStoreSubscribeItem>({
       transport: this.transport,
-      ids: W.REMOTE_STATEMENT_STORE_SUBSCRIBE,
+      ids: W.STATEMENT_STORE_SUBSCRIBE,
       payload: T.VersionedRemoteStatementStoreSubscribeRequest.enc({
         tag: "V1",
         value: request,
@@ -1392,7 +1307,7 @@ export class StatementStoreClient {
   }
 
   /** Create a proof for a statement. */
-  async statementStoreCreateProof(
+  async createProof(
     request: T.RemoteStatementStoreCreateProofRequest,
   ): Promise<
     Result<
@@ -1406,7 +1321,7 @@ export class StatementStoreClient {
         T.RemoteStatementStoreCreateProofError
       >
     >({
-      ids: W.REMOTE_STATEMENT_STORE_CREATE_PROOF,
+      ids: W.STATEMENT_STORE_CREATE_PROOF,
       payload: T.VersionedRemoteStatementStoreCreateProofRequest.enc({
         tag: "V1",
         value: request,
@@ -1429,7 +1344,7 @@ export class StatementStoreClient {
    * Create a proof for a statement using a pre-allocated allowance account,
    * bypassing the per-call signing prompt.
    */
-  async statementStoreCreateProofAuthorized(
+  async createProofAuthorized(
     request: T.Statement,
   ): Promise<
     Result<
@@ -1443,7 +1358,7 @@ export class StatementStoreClient {
         T.RemoteStatementStoreCreateProofError
       >
     >({
-      ids: W.REMOTE_STATEMENT_STORE_CREATE_PROOF_AUTHORIZED,
+      ids: W.STATEMENT_STORE_CREATE_PROOF_AUTHORIZED,
       payload: T.VersionedRemoteStatementStoreCreateProofAuthorizedRequest.enc({
         tag: "V1",
         value: request,
@@ -1467,13 +1382,13 @@ export class StatementStoreClient {
    * [`SignedStatement`](crate::v01::SignedStatement) directly (no wrapping
    * struct), matching upstream `triangle-js-sdks`.
    */
-  async statementStoreSubmit(
+  async submit(
     request: T.SignedStatement,
   ): Promise<Result<undefined, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.GenericError>
     >({
-      ids: W.REMOTE_STATEMENT_STORE_SUBMIT,
+      ids: W.STATEMENT_STORE_SUBMIT,
       payload: T.VersionedRemoteStatementStoreSubmitRequest.enc({
         tag: "V1",
         value: request,
@@ -1488,28 +1403,18 @@ export class StatementStoreClient {
 }
 
 /**
- * General-purpose TrUAPI methods for feature detection, navigation, and
- * notifications.
- *
- * # Wire id reservations
- *
- * The discriminants below are listed in [`super::RESERVED_WIRE_IDS`] so
- * codegen rejects any `#[wire(...)]` annotation that collides with them.
- * Slots are held back for upstream `triangle-js-sdks` methods that TrUAPI
- * does not implement, but whose ids must remain free to keep our wire-table
- * positionally aligned with the canonical host `MessagePayload` enum. If we
- * ever need one, annotate the trait method with the matching id and remove
- * it from `RESERVED_WIRE_IDS`.
+ * General-purpose TrUAPI methods for handshake, feature detection,
+ * navigation, and notifications.
  */
-export class TrUApiCallsClient {
+export class SystemClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
-  /** Negotiates the wire codec version with the product. */
+  /** Negotiate the wire codec version with the product. */
   async handshake(): Promise<Result<undefined, T.HostHandshakeError>> {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.HostHandshakeError>
     >({
-      ids: W.HOST_HANDSHAKE,
+      ids: W.SYSTEM_HANDSHAKE,
       payload: T.VersionedHostHandshakeRequest.enc({
         tag: "V1",
         value: { codecVersion: this.transport.codecVersion },
@@ -1522,14 +1427,14 @@ export class TrUApiCallsClient {
     return result.success ? ok(result.value) : err(result.value);
   }
 
-  /** Queries whether the host supports a specific feature. */
+  /** Query whether the host supports a specific feature. */
   async featureSupported(
     request: T.HostFeatureSupportedRequest,
   ): Promise<Result<T.HostFeatureSupportedResponse, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<T.HostFeatureSupportedResponse, T.GenericError>
     >({
-      ids: W.HOST_FEATURE_SUPPORTED,
+      ids: W.SYSTEM_FEATURE_SUPPORTED,
       payload: T.VersionedHostFeatureSupportedRequest.enc({
         tag: "V1",
         value: request,
@@ -1545,14 +1450,14 @@ export class TrUApiCallsClient {
     return result.success ? ok(result.value) : err(result.value);
   }
 
-  /** Sends a push notification to the user. */
+  /** Send a push notification to the user. */
   async pushNotification(
     request: T.HostPushNotificationRequest,
   ): Promise<Result<undefined, T.GenericError>> {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.GenericError>
     >({
-      ids: W.HOST_PUSH_NOTIFICATION,
+      ids: W.SYSTEM_PUSH_NOTIFICATION,
       payload: T.VersionedHostPushNotificationRequest.enc({
         tag: "V1",
         value: request,
@@ -1565,14 +1470,14 @@ export class TrUApiCallsClient {
     return result.success ? ok(result.value) : err(result.value);
   }
 
-  /** Requests the host to open a URL. */
+  /** Request the host to open a URL. */
   async navigateTo(
     request: T.HostNavigateToRequest,
   ): Promise<Result<undefined, T.HostNavigateToError>> {
     const result = await this.transport.request<
       S.ResultPayload<undefined, T.HostNavigateToError>
     >({
-      ids: W.HOST_NAVIGATE_TO,
+      ids: W.SYSTEM_NAVIGATE_TO,
       payload: T.VersionedHostNavigateToRequest.enc({
         tag: "V1",
         value: request,
@@ -1586,12 +1491,35 @@ export class TrUApiCallsClient {
   }
 }
 
+/** Host theme subscription. */
+export class ThemeClient {
+  constructor(private readonly transport: TrUApiTransport) {}
+
+  /** Subscribe to host theme changes. */
+  subscribe(): ObservableLike<T.HostThemeSubscribeItem> {
+    return createObservable<T.HostThemeSubscribeItem>({
+      transport: this.transport,
+      ids: W.THEME_SUBSCRIBE,
+      payload: S.indexedTaggedUnion({ V1: [0, S._void] as const }).enc({
+        tag: "V1",
+        value: undefined,
+      }),
+      decodeItem: (payload) =>
+        (
+          T.VersionedHostThemeSubscribeItem.dec(payload) as {
+            tag: "V1";
+            value: T.HostThemeSubscribeItem;
+          } & T.VersionedHostThemeSubscribeItem
+        ).value,
+    });
+  }
+}
+
 export interface TrUApiClient {
-  readonly accountManagement: AccountManagementClient;
-  readonly chainInteraction: ChainInteractionClient;
+  readonly account: AccountClient;
+  readonly chain: ChainClient;
   readonly chat: ChatClient;
-  readonly entropyDerivation: EntropyDerivationClient;
-  readonly hostTheme: HostThemeClient;
+  readonly entropy: EntropyClient;
   readonly jsonRpc: JsonRpcClient;
   readonly localStorage: LocalStorageClient;
   readonly payment: PaymentClient;
@@ -1600,7 +1528,8 @@ export interface TrUApiClient {
   readonly resourceAllocation: ResourceAllocationClient;
   readonly signing: SigningClient;
   readonly statementStore: StatementStoreClient;
-  readonly trUApiCalls: TrUApiCallsClient;
+  readonly system: SystemClient;
+  readonly theme: ThemeClient;
 }
 
 export type Client = TrUApiClient;
@@ -1628,11 +1557,10 @@ export function createClient(
 ): TrUApiClient {
   const versionedTransport = withGeneratedTransportVersions(transport);
   return {
-    accountManagement: new AccountManagementClient(versionedTransport),
-    chainInteraction: new ChainInteractionClient(versionedTransport),
+    account: new AccountClient(versionedTransport),
+    chain: new ChainClient(versionedTransport),
     chat: new ChatClient(versionedTransport),
-    entropyDerivation: new EntropyDerivationClient(versionedTransport),
-    hostTheme: new HostThemeClient(versionedTransport),
+    entropy: new EntropyClient(versionedTransport),
     jsonRpc: new JsonRpcClient(versionedTransport),
     localStorage: new LocalStorageClient(versionedTransport),
     payment: new PaymentClient(versionedTransport),
@@ -1641,6 +1569,7 @@ export function createClient(
     resourceAllocation: new ResourceAllocationClient(versionedTransport),
     signing: new SigningClient(versionedTransport),
     statementStore: new StatementStoreClient(versionedTransport),
-    trUApiCalls: new TrUApiCallsClient(versionedTransport),
+    system: new SystemClient(versionedTransport),
+    theme: new ThemeClient(versionedTransport),
   };
 }

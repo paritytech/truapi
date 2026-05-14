@@ -203,7 +203,7 @@ export function subscribeConnectionStatus(
     setStatus("connecting");
     try {
       const handshake = ensureClient()
-        .trUApiCalls.handshake()
+        .system.handshake()
         .then((result) => result.isOk());
       const timeout = new Promise<boolean>((resolve) =>
         setTimeout(() => resolve(false), HANDSHAKE_TIMEOUT_MS),
@@ -263,8 +263,8 @@ export function openEphemeralFollow(
   return new Promise((resolve, reject) => {
     let settled = false;
     let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-    const sub = client.chainInteraction
-      .chainHeadFollowSubscribe({
+    const sub = client.chain
+      .followHeadSubscribe({
         request: { genesisHash, withRuntime },
       })
       .subscribe({

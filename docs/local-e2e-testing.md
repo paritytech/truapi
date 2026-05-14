@@ -17,7 +17,7 @@ The chain below is also automated:
   the repo with Claude Code; each is a small, command-first runbook.
 - **CI workflow** `.github/workflows/ci.yml` runs the same chain on every
   PR. The static jobs (`rust`, `codegen-drift`, `ts-client`,
-  `playground`, `explorer`) are fast; the `e2e` job builds dotli and
+  `playground`) are fast; the `e2e` job builds dotli and
   drives the playground inside its iframe via Playwright (specs in
   `playground/tests/e2e/`). Failed e2e runs upload the Playwright HTML
   report as an artifact.

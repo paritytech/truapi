@@ -19,7 +19,7 @@
 use proc_macro::TokenStream;
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
-use syn::{parse_macro_input, Ident, ItemFn, LitInt, Token, TraitItemFn};
+use syn::{Ident, ItemFn, LitInt, Token, TraitItemFn, parse_macro_input};
 
 #[derive(Default)]
 struct WireArgs {
