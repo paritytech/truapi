@@ -34,10 +34,12 @@ npm exec --yes -- prettier --write \
 # Rebuild dist/ so downstream consumers (in particular the playground,
 # which picks up @parity/truapi via yarn 1.x file: snapshot) see the
 # regenerated bindings without a separate npm run build step.
-if [ ! -d js/packages/truapi/node_modules ]; then
-  npm ci --prefix js/packages/truapi
+if [ "${TRUAPI_SKIP_PACKAGE_BUILD:-0}" != "1" ]; then
+  if [ ! -d js/packages/truapi/node_modules ]; then
+    npm ci --prefix js/packages/truapi
+  fi
+  npm run build --prefix js/packages/truapi
 fi
-npm run build --prefix js/packages/truapi
 
 echo "Generated client at js/packages/truapi/src/generated/"
 echo "Generated playground metadata at js/packages/truapi/src/playground/codegen/"

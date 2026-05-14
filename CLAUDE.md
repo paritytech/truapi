@@ -12,7 +12,7 @@ rust/crates/
   truapi-codegen/        rustdoc JSON → TypeScript client + Rust dispatcher
   truapi-macros/         #[wire(id = N)] proc-macro
 js/packages/
-  truapi/         @parity/truapi TS package; src/generated/ produced by truapi-codegen
+  truapi/         @parity/truapi TS package; generated TS lives under ignored paths
 playground/              Next.js interactive playground; deploys to truapi-playground.dot
 hosts/dotli/             dotli submodule
 docs/                    design docs, RFCs, feature proposals
@@ -48,8 +48,8 @@ When the Rust trait surface changes, rerun:
 ./scripts/codegen.sh
 ```
 
-That will repopulate `js/packages/truapi/src/generated/`. Commit the regenerated files alongside the Rust changes.
-It also regenerates playground metadata in `js/packages/truapi/src/playground/codegen/`.
+That will repopulate the ignored generated TS under `js/packages/truapi/src/generated/`,
+`js/packages/truapi/src/playground/codegen/`, and `js/packages/truapi/test/generated/examples/`.
 After regenerating, rebuild the client and refresh the playground's link copy:
 
 ```bash
