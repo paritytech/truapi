@@ -26,8 +26,13 @@ The first command writes a markdown file under `.changeset/`; the second
 consumes it, bumps `js/packages/truapi/package.json`, appends an entry to
 `js/packages/truapi/CHANGELOG.md`, and deletes the changeset file.
 
-Commit the resulting diff and open a PR whose title starts with
-`release:`. Convention:
+Commit the resulting diff and open a PR using the **release** template:
+
+```
+https://github.com/paritytech/truapi/compare/main...<your-branch>?template=release.md
+```
+
+The PR title must start with `release:`. Convention:
 
 ```
 release: @parity/truapi 0.1.1
