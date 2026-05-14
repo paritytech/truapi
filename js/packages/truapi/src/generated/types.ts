@@ -412,6 +412,250 @@ export const ChatRoomRegistrationStatus: S.Codec<ChatRoomRegistrationStatus> =
       S.Enum({ New: S._void, Exists: S._void }),
   );
 
+/** Balance amount for CoinPayment operations. */
+export type CoinPaymentBalance = number;
+
+export const CoinPaymentBalance: S.Codec<CoinPaymentBalance> = S.lazy(
+  (): S.Codec<CoinPaymentBalance> => S.u32,
+);
+
+/** Standardized encrypted Coinage secret transmission payload. */
+export interface CoinPaymentCheque {
+  /** Cheque format version. V1 uses 0. */
+  version: number;
+  /** Receivable public key protecting the cheque contents. */
+  id: CoinPaymentReceivable;
+  /** Claimed payment amount. */
+  amount: CoinPaymentBalance;
+  /** Concatenated coin secrets encrypted to the receivable. */
+  encryptedSecrets: HexString;
+}
+
+export const CoinPaymentCheque: S.Codec<CoinPaymentCheque> = S.lazy(
+  (): S.Codec<CoinPaymentCheque> =>
+    S.Struct({
+      version: S.u8,
+      id: CoinPaymentReceivable,
+      amount: CoinPaymentBalance,
+      encryptedSecrets: S.Hex(),
+    }) as S.Codec<CoinPaymentCheque>,
+);
+
+/** Product-visible clearing reference for reconciliation and receipts. */
+export interface CoinPaymentClearingReference {
+  /** Clearing Merkle root. */
+  root: CoinPaymentMerkleRoot;
+  /** Product-visible coin key and transaction hash leaves. */
+  leaves: Array<[CoinPaymentCoinagePubKey, CoinPaymentTransactionHash]>;
+}
+
+export const CoinPaymentClearingReference: S.Codec<CoinPaymentClearingReference> =
+  S.lazy(
+    (): S.Codec<CoinPaymentClearingReference> =>
+      S.Struct({
+        root: CoinPaymentMerkleRoot,
+        leaves: S.Vector(
+          S.Tuple(CoinPaymentCoinagePubKey, CoinPaymentTransactionHash),
+        ),
+      }) as S.Codec<CoinPaymentClearingReference>,
+  );
+
+/** Public Coinage key referenced by clearing evidence. */
+export type CoinPaymentCoinagePubKey = HexString;
+
+export const CoinPaymentCoinagePubKey: S.Codec<CoinPaymentCoinagePubKey> =
+  S.lazy((): S.Codec<CoinPaymentCoinagePubKey> => S.Hex(32));
+
+/** Errors returned by CoinPayment host operations. */
+export type CoinPaymentError =
+  /** Source purse has too little balance. */
+  | { tag: "BalanceLow"; value: undefined }
+  /** User agent denied spend, transfer, or access. */
+  | { tag: "Denied"; value: undefined }
+  /** Coin secrets do not control valid coins. */
+  | { tag: "BadCoins"; value: undefined }
+  /** Coin secrets were claimed elsewhere. */
+  | { tag: "SnipedCoins"; value: undefined }
+  /** Purse does not exist or is not visible to the caller. */
+  | { tag: "PurseNotFound"; value: undefined }
+  /** Receivable does not exist or is not visible to the caller. */
+  | { tag: "ReceivableNotFound"; value: undefined }
+  /** Requested transmission channel is not supported. */
+  | { tag: "UnsupportedChannel"; value: undefined }
+  /** Required host/user-agent capability is unavailable. */
+  | { tag: "UserAgentCapabilityUnavailable"; value: undefined }
+  /** Unexpected runtime failure. */
+  | { tag: "Internal"; value: undefined };
+
+export const CoinPaymentError: S.Codec<CoinPaymentError> = S.lazy(
+  (): S.Codec<CoinPaymentError> =>
+    S.Enum({
+      BalanceLow: S._void,
+      Denied: S._void,
+      BadCoins: S._void,
+      SnipedCoins: S._void,
+      PurseNotFound: S._void,
+      ReceivableNotFound: S._void,
+      UnsupportedChannel: S._void,
+      UserAgentCapabilityUnavailable: S._void,
+      Internal: S._void,
+    }),
+);
+
+/** Customer-facing payment request datagram. */
+export interface CoinPaymentInvoice {
+  /** Invoice format version. V1 uses 0. */
+  version: number;
+  /** Handoff channel for the cheque. */
+  handoff: CoinPaymentTransmissionChannel;
+  /** Receivable public key. */
+  receiver: CoinPaymentReceivable;
+  /** Requested amount. */
+  amount: CoinPaymentBalance;
+}
+
+export const CoinPaymentInvoice: S.Codec<CoinPaymentInvoice> = S.lazy(
+  (): S.Codec<CoinPaymentInvoice> =>
+    S.Struct({
+      version: S.u8,
+      handoff: CoinPaymentTransmissionChannel,
+      receiver: CoinPaymentReceivable,
+      amount: CoinPaymentBalance,
+    }) as S.Codec<CoinPaymentInvoice>,
+);
+
+/** Merkle root for a product-visible clearing reference. */
+export type CoinPaymentMerkleRoot = HexString;
+
+export const CoinPaymentMerkleRoot: S.Codec<CoinPaymentMerkleRoot> = S.lazy(
+  (): S.Codec<CoinPaymentMerkleRoot> => S.Hex(32),
+);
+
+/** Authenticated product identifier recorded for a product-created purse. */
+export type CoinPaymentProductId = string;
+
+export const CoinPaymentProductId: S.Codec<CoinPaymentProductId> = S.lazy(
+  (): S.Codec<CoinPaymentProductId> => S.str,
+);
+
+/** RFC 0017 CoinPayment purse identifier. */
+export type CoinPaymentPurseId = number;
+
+export const CoinPaymentPurseId: S.Codec<CoinPaymentPurseId> = S.lazy(
+  (): S.Codec<CoinPaymentPurseId> => S.u32,
+);
+
+/** Product-visible metadata and balance state for a CoinPayment purse. */
+export interface CoinPaymentPurseInfo {
+  /** Human-readable purse name supplied by the creating product. */
+  name: string;
+  /** Creation timestamp. */
+  created: CoinPaymentTimestamp;
+  /** Product that created the purse. */
+  creator: CoinPaymentProductId;
+  /** Current product-visible balance. */
+  balance: CoinPaymentBalance;
+}
+
+export const CoinPaymentPurseInfo: S.Codec<CoinPaymentPurseInfo> = S.lazy(
+  (): S.Codec<CoinPaymentPurseInfo> =>
+    S.Struct({
+      name: S.str,
+      created: CoinPaymentTimestamp,
+      creator: CoinPaymentProductId,
+      balance: CoinPaymentBalance,
+    }) as S.Codec<CoinPaymentPurseInfo>,
+);
+
+/** Public key identifying a CoinPayment receivable. */
+export type CoinPaymentReceivable = HexString;
+
+export const CoinPaymentReceivable: S.Codec<CoinPaymentReceivable> = S.lazy(
+  (): S.Codec<CoinPaymentReceivable> => S.Hex(32),
+);
+
+/** Clearing status stream item. */
+export type CoinPaymentStatus =
+  /** More coins have cleared. */
+  | {
+      tag: "Clearing";
+      value: { clearing: CoinPaymentBalance; cleared: CoinPaymentBalance };
+    }
+  /** Some or all coins failed to transfer. */
+  | {
+      tag: "Failed";
+      value: {
+        error: CoinPaymentError;
+        cleared: CoinPaymentBalance;
+        reference: CoinPaymentClearingReference;
+      };
+    }
+  /** All coins cleared. */
+  | {
+      tag: "Done";
+      value: {
+        cleared: CoinPaymentBalance;
+        reference: CoinPaymentClearingReference;
+      };
+    };
+
+export const CoinPaymentStatus: S.Codec<CoinPaymentStatus> = S.lazy(
+  (): S.Codec<CoinPaymentStatus> =>
+    S.Enum({
+      Clearing: S.Struct({
+        clearing: CoinPaymentBalance,
+        cleared: CoinPaymentBalance,
+      }) as S.Codec<{
+        clearing: CoinPaymentBalance;
+        cleared: CoinPaymentBalance;
+      }>,
+      Failed: S.Struct({
+        error: CoinPaymentError,
+        cleared: CoinPaymentBalance,
+        reference: CoinPaymentClearingReference,
+      }) as S.Codec<{
+        error: CoinPaymentError;
+        cleared: CoinPaymentBalance;
+        reference: CoinPaymentClearingReference;
+      }>,
+      Done: S.Struct({
+        cleared: CoinPaymentBalance,
+        reference: CoinPaymentClearingReference,
+      }) as S.Codec<{
+        cleared: CoinPaymentBalance;
+        reference: CoinPaymentClearingReference;
+      }>,
+    }),
+);
+
+/** Milliseconds since Unix epoch. */
+export type CoinPaymentTimestamp = bigint;
+
+export const CoinPaymentTimestamp: S.Codec<CoinPaymentTimestamp> = S.lazy(
+  (): S.Codec<CoinPaymentTimestamp> => S.u64,
+);
+
+/** Transaction hash for a product-visible clearing reference. */
+export type CoinPaymentTransactionHash = HexString;
+
+export const CoinPaymentTransactionHash: S.Codec<CoinPaymentTransactionHash> =
+  S.lazy((): S.Codec<CoinPaymentTransactionHash> => S.Hex(32));
+
+/** Standardized cheque transmission channel. */
+export type CoinPaymentTransmissionChannel =
+  /** Statement-store/HOP handoff identified by an SSS topic. */
+  { tag: "Standard"; value: { sssTopic: HexString } };
+
+export const CoinPaymentTransmissionChannel: S.Codec<CoinPaymentTransmissionChannel> =
+  S.lazy(
+    (): S.Codec<CoinPaymentTransmissionChannel> =>
+      S.Enum({
+        Standard: S.Struct({ sssTopic: S.Hex(32) }) as S.Codec<{
+          sssTopic: HexString;
+        }>,
+      }),
+  );
+
 /** Semantic color tokens for theming. */
 export type ColorToken =
   | { tag: "TextPrimary"; value: undefined }
@@ -856,6 +1100,364 @@ export const VersionedHostChatRegisterBotResponse: S.Codec<VersionedHostChatRegi
   S.lazy(
     (): S.Codec<VersionedHostChatRegisterBotResponse> =>
       S.indexedTaggedUnion({ V1: [0, HostChatRegisterBotResponse] as const }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentCreateChequeError`]. */
+export type VersionedHostCoinPaymentCreateChequeError = {
+  tag: "V1";
+  value: HostCoinPaymentCreateChequeError;
+};
+
+export const VersionedHostCoinPaymentCreateChequeError: S.Codec<VersionedHostCoinPaymentCreateChequeError> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentCreateChequeError> =>
+      S.indexedTaggedUnion({
+        V1: [0, HostCoinPaymentCreateChequeError] as const,
+      }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentCreateChequeRequest`]. */
+export type VersionedHostCoinPaymentCreateChequeRequest = {
+  tag: "V1";
+  value: HostCoinPaymentCreateChequeRequest;
+};
+
+export const VersionedHostCoinPaymentCreateChequeRequest: S.Codec<VersionedHostCoinPaymentCreateChequeRequest> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentCreateChequeRequest> =>
+      S.indexedTaggedUnion({
+        V1: [0, HostCoinPaymentCreateChequeRequest] as const,
+      }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentCreateChequeResponse`]. */
+export type VersionedHostCoinPaymentCreateChequeResponse = {
+  tag: "V1";
+  value: HostCoinPaymentCreateChequeResponse;
+};
+
+export const VersionedHostCoinPaymentCreateChequeResponse: S.Codec<VersionedHostCoinPaymentCreateChequeResponse> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentCreateChequeResponse> =>
+      S.indexedTaggedUnion({
+        V1: [0, HostCoinPaymentCreateChequeResponse] as const,
+      }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentCreatePurseError`]. */
+export type VersionedHostCoinPaymentCreatePurseError = {
+  tag: "V1";
+  value: HostCoinPaymentCreatePurseError;
+};
+
+export const VersionedHostCoinPaymentCreatePurseError: S.Codec<VersionedHostCoinPaymentCreatePurseError> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentCreatePurseError> =>
+      S.indexedTaggedUnion({
+        V1: [0, HostCoinPaymentCreatePurseError] as const,
+      }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentCreatePurseRequest`]. */
+export type VersionedHostCoinPaymentCreatePurseRequest = {
+  tag: "V1";
+  value: HostCoinPaymentCreatePurseRequest;
+};
+
+export const VersionedHostCoinPaymentCreatePurseRequest: S.Codec<VersionedHostCoinPaymentCreatePurseRequest> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentCreatePurseRequest> =>
+      S.indexedTaggedUnion({
+        V1: [0, HostCoinPaymentCreatePurseRequest] as const,
+      }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentCreatePurseResponse`]. */
+export type VersionedHostCoinPaymentCreatePurseResponse = {
+  tag: "V1";
+  value: HostCoinPaymentCreatePurseResponse;
+};
+
+export const VersionedHostCoinPaymentCreatePurseResponse: S.Codec<VersionedHostCoinPaymentCreatePurseResponse> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentCreatePurseResponse> =>
+      S.indexedTaggedUnion({
+        V1: [0, HostCoinPaymentCreatePurseResponse] as const,
+      }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentCreateReceivableError`]. */
+export type VersionedHostCoinPaymentCreateReceivableError = {
+  tag: "V1";
+  value: HostCoinPaymentCreateReceivableError;
+};
+
+export const VersionedHostCoinPaymentCreateReceivableError: S.Codec<VersionedHostCoinPaymentCreateReceivableError> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentCreateReceivableError> =>
+      S.indexedTaggedUnion({
+        V1: [0, HostCoinPaymentCreateReceivableError] as const,
+      }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentCreateReceivableRequest`]. */
+export type VersionedHostCoinPaymentCreateReceivableRequest = {
+  tag: "V1";
+  value: HostCoinPaymentCreateReceivableRequest;
+};
+
+export const VersionedHostCoinPaymentCreateReceivableRequest: S.Codec<VersionedHostCoinPaymentCreateReceivableRequest> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentCreateReceivableRequest> =>
+      S.indexedTaggedUnion({
+        V1: [0, HostCoinPaymentCreateReceivableRequest] as const,
+      }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentCreateReceivableResponse`]. */
+export type VersionedHostCoinPaymentCreateReceivableResponse = {
+  tag: "V1";
+  value: HostCoinPaymentCreateReceivableResponse;
+};
+
+export const VersionedHostCoinPaymentCreateReceivableResponse: S.Codec<VersionedHostCoinPaymentCreateReceivableResponse> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentCreateReceivableResponse> =>
+      S.indexedTaggedUnion({
+        V1: [0, HostCoinPaymentCreateReceivableResponse] as const,
+      }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentDeletePurseError`]. */
+export type VersionedHostCoinPaymentDeletePurseError = {
+  tag: "V1";
+  value: HostCoinPaymentDeletePurseError;
+};
+
+export const VersionedHostCoinPaymentDeletePurseError: S.Codec<VersionedHostCoinPaymentDeletePurseError> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentDeletePurseError> =>
+      S.indexedTaggedUnion({
+        V1: [0, HostCoinPaymentDeletePurseError] as const,
+      }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentDeletePurseItem`]. */
+export type VersionedHostCoinPaymentDeletePurseItem = {
+  tag: "V1";
+  value: CoinPaymentStatus;
+};
+
+export const VersionedHostCoinPaymentDeletePurseItem: S.Codec<VersionedHostCoinPaymentDeletePurseItem> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentDeletePurseItem> =>
+      S.indexedTaggedUnion({ V1: [0, CoinPaymentStatus] as const }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentDeletePurseRequest`]. */
+export type VersionedHostCoinPaymentDeletePurseRequest = {
+  tag: "V1";
+  value: HostCoinPaymentDeletePurseRequest;
+};
+
+export const VersionedHostCoinPaymentDeletePurseRequest: S.Codec<VersionedHostCoinPaymentDeletePurseRequest> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentDeletePurseRequest> =>
+      S.indexedTaggedUnion({
+        V1: [0, HostCoinPaymentDeletePurseRequest] as const,
+      }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentDepositError`]. */
+export type VersionedHostCoinPaymentDepositError = {
+  tag: "V1";
+  value: HostCoinPaymentDepositError;
+};
+
+export const VersionedHostCoinPaymentDepositError: S.Codec<VersionedHostCoinPaymentDepositError> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentDepositError> =>
+      S.indexedTaggedUnion({ V1: [0, HostCoinPaymentDepositError] as const }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentDepositItem`]. */
+export type VersionedHostCoinPaymentDepositItem = {
+  tag: "V1";
+  value: CoinPaymentStatus;
+};
+
+export const VersionedHostCoinPaymentDepositItem: S.Codec<VersionedHostCoinPaymentDepositItem> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentDepositItem> =>
+      S.indexedTaggedUnion({ V1: [0, CoinPaymentStatus] as const }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentDepositRequest`]. */
+export type VersionedHostCoinPaymentDepositRequest = {
+  tag: "V1";
+  value: HostCoinPaymentDepositRequest;
+};
+
+export const VersionedHostCoinPaymentDepositRequest: S.Codec<VersionedHostCoinPaymentDepositRequest> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentDepositRequest> =>
+      S.indexedTaggedUnion({ V1: [0, HostCoinPaymentDepositRequest] as const }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentListenForError`]. */
+export type VersionedHostCoinPaymentListenForError = {
+  tag: "V1";
+  value: HostCoinPaymentListenForError;
+};
+
+export const VersionedHostCoinPaymentListenForError: S.Codec<VersionedHostCoinPaymentListenForError> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentListenForError> =>
+      S.indexedTaggedUnion({ V1: [0, HostCoinPaymentListenForError] as const }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentListenForItem`]. */
+export type VersionedHostCoinPaymentListenForItem = {
+  tag: "V1";
+  value: HostCoinPaymentListenForItem;
+};
+
+export const VersionedHostCoinPaymentListenForItem: S.Codec<VersionedHostCoinPaymentListenForItem> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentListenForItem> =>
+      S.indexedTaggedUnion({ V1: [0, HostCoinPaymentListenForItem] as const }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentListenForRequest`]. */
+export type VersionedHostCoinPaymentListenForRequest = {
+  tag: "V1";
+  value: HostCoinPaymentListenForRequest;
+};
+
+export const VersionedHostCoinPaymentListenForRequest: S.Codec<VersionedHostCoinPaymentListenForRequest> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentListenForRequest> =>
+      S.indexedTaggedUnion({
+        V1: [0, HostCoinPaymentListenForRequest] as const,
+      }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentQueryPurseError`]. */
+export type VersionedHostCoinPaymentQueryPurseError = {
+  tag: "V1";
+  value: HostCoinPaymentQueryPurseError;
+};
+
+export const VersionedHostCoinPaymentQueryPurseError: S.Codec<VersionedHostCoinPaymentQueryPurseError> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentQueryPurseError> =>
+      S.indexedTaggedUnion({
+        V1: [0, HostCoinPaymentQueryPurseError] as const,
+      }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentQueryPurseRequest`]. */
+export type VersionedHostCoinPaymentQueryPurseRequest = {
+  tag: "V1";
+  value: HostCoinPaymentQueryPurseRequest;
+};
+
+export const VersionedHostCoinPaymentQueryPurseRequest: S.Codec<VersionedHostCoinPaymentQueryPurseRequest> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentQueryPurseRequest> =>
+      S.indexedTaggedUnion({
+        V1: [0, HostCoinPaymentQueryPurseRequest] as const,
+      }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentQueryPurseResponse`]. */
+export type VersionedHostCoinPaymentQueryPurseResponse = {
+  tag: "V1";
+  value: HostCoinPaymentQueryPurseResponse;
+};
+
+export const VersionedHostCoinPaymentQueryPurseResponse: S.Codec<VersionedHostCoinPaymentQueryPurseResponse> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentQueryPurseResponse> =>
+      S.indexedTaggedUnion({
+        V1: [0, HostCoinPaymentQueryPurseResponse] as const,
+      }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentRebalancePurseError`]. */
+export type VersionedHostCoinPaymentRebalancePurseError = {
+  tag: "V1";
+  value: HostCoinPaymentRebalancePurseError;
+};
+
+export const VersionedHostCoinPaymentRebalancePurseError: S.Codec<VersionedHostCoinPaymentRebalancePurseError> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentRebalancePurseError> =>
+      S.indexedTaggedUnion({
+        V1: [0, HostCoinPaymentRebalancePurseError] as const,
+      }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentRebalancePurseItem`]. */
+export type VersionedHostCoinPaymentRebalancePurseItem = {
+  tag: "V1";
+  value: CoinPaymentStatus;
+};
+
+export const VersionedHostCoinPaymentRebalancePurseItem: S.Codec<VersionedHostCoinPaymentRebalancePurseItem> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentRebalancePurseItem> =>
+      S.indexedTaggedUnion({ V1: [0, CoinPaymentStatus] as const }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentRebalancePurseRequest`]. */
+export type VersionedHostCoinPaymentRebalancePurseRequest = {
+  tag: "V1";
+  value: HostCoinPaymentRebalancePurseRequest;
+};
+
+export const VersionedHostCoinPaymentRebalancePurseRequest: S.Codec<VersionedHostCoinPaymentRebalancePurseRequest> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentRebalancePurseRequest> =>
+      S.indexedTaggedUnion({
+        V1: [0, HostCoinPaymentRebalancePurseRequest] as const,
+      }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentRefundError`]. */
+export type VersionedHostCoinPaymentRefundError = {
+  tag: "V1";
+  value: HostCoinPaymentRefundError;
+};
+
+export const VersionedHostCoinPaymentRefundError: S.Codec<VersionedHostCoinPaymentRefundError> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentRefundError> =>
+      S.indexedTaggedUnion({ V1: [0, HostCoinPaymentRefundError] as const }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentRefundItem`]. */
+export type VersionedHostCoinPaymentRefundItem = {
+  tag: "V1";
+  value: CoinPaymentStatus;
+};
+
+export const VersionedHostCoinPaymentRefundItem: S.Codec<VersionedHostCoinPaymentRefundItem> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentRefundItem> =>
+      S.indexedTaggedUnion({ V1: [0, CoinPaymentStatus] as const }),
+  );
+
+/** Versioned envelope for [`HostCoinPaymentRefundRequest`]. */
+export type VersionedHostCoinPaymentRefundRequest = {
+  tag: "V1";
+  value: HostCoinPaymentRefundRequest;
+};
+
+export const VersionedHostCoinPaymentRefundRequest: S.Codec<VersionedHostCoinPaymentRefundRequest> =
+  S.lazy(
+    (): S.Codec<VersionedHostCoinPaymentRefundRequest> =>
+      S.indexedTaggedUnion({ V1: [0, HostCoinPaymentRefundRequest] as const }),
   );
 
 /** Versioned envelope for [`HostCreateTransactionError`]. */
@@ -1380,13 +1982,15 @@ export const VersionedHostPaymentBalanceSubscribeItem: S.Codec<VersionedHostPaym
 /** Versioned envelope for [`HostPaymentBalanceSubscribeRequest`]. */
 export type VersionedHostPaymentBalanceSubscribeRequest = {
   tag: "V1";
-  value: undefined;
+  value: HostPaymentBalanceSubscribeRequest;
 };
 
 export const VersionedHostPaymentBalanceSubscribeRequest: S.Codec<VersionedHostPaymentBalanceSubscribeRequest> =
   S.lazy(
     (): S.Codec<VersionedHostPaymentBalanceSubscribeRequest> =>
-      S.indexedTaggedUnion({ V1: [0, S._void] as const }),
+      S.indexedTaggedUnion({
+        V1: [0, HostPaymentBalanceSubscribeRequest] as const,
+      }),
   );
 
 /** Versioned envelope for [`HostPaymentRequestError`]. */
@@ -1831,6 +2435,19 @@ export const OperationStartedResult: S.Codec<OperationStartedResult> = S.lazy(
 );
 
 /**
+ * Optional RFC 0017 purse selector for RFC 0006 payment operations.
+ *
+ * `None` selects the ordinary user-owned main purse. `Some(purse)` selects a
+ * specific CoinPayment purse when the calling product is authorized to access
+ * it.
+ */
+export type PaymentPurse = PurseId | undefined;
+
+export const PaymentPurse: S.Codec<PaymentPurse> = S.lazy(
+  (): S.Codec<PaymentPurse> => S.Option(PurseId),
+);
+
+/**
  * Source for a payment top-up operation.
  *
  * See [RFC 0006].
@@ -1925,6 +2542,11 @@ export const VersionedProductChatCustomMessageRenderSubscribeRequest: S.Codec<Ve
         V1: [0, ProductChatCustomMessageRenderSubscribeRequest] as const,
       }),
   );
+
+/** CoinPayment purse identifier. */
+export type PurseId = number;
+
+export const PurseId: S.Codec<PurseId> = S.lazy((): S.Codec<PurseId> => S.u32);
 
 /** Raw data to sign -- either binary bytes or a string message. */
 export type RawPayload =
@@ -3430,6 +4052,271 @@ export const HostChatRegisterBotResponse: S.Codec<HostChatRegisterBotResponse> =
       }) as S.Codec<HostChatRegisterBotResponse>,
   );
 
+/** Error from `host_coin_payment_create_cheque`. */
+export type HostCoinPaymentCreateChequeError = CoinPaymentError;
+
+export const HostCoinPaymentCreateChequeError: S.Codec<HostCoinPaymentCreateChequeError> =
+  S.lazy((): S.Codec<HostCoinPaymentCreateChequeError> => CoinPaymentError);
+
+/** Request to create a cheque from a local purse to a receivable. */
+export interface HostCoinPaymentCreateChequeRequest {
+  /** Source purse. */
+  from: CoinPaymentPurseId;
+  /** Destination receivable. */
+  to: CoinPaymentReceivable;
+  /** Payment amount. */
+  amount: CoinPaymentBalance;
+}
+
+export const HostCoinPaymentCreateChequeRequest: S.Codec<HostCoinPaymentCreateChequeRequest> =
+  S.lazy(
+    (): S.Codec<HostCoinPaymentCreateChequeRequest> =>
+      S.Struct({
+        from: CoinPaymentPurseId,
+        to: CoinPaymentReceivable,
+        amount: CoinPaymentBalance,
+      }) as S.Codec<HostCoinPaymentCreateChequeRequest>,
+  );
+
+/** Created cheque response. */
+export interface HostCoinPaymentCreateChequeResponse {
+  /** Encrypted cheque. */
+  cheque: CoinPaymentCheque;
+}
+
+export const HostCoinPaymentCreateChequeResponse: S.Codec<HostCoinPaymentCreateChequeResponse> =
+  S.lazy(
+    (): S.Codec<HostCoinPaymentCreateChequeResponse> =>
+      S.Struct({
+        cheque: CoinPaymentCheque,
+      }) as S.Codec<HostCoinPaymentCreateChequeResponse>,
+  );
+
+/** Error from `host_coin_payment_create_purse`. */
+export type HostCoinPaymentCreatePurseError = CoinPaymentError;
+
+export const HostCoinPaymentCreatePurseError: S.Codec<HostCoinPaymentCreatePurseError> =
+  S.lazy((): S.Codec<HostCoinPaymentCreatePurseError> => CoinPaymentError);
+
+/** Request to create a new firewalled CoinPayment purse. */
+export interface HostCoinPaymentCreatePurseRequest {
+  /** Human-readable purse name. */
+  name: string;
+}
+
+export const HostCoinPaymentCreatePurseRequest: S.Codec<HostCoinPaymentCreatePurseRequest> =
+  S.lazy(
+    (): S.Codec<HostCoinPaymentCreatePurseRequest> =>
+      S.Struct({ name: S.str }) as S.Codec<HostCoinPaymentCreatePurseRequest>,
+  );
+
+/** Created purse identifier. */
+export interface HostCoinPaymentCreatePurseResponse {
+  /** Assigned purse identifier. */
+  purse: CoinPaymentPurseId;
+}
+
+export const HostCoinPaymentCreatePurseResponse: S.Codec<HostCoinPaymentCreatePurseResponse> =
+  S.lazy(
+    (): S.Codec<HostCoinPaymentCreatePurseResponse> =>
+      S.Struct({
+        purse: CoinPaymentPurseId,
+      }) as S.Codec<HostCoinPaymentCreatePurseResponse>,
+  );
+
+/** Error from `host_coin_payment_create_receivable`. */
+export type HostCoinPaymentCreateReceivableError = CoinPaymentError;
+
+export const HostCoinPaymentCreateReceivableError: S.Codec<HostCoinPaymentCreateReceivableError> =
+  S.lazy((): S.Codec<HostCoinPaymentCreateReceivableError> => CoinPaymentError);
+
+/** Request to create a fresh receivable for a purse. */
+export interface HostCoinPaymentCreateReceivableRequest {
+  /** Target purse for future deposits. */
+  into: CoinPaymentPurseId;
+}
+
+export const HostCoinPaymentCreateReceivableRequest: S.Codec<HostCoinPaymentCreateReceivableRequest> =
+  S.lazy(
+    (): S.Codec<HostCoinPaymentCreateReceivableRequest> =>
+      S.Struct({
+        into: CoinPaymentPurseId,
+      }) as S.Codec<HostCoinPaymentCreateReceivableRequest>,
+  );
+
+/** Created receivable response. */
+export interface HostCoinPaymentCreateReceivableResponse {
+  /** Receivable public key. */
+  receivable: CoinPaymentReceivable;
+}
+
+export const HostCoinPaymentCreateReceivableResponse: S.Codec<HostCoinPaymentCreateReceivableResponse> =
+  S.lazy(
+    (): S.Codec<HostCoinPaymentCreateReceivableResponse> =>
+      S.Struct({
+        receivable: CoinPaymentReceivable,
+      }) as S.Codec<HostCoinPaymentCreateReceivableResponse>,
+  );
+
+/** Error from `host_coin_payment_delete_purse`. */
+export type HostCoinPaymentDeletePurseError = CoinPaymentError;
+
+export const HostCoinPaymentDeletePurseError: S.Codec<HostCoinPaymentDeletePurseError> =
+  S.lazy((): S.Codec<HostCoinPaymentDeletePurseError> => CoinPaymentError);
+
+/** Request to delete a purse after draining its balance. */
+export interface HostCoinPaymentDeletePurseRequest {
+  /** Purse to delete. */
+  target: CoinPaymentPurseId;
+  /** Purse that receives drained funds. */
+  drainInto: CoinPaymentPurseId;
+}
+
+export const HostCoinPaymentDeletePurseRequest: S.Codec<HostCoinPaymentDeletePurseRequest> =
+  S.lazy(
+    (): S.Codec<HostCoinPaymentDeletePurseRequest> =>
+      S.Struct({
+        target: CoinPaymentPurseId,
+        drainInto: CoinPaymentPurseId,
+      }) as S.Codec<HostCoinPaymentDeletePurseRequest>,
+  );
+
+/** Error from `host_coin_payment_deposit`. */
+export type HostCoinPaymentDepositError = CoinPaymentError;
+
+export const HostCoinPaymentDepositError: S.Codec<HostCoinPaymentDepositError> =
+  S.lazy((): S.Codec<HostCoinPaymentDepositError> => CoinPaymentError);
+
+/** Request to deposit a cheque into the purse associated with its receivable. */
+export interface HostCoinPaymentDepositRequest {
+  /** Cheque to deposit. */
+  cheque: CoinPaymentCheque;
+}
+
+export const HostCoinPaymentDepositRequest: S.Codec<HostCoinPaymentDepositRequest> =
+  S.lazy(
+    (): S.Codec<HostCoinPaymentDepositRequest> =>
+      S.Struct({
+        cheque: CoinPaymentCheque,
+      }) as S.Codec<HostCoinPaymentDepositRequest>,
+  );
+
+/** Error from `host_coin_payment_listen_for`. */
+export type HostCoinPaymentListenForError = CoinPaymentError;
+
+export const HostCoinPaymentListenForError: S.Codec<HostCoinPaymentListenForError> =
+  S.lazy((): S.Codec<HostCoinPaymentListenForError> => CoinPaymentError);
+
+/** Stream item for `host_coin_payment_listen_for`. */
+export type HostCoinPaymentListenForItem =
+  /** Handoff channel suitable for inclusion in an invoice. */
+  | { tag: "Channel"; value: CoinPaymentTransmissionChannel }
+  /** Cheque received through the handoff channel. */
+  | { tag: "Cheque"; value: CoinPaymentCheque };
+
+export const HostCoinPaymentListenForItem: S.Codec<HostCoinPaymentListenForItem> =
+  S.lazy(
+    (): S.Codec<HostCoinPaymentListenForItem> =>
+      S.Enum({
+        Channel: CoinPaymentTransmissionChannel,
+        Cheque: CoinPaymentCheque,
+      }),
+  );
+
+/** Request to listen for a cheque delivered to a receivable. */
+export interface HostCoinPaymentListenForRequest {
+  /** Receivable to listen for. */
+  receivable: CoinPaymentReceivable;
+}
+
+export const HostCoinPaymentListenForRequest: S.Codec<HostCoinPaymentListenForRequest> =
+  S.lazy(
+    (): S.Codec<HostCoinPaymentListenForRequest> =>
+      S.Struct({
+        receivable: CoinPaymentReceivable,
+      }) as S.Codec<HostCoinPaymentListenForRequest>,
+  );
+
+/** Error from `host_coin_payment_query_purse`. */
+export type HostCoinPaymentQueryPurseError = CoinPaymentError;
+
+export const HostCoinPaymentQueryPurseError: S.Codec<HostCoinPaymentQueryPurseError> =
+  S.lazy((): S.Codec<HostCoinPaymentQueryPurseError> => CoinPaymentError);
+
+/** Request to query product-visible purse metadata. */
+export interface HostCoinPaymentQueryPurseRequest {
+  /** Purse to query. */
+  purse: CoinPaymentPurseId;
+}
+
+export const HostCoinPaymentQueryPurseRequest: S.Codec<HostCoinPaymentQueryPurseRequest> =
+  S.lazy(
+    (): S.Codec<HostCoinPaymentQueryPurseRequest> =>
+      S.Struct({
+        purse: CoinPaymentPurseId,
+      }) as S.Codec<HostCoinPaymentQueryPurseRequest>,
+  );
+
+/** Product-visible purse metadata response. */
+export interface HostCoinPaymentQueryPurseResponse {
+  /** Purse information. */
+  info: CoinPaymentPurseInfo;
+}
+
+export const HostCoinPaymentQueryPurseResponse: S.Codec<HostCoinPaymentQueryPurseResponse> =
+  S.lazy(
+    (): S.Codec<HostCoinPaymentQueryPurseResponse> =>
+      S.Struct({
+        info: CoinPaymentPurseInfo,
+      }) as S.Codec<HostCoinPaymentQueryPurseResponse>,
+  );
+
+/** Error from `host_coin_payment_rebalance_purse`. */
+export type HostCoinPaymentRebalancePurseError = CoinPaymentError;
+
+export const HostCoinPaymentRebalancePurseError: S.Codec<HostCoinPaymentRebalancePurseError> =
+  S.lazy((): S.Codec<HostCoinPaymentRebalancePurseError> => CoinPaymentError);
+
+/** Request to transfer balance between local purses. */
+export interface HostCoinPaymentRebalancePurseRequest {
+  /** Source purse. */
+  from: CoinPaymentPurseId;
+  /** Destination purse. */
+  to: CoinPaymentPurseId;
+  /** Amount to move. */
+  amount: CoinPaymentBalance;
+}
+
+export const HostCoinPaymentRebalancePurseRequest: S.Codec<HostCoinPaymentRebalancePurseRequest> =
+  S.lazy(
+    (): S.Codec<HostCoinPaymentRebalancePurseRequest> =>
+      S.Struct({
+        from: CoinPaymentPurseId,
+        to: CoinPaymentPurseId,
+        amount: CoinPaymentBalance,
+      }) as S.Codec<HostCoinPaymentRebalancePurseRequest>,
+  );
+
+/** Error from `host_coin_payment_refund`. */
+export type HostCoinPaymentRefundError = CoinPaymentError;
+
+export const HostCoinPaymentRefundError: S.Codec<HostCoinPaymentRefundError> =
+  S.lazy((): S.Codec<HostCoinPaymentRefundError> => CoinPaymentError);
+
+/** Request to refund coins associated with a receivable. */
+export interface HostCoinPaymentRefundRequest {
+  /** Receivable to refund. */
+  receivable: CoinPaymentReceivable;
+}
+
+export const HostCoinPaymentRefundRequest: S.Codec<HostCoinPaymentRefundRequest> =
+  S.lazy(
+    (): S.Codec<HostCoinPaymentRefundRequest> =>
+      S.Struct({
+        receivable: CoinPaymentReceivable,
+      }) as S.Codec<HostCoinPaymentRefundRequest>,
+  );
+
 /** Transaction creation error. */
 export type HostCreateTransactionError =
   /** Payload could not be deserialized. */
@@ -3892,6 +4779,20 @@ export const HostPaymentBalanceSubscribeItem: S.Codec<HostPaymentBalanceSubscrib
       }) as S.Codec<HostPaymentBalanceSubscribeItem>,
   );
 
+/** Request to subscribe to payment balance updates. */
+export interface HostPaymentBalanceSubscribeRequest {
+  /** Optional purse selector. `None` means MAIN_PURSE. */
+  purse: PaymentPurse;
+}
+
+export const HostPaymentBalanceSubscribeRequest: S.Codec<HostPaymentBalanceSubscribeRequest> =
+  S.lazy(
+    (): S.Codec<HostPaymentBalanceSubscribeRequest> =>
+      S.Struct({
+        purse: PaymentPurse,
+      }) as S.Codec<HostPaymentBalanceSubscribeRequest>,
+  );
+
 /**
  * Error from [`crate::api::Payment::host_payment_request`].
  *
@@ -3918,6 +4819,8 @@ export const HostPaymentRequestError: S.Codec<HostPaymentRequestError> = S.lazy(
 
 /** Request to initiate a payment to another account. */
 export interface HostPaymentRequestRequest {
+  /** Optional purse selector. `None` means MAIN_PURSE. */
+  from: PaymentPurse;
   /** Amount to pay. */
   amount: Balance;
   /** Destination account. */
@@ -3928,6 +4831,7 @@ export const HostPaymentRequestRequest: S.Codec<HostPaymentRequestRequest> =
   S.lazy(
     (): S.Codec<HostPaymentRequestRequest> =>
       S.Struct({
+        from: PaymentPurse,
         amount: Balance,
         destination: S.Hex(32),
       }) as S.Codec<HostPaymentRequestRequest>,
@@ -4041,6 +4945,8 @@ export const HostPaymentTopUpError: S.Codec<HostPaymentTopUpError> = S.lazy(
 
 /** Request to top up the product payment balance. */
 export interface HostPaymentTopUpRequest {
+  /** Optional purse selector. `None` means MAIN_PURSE. */
+  into: PaymentPurse;
   /** Amount to top up. */
   amount: Balance;
   /** Funding source for the top-up. */
@@ -4050,6 +4956,7 @@ export interface HostPaymentTopUpRequest {
 export const HostPaymentTopUpRequest: S.Codec<HostPaymentTopUpRequest> = S.lazy(
   (): S.Codec<HostPaymentTopUpRequest> =>
     S.Struct({
+      into: PaymentPurse,
       amount: Balance,
       source: PaymentTopUpSource,
     }) as S.Codec<HostPaymentTopUpRequest>,

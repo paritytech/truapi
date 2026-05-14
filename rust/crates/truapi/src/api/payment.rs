@@ -28,7 +28,9 @@ pub trait Payment: Send + Sync {
     /// } from "@parity/truapi";
     ///
     /// export function watchPaymentBalance(truapi: Client): Subscription {
-    ///   return truapi.payment.paymentBalanceSubscribe().subscribe({
+    ///   return truapi.payment.paymentBalanceSubscribe({
+    ///     request: { purse: null },
+    ///   }).subscribe({
     ///     next: (balance: HostPaymentBalanceSubscribeItem) =>
     ///       console.log(balance),
     ///     error: (error: SubscriptionError<HostPaymentBalanceSubscribeError>) =>
@@ -61,6 +63,7 @@ pub trait Payment: Send + Sync {
     ///   truapi: Client,
     /// ): Promise<HostPaymentRequestResponse> {
     ///   const result = await truapi.payment.paymentRequest({
+    ///     from: null,
     ///     amount: 1000000000000n,
     ///     destination: "0x0000000000000000000000000000000000000000000000000000000000000000",
     ///   });
@@ -122,6 +125,7 @@ pub trait Payment: Send + Sync {
     ///
     /// export async function topUpPaymentBalance(truapi: Client): Promise<void> {
     ///   const result = await truapi.payment.paymentTopUp({
+    ///     into: null,
     ///     amount: 1000000000000n,
     ///     source: { tag: "ProductAccount", value: { derivationIndex: 0 } },
     ///   });

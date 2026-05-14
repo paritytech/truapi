@@ -6,6 +6,7 @@ export async function requestPayment(
   truapi: Client,
 ): Promise<HostPaymentRequestResponse> {
   const result = await truapi.payment.paymentRequest({
+    from: null,
     amount: 1000000000000n,
     destination:
       "0x0000000000000000000000000000000000000000000000000000000000000000",

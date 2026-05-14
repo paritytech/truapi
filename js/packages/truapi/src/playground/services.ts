@@ -426,7 +426,8 @@ export const services: ServiceInfo[] = [
         name: "host_payment_balance_subscribe",
         type: "subscription",
         description: "Subscribe to payment balance updates.",
-        noParams: true,
+        requestDescription: "HostPaymentBalanceSubscribeRequest",
+        defaultRequest: '{\n  "purse": null\n}',
       },
       {
         name: "host_payment_top_up",
@@ -434,7 +435,7 @@ export const services: ServiceInfo[] = [
         description: "Top up the user's payment balance.",
         requestDescription: "HostPaymentTopUpRequest",
         defaultRequest:
-          '{\n  "amount": "1000000000000n",\n  "source": {\n    "tag": "ProductAccount",\n    "value": {\n      "derivationIndex": 0\n    }\n  }\n}',
+          '{\n  "amount": "1000000000000n",\n  "into": null,\n  "source": {\n    "tag": "ProductAccount",\n    "value": {\n      "derivationIndex": 0\n    }\n  }\n}',
       },
       {
         name: "host_payment_request",
@@ -442,7 +443,7 @@ export const services: ServiceInfo[] = [
         description: "Request a payment from the user.",
         requestDescription: "HostPaymentRequestRequest",
         defaultRequest:
-          '{\n  "amount": "1000000000000n",\n  "destination": "0x0000000000000000000000000000000000000000000000000000000000000000"\n}',
+          '{\n  "amount": "1000000000000n",\n  "destination": "0x0000000000000000000000000000000000000000000000000000000000000000",\n  "from": null\n}',
       },
       {
         name: "host_payment_status_subscribe",

@@ -859,12 +859,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Payment",
         wireId: 118,
         pattern: "subscription",
-        request: "undefined",
+        request: "HostPaymentBalanceSubscribeRequest",
         response: "HostPaymentBalanceSubscribeItem",
         errorType: "HostPaymentBalanceSubscribeError",
         description: "Subscribe to payment balance updates.",
         usageExample:
-          'import {\n  type Client,\n  type HostPaymentBalanceSubscribeError,\n  type HostPaymentBalanceSubscribeItem,\n  type Subscription,\n  type SubscriptionError,\n} from "@parity/truapi";\n\nexport function watchPaymentBalance(truapi: Client): Subscription {\n  return truapi.payment.paymentBalanceSubscribe().subscribe({\n    next: (balance: HostPaymentBalanceSubscribeItem) =>\n      console.log(balance),\n    error: (error: SubscriptionError<HostPaymentBalanceSubscribeError>) =>\n      console.error(error),\n    complete: () => console.log("completed"),\n  });\n}',
+          'import {\n  type Client,\n  type HostPaymentBalanceSubscribeError,\n  type HostPaymentBalanceSubscribeItem,\n  type Subscription,\n  type SubscriptionError,\n} from "@parity/truapi";\n\nexport function watchPaymentBalance(truapi: Client): Subscription {\n  return truapi.payment.paymentBalanceSubscribe({\n    request: { purse: null },\n  }).subscribe({\n    next: (balance: HostPaymentBalanceSubscribeItem) =>\n      console.log(balance),\n    error: (error: SubscriptionError<HostPaymentBalanceSubscribeError>) =>\n      console.error(error),\n    complete: () => console.log("completed"),\n  });\n}',
       },
       {
         id: "host_payment_top_up",
@@ -878,7 +878,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostPaymentTopUpError",
         description: "Top up the user's payment balance.",
         usageExample:
-          'import { type Client } from "@parity/truapi";\n\nexport async function topUpPaymentBalance(truapi: Client): Promise<void> {\n  const result = await truapi.payment.paymentTopUp({\n    amount: 1000000000000n,\n    source: { tag: "ProductAccount", value: { derivationIndex: 0 } },\n  });\n\n  if (result.isErr()) throw result.error;\n}',
+          'import { type Client } from "@parity/truapi";\n\nexport async function topUpPaymentBalance(truapi: Client): Promise<void> {\n  const result = await truapi.payment.paymentTopUp({\n    into: null,\n    amount: 1000000000000n,\n    source: { tag: "ProductAccount", value: { derivationIndex: 0 } },\n  });\n\n  if (result.isErr()) throw result.error;\n}',
       },
       {
         id: "host_payment_request",
@@ -892,7 +892,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostPaymentRequestError",
         description: "Request a payment from the user.",
         usageExample:
-          'import {\n  type Client,\n  type HostPaymentRequestResponse,\n} from "@parity/truapi";\n\nexport async function requestPayment(\n  truapi: Client,\n): Promise<HostPaymentRequestResponse> {\n  const result = await truapi.payment.paymentRequest({\n    amount: 1000000000000n,\n    destination: "0x0000000000000000000000000000000000000000000000000000000000000000",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostPaymentRequestResponse,\n} from "@parity/truapi";\n\nexport async function requestPayment(\n  truapi: Client,\n): Promise<HostPaymentRequestResponse> {\n  const result = await truapi.payment.paymentRequest({\n    from: null,\n    amount: 1000000000000n,\n    destination: "0x0000000000000000000000000000000000000000000000000000000000000000",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_payment_status_subscribe",
@@ -2700,6 +2700,22 @@ export const versions: ExplorerVersion[] = [
         ],
       },
       {
+        id: "HostPaymentBalanceSubscribeRequest",
+        name: "HostPaymentBalanceSubscribeRequest",
+        category: "struct",
+        definition:
+          "interface HostPaymentBalanceSubscribeRequest { purse: PaymentPurse }",
+        description: "Request to subscribe to payment balance updates.",
+        source: "v1",
+        fields: [
+          {
+            name: "purse",
+            type: "PaymentPurse",
+            description: "Optional purse selector. `None` means MAIN_PURSE.",
+          },
+        ],
+      },
+      {
         id: "HostPaymentRequestError",
         name: "HostPaymentRequestError",
         category: "enum",
@@ -2732,10 +2748,15 @@ export const versions: ExplorerVersion[] = [
         name: "HostPaymentRequestRequest",
         category: "struct",
         definition:
-          "interface HostPaymentRequestRequest { amount: Balance; destination: HexString }",
+          "interface HostPaymentRequestRequest { from: PaymentPurse; amount: Balance; destination: HexString }",
         description: "Request to initiate a payment to another account.",
         source: "v1",
         fields: [
+          {
+            name: "from",
+            type: "PaymentPurse",
+            description: "Optional purse selector. `None` means MAIN_PURSE.",
+          },
           {
             name: "amount",
             type: "Balance",
@@ -2862,10 +2883,15 @@ export const versions: ExplorerVersion[] = [
         name: "HostPaymentTopUpRequest",
         category: "struct",
         definition:
-          "interface HostPaymentTopUpRequest { amount: Balance; source: PaymentTopUpSource }",
+          "interface HostPaymentTopUpRequest { into: PaymentPurse; amount: Balance; source: PaymentTopUpSource }",
         description: "Request to top up the product payment balance.",
         source: "v1",
         fields: [
+          {
+            name: "into",
+            type: "PaymentPurse",
+            description: "Optional purse selector. `None` means MAIN_PURSE.",
+          },
           {
             name: "amount",
             type: "Balance",
@@ -3251,6 +3277,15 @@ export const versions: ExplorerVersion[] = [
         ],
       },
       {
+        id: "PaymentPurse",
+        name: "PaymentPurse",
+        category: "alias",
+        definition: "type PaymentPurse = PurseId | undefined",
+        description:
+          "Optional RFC 0017 purse selector for RFC 0006 payment operations.\n\n`None` selects the ordinary user-owned main purse. `Some(purse)` selects a\nspecific CoinPayment purse when the calling product is authorized to access\nit.",
+        source: "shared",
+      },
+      {
         id: "PaymentTopUpSource",
         name: "PaymentTopUpSource",
         category: "enum",
@@ -3355,6 +3390,14 @@ export const versions: ExplorerVersion[] = [
             description: "Binary payload.",
           },
         ],
+      },
+      {
+        id: "PurseId",
+        name: "PurseId",
+        category: "alias",
+        definition: "type PurseId = number",
+        description: "CoinPayment purse identifier.",
+        source: "shared",
       },
       {
         id: "RawPayload",
