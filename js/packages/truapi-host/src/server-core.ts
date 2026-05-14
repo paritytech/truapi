@@ -19,31 +19,6 @@ export interface CallContext {
 }
 
 /**
- * Sink handed to subscription handlers. Encoders for the item and
- * (optional) interrupt payload are baked in by the generator; handlers
- * supply already-typed values.
- **/
-export interface SubscriptionSink<Item, Reason = never> {
-  /**
-   * Emit one subscription item to the client.
-   **/
-  send(item: Item): void;
-
-  /**
-   * Interrupt the subscription with a typed reason. Only available for
-   * methods declared as `ResultSubscription` (typed interrupt payload).
-   **/
-  interrupt(reason: Reason): void;
-
-  /**
-   * `true` once the subscription has been torn down (either by a `stop`
-   * frame from the client, an `interrupt` from the host, or transport
-   * close). Handlers may inspect this to short-circuit work.
-   **/
-  readonly isClosed: boolean;
-}
-
-/**
  * Cleanup function returned by a subscription handler. Invoked when the
  * client stops the subscription, when the handler interrupts it, or when
  * the underlying provider closes.
@@ -67,15 +42,17 @@ export interface RequestEntry {
 }
 
 /**
- * Handler entry for a subscription method.
+ * Handler entry for a subscription method. The generator subscribes to
+ * the handler's `ObservableLike` inside `start` and bridges the resulting
+ * `Observer` callbacks to wire frames through `SubscriptionFramePort`.
  **/
 export interface SubscriptionEntry {
   readonly kind: "subscription";
   readonly ids: SubscriptionFrameIds;
 
   /**
-   * Decode the inbound start payload, build a `SubscriptionSink` bound
-   * to this requestId, run the handler, and return a cleanup function.
+   * Decode the inbound start payload, subscribe to the handler's
+   * observable, and return a cleanup function.
    **/
   start(
     payload: Uint8Array,

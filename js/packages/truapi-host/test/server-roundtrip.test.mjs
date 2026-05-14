@@ -110,7 +110,8 @@ function makeStubHandlers(partial) {
             };
           };
         }
-        if (prop === "connectionStatusSubscribe") return () => () => {};
+        if (prop === "connectionStatusSubscribe")
+          return () => ({ subscribe: () => ({ unsubscribe: () => {}, subscriptionId: "" }) });
         return async () => {
           throw new Error(`unimplemented account stub: ${String(prop)}`);
         };
@@ -138,5 +139,69 @@ function makeStubHandlers(partial) {
   server.dispose();
   transport.dispose();
 }
+
+// Subscription round-trip: handler returns an ObservableLike; client receives
+// items via the standard `subscribe({next, complete})` shape on its side. The
+// host emits one item then calls `observer.complete()` to terminate.
+await new Promise((resolveTest, rejectTest) => {
+  const { a, b } = makeProviderPair();
+  const transport = createTransport(a);
+  const client = createClient(transport);
+
+  let lastSent;
+  const accountStub = new Proxy(
+    {},
+    {
+      get(_, prop) {
+        if (prop === "connectionStatusSubscribe") {
+          return (ctx) => {
+            assert.equal(typeof ctx.requestId, "string");
+            return {
+              subscribe(observer) {
+                const item = { tag: "V1", value: "Connected" };
+                lastSent = item;
+                queueMicrotask(() => {
+                  observer.next?.(item);
+                  queueMicrotask(() => observer.complete?.());
+                });
+                return { unsubscribe: () => {}, subscriptionId: "" };
+              },
+            };
+          };
+        }
+        return async () => {
+          throw new Error(`unimplemented account stub: ${String(prop)}`);
+        };
+      },
+    },
+  );
+
+  const server = createTrUApiServer(b, makeStubHandlers({ account: accountStub }));
+
+  const received = [];
+  client.account.connectionStatusSubscribe().subscribe({
+    next(value) {
+      received.push(value);
+    },
+    error(error) {
+      server.dispose();
+      transport.dispose();
+      rejectTest(new Error(`unexpected error: ${error.message}`));
+    },
+    complete() {
+      try {
+        assert.equal(received.length, 1);
+        assert.deepEqual(received[0], lastSent.value);
+        server.dispose();
+        transport.dispose();
+        resolveTest();
+      } catch (error) {
+        server.dispose();
+        transport.dispose();
+        rejectTest(error);
+      }
+    },
+  });
+});
 
 console.log("server-roundtrip: ok");

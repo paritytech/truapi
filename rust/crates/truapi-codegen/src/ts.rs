@@ -2043,22 +2043,27 @@ fn generate_host_server(api: &ApiDefinition, target_version: u32) -> Result<Stri
         import * as S from '@parity/truapi/scale';
         import * as T from '@parity/truapi';
         import * as W from '@parity/truapi/wire-table';
-        import type {{ HexString, Provider }} from '@parity/truapi';
+        import type {{
+          HexString,
+          ObservableLike,
+          Observer,
+          Provider,
+          Subscription,
+        }} from '@parity/truapi';
         import {{
           createHostServer,
           type CallContext,
           type HostDispatchEntry,
           type HostServerHooks,
-          type SubscriptionCleanup,
-          type SubscriptionSink,
           type TrUApiHostServer,
         }} from '../server-core.js';
 
         export type {{
           CallContext,
           HostServerHooks,
-          SubscriptionCleanup,
-          SubscriptionSink,
+          ObservableLike,
+          Observer,
+          Subscription,
           TrUApiHostServer,
         }};
 
@@ -2221,7 +2226,7 @@ fn emit_host_handler_signature(
             let response = emit_response(ty, wrappers, ctx, wire_version)?;
             writeln!(
                 out,
-                "  {ts_method_name}(ctx: CallContext{request_param}, sink: SubscriptionSink<{item_type}>): Promise<SubscriptionCleanup> | SubscriptionCleanup;",
+                "  {ts_method_name}(ctx: CallContext{request_param}): ObservableLike<{item_type}>;",
                 item_type = response.wire_type_ts,
             )
             .unwrap();
@@ -2231,7 +2236,7 @@ fn emit_host_handler_signature(
             let error = emit_error_response(err, wrappers, ctx, wire_version)?;
             writeln!(
                 out,
-                "  {ts_method_name}(ctx: CallContext{request_param}, sink: SubscriptionSink<{item_type}, {reason_type}>): Promise<SubscriptionCleanup> | SubscriptionCleanup;",
+                "  {ts_method_name}(ctx: CallContext{request_param}): ObservableLike<{item_type}, {reason_type}>;",
                 item_type = response.wire_type_ts,
                 reason_type = error.wire_type_ts,
             )
@@ -2310,9 +2315,16 @@ fn emit_host_entry(
         (MethodKind::Subscription, ReturnType::Subscription(ty)) => {
             let response = emit_response(ty, wrappers, ctx, wire_version)?;
             let call_args = if has_request_param {
-                "ctx, request, sink"
+                "ctx, request"
             } else {
-                "ctx, sink"
+                "ctx"
+            };
+            let (interrupt_codec, interrupt_value) = match wire_version {
+                Some(version) => (
+                    indexed_versioned_codec_expr([(version, "S._void".to_string())])?,
+                    format!("{{ tag: 'V{version}' as const, value: undefined }}"),
+                ),
+                None => ("S._void".to_string(), "undefined".to_string()),
             };
             writedoc!(
                 out,
@@ -2322,16 +2334,14 @@ fn emit_host_entry(
                       ids: W.{wire_const},
                       start(bytes, ctx, port) {{
                         {request_decode_stmt}
-                        const sink: SubscriptionSink<{item_type}> = {{
-                          send(item) {{ port.sendReceive({item_codec}.enc(item)); }},
-                          interrupt() {{ /* untyped interrupt is not supported for this method */ }},
-                          get isClosed() {{ return port.isClosed; }},
-                        }};
-                        return handlers.{ts_method_name}({call_args});
+                        const sub = handlers.{ts_method_name}({call_args}).subscribe({{
+                          next(item) {{ if (!port.isClosed) port.sendReceive({item_codec}.enc(item)); }},
+                          complete() {{ if (!port.isClosed) port.sendInterrupt({interrupt_codec}.enc({interrupt_value})); }},
+                        }});
+                        return () => sub.unsubscribe();
                       }},
                     }},
                 ",
-                item_type = response.wire_type_ts,
                 item_codec = response.wire_codec_expr,
             )
             .unwrap();
@@ -2340,9 +2350,9 @@ fn emit_host_entry(
             let response = emit_response(item, wrappers, ctx, wire_version)?;
             let error = emit_error_response(err, wrappers, ctx, wire_version)?;
             let call_args = if has_request_param {
-                "ctx, request, sink"
+                "ctx, request"
             } else {
-                "ctx, sink"
+                "ctx"
             };
             writedoc!(
                 out,
@@ -2352,17 +2362,14 @@ fn emit_host_entry(
                       ids: W.{wire_const},
                       start(bytes, ctx, port) {{
                         {request_decode_stmt}
-                        const sink: SubscriptionSink<{item_type}, {reason_type}> = {{
-                          send(item) {{ port.sendReceive({item_codec}.enc(item)); }},
-                          interrupt(reason) {{ port.sendInterrupt({interrupt_codec}.enc(reason)); }},
-                          get isClosed() {{ return port.isClosed; }},
-                        }};
-                        return handlers.{ts_method_name}({call_args});
+                        const sub = handlers.{ts_method_name}({call_args}).subscribe({{
+                          next(item) {{ if (!port.isClosed) port.sendReceive({item_codec}.enc(item)); }},
+                          error(err) {{ if (err.reason !== undefined && !port.isClosed) port.sendInterrupt({interrupt_codec}.enc(err.reason)); }},
+                        }});
+                        return () => sub.unsubscribe();
                       }},
                     }},
                 ",
-                item_type = response.wire_type_ts,
-                reason_type = error.wire_type_ts,
                 item_codec = response.wire_codec_expr,
                 interrupt_codec = error.wire_codec_expr,
             )

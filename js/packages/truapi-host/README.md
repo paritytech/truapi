@@ -64,43 +64,44 @@ Each handler receives a `CallContext` (carrying the inbound `requestId` so handl
 
 ### Handlers must not throw
 
-Every outcome a handler can produce, including unsupported wire versions, permission denials, backend timeouts, and any other failure mode, must be expressed as a typed error response (the `Err` arm of `S.ResultPayload<Ok, Err>` for requests, or `sink.interrupt(reason)` for `ResultSubscription` streams). The handler's return type is the contract with the client.
+Every outcome a handler can produce, including unsupported wire versions, permission denials, backend timeouts, and any other failure mode, must be expressed as a typed return value (the `Err` arm of `S.ResultPayload<Ok, Err>` for requests, `observer.error?.(new SubscriptionError("...", { reason }))` for `ResultSubscription` streams, `observer.complete?.()` for plain `Subscription` streams).
 
-The dispatcher does install a `HostServerHooks.onRequestHandlerError` hook for defensive purposes (e.g. a `TypeError` from an upstream bug), but if it fires the client sees a hung request, not a typed failure, so treat any invocation of the hook as a programming error to fix at the source, not a normal control-flow path.
-
-The same rule applies to subscription `start` handlers: surface failures through `sink.interrupt(reason)` (when the method supports a typed interrupt) and return the cleanup function; do not throw out of `start`.
+The dispatcher does install `HostServerHooks.onRequestHandlerError` and `onSubscriptionStartError` for defensive purposes (e.g. a `TypeError` from an upstream bug), but if either fires the client sees a hung request or never-started stream, not a typed failure, so treat any invocation as a programming error to fix at the source, not a normal control-flow path.
 
 ## Subscriptions
 
-Subscription handlers receive a `SubscriptionSink` typed against the versioned item wrapper, and return a cleanup function. Wrap each emitted value in the version tag matching the client's request:
+Subscription handlers return an `ObservableLike<Item, Reason>` typed against the versioned item wrapper. The dispatcher subscribes when the start frame arrives, bridges the resulting `Observer` callbacks onto wire frames, and unsubscribes when the client stops the stream (or the transport closes). The shape mirrors what `@parity/truapi` clients receive on the other side.
 
 ```ts
-import type { SubscriptionSink } from "@parity/truapi-host";
+import type { ObservableLike } from "@parity/truapi-host";
 import type { VersionedHostAccountConnectionStatusSubscribeItem } from "@parity/truapi";
 
 const handlers: TrUApiHostHandlers = {
   account: {
     connectionStatusSubscribe(
       ctx,
-      sink: SubscriptionSink<VersionedHostAccountConnectionStatusSubscribeItem>,
-    ) {
-      const unsubscribe = myStore.onStatusChange((status) => {
-        if (!sink.isClosed) sink.send({ tag: "V1", value: status });
-      });
-      return () => unsubscribe();
+    ): ObservableLike<VersionedHostAccountConnectionStatusSubscribeItem> {
+      return {
+        subscribe(observer) {
+          const unsubscribe = myStore.onStatusChange((status) => {
+            observer.next?.({ tag: "V1", value: status });
+          });
+          return { unsubscribe, subscriptionId: "" };
+        },
+      };
     },
     // …
   },
 };
 ```
 
-Methods declared as `ResultSubscription` on the Rust side also expose `sink.interrupt(reason)`, taking the versioned reason wrapper, which emits a typed interrupt frame and tears the subscription down. The dispatcher tracks per-subscription state by inbound `requestId` and invokes the returned cleanup on stop frames, transport close, or interrupt.
+For methods declared as `ResultSubscription` on the Rust side, the returned `ObservableLike<Item, Reason>` carries a typed `Reason`. Emit a typed interrupt by calling `observer.error?.(new SubscriptionError("...", { reason }))` (`SubscriptionError` is re-exported from `@parity/truapi`); the dispatcher pulls the typed reason out and encodes it as the interrupt frame. For plain `Subscription` methods, `observer.complete?.()` ends the stream and emits an untyped interrupt frame on the wire.
 
 ## What's in the package
 
 - **`createTrUApiServer(provider, handlers)` factory** that attaches a typed dispatcher to a `Provider` from `@parity/truapi`.
 - **Generated handler interfaces**, one per service trait (`AccountHostHandlers`, `ChainHostHandlers`, `ChatHostHandlers`, …), composed into `TrUApiHostHandlers`.
-- **`SubscriptionSink`, `CallContext`, and `HostServerHooks` types** for handler signatures, per-call state, and protocol-drift visibility.
+- **`CallContext` and `HostServerHooks` types** plus `ObservableLike` / `Observer` / `Subscription` re-exported from `@parity/truapi` for handler signatures, per-call state, and protocol-drift visibility.
 - **Hand-written `server-core`** that owns the dispatch table, active subscription state, and provider plumbing.
 
 ## Out of scope

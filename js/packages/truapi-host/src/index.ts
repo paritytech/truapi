@@ -6,7 +6,6 @@ export type {
   SubscriptionCleanup,
   SubscriptionEntry,
   SubscriptionFramePort,
-  SubscriptionSink,
   TrUApiHostServer,
 } from "./server-core.js";
 export { createHostServer } from "./server-core.js";
