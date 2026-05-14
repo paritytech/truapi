@@ -35,8 +35,19 @@ const handlers: TrUApiHostHandlers = {
           value: { success: true, value: { account } },
         };
       }
-      // exhaustive over every supported wire version
-      throw new Error(`unsupported version: ${request.tag}`);
+      // The wire version is one this host build doesn't speak. Reply in the
+      // highest version we do speak with the matching error type, which
+      // mirrors the Rust `HostAccountGetError::Unknown { reason }` variant.
+      return {
+        tag: "V1",
+        value: {
+          success: false,
+          value: {
+            tag: "Unknown",
+            value: { reason: `unsupported wire version: ${request.tag}` },
+          },
+        },
+      };
     },
     // …other AccountHostHandlers methods
   },
