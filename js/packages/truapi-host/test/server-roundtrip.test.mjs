@@ -2,10 +2,11 @@
 //
 // Wires a host server and a @parity/truapi client to a shared in-memory
 // provider duo and asserts a request method round-trips, including the
-// versioned envelope wrap/unwrap on both sides.
+// versioned envelope wrap/unwrap on both sides. The host handler is
+// responsible for matching on the request's version tag and returning the
+// versioned response envelope; the dispatcher is a thin SCALE codec wrapper.
 
 import assert from "node:assert/strict";
-import { ok } from "neverthrow";
 
 import { createTransport, createClient } from "../../truapi/src/index.ts";
 import { createTrUApiServer } from "../src/index.ts";
@@ -97,11 +98,16 @@ function makeStubHandlers(partial) {
     {
       get(_, prop) {
         if (prop === "getAccount") {
-          return async (request, ctx) => {
+          return async (ctx, request) => {
             observed = { request, requestId: ctx.requestId };
-            return ok({
-              account: { publicKey: "0x" + "01".repeat(32) },
-            });
+            assert.equal(request.tag, "V1");
+            return {
+              tag: "V1",
+              value: {
+                success: true,
+                value: { account: { publicKey: "0x" + "01".repeat(32) } },
+              },
+            };
           };
         }
         if (prop === "connectionStatusSubscribe") return () => () => {};
@@ -126,7 +132,7 @@ function makeStubHandlers(partial) {
     `expected getAccount to succeed: ${JSON.stringify(result.error ?? null)}`,
   );
   assert.deepEqual(result.value.account.publicKey, "0x" + "01".repeat(32));
-  assert.deepEqual(observed.request, expectedRequest);
+  assert.deepEqual(observed.request, { tag: "V1", value: expectedRequest });
   assert.equal(typeof observed.requestId, "string");
 
   server.dispose();
