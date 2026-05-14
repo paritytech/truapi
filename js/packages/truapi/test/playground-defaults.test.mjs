@@ -5,26 +5,18 @@ import { services } from "../src/playground/codegen/services.ts";
 
 const ENCODED = Symbol("payload encoded");
 
-const serviceFields = {
-  Account: "account",
-  Chain: "chain",
-  Chat: "chat",
-  Entropy: "entropy",
-  "JSON-RPC": "jsonRpc",
-  "Local Storage": "localStorage",
-  Payment: "payment",
-  Permissions: "permissions",
-  Preimage: "preimage",
-  "Resource Allocation": "resourceAllocation",
-  Signing: "signing",
-  "Statement Store": "statementStore",
-  System: "system",
-  Theme: "theme",
-  Transaction: "transaction",
-};
-
 function methodField(methodName) {
   return methodName.replace(/_([a-z])/g, (_, ch) => ch.toUpperCase());
+}
+
+function serviceField(serviceName) {
+  const words = serviceName.match(/[A-Za-z0-9]+/g) ?? [];
+  return words
+    .map((word) => word.toLowerCase())
+    .map((word, index) =>
+      index === 0 ? word : word[0].toUpperCase() + word.slice(1),
+    )
+    .join("");
 }
 
 function normalizeForScale(value) {
@@ -55,9 +47,9 @@ const client = createClient({
 });
 
 for (const service of services) {
-  const serviceField = serviceFields[service.name];
-  assert.ok(serviceField, `missing client service mapping for ${service.name}`);
-  const serviceClient = client[serviceField];
+  const clientField = serviceField(service.name);
+  assert.ok(clientField, `missing client service mapping for ${service.name}`);
+  const serviceClient = client[clientField];
 
   for (const method of service.methods) {
     if (!method.defaultRequest) continue;
