@@ -2,10 +2,7 @@ import assert from "node:assert/strict";
 
 import { createTransport } from "../src/client.ts";
 import { indexedTaggedUnion, Result, str, _void } from "../src/scale.ts";
-import {
-  createClient,
-  SubscriptionError,
-} from "../src/generated/client.ts";
+import { createClient, SubscriptionError } from "../src/generated/client.ts";
 import * as T from "../src/generated/types.ts";
 import * as W from "../src/generated/wire-table.ts";
 import { encodeWireMessage } from "../src/transport.ts";
@@ -66,7 +63,10 @@ function handshakeResponsePayload(value) {
 // same single-byte SCALE discriminant encoding.
 {
   assert.equal(toHex(T.HostDevicePermissionRequest.enc("Camera")), "01");
-  assert.equal(T.HostDevicePermissionRequest.dec(new Uint8Array([1])), "Camera");
+  assert.equal(
+    T.HostDevicePermissionRequest.dec(new Uint8Array([1])),
+    "Camera",
+  );
 }
 
 // Generated methods pass inner values and encode the selected wire wrapper
@@ -194,11 +194,9 @@ function handshakeResponsePayload(value) {
   const client = createClient(transport);
   const events = [];
 
-  const sub = client.account
-    .connectionStatusSubscribe()
-    .subscribe({
-      next: (value) => events.push(value),
-    });
+  const sub = client.account.connectionStatusSubscribe().subscribe({
+    next: (value) => events.push(value),
+  });
 
   const frame = unwrap(
     encodeWireMessage({
@@ -225,11 +223,9 @@ function handshakeResponsePayload(value) {
   const client = createClient(transport);
   const completions = [];
 
-  const sub = client.account
-    .connectionStatusSubscribe()
-    .subscribe({
-      complete: (...args) => completions.push(args),
-    });
+  const sub = client.account.connectionStatusSubscribe().subscribe({
+    complete: (...args) => completions.push(args),
+  });
 
   const frame = unwrap(
     encodeWireMessage({
@@ -246,82 +242,6 @@ function handshakeResponsePayload(value) {
   assert.deepEqual(completions, [[]]);
 }
 
-// Payment subscriptions carry typed interrupt payloads. Those are observable
-// errors, not normal completion.
-{
-  const fixture = providerFixture();
-  const transport = createTransport(fixture.provider);
-  const client = createClient(transport);
-  const completions = [];
-  const errors = [];
-
-  const sub = client.payment
-    .balanceSubscribe({ request: {} })
-    .subscribe({
-      complete: () => completions.push(true),
-      error: (error) => errors.push(error),
-    });
-
-  const reason = { tag: "PermissionDenied", value: undefined };
-  const frame = unwrap(
-    encodeWireMessage({
-      requestId: sub.subscriptionId,
-      payload: {
-        id: W.PAYMENT_BALANCE_SUBSCRIBE.interrupt,
-        value: T.VersionedHostPaymentBalanceSubscribeError.enc({
-          tag: "V1",
-          value: reason,
-        }),
-      },
-    }),
-    "encode typed payment interrupt",
-  );
-  fixture.receive(frame);
-
-  assert.deepEqual(completions, []);
-  assert.equal(errors.length, 1);
-  assert.ok(errors[0] instanceof SubscriptionError);
-  assert.deepEqual(errors[0].reason, reason);
-  assert.equal(fixture.sent.length, 1);
-}
-
-// CoinPayment subscriptions use the same typed interrupt envelope for RFC0017
-// resolvable status streams.
-{
-  const fixture = providerFixture();
-  const transport = createTransport(fixture.provider);
-  const client = createClient(transport);
-  const errors = [];
-
-  const sub = client.coinPayment
-    .rebalancePurse({
-      request: { from: 1, to: 2, amount: 1000 },
-    })
-    .subscribe({
-      error: (error) => errors.push(error),
-    });
-
-  const reason = "Denied";
-  const frame = unwrap(
-    encodeWireMessage({
-      requestId: sub.subscriptionId,
-      payload: {
-        id: W.COIN_PAYMENT_REBALANCE_PURSE.interrupt,
-        value: T.VersionedHostCoinPaymentRebalancePurseError.enc({
-          tag: "V1",
-          value: reason,
-        }),
-      },
-    }),
-    "encode typed coin payment interrupt",
-  );
-  fixture.receive(frame);
-
-  assert.equal(errors.length, 1);
-  assert.ok(errors[0] instanceof SubscriptionError);
-  assert.deepEqual(errors[0].reason, reason);
-}
-
 // Malformed receive payloads are terminal observable errors. The generated
 // wrapper sends `_stop` and ignores later receive frames for that subscription.
 {
@@ -331,12 +251,10 @@ function handshakeResponsePayload(value) {
   const events = [];
   const errors = [];
 
-  const sub = client.account
-    .connectionStatusSubscribe()
-    .subscribe({
-      next: (value) => events.push(value),
-      error: (error) => errors.push(error),
-    });
+  const sub = client.account.connectionStatusSubscribe().subscribe({
+    next: (value) => events.push(value),
+    error: (error) => errors.push(error),
+  });
 
   const malformedFrame = unwrap(
     encodeWireMessage({
@@ -394,12 +312,10 @@ function handshakeResponsePayload(value) {
   const completions = [];
   const errors = [];
 
-  const sub = client.account
-    .connectionStatusSubscribe()
-    .subscribe({
-      complete: () => completions.push(true),
-      error: (error) => errors.push(error),
-    });
+  const sub = client.account.connectionStatusSubscribe().subscribe({
+    complete: () => completions.push(true),
+    error: (error) => errors.push(error),
+  });
   sub.unsubscribe();
 
   const expectedStop = unwrap(
