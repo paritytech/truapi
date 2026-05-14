@@ -10,6 +10,7 @@ pub mod payment;
 pub mod permissions;
 pub mod preimage;
 pub mod resource_allocation;
+pub mod session;
 pub mod signing;
 pub mod statement_store;
 pub mod system;
@@ -25,6 +26,7 @@ pub use payment::Payment;
 pub use permissions::Permissions;
 pub use preimage::Preimage;
 pub use resource_allocation::ResourceAllocation;
+pub use session::Session;
 pub use signing::Signing;
 pub use statement_store::StatementStore;
 pub use system::System;
@@ -42,6 +44,7 @@ pub trait TrUApi:
     + Permissions
     + Preimage
     + ResourceAllocation
+    + Session
     + Signing
     + StatementStore
     + System
@@ -62,6 +65,7 @@ impl<T> TrUApi for T where
         + Permissions
         + Preimage
         + ResourceAllocation
+        + Session
         + Signing
         + StatementStore
         + System

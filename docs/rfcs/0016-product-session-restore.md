@@ -194,7 +194,7 @@ enum SessionLifecycleEvent {
 struct SessionLifecycleRequest {
   event_id: SessionLifecycleEventId,
   reason: SessionLifecycleReason,
-  deadline_ms: Option<u32>,
+  deadline_ms: Option<TimestampMs>,
 }
 
 enum SessionLifecycleReason {
