@@ -4,6 +4,23 @@ use parity_scale_codec::{Decode, Encode};
 /// single fixed payment asset (e.g. pUSD).
 pub type Balance = u128;
 
+/// CoinPayment purse identifier.
+pub type PurseId = u32;
+
+/// Optional RFC 0017 purse selector for RFC 0006 payment operations.
+///
+/// `None` selects the ordinary user-owned main purse. `Some(purse)` selects a
+/// specific CoinPayment purse when the calling product is authorized to access
+/// it.
+pub type PaymentPurse = Option<PurseId>;
+
+/// Request to subscribe to payment balance updates.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostPaymentBalanceSubscribeRequest {
+    /// Optional purse selector. `None` means MAIN_PURSE.
+    pub purse: Option<PurseId>,
+}
+
 /// Current payment balance state pushed to subscribers.
 ///
 /// See [RFC 0006].
@@ -38,6 +55,8 @@ pub enum PaymentTopUpSource {
 /// Request to top up the product payment balance.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostPaymentTopUpRequest {
+    /// Optional purse selector. `None` means MAIN_PURSE.
+    pub into: Option<PurseId>,
     /// Amount to top up.
     pub amount: Balance,
     /// Funding source for the top-up.
@@ -47,6 +66,8 @@ pub struct HostPaymentTopUpRequest {
 /// Request to initiate a payment to another account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostPaymentRequestRequest {
+    /// Optional purse selector. `None` means MAIN_PURSE.
+    pub from: Option<PurseId>,
     /// Amount to pay.
     pub amount: Balance,
     /// Destination account.

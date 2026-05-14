@@ -426,7 +426,8 @@ export const services: ServiceInfo[] = [
         name: "host_payment_balance_subscribe",
         type: "subscription",
         description: "Subscribe to payment balance updates.",
-        noParams: true,
+        requestDescription: "HostPaymentBalanceSubscribeRequest",
+        defaultRequest: "{}",
       },
       {
         name: "host_payment_top_up",

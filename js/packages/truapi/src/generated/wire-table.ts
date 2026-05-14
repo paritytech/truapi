@@ -306,3 +306,58 @@ export const REMOTE_STATEMENT_STORE_CREATE_PROOF_AUTHORIZED = {
   request: 132,
   response: 133,
 } as const satisfies RequestFrameIds;
+
+export const HOST_COIN_PAYMENT_CREATE_PURSE = {
+  request: 134,
+  response: 135,
+} as const satisfies RequestFrameIds;
+
+export const HOST_COIN_PAYMENT_QUERY_PURSE = {
+  request: 136,
+  response: 137,
+} as const satisfies RequestFrameIds;
+
+export const HOST_COIN_PAYMENT_REBALANCE_PURSE = {
+  start: 138,
+  stop: 139,
+  interrupt: 140,
+  receive: 141,
+} as const satisfies SubscriptionFrameIds;
+
+export const HOST_COIN_PAYMENT_DELETE_PURSE = {
+  start: 142,
+  stop: 143,
+  interrupt: 144,
+  receive: 145,
+} as const satisfies SubscriptionFrameIds;
+
+export const HOST_COIN_PAYMENT_CREATE_RECEIVABLE = {
+  request: 146,
+  response: 147,
+} as const satisfies RequestFrameIds;
+
+export const HOST_COIN_PAYMENT_CREATE_CHEQUE = {
+  request: 148,
+  response: 149,
+} as const satisfies RequestFrameIds;
+
+export const HOST_COIN_PAYMENT_DEPOSIT = {
+  start: 150,
+  stop: 151,
+  interrupt: 152,
+  receive: 153,
+} as const satisfies SubscriptionFrameIds;
+
+export const HOST_COIN_PAYMENT_REFUND = {
+  start: 154,
+  stop: 155,
+  interrupt: 156,
+  receive: 157,
+} as const satisfies SubscriptionFrameIds;
+
+export const HOST_COIN_PAYMENT_LISTEN_FOR = {
+  start: 158,
+  stop: 159,
+  interrupt: 160,
+  receive: 161,
+} as const satisfies SubscriptionFrameIds;

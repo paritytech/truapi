@@ -248,10 +248,12 @@ function handshakeResponsePayload(value) {
   const completions = [];
   const errors = [];
 
-  const sub = client.payment.paymentBalanceSubscribe().subscribe({
-    complete: () => completions.push(true),
-    error: (error) => errors.push(error),
-  });
+  const sub = client.payment
+    .paymentBalanceSubscribe({ request: { purse: null } })
+    .subscribe({
+      complete: () => completions.push(true),
+      error: (error) => errors.push(error),
+    });
 
   const reason = { tag: "PermissionDenied", value: undefined };
   const frame = unwrap(
@@ -274,6 +276,43 @@ function handshakeResponsePayload(value) {
   assert.ok(errors[0] instanceof SubscriptionError);
   assert.deepEqual(errors[0].reason, reason);
   assert.equal(fixture.sent.length, 1);
+}
+
+// CoinPayment subscriptions use the same typed interrupt envelope for RFC0017
+// resolvable status streams.
+{
+  const fixture = providerFixture();
+  const transport = createTransport(fixture.provider);
+  const client = createClient(transport);
+  const errors = [];
+
+  const sub = client.coinPayment
+    .coinPaymentRebalancePurse({
+      request: { from: 1, to: 2, amount: 1000 },
+    })
+    .subscribe({
+      error: (error) => errors.push(error),
+    });
+
+  const reason = { tag: "Denied", value: undefined };
+  const frame = unwrap(
+    encodeWireMessage({
+      requestId: sub.subscriptionId,
+      payload: {
+        id: W.HOST_COIN_PAYMENT_REBALANCE_PURSE.interrupt,
+        value: T.VersionedHostCoinPaymentRebalancePurseError.enc({
+          tag: "V1",
+          value: reason,
+        }),
+      },
+    }),
+    "encode typed coin payment interrupt",
+  );
+  fixture.receive(frame);
+
+  assert.equal(errors.length, 1);
+  assert.ok(errors[0] instanceof SubscriptionError);
+  assert.deepEqual(errors[0].reason, reason);
 }
 
 // Malformed receive payloads are terminal observable errors. The generated

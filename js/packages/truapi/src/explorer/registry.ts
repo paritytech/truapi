@@ -859,12 +859,12 @@ export const versions: ExplorerVersion[] = [
         groupName: "Payment",
         wireId: 118,
         pattern: "subscription",
-        request: "undefined",
+        request: "HostPaymentBalanceSubscribeRequest",
         response: "HostPaymentBalanceSubscribeItem",
         errorType: "HostPaymentBalanceSubscribeError",
         description: "Subscribe to payment balance updates.",
         usageExample:
-          'import {\n  type Client,\n  type HostPaymentBalanceSubscribeError,\n  type HostPaymentBalanceSubscribeItem,\n  type Subscription,\n  type SubscriptionError,\n} from "@parity/truapi";\n\nexport function watchPaymentBalance(truapi: Client): Subscription {\n  return truapi.payment.paymentBalanceSubscribe().subscribe({\n    next: (balance: HostPaymentBalanceSubscribeItem) =>\n      console.log(balance),\n    error: (error: SubscriptionError<HostPaymentBalanceSubscribeError>) =>\n      console.error(error),\n    complete: () => console.log("completed"),\n  });\n}',
+          'import {\n  type Client,\n  type HostPaymentBalanceSubscribeError,\n  type HostPaymentBalanceSubscribeItem,\n  type Subscription,\n  type SubscriptionError,\n} from "@parity/truapi";\n\nexport function watchPaymentBalance(truapi: Client): Subscription {\n  return truapi.payment.paymentBalanceSubscribe({\n    request: {},\n  }).subscribe({\n    next: (balance: HostPaymentBalanceSubscribeItem) =>\n      console.log(balance),\n    error: (error: SubscriptionError<HostPaymentBalanceSubscribeError>) =>\n      console.error(error),\n    complete: () => console.log("completed"),\n  });\n}',
       },
       {
         id: "host_payment_top_up",
@@ -2700,6 +2700,22 @@ export const versions: ExplorerVersion[] = [
         ],
       },
       {
+        id: "HostPaymentBalanceSubscribeRequest",
+        name: "HostPaymentBalanceSubscribeRequest",
+        category: "struct",
+        definition:
+          "interface HostPaymentBalanceSubscribeRequest { purse?: PurseId }",
+        description: "Request to subscribe to payment balance updates.",
+        source: "v1",
+        fields: [
+          {
+            name: "purse",
+            type: "PurseId",
+            description: "Optional purse selector. `None` means MAIN_PURSE.",
+          },
+        ],
+      },
+      {
         id: "HostPaymentRequestError",
         name: "HostPaymentRequestError",
         category: "enum",
@@ -2732,10 +2748,15 @@ export const versions: ExplorerVersion[] = [
         name: "HostPaymentRequestRequest",
         category: "struct",
         definition:
-          "interface HostPaymentRequestRequest { amount: Balance; destination: HexString }",
+          "interface HostPaymentRequestRequest { from?: PurseId; amount: Balance; destination: HexString }",
         description: "Request to initiate a payment to another account.",
         source: "v1",
         fields: [
+          {
+            name: "from",
+            type: "PurseId",
+            description: "Optional purse selector. `None` means MAIN_PURSE.",
+          },
           {
             name: "amount",
             type: "Balance",
@@ -2862,10 +2883,15 @@ export const versions: ExplorerVersion[] = [
         name: "HostPaymentTopUpRequest",
         category: "struct",
         definition:
-          "interface HostPaymentTopUpRequest { amount: Balance; source: PaymentTopUpSource }",
+          "interface HostPaymentTopUpRequest { into?: PurseId; amount: Balance; source: PaymentTopUpSource }",
         description: "Request to top up the product payment balance.",
         source: "v1",
         fields: [
+          {
+            name: "into",
+            type: "PurseId",
+            description: "Optional purse selector. `None` means MAIN_PURSE.",
+          },
           {
             name: "amount",
             type: "Balance",
@@ -3355,6 +3381,14 @@ export const versions: ExplorerVersion[] = [
             description: "Binary payload.",
           },
         ],
+      },
+      {
+        id: "PurseId",
+        name: "PurseId",
+        category: "alias",
+        definition: "type PurseId = number",
+        description: "CoinPayment purse identifier.",
+        source: "shared",
       },
       {
         id: "RawPayload",

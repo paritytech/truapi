@@ -9,10 +9,14 @@ import {
 } from "@parity/truapi";
 
 export function watchPaymentBalance(truapi: Client): Subscription {
-  return truapi.payment.paymentBalanceSubscribe().subscribe({
-    next: (balance: HostPaymentBalanceSubscribeItem) => console.log(balance),
-    error: (error: SubscriptionError<HostPaymentBalanceSubscribeError>) =>
-      console.error(error),
-    complete: () => console.log("completed"),
-  });
+  return truapi.payment
+    .paymentBalanceSubscribe({
+      request: {},
+    })
+    .subscribe({
+      next: (balance: HostPaymentBalanceSubscribeItem) => console.log(balance),
+      error: (error: SubscriptionError<HostPaymentBalanceSubscribeError>) =>
+        console.error(error),
+      complete: () => console.log("completed"),
+    });
 }

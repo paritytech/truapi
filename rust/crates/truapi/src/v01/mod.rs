@@ -6,6 +6,7 @@
 mod account;
 mod chain_interaction;
 mod chat;
+mod coin_payment;
 mod common;
 mod custom_renderer;
 mod entropy;
@@ -22,6 +23,7 @@ mod transaction;
 pub use account::*;
 pub use chain_interaction::*;
 pub use chat::*;
+pub use coin_payment::*;
 pub use common::*;
 pub use custom_renderer::*;
 pub use entropy::*;

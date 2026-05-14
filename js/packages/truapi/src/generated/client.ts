@@ -733,6 +733,320 @@ export class ChatClient {
 }
 
 /**
+ * CoinPayment operations.
+ *
+ * RFC 0017 describes `Resolvable<T>` values for long-running operations.
+ * TrUAPI represents those as subscriptions whose items are the RFC status
+ * updates.
+ */
+export class CoinPaymentClient {
+  constructor(private readonly transport: TrUApiTransport) {}
+
+  /** Create a new firewalled CoinPayment purse. */
+  async coinPaymentCreatePurse(
+    request: T.HostCoinPaymentCreatePurseRequest,
+  ): Promise<
+    Result<
+      T.HostCoinPaymentCreatePurseResponse,
+      T.HostCoinPaymentCreatePurseError
+    >
+  > {
+    const result = await this.transport.request<
+      S.ResultPayload<
+        T.HostCoinPaymentCreatePurseResponse,
+        T.HostCoinPaymentCreatePurseError
+      >
+    >({
+      ids: W.HOST_COIN_PAYMENT_CREATE_PURSE,
+      payload: T.VersionedHostCoinPaymentCreatePurseRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V1: [
+            0,
+            S.Result(
+              T.HostCoinPaymentCreatePurseResponse,
+              T.HostCoinPaymentCreatePurseError,
+            ),
+          ] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
+  }
+
+  /** Query product-visible purse metadata and balance. */
+  async coinPaymentQueryPurse(
+    request: T.HostCoinPaymentQueryPurseRequest,
+  ): Promise<
+    Result<
+      T.HostCoinPaymentQueryPurseResponse,
+      T.HostCoinPaymentQueryPurseError
+    >
+  > {
+    const result = await this.transport.request<
+      S.ResultPayload<
+        T.HostCoinPaymentQueryPurseResponse,
+        T.HostCoinPaymentQueryPurseError
+      >
+    >({
+      ids: W.HOST_COIN_PAYMENT_QUERY_PURSE,
+      payload: T.VersionedHostCoinPaymentQueryPurseRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V1: [
+            0,
+            S.Result(
+              T.HostCoinPaymentQueryPurseResponse,
+              T.HostCoinPaymentQueryPurseError,
+            ),
+          ] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
+  }
+
+  /** Transfer balance between local purses. */
+  coinPaymentRebalancePurse({
+    request,
+  }: {
+    request: T.HostCoinPaymentRebalancePurseRequest;
+  }): ObservableLike<
+    T.CoinPaymentStatus,
+    T.HostCoinPaymentRebalancePurseError
+  > {
+    return createObservable<
+      T.CoinPaymentStatus,
+      T.HostCoinPaymentRebalancePurseError
+    >({
+      transport: this.transport,
+      ids: W.HOST_COIN_PAYMENT_REBALANCE_PURSE,
+      payload: T.VersionedHostCoinPaymentRebalancePurseRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeItem: (payload) =>
+        (
+          T.VersionedHostCoinPaymentRebalancePurseItem.dec(payload) as {
+            tag: "V1";
+            value: T.CoinPaymentStatus;
+          } & T.VersionedHostCoinPaymentRebalancePurseItem
+        ).value,
+      decodeInterrupt: (payload) =>
+        (
+          T.VersionedHostCoinPaymentRebalancePurseError.dec(payload) as {
+            tag: "V1";
+            value: T.HostCoinPaymentRebalancePurseError;
+          } & T.VersionedHostCoinPaymentRebalancePurseError
+        ).value,
+    });
+  }
+
+  /** Delete a purse after draining its balance into another local purse. */
+  coinPaymentDeletePurse({
+    request,
+  }: {
+    request: T.HostCoinPaymentDeletePurseRequest;
+  }): ObservableLike<T.CoinPaymentStatus, T.HostCoinPaymentDeletePurseError> {
+    return createObservable<
+      T.CoinPaymentStatus,
+      T.HostCoinPaymentDeletePurseError
+    >({
+      transport: this.transport,
+      ids: W.HOST_COIN_PAYMENT_DELETE_PURSE,
+      payload: T.VersionedHostCoinPaymentDeletePurseRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeItem: (payload) =>
+        (
+          T.VersionedHostCoinPaymentDeletePurseItem.dec(payload) as {
+            tag: "V1";
+            value: T.CoinPaymentStatus;
+          } & T.VersionedHostCoinPaymentDeletePurseItem
+        ).value,
+      decodeInterrupt: (payload) =>
+        (
+          T.VersionedHostCoinPaymentDeletePurseError.dec(payload) as {
+            tag: "V1";
+            value: T.HostCoinPaymentDeletePurseError;
+          } & T.VersionedHostCoinPaymentDeletePurseError
+        ).value,
+    });
+  }
+
+  /** Create a receivable public key for depositing into a purse. */
+  async coinPaymentCreateReceivable(
+    request: T.HostCoinPaymentCreateReceivableRequest,
+  ): Promise<
+    Result<
+      T.HostCoinPaymentCreateReceivableResponse,
+      T.HostCoinPaymentCreateReceivableError
+    >
+  > {
+    const result = await this.transport.request<
+      S.ResultPayload<
+        T.HostCoinPaymentCreateReceivableResponse,
+        T.HostCoinPaymentCreateReceivableError
+      >
+    >({
+      ids: W.HOST_COIN_PAYMENT_CREATE_RECEIVABLE,
+      payload: T.VersionedHostCoinPaymentCreateReceivableRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V1: [
+            0,
+            S.Result(
+              T.HostCoinPaymentCreateReceivableResponse,
+              T.HostCoinPaymentCreateReceivableError,
+            ),
+          ] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
+  }
+
+  /** Create a cheque paying from a local purse to a receivable. */
+  async coinPaymentCreateCheque(
+    request: T.HostCoinPaymentCreateChequeRequest,
+  ): Promise<
+    Result<
+      T.HostCoinPaymentCreateChequeResponse,
+      T.HostCoinPaymentCreateChequeError
+    >
+  > {
+    const result = await this.transport.request<
+      S.ResultPayload<
+        T.HostCoinPaymentCreateChequeResponse,
+        T.HostCoinPaymentCreateChequeError
+      >
+    >({
+      ids: W.HOST_COIN_PAYMENT_CREATE_CHEQUE,
+      payload: T.VersionedHostCoinPaymentCreateChequeRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V1: [
+            0,
+            S.Result(
+              T.HostCoinPaymentCreateChequeResponse,
+              T.HostCoinPaymentCreateChequeError,
+            ),
+          ] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
+  }
+
+  /** Claim coins from a cheque into the receivable's purse. */
+  coinPaymentDeposit({
+    request,
+  }: {
+    request: T.HostCoinPaymentDepositRequest;
+  }): ObservableLike<T.CoinPaymentStatus, T.HostCoinPaymentDepositError> {
+    return createObservable<T.CoinPaymentStatus, T.HostCoinPaymentDepositError>(
+      {
+        transport: this.transport,
+        ids: W.HOST_COIN_PAYMENT_DEPOSIT,
+        payload: T.VersionedHostCoinPaymentDepositRequest.enc({
+          tag: "V1",
+          value: request,
+        }),
+        decodeItem: (payload) =>
+          (
+            T.VersionedHostCoinPaymentDepositItem.dec(payload) as {
+              tag: "V1";
+              value: T.CoinPaymentStatus;
+            } & T.VersionedHostCoinPaymentDepositItem
+          ).value,
+        decodeInterrupt: (payload) =>
+          (
+            T.VersionedHostCoinPaymentDepositError.dec(payload) as {
+              tag: "V1";
+              value: T.HostCoinPaymentDepositError;
+            } & T.VersionedHostCoinPaymentDepositError
+          ).value,
+      },
+    );
+  }
+
+  /** Attempt to return coins associated with a receivable. */
+  coinPaymentRefund({
+    request,
+  }: {
+    request: T.HostCoinPaymentRefundRequest;
+  }): ObservableLike<T.CoinPaymentStatus, T.HostCoinPaymentRefundError> {
+    return createObservable<T.CoinPaymentStatus, T.HostCoinPaymentRefundError>({
+      transport: this.transport,
+      ids: W.HOST_COIN_PAYMENT_REFUND,
+      payload: T.VersionedHostCoinPaymentRefundRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeItem: (payload) =>
+        (
+          T.VersionedHostCoinPaymentRefundItem.dec(payload) as {
+            tag: "V1";
+            value: T.CoinPaymentStatus;
+          } & T.VersionedHostCoinPaymentRefundItem
+        ).value,
+      decodeInterrupt: (payload) =>
+        (
+          T.VersionedHostCoinPaymentRefundError.dec(payload) as {
+            tag: "V1";
+            value: T.HostCoinPaymentRefundError;
+          } & T.VersionedHostCoinPaymentRefundError
+        ).value,
+    });
+  }
+
+  /** Listen for a cheque delivered through a standard transmission channel. */
+  coinPaymentListenFor({
+    request,
+  }: {
+    request: T.HostCoinPaymentListenForRequest;
+  }): ObservableLike<
+    T.HostCoinPaymentListenForItem,
+    T.HostCoinPaymentListenForError
+  > {
+    return createObservable<
+      T.HostCoinPaymentListenForItem,
+      T.HostCoinPaymentListenForError
+    >({
+      transport: this.transport,
+      ids: W.HOST_COIN_PAYMENT_LISTEN_FOR,
+      payload: T.VersionedHostCoinPaymentListenForRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeItem: (payload) =>
+        (
+          T.VersionedHostCoinPaymentListenForItem.dec(payload) as {
+            tag: "V1";
+            value: T.HostCoinPaymentListenForItem;
+          } & T.VersionedHostCoinPaymentListenForItem
+        ).value,
+      decodeInterrupt: (payload) =>
+        (
+          T.VersionedHostCoinPaymentListenForError.dec(payload) as {
+            tag: "V1";
+            value: T.HostCoinPaymentListenForError;
+          } & T.VersionedHostCoinPaymentListenForError
+        ).value,
+    });
+  }
+}
+
+/**
  * Deterministic entropy derivation.
  *
  * The default body returns [`CallError::HostFailure`] with an `unavailable`
@@ -936,7 +1250,11 @@ export class PaymentClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
   /** Subscribe to payment balance updates. */
-  paymentBalanceSubscribe(): ObservableLike<
+  paymentBalanceSubscribe({
+    request,
+  }: {
+    request: T.HostPaymentBalanceSubscribeRequest;
+  }): ObservableLike<
     T.HostPaymentBalanceSubscribeItem,
     T.HostPaymentBalanceSubscribeError
   > {
@@ -948,7 +1266,7 @@ export class PaymentClient {
       ids: W.HOST_PAYMENT_BALANCE_SUBSCRIBE,
       payload: T.VersionedHostPaymentBalanceSubscribeRequest.enc({
         tag: "V1",
-        value: undefined,
+        value: request,
       }),
       decodeItem: (payload) =>
         (
@@ -1590,6 +1908,7 @@ export interface TrUApiClient {
   readonly accountManagement: AccountManagementClient;
   readonly chainInteraction: ChainInteractionClient;
   readonly chat: ChatClient;
+  readonly coinPayment: CoinPaymentClient;
   readonly entropyDerivation: EntropyDerivationClient;
   readonly hostTheme: HostThemeClient;
   readonly jsonRpc: JsonRpcClient;
@@ -1631,6 +1950,7 @@ export function createClient(
     accountManagement: new AccountManagementClient(versionedTransport),
     chainInteraction: new ChainInteractionClient(versionedTransport),
     chat: new ChatClient(versionedTransport),
+    coinPayment: new CoinPaymentClient(versionedTransport),
     entropyDerivation: new EntropyDerivationClient(versionedTransport),
     hostTheme: new HostThemeClient(versionedTransport),
     jsonRpc: new JsonRpcClient(versionedTransport),
