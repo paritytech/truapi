@@ -604,6 +604,75 @@ products' purses.
     clearing references must be durable across user-agent restart. Hosts must
     have a recovery path from user-agent-controlled secret
     material.
+17. RFC 0006 payment purse selectors must obey the same authorization, consent,
+    durability, and privacy requirements as RFC 0017 purse operations.
+
+### Relationship to RFC 0006 Payment
+
+RFC 0006 defines the generic payment surface for balance display, top-up,
+outbound payment requests, and payment status. RFC 0017 does not replace that
+surface. Instead, it extends the relevant RFC 0006 request types with optional
+CoinPayment purse selectors so generic payment operations can address either
+the ordinary user-owned purse or an authorized product-created purse.
+
+This keeps CoinPayment focused on Gav's Sample Coinage API primitives:
+purses, receivables, cheques, invoices, deposits, refunds, and local purse
+movement. It also avoids defining duplicate CoinPayment-specific balance,
+top-up, outbound-payment, and status APIs.
+
+The RFC 0006 request types become purse-aware as follows:
+
+```rust
+struct HostPaymentBalanceSubscribeRequest {
+  purse: Option<CoinPaymentPurseId>
+}
+
+struct HostPaymentTopUpRequest {
+  into: Option<CoinPaymentPurseId>,
+  amount: Balance,
+  source: PaymentTopUpSource
+}
+
+struct HostPaymentRequestRequest {
+  from: Option<CoinPaymentPurseId>,
+  amount: Balance,
+  destination: [u8; 32]
+}
+```
+
+`None` selects `MAIN_PURSE`. `Some(purse)` selects the corresponding RFC 0017
+CoinPayment purse when the calling product is authorized to access that purse.
+Hosts must apply the same authorization and consent policy used by
+`query_purse`, `rebalance_purse`, `create_cheque`, and other purse operations:
+the creating product may query and propose operations against its own purse by
+default, while access to other purses or execution of sensitive operations may
+require explicit user consent.
+
+`balance_subscribe({ purse: Some(purse) })` is the live subscription form of
+`query_purse(purse).balance`. It reports spendable balance for UI and
+validation without exposing coin inventory, source coin IDs, derivation paths,
+recycler state, voucher state, or raw proofs. `query_purse` remains the
+metadata snapshot API; RFC 0006 remains the generic live balance/status API.
+
+`top_up({ into: Some(purse), ... })` funds the selected purse from the
+product-controlled source described by RFC 0006. The user agent converts that
+top-up into Coinage inventory controlled by the target purse. Products do not
+choose coin keys, denominations, recycler vouchers, unload tokens, or
+settlement transactions.
+
+`request({ from: Some(purse), ... })` spends from the selected purse to the RFC
+0006 destination account. This gives product layers a generic way to move funds
+out of a CoinPayment purse after their own settlement or offload policy decides
+to do so. The request is asynchronous and is tracked through RFC 0006
+`status_subscribe`. A successful request response means the host accepted the
+operation for processing; final completion is reported through payment status.
+
+For all RFC 0006 purse-aware operations, the host remains responsible for
+denomination selection, Ring VRF proof construction, free or paid unload-token
+use, recycler/voucher cycles, chain submission, retry, and finality tracking.
+Those mechanics are host-private. Products receive only RFC 0006 balances,
+payment receipts and payment status, plus RFC 0017 purse metadata and clearing
+references where those are explicitly returned.
 
 ### Relationship to Product Payment Layers
 
@@ -631,75 +700,12 @@ This RFC does not define merchant treasury policy. Products that need merchant
 settlement or offload policy should define scheduling, thresholds, destinations,
 retained refund balances, authorization, and reconciliation above this layer.
 
-RFC 0006 defines the generic payment surface for balance display, top-up,
-outbound payment requests, and payment status. This RFC extends those generic
-payment calls so they can operate on a CoinPayment purse when a product has
-access to one. This avoids a second, duplicate balance/request/top-up API for
-purses and gives products a generic offload path without exposing Coinage
-recycler or unload internals.
-
-```rust
-type PaymentPurse = Option<PurseId>; // None means MAIN_PURSE.
-
-fn host_payment_balance_subscribe(
-  purse: PaymentPurse,
-  callback: fn(PaymentBalance)
-) -> Result<Subscriber, PaymentBalanceErr>;
-
-fn host_payment_top_up(
-  into: PaymentPurse,
-  amount: Balance,
-  source: PaymentTopUpSource
-) -> Result<(), PaymentTopUpErr>;
-
-fn host_payment_request(
-  from: PaymentPurse,
-  amount: Balance,
-  destination: AccountId
-) -> Result<PaymentReceipt, PaymentRequestErr>;
-```
-
-Existing RFC 0006 behavior is preserved by passing `None`, which selects
-`MAIN_PURSE`. Passing `Some(purse)` selects the corresponding CoinPayment
-purse. The user agent must apply the same authorization rules used by
-`host_coin_payment_query_purse` and `host_coin_payment_rebalance_purse`: the
-creating product may query and propose operations against its own purse by
-default, while access to other purses or execution of sensitive operations may
-require explicit user consent.
-
-`host_payment_balance_subscribe(Some(purse), ...)` is the subscription form of
-`host_coin_payment_query_purse(purse).balance`. It reports spendable balance for
-UI and validation without exposing coin inventory, source coin IDs, derivation
-paths, recycler state, or raw proofs. `host_coin_payment_query_purse` remains the
-metadata snapshot API; RFC 0006 remains the live balance/status API.
-
-`host_payment_top_up(Some(purse), ...)` funds the selected purse from the
-product-controlled source described by RFC 0006. The host converts that top-up
-into Coinage inventory controlled by the target purse. Products do not choose
-coin keys, denominations, recycler vouchers, unload tokens, or settlement
-transactions.
-
-`host_payment_request(Some(purse), amount, destination)` spends from the
-selected purse to the RFC 0006 destination account. This is the generic
-primitive a product layer can use for merchant offload, settlement sweeps, or
-moving funds out to a public account after its own policy decides to do so. The
-request is asynchronous and is tracked through `host_payment_status_subscribe`
-as in RFC 0006. A successful request only means the host accepted the
-operation; it does not mean final settlement has completed.
-
-The host remains responsible for denomination selection, Ring VRF proof
-construction, free or paid unload-token use, recycler/voucher cycles, chain
-submission, retry, and finality tracking. These mechanics must remain
-host-private. Products receive only RFC 0006 balances, payment receipts, payment
-status, and RFC 0017 purse/clearing references.
-
 For V1, a product can keep terminal/store purses separate and aggregate activity
 by reading its own merchant ledger and rebalancing purses locally. When product
 policy decides that funds should leave a purse, it uses the RFC 0006
-purse-aware `host_payment_request(Some(purse), amount, destination)` path
-described above. That operation is implemented by the user agent using Coinage
-unload/recycler mechanics as needed, but those mechanics are not exposed as
-product API.
+purse-aware `request({ from: Some(purse), ... })` path described above. That
+operation is implemented by the user agent using Coinage unload/recycler
+mechanics as needed, but those mechanics are not exposed as product API.
 
 ## Appendix A - Coinage Key Derivation
 
