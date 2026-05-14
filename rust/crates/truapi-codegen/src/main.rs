@@ -36,6 +36,10 @@ struct Cli {
     /// Output directory for generated TypeScript client example snippets (optional).
     #[arg(long)]
     client_examples_output: Option<String>,
+
+    /// Output directory for the generated `@parity/truapi-host` TypeScript surface (optional).
+    #[arg(long)]
+    host_output: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -90,6 +94,11 @@ fn main() -> Result<()> {
         ts::generate_client_examples(&api, path, cli.version.number())
             .with_context(|| format!("writing client examples to {path}"))?;
         println!("Generated client examples in {path}");
+    }
+    if let Some(path) = &cli.host_output {
+        ts::generate_host(&api, path, cli.version.number())
+            .with_context(|| format!("writing host package to {path}"))?;
+        println!("Generated host package in {path}");
     }
     Ok(())
 }
