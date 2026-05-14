@@ -62,6 +62,14 @@ server.dispose();
 
 Each handler receives a `CallContext` (carrying the inbound `requestId` so handlers can correlate audit logs and per-call state) followed by the request struct still in its versioned envelope. Unlike the client, a host serves clients across every protocol version it has shipped, so the handler is responsible for matching on `request.tag` and producing a response wrapped in the matching version tag. The dispatcher only handles the SCALE codec; it never collapses versions or constructs Result wrappers for you.
 
+### Handlers must not throw
+
+Every outcome a handler can produce, including unsupported wire versions, permission denials, backend timeouts, and any other failure mode, must be expressed as a typed error response (the `Err` arm of `S.ResultPayload<Ok, Err>` for requests, or `sink.interrupt(reason)` for `ResultSubscription` streams). The handler's return type is the contract with the client.
+
+The dispatcher does install a `HostServerHooks.onRequestHandlerError` hook for defensive purposes (e.g. a `TypeError` from an upstream bug), but if it fires the client sees a hung request, not a typed failure, so treat any invocation of the hook as a programming error to fix at the source, not a normal control-flow path.
+
+The same rule applies to subscription `start` handlers: surface failures through `sink.interrupt(reason)` (when the method supports a typed interrupt) and return the cleanup function; do not throw out of `start`.
+
 ## Subscriptions
 
 Subscription handlers receive a `SubscriptionSink` typed against the versioned item wrapper, and return a cleanup function. Wrap each emitted value in the version tag matching the client's request:
