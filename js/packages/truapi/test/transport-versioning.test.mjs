@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 
 import { createTransport } from "../src/client.ts";
 import { indexedTaggedUnion, Result, str, _void } from "../src/scale.ts";
-import { createClient, SubscriptionError } from "../src/generated/client.ts";
+import {
+  createClient,
+  SubscriptionError,
+} from "../src/generated/client.ts";
 import * as T from "../src/generated/types.ts";
 import * as W from "../src/generated/wire-table.ts";
 import { encodeWireMessage } from "../src/transport.ts";
@@ -63,10 +66,7 @@ function handshakeResponsePayload(value) {
 // same single-byte SCALE discriminant encoding.
 {
   assert.equal(toHex(T.HostDevicePermissionRequest.enc("Camera")), "01");
-  assert.equal(
-    T.HostDevicePermissionRequest.dec(new Uint8Array([1])),
-    "Camera",
-  );
+  assert.equal(T.HostDevicePermissionRequest.dec(new Uint8Array([1])), "Camera");
 }
 
 // Generated methods pass inner values and encode the selected wire wrapper
@@ -194,9 +194,11 @@ function handshakeResponsePayload(value) {
   const client = createClient(transport);
   const events = [];
 
-  const sub = client.account.connectionStatusSubscribe().subscribe({
-    next: (value) => events.push(value),
-  });
+  const sub = client.account
+    .connectionStatusSubscribe()
+    .subscribe({
+      next: (value) => events.push(value),
+    });
 
   const frame = unwrap(
     encodeWireMessage({
@@ -223,9 +225,11 @@ function handshakeResponsePayload(value) {
   const client = createClient(transport);
   const completions = [];
 
-  const sub = client.account.connectionStatusSubscribe().subscribe({
-    complete: (...args) => completions.push(args),
-  });
+  const sub = client.account
+    .connectionStatusSubscribe()
+    .subscribe({
+      complete: (...args) => completions.push(args),
+    });
 
   const frame = unwrap(
     encodeWireMessage({
@@ -251,10 +255,12 @@ function handshakeResponsePayload(value) {
   const events = [];
   const errors = [];
 
-  const sub = client.account.connectionStatusSubscribe().subscribe({
-    next: (value) => events.push(value),
-    error: (error) => errors.push(error),
-  });
+  const sub = client.account
+    .connectionStatusSubscribe()
+    .subscribe({
+      next: (value) => events.push(value),
+      error: (error) => errors.push(error),
+    });
 
   const malformedFrame = unwrap(
     encodeWireMessage({
@@ -312,10 +318,12 @@ function handshakeResponsePayload(value) {
   const completions = [];
   const errors = [];
 
-  const sub = client.account.connectionStatusSubscribe().subscribe({
-    complete: () => completions.push(true),
-    error: (error) => errors.push(error),
-  });
+  const sub = client.account
+    .connectionStatusSubscribe()
+    .subscribe({
+      complete: () => completions.push(true),
+      error: (error) => errors.push(error),
+    });
   sub.unsubscribe();
 
   const expectedStop = unwrap(
