@@ -62,6 +62,13 @@ function handshakeResponsePayload(value) {
   }).enc({ tag: "V1", value });
 }
 
+// Unit-only enums expose a string union on the public API while preserving the
+// same single-byte SCALE discriminant encoding.
+{
+  assert.equal(toHex(T.HostDevicePermissionRequest.enc("Camera")), "01");
+  assert.equal(T.HostDevicePermissionRequest.dec(new Uint8Array([1])), "Camera");
+}
+
 // Generated methods pass inner values and encode the selected wire wrapper
 // before handing bytes to the transport.
 {
@@ -76,7 +83,7 @@ function handshakeResponsePayload(value) {
     },
   };
 
-  void client.accountManagement.accountGet(request);
+  void client.account.getAccount(request);
 
   const expectedPayload = T.VersionedHostAccountGetRequest.enc({
     tag: "V1",
@@ -101,7 +108,7 @@ function handshakeResponsePayload(value) {
   const transport = createTransport(fixture.provider);
   const client = createClient(transport);
 
-  void client.trUApiCalls.handshake();
+  void client.system.handshake();
 
   const expectedPayload = T.VersionedHostHandshakeRequest.enc({
     tag: "V1",
@@ -123,12 +130,12 @@ function handshakeResponsePayload(value) {
   const transport = createTransport(fixture.provider);
   const client = createClient(transport);
 
-  const response = client.trUApiCalls.handshake();
+  const response = client.system.handshake();
   const frame = unwrap(
     encodeWireMessage({
       requestId: "p:1",
       payload: {
-        id: W.HOST_HANDSHAKE.response,
+        id: W.SYSTEM_HANDSHAKE.response,
         value: handshakeResponsePayload({ success: true, value: undefined }),
       },
     }),
@@ -153,7 +160,7 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: "h:1",
       payload: {
-        id: W.HOST_HANDSHAKE.request,
+        id: W.SYSTEM_HANDSHAKE.request,
         value: requestPayload,
       },
     }),
@@ -169,7 +176,7 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: "h:1",
       payload: {
-        id: W.HOST_HANDSHAKE.response,
+        id: W.SYSTEM_HANDSHAKE.response,
         value: expectedResponsePayload,
       },
     }),
@@ -187,8 +194,8 @@ function handshakeResponsePayload(value) {
   const client = createClient(transport);
   const events = [];
 
-  const sub = client.accountManagement
-    .accountConnectionStatusSubscribe()
+  const sub = client.account
+    .connectionStatusSubscribe()
     .subscribe({
       next: (value) => events.push(value),
     });
@@ -197,10 +204,10 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: sub.subscriptionId,
       payload: {
-        id: W.HOST_ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.receive,
+        id: W.ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.receive,
         value: T.VersionedHostAccountConnectionStatusSubscribeItem.enc({
           tag: "V1",
-          value: { tag: "Connected", value: undefined },
+          value: "Connected",
         }),
       },
     }),
@@ -208,7 +215,7 @@ function handshakeResponsePayload(value) {
   );
   fixture.receive(frame);
 
-  assert.deepEqual(events, [{ tag: "Connected", value: undefined }]);
+  assert.deepEqual(events, ["Connected"]);
 }
 
 // Interrupt frames are payloadless terminators and complete the observable.
@@ -218,8 +225,8 @@ function handshakeResponsePayload(value) {
   const client = createClient(transport);
   const completions = [];
 
-  const sub = client.accountManagement
-    .accountConnectionStatusSubscribe()
+  const sub = client.account
+    .connectionStatusSubscribe()
     .subscribe({
       complete: (...args) => completions.push(args),
     });
@@ -228,7 +235,7 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: sub.subscriptionId,
       payload: {
-        id: W.HOST_ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.interrupt,
+        id: W.ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.interrupt,
         value: _void.enc(undefined),
       },
     }),
@@ -248,7 +255,7 @@ function handshakeResponsePayload(value) {
   const completions = [];
   const errors = [];
 
-  const sub = client.payment.paymentBalanceSubscribe().subscribe({
+  const sub = client.payment.balanceSubscribe().subscribe({
     complete: () => completions.push(true),
     error: (error) => errors.push(error),
   });
@@ -258,7 +265,7 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: sub.subscriptionId,
       payload: {
-        id: W.HOST_PAYMENT_BALANCE_SUBSCRIBE.interrupt,
+        id: W.PAYMENT_BALANCE_SUBSCRIBE.interrupt,
         value: T.VersionedHostPaymentBalanceSubscribeError.enc({
           tag: "V1",
           value: reason,
@@ -285,8 +292,8 @@ function handshakeResponsePayload(value) {
   const events = [];
   const errors = [];
 
-  const sub = client.accountManagement
-    .accountConnectionStatusSubscribe()
+  const sub = client.account
+    .connectionStatusSubscribe()
     .subscribe({
       next: (value) => events.push(value),
       error: (error) => errors.push(error),
@@ -296,7 +303,7 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: sub.subscriptionId,
       payload: {
-        id: W.HOST_ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.receive,
+        id: W.ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.receive,
         value: _void.enc(undefined),
       },
     }),
@@ -313,7 +320,7 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: sub.subscriptionId,
       payload: {
-        id: W.HOST_ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.stop,
+        id: W.ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.stop,
         value: _void.enc(undefined),
       },
     }),
@@ -325,10 +332,10 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: sub.subscriptionId,
       payload: {
-        id: W.HOST_ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.receive,
+        id: W.ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.receive,
         value: T.VersionedHostAccountConnectionStatusSubscribeItem.enc({
           tag: "V1",
-          value: { tag: "Connected", value: undefined },
+          value: "Connected",
         }),
       },
     }),
@@ -348,8 +355,8 @@ function handshakeResponsePayload(value) {
   const completions = [];
   const errors = [];
 
-  const sub = client.accountManagement
-    .accountConnectionStatusSubscribe()
+  const sub = client.account
+    .connectionStatusSubscribe()
     .subscribe({
       complete: () => completions.push(true),
       error: (error) => errors.push(error),
@@ -360,7 +367,7 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: sub.subscriptionId,
       payload: {
-        id: W.HOST_ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.stop,
+        id: W.ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.stop,
         value: _void.enc(undefined),
       },
     }),
@@ -378,7 +385,7 @@ function handshakeResponsePayload(value) {
   const client = createClient(transport);
   const errors = [];
 
-  client.accountManagement.accountConnectionStatusSubscribe().subscribe({
+  client.account.connectionStatusSubscribe().subscribe({
     error: (error) => errors.push(error),
   });
 

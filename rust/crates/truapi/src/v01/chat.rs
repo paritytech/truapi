@@ -1,3 +1,6 @@
+pub mod custom_renderer;
+pub use custom_renderer::*;
+
 use parity_scale_codec::{Decode, Encode};
 
 /// Request to create a chat room.

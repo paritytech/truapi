@@ -7,12 +7,11 @@ use crate::versioned::permissions::{
 use crate::wire;
 use crate::{CallContext, CallError};
 
-/// Device and remote permission prompts.
-#[async_trait::async_trait]
+/// Permission request methods.
 pub trait Permissions: Send + Sync {
     /// Request a device-capability permission from the user.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostDevicePermissionResponse,
@@ -21,17 +20,14 @@ pub trait Permissions: Send + Sync {
     /// export async function requestCameraPermission(
     ///   truapi: Client,
     /// ): Promise<HostDevicePermissionResponse> {
-    ///   const result = await truapi.permissions.devicePermission({
-    ///     tag: "Camera",
-    ///     value: undefined,
-    ///   });
+    ///   const result = await truapi.permissions.requestDevicePermission("Camera");
     ///
     ///   if (result.isErr()) throw result.error;
     ///   return result.value;
     /// }
     /// ```
     #[wire(request_id = 8)]
-    async fn host_device_permission(
+    async fn request_device_permission(
         &self,
         cx: &CallContext,
         request: HostDevicePermissionRequest,
@@ -39,7 +35,7 @@ pub trait Permissions: Send + Sync {
 
     /// Request one or more remote-operation permissions.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type RemotePermissionResponse,
@@ -48,7 +44,7 @@ pub trait Permissions: Send + Sync {
     /// export async function requestRemotePermission(
     ///   truapi: Client,
     /// ): Promise<RemotePermissionResponse> {
-    ///   const result = await truapi.permissions.permission({
+    ///   const result = await truapi.permissions.requestRemotePermission({
     ///     permissions: [{ tag: "Remote", value: { domains: ["api.example.com"] } }],
     ///   });
     ///
@@ -57,7 +53,7 @@ pub trait Permissions: Send + Sync {
     /// }
     /// ```
     #[wire(request_id = 10)]
-    async fn remote_permission(
+    async fn request_remote_permission(
         &self,
         cx: &CallContext,
         request: RemotePermissionRequest,

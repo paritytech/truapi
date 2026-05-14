@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import type { ServiceInfo } from "@/src/lib/services";
+import type { MethodInfo, ServiceInfo } from "@/src/lib/services";
 import type { TestEntry, TestStatus } from "@/src/lib/auto-test";
 
 const STATUS_LABEL: Record<TestStatus, string> = {
@@ -148,7 +148,7 @@ export function AutoTestView({
           {services.map((svc) => (
             <div key={svc.name} className="autotest__group">
               <div className="autotest__group-head">{svc.name}</div>
-              {svc.methods.map((m) => {
+              {svc.methods.map((m: MethodInfo) => {
                 const id = `${svc.name}/${m.name}`;
                 const entry = testResults[id];
                 const status = entry?.status ?? "idle";

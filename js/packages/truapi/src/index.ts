@@ -12,10 +12,7 @@ export type {
   TrUApiTransport,
 } from "./transport.js";
 export type { CreateTransportOptions } from "./client.js";
-export {
-  SubscriptionError,
-  createMessagePortProvider,
-} from "./transport.js";
+export { SubscriptionError, createMessagePortProvider } from "./transport.js";
 export { createTransport } from "./client.js";
 export * as scale from "./scale.js";
 export type { Codec, HexString } from "./scale.js";

@@ -215,7 +215,7 @@ export default function PlaygroundPage() {
       <div className="board" data-has-view={hasView}>
         <aside className="rail">
           <p className="rail__intro">
-            An interactive explorer for the TrUAPI surface exposed to products
+            An interactive playground for the TrUAPI surface exposed to products
             inside the Polkadot Desktop Browser.
           </p>
           <ServiceTable

@@ -30,7 +30,7 @@ git submodule update --init --recursive
       cargo commands clean.
 - [ ] **Codegen** — only if Rust trait surface changed. Invoke the
       `regen-codegen` skill, then commit
-      `js/packages/truapi/src/{generated,playground,explorer}/`.
+      `js/packages/truapi/src/{generated,playground}/`.
 - [ ] **`@parity/truapi`** — invoke the `ts-client-checks` skill.
       `npm run build && npm test` clean.
 - [ ] **Playground snapshot** — only if codegen ran or

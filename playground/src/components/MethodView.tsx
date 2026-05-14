@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { getMethodBinding, stringify } from "@/src/lib/host-api-bridge";
 import { services } from "@/src/lib/services";
+import type { MethodInfo, ServiceInfo } from "@/src/lib/services";
 
 function renderWithLinks(text: string) {
   const parts = text.split(/(\[[^\]]+\]\("[^"]+"\))/g);
@@ -45,8 +46,8 @@ export function MethodView({
   onBack: () => void;
 }) {
   const methodInfo = services
-    .find((s) => s.name === service)
-    ?.methods.find((m) => m.name === method);
+    .find((s: ServiceInfo) => s.name === service)
+    ?.methods.find((m: MethodInfo) => m.name === method);
   const noParams = methodInfo?.noParams ?? false;
 
   const formatDefault = (raw: string) => {

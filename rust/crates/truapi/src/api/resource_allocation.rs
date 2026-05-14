@@ -8,15 +8,10 @@ use crate::wire;
 use crate::{CallContext, CallError};
 
 /// Resource pre-allocation (allowance management).
-///
-/// Default methods return [`CallError::HostFailure`] with an `unavailable`
-/// reason. Hosts override only the methods they actually support.
-#[async_trait::async_trait]
 pub trait ResourceAllocation: Send + Sync {
-    /// Request the host to pre-allocate one or more resources (statement store
-    /// allowance, bulletin allowance, smart contract allowance, auto-signing).
+    /// Request the host to pre-allocate one or more resources.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostRequestResourceAllocationResponse,
@@ -26,7 +21,7 @@ pub trait ResourceAllocation: Send + Sync {
     ///   truapi: Client,
     /// ): Promise<HostRequestResourceAllocationResponse> {
     ///   const result =
-    ///     await truapi.resourceAllocation.requestResourceAllocation({
+    ///     await truapi.resourceAllocation.request({
     ///       resources: [
     ///         { tag: "StatementStoreAllowance" },
     ///         { tag: "AutoSigning" },
@@ -38,7 +33,7 @@ pub trait ResourceAllocation: Send + Sync {
     /// }
     /// ```
     #[wire(request_id = 130)]
-    async fn host_request_resource_allocation(
+    async fn request(
         &self,
         _cx: &CallContext,
         _request: HostRequestResourceAllocationRequest,

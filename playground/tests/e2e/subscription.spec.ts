@@ -1,9 +1,5 @@
 import { expect, test } from "@playwright/test";
-import {
-  openPlaygroundInDotli,
-  selectMethod,
-  waitForOnline,
-} from "./helpers";
+import { openPlaygroundInDotli, selectMethod, waitForOnline } from "./helpers";
 
 test.describe("subscription", () => {
   test("connection_status pushes events and stops cleanly", async ({
@@ -12,11 +8,7 @@ test.describe("subscription", () => {
     const frame = await openPlaygroundInDotli(page);
     await waitForOnline(frame);
 
-    await selectMethod(
-      frame,
-      "Account Management",
-      "host_account_connection_status_subscribe",
-    );
+    await selectMethod(frame, "Account", "connection_status_subscribe");
 
     await frame.locator('[data-testid="subscribe-button"]').click();
 
@@ -47,8 +39,6 @@ test.describe("subscription", () => {
     await expect(
       frame.locator('[data-testid="subscribe-button"]'),
     ).toBeVisible();
-    await expect(
-      frame.locator('[data-testid="error-display"]'),
-    ).toHaveCount(0);
+    await expect(frame.locator('[data-testid="error-display"]')).toHaveCount(0);
   });
 });

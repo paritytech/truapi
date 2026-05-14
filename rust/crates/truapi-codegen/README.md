@@ -1,6 +1,6 @@
 # truapi-codegen
 
-*Reads rustdoc JSON for the `truapi` crate and generates the TypeScript client.*
+_Reads rustdoc JSON for the `truapi` crate and generates the TypeScript client._
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](../../../LICENSE)
 
