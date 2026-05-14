@@ -124,3 +124,7 @@ Maintainers merge pull requests by squashing all commits and editing the commit 
 user interface.
 
 Use an appropriate commit type. Be especially careful with breaking changes.
+
+## Releasing
+
+See [`docs/RELEASE_PROCESS.md`](docs/RELEASE_PROCESS.md) for the `@parity/truapi` npm publishing flow.

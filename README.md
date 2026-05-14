@@ -137,6 +137,10 @@ Pushes to `main` build and deploy:
 - The playground to [`truapi-playground.dot`](https://truapi-playground.dot.li/) via [`.github/workflows/deploy-playground.yml`](.github/workflows/deploy-playground.yml).
 - The Rust API docs to [https://paritytech.github.io/truapi](https://paritytech.github.io/truapi) via [`.github/workflows/deploy-docs.yml`](.github/workflows/deploy-docs.yml).
 
+## Release
+
+See [`docs/RELEASE_PROCESS.md`](docs/RELEASE_PROCESS.md) for how to ship a new `@parity/truapi` version to npm.
+
 ## Contributing
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for issue reports, feature proposals, and the RFC process.
