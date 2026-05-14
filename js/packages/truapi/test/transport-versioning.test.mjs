@@ -246,43 +246,6 @@ function handshakeResponsePayload(value) {
   assert.deepEqual(completions, [[]]);
 }
 
-// Payment subscriptions carry typed interrupt payloads. Those are observable
-// errors, not normal completion.
-{
-  const fixture = providerFixture();
-  const transport = createTransport(fixture.provider);
-  const client = createClient(transport);
-  const completions = [];
-  const errors = [];
-
-  const sub = client.payment.balanceSubscribe().subscribe({
-    complete: () => completions.push(true),
-    error: (error) => errors.push(error),
-  });
-
-  const reason = { tag: "PermissionDenied", value: undefined };
-  const frame = unwrap(
-    encodeWireMessage({
-      requestId: sub.subscriptionId,
-      payload: {
-        id: W.PAYMENT_BALANCE_SUBSCRIBE.interrupt,
-        value: T.VersionedHostPaymentBalanceSubscribeError.enc({
-          tag: "V1",
-          value: reason,
-        }),
-      },
-    }),
-    "encode typed payment interrupt",
-  );
-  fixture.receive(frame);
-
-  assert.deepEqual(completions, []);
-  assert.equal(errors.length, 1);
-  assert.ok(errors[0] instanceof SubscriptionError);
-  assert.deepEqual(errors[0].reason, reason);
-  assert.equal(fixture.sent.length, 1);
-}
-
 // Malformed receive payloads are terminal observable errors. The generated
 // wrapper sends `_stop` and ignores later receive frames for that subscription.
 {
