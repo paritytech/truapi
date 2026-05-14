@@ -12,11 +12,10 @@ use crate::wire;
 use crate::{CallContext, CallError, Subscription};
 
 /// Statement store methods.
-#[async_trait::async_trait]
 pub trait StatementStore: Send + Sync {
     /// Subscribe to statements matching a topic filter.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type Subscription,
@@ -47,7 +46,7 @@ pub trait StatementStore: Send + Sync {
 
     /// Create a proof for a statement.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type RemoteStatementStoreCreateProofResponse,
@@ -86,7 +85,7 @@ pub trait StatementStore: Send + Sync {
     /// Create a proof for a statement using a pre-allocated allowance account,
     /// bypassing the per-call signing prompt.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type RemoteStatementStoreCreateProofResponse,
@@ -121,7 +120,7 @@ pub trait StatementStore: Send + Sync {
     /// [`SignedStatement`](crate::v01::SignedStatement) directly (no wrapping
     /// struct), matching upstream `triangle-js-sdks`.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function submitStatement(truapi: Client): Promise<void> {

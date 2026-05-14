@@ -44,7 +44,7 @@ Canonical design documentation lives in `docs/design/`. To propose updates or ad
 ### Prerequisites
 
 - Rust toolchain (stable + nightly for `cargo fmt`)
-- Node.js and npm (for the TypeScript client and explorer)
+- Node.js and npm (for the TypeScript client)
 - Yarn 1.x (for the playground)
 
 ### Repository layout
@@ -56,8 +56,7 @@ rust/crates/
   truapi-macros/       #[wire(id = N)] proc-macro
 js/packages/
   truapi/              @parity/truapi TypeScript package (src/generated/ is auto-generated)
-explorer/              Vite documentation explorer (GitHub Pages)
-playground/            Next.js interactive explorer
+playground/            Next.js interactive playground
 hosts/dotli/           dotli host (git submodule)
 scripts/codegen.sh     regenerate the TS client from the Rust crate
 ```

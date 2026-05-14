@@ -13,11 +13,10 @@ use crate::wire;
 use crate::{CallContext, CallError, Subscription};
 
 /// Account lookup, aliasing, and proof generation.
-#[async_trait::async_trait]
 pub trait Account: Send + Sync {
     /// Subscribe to account connection status changes.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type Subscription,
@@ -43,7 +42,7 @@ pub trait Account: Send + Sync {
 
     /// Retrieve a product-scoped account.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import { type Client, type HostAccountGetResponse } from "@parity/truapi";
     ///
     /// export async function getAccount(
@@ -71,7 +70,7 @@ pub trait Account: Send + Sync {
 
     /// Retrieve a contextual alias for a product account.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostAccountGetAliasResponse,
@@ -102,7 +101,7 @@ pub trait Account: Send + Sync {
 
     /// Generate a ring VRF proof for a product account.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostAccountCreateProofResponse,
@@ -139,7 +138,7 @@ pub trait Account: Send + Sync {
 
     /// List non-product accounts the user owns.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostGetLegacyAccountsResponse,
@@ -165,7 +164,7 @@ pub trait Account: Send + Sync {
 
     /// Fetch the user's primary identity.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostGetUserIdResponse,
@@ -194,7 +193,7 @@ pub trait Account: Send + Sync {
     /// Products should call this in response to a user action (e.g. tapping a
     /// "Sign in" button), not automatically on load.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostRequestLoginResponse,

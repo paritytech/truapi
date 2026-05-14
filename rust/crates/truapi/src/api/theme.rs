@@ -5,11 +5,10 @@ use crate::wire;
 use crate::{CallContext, Subscription};
 
 /// Host theme subscription.
-#[async_trait::async_trait]
 pub trait Theme: Send + Sync {
     /// Subscribe to host theme changes.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type Subscription,

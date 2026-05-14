@@ -33,10 +33,6 @@ struct Cli {
     #[arg(long)]
     playground_output: Option<String>,
 
-    /// Output directory for generated explorer registry data (optional).
-    #[arg(long)]
-    explorer_output: Option<String>,
-
     /// Output directory for generated TypeScript client example snippets (optional).
     #[arg(long)]
     client_examples_output: Option<String>,
@@ -89,11 +85,6 @@ fn main() -> Result<()> {
         ts::generate_playground_services(&api, path, cli.version.number())
             .with_context(|| format!("writing playground metadata to {path}"))?;
         println!("Generated playground metadata in {path}");
-    }
-    if let Some(path) = &cli.explorer_output {
-        ts::generate_explorer_registry(&api, path, cli.version.number())
-            .with_context(|| format!("writing explorer registry to {path}"))?;
-        println!("Generated explorer registry in {path}");
     }
     if let Some(path) = &cli.client_examples_output {
         ts::generate_client_examples(&api, path, cli.version.number())

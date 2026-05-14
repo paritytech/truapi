@@ -1,11 +1,5 @@
 //! Unified TrUAPI trait set.
 
-/// Wire ids held back for upstream `triangle-js-sdks` methods that TrUAPI
-/// does not implement, but whose discriminants must remain free to keep our
-/// wire-table positionally aligned with the canonical host `MessagePayload`
-/// enum.
-pub const RESERVED_WIRE_IDS: &[u8] = &[];
-
 pub mod account;
 pub mod chain;
 pub mod chat;

@@ -8,11 +8,10 @@ use crate::wire;
 use crate::{CallContext, CallError};
 
 /// Permission request methods.
-#[async_trait::async_trait]
 pub trait Permissions: Send + Sync {
     /// Request a device-capability permission from the user.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostDevicePermissionResponse,
@@ -36,7 +35,7 @@ pub trait Permissions: Send + Sync {
 
     /// Request one or more remote-operation permissions.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type RemotePermissionResponse,

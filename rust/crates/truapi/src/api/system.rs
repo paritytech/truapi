@@ -11,11 +11,10 @@ use crate::{CallContext, CallError};
 
 /// General-purpose TrUAPI methods for handshake, feature detection,
 /// navigation, and notifications.
-#[async_trait::async_trait]
 pub trait System: Send + Sync {
     /// Negotiate the wire codec version with the product.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function handshake(truapi: Client): Promise<void> {
@@ -42,7 +41,7 @@ pub trait System: Send + Sync {
 
     /// Query whether the host supports a specific feature.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function supportsChain(truapi: Client): Promise<boolean> {
@@ -66,7 +65,7 @@ pub trait System: Send + Sync {
 
     /// Send a push notification to the user.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function pushNotification(truapi: Client): Promise<void> {
@@ -86,7 +85,7 @@ pub trait System: Send + Sync {
 
     /// Request the host to open a URL.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function navigateToDocs(truapi: Client): Promise<void> {

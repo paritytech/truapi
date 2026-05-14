@@ -2693,7 +2693,9 @@ export const RowProps: S.Codec<RowProps> = S.lazy(
 );
 
 export interface RuntimeApi {
+  /** Runtime API name. */
   name: string;
+  /** Runtime API version. */
   version: number;
 }
 
@@ -2703,11 +2705,17 @@ export const RuntimeApi: S.Codec<RuntimeApi> = S.lazy(
 );
 
 export interface RuntimeSpec {
+  /** Specification name. */
   specName: string;
+  /** Implementation name. */
   implName: string;
+  /** Spec version number. */
   specVersion: number;
+  /** Implementation version. */
   implVersion: number;
+  /** Transaction format version. */
   transactionVersion?: number;
+  /** Supported runtime APIs. */
   apis: Array<RuntimeApi>;
 }
 
@@ -2844,7 +2852,9 @@ export const StatementProof: S.Codec<StatementProof> = S.lazy(
 );
 
 export interface StorageQueryItem {
+  /** Storage key to query. */
   key: HexString;
+  /** What to return. */
   queryType: StorageQueryType;
 }
 
@@ -2875,9 +2885,13 @@ export const StorageQueryType: S.Codec<StorageQueryType> = S.lazy(
 );
 
 export interface StorageResultItem {
+  /** The queried key. */
   key: HexString;
+  /** Value, if requested. */
   value?: HexString;
+  /** Hash, if requested. */
   hash?: HexString;
+  /** Merkle value, if requested. */
   closestDescendantMerkleValue?: HexString;
 }
 
@@ -2938,9 +2952,13 @@ export type Topic = HexString;
 export const Topic: S.Codec<Topic> = S.lazy((): S.Codec<Topic> => S.Hex(32));
 
 export interface TxPayloadContextV1 {
+  /** `RuntimeMetadataPrefixed` blob (SCALE). */
   metadata: HexString;
+  /** Native token symbol. */
   tokenSymbol: string;
+  /** Native token decimals. */
   tokenDecimals: number;
+  /** Highest known block number. */
   bestBlockHeight: number;
 }
 
@@ -2955,8 +2973,11 @@ export const TxPayloadContextV1: S.Codec<TxPayloadContextV1> = S.lazy(
 );
 
 export interface TxPayloadExtensionV1 {
+  /** Extension name (e.g., `"CheckSpecVersion"`). */
   id: string;
+  /** SCALE-encoded extra data (in extrinsic body). */
   extra: HexString;
+  /** SCALE-encoded implicit data (signed, not in body). */
   additionalSigned: HexString;
 }
 
@@ -2970,10 +2991,15 @@ export const TxPayloadExtensionV1: S.Codec<TxPayloadExtensionV1> = S.lazy(
 );
 
 export interface TxPayloadV1 {
+  /** Signer hint (address/name), `None` = host picks. */
   signer?: string;
+  /** SCALE-encoded Call data. */
   callData: HexString;
+  /** Signed extensions. */
   extensions: Array<TxPayloadExtensionV1>;
+  /** 0 for Extrinsic V4, any for V5. */
   txExtVersion: number;
+  /** Transaction context. */
   context: TxPayloadContextV1;
 }
 
@@ -3339,7 +3365,9 @@ export const HostCreateTransactionError: S.Codec<HostCreateTransactionError> =
   );
 
 export interface HostCreateTransactionRequest {
+  /** Product account that will sign the transaction. */
   productAccountId: ProductAccountId;
+  /** Versioned transaction payload. */
   payload: VersionedTxPayload;
 }
 
@@ -3353,6 +3381,7 @@ export const HostCreateTransactionRequest: S.Codec<HostCreateTransactionRequest>
   );
 
 export interface HostCreateTransactionResponse {
+  /** SCALE-encoded signed transaction. */
   transaction: HexString;
 }
 
@@ -3365,6 +3394,7 @@ export const HostCreateTransactionResponse: S.Codec<HostCreateTransactionRespons
   );
 
 export interface HostCreateTransactionWithLegacyAccountRequest {
+  /** Versioned transaction payload to sign. */
   payload: VersionedTxPayload;
 }
 
@@ -3377,6 +3407,7 @@ export const HostCreateTransactionWithLegacyAccountRequest: S.Codec<HostCreateTr
   );
 
 export interface HostCreateTransactionWithLegacyAccountResponse {
+  /** SCALE-encoded signed transaction. */
   transaction: HexString;
 }
 
@@ -3395,6 +3426,7 @@ export const HostDeriveEntropyError: S.Codec<HostDeriveEntropyError> = S.lazy(
 );
 
 export interface HostDeriveEntropyRequest {
+  /** Domain-separated derivation context. */
   context: HexString;
 }
 
@@ -3405,6 +3437,7 @@ export const HostDeriveEntropyRequest: S.Codec<HostDeriveEntropyRequest> =
   );
 
 export interface HostDeriveEntropyResponse {
+  /** 32 bytes of derived entropy. */
   entropy: HexString;
 }
 
@@ -3442,6 +3475,7 @@ export const HostDevicePermissionRequest: S.Codec<HostDevicePermissionRequest> =
   );
 
 export interface HostDevicePermissionResponse {
+  /** Whether the permission was granted. */
   granted: boolean;
 }
 
@@ -3467,6 +3501,7 @@ export const HostFeatureSupportedRequest: S.Codec<HostFeatureSupportedRequest> =
   );
 
 export interface HostFeatureSupportedResponse {
+  /** Whether the feature is supported. */
   supported: boolean;
 }
 
@@ -3534,6 +3569,7 @@ export const HostHandshakeError: S.Codec<HostHandshakeError> = S.lazy(
 );
 
 export interface HostHandshakeRequest {
+  /** Wire codec version requested by the peer. */
   codecVersion: number;
 }
 
@@ -3543,7 +3579,9 @@ export const HostHandshakeRequest: S.Codec<HostHandshakeRequest> = S.lazy(
 );
 
 export interface HostJsonrpcMessageSendRequest {
+  /** Chain genesis hash. */
   genesisHash: HexString;
+  /** JSON-RPC message body. */
   message: string;
 }
 
@@ -3557,6 +3595,7 @@ export const HostJsonrpcMessageSendRequest: S.Codec<HostJsonrpcMessageSendReques
   );
 
 export interface HostJsonrpcMessageSubscribeItem {
+  /** JSON-RPC message body. */
   message: string;
 }
 
@@ -3567,6 +3606,7 @@ export const HostJsonrpcMessageSubscribeItem: S.Codec<HostJsonrpcMessageSubscrib
   );
 
 export interface HostJsonrpcMessageSubscribeRequest {
+  /** Chain genesis hash. */
   genesisHash: HexString;
 }
 
@@ -3662,6 +3702,7 @@ export const HostNavigateToError: S.Codec<HostNavigateToError> = S.lazy(
 );
 
 export interface HostNavigateToRequest {
+  /** URL to open. */
   url: string;
 }
 
@@ -3876,7 +3917,9 @@ export const HostPaymentTopUpRequest: S.Codec<HostPaymentTopUpRequest> = S.lazy(
 );
 
 export interface HostPushNotificationRequest {
+  /** Notification text. */
   text: string;
+  /** Optional URL to open on tap. */
   deeplink?: string;
 }
 
@@ -3925,6 +3968,7 @@ export const HostRequestLoginResponse: S.Codec<HostRequestLoginResponse> =
   );
 
 export interface HostRequestResourceAllocationRequest {
+  /** Resources to allocate. */
   resources: Array<AllocatableResource>;
 }
 
@@ -3937,6 +3981,7 @@ export const HostRequestResourceAllocationRequest: S.Codec<HostRequestResourceAl
   );
 
 export interface HostRequestResourceAllocationResponse {
+  /** Per-resource allocation outcomes, in the same order as the request. */
   outcomes: Array<AllocationOutcome>;
 }
 
@@ -3965,21 +4010,37 @@ export const HostSignPayloadError: S.Codec<HostSignPayloadError> = S.lazy(
 );
 
 export interface HostSignPayloadRequest {
+  /** Product account that will sign this payload. */
   account: ProductAccountId;
+  /** Reference block hash. */
   blockHash: HexString;
+  /** Reference block number. */
   blockNumber: HexString;
+  /** Mortality era encoding. */
   era: HexString;
+  /** Chain genesis hash. */
   genesisHash: HexString;
+  /** SCALE-encoded call data. */
   method: HexString;
+  /** Account nonce. */
   nonce: HexString;
+  /** Runtime spec version. */
   specVersion: HexString;
+  /** Transaction tip. */
   tip: HexString;
+  /** Transaction format version. */
   transactionVersion: HexString;
+  /** Extension identifiers. */
   signedExtensions: Array<string>;
+  /** Extrinsic version. */
   version: number;
+  /** For multi-asset tips. */
   assetId?: HexString;
+  /** CheckMetadataHash extension. */
   metadataHash?: HexString;
+  /** Metadata mode. */
   mode?: number;
+  /** Request signed transaction back. */
   withSignedTransaction?: boolean;
 }
 
@@ -4006,7 +4067,9 @@ export const HostSignPayloadRequest: S.Codec<HostSignPayloadRequest> = S.lazy(
 );
 
 export interface HostSignPayloadResponse {
+  /** The cryptographic signature. */
   signature: HexString;
+  /** Full signed transaction, if requested. */
   signedTransaction?: HexString;
 }
 
@@ -4019,7 +4082,9 @@ export const HostSignPayloadResponse: S.Codec<HostSignPayloadResponse> = S.lazy(
 );
 
 export interface HostSignPayloadWithLegacyAccountRequest {
+  /** Signer address (SS58 or hex) of the legacy account. */
   signer: string;
+  /** The extrinsic payload to sign. */
   payload: HostSignPayloadRequest;
 }
 
@@ -4033,7 +4098,9 @@ export const HostSignPayloadWithLegacyAccountRequest: S.Codec<HostSignPayloadWit
   );
 
 export interface HostSignRawRequest {
+  /** Product account that will sign this payload. */
   account: ProductAccountId;
+  /** The payload to sign. */
   payload: RawPayload;
 }
 
@@ -4046,7 +4113,9 @@ export const HostSignRawRequest: S.Codec<HostSignRawRequest> = S.lazy(
 );
 
 export interface HostSignRawWithLegacyAccountRequest {
+  /** Signer address (SS58 or hex) of the legacy account. */
   signer: string;
+  /** The data to sign. */
   payload: RawPayload;
 }
 
@@ -4060,6 +4129,7 @@ export const HostSignRawWithLegacyAccountRequest: S.Codec<HostSignRawWithLegacyA
   );
 
 export interface HostThemeSubscribeItem {
+  /** Current theme. */
   theme: Theme;
 }
 
@@ -4092,8 +4162,11 @@ export const ProductChatCustomMessageRenderSubscribeRequest: S.Codec<ProductChat
   );
 
 export interface RemoteChainHeadBodyRequest {
+  /** Chain genesis hash. */
   genesisHash: HexString;
+  /** Follow subscription identifier. */
   followSubscriptionId: string;
+  /** Block hash. */
   hash: HexString;
 }
 
@@ -4108,6 +4181,7 @@ export const RemoteChainHeadBodyRequest: S.Codec<RemoteChainHeadBodyRequest> =
   );
 
 export interface RemoteChainHeadBodyResponse {
+  /** Started operation result. */
   operation: OperationStartedResult;
 }
 
@@ -4120,10 +4194,15 @@ export const RemoteChainHeadBodyResponse: S.Codec<RemoteChainHeadBodyResponse> =
   );
 
 export interface RemoteChainHeadCallRequest {
+  /** Chain genesis hash. */
   genesisHash: HexString;
+  /** Follow subscription identifier. */
   followSubscriptionId: string;
+  /** Block hash. */
   hash: HexString;
+  /** Runtime API function name. */
   function: string;
+  /** SCALE-encoded call parameters. */
   callParameters: HexString;
 }
 
@@ -4140,6 +4219,7 @@ export const RemoteChainHeadCallRequest: S.Codec<RemoteChainHeadCallRequest> =
   );
 
 export interface RemoteChainHeadCallResponse {
+  /** Started operation result. */
   operation: OperationStartedResult;
 }
 
@@ -4152,8 +4232,11 @@ export const RemoteChainHeadCallResponse: S.Codec<RemoteChainHeadCallResponse> =
   );
 
 export interface RemoteChainHeadContinueRequest {
+  /** Chain genesis hash. */
   genesisHash: HexString;
+  /** Follow subscription identifier. */
   followSubscriptionId: string;
+  /** Operation identifier. */
   operationId: string;
 }
 
@@ -4269,7 +4352,9 @@ export const RemoteChainHeadFollowItem: S.Codec<RemoteChainHeadFollowItem> =
   );
 
 export interface RemoteChainHeadFollowRequest {
+  /** Chain genesis hash. */
   genesisHash: HexString;
+  /** Whether to include runtime information in events. */
   withRuntime: boolean;
 }
 
@@ -4283,8 +4368,11 @@ export const RemoteChainHeadFollowRequest: S.Codec<RemoteChainHeadFollowRequest>
   );
 
 export interface RemoteChainHeadHeaderRequest {
+  /** Chain genesis hash. */
   genesisHash: HexString;
+  /** Follow subscription identifier. */
   followSubscriptionId: string;
+  /** Block hash. */
   hash: HexString;
 }
 
@@ -4299,6 +4387,7 @@ export const RemoteChainHeadHeaderRequest: S.Codec<RemoteChainHeadHeaderRequest>
   );
 
 export interface RemoteChainHeadHeaderResponse {
+  /** SCALE-encoded block header. */
   header?: HexString;
 }
 
@@ -4311,8 +4400,11 @@ export const RemoteChainHeadHeaderResponse: S.Codec<RemoteChainHeadHeaderRespons
   );
 
 export interface RemoteChainHeadStopOperationRequest {
+  /** Chain genesis hash. */
   genesisHash: HexString;
+  /** Follow subscription identifier. */
   followSubscriptionId: string;
+  /** Operation identifier. */
   operationId: string;
 }
 
@@ -4327,10 +4419,15 @@ export const RemoteChainHeadStopOperationRequest: S.Codec<RemoteChainHeadStopOpe
   );
 
 export interface RemoteChainHeadStorageRequest {
+  /** Chain genesis hash. */
   genesisHash: HexString;
+  /** Follow subscription identifier. */
   followSubscriptionId: string;
+  /** Block hash. */
   hash: HexString;
+  /** Storage items to query. */
   items: Array<StorageQueryItem>;
+  /** Optional child trie. */
   childTrie?: HexString;
 }
 
@@ -4347,6 +4444,7 @@ export const RemoteChainHeadStorageRequest: S.Codec<RemoteChainHeadStorageReques
   );
 
 export interface RemoteChainHeadStorageResponse {
+  /** Started operation result. */
   operation: OperationStartedResult;
 }
 
@@ -4359,8 +4457,11 @@ export const RemoteChainHeadStorageResponse: S.Codec<RemoteChainHeadStorageRespo
   );
 
 export interface RemoteChainHeadUnpinRequest {
+  /** Chain genesis hash. */
   genesisHash: HexString;
+  /** Follow subscription identifier. */
   followSubscriptionId: string;
+  /** Block hashes to unpin. */
   hashes: Array<HexString>;
 }
 
@@ -4375,6 +4476,7 @@ export const RemoteChainHeadUnpinRequest: S.Codec<RemoteChainHeadUnpinRequest> =
   );
 
 export interface RemoteChainSpecChainNameRequest {
+  /** Chain genesis hash. */
   genesisHash: HexString;
 }
 
@@ -4387,6 +4489,7 @@ export const RemoteChainSpecChainNameRequest: S.Codec<RemoteChainSpecChainNameRe
   );
 
 export interface RemoteChainSpecChainNameResponse {
+  /** Chain display name. */
   chainName: string;
 }
 
@@ -4399,6 +4502,7 @@ export const RemoteChainSpecChainNameResponse: S.Codec<RemoteChainSpecChainNameR
   );
 
 export interface RemoteChainSpecGenesisHashRequest {
+  /** Chain genesis hash requested by the product. */
   genesisHash: HexString;
 }
 
@@ -4411,6 +4515,7 @@ export const RemoteChainSpecGenesisHashRequest: S.Codec<RemoteChainSpecGenesisHa
   );
 
 export interface RemoteChainSpecGenesisHashResponse {
+  /** Chain genesis hash. */
   genesisHash: HexString;
 }
 
@@ -4423,6 +4528,7 @@ export const RemoteChainSpecGenesisHashResponse: S.Codec<RemoteChainSpecGenesisH
   );
 
 export interface RemoteChainSpecPropertiesRequest {
+  /** Chain genesis hash. */
   genesisHash: HexString;
 }
 
@@ -4435,6 +4541,7 @@ export const RemoteChainSpecPropertiesRequest: S.Codec<RemoteChainSpecProperties
   );
 
 export interface RemoteChainSpecPropertiesResponse {
+  /** JSON-encoded properties. */
   properties: string;
 }
 
@@ -4447,7 +4554,9 @@ export const RemoteChainSpecPropertiesResponse: S.Codec<RemoteChainSpecPropertie
   );
 
 export interface RemoteChainTransactionBroadcastRequest {
+  /** Chain genesis hash. */
   genesisHash: HexString;
+  /** Signed transaction bytes. */
   transaction: HexString;
 }
 
@@ -4461,6 +4570,7 @@ export const RemoteChainTransactionBroadcastRequest: S.Codec<RemoteChainTransact
   );
 
 export interface RemoteChainTransactionBroadcastResponse {
+  /** Broadcast operation identifier, if available. */
   operationId?: string;
 }
 
@@ -4473,7 +4583,9 @@ export const RemoteChainTransactionBroadcastResponse: S.Codec<RemoteChainTransac
   );
 
 export interface RemoteChainTransactionStopRequest {
+  /** Chain genesis hash. */
   genesisHash: HexString;
+  /** Operation identifier of the broadcast to stop. */
   operationId: string;
 }
 
@@ -4487,6 +4599,7 @@ export const RemoteChainTransactionStopRequest: S.Codec<RemoteChainTransactionSt
   );
 
 export interface RemotePermissionRequest {
+  /** Permissions requested by the product. */
   permissions: Array<RemotePermission>;
 }
 
@@ -4498,6 +4611,7 @@ export const RemotePermissionRequest: S.Codec<RemotePermissionRequest> = S.lazy(
 );
 
 export interface RemotePermissionResponse {
+  /** Whether the permission was granted. */
   granted: boolean;
 }
 

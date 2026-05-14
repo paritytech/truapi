@@ -6,6 +6,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](./LICENSE)
 [![CI](https://img.shields.io/github/actions/workflow/status/paritytech/truapi/ci.yml?branch=main&style=flat-square&label=ci)](https://github.com/paritytech/truapi/actions/workflows/ci.yml)
+[![Docs](https://img.shields.io/badge/docs-rustdoc-blue?style=flat-square)](https://paritytech.github.io/truapi)
 [![Playground](https://img.shields.io/badge/playground-live-success?style=flat-square)](https://truapi-playground.dot.li/)
 
 </div>
@@ -15,6 +16,8 @@
 TrUAPI (Triangle User-Agent Programming Interface) is the API surface that hosts like the Polkadot Desktop Browser expose to the products that run inside them. One Rust crate defines the contract, a code generator produces a typed TypeScript client, and hosts and products implement against the same shared types.
 
 ## Try it
+
+Browse the published Rust API docs at [paritytech.github.io/truapi](https://paritytech.github.io/truapi).
 
 The interactive playground lets you browse every method, edit request payloads, and call or subscribe to them live against a connected host.
 
@@ -54,7 +57,6 @@ rust/crates/
   truapi-macros/         #[wire(id = N)] proc-macro
 js/packages/
   truapi/                @parity/truapi TypeScript client
-explorer/                Static documentation explorer (GitHub Pages)
 playground/              Interactive Next.js playground (truapi-playground.dot)
 hosts/dotli/             dotli host, vendored as a submodule
 docs/                    Design docs, RFCs, feature proposals
@@ -106,15 +108,6 @@ yarn dev
 
 Open `https://dot.li/localhost:3000` inside the Polkadot Desktop Host. See [`playground/README.md`](playground/README.md) for deployment.
 
-### Explorer
-
-```bash
-cd explorer
-npm run dev
-```
-
-The explorer is a static GitHub Pages app. Its registry data is generated into `@parity/truapi/explorer/registry`.
-
 ## Regenerate the TypeScript client
 
 When the Rust trait surface changes:
@@ -123,7 +116,7 @@ When the Rust trait surface changes:
 ./scripts/codegen.sh
 ```
 
-This repopulates `js/packages/truapi/src/generated/` (and the playground/explorer metadata under the same package). Commit the regenerated files alongside the Rust changes.
+This repopulates `js/packages/truapi/src/generated/` and the playground metadata under the same package. Commit the regenerated files alongside the Rust changes.
 
 After regenerating, refresh the playground's frozen snapshot:
 
@@ -142,7 +135,7 @@ After regenerating, refresh the playground's frozen snapshot:
 Pushes to `main` build and deploy:
 
 - The playground to [`truapi-playground.dot`](https://truapi-playground.dot.li/) via [`.github/workflows/deploy-playground.yml`](.github/workflows/deploy-playground.yml).
-- The explorer to GitHub Pages via [`.github/workflows/deploy-explorer.yml`](.github/workflows/deploy-explorer.yml).
+- The Rust API docs to [https://paritytech.github.io/truapi](https://paritytech.github.io/truapi) via [`.github/workflows/deploy-docs.yml`](.github/workflows/deploy-docs.yml).
 
 ## Contributing
 

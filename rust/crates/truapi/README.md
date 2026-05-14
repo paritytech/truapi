@@ -51,7 +51,6 @@ use truapi::v01::Account;
 
 struct MyHost;
 
-#[async_trait::async_trait]
 impl Account for MyHost {
     async fn get_account(
         &self,

@@ -11,11 +11,10 @@ use crate::wire;
 use crate::{CallContext, CallError, Subscription};
 
 /// Payment request and balance/status subscription methods.
-#[async_trait::async_trait]
 pub trait Payment: Send + Sync {
     /// Subscribe to payment balance updates.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostPaymentBalanceSubscribeError,
@@ -48,7 +47,7 @@ pub trait Payment: Send + Sync {
 
     /// Request a payment from the user.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostPaymentRequestResponse,
@@ -77,7 +76,7 @@ pub trait Payment: Send + Sync {
 
     /// Subscribe to payment lifecycle updates for a specific payment.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostPaymentStatusSubscribeError,
@@ -114,7 +113,7 @@ pub trait Payment: Send + Sync {
 
     /// Top up the user's payment balance.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function topUpPaymentBalance(truapi: Client): Promise<void> {

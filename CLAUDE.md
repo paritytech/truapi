@@ -13,8 +13,7 @@ rust/crates/
   truapi-macros/         #[wire(id = N)] proc-macro
 js/packages/
   truapi/         @parity/truapi TS package; src/generated/ produced by truapi-codegen
-explorer/               Vite documentation explorer; deploys to GitHub Pages
-playground/              Next.js interactive explorer; deploys to truapi-playground.dot
+playground/              Next.js interactive playground; deploys to truapi-playground.dot
 hosts/dotli/             dotli submodule
 docs/                    design docs, RFCs, feature proposals
 scripts/codegen.sh       regenerate the TS client from the Rust crate
@@ -24,6 +23,8 @@ scripts/codegen.sh       regenerate the TS client from the Rust crate
 
 - Every `pub` Rust item (functions, methods, types, traits, modules, constants) carries a doc comment (`///` or `//!`).
   Keep it short and focused on intent or invariants, not on what the signature already says.
+- Do not add code comments or doc comments that narrate migrations, compatibility shims, or historical changes. Comments should describe only the current code.
+- Remove legacy compatibility code by default. Keep or add it only when explicitly requested.
 - In Rust format strings, prefer inlined variables: `"log value: {value:?}"` over `"log value: {:?}", value`.
 
 ## First-time setup
@@ -48,7 +49,7 @@ When the Rust trait surface changes, rerun:
 ```
 
 That will repopulate `js/packages/truapi/src/generated/`. Commit the regenerated files alongside the Rust changes.
-It also regenerates playground metadata in `js/packages/truapi/src/playground/codegen/` and explorer metadata in `js/packages/truapi/src/explorer/codegen/`.
+It also regenerates playground metadata in `js/packages/truapi/src/playground/codegen/`.
 After regenerating, rebuild the client and refresh the playground's link copy:
 
 ```bash
@@ -95,16 +96,7 @@ submodule init + `bun install` and the per-pane `cd` discipline).
 Alternatively, with a deployed Polkadot Desktop Host installed, navigate to
 `https://dot.li/localhost:3000` from within it.
 
-### Explorer
-
-```bash
-cd explorer
-npm run dev             # Vite dev server
-npm run build           # static GitHub Pages build to dist/
-npm run lint            # TypeScript checks
-```
-
 ## Deployment
 
-Pushes to `main` trigger `.github/workflows/deploy.yml`, which builds `playground/` and publishes the static export to `truapi-playground.dot` via `bulletin-deploy`.
-Pushes to `main` also trigger `.github/workflows/deploy-explorer.yml`, which builds `explorer/` and publishes it to GitHub Pages.
+Pushes to `main` trigger `.github/workflows/deploy-playground.yml`, which builds `playground/` and publishes the static export to `truapi-playground.dot` via `bulletin-deploy`.
+Pushes to `main` also trigger `.github/workflows/deploy-docs.yml`, which publishes the Rust API docs to GitHub Pages.

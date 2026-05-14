@@ -8,11 +8,10 @@ use crate::wire;
 use crate::{CallContext, CallError, Subscription};
 
 /// JSON-RPC transport methods.
-#[async_trait::async_trait]
 pub trait JsonRpc: Send + Sync {
     /// Send a JSON-RPC message.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function sendJsonRpc(truapi: Client): Promise<void> {
@@ -35,7 +34,7 @@ pub trait JsonRpc: Send + Sync {
 
     /// Subscribe to inbound JSON-RPC messages.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type Subscription,

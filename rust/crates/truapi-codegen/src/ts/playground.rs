@@ -147,7 +147,7 @@ pub(super) fn split_playground_docs(
     let mut in_client_example = false;
     for line in docs.lines() {
         let trimmed = line.trim();
-        if trimmed == "```truapi-client-example" {
+        if trimmed == "```ts" {
             in_client_example = true;
             continue;
         }
@@ -222,7 +222,7 @@ fn extract_default_request_from_client_example(
         return Ok(None);
     };
     let json = ts_request_to_playground_json(request);
-    validate_default_request(method_name, "truapi-client-example", &json)?;
+    validate_default_request(method_name, "ts rustdoc example", &json)?;
     let value = serde_json::from_str::<serde_json::Value>(&json)?;
     Ok(Some(serde_json::to_string_pretty(&value)?))
 }

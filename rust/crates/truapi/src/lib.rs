@@ -4,6 +4,7 @@
 //! Versioned envelopes are in [`versioned`].
 
 #![forbid(unsafe_code)]
+#![allow(async_fn_in_trait)]
 
 use std::convert::Infallible;
 use std::pin::Pin;

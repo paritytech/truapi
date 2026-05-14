@@ -8,7 +8,7 @@ import {
 export async function createTransactionWithLegacyAccount(
   truapi: Client,
 ): Promise<HostCreateTransactionWithLegacyAccountResponse> {
-  const result = await truapi.transaction.createWithLegacyAccount({
+  const result = await truapi.signing.createTransactionWithLegacyAccount({
     payload: {
       tag: "V1",
       value: {

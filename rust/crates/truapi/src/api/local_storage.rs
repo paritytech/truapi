@@ -9,11 +9,10 @@ use crate::wire;
 use crate::{CallContext, CallError};
 
 /// Local key/value storage scoped to the calling product.
-#[async_trait::async_trait]
 pub trait LocalStorage: Send + Sync {
     /// Read a value by key.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import { type Client, type HexString } from "@parity/truapi";
     ///
     /// export async function readLocalValue(
@@ -34,7 +33,7 @@ pub trait LocalStorage: Send + Sync {
 
     /// Write a value to a key.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function writeLocalValue(truapi: Client): Promise<void> {
@@ -55,7 +54,7 @@ pub trait LocalStorage: Send + Sync {
 
     /// Clear a value by key.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function clearLocalValue(truapi: Client): Promise<void> {

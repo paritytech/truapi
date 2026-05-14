@@ -285,6 +285,14 @@ export const services: ServiceInfo[] = [
         noParams: true,
       },
       {
+        name: "top_up",
+        type: "unary",
+        description: "Top up the user's payment balance.",
+        requestDescription: "HostPaymentTopUpRequest",
+        defaultRequest:
+          '{\n  "amount": "1000000000000n",\n  "source": {\n    "tag": "ProductAccount",\n    "value": {\n      "derivationIndex": 0\n    }\n  }\n}',
+      },
+      {
         name: "request",
         type: "unary",
         description: "Request a payment from the user.",
@@ -299,14 +307,6 @@ export const services: ServiceInfo[] = [
           "Subscribe to payment lifecycle updates for a specific payment.",
         requestDescription: "HostPaymentStatusSubscribeRequest",
         defaultRequest: '{\n  "paymentId": "payment-id"\n}',
-      },
-      {
-        name: "top_up",
-        type: "unary",
-        description: "Top up the user's payment balance.",
-        requestDescription: "HostPaymentTopUpRequest",
-        defaultRequest:
-          '{\n  "amount": "1000000000000n",\n  "source": {\n    "tag": "ProductAccount",\n    "value": {\n      "derivationIndex": 0\n    }\n  }\n}',
       },
     ],
   },
@@ -369,6 +369,23 @@ export const services: ServiceInfo[] = [
     name: "Signing",
     methods: [
       {
+        name: "create_transaction",
+        type: "unary",
+        description: "Construct a signed transaction for a product account.",
+        requestDescription: "HostCreateTransactionRequest",
+        defaultRequest:
+          '{\n  "payload": {\n    "tag": "V1",\n    "value": {\n      "callData": "0x0000",\n      "context": {\n        "bestBlockHeight": 0,\n        "metadata": "0x",\n        "tokenDecimals": 10,\n        "tokenSymbol": "DOT"\n      },\n      "extensions": [],\n      "txExtVersion": 0\n    }\n  },\n  "productAccountId": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  }\n}',
+      },
+      {
+        name: "create_transaction_with_legacy_account",
+        type: "unary",
+        description:
+          "Construct a signed transaction for a non-product account.",
+        requestDescription: "HostCreateTransactionWithLegacyAccountRequest",
+        defaultRequest:
+          '{\n  "payload": {\n    "tag": "V1",\n    "value": {\n      "callData": "0x0000",\n      "context": {\n        "bestBlockHeight": 0,\n        "metadata": "0x",\n        "tokenDecimals": 10,\n        "tokenSymbol": "DOT"\n      },\n      "extensions": [],\n      "txExtVersion": 0\n    }\n  }\n}',
+      },
+      {
         name: "sign_raw_with_legacy_account",
         type: "unary",
         description: "Sign raw bytes with a non-product account.",
@@ -421,14 +438,6 @@ export const services: ServiceInfo[] = [
           '{\n  "productAccountId": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  },\n  "statement": {\n    "expiry": "9999999999999n",\n    "topics": []\n  }\n}',
       },
       {
-        name: "create_proof_authorized",
-        type: "unary",
-        description:
-          "Create a proof for a statement using a pre-allocated allowance account,\nbypassing the per-call signing prompt.",
-        requestDescription: "Statement",
-        defaultRequest: '{\n  "expiry": "9999999999999n",\n  "topics": []\n}',
-      },
-      {
         name: "submit",
         type: "unary",
         description:
@@ -436,6 +445,14 @@ export const services: ServiceInfo[] = [
         requestDescription: "SignedStatement",
         defaultRequest:
           '{\n  "proof": {\n    "tag": "Sr25519",\n    "value": {\n      "signature": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",\n      "signer": "0x0000000000000000000000000000000000000000000000000000000000000000"\n    }\n  },\n  "topics": []\n}',
+      },
+      {
+        name: "create_proof_authorized",
+        type: "unary",
+        description:
+          "Create a proof for a statement using a pre-allocated allowance account,\nbypassing the per-call signing prompt.",
+        requestDescription: "Statement",
+        defaultRequest: '{\n  "expiry": "9999999999999n",\n  "topics": []\n}',
       },
     ],
   },
@@ -480,28 +497,6 @@ export const services: ServiceInfo[] = [
         type: "subscription",
         description: "Subscribe to host theme changes.",
         noParams: true,
-      },
-    ],
-  },
-  {
-    name: "Transaction",
-    methods: [
-      {
-        name: "create",
-        type: "unary",
-        description: "Construct a signed transaction for a product account.",
-        requestDescription: "HostCreateTransactionRequest",
-        defaultRequest:
-          '{\n  "payload": {\n    "tag": "V1",\n    "value": {\n      "callData": "0x0000",\n      "context": {\n        "bestBlockHeight": 0,\n        "metadata": "0x",\n        "tokenDecimals": 10,\n        "tokenSymbol": "DOT"\n      },\n      "extensions": [],\n      "txExtVersion": 0\n    }\n  },\n  "productAccountId": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  }\n}',
-      },
-      {
-        name: "create_with_legacy_account",
-        type: "unary",
-        description:
-          "Construct a signed transaction for a non-product account.",
-        requestDescription: "HostCreateTransactionWithLegacyAccountRequest",
-        defaultRequest:
-          '{\n  "payload": {\n    "tag": "V1",\n    "value": {\n      "callData": "0x0000",\n      "context": {\n        "bestBlockHeight": 0,\n        "metadata": "0x",\n        "tokenDecimals": 10,\n        "tokenSymbol": "DOT"\n      },\n      "extensions": [],\n      "txExtVersion": 0\n    }\n  }\n}',
       },
     ],
   },

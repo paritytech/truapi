@@ -1124,20 +1124,65 @@ export class ResourceAllocationClient {
 export class SigningClient {
   constructor(private readonly transport: TrUApiTransport) {}
 
-  /** Sign raw bytes or a message. */
-  async signRaw(
-    request: T.HostSignRawRequest,
-  ): Promise<Result<T.HostSignPayloadResponse, T.HostSignPayloadError>> {
+  /** Construct a signed transaction for a product account. */
+  async createTransaction(
+    request: T.HostCreateTransactionRequest,
+  ): Promise<
+    Result<T.HostCreateTransactionResponse, T.HostCreateTransactionError>
+  > {
     const result = await this.transport.request<
-      S.ResultPayload<T.HostSignPayloadResponse, T.HostSignPayloadError>
+      S.ResultPayload<
+        T.HostCreateTransactionResponse,
+        T.HostCreateTransactionError
+      >
     >({
-      ids: W.SIGNING_SIGN_RAW,
-      payload: T.VersionedHostSignRawRequest.enc({ tag: "V1", value: request }),
+      ids: W.SIGNING_CREATE_TRANSACTION,
+      payload: T.VersionedHostCreateTransactionRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
       decodeResponse: (payload) =>
         S.indexedTaggedUnion({
           V1: [
             0,
-            S.Result(T.HostSignPayloadResponse, T.HostSignPayloadError),
+            S.Result(
+              T.HostCreateTransactionResponse,
+              T.HostCreateTransactionError,
+            ),
+          ] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
+  }
+
+  /** Construct a signed transaction for a non-product account. */
+  async createTransactionWithLegacyAccount(
+    request: T.HostCreateTransactionWithLegacyAccountRequest,
+  ): Promise<
+    Result<
+      T.HostCreateTransactionWithLegacyAccountResponse,
+      T.HostCreateTransactionError
+    >
+  > {
+    const result = await this.transport.request<
+      S.ResultPayload<
+        T.HostCreateTransactionWithLegacyAccountResponse,
+        T.HostCreateTransactionError
+      >
+    >({
+      ids: W.SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT,
+      payload: T.VersionedHostCreateTransactionWithLegacyAccountRequest.enc({
+        tag: "V1",
+        value: request,
+      }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V1: [
+            0,
+            S.Result(
+              T.HostCreateTransactionWithLegacyAccountResponse,
+              T.HostCreateTransactionError,
+            ),
           ] as const,
         }).dec(payload).value,
     });
@@ -1167,15 +1212,15 @@ export class SigningClient {
     return result.success ? ok(result.value) : err(result.value);
   }
 
-  /** Sign an extrinsic payload. */
-  async signPayload(
-    request: T.HostSignPayloadRequest,
+  /** Sign an extrinsic payload with a non-product account. */
+  async signPayloadWithLegacyAccount(
+    request: T.HostSignPayloadWithLegacyAccountRequest,
   ): Promise<Result<T.HostSignPayloadResponse, T.HostSignPayloadError>> {
     const result = await this.transport.request<
       S.ResultPayload<T.HostSignPayloadResponse, T.HostSignPayloadError>
     >({
-      ids: W.SIGNING_SIGN_PAYLOAD,
-      payload: T.VersionedHostSignPayloadRequest.enc({
+      ids: W.SIGNING_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT,
+      payload: T.VersionedHostSignPayloadWithLegacyAccountRequest.enc({
         tag: "V1",
         value: request,
       }),
@@ -1190,15 +1235,35 @@ export class SigningClient {
     return result.success ? ok(result.value) : err(result.value);
   }
 
-  /** Sign an extrinsic payload with a non-product account. */
-  async signPayloadWithLegacyAccount(
-    request: T.HostSignPayloadWithLegacyAccountRequest,
+  /** Sign raw bytes or a message. */
+  async signRaw(
+    request: T.HostSignRawRequest,
   ): Promise<Result<T.HostSignPayloadResponse, T.HostSignPayloadError>> {
     const result = await this.transport.request<
       S.ResultPayload<T.HostSignPayloadResponse, T.HostSignPayloadError>
     >({
-      ids: W.SIGNING_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT,
-      payload: T.VersionedHostSignPayloadWithLegacyAccountRequest.enc({
+      ids: W.SIGNING_SIGN_RAW,
+      payload: T.VersionedHostSignRawRequest.enc({ tag: "V1", value: request }),
+      decodeResponse: (payload) =>
+        S.indexedTaggedUnion({
+          V1: [
+            0,
+            S.Result(T.HostSignPayloadResponse, T.HostSignPayloadError),
+          ] as const,
+        }).dec(payload).value,
+    });
+    return result.success ? ok(result.value) : err(result.value);
+  }
+
+  /** Sign an extrinsic payload. */
+  async signPayload(
+    request: T.HostSignPayloadRequest,
+  ): Promise<Result<T.HostSignPayloadResponse, T.HostSignPayloadError>> {
+    const result = await this.transport.request<
+      S.ResultPayload<T.HostSignPayloadResponse, T.HostSignPayloadError>
+    >({
+      ids: W.SIGNING_SIGN_PAYLOAD,
+      payload: T.VersionedHostSignPayloadRequest.enc({
         tag: "V1",
         value: request,
       }),
@@ -1450,76 +1515,6 @@ export class ThemeClient {
   }
 }
 
-/** Transaction construction operations. */
-export class TransactionClient {
-  constructor(private readonly transport: TrUApiTransport) {}
-
-  /** Construct a signed transaction for a product account. */
-  async create(
-    request: T.HostCreateTransactionRequest,
-  ): Promise<
-    Result<T.HostCreateTransactionResponse, T.HostCreateTransactionError>
-  > {
-    const result = await this.transport.request<
-      S.ResultPayload<
-        T.HostCreateTransactionResponse,
-        T.HostCreateTransactionError
-      >
-    >({
-      ids: W.TRANSACTION_CREATE,
-      payload: T.VersionedHostCreateTransactionRequest.enc({
-        tag: "V1",
-        value: request,
-      }),
-      decodeResponse: (payload) =>
-        S.indexedTaggedUnion({
-          V1: [
-            0,
-            S.Result(
-              T.HostCreateTransactionResponse,
-              T.HostCreateTransactionError,
-            ),
-          ] as const,
-        }).dec(payload).value,
-    });
-    return result.success ? ok(result.value) : err(result.value);
-  }
-
-  /** Construct a signed transaction for a non-product account. */
-  async createWithLegacyAccount(
-    request: T.HostCreateTransactionWithLegacyAccountRequest,
-  ): Promise<
-    Result<
-      T.HostCreateTransactionWithLegacyAccountResponse,
-      T.HostCreateTransactionError
-    >
-  > {
-    const result = await this.transport.request<
-      S.ResultPayload<
-        T.HostCreateTransactionWithLegacyAccountResponse,
-        T.HostCreateTransactionError
-      >
-    >({
-      ids: W.TRANSACTION_CREATE_WITH_LEGACY_ACCOUNT,
-      payload: T.VersionedHostCreateTransactionWithLegacyAccountRequest.enc({
-        tag: "V1",
-        value: request,
-      }),
-      decodeResponse: (payload) =>
-        S.indexedTaggedUnion({
-          V1: [
-            0,
-            S.Result(
-              T.HostCreateTransactionWithLegacyAccountResponse,
-              T.HostCreateTransactionError,
-            ),
-          ] as const,
-        }).dec(payload).value,
-    });
-    return result.success ? ok(result.value) : err(result.value);
-  }
-}
-
 export interface TrUApiClient {
   readonly account: AccountClient;
   readonly chain: ChainClient;
@@ -1535,7 +1530,6 @@ export interface TrUApiClient {
   readonly statementStore: StatementStoreClient;
   readonly system: SystemClient;
   readonly theme: ThemeClient;
-  readonly transaction: TransactionClient;
 }
 
 export type Client = TrUApiClient;
@@ -1577,6 +1571,5 @@ export function createClient(
     statementStore: new StatementStoreClient(versionedTransport),
     system: new SystemClient(versionedTransport),
     theme: new ThemeClient(versionedTransport),
-    transaction: new TransactionClient(versionedTransport),
   };
 }

@@ -22,11 +22,10 @@ use crate::wire;
 use crate::{CallContext, CallError, Subscription};
 
 /// Chain interaction methods.
-#[async_trait::async_trait]
 pub trait Chain: Send + Sync {
     /// Follow the chain head and receive block events.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type Subscription,
@@ -59,7 +58,7 @@ pub trait Chain: Send + Sync {
 
     /// Fetch a block header.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type RemoteChainHeadHeaderResponse,
@@ -89,7 +88,7 @@ pub trait Chain: Send + Sync {
 
     /// Fetch a block body.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type RemoteChainHeadBodyResponse,
@@ -119,7 +118,7 @@ pub trait Chain: Send + Sync {
 
     /// Query runtime storage at a specific block.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type RemoteChainHeadStorageResponse,
@@ -155,7 +154,7 @@ pub trait Chain: Send + Sync {
 
     /// Invoke a runtime call at a specific block.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type RemoteChainHeadCallResponse,
@@ -187,7 +186,7 @@ pub trait Chain: Send + Sync {
 
     /// Release pinned blocks.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function unpinChainHead(truapi: Client): Promise<void> {
@@ -213,7 +212,7 @@ pub trait Chain: Send + Sync {
 
     /// Continue a paused chain-head operation.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function continueChainHeadOperation(
@@ -239,7 +238,7 @@ pub trait Chain: Send + Sync {
 
     /// Stop a chain-head operation.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function stopChainHeadOperation(
@@ -266,7 +265,7 @@ pub trait Chain: Send + Sync {
 
     /// Fetch the canonical genesis hash for a chain.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type RemoteChainSpecGenesisHashResponse,
@@ -295,7 +294,7 @@ pub trait Chain: Send + Sync {
 
     /// Fetch the display name of a chain.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type RemoteChainSpecChainNameResponse,
@@ -323,7 +322,7 @@ pub trait Chain: Send + Sync {
 
     /// Fetch the JSON-encoded properties of a chain.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type RemoteChainSpecPropertiesResponse,
@@ -351,7 +350,7 @@ pub trait Chain: Send + Sync {
 
     /// Broadcast a signed transaction.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type RemoteChainTransactionBroadcastResponse,
@@ -383,7 +382,7 @@ pub trait Chain: Send + Sync {
 
     /// Stop a transaction broadcast.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function stopTransactionBroadcast(

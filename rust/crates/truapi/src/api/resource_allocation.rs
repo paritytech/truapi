@@ -8,11 +8,10 @@ use crate::wire;
 use crate::{CallContext, CallError};
 
 /// Resource pre-allocation (allowance management).
-#[async_trait::async_trait]
 pub trait ResourceAllocation: Send + Sync {
     /// Request the host to pre-allocate one or more resources.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostRequestResourceAllocationResponse,

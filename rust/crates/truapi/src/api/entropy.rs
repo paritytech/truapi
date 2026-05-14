@@ -7,11 +7,10 @@ use crate::wire;
 use crate::{CallContext, CallError};
 
 /// Deterministic entropy derivation.
-#[async_trait::async_trait]
 pub trait Entropy: Send + Sync {
     /// Derive deterministic entropy.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostDeriveEntropyResponse,

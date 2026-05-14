@@ -16,11 +16,10 @@ use crate::wire;
 use crate::{CallContext, CallError};
 
 /// Signing operations.
-#[async_trait::async_trait]
 pub trait Signing: Send + Sync {
     /// Construct a signed transaction for a product account.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostCreateTransactionResponse,
@@ -65,7 +64,7 @@ pub trait Signing: Send + Sync {
 
     /// Construct a signed transaction for a non-product account.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostCreateTransactionWithLegacyAccountResponse,
@@ -109,7 +108,7 @@ pub trait Signing: Send + Sync {
 
     /// Sign raw bytes with a non-product account.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostSignPayloadResponse,
@@ -142,7 +141,7 @@ pub trait Signing: Send + Sync {
 
     /// Sign an extrinsic payload with a non-product account.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostSignPayloadResponse,
@@ -187,7 +186,7 @@ pub trait Signing: Send + Sync {
 
     /// Sign raw bytes or a message.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostSignPayloadResponse,
@@ -221,7 +220,7 @@ pub trait Signing: Send + Sync {
 
     /// Sign an extrinsic payload.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostSignPayloadResponse,

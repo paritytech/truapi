@@ -12,11 +12,9 @@ use indoc::{formatdoc, writedoc};
 use crate::rustdoc::*;
 
 mod examples;
-mod explorer;
 mod playground;
 
 pub use examples::generate_client_examples;
-pub use explorer::generate_explorer_registry;
 pub use playground::generate_playground_services;
 
 #[derive(Default)]
@@ -249,26 +247,26 @@ fn write_jsdoc(out: &mut String, indent: &str, docs: Option<&str>) {
 
 fn strip_playground_doc_blocks(text: &str) -> String {
     let mut out = Vec::new();
-    let mut in_truapi_doc_block = false;
+    let mut in_typescript_doc_block = false;
     for line in text.lines() {
         let trimmed = line.trim();
-        if is_truapi_doc_block_start(trimmed) {
-            in_truapi_doc_block = true;
+        if is_typescript_doc_block_start(trimmed) {
+            in_typescript_doc_block = true;
             continue;
         }
-        if in_truapi_doc_block && trimmed == "```" {
-            in_truapi_doc_block = false;
+        if in_typescript_doc_block && trimmed == "```" {
+            in_typescript_doc_block = false;
             continue;
         }
-        if !in_truapi_doc_block {
+        if !in_typescript_doc_block {
             out.push(line);
         }
     }
     trim_doc_lines(&out).unwrap_or_default()
 }
 
-fn is_truapi_doc_block_start(trimmed: &str) -> bool {
-    trimmed == "```truapi-client-example"
+fn is_typescript_doc_block_start(trimmed: &str) -> bool {
+    trimmed == "```ts"
 }
 
 fn public_services(api: &ApiDefinition) -> Result<Vec<PublicService<'_>>> {
@@ -394,8 +392,8 @@ fn wire_const_name(trait_name: &str, method_name: &str) -> String {
     format!("{trait_name}_{method_name}").to_case(Case::UpperSnake)
 }
 
-/// Sort key for stable, wire-id-ordered method emission shared by the playground,
-/// explorer, and examples submodules.
+/// Sort key for stable, wire-id-ordered method emission shared by the
+/// playground and examples submodules.
 fn method_wire_sort_id(method: &MethodDef) -> u8 {
     method
         .wire
@@ -416,12 +414,6 @@ fn generate_wire_table(api: &ApiDefinition, target_version: u32) -> Result<Strin
             }
             let wire_ids = wire_ids_for_method(trait_def, method)?;
             for (id, tag) in wire_ids.entries(&method.name) {
-                if truapi::api::RESERVED_WIRE_IDS.contains(&id) {
-                    bail!(
-                        "wire id {id} (`{tag}`) collides with truapi::api::RESERVED_WIRE_IDS; \
-                         remove it from RESERVED_WIRE_IDS or pick another id"
-                    );
-                }
                 if let Some(existing) = seen.insert(id, tag.clone()) {
                     bail!("wire id {id} reused: `{existing}` and `{tag}` collide");
                 }
@@ -1906,8 +1898,7 @@ fn ts_type_with_named(ty: &TypeRef, qualified: bool) -> Result<String> {
 }
 
 /// Always emit the user-facing `HexString` name (no codec-namespace prefix).
-/// Generated `types.ts` imports it directly from `scale.js`; explorer
-/// description strings render it as documentation.
+/// Generated `types.ts` imports it directly from `scale.js`.
 fn hex_string_ts_name(_qualified: bool) -> String {
     "HexString".to_string()
 }
@@ -2292,24 +2283,6 @@ mod tests {
         .expect_err("duplicate ids must error");
 
         assert!(err.to_string().contains("wire id 3 reused"));
-    }
-
-    #[test]
-    fn generate_wire_table_rejects_reserved_wire_ids() {
-        let Some(&reserved_id) = truapi::api::RESERVED_WIRE_IDS.first() else {
-            return;
-        };
-        let err = generate_wire_table(&api(vec![request_method("squat", Some(reserved_id))]), 2)
-            .expect_err("annotation that lands on a reserved id must error");
-        let message = err.to_string();
-        assert!(
-            message.contains("RESERVED_WIRE_IDS"),
-            "message should mention RESERVED_WIRE_IDS, got: {message}"
-        );
-        assert!(
-            message.contains(&format!("wire id {reserved_id}")),
-            "message should name the offending id, got: {message}"
-        );
     }
 
     #[test]

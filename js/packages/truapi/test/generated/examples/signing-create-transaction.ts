@@ -8,7 +8,7 @@ import {
 export async function createTransaction(
   truapi: Client,
 ): Promise<HostCreateTransactionResponse> {
-  const result = await truapi.transaction.create({
+  const result = await truapi.signing.createTransaction({
     productAccountId: {
       dotNsIdentifier: "truapi-playground.dot",
       derivationIndex: 0,

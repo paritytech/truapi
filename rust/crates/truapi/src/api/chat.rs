@@ -11,11 +11,10 @@ use crate::wire;
 use crate::{CallContext, CallError, Subscription};
 
 /// Chat room, bot, and message APIs.
-#[async_trait::async_trait]
 pub trait Chat: Send + Sync {
     /// Create a chat room.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostChatCreateRoomResponse,
@@ -45,7 +44,7 @@ pub trait Chat: Send + Sync {
 
     /// Register a chat bot.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostChatRegisterBotResponse,
@@ -75,7 +74,7 @@ pub trait Chat: Send + Sync {
 
     /// Subscribe to the list of chat rooms.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type Subscription,
@@ -97,7 +96,7 @@ pub trait Chat: Send + Sync {
 
     /// Post a message to a chat room.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostChatPostMessageResponse,
@@ -126,7 +125,7 @@ pub trait Chat: Send + Sync {
 
     /// Subscribe to received chat actions.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type Subscription,
@@ -154,7 +153,7 @@ pub trait Chat: Send + Sync {
     /// emitted item is a [`CustomRendererNode`](crate::v01::CustomRendererNode)
     /// tree describing the rendered UI.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type CustomRendererNode,

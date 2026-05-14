@@ -44,7 +44,7 @@ pub struct ApiDefinition {
     pub traits: Vec<TraitDef>,
     /// Names of the public service traits in `TrUApi` super-trait declaration
     /// order (excluding `Send`/`Sync`). Drives stable, source-order emission of
-    /// services in the playground, explorer, examples, and client modules.
+    /// services in the playground, examples, and client modules.
     pub public_trait_order: Vec<String>,
     pub types: Vec<TypeDef>,
 }
@@ -568,8 +568,7 @@ fn extract_method(item_id: &str, item: &Item, names: &NameContext) -> Result<Opt
     let raw_output = sig
         .get("output")
         .with_context(|| format!("Method `{name}` missing rustdoc return type"))?;
-    let output = unwrap_async_trait_future(raw_output)
-        .with_context(|| format!("Method `{name}` return type not in async_trait shape"))?;
+    let output = raw_output;
 
     let (kind, return_type) = if is_result_subscription_return(output) {
         (
@@ -723,90 +722,6 @@ fn extract_wire_attrs(docs: &str) -> WireAttrs {
         }
     }
     attrs
-}
-
-/// Unwrap the `async_trait` expansion `Pin<Box<dyn Future<Output = T> + Send>>`
-/// back to `T`. Bails with a structured error pointing at the rustdoc field
-/// that did not match expectations, so a future rustdoc-format change is
-/// surfaced loudly instead of being silently treated as a sync return type.
-fn unwrap_async_trait_future(output: &serde_json::Value) -> Result<&serde_json::Value> {
-    const SHAPE: &str = "rustdoc async_trait return shape changed";
-    let pin = output
-        .get("resolved_path")
-        .with_context(|| format!("{SHAPE}: expected resolved_path on return type"))?;
-    let pin_path = pin
-        .get("path")
-        .and_then(|p| p.as_str())
-        .with_context(|| format!("{SHAPE}: expected `path` on Pin resolved_path"))?;
-    if path_suffix(pin_path) != "Pin" {
-        bail!("{SHAPE}: expected `Pin<..>` outer wrapper, got `{pin_path}`");
-    }
-    let boxed = pin
-        .get("args")
-        .and_then(|a| a.get("angle_bracketed"))
-        .and_then(|a| a.get("args"))
-        .and_then(|a| a.as_array())
-        .and_then(|a| a.first())
-        .and_then(|a| a.get("type"))
-        .with_context(|| format!("{SHAPE}: expected Pin generic argument"))?;
-    let box_path = boxed
-        .get("resolved_path")
-        .with_context(|| format!("{SHAPE}: expected resolved_path inside Pin<..>"))?;
-    let box_path_str = box_path
-        .get("path")
-        .and_then(|p| p.as_str())
-        .with_context(|| format!("{SHAPE}: expected `path` on Box resolved_path"))?;
-    if path_suffix(box_path_str) != "Box" {
-        bail!("{SHAPE}: expected `Pin<Box<..>>`, got `Pin<{box_path_str}<..>>`");
-    }
-    let dyn_trait = box_path
-        .get("args")
-        .and_then(|a| a.get("angle_bracketed"))
-        .and_then(|a| a.get("args"))
-        .and_then(|a| a.as_array())
-        .and_then(|a| a.first())
-        .and_then(|a| a.get("type"))
-        .and_then(|a| a.get("dyn_trait"))
-        .with_context(|| format!("{SHAPE}: expected `dyn Trait` inside Box<..>"))?;
-    let traits = dyn_trait
-        .get("traits")
-        .and_then(|a| a.as_array())
-        .with_context(|| format!("{SHAPE}: expected `traits` array on dyn_trait"))?;
-    for entry in traits {
-        let trait_ref = entry
-            .get("trait")
-            .with_context(|| format!("{SHAPE}: dyn_trait entry missing `trait`"))?;
-        let trait_path = trait_ref
-            .get("path")
-            .and_then(|p| p.as_str())
-            .with_context(|| format!("{SHAPE}: dyn_trait `trait` missing `path`"))?;
-        if path_suffix(trait_path) != "Future" {
-            continue;
-        }
-        let constraints = trait_ref
-            .get("args")
-            .and_then(|a| a.get("angle_bracketed"))
-            .and_then(|a| a.get("constraints"))
-            .and_then(|a| a.as_array())
-            .with_context(|| format!("{SHAPE}: Future trait missing constraints"))?;
-        for constraint in constraints {
-            let name = constraint
-                .get("name")
-                .and_then(|n| n.as_str())
-                .with_context(|| format!("{SHAPE}: Future constraint missing `name`"))?;
-            if name == "Output" {
-                return constraint
-                    .get("binding")
-                    .and_then(|b| b.get("equality"))
-                    .and_then(|e| e.get("type"))
-                    .with_context(|| {
-                        format!("{SHAPE}: Future Output constraint missing equality type")
-                    });
-            }
-        }
-        bail!("{SHAPE}: Future trait constraints did not include `Output = T`");
-    }
-    bail!("{SHAPE}: dyn_trait did not reference Future")
 }
 
 fn path_suffix(path: &str) -> &str {

@@ -77,12 +77,12 @@ export const ACCOUNT_GET_LEGACY_ACCOUNTS = {
   response: 29,
 } as const satisfies RequestFrameIds;
 
-export const TRANSACTION_CREATE = {
+export const SIGNING_CREATE_TRANSACTION = {
   request: 30,
   response: 31,
 } as const satisfies RequestFrameIds;
 
-export const TRANSACTION_CREATE_WITH_LEGACY_ACCOUNT = {
+export const SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT = {
   request: 32,
   response: 33,
 } as const satisfies RequestFrameIds;
@@ -97,41 +97,41 @@ export const SIGNING_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT = {
   response: 37,
 } as const satisfies RequestFrameIds;
 
-export const PAYMENT_BALANCE_SUBSCRIBE = {
-  start: 118,
-  stop: 119,
-  interrupt: 120,
-  receive: 121,
-} as const satisfies SubscriptionFrameIds;
-
-export const PAYMENT_REQUEST = {
-  request: 124,
-  response: 125,
+export const CHAT_CREATE_ROOM = {
+  request: 38,
+  response: 39,
 } as const satisfies RequestFrameIds;
 
-export const PAYMENT_STATUS_SUBSCRIBE = {
-  start: 126,
-  stop: 127,
-  interrupt: 128,
-  receive: 129,
-} as const satisfies SubscriptionFrameIds;
-
-export const PAYMENT_TOP_UP = {
-  request: 122,
-  response: 123,
+export const CHAT_REGISTER_BOT = {
+  request: 40,
+  response: 41,
 } as const satisfies RequestFrameIds;
 
-export const PREIMAGE_LOOKUP_SUBSCRIBE = {
-  start: 64,
-  stop: 65,
-  interrupt: 66,
-  receive: 67,
+export const CHAT_LIST_SUBSCRIBE = {
+  start: 42,
+  stop: 43,
+  interrupt: 44,
+  receive: 45,
 } as const satisfies SubscriptionFrameIds;
 
-export const PREIMAGE_SUBMIT = {
-  request: 68,
-  response: 69,
+export const CHAT_POST_MESSAGE = {
+  request: 46,
+  response: 47,
 } as const satisfies RequestFrameIds;
+
+export const CHAT_ACTION_SUBSCRIBE = {
+  start: 48,
+  stop: 49,
+  interrupt: 50,
+  receive: 51,
+} as const satisfies SubscriptionFrameIds;
+
+export const CHAT_CUSTOM_MESSAGE_RENDER_SUBSCRIBE = {
+  start: 52,
+  stop: 53,
+  interrupt: 54,
+  receive: 55,
+} as const satisfies SubscriptionFrameIds;
 
 export const STATEMENT_STORE_SUBSCRIBE = {
   start: 56,
@@ -145,14 +145,21 @@ export const STATEMENT_STORE_CREATE_PROOF = {
   response: 61,
 } as const satisfies RequestFrameIds;
 
-export const STATEMENT_STORE_CREATE_PROOF_AUTHORIZED = {
-  request: 132,
-  response: 133,
-} as const satisfies RequestFrameIds;
-
 export const STATEMENT_STORE_SUBMIT = {
   request: 62,
   response: 63,
+} as const satisfies RequestFrameIds;
+
+export const PREIMAGE_LOOKUP_SUBSCRIBE = {
+  start: 64,
+  stop: 65,
+  interrupt: 66,
+  receive: 67,
+} as const satisfies SubscriptionFrameIds;
+
+export const PREIMAGE_SUBMIT = {
+  request: 68,
+  response: 69,
 } as const satisfies RequestFrameIds;
 
 export const JSON_RPC_SEND_MESSAGE = {
@@ -266,43 +273,36 @@ export const SIGNING_SIGN_PAYLOAD = {
   response: 117,
 } as const satisfies RequestFrameIds;
 
-export const CHAT_CREATE_ROOM = {
-  request: 38,
-  response: 39,
-} as const satisfies RequestFrameIds;
-
-export const CHAT_REGISTER_BOT = {
-  request: 40,
-  response: 41,
-} as const satisfies RequestFrameIds;
-
-export const CHAT_LIST_SUBSCRIBE = {
-  start: 42,
-  stop: 43,
-  interrupt: 44,
-  receive: 45,
+export const PAYMENT_BALANCE_SUBSCRIBE = {
+  start: 118,
+  stop: 119,
+  interrupt: 120,
+  receive: 121,
 } as const satisfies SubscriptionFrameIds;
 
-export const CHAT_POST_MESSAGE = {
-  request: 46,
-  response: 47,
+export const PAYMENT_TOP_UP = {
+  request: 122,
+  response: 123,
 } as const satisfies RequestFrameIds;
+
+export const PAYMENT_REQUEST = {
+  request: 124,
+  response: 125,
+} as const satisfies RequestFrameIds;
+
+export const PAYMENT_STATUS_SUBSCRIBE = {
+  start: 126,
+  stop: 127,
+  interrupt: 128,
+  receive: 129,
+} as const satisfies SubscriptionFrameIds;
 
 export const RESOURCE_ALLOCATION_REQUEST = {
   request: 130,
   response: 131,
 } as const satisfies RequestFrameIds;
 
-export const CHAT_ACTION_SUBSCRIBE = {
-  start: 48,
-  stop: 49,
-  interrupt: 50,
-  receive: 51,
-} as const satisfies SubscriptionFrameIds;
-
-export const CHAT_CUSTOM_MESSAGE_RENDER_SUBSCRIBE = {
-  start: 52,
-  stop: 53,
-  interrupt: 54,
-  receive: 55,
-} as const satisfies SubscriptionFrameIds;
+export const STATEMENT_STORE_CREATE_PROOF_AUTHORIZED = {
+  request: 132,
+  response: 133,
+} as const satisfies RequestFrameIds;
