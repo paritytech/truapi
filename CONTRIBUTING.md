@@ -55,7 +55,7 @@ rust/crates/
   truapi-codegen/      rustdoc JSON → TypeScript client generator
   truapi-macros/       #[wire(id = N)] proc-macro
 js/packages/
-  truapi/              @parity/truapi TypeScript package (src/generated/ is auto-generated)
+  truapi/              @parity/truapi TypeScript package (generated TS is auto-generated and git-ignored)
 playground/            Next.js interactive playground
 hosts/dotli/           dotli host (git submodule)
 scripts/codegen.sh     regenerate the TS client from the Rust crate
@@ -100,7 +100,7 @@ TrUAPI protocol. When you modify traits or types there:
    ( cd playground && rm -rf node_modules && yarn install )
    ```
 
-4. Commit the regenerated files alongside the Rust changes.
+4. Rebuild or test the TS package so the ignored generated outputs are exercised.
 
 ### Verification
 

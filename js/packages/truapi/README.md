@@ -77,11 +77,11 @@ Frames are SCALE encoded:
 [requestId: SCALE str][discriminant: u8][payload bytes...]
 ```
 
-The discriminant table is generated from Rust `#[wire(request_id = N)]` and `#[wire(start_id = N)]` annotations and lives in `src/generated/wire-table.ts`.
+The discriminant table is generated from Rust `#[wire(request_id = N)]` and `#[wire(start_id = N)]` annotations and is written to `src/generated/wire-table.ts`.
 
 ## Generated files
 
-`src/generated/` is produced by [`truapi-codegen`](../../../rust/crates/truapi-codegen/) from the Rust crate. Do not edit generated files directly. Run from the repo root:
+`src/generated/`, `src/playground/codegen/`, and `test/generated/examples/` are produced by [`truapi-codegen`](../../../rust/crates/truapi-codegen/) from the Rust crate and are ignored by git. Do not edit generated files directly. Run from the repo root:
 
 ```bash
 ./scripts/codegen.sh
@@ -95,7 +95,7 @@ npm run build
 npm test
 ```
 
-`npm test` runs the package's smoke tests under [bun](https://bun.sh/), so bun must be installed locally (`curl -fsSL https://bun.sh/install | bash`). The tests load the source `.ts` files directly without a build step.
+On a clean checkout, the first build or test run will generate the ignored TypeScript outputs from the Rust sources, so Rust stable + nightly must be installed locally. `npm test` runs the package's smoke tests under [bun](https://bun.sh/), so bun must also be installed (`curl -fsSL https://bun.sh/install | bash`). The tests load the source `.ts` files directly without a build step.
 
 ## License
 
