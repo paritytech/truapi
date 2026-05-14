@@ -1,0 +1,44 @@
+name: Deploy Playground
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-truapi-playground
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-playground:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build @parity/truapi
+        run: npm ci --prefix js/packages/truapi && npm run build --prefix js/packages/truapi
+
+      - name: Install playground dependencies
+        working-directory: playground
+        run: yarn install --frozen-lockfile
+
+      - name: Build playground
+        working-directory: playground
+        run: yarn build
+
+      - name: Install bulletin-deploy
+        run: npm install -g bulletin-deploy
+
+      - name: Deploy to DotNS
+        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3.0.2
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: cd playground && bulletin-deploy ./out truapi-playground.dot --js-merkle

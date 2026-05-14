@@ -145,20 +145,20 @@ Products MAY request permissions lazily (on first use) or upfront during initial
 
 The following business methods gate on a specific `RemotePermission` and MUST internally trigger a permission prompt if the permission has not yet been resolved:
 
-| Business Method                              | Required Permission        |
-|----------------------------------------------|----------------------------|
-| `remote_chain_transaction_broadcast`         | `RemotePermission::ChainSubmit` |
-| `remote_preimage_submit`                     | `RemotePermission::PreimageSubmit` |
-| `remote_statement_store_submit`              | `RemotePermission::StatementSubmit` |
+| Business Method                      | Required Permission                 |
+| ------------------------------------ | ----------------------------------- |
+| `remote_chain_transaction_broadcast` | `RemotePermission::ChainSubmit`     |
+| `remote_preimage_submit`             | `RemotePermission::PreimageSubmit`  |
+| `remote_statement_store_submit`      | `RemotePermission::StatementSubmit` |
 
 The following business methods relate to signing and require the user's active consent via their own approval flow (e.g. a signing confirmation dialog). They return `PermissionDenied` when the user cancels or denies that confirmation — this is distinct from the remote permission system but is documented here for completeness:
 
-| Business Method                                          | Error on Denial               |
-|----------------------------------------------------------|-------------------------------|
-| `host_sign_raw`                                          | `SigningErr::PermissionDenied` |
-| `host_sign_payload`                                      | `SigningErr::PermissionDenied` |
-| `host_create_transaction`                                | `CreateTransactionErr::PermissionDenied` |
-| `host_create_transaction_with_non_product_account`       | `CreateTransactionErr::PermissionDenied` |
+| Business Method                                    | Error on Denial                          |
+| -------------------------------------------------- | ---------------------------------------- |
+| `host_sign_raw`                                    | `SigningErr::PermissionDenied`           |
+| `host_sign_payload`                                | `SigningErr::PermissionDenied`           |
+| `host_create_transaction`                          | `CreateTransactionErr::PermissionDenied` |
+| `host_create_transaction_with_non_product_account` | `CreateTransactionErr::PermissionDenied` |
 
 For the remote-gated methods: if the user has already granted the relevant `RemotePermission`, the business method proceeds without prompting. If permission is not yet resolved, the Host presents the permission prompt first, then proceeds or returns `GenericErr` (wrapping a permission-denied reason) if the user denies.
 

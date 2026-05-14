@@ -23,7 +23,7 @@ Explain the design in enough detail that someone familiar with the codebase can 
 
 ## Drawbacks
 
-Why should we *not* do this? Consider impact on complexity, maintenance, and scope.
+Why should we _not_ do this? Consider impact on complexity, maintenance, and scope.
 
 ## Alternatives
 

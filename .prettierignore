@@ -1,0 +1,11 @@
+node_modules/
+target/
+hosts/dotli/
+playground/.next/
+playground/out/
+playground/node_modules/
+playground/next-env.d.ts
+playground/tsconfig.tsbuildinfo
+js/packages/truapi/dist/
+js/packages/truapi/node_modules/
+REVIEW_TODO*.md
