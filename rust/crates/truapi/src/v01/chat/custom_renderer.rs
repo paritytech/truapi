@@ -17,11 +17,11 @@ pub struct Dimensions {
 /// Text typography presets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum TypographyStyle {
-    TitleXL,
-    Headline,
-    BodyM,
-    BodyS,
-    Caption,
+    HeadlineLarge,
+    TitleMediumRegular,
+    BodyLargeRegular,
+    BodyMediumRegular,
+    BodySmallRegular,
 }
 
 /// Button style variants.
@@ -35,15 +35,15 @@ pub enum ButtonVariant {
 /// Semantic color tokens for theming.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum ColorToken {
-    TextPrimary,
-    TextSecondary,
-    TextTertiary,
-    BackgroundPrimary,
-    BackgroundSecondary,
-    BackgroundTertiary,
-    Success,
-    Error,
-    Warning,
+    FgPrimary,
+    FgSecondary,
+    FgTertiary,
+    BgSurfaceMain,
+    BgSurfaceContainer,
+    BgSurfaceNested,
+    FgSuccess,
+    FgError,
+    FgWarning,
 }
 
 /// 2D content alignment.
