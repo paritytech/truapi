@@ -2,43 +2,68 @@
 
 The `@parity/truapi` npm package is published by
 [`paritytech/npm_publish_automation`](https://github.com/paritytech/npm_publish_automation).
-We never publish from a personal account or run `npm publish` locally; the
-`Release` workflow in `.github/workflows/release.yml` packs the package and
-dispatches the automation.
+We never run `npm publish` locally or from a personal account; the
+`Release` workflow in `.github/workflows/release.yml` packs the package
+and dispatches the automation.
 
-Versions are managed with [changesets](https://github.com/changesets/changesets).
-Releasing follows two steps:
+Releases happen via a dedicated **release PR**. Nothing publishes
+automatically on a normal feature merge — only PRs whose title (and
+therefore squashed commit subject) starts with `release:` trigger a
+publish, and only when they bump the package version.
 
-## 1. Author a changeset in your PR
+## How to release
 
-Any PR that should produce a published version must include a changeset.
+### 1. Open a release PR
+
 From the repo root:
 
 ```bash
-npx changeset
+npm run changeset            # interactive: pick patch / minor / major + a short summary
+npm run version-packages     # consumes the changeset, bumps package.json + writes CHANGELOG.md
 ```
 
-The CLI asks which packages changed and whether the bump is `patch`, `minor`,
-or `major`, then writes a markdown file under `.changeset/`. Commit that file
-as part of your PR. Multiple changesets across multiple PRs accumulate and are
-consumed together at release time.
+The first command writes a markdown file under `.changeset/`; the second
+consumes it, bumps `js/packages/truapi/package.json`, appends an entry to
+`js/packages/truapi/CHANGELOG.md`, and deletes the changeset file.
 
-PRs that don't ship user-visible changes (CI tweaks, docs, refactors with no
-behavior change) don't need a changeset.
+Commit the resulting diff and open a PR whose title starts with
+`release:`. Convention:
 
-## 2. Merge to `main`
+```
+release: @parity/truapi 0.1.1
+```
 
-When your PR lands on `main`, CI runs as usual. On CI success, the `Release`
-workflow runs and:
+### 2. Get the PR reviewed and merged
 
-1. Skips if the last commit was the release bot (avoids loops).
-2. Skips if there are no pending changesets.
-3. Otherwise: runs `changeset version` to consume the pending changesets and
-   bump `js/packages/truapi/package.json`, regenerates the codegen, rebuilds,
-   commits the bump as `truapi-release-bot[bot]`, and tags
-   `@parity/truapi@<version>`.
-4. Packs the tarball and dispatches it to `npm_publish_automation`, which
-   performs the actual `npm publish`.
+Merge via squash merge (the repo's default). The squash commit subject
+defaults to the PR title, so the `release:` prefix carries over to
+`main`. **Don't rewrite the squash subject in GitHub's merge dialog** —
+the workflow checks the commit subject, and dropping the `release:`
+prefix will silently skip the publish. If that does happen, open a
+follow-up `release:` PR with any trivial change (a CHANGELOG note tweak,
+say); the tag-already-exists guard makes re-runs safe.
 
-The bot's own version-bump commit triggers CI again; the second `Release`
-run hits the skip-if-bot guard and does nothing.
+### 3. Watch the publish
+
+On merge, CI runs as usual. When CI passes, the `Release` workflow:
+
+1. Confirms the commit subject starts with `release:`.
+2. Reads the new version from `js/packages/truapi/package.json` and
+   checks no `@parity/truapi@<version>` tag exists yet (re-runs are
+   idempotent — they skip).
+3. Builds the package, creates and pushes the tag, packs the tarball,
+   and dispatches to `npm_publish_automation`.
+
+You can watch the dispatched run under
+[`paritytech/npm_publish_automation` Actions](https://github.com/paritytech/npm_publish_automation/actions).
+
+## Safety properties
+
+- A feature PR that accidentally bumps `package.json` will **not**
+  trigger a publish — only `release:` PRs do.
+- A `release:` PR that forgets to bump the version will be skipped at
+  the tag-already-exists check, not silently re-publish over an
+  existing version.
+- The whole flow uses the default `GITHUB_TOKEN`. No GitHub App, no bot
+  identity, no separate secrets to manage other than the org-level
+  `NPM_PUBLISH_AUTOMATION_TOKEN` that the automation itself relies on.
