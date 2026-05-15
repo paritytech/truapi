@@ -17,14 +17,6 @@ pub enum HostNavigateToError {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct HostPushNotificationRequest {
-    /// Notification text.
-    pub text: String,
-    /// Optional URL to open on tap.
-    pub deeplink: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum HostHandshakeError {
     Timeout,
     UnsupportedProtocolVersion,

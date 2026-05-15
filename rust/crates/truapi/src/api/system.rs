@@ -3,14 +3,13 @@
 use crate::versioned::system::{
     HostFeatureSupportedError, HostFeatureSupportedRequest, HostFeatureSupportedResponse,
     HostHandshakeError, HostHandshakeRequest, HostHandshakeResponse, HostNavigateToError,
-    HostNavigateToRequest, HostNavigateToResponse, HostPushNotificationError,
-    HostPushNotificationRequest, HostPushNotificationResponse,
+    HostNavigateToRequest, HostNavigateToResponse,
 };
 use crate::wire;
 use crate::{CallContext, CallError};
 
-/// General-purpose TrUAPI methods for handshake, feature detection,
-/// navigation, and notifications.
+/// General-purpose TrUAPI methods for handshake, feature detection, and
+/// navigation.
 pub trait System: Send + Sync {
     /// Negotiate the wire codec version with the product.
     ///
@@ -62,26 +61,6 @@ pub trait System: Send + Sync {
         cx: &CallContext,
         request: HostFeatureSupportedRequest,
     ) -> Result<HostFeatureSupportedResponse, CallError<HostFeatureSupportedError>>;
-
-    /// Send a push notification to the user.
-    ///
-    /// ```ts
-    /// import { type Client } from "@parity/truapi";
-    ///
-    /// export async function pushNotification(truapi: Client): Promise<void> {
-    ///   const result = await truapi.system.pushNotification({
-    ///     text: "Hello!",
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    /// }
-    /// ```
-    #[wire(request_id = 4)]
-    async fn push_notification(
-        &self,
-        cx: &CallContext,
-        request: HostPushNotificationRequest,
-    ) -> Result<HostPushNotificationResponse, CallError<HostPushNotificationError>>;
 
     /// Request the host to open a URL.
     ///
