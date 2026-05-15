@@ -2511,7 +2511,7 @@ fn generate_host_server(api: &ApiDefinition) -> Result<String> {
           type HostDispatchEntry,
           type HostServerHooks,
           type TrUApiHostServer,
-        }} from '../server-core.js';
+        }} from '../index.js';
 
         export type {{
           CallContext,

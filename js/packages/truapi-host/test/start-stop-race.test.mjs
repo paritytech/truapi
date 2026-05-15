@@ -8,7 +8,7 @@
 import assert from "node:assert/strict";
 
 import { encodeWireMessage } from "../../truapi/src/index.ts";
-import { createHostServer } from "../src/server-core.ts";
+import { createHostServer } from "../src/index.ts";
 
 function makeRecordingProvider() {
   let listener;
