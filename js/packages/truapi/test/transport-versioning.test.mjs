@@ -292,7 +292,7 @@ function handshakeResponsePayload(value) {
   const errors = [];
 
   const sub = client.coinPayment
-    .coinPaymentRebalancePurse({
+    .rebalancePurse({
       request: { from: 1, to: 2, amount: 1000 },
     })
     .subscribe({
@@ -304,7 +304,7 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: sub.subscriptionId,
       payload: {
-        id: W.COIN_PAYMENT_HOST_COIN_PAYMENT_REBALANCE_PURSE.interrupt,
+        id: W.COIN_PAYMENT_REBALANCE_PURSE.interrupt,
         value: T.VersionedHostCoinPaymentRebalancePurseError.enc({
           tag: "V1",
           value: reason,
