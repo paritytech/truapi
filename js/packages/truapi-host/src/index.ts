@@ -38,7 +38,7 @@ export interface RequestEntry {
    * Decode the inbound request bytes, run the handler, and produce the
    * SCALE-encoded response payload bytes.
    **/
-  handle(payload: Uint8Array, ctx: CallContext): Promise<Uint8Array>;
+  handle(ctx: CallContext, payload: Uint8Array): Promise<Uint8Array>;
 }
 
 /**
@@ -55,8 +55,8 @@ export interface SubscriptionEntry {
    * observable, and return a cleanup function.
    **/
   start(
-    payload: Uint8Array,
     ctx: CallContext,
+    payload: Uint8Array,
     framePort: SubscriptionFramePort,
   ): Promise<SubscriptionCleanup> | SubscriptionCleanup;
 }
@@ -309,7 +309,7 @@ export function createHostServer(
     if (requestEntry) {
       let pending: Promise<Uint8Array>;
       try {
-        pending = requestEntry.handle(payload.value, ctx);
+        pending = requestEntry.handle(ctx, payload.value);
       } catch (error) {
         hooks.onRequestHandlerError?.(requestEntry.ids, toError(error), ctx);
         return;
@@ -375,7 +375,7 @@ export function createHostServer(
 
       let startResult: Promise<SubscriptionCleanup> | SubscriptionCleanup;
       try {
-        startResult = subEntry.start(payload.value, ctx, port);
+        startResult = subEntry.start(ctx, payload.value, port);
       } catch (error) {
         fail(error);
         return;

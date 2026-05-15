@@ -2965,7 +2965,7 @@ fn emit_host_entry(
                     {{
                       kind: 'request',
                       ids: W.{wire_const},
-                      async handle(bytes, ctx) {{
+                      async handle(ctx, bytes) {{
                         {request_decode_stmt}
                         const response = await handlers.{ts_method_name}({call_args});
                         return {response_codec}.enc(response);
@@ -2984,7 +2984,7 @@ fn emit_host_entry(
                     {{
                       kind: 'subscription',
                       ids: W.{wire_const},
-                      start(bytes, ctx, port) {{
+                      start(ctx, bytes, port) {{
                         {request_decode_stmt}
                         const sub = handlers.{ts_method_name}({call_args}).subscribe({{
                           next(item) {{ if (!port.isClosed) port.sendReceive({item_codec}.enc(item)); }},
@@ -3011,7 +3011,7 @@ fn emit_host_entry(
                     {{
                       kind: 'subscription',
                       ids: W.{wire_const},
-                      start(bytes, ctx, port) {{
+                      start(ctx, bytes, port) {{
                         {request_decode_stmt}
                         const sub = handlers.{ts_method_name}({call_args}).subscribe({{
                           next(item) {{ if (!port.isClosed) port.sendReceive({item_codec}.enc(item)); }},
