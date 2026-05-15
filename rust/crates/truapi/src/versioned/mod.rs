@@ -86,6 +86,7 @@ pub mod chat;
 pub mod entropy;
 pub mod jsonrpc;
 pub mod local_storage;
+pub mod navigation;
 pub mod payment;
 pub mod permissions;
 pub mod preimage;
@@ -109,9 +110,10 @@ mod tests {
 
     #[test]
     fn unit_response_roundtrip() {
-        let original = super::system::HostNavigateToResponse::V1;
-        let decoded = super::system::HostNavigateToResponse::decode(&mut &original.encode()[..])
-            .expect("decode");
+        let original = super::navigation::HostNavigateToResponse::V1;
+        let decoded =
+            super::navigation::HostNavigateToResponse::decode(&mut &original.encode()[..])
+                .expect("decode");
         assert_eq!(original, decoded);
     }
 
