@@ -180,3 +180,26 @@ jobs:
           name: playwright-report
           path: playground/playwright-report
           retention-days: 14
+
+  ci-status:
+    name: CI Status
+    if: always()
+    runs-on: ubuntu-latest
+    needs: [rust, codegen, ts-client, playground, e2e]
+    steps:
+      - name: Check all jobs
+        run: |
+          results=(
+            "${{ needs.rust.result }}"
+            "${{ needs.codegen.result }}"
+            "${{ needs.ts-client.result }}"
+            "${{ needs.playground.result }}"
+            "${{ needs.e2e.result }}"
+          )
+          for r in "${results[@]}"; do
+            if [[ "$r" != "success" && "$r" != "skipped" ]]; then
+              echo "::error::One or more CI jobs failed or were cancelled."
+              exit 1
+            fi
+          done
+          echo "All CI jobs passed."
