@@ -7,7 +7,7 @@ cd "$ROOT"
 
 required=(
   "js/packages/truapi-host/src/generated/server.ts"
-  "js/packages/truapi-host/src/generated/index.ts"
+  "js/packages/truapi-host/src/generated/types-by-version.ts"
 )
 
 missing=0

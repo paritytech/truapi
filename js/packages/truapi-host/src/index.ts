@@ -9,4 +9,4 @@ export type {
   TrUApiHostServer,
 } from "./server-core.js";
 export { createHostServer } from "./server-core.js";
-export * from "./generated/index.js";
+export * from "./generated/server.js";
