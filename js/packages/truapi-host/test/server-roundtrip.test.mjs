@@ -2,9 +2,8 @@
 //
 // Wires a host server and a @parity/truapi client to a shared in-memory
 // provider duo and asserts a request method round-trips, including the
-// versioned envelope wrap/unwrap on both sides. The host handler is
-// responsible for matching on the request's version tag and returning the
-// versioned response envelope; the dispatcher is a thin SCALE codec wrapper.
+// versioned envelope wrap/unwrap on both sides. Handlers receive and return
+// the full versioned wrapper; the dispatcher is a thin SCALE codec wrapper.
 
 import assert from "node:assert/strict";
 import { okAsync } from "neverthrow";
@@ -51,25 +50,16 @@ function makeProviderPair() {
 /**
  * Wrap a partial map of handlers with a Proxy-based stub for every other
  * service the generated `TrUApiHostHandlers` requires. Lets a test register
- * just the methods it exercises. Method stubs surface as per-version maps,
- * matching the generated handler shape (`{ v1(...), v2(...) }`).
+ * just the methods it exercises.
  */
 function makeStubHandlers(partial) {
-  const versionStub = new Proxy(
-    {},
-    {
-      get(_, version) {
-        return () => {
-          throw new Error(`unimplemented stub: ${String(version)}`);
-        };
-      },
-    },
-  );
   const stub = new Proxy(
     {},
     {
-      get() {
-        return versionStub;
+      get(_, prop) {
+        return () => {
+          throw new Error(`unimplemented stub: ${String(prop)}`);
+        };
       },
     },
   );
@@ -104,17 +94,17 @@ function makeStubHandlers(partial) {
 
   let observed;
   const accountStub = {
-    getAccount: {
-      v1(ctx, request) {
-        observed = { request, requestId: ctx.requestId };
-        return okAsync({ account: { publicKey: "0x" + "01".repeat(32) } });
-      },
+    getAccount(ctx, request) {
+      observed = { request, requestId: ctx.requestId };
+      assert.equal(request.tag, "V1");
+      return okAsync({
+        tag: "V1",
+        value: { account: { publicKey: "0x" + "01".repeat(32) } },
+      });
     },
-    connectionStatusSubscribe: {
-      v1: () => ({
-        subscribe: () => ({ unsubscribe: () => {}, subscriptionId: "" }),
-      }),
-    },
+    connectionStatusSubscribe: () => ({
+      subscribe: () => ({ unsubscribe: () => {}, subscriptionId: "" }),
+    }),
   };
 
   const server = createTrUApiServer(b, makeStubHandlers({ account: accountStub }));
@@ -131,7 +121,7 @@ function makeStubHandlers(partial) {
     `expected getAccount to succeed: ${JSON.stringify(result.error ?? null)}`,
   );
   assert.deepEqual(result.value.account.publicKey, "0x" + "01".repeat(32));
-  assert.deepEqual(observed.request, expectedRequest);
+  assert.deepEqual(observed.request, { tag: "V1", value: expectedRequest });
   assert.equal(typeof observed.requestId, "string");
 
   server.dispose();
@@ -148,21 +138,20 @@ await new Promise((resolveTest, rejectTest) => {
 
   let lastSent;
   const accountStub = {
-    connectionStatusSubscribe: {
-      v1(ctx) {
-        assert.equal(typeof ctx.requestId, "string");
-        return {
-          subscribe(observer) {
-            const item = "Connected";
-            lastSent = item;
-            queueMicrotask(() => {
-              observer.next?.(item);
-              queueMicrotask(() => observer.complete?.());
-            });
-            return { unsubscribe: () => {}, subscriptionId: "" };
-          },
-        };
-      },
+    connectionStatusSubscribe(ctx, request) {
+      assert.equal(typeof ctx.requestId, "string");
+      assert.equal(request.tag, "V1");
+      return {
+        subscribe(observer) {
+          const item = { tag: "V1", value: "Connected" };
+          lastSent = item;
+          queueMicrotask(() => {
+            observer.next?.(item);
+            queueMicrotask(() => observer.complete?.());
+          });
+          return { unsubscribe: () => {}, subscriptionId: "" };
+        },
+      };
     },
   };
 
@@ -181,7 +170,8 @@ await new Promise((resolveTest, rejectTest) => {
     complete() {
       try {
         assert.equal(received.length, 1);
-        assert.deepEqual(received[0], lastSent);
+        // The client unwraps the versioned envelope; it sees the inner value.
+        assert.deepEqual(received[0], lastSent.value);
         server.dispose();
         transport.dispose();
         resolveTest();

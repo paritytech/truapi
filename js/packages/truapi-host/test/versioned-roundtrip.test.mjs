@@ -2,7 +2,7 @@
 // has to handle distinctly: a no-param method (V1 unit request), a method
 // whose handler signature carries the versioned wrapper tag explicitly
 // (`signPayload`), and a method whose Ok side is Rust `()` (statement
-// store `submit`).
+// store `submit`). Every handler returns the full versioned envelope.
 
 import assert from "node:assert/strict";
 import { okAsync } from "neverthrow";
@@ -42,21 +42,13 @@ function makeProviderPair() {
 }
 
 function makeStubHandlers(partial) {
-  const versionStub = new Proxy(
-    {},
-    {
-      get(_, version) {
-        return () => {
-          throw new Error(`unimplemented stub: ${String(version)}`);
-        };
-      },
-    },
-  );
   const stub = new Proxy(
     {},
     {
-      get() {
-        return versionStub;
+      get(_, prop) {
+        return () => {
+          throw new Error(`unimplemented stub: ${String(prop)}`);
+        };
       },
     },
   );
@@ -84,9 +76,9 @@ function makeStubHandlers(partial) {
 }
 
 // No-param method (`account.getUserId`). The Rust trait declares
-// `_request: HostGetUserIdRequest` whose V1 variant is unit, so the host
-// generator omits the handler's `request` parameter and the dispatcher
-// still validates the inbound versioned envelope.
+// `_request: HostGetUserIdRequest` whose V1 variant is unit, so the request
+// the handler sees is `{ tag: 'V1', value: undefined }` and the response is
+// wrapped at the same version.
 {
   const { a, b } = makeProviderPair();
   const transport = createTransport(a);
@@ -94,11 +86,13 @@ function makeStubHandlers(partial) {
 
   let ctxRequestId;
   const accountStub = {
-    getUserId: {
-      v1(ctx) {
-        ctxRequestId = ctx.requestId;
-        return okAsync({ primaryUsername: "alice.dot" });
-      },
+    getUserId(ctx, request) {
+      ctxRequestId = ctx.requestId;
+      assert.equal(request.tag, "V1");
+      return okAsync({
+        tag: "V1",
+        value: { primaryUsername: "alice.dot" },
+      });
     },
   };
 
@@ -142,11 +136,13 @@ function makeStubHandlers(partial) {
 
   let observedRequest;
   const signingStub = {
-    signPayload: {
-      v1(_ctx, request) {
-        observedRequest = request;
-        return okAsync({ signature: sampleSignature });
-      },
+    signPayload(_ctx, request) {
+      observedRequest = request;
+      assert.equal(request.tag, "V1");
+      return okAsync({
+        tag: "V1",
+        value: { signature: sampleSignature },
+      });
     },
   };
 
@@ -161,9 +157,9 @@ function makeStubHandlers(partial) {
   // input set rather than deepEqual on the whole shape.
   for (const [key, expected] of Object.entries(sampleRequest)) {
     assert.deepEqual(
-      observedRequest[key],
+      observedRequest.value[key],
       expected,
-      `signPayload request.${key} mismatch`,
+      `signPayload request.value.${key} mismatch`,
     );
   }
 
@@ -191,10 +187,9 @@ function makeStubHandlers(partial) {
   };
 
   const statementStoreStub = {
-    submit: {
-      v1(_ctx, _request) {
-        return okAsync(undefined);
-      },
+    submit(_ctx, request) {
+      assert.equal(request.tag, "V1");
+      return okAsync({ tag: "V1", value: undefined });
     },
   };
 

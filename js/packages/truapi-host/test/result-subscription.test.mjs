@@ -34,21 +34,13 @@ function makeProviderPair() {
 }
 
 function makeStubHandlers(partial) {
-  const versionStub = new Proxy(
-    {},
-    {
-      get(_, version) {
-        return () => {
-          throw new Error(`unimplemented stub: ${String(version)}`);
-        };
-      },
-    },
-  );
   const stub = new Proxy(
     {},
     {
-      get() {
-        return versionStub;
+      get(_, prop) {
+        return () => {
+          throw new Error(`unimplemented stub: ${String(prop)}`);
+        };
       },
     },
   );
@@ -81,21 +73,22 @@ await new Promise((resolveTest, rejectTest) => {
   const client = createClient(transport);
 
   const paymentStub = {
-    balanceSubscribe: {
-      v1(ctx) {
-        assert.equal(typeof ctx.requestId, "string");
-        return {
-          subscribe(observer) {
+    balanceSubscribe(ctx, request) {
+      assert.equal(typeof ctx.requestId, "string");
+      assert.equal(request.tag, "V1");
+      return {
+        subscribe(observer) {
+          queueMicrotask(() => {
+            observer.next?.({ tag: "V1", value: { available: 100n } });
             queueMicrotask(() => {
-              observer.next?.({ available: 100n });
-              queueMicrotask(() => {
-                observer.error?.({ reason: { tag: "PermissionDenied" } });
+              observer.error?.({
+                reason: { tag: "V1", value: { tag: "PermissionDenied" } },
               });
             });
-            return { unsubscribe: () => {}, subscriptionId: "" };
-          },
-        };
-      },
+          });
+          return { unsubscribe: () => {}, subscriptionId: "" };
+        },
+      };
     },
   };
 

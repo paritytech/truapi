@@ -28,10 +28,13 @@ const provider = createMessagePortProvider(port);
 
 const handlers: TrUApiHostHandlers = {
   account: {
-    getAccount: {
-      v1(ctx, request) {
-        return okAsync({ account: myStore.lookup(request.productAccountId) });
-      },
+    getAccount(ctx, request) {
+      switch (request.tag) {
+        case "V1": {
+          const account = myStore.lookup(request.value.productAccountId);
+          return okAsync({ tag: "V1", value: { account } });
+        }
+      }
     },
     // …other AccountHostHandlers methods
   },
@@ -44,7 +47,7 @@ const server: TrUApiHostServer = createTrUApiServer(provider, handlers);
 server.dispose();
 ```
 
-Each method on a service is a per-version handler map keyed by `v1`, `v2`, … . The dispatcher decodes the inbound versioned envelope, routes to the matching `vN` handler with the already-unwrapped request, awaits the returned `ResultAsync<Ok, Err>`, and re-wraps the outcome as the wire `Result` payload. Add a new `vN` entry when the host starts speaking a new wire version. Each handler receives a `CallContext` carrying the inbound `requestId` so it can correlate audit logs and per-call state.
+Each handler receives the full versioned wrapper (`{ tag: "V1", value: … }` for the current wire version, or a discriminated union over every wire version a method supports) and returns the matching versioned wrapper inside a `ResultAsync<Ok, Err>`. Narrow on `request.tag` and return the value tagged at the same version. TypeScript ensures the value shape matches the tag; future wire versions surface as a new arm in the union. Each handler receives a `CallContext` carrying the inbound `requestId` so it can correlate audit logs and per-call state.
 
 ### Handlers must not throw
 
@@ -54,24 +57,22 @@ The dispatcher does install `HostServerHooks.onRequestHandlerError` and `onSubsc
 
 ## Subscriptions
 
-Subscription handlers return an `ObservableLike<Item, Reason>` over the unwrapped per-version `Item`/`Reason` types. The dispatcher subscribes when the start frame arrives, bridges the resulting `Observer` callbacks onto wire frames (wrapping each emission in the matching version envelope), and unsubscribes when the client stops the stream (or the transport closes). The shape mirrors what `@parity/truapi` clients receive on the other side.
+Subscription handlers return an `ObservableLike<Item, Reason>` over the versioned `Item`/`Reason` types. Items emitted to `observer.next` carry the version tag (`{ tag: "V1", value: … }`); the dispatcher encodes them on the wire and unsubscribes when the client stops the stream (or the transport closes).
 
 ```ts
 import type { ObservableLike } from "@parity/truapi-host";
 
 const handlers: TrUApiHostHandlers = {
   account: {
-    connectionStatusSubscribe: {
-      v1(ctx) {
-        return {
-          subscribe(observer) {
-            const unsubscribe = myStore.onStatusChange((status) => {
-              observer.next?.(status);
-            });
-            return { unsubscribe, subscriptionId: "" };
-          },
-        };
-      },
+    connectionStatusSubscribe(ctx, request) {
+      return {
+        subscribe(observer) {
+          const unsubscribe = myStore.onStatusChange((status) => {
+            observer.next?.({ tag: "V1", value: status });
+          });
+          return { unsubscribe, subscriptionId: "" };
+        },
+      };
     },
     // …
   },

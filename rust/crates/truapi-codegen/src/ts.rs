@@ -2822,24 +2822,27 @@ fn emit_host_method_aliases(
         return Ok(());
     }
 
-    if has_request_param {
-        let shapes = host_request_shapes_for_versions(&method.params, wrappers, ctx, &versions)?
-            .ok_or_else(|| {
-                anyhow::anyhow!(
-                    "internal: method `{}` is versioned but request shapes are unversioned",
-                    method.name
-                )
-            })?;
-        for shape in &shapes {
-            writeln!(
-                out,
-                "export type {base}V{v}Request = {ts};",
-                v = shape.version,
-                ts = shape.inner_type_ts,
-            )
-            .unwrap();
-        }
-    }
+    // Always emit Request as a versioned union, including no-param methods
+    // (those carry `value?: undefined` per variant).
+    let request_shapes =
+        match host_request_shapes_for_versions(&method.params, wrappers, ctx, &versions)? {
+            Some(shapes) => shapes,
+            None => versions
+                .iter()
+                .map(|v| HostVersionedShape {
+                    version: *v,
+                    inner_type_ts: "undefined".to_string(),
+                    inner_codec_expr: "S._void".to_string(),
+                })
+                .collect(),
+        };
+    writeln!(
+        out,
+        "export type {base}Request = {ts};",
+        ts = host_union_type(&request_shapes, |s| s.inner_type_ts.clone()),
+    )
+    .unwrap();
+
     match (&method.kind, &method.return_type) {
         (MethodKind::Request, ReturnType::Result { ok, err }) => {
             let err_inner = call_error_inner(err).unwrap_or(err);
@@ -2858,24 +2861,18 @@ fn emit_host_method_aliases(
                             method.name
                         )
                     })?;
-            for shape in &ok_shapes {
-                writeln!(
-                    out,
-                    "export type {base}V{v}Ok = {ts};",
-                    v = shape.version,
-                    ts = shape.inner_type_ts,
-                )
-                .unwrap();
-            }
-            for shape in &err_shapes {
-                writeln!(
-                    out,
-                    "export type {base}V{v}Err = {ts};",
-                    v = shape.version,
-                    ts = shape.inner_type_ts,
-                )
-                .unwrap();
-            }
+            writeln!(
+                out,
+                "export type {base}Ok = {ts};",
+                ts = host_union_type(&ok_shapes, |s| s.inner_type_ts.clone()),
+            )
+            .unwrap();
+            writeln!(
+                out,
+                "export type {base}Err = {ts};",
+                ts = host_union_type(&err_shapes, |s| s.inner_type_ts.clone()),
+            )
+            .unwrap();
         }
         (MethodKind::Subscription, ReturnType::Subscription(ty)) => {
             let item_shapes = host_response_shapes_for_versions(ty, wrappers, ctx, &versions)?
@@ -2885,15 +2882,12 @@ fn emit_host_method_aliases(
                         method.name
                     )
                 })?;
-            for shape in &item_shapes {
-                writeln!(
-                    out,
-                    "export type {base}V{v}Item = {ts};",
-                    v = shape.version,
-                    ts = shape.inner_type_ts,
-                )
-                .unwrap();
-            }
+            writeln!(
+                out,
+                "export type {base}Item = {ts};",
+                ts = host_union_type(&item_shapes, |s| s.inner_type_ts.clone()),
+            )
+            .unwrap();
         }
         (MethodKind::ResultSubscription, ReturnType::ResultSubscription { item, err }) => {
             let err_inner = call_error_inner(err).unwrap_or(err);
@@ -2912,24 +2906,18 @@ fn emit_host_method_aliases(
                             method.name
                         )
                     })?;
-            for shape in &item_shapes {
-                writeln!(
-                    out,
-                    "export type {base}V{v}Item = {ts};",
-                    v = shape.version,
-                    ts = shape.inner_type_ts,
-                )
-                .unwrap();
-            }
-            for shape in &reason_shapes {
-                writeln!(
-                    out,
-                    "export type {base}V{v}Reason = {ts};",
-                    v = shape.version,
-                    ts = shape.inner_type_ts,
-                )
-                .unwrap();
-            }
+            writeln!(
+                out,
+                "export type {base}Item = {ts};",
+                ts = host_union_type(&item_shapes, |s| s.inner_type_ts.clone()),
+            )
+            .unwrap();
+            writeln!(
+                out,
+                "export type {base}Reason = {ts};",
+                ts = host_union_type(&reason_shapes, |s| s.inner_type_ts.clone()),
+            )
+            .unwrap();
         }
         (kind, return_type) => {
             bail!(
@@ -2951,91 +2939,51 @@ fn emit_host_handler_signature(
 ) -> Result<()> {
     let ts_method_name = to_camel_case(&strip_prefix(&method.name));
     let versions = method_wire_versions(method, wrappers)?;
-    let has_request_param =
-        !method.params.is_empty() || (trait_def.name == "System" && method.name == "handshake");
+    // Unversioned methods preserve their original `(ctx)` vs `(ctx, request)`
+    // shape. Versioned methods always carry `request` so the handler can read
+    // and reply with the matching version tag.
+    let has_request_param = !versions.is_empty()
+        || !method.params.is_empty()
+        || (trait_def.name == "System" && method.name == "handshake");
     let base = host_alias_base(&trait_def.name, method);
+    let request_param = if has_request_param {
+        format!(", request: {base}Request")
+    } else {
+        String::new()
+    };
     write_jsdoc(out, "  ", method.docs.as_deref());
 
-    if versions.is_empty() {
-        let request_param = if has_request_param {
-            format!(", request: {base}Request")
-        } else {
-            String::new()
-        };
-        match (&method.kind, &method.return_type) {
-            (MethodKind::Request, ReturnType::Result { .. }) => {
-                writeln!(
-                    out,
-                    "  {ts_method_name}(ctx: CallContext{request_param}): ResultAsync<{base}Ok, {base}Err>;",
-                )
-                .unwrap();
-            }
-            (MethodKind::Subscription, ReturnType::Subscription(_)) => {
-                writeln!(
-                    out,
-                    "  {ts_method_name}(ctx: CallContext{request_param}): ObservableLike<{base}Item>;",
-                )
-                .unwrap();
-            }
-            (MethodKind::ResultSubscription, ReturnType::ResultSubscription { .. }) => {
-                writeln!(
-                    out,
-                    "  {ts_method_name}(ctx: CallContext{request_param}): ObservableLike<{base}Item, {base}Reason>;",
-                )
-                .unwrap();
-            }
-            (kind, return_type) => {
-                bail!(
-                    "Host generator mismatch for method `{}`: kind {:?} does not match return type {:?}",
-                    method.name,
-                    kind,
-                    return_type
-                );
-            }
+    match (&method.kind, &method.return_type) {
+        (MethodKind::Request, ReturnType::Result { .. }) => {
+            writeln!(
+                out,
+                "  {ts_method_name}(ctx: CallContext{request_param}): ResultAsync<{base}Ok, {base}Err>;",
+            )
+            .unwrap();
         }
-        return Ok(());
-    }
-
-    writeln!(out, "  {ts_method_name}: {{").unwrap();
-    for v in &versions {
-        let request_param = if has_request_param {
-            format!(", request: {base}V{v}Request")
-        } else {
-            String::new()
-        };
-        match (&method.kind, &method.return_type) {
-            (MethodKind::Request, ReturnType::Result { .. }) => {
-                writeln!(
-                    out,
-                    "    v{v}(ctx: CallContext{request_param}): ResultAsync<{base}V{v}Ok, {base}V{v}Err>;",
-                )
-                .unwrap();
-            }
-            (MethodKind::Subscription, ReturnType::Subscription(_)) => {
-                writeln!(
-                    out,
-                    "    v{v}(ctx: CallContext{request_param}): ObservableLike<{base}V{v}Item>;",
-                )
-                .unwrap();
-            }
-            (MethodKind::ResultSubscription, ReturnType::ResultSubscription { .. }) => {
-                writeln!(
-                    out,
-                    "    v{v}(ctx: CallContext{request_param}): ObservableLike<{base}V{v}Item, {base}V{v}Reason>;",
-                )
-                .unwrap();
-            }
-            (kind, return_type) => {
-                bail!(
-                    "Host generator mismatch for method `{}`: kind {:?} does not match return type {:?}",
-                    method.name,
-                    kind,
-                    return_type
-                );
-            }
+        (MethodKind::Subscription, ReturnType::Subscription(_)) => {
+            writeln!(
+                out,
+                "  {ts_method_name}(ctx: CallContext{request_param}): ObservableLike<{base}Item>;",
+            )
+            .unwrap();
+        }
+        (MethodKind::ResultSubscription, ReturnType::ResultSubscription { .. }) => {
+            writeln!(
+                out,
+                "  {ts_method_name}(ctx: CallContext{request_param}): ObservableLike<{base}Item, {base}Reason>;",
+            )
+            .unwrap();
+        }
+        (kind, return_type) => {
+            bail!(
+                "Host generator mismatch for method `{}`: kind {:?} does not match return type {:?}",
+                method.name,
+                kind,
+                return_type
+            );
         }
     }
-    writeln!(out, "  }};").unwrap();
     Ok(())
 }
 
@@ -3065,25 +3013,13 @@ fn emit_host_entry(
         return Ok(());
     }
 
+    // Versioned dispatch is straight-through: the request codec decodes a
+    // versioned wrapper, the handler returns a versioned wrapper (or items),
+    // and the codec routes by tag on encode. No per-version branching.
     let request_codec = host_request_codec(&method.params, wrappers, ctx, &versions)?;
     match (&method.kind, &method.return_type) {
         (MethodKind::Request, ReturnType::Result { ok, err }) => {
-            let err_inner = call_error_inner(err).unwrap_or(err);
-            let ok_shapes = host_response_shapes_for_versions(ok, wrappers, ctx, &versions)?
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "internal: ok shapes unexpectedly unversioned for `{}`",
-                        method.name
-                    )
-                })?;
-            let err_shapes =
-                host_response_shapes_for_versions(err_inner, wrappers, ctx, &versions)?
-                    .ok_or_else(|| {
-                        anyhow::anyhow!(
-                            "internal: err shapes unexpectedly unversioned for `{}`",
-                            method.name
-                        )
-                    })?;
+            let response_codec = host_response_codec(ok, err, wrappers, ctx, &versions)?;
             writedoc!(
                 out,
                 "
@@ -3092,41 +3028,11 @@ fn emit_host_entry(
                       ids: W.{wire_const},
                       async handle(ctx, bytes) {{
                         const request = {request_codec}.dec(bytes);
-                        switch (request.tag) {{
-                "
-            )
-            .unwrap();
-            for (o, e) in ok_shapes.iter().zip(err_shapes.iter()) {
-                let v = o.version;
-                let response_codec = format!(
-                    "S.indexedTaggedUnion({{ V{v}: [{idx}, S.Result({ok_codec}, {err_codec})] as const }})",
-                    idx = v - 1,
-                    ok_codec = o.inner_codec_expr,
-                    err_codec = e.inner_codec_expr,
-                );
-                let call_args = if has_request_param {
-                    "ctx, request.value"
-                } else {
-                    "ctx"
-                };
-                writedoc!(
-                    out,
-                    "
-                          case 'V{v}': {{
-                            const response = await handlers.{ts_method_name}.v{v}({call_args}).match(
-                              (value) => ({{ success: true as const, value }}),
-                              (error) => ({{ success: false as const, value: error }}),
-                            );
-                            return {response_codec}.enc({{ tag: 'V{v}' as const, value: response }});
-                          }}
-                    "
-                )
-                .unwrap();
-            }
-            writedoc!(
-                out,
-                "
-                        }}
+                        const response = await handlers.{ts_method_name}(ctx, request).match(
+                          (ok) => ({{ tag: ok.tag, value: {{ success: true as const, value: ok.value }} }}),
+                          (err) => ({{ tag: err.tag, value: {{ success: false as const, value: err.value }} }}),
+                        );
+                        return {response_codec}.enc(response);
                       }},
                     }},
                 "
@@ -3134,13 +3040,8 @@ fn emit_host_entry(
             .unwrap();
         }
         (MethodKind::Subscription, ReturnType::Subscription(ty)) => {
-            let item_shapes = host_response_shapes_for_versions(ty, wrappers, ctx, &versions)?
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "internal: item shapes unexpectedly unversioned for `{}`",
-                        method.name
-                    )
-                })?;
+            let item_codec = host_value_codec(ty, wrappers, ctx, &versions)?;
+            let (interrupt_codec, _) = host_void_interrupt(&versions)?;
             writedoc!(
                 out,
                 "
@@ -3149,44 +3050,11 @@ fn emit_host_entry(
                       ids: W.{wire_const},
                       start(ctx, bytes, port) {{
                         const request = {request_codec}.dec(bytes);
-                        switch (request.tag) {{
-                "
-            )
-            .unwrap();
-            for shape in &item_shapes {
-                let v = shape.version;
-                let item_codec = format!(
-                    "S.indexedTaggedUnion({{ V{v}: [{idx}, {inner}] as const }})",
-                    idx = v - 1,
-                    inner = shape.inner_codec_expr,
-                );
-                let interrupt_codec = format!(
-                    "S.indexedTaggedUnion({{ V{v}: [{idx}, S._void] as const }})",
-                    idx = v - 1,
-                );
-                let call_args = if has_request_param {
-                    "ctx, request.value"
-                } else {
-                    "ctx"
-                };
-                writedoc!(
-                    out,
-                    "
-                          case 'V{v}': {{
-                            const sub = handlers.{ts_method_name}.v{v}({call_args}).subscribe({{
-                              next(item) {{ if (!port.isClosed) port.sendReceive({item_codec}.enc({{ tag: 'V{v}' as const, value: item }})); }},
-                              complete() {{ if (!port.isClosed) port.sendInterrupt({interrupt_codec}.enc({{ tag: 'V{v}' as const, value: undefined }})); }},
-                            }});
-                            return () => sub.unsubscribe();
-                          }}
-                    "
-                )
-                .unwrap();
-            }
-            writedoc!(
-                out,
-                "
-                        }}
+                        const sub = handlers.{ts_method_name}(ctx, request).subscribe({{
+                          next(item) {{ if (!port.isClosed) port.sendReceive({item_codec}.enc(item)); }},
+                          complete() {{ if (!port.isClosed) port.sendInterrupt({interrupt_codec}.enc({{ tag: request.tag, value: undefined }})); }},
+                        }});
+                        return () => sub.unsubscribe();
                       }},
                     }},
                 "
@@ -3194,22 +3062,13 @@ fn emit_host_entry(
             .unwrap();
         }
         (MethodKind::ResultSubscription, ReturnType::ResultSubscription { item, err }) => {
-            let err_inner = call_error_inner(err).unwrap_or(err);
-            let item_shapes = host_response_shapes_for_versions(item, wrappers, ctx, &versions)?
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "internal: item shapes unexpectedly unversioned for `{}`",
-                        method.name
-                    )
-                })?;
-            let reason_shapes =
-                host_response_shapes_for_versions(err_inner, wrappers, ctx, &versions)?
-                    .ok_or_else(|| {
-                        anyhow::anyhow!(
-                            "internal: reason shapes unexpectedly unversioned for `{}`",
-                            method.name
-                        )
-                    })?;
+            let item_codec = host_value_codec(item, wrappers, ctx, &versions)?;
+            let interrupt_codec = host_value_codec(
+                call_error_inner(err).unwrap_or(err),
+                wrappers,
+                ctx,
+                &versions,
+            )?;
             writedoc!(
                 out,
                 "
@@ -3218,45 +3077,11 @@ fn emit_host_entry(
                       ids: W.{wire_const},
                       start(ctx, bytes, port) {{
                         const request = {request_codec}.dec(bytes);
-                        switch (request.tag) {{
-                "
-            )
-            .unwrap();
-            for (it, rs) in item_shapes.iter().zip(reason_shapes.iter()) {
-                let v = it.version;
-                let item_codec = format!(
-                    "S.indexedTaggedUnion({{ V{v}: [{idx}, {inner}] as const }})",
-                    idx = v - 1,
-                    inner = it.inner_codec_expr,
-                );
-                let interrupt_codec = format!(
-                    "S.indexedTaggedUnion({{ V{v}: [{idx}, {inner}] as const }})",
-                    idx = v - 1,
-                    inner = rs.inner_codec_expr,
-                );
-                let call_args = if has_request_param {
-                    "ctx, request.value"
-                } else {
-                    "ctx"
-                };
-                writedoc!(
-                    out,
-                    "
-                          case 'V{v}': {{
-                            const sub = handlers.{ts_method_name}.v{v}({call_args}).subscribe({{
-                              next(item) {{ if (!port.isClosed) port.sendReceive({item_codec}.enc({{ tag: 'V{v}' as const, value: item }})); }},
-                              error(err) {{ if (err.reason !== undefined && !port.isClosed) port.sendInterrupt({interrupt_codec}.enc({{ tag: 'V{v}' as const, value: err.reason }})); }},
-                            }});
-                            return () => sub.unsubscribe();
-                          }}
-                    "
-                )
-                .unwrap();
-            }
-            writedoc!(
-                out,
-                "
-                        }}
+                        const sub = handlers.{ts_method_name}(ctx, request).subscribe({{
+                          next(item) {{ if (!port.isClosed) port.sendReceive({item_codec}.enc(item)); }},
+                          error(err) {{ if (err.reason !== undefined && !port.isClosed) port.sendInterrupt({interrupt_codec}.enc(err.reason)); }},
+                        }});
+                        return () => sub.unsubscribe();
                       }},
                     }},
                 "
