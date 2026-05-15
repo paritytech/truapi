@@ -65,7 +65,7 @@ pub struct HostPaymentTopUpRequest {
 
 /// Request to initiate a payment to another account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct HostPaymentRequestRequest {
+pub struct HostPaymentRequest {
     /// Optional purse selector. `None` means MAIN_PURSE.
     pub from: Option<PurseId>,
     /// Amount to pay.
@@ -80,7 +80,7 @@ pub struct HostPaymentRequestRequest {
 ///
 /// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct HostPaymentRequestResponse {
+pub struct HostPaymentResponse {
     /// The assigned payment identifier.
     pub id: String,
 }
@@ -140,7 +140,7 @@ pub enum HostPaymentTopUpError {
 ///
 /// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub enum HostPaymentRequestError {
+pub enum HostPaymentError {
     /// User rejected the payment request.
     Rejected,
     /// User's available balance is not sufficient for the requested amount.
