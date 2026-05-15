@@ -54,7 +54,7 @@ The dispatcher does install `HostServerHooks.onRequestHandlerError` and `onSubsc
 
 ## Subscriptions
 
-Subscription handlers return an `ObservableLike<Item, Reason>` typed against the versioned item wrapper. The dispatcher subscribes when the start frame arrives, bridges the resulting `Observer` callbacks onto wire frames, and unsubscribes when the client stops the stream (or the transport closes). The shape mirrors what `@parity/truapi` clients receive on the other side.
+Subscription handlers return an `ObservableLike<Item, Reason>` over the unwrapped per-version `Item`/`Reason` types. The dispatcher subscribes when the start frame arrives, bridges the resulting `Observer` callbacks onto wire frames (wrapping each emission in the matching version envelope), and unsubscribes when the client stops the stream (or the transport closes). The shape mirrors what `@parity/truapi` clients receive on the other side.
 
 ```ts
 import type { ObservableLike } from "@parity/truapi-host";

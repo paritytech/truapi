@@ -144,7 +144,6 @@ interface DispatchTable {
   byRequest: Map<number, RequestEntry>;
   byStart: Map<number, SubscriptionEntry>;
   stopIds: Set<number>;
-  startToStop: Map<number, number>;
 }
 
 /**
@@ -154,7 +153,6 @@ function buildDispatchTable(entries: HostDispatchEntry[]): DispatchTable {
   const byRequest = new Map<number, RequestEntry>();
   const byStart = new Map<number, SubscriptionEntry>();
   const stopIds = new Set<number>();
-  const startToStop = new Map<number, number>();
 
   for (const entry of entries) {
     if (entry.kind === "request") {
@@ -174,11 +172,10 @@ function buildDispatchTable(entries: HostDispatchEntry[]): DispatchTable {
       }
       byStart.set(entry.ids.start, entry);
       stopIds.add(entry.ids.stop);
-      startToStop.set(entry.ids.start, entry.ids.stop);
     }
   }
 
-  return { byRequest, byStart, stopIds, startToStop };
+  return { byRequest, byStart, stopIds };
 }
 
 /**
@@ -199,7 +196,6 @@ interface PendingSubscription {
  **/
 interface ActiveSubscription {
   readonly kind: "active";
-  readonly entry: SubscriptionEntry;
   readonly cleanup: SubscriptionCleanup;
   readonly port: SubscriptionFramePort;
 }
@@ -361,7 +357,6 @@ export function createHostServer(
         }
         subscriptions.set(requestId, {
           kind: "active",
-          entry: subEntry,
           cleanup,
           port,
         });
