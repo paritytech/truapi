@@ -22,7 +22,6 @@ use crate::{CallContext, CallError, Subscription};
 /// RFC 0017 describes `Resolvable<T>` values for long-running operations.
 /// TrUAPI represents those as subscriptions whose items are the RFC status
 /// updates.
-#[async_trait::async_trait]
 pub trait CoinPayment: Send + Sync {
     /// Create a new firewalled CoinPayment purse.
     ///
