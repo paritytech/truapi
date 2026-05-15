@@ -239,7 +239,6 @@ const MAIN_PURSE: PurseId = u32::MAX;
 type Balance = u32;
 type Timestamp = u64;
 type CoinPaymentProductId = String;
-type Resolvable<T> = Stream<T>;
 type Subscription<T> = Stream<T>;
 type CoinPaymentReceivable = [u8; 32]; // public key
 type CoinPaymentMerkleRoot = [u8; 32];

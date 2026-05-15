@@ -43,8 +43,6 @@ pub struct CoinPaymentPurseInfo {
 /// Standardized encrypted Coinage secret transmission payload.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct CoinPaymentCheque {
-    /// Cheque format version. V1 uses 0.
-    pub version: u8,
     /// Receivable public key protecting the cheque contents.
     pub id: CoinPaymentReceivable,
     /// Claimed payment amount.
@@ -75,33 +73,6 @@ pub enum CoinPaymentError {
     /// Unexpected runtime failure.
     Internal,
 }
-
-/// Error from `host_coin_payment_create_purse`.
-pub type HostCoinPaymentCreatePurseError = CoinPaymentError;
-
-/// Error from `host_coin_payment_query_purse`.
-pub type HostCoinPaymentQueryPurseError = CoinPaymentError;
-
-/// Error from `host_coin_payment_rebalance_purse`.
-pub type HostCoinPaymentRebalancePurseError = CoinPaymentError;
-
-/// Error from `host_coin_payment_delete_purse`.
-pub type HostCoinPaymentDeletePurseError = CoinPaymentError;
-
-/// Error from `host_coin_payment_create_receivable`.
-pub type HostCoinPaymentCreateReceivableError = CoinPaymentError;
-
-/// Error from `host_coin_payment_create_cheque`.
-pub type HostCoinPaymentCreateChequeError = CoinPaymentError;
-
-/// Error from `host_coin_payment_deposit`.
-pub type HostCoinPaymentDepositError = CoinPaymentError;
-
-/// Error from `host_coin_payment_refund`.
-pub type HostCoinPaymentRefundError = CoinPaymentError;
-
-/// Error from `host_coin_payment_listen_for`.
-pub type HostCoinPaymentListenForError = CoinPaymentError;
 
 /// Product-visible clearing reference for reconciliation and receipts.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
