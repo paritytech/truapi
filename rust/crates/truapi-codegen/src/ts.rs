@@ -2576,6 +2576,11 @@ fn generate_host_server(api: &ApiDefinition) -> Result<String> {
         }
         writedoc!(out, "}}\n\n").unwrap();
 
+        for method in methods {
+            emit_host_method_codecs(&mut out, trait_def, method, &wrappers, &ctx)?;
+        }
+        writeln!(out).unwrap();
+
         writeln!(
             out,
             "function build{name}Entries(handlers: {name}HostHandlers): HostDispatchEntry[] {{",
@@ -2584,7 +2589,7 @@ fn generate_host_server(api: &ApiDefinition) -> Result<String> {
         .unwrap();
         writeln!(out, "  return [").unwrap();
         for method in methods {
-            emit_host_entry(&mut out, trait_def, method, &wrappers, &ctx)?;
+            emit_host_entry(&mut out, trait_def, method, &wrappers)?;
         }
         writedoc!(out, "  ];\n}}\n\n").unwrap();
     }
@@ -2955,6 +2960,68 @@ fn emit_host_method_aliases(
     Ok(())
 }
 
+/// Module-scope constant name for one of a method's codecs. Builds on the
+/// shared `wire_const_name` so the codec sits next to its wire ids in the
+/// reader's mental model (`W.ACCOUNT_GET_ACCOUNT` for ids,
+/// `ACCOUNT_GET_ACCOUNT_REQUEST_CODEC` for the request codec).
+fn codec_const_name(trait_name: &str, method: &MethodDef, suffix: &str) -> String {
+    format!("{}_{}", wire_const_name(trait_name, &method.name), suffix)
+}
+
+/// Emit module-scope codec constants for one method so the per-call
+/// dispatch entry stays tiny (decode → call → encode) and the codecs are
+/// only constructed once instead of on every inbound frame.
+fn emit_host_method_codecs(
+    out: &mut String,
+    trait_def: &TraitDef,
+    method: &MethodDef,
+    wrappers: &HashMap<String, VersionedWrapper>,
+    ctx: &CodecContext,
+) -> Result<()> {
+    let versions = method_wire_versions(method, wrappers)?;
+    let request_codec = host_request_codec(&method.params, wrappers, ctx, &versions)?;
+    let request_name = codec_const_name(&trait_def.name, method, "REQUEST_CODEC");
+    writeln!(out, "const {request_name} = {request_codec};").unwrap();
+
+    match (&method.kind, &method.return_type) {
+        (MethodKind::Request, ReturnType::Result { ok, err }) => {
+            let response_codec = host_response_codec(ok, err, wrappers, ctx, &versions)?;
+            let response_name = codec_const_name(&trait_def.name, method, "RESPONSE_CODEC");
+            writeln!(out, "const {response_name} = {response_codec};").unwrap();
+        }
+        (MethodKind::Subscription, ReturnType::Subscription(ty)) => {
+            let item_codec = host_value_codec(ty, wrappers, ctx, &versions)?;
+            let item_name = codec_const_name(&trait_def.name, method, "ITEM_CODEC");
+            writeln!(out, "const {item_name} = {item_codec};").unwrap();
+            let (interrupt_codec, _) = host_void_interrupt(&versions)?;
+            let interrupt_name = codec_const_name(&trait_def.name, method, "INTERRUPT_CODEC");
+            writeln!(out, "const {interrupt_name} = {interrupt_codec};").unwrap();
+        }
+        (MethodKind::ResultSubscription, ReturnType::ResultSubscription { item, err }) => {
+            let item_codec = host_value_codec(item, wrappers, ctx, &versions)?;
+            let item_name = codec_const_name(&trait_def.name, method, "ITEM_CODEC");
+            writeln!(out, "const {item_name} = {item_codec};").unwrap();
+            let interrupt_codec = host_value_codec(
+                call_error_inner(err).unwrap_or(err),
+                wrappers,
+                ctx,
+                &versions,
+            )?;
+            let interrupt_name = codec_const_name(&trait_def.name, method, "INTERRUPT_CODEC");
+            writeln!(out, "const {interrupt_name} = {interrupt_codec};").unwrap();
+        }
+        (kind, return_type) => {
+            bail!(
+                "Host generator mismatch for method `{}`: kind {:?} does not match return type {:?}",
+                method.name,
+                kind,
+                return_type
+            );
+        }
+    }
+    Ok(())
+}
+
 fn emit_host_handler_signature(
     out: &mut String,
     trait_def: &TraitDef,
@@ -3016,7 +3083,6 @@ fn emit_host_entry(
     trait_def: &TraitDef,
     method: &MethodDef,
     wrappers: &HashMap<String, VersionedWrapper>,
-    ctx: &CodecContext,
 ) -> Result<()> {
     let ts_method_name = to_camel_case(&strip_prefix(&method.name));
     let wire_const = wire_const_name(&trait_def.name, &method.name);
@@ -3027,11 +3093,10 @@ fn emit_host_entry(
     if versions.is_empty() {
         emit_host_entry_unversioned(
             out,
+            trait_def,
             method,
             &ts_method_name,
             &wire_const,
-            wrappers,
-            ctx,
             has_request_param,
         )?;
         return Ok(());
@@ -3039,11 +3104,12 @@ fn emit_host_entry(
 
     // Versioned dispatch is straight-through: the request codec decodes a
     // versioned wrapper, the handler returns a versioned wrapper (or items),
-    // and the codec routes by tag on encode. No per-version branching.
-    let request_codec = host_request_codec(&method.params, wrappers, ctx, &versions)?;
+    // and the codec routes by tag on encode. No per-version branching. The
+    // codec constants come from `emit_host_method_codecs`.
+    let request_codec = codec_const_name(&trait_def.name, method, "REQUEST_CODEC");
     match (&method.kind, &method.return_type) {
-        (MethodKind::Request, ReturnType::Result { ok, err }) => {
-            let response_codec = host_response_codec(ok, err, wrappers, ctx, &versions)?;
+        (MethodKind::Request, ReturnType::Result { .. }) => {
+            let response_codec = codec_const_name(&trait_def.name, method, "RESPONSE_CODEC");
             writedoc!(
                 out,
                 "
@@ -3062,9 +3128,9 @@ fn emit_host_entry(
             )
             .unwrap();
         }
-        (MethodKind::Subscription, ReturnType::Subscription(ty)) => {
-            let item_codec = host_value_codec(ty, wrappers, ctx, &versions)?;
-            let (interrupt_codec, _) = host_void_interrupt(&versions)?;
+        (MethodKind::Subscription, ReturnType::Subscription(_)) => {
+            let item_codec = codec_const_name(&trait_def.name, method, "ITEM_CODEC");
+            let interrupt_codec = codec_const_name(&trait_def.name, method, "INTERRUPT_CODEC");
             writedoc!(
                 out,
                 "
@@ -3084,14 +3150,9 @@ fn emit_host_entry(
             )
             .unwrap();
         }
-        (MethodKind::ResultSubscription, ReturnType::ResultSubscription { item, err }) => {
-            let item_codec = host_value_codec(item, wrappers, ctx, &versions)?;
-            let interrupt_codec = host_value_codec(
-                call_error_inner(err).unwrap_or(err),
-                wrappers,
-                ctx,
-                &versions,
-            )?;
+        (MethodKind::ResultSubscription, ReturnType::ResultSubscription { .. }) => {
+            let item_codec = codec_const_name(&trait_def.name, method, "ITEM_CODEC");
+            let interrupt_codec = codec_const_name(&trait_def.name, method, "INTERRUPT_CODEC");
             writedoc!(
                 out,
                 "
@@ -3128,15 +3189,13 @@ fn emit_host_entry(
 /// `ResultAsync<Ok, Err>` for requests or `ObservableLike<...>` for subscriptions.
 fn emit_host_entry_unversioned(
     out: &mut String,
+    trait_def: &TraitDef,
     method: &MethodDef,
     ts_method_name: &str,
     wire_const: &str,
-    wrappers: &HashMap<String, VersionedWrapper>,
-    ctx: &CodecContext,
     has_request_param: bool,
 ) -> Result<()> {
-    let versions = BTreeSet::new();
-    let request_codec = host_request_codec(&method.params, wrappers, ctx, &versions)?;
+    let request_codec = codec_const_name(&trait_def.name, method, "REQUEST_CODEC");
     let request_decode_stmt = if has_request_param {
         format!("const request = {request_codec}.dec(bytes);")
     } else {
@@ -3147,10 +3206,15 @@ fn emit_host_entry_unversioned(
     } else {
         "ctx"
     };
+    // `host_void_interrupt` for the unversioned (empty-versions) case returns
+    // a literal `undefined` for the interrupt value; capture that here so the
+    // plain-subscription complete() frame stays correct.
+    let versions = BTreeSet::new();
+    let (_, interrupt_value) = host_void_interrupt(&versions)?;
 
     match (&method.kind, &method.return_type) {
-        (MethodKind::Request, ReturnType::Result { ok, err }) => {
-            let response_codec = host_response_codec(ok, err, wrappers, ctx, &versions)?;
+        (MethodKind::Request, ReturnType::Result { .. }) => {
+            let response_codec = codec_const_name(&trait_def.name, method, "RESPONSE_CODEC");
             writedoc!(
                 out,
                 "
@@ -3169,9 +3233,9 @@ fn emit_host_entry_unversioned(
             )
             .unwrap();
         }
-        (MethodKind::Subscription, ReturnType::Subscription(ty)) => {
-            let item_codec = host_value_codec(ty, wrappers, ctx, &versions)?;
-            let (interrupt_codec, interrupt_value) = host_void_interrupt(&versions)?;
+        (MethodKind::Subscription, ReturnType::Subscription(_)) => {
+            let item_codec = codec_const_name(&trait_def.name, method, "ITEM_CODEC");
+            let interrupt_codec = codec_const_name(&trait_def.name, method, "INTERRUPT_CODEC");
             writedoc!(
                 out,
                 "
@@ -3191,14 +3255,9 @@ fn emit_host_entry_unversioned(
             )
             .unwrap();
         }
-        (MethodKind::ResultSubscription, ReturnType::ResultSubscription { item, err }) => {
-            let item_codec = host_value_codec(item, wrappers, ctx, &versions)?;
-            let interrupt_codec = host_value_codec(
-                call_error_inner(err).unwrap_or(err),
-                wrappers,
-                ctx,
-                &versions,
-            )?;
+        (MethodKind::ResultSubscription, ReturnType::ResultSubscription { .. }) => {
+            let item_codec = codec_const_name(&trait_def.name, method, "ITEM_CODEC");
+            let interrupt_codec = codec_const_name(&trait_def.name, method, "INTERRUPT_CODEC");
             writedoc!(
                 out,
                 "
