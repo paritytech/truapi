@@ -633,7 +633,7 @@ struct HostPaymentTopUpRequest {
   source: PaymentTopUpSource
 }
 
-struct HostPaymentRequestRequest {
+struct HostPaymentRequest {
   from: Option<CoinPaymentPurseId>,
   amount: Balance,
   destination: [u8; 32]
