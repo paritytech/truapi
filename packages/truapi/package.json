@@ -1,0 +1,34 @@
+{
+  "name": "@useragent-kit/truapi",
+  "version": "0.2.0",
+  "description": "Versioned TrUAPI protocol artifacts: TypeScript types, method registry, and manifest.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "import": "./index.js"
+    },
+    "./v0.2": {
+      "types": "./v0.2/index.d.ts",
+      "import": "./v0.2/index.js"
+    },
+    "./v0.2/manifest.json": "./v0.2/manifest.json"
+  },
+  "files": [
+    "LICENSE",
+    "README.md",
+    "index.d.ts",
+    "index.js",
+    "v0.2"
+  ],
+  "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/paritytech/truapi.git",
+    "directory": "packages/truapi"
+  },
+  "license": "MIT"
+}

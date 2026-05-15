@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:artifacts": "node --experimental-strip-types scripts/build-npm-artifacts.mjs",
     "lint": "eslint .",
     "preview": "vite preview"
   },
