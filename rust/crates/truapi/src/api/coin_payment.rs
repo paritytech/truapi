@@ -29,7 +29,7 @@ pub trait CoinPayment: Send + Sync {
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function createPurse(truapi: Client): Promise<number> {
-    ///   const result = await truapi.coinPayment.coinPaymentCreatePurse({
+    ///   const result = await truapi.coinPayment.createPurse({
     ///     name: "Terminal purse",
     ///   });
     ///
@@ -38,7 +38,7 @@ pub trait CoinPayment: Send + Sync {
     /// }
     /// ```
     #[wire(request_id = 134)]
-    async fn host_coin_payment_create_purse(
+    async fn create_purse(
         &self,
         _cx: &CallContext,
         _request: HostCoinPaymentCreatePurseRequest,
@@ -59,7 +59,7 @@ pub trait CoinPayment: Send + Sync {
     ///   truapi: Client,
     ///   purse: number,
     /// ): Promise<HostCoinPaymentQueryPurseResponse> {
-    ///   const result = await truapi.coinPayment.coinPaymentQueryPurse({
+    ///   const result = await truapi.coinPayment.queryPurse({
     ///     purse,
     ///   });
     ///
@@ -68,7 +68,7 @@ pub trait CoinPayment: Send + Sync {
     /// }
     /// ```
     #[wire(request_id = 136)]
-    async fn host_coin_payment_query_purse(
+    async fn query_purse(
         &self,
         _cx: &CallContext,
         _request: HostCoinPaymentQueryPurseRequest,
@@ -89,7 +89,7 @@ pub trait CoinPayment: Send + Sync {
     ///
     /// export function rebalancePurse(truapi: Client): Subscription {
     ///   return truapi.coinPayment
-    ///     .coinPaymentRebalancePurse({
+    ///     .rebalancePurse({
     ///       request: { from: 1, to: 2, amount: 1000 },
     ///     })
     ///     .subscribe({
@@ -100,7 +100,7 @@ pub trait CoinPayment: Send + Sync {
     /// }
     /// ```
     #[wire(start_id = 138)]
-    async fn host_coin_payment_rebalance_purse(
+    async fn rebalance_purse(
         &self,
         _cx: &CallContext,
         _request: HostCoinPaymentRebalancePurseRequest,
@@ -124,7 +124,7 @@ pub trait CoinPayment: Send + Sync {
     ///
     /// export function deletePurse(truapi: Client): Subscription {
     ///   return truapi.coinPayment
-    ///     .coinPaymentDeletePurse({
+    ///     .deletePurse({
     ///       request: { target: 2, drainInto: 1 },
     ///     })
     ///     .subscribe({
@@ -135,7 +135,7 @@ pub trait CoinPayment: Send + Sync {
     /// }
     /// ```
     #[wire(start_id = 142)]
-    async fn host_coin_payment_delete_purse(
+    async fn delete_purse(
         &self,
         _cx: &CallContext,
         _request: HostCoinPaymentDeletePurseRequest,
@@ -155,7 +155,7 @@ pub trait CoinPayment: Send + Sync {
     ///   truapi: Client,
     ///   purse: number,
     /// ): Promise<CoinPaymentReceivable> {
-    ///   const result = await truapi.coinPayment.coinPaymentCreateReceivable({
+    ///   const result = await truapi.coinPayment.createReceivable({
     ///     into: purse,
     ///   });
     ///
@@ -164,7 +164,7 @@ pub trait CoinPayment: Send + Sync {
     /// }
     /// ```
     #[wire(request_id = 146)]
-    async fn host_coin_payment_create_receivable(
+    async fn create_receivable(
         &self,
         _cx: &CallContext,
         _request: HostCoinPaymentCreateReceivableRequest,
@@ -184,7 +184,7 @@ pub trait CoinPayment: Send + Sync {
     ///   truapi: Client,
     ///   receiver: CoinPaymentReceivable,
     /// ): Promise<CoinPaymentCheque> {
-    ///   const result = await truapi.coinPayment.coinPaymentCreateCheque({
+    ///   const result = await truapi.coinPayment.createCheque({
     ///     from: 1,
     ///     to: receiver,
     ///     amount: 1000,
@@ -195,7 +195,7 @@ pub trait CoinPayment: Send + Sync {
     /// }
     /// ```
     #[wire(request_id = 148)]
-    async fn host_coin_payment_create_cheque(
+    async fn create_cheque(
         &self,
         _cx: &CallContext,
         _request: HostCoinPaymentCreateChequeRequest,
@@ -218,7 +218,7 @@ pub trait CoinPayment: Send + Sync {
     ///
     /// export function depositCheque(truapi: Client, cheque: CoinPaymentCheque): Subscription {
     ///   return truapi.coinPayment
-    ///     .coinPaymentDeposit({ request: { cheque } })
+    ///     .deposit({ request: { cheque } })
     ///     .subscribe({
     ///       next: (status: CoinPaymentStatus) => console.log(status),
     ///       error: (error: SubscriptionError<HostCoinPaymentDepositError>) =>
@@ -227,7 +227,7 @@ pub trait CoinPayment: Send + Sync {
     /// }
     /// ```
     #[wire(start_id = 150)]
-    async fn host_coin_payment_deposit(
+    async fn deposit(
         &self,
         _cx: &CallContext,
         _request: HostCoinPaymentDepositRequest,
@@ -253,7 +253,7 @@ pub trait CoinPayment: Send + Sync {
     ///   receivable: CoinPaymentReceivable,
     /// ): Subscription {
     ///   return truapi.coinPayment
-    ///     .coinPaymentRefund({ request: { receivable } })
+    ///     .refund({ request: { receivable } })
     ///     .subscribe({
     ///       next: (status: CoinPaymentStatus) => console.log(status),
     ///       error: (error: SubscriptionError<HostCoinPaymentRefundError>) =>
@@ -262,7 +262,7 @@ pub trait CoinPayment: Send + Sync {
     /// }
     /// ```
     #[wire(start_id = 154)]
-    async fn host_coin_payment_refund(
+    async fn refund(
         &self,
         _cx: &CallContext,
         _request: HostCoinPaymentRefundRequest,
@@ -288,7 +288,7 @@ pub trait CoinPayment: Send + Sync {
     ///   receivable: CoinPaymentReceivable,
     /// ): Subscription {
     ///   return truapi.coinPayment
-    ///     .coinPaymentListenFor({ request: { receivable } })
+    ///     .listenFor({ request: { receivable } })
     ///     .subscribe({
     ///       next: (item: HostCoinPaymentListenForItem) => console.log(item),
     ///       error: (error: SubscriptionError<HostCoinPaymentListenForError>) =>
@@ -297,7 +297,7 @@ pub trait CoinPayment: Send + Sync {
     /// }
     /// ```
     #[wire(start_id = 158)]
-    async fn host_coin_payment_listen_for(
+    async fn listen_for(
         &self,
         _cx: &CallContext,
         _request: HostCoinPaymentListenForRequest,
