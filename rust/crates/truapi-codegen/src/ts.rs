@@ -2545,10 +2545,15 @@ fn generate_host_server(api: &ApiDefinition) -> Result<String> {
     }
 
     for (trait_def, methods) in &services_with_methods {
+        for method in methods {
+            emit_host_method_aliases(&mut out, trait_def, method, &wrappers, &ctx)?;
+        }
+        writeln!(out).unwrap();
+
         write_jsdoc(&mut out, "", trait_def.docs.as_deref());
         writeln!(out, "export interface {}HostHandlers {{", trait_def.name).unwrap();
         for method in methods {
-            emit_host_handler_signature(&mut out, trait_def, method, &wrappers, &ctx)?;
+            emit_host_handler_signature(&mut out, trait_def, method)?;
         }
         writedoc!(out, "}}\n\n").unwrap();
 
@@ -2819,41 +2824,42 @@ fn host_void_interrupt(versions: &BTreeSet<u32>) -> Result<(String, String)> {
     Ok((codec, value))
 }
 
-fn emit_host_handler_signature(
+/// Stable PascalCase prefix used for every alias emitted per host method,
+/// e.g. `AccountGetAccount` for `Account::get_account`. Suffixes (`Request`,
+/// `Result`, `Item`, `Reason`) disambiguate the role each alias plays.
+fn host_alias_base(trait_name: &str, method: &MethodDef) -> String {
+    let pascal_method = to_camel_case(&strip_prefix(&method.name)).to_case(Case::Pascal);
+    format!("{trait_name}{pascal_method}")
+}
+
+/// Emit the versioned type aliases used by one method's handler signature.
+/// Keeps the interface declaration readable and gives consumers stable names
+/// they can import when implementing handlers.
+fn emit_host_method_aliases(
     out: &mut String,
     trait_def: &TraitDef,
     method: &MethodDef,
     wrappers: &HashMap<String, VersionedWrapper>,
     ctx: &CodecContext,
 ) -> Result<()> {
-    let ts_method_name = to_camel_case(&strip_prefix(&method.name));
     let versions = method_wire_versions(method, wrappers)?;
     let has_request_param =
         !method.params.is_empty() || (trait_def.name == "System" && method.name == "handshake");
-    let request_param = if has_request_param {
+    let base = host_alias_base(&trait_def.name, method);
+
+    if has_request_param {
         let request_type = host_request_type(&method.params, wrappers, ctx, &versions)?;
-        format!(", request: {request_type}")
-    } else {
-        String::new()
-    };
-    write_jsdoc(out, "  ", method.docs.as_deref());
+        writeln!(out, "export type {base}Request = {request_type};").unwrap();
+    }
 
     match (&method.kind, &method.return_type) {
         (MethodKind::Request, ReturnType::Result { ok, err }) => {
             let response_type = host_request_response_type(ok, err, wrappers, ctx, &versions)?;
-            writeln!(
-                out,
-                "  {ts_method_name}(ctx: CallContext{request_param}): Promise<{response_type}>;",
-            )
-            .unwrap();
+            writeln!(out, "export type {base}Result = {response_type};").unwrap();
         }
         (MethodKind::Subscription, ReturnType::Subscription(ty)) => {
             let item_type = host_value_type(ty, wrappers, ctx, &versions)?;
-            writeln!(
-                out,
-                "  {ts_method_name}(ctx: CallContext{request_param}): ObservableLike<{item_type}>;",
-            )
-            .unwrap();
+            writeln!(out, "export type {base}Item = {item_type};").unwrap();
         }
         (MethodKind::ResultSubscription, ReturnType::ResultSubscription { item, err }) => {
             let item_type = host_value_type(item, wrappers, ctx, &versions)?;
@@ -2863,9 +2869,56 @@ fn emit_host_handler_signature(
                 ctx,
                 &versions,
             )?;
+            writeln!(out, "export type {base}Item = {item_type};").unwrap();
+            writeln!(out, "export type {base}Reason = {reason_type};").unwrap();
+        }
+        (kind, return_type) => {
+            bail!(
+                "Host generator mismatch for method `{}`: kind {:?} does not match return type {:?}",
+                method.name,
+                kind,
+                return_type
+            );
+        }
+    }
+    Ok(())
+}
+
+fn emit_host_handler_signature(
+    out: &mut String,
+    trait_def: &TraitDef,
+    method: &MethodDef,
+) -> Result<()> {
+    let ts_method_name = to_camel_case(&strip_prefix(&method.name));
+    let has_request_param =
+        !method.params.is_empty() || (trait_def.name == "System" && method.name == "handshake");
+    let base = host_alias_base(&trait_def.name, method);
+    let request_param = if has_request_param {
+        format!(", request: {base}Request")
+    } else {
+        String::new()
+    };
+    write_jsdoc(out, "  ", method.docs.as_deref());
+
+    match (&method.kind, &method.return_type) {
+        (MethodKind::Request, ReturnType::Result { .. }) => {
             writeln!(
                 out,
-                "  {ts_method_name}(ctx: CallContext{request_param}): ObservableLike<{item_type}, {reason_type}>;",
+                "  {ts_method_name}(ctx: CallContext{request_param}): Promise<{base}Result>;",
+            )
+            .unwrap();
+        }
+        (MethodKind::Subscription, ReturnType::Subscription(_)) => {
+            writeln!(
+                out,
+                "  {ts_method_name}(ctx: CallContext{request_param}): ObservableLike<{base}Item>;",
+            )
+            .unwrap();
+        }
+        (MethodKind::ResultSubscription, ReturnType::ResultSubscription { .. }) => {
+            writeln!(
+                out,
+                "  {ts_method_name}(ctx: CallContext{request_param}): ObservableLike<{base}Item, {base}Reason>;",
             )
             .unwrap();
         }
