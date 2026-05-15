@@ -1,17 +1,16 @@
 use parity_scale_codec::{Decode, Encode};
 
+use super::coin_payment::CoinPaymentPurseId;
+
 /// Balance amount for payment operations. Interpreted according to the host's
 /// single fixed payment asset (e.g. pUSD).
 pub type Balance = u128;
-
-/// CoinPayment purse identifier.
-pub type PurseId = u32;
 
 /// Request to subscribe to payment balance updates.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostPaymentBalanceSubscribeRequest {
     /// Optional purse selector. `None` means MAIN_PURSE.
-    pub purse: Option<PurseId>,
+    pub purse: Option<CoinPaymentPurseId>,
 }
 
 /// Current payment balance state pushed to subscribers.
@@ -49,7 +48,7 @@ pub enum PaymentTopUpSource {
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostPaymentTopUpRequest {
     /// Optional purse selector. `None` means MAIN_PURSE.
-    pub into: Option<PurseId>,
+    pub into: Option<CoinPaymentPurseId>,
     /// Amount to top up.
     pub amount: Balance,
     /// Funding source for the top-up.
@@ -60,7 +59,7 @@ pub struct HostPaymentTopUpRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostPaymentRequest {
     /// Optional purse selector. `None` means MAIN_PURSE.
-    pub from: Option<PurseId>,
+    pub from: Option<CoinPaymentPurseId>,
     /// Amount to pay.
     pub amount: Balance,
     /// Destination account.

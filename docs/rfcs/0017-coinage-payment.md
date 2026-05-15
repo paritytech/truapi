@@ -224,7 +224,10 @@ fn host_coin_payment_refund(
 
 fn host_coin_payment_listen_for(
   receivable: CoinPaymentReceivable
-) -> Result<(CoinPaymentTransmissionChannel, Resolvable<CoinPaymentCheque>), CoinPaymentError>;
+) -> Result<Subscription<CoinPaymentListenForItem>, CoinPaymentError>;
+// CoinPaymentListenForItem =
+//   Channel(CoinPaymentTransmissionChannel) | Cheque(CoinPaymentCheque)
+// The subscription emits Channel first, then Cheque when one arrives.
 ```
 
 ### Core Types
@@ -237,6 +240,7 @@ type Balance = u32;
 type Timestamp = u64;
 type CoinPaymentProductId = String;
 type Resolvable<T> = Stream<T>;
+type Subscription<T> = Stream<T>;
 type CoinPaymentReceivable = [u8; 32]; // public key
 type CoinPaymentMerkleRoot = [u8; 32];
 type CoinPaymentTransactionHash = [u8; 32];
@@ -435,13 +439,13 @@ receivable public key, and return the resulting cheque.
 #### `host_coin_payment_listen_for`
 
 Creates or selects a transmission channel for a receivable and returns a
-resolvable cheque stream. Products use this when they need an invoice that can
-receive a cheque asynchronously.
+subscription that emits channel and cheque items. Products use this when they
+need an invoice that can receive a cheque asynchronously.
 
-The returned channel is suitable for inclusion in an invoice. The returned
-stream emits the cheque when one arrives for the receivable through that channel.
-Receipt of a cheque is not payment finality; the receiver still needs to call
-`deposit`.
+The subscription emits a `Channel` item first, suitable for inclusion in an
+invoice. It then emits a `Cheque` item when a cheque for the receivable arrives
+through that channel. Receipt of a cheque is not payment finality; the receiver
+still needs to call `deposit`.
 
 #### `host_coin_payment_deposit`
 
@@ -493,12 +497,13 @@ let amount = 1000; // Ten dollars to invoice.
 let old_balance = host_coin_payment_query_purse(my_purse)?.balance;
 
 let receiver = host_coin_payment_create_receivable(my_purse)?;
-let (handoff, future_cheque) = host_coin_payment_listen_for(receiver)?;
+let mut listener = host_coin_payment_listen_for(receiver)?;
 
+let handoff = listener.next().await; // Channel item.
 let invoice = CoinPaymentInvoice { version: 0, handoff, receiver, amount };
 display_as_qr_or_link(invoice);
 
-let cheque = future_cheque.await;
+let cheque = listener.next().await; // Cheque item.
 let deposit_status = host_coin_payment_deposit(cheque)?;
 
 let payment_reference = loop {
