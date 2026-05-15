@@ -34,13 +34,21 @@ function makeProviderPair() {
 }
 
 function makeStubHandlers(partial) {
+  const versionStub = new Proxy(
+    {},
+    {
+      get(_, version) {
+        return () => {
+          throw new Error(`unimplemented stub: ${String(version)}`);
+        };
+      },
+    },
+  );
   const stub = new Proxy(
     {},
     {
-      get(_, prop) {
-        return () => {
-          throw new Error(`unimplemented stub: ${String(prop)}`);
-        };
+      get() {
+        return versionStub;
       },
     },
   );
@@ -72,37 +80,24 @@ await new Promise((resolveTest, rejectTest) => {
   const transport = createTransport(a);
   const client = createClient(transport);
 
-  const paymentStub = new Proxy(
-    {},
-    {
-      get(_, prop) {
-        if (prop === "balanceSubscribe") {
-          return (ctx) => {
-            assert.equal(typeof ctx.requestId, "string");
-            return {
-              subscribe(observer) {
-                queueMicrotask(() => {
-                  observer.next?.({ tag: "V1", value: { available: 100n } });
-                  queueMicrotask(() => {
-                    observer.error?.({
-                      reason: {
-                        tag: "V1",
-                        value: { tag: "PermissionDenied" },
-                      },
-                    });
-                  });
-                });
-                return { unsubscribe: () => {}, subscriptionId: "" };
-              },
-            };
-          };
-        }
-        return () => {
-          throw new Error(`unimplemented payment stub: ${String(prop)}`);
+  const paymentStub = {
+    balanceSubscribe: {
+      v1(ctx) {
+        assert.equal(typeof ctx.requestId, "string");
+        return {
+          subscribe(observer) {
+            queueMicrotask(() => {
+              observer.next?.({ available: 100n });
+              queueMicrotask(() => {
+                observer.error?.({ reason: { tag: "PermissionDenied" } });
+              });
+            });
+            return { unsubscribe: () => {}, subscriptionId: "" };
+          },
         };
       },
     },
-  );
+  };
 
   const server = createTrUApiServer(b, makeStubHandlers({ payment: paymentStub }));
   const received = [];

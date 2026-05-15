@@ -5,6 +5,7 @@
 // store `submit`).
 
 import assert from "node:assert/strict";
+import { okAsync } from "neverthrow";
 
 import { createTransport, createClient } from "../../truapi/src/index.ts";
 import { createTrUApiServer } from "../src/index.ts";
@@ -41,13 +42,21 @@ function makeProviderPair() {
 }
 
 function makeStubHandlers(partial) {
+  const versionStub = new Proxy(
+    {},
+    {
+      get(_, version) {
+        return () => {
+          throw new Error(`unimplemented stub: ${String(version)}`);
+        };
+      },
+    },
+  );
   const stub = new Proxy(
     {},
     {
-      get(_, prop) {
-        return async () => {
-          throw new Error(`unimplemented stub: ${String(prop)}`);
-        };
+      get() {
+        return versionStub;
       },
     },
   );
@@ -84,28 +93,14 @@ function makeStubHandlers(partial) {
   const client = createClient(transport);
 
   let ctxRequestId;
-  const accountStub = new Proxy(
-    {},
-    {
-      get(_, prop) {
-        if (prop === "getUserId") {
-          return async (ctx) => {
-            ctxRequestId = ctx.requestId;
-            return {
-              tag: "V1",
-              value: {
-                success: true,
-                value: { primaryUsername: "alice.dot" },
-              },
-            };
-          };
-        }
-        return async () => {
-          throw new Error(`unimplemented account stub: ${String(prop)}`);
-        };
+  const accountStub = {
+    getUserId: {
+      v1(ctx) {
+        ctxRequestId = ctx.requestId;
+        return okAsync({ primaryUsername: "alice.dot" });
       },
     },
-  );
+  };
 
   const server = createTrUApiServer(b, makeStubHandlers({ account: accountStub }));
   const result = await client.account.getUserId();
@@ -146,26 +141,14 @@ function makeStubHandlers(partial) {
   const sampleSignature = "0x" + "ab".repeat(32);
 
   let observedRequest;
-  const signingStub = new Proxy(
-    {},
-    {
-      get(_, prop) {
-        if (prop === "signPayload") {
-          return async (_ctx, request) => {
-            observedRequest = request;
-            assert.equal(request.tag, "V1");
-            return {
-              tag: "V1",
-              value: { success: true, value: { signature: sampleSignature } },
-            };
-          };
-        }
-        return async () => {
-          throw new Error(`unimplemented signing stub: ${String(prop)}`);
-        };
+  const signingStub = {
+    signPayload: {
+      v1(_ctx, request) {
+        observedRequest = request;
+        return okAsync({ signature: sampleSignature });
       },
     },
-  );
+  };
 
   const server = createTrUApiServer(b, makeStubHandlers({ signing: signingStub }));
   const result = await client.signing.signPayload(sampleRequest);
@@ -174,14 +157,13 @@ function makeStubHandlers(partial) {
     `expected signPayload to succeed: ${JSON.stringify(result.error ?? null)}`,
   );
   assert.equal(result.value.signature, sampleSignature);
-  assert.equal(observedRequest.tag, "V1");
   // SCALE decode reifies optional fields, so compare key-by-key on the
   // input set rather than deepEqual on the whole shape.
   for (const [key, expected] of Object.entries(sampleRequest)) {
     assert.deepEqual(
-      observedRequest.value[key],
+      observedRequest[key],
       expected,
-      `signPayload request.value.${key} mismatch`,
+      `signPayload request.${key} mismatch`,
     );
   }
 
@@ -208,25 +190,13 @@ function makeStubHandlers(partial) {
     topics: [],
   };
 
-  const statementStoreStub = new Proxy(
-    {},
-    {
-      get(_, prop) {
-        if (prop === "submit") {
-          return async (_ctx, request) => {
-            assert.equal(request.tag, "V1");
-            return {
-              tag: "V1",
-              value: { success: true, value: undefined },
-            };
-          };
-        }
-        return async () => {
-          throw new Error(`unimplemented statementStore stub: ${String(prop)}`);
-        };
+  const statementStoreStub = {
+    submit: {
+      v1(_ctx, _request) {
+        return okAsync(undefined);
       },
     },
-  );
+  };
 
   const server = createTrUApiServer(
     b,

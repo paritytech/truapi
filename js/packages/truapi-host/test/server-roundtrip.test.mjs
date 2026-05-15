@@ -7,6 +7,7 @@
 // versioned response envelope; the dispatcher is a thin SCALE codec wrapper.
 
 import assert from "node:assert/strict";
+import { okAsync } from "neverthrow";
 
 import { createTransport, createClient } from "../../truapi/src/index.ts";
 import { createTrUApiServer } from "../src/index.ts";
@@ -50,16 +51,25 @@ function makeProviderPair() {
 /**
  * Wrap a partial map of handlers with a Proxy-based stub for every other
  * service the generated `TrUApiHostHandlers` requires. Lets a test register
- * just the methods it exercises.
+ * just the methods it exercises. Method stubs surface as per-version maps,
+ * matching the generated handler shape (`{ v1(...), v2(...) }`).
  */
 function makeStubHandlers(partial) {
+  const versionStub = new Proxy(
+    {},
+    {
+      get(_, version) {
+        return () => {
+          throw new Error(`unimplemented stub: ${String(version)}`);
+        };
+      },
+    },
+  );
   const stub = new Proxy(
     {},
     {
-      get(_, prop) {
-        return async () => {
-          throw new Error(`unimplemented stub: ${String(prop)}`);
-        };
+      get() {
+        return versionStub;
       },
     },
   );
@@ -93,31 +103,19 @@ function makeStubHandlers(partial) {
   const client = createClient(transport);
 
   let observed;
-  const accountStub = new Proxy(
-    {},
-    {
-      get(_, prop) {
-        if (prop === "getAccount") {
-          return async (ctx, request) => {
-            observed = { request, requestId: ctx.requestId };
-            assert.equal(request.tag, "V1");
-            return {
-              tag: "V1",
-              value: {
-                success: true,
-                value: { account: { publicKey: "0x" + "01".repeat(32) } },
-              },
-            };
-          };
-        }
-        if (prop === "connectionStatusSubscribe")
-          return () => ({ subscribe: () => ({ unsubscribe: () => {}, subscriptionId: "" }) });
-        return async () => {
-          throw new Error(`unimplemented account stub: ${String(prop)}`);
-        };
+  const accountStub = {
+    getAccount: {
+      v1(ctx, request) {
+        observed = { request, requestId: ctx.requestId };
+        return okAsync({ account: { publicKey: "0x" + "01".repeat(32) } });
       },
     },
-  );
+    connectionStatusSubscribe: {
+      v1: () => ({
+        subscribe: () => ({ unsubscribe: () => {}, subscriptionId: "" }),
+      }),
+    },
+  };
 
   const server = createTrUApiServer(b, makeStubHandlers({ account: accountStub }));
 
@@ -133,7 +131,7 @@ function makeStubHandlers(partial) {
     `expected getAccount to succeed: ${JSON.stringify(result.error ?? null)}`,
   );
   assert.deepEqual(result.value.account.publicKey, "0x" + "01".repeat(32));
-  assert.deepEqual(observed.request, { tag: "V1", value: expectedRequest });
+  assert.deepEqual(observed.request, expectedRequest);
   assert.equal(typeof observed.requestId, "string");
 
   server.dispose();
@@ -149,32 +147,24 @@ await new Promise((resolveTest, rejectTest) => {
   const client = createClient(transport);
 
   let lastSent;
-  const accountStub = new Proxy(
-    {},
-    {
-      get(_, prop) {
-        if (prop === "connectionStatusSubscribe") {
-          return (ctx) => {
-            assert.equal(typeof ctx.requestId, "string");
-            return {
-              subscribe(observer) {
-                const item = { tag: "V1", value: "Connected" };
-                lastSent = item;
-                queueMicrotask(() => {
-                  observer.next?.(item);
-                  queueMicrotask(() => observer.complete?.());
-                });
-                return { unsubscribe: () => {}, subscriptionId: "" };
-              },
-            };
-          };
-        }
-        return async () => {
-          throw new Error(`unimplemented account stub: ${String(prop)}`);
+  const accountStub = {
+    connectionStatusSubscribe: {
+      v1(ctx) {
+        assert.equal(typeof ctx.requestId, "string");
+        return {
+          subscribe(observer) {
+            const item = "Connected";
+            lastSent = item;
+            queueMicrotask(() => {
+              observer.next?.(item);
+              queueMicrotask(() => observer.complete?.());
+            });
+            return { unsubscribe: () => {}, subscriptionId: "" };
+          },
         };
       },
     },
-  );
+  };
 
   const server = createTrUApiServer(b, makeStubHandlers({ account: accountStub }));
 
@@ -191,7 +181,7 @@ await new Promise((resolveTest, rejectTest) => {
     complete() {
       try {
         assert.equal(received.length, 1);
-        assert.deepEqual(received[0], lastSent.value);
+        assert.deepEqual(received[0], lastSent);
         server.dispose();
         transport.dispose();
         resolveTest();

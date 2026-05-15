@@ -17,6 +17,7 @@ npm install @parity/truapi-host
 
 ```ts
 import { createMessagePortProvider } from "@parity/truapi";
+import { errAsync, okAsync } from "neverthrow";
 import {
   createTrUApiServer,
   type TrUApiHostHandlers,
@@ -27,27 +28,10 @@ const provider = createMessagePortProvider(port);
 
 const handlers: TrUApiHostHandlers = {
   account: {
-    async getAccount(ctx, request) {
-      if (request.tag === "V1") {
-        const account = await myStore.lookup(request.value.productAccountId);
-        return {
-          tag: "V1",
-          value: { success: true, value: { account } },
-        };
-      }
-      // The wire version is one this host build doesn't speak. Reply in the
-      // highest version we do speak with the matching error type, which
-      // mirrors the Rust `HostAccountGetError::Unknown { reason }` variant.
-      return {
-        tag: "V1",
-        value: {
-          success: false,
-          value: {
-            tag: "Unknown",
-            value: { reason: `unsupported wire version: ${request.tag}` },
-          },
-        },
-      };
+    getAccount: {
+      v1(ctx, request) {
+        return okAsync({ account: myStore.lookup(request.productAccountId) });
+      },
     },
     // …other AccountHostHandlers methods
   },
@@ -60,11 +44,11 @@ const server: TrUApiHostServer = createTrUApiServer(provider, handlers);
 server.dispose();
 ```
 
-Each handler receives a `CallContext` (carrying the inbound `requestId` so handlers can correlate audit logs and per-call state) followed by the request struct still in its versioned envelope. Unlike the client, a host serves clients across every protocol version it has shipped, so the handler is responsible for matching on `request.tag` and producing a response wrapped in the matching version tag. The dispatcher only handles the SCALE codec; it never collapses versions or constructs Result wrappers for you.
+Each method on a service is a per-version handler map keyed by `v1`, `v2`, … . The dispatcher decodes the inbound versioned envelope, routes to the matching `vN` handler with the already-unwrapped request, awaits the returned `ResultAsync<Ok, Err>`, and re-wraps the outcome as the wire `Result` payload. Add a new `vN` entry when the host starts speaking a new wire version. Each handler receives a `CallContext` carrying the inbound `requestId` so it can correlate audit logs and per-call state.
 
 ### Handlers must not throw
 
-Every outcome a handler can produce, including unsupported wire versions, permission denials, backend timeouts, and any other failure mode, must be expressed as a typed return value (the `Err` arm of `S.ResultPayload<Ok, Err>` for requests, `observer.error?.(new SubscriptionError("...", { reason }))` for `ResultSubscription` streams, `observer.complete?.()` for plain `Subscription` streams).
+Every outcome a handler can produce, including permission denials, backend timeouts, and any other failure mode, must be expressed as a typed `ResultAsync<Ok, Err>` outcome (use `okAsync(...)` / `errAsync(...)` from `neverthrow`). For subscriptions, emit failures via `observer.error?.(new SubscriptionError("...", { reason }))` for `ResultSubscription` streams, or `observer.complete?.()` for plain `Subscription` streams.
 
 The dispatcher does install `HostServerHooks.onRequestHandlerError` and `onSubscriptionStartError` for defensive purposes (e.g. a `TypeError` from an upstream bug), but if either fires the client sees a hung request or never-started stream, not a typed failure, so treat any invocation as a programming error to fix at the source, not a normal control-flow path.
 
@@ -74,21 +58,20 @@ Subscription handlers return an `ObservableLike<Item, Reason>` typed against the
 
 ```ts
 import type { ObservableLike } from "@parity/truapi-host";
-import type { VersionedHostAccountConnectionStatusSubscribeItem } from "@parity/truapi";
 
 const handlers: TrUApiHostHandlers = {
   account: {
-    connectionStatusSubscribe(
-      ctx,
-    ): ObservableLike<VersionedHostAccountConnectionStatusSubscribeItem> {
-      return {
-        subscribe(observer) {
-          const unsubscribe = myStore.onStatusChange((status) => {
-            observer.next?.({ tag: "V1", value: status });
-          });
-          return { unsubscribe, subscriptionId: "" };
-        },
-      };
+    connectionStatusSubscribe: {
+      v1(ctx) {
+        return {
+          subscribe(observer) {
+            const unsubscribe = myStore.onStatusChange((status) => {
+              observer.next?.(status);
+            });
+            return { unsubscribe, subscriptionId: "" };
+          },
+        };
+      },
     },
     // …
   },
