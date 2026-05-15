@@ -52,9 +52,15 @@ pub trait Notifications: Send + Sync {
     ///
     /// export async function addAnnouncementsRules(
     ///   truapi: Client,
-    ///   rules: Array<{ signer: Uint8Array; topic: Uint8Array }>,
     /// ): Promise<void> {
-    ///   const result = await truapi.notifications.pushAddRules({ rules });
+    ///   const result = await truapi.notifications.pushAddRules({
+    ///     rules: [
+    ///       {
+    ///         signer: "0x0000000000000000000000000000000000000000000000000000000000000000",
+    ///         topic: "0x00",
+    ///       },
+    ///     ],
+    ///   });
     ///
     ///   if (result.isErr()) throw result.error;
     /// }
@@ -74,9 +80,15 @@ pub trait Notifications: Send + Sync {
     ///
     /// export async function removeAnnouncementsRules(
     ///   truapi: Client,
-    ///   rules: Array<{ signer: Uint8Array; topic: Uint8Array }>,
     /// ): Promise<void> {
-    ///   const result = await truapi.notifications.pushRemoveRules({ rules });
+    ///   const result = await truapi.notifications.pushRemoveRules({
+    ///     rules: [
+    ///       {
+    ///         signer: "0x0000000000000000000000000000000000000000000000000000000000000000",
+    ///         topic: "0x00",
+    ///       },
+    ///     ],
+    ///   });
     ///
     ///   if (result.isErr()) throw result.error;
     /// }
@@ -117,11 +129,15 @@ pub trait Notifications: Send + Sync {
     /// ```ts
     /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function setRules(
-    ///   truapi: Client,
-    ///   rules: Array<{ signer: Uint8Array; topic: Uint8Array }>,
-    /// ): Promise<void> {
-    ///   const result = await truapi.notifications.pushSetRules({ rules });
+    /// export async function setRules(truapi: Client): Promise<void> {
+    ///   const result = await truapi.notifications.pushSetRules({
+    ///     rules: [
+    ///       {
+    ///         signer: "0x0000000000000000000000000000000000000000000000000000000000000000",
+    ///         topic: "0x00",
+    ///       },
+    ///     ],
+    ///   });
     ///
     ///   if (result.isErr()) throw result.error;
     /// }

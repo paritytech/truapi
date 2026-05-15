@@ -79,7 +79,7 @@ pub enum HostPushRemoveRulesError {
 /// rules. Has no fields; the host scopes results by the calling product
 /// identity.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct HostPushListRulesRequest;
+pub struct HostPushListRulesRequest {}
 
 /// Snapshot of the calling product's currently registered subscription rules.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
