@@ -61,20 +61,14 @@ hosts/dotli/           dotli host (git submodule)
 scripts/codegen.sh     regenerate the TS client from the Rust crate
 ```
 
+Common tasks are wrapped in the top-level `Makefile`. Run `make help` to see
+the full list of targets.
+
 ### Getting started
 
 ```bash
-# Check out submodules
-git submodule update --init --recursive
-
-# Build the Rust workspace
-cargo build --workspace
-
-# Build the TypeScript client
-( cd js/packages/truapi && npm install && npm run build )
-
-# Install playground dependencies
-( cd playground && yarn install --frozen-lockfile )
+make setup    # submodules + JS dependencies
+make build    # Rust workspace + TypeScript client
 ```
 
 ### Making changes to the API
@@ -82,40 +76,16 @@ cargo build --workspace
 The Rust crate in `rust/crates/truapi/` is the single source of truth for the
 TrUAPI protocol. When you modify traits or types there:
 
-1. Run the codegen script to regenerate the TypeScript client:
-
-   ```bash
-   ./scripts/codegen.sh
-   ```
-
-2. Rebuild the TypeScript package:
-
-   ```bash
-   ( cd js/packages/truapi && npm run build )
-   ```
-
-3. Refresh the playground snapshot (yarn 1.x copies `file:` deps at install time):
-
-   ```bash
-   ( cd playground && rm -rf node_modules && yarn install )
-   ```
-
-4. Rebuild or test the TS package so the ignored generated outputs are exercised.
+```bash
+make codegen      # regenerate the TS client and refresh the playground snapshot
+make playground   # rebuild the playground against the refreshed snapshot
+```
 
 ### Verification
 
 ```bash
-# Rust
-cargo build --workspace
-cargo +nightly fmt --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace
-
-# TypeScript client
-( cd js/packages/truapi && npm test )
-
-# Playground
-( cd playground && yarn build && yarn lint )
+make test     # Rust + TypeScript client tests
+make check    # full suite: build, fmt, clippy, test, TS tests, playground build + lint
 ```
 
 ## Pull requests
