@@ -67,7 +67,7 @@ pub trait System: Send + Sync {
     /// Send a push notification to the user.
     ///
     /// Returns a [`NotificationId`](crate::v01::NotificationId) that can be
-    /// passed to [`host_push_notification_cancel`](Self::host_push_notification_cancel)
+    /// passed to [`push_notification_cancel`](Self::push_notification_cancel)
     /// to retract a scheduled notification. When `scheduled_at` is set the host
     /// persists the notification across restarts and fires it through the
     /// platform-native scheduler. See [RFC 0019].
@@ -119,7 +119,7 @@ pub trait System: Send + Sync {
     /// }
     /// ```
     #[wire(request_id = 134)]
-    async fn host_push_notification_cancel(
+    async fn push_notification_cancel(
         &self,
         cx: &CallContext,
         request: HostPushNotificationCancelRequest,
