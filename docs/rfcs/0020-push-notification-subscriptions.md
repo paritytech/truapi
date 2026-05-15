@@ -12,7 +12,6 @@ pr:
 
 Adds two TrUAPI methods, `notifications.push_subscribe` and `notifications.push_unsubscribe`, that let a product declare which Statement Store events the user wants to be woken up for. A subscription is a `(signer, topic)` pair: the host's push backend will deliver a push to the user's device(s) whenever a signed statement matching that pair appears on the store. The product never sees push tokens; the host owns token registration and the integration with the backend described in the push-notifications v2 design.
 
-The RFC also moves the existing `system.push_notification` method onto the new `Notifications` trait so notification-related surface lives in one place. The wire id (`request_id = 4`) is preserved, so this is a Rust-side reorganization only; the wire protocol is unchanged for that method.
 
 ## Related RFCs
 
