@@ -64,59 +64,42 @@ scripts/codegen.sh     regenerate the TS client from the Rust crate
 ### Getting started
 
 ```bash
-# Check out submodules
-git submodule update --init --recursive
-
-# Build the Rust workspace
-cargo build --workspace
-
-# Build the TypeScript client
-( cd js/packages/truapi && npm install && npm run build )
-
-# Install playground dependencies
-( cd playground && yarn install --frozen-lockfile )
+make setup
+make build
 ```
+
+`make setup` checks out submodules and installs Node, Yarn, and Bun
+dependencies. `make build` builds the Rust workspace and the
+TypeScript client. Run `make help` for the full target list.
 
 ### Making changes to the API
 
-The Rust crate in `rust/crates/truapi/` is the single source of truth for the
-TrUAPI protocol. When you modify traits or types there:
+The Rust crate in `rust/crates/truapi/` is the single source of truth
+for the TrUAPI protocol. When you modify traits or types there:
 
-1. Run the codegen script to regenerate the TypeScript client:
+```bash
+make codegen      # regenerate the TS client and rebuild the package
+make playground   # refresh the playground snapshot and build it
+```
 
-   ```bash
-   ./scripts/codegen.sh
-   ```
-
-2. Rebuild the TypeScript package:
-
-   ```bash
-   ( cd js/packages/truapi && npm run build )
-   ```
-
-3. Refresh the playground snapshot (yarn 1.x copies `file:` deps at install time):
-
-   ```bash
-   ( cd playground && rm -rf node_modules && yarn install )
-   ```
-
-4. Rebuild or test the TS package so the ignored generated outputs are exercised.
+`make codegen` invokes `scripts/codegen.sh`, which regenerates the
+TypeScript client from the rustdoc JSON and rebuilds the
+`@parity/truapi` package. `make playground` then refreshes the
+playground's `node_modules` snapshot (yarn 1.x copies `file:` deps at
+install time) and builds it.
 
 ### Verification
 
 ```bash
-# Rust
-cargo build --workspace
-cargo +nightly fmt --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace
-
-# TypeScript client
-( cd js/packages/truapi && npm test )
-
-# Playground
-( cd playground && yarn build && yarn lint )
+make check
 ```
+
+`make check` runs the full verification suite: Rust build, fmt,
+clippy, and tests; TypeScript build and tests; playground build, lint,
+and end-to-end tests. CI runs the equivalent chain on every PR.
+
+Individual layers are available as atomic targets (`rust-clippy`,
+`ts-test`, `playground-lint`, …); see `make help`.
 
 ## Pull requests
 
