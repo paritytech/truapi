@@ -21,3 +21,4 @@ created: 2026-03-13
 | 0011   | [Simple Group Chat](0011-simple-group-chat.md)                           | draft    | @filvecchiato | [#131](https://github.com/paritytech/triangle-js-sdks/pull/131) |
 | 0015   | [Get User Primary DotNS Name](0015-get-user-id.md)                      | draft    | @valentunn    | [#144](https://github.com/paritytech/triangle-js-sdks/pull/144) |
 | 0019   | [Scheduled Push Notifications](0019-scheduled-notifications.md)          | draft    | @johnthecat   |                                                                 |
+| 0021   | [Route Relay](0021-route-relay.md)                                       | draft    | @pgherveou    |                                                                 |
