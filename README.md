@@ -74,32 +74,16 @@ Wire ids are append-only: existing ids never change, so deployed products stay c
 
 ## Develop
 
-### First-time setup
+Common tasks are wrapped in the top-level `Makefile`. Run `make help` for the full list.
 
 ```bash
-git submodule update --init --recursive
-( cd js/packages/truapi && npm install )
-( cd playground && yarn install --frozen-lockfile )
+make setup    # submodules + JS dependencies
+make build    # Rust workspace + TypeScript client
+make test     # Rust + TypeScript client tests
+make check    # full suite: build, fmt, clippy, test, TS tests, playground build + lint
 ```
 
-### Rust workspace
-
-```bash
-cargo build --workspace
-cargo +nightly fmt --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace
-```
-
-### TypeScript client
-
-```bash
-cd js/packages/truapi
-npm run build
-npm test
-```
-
-### Playground
+To run the playground locally:
 
 ```bash
 cd playground
@@ -113,17 +97,11 @@ Open `https://dot.li/localhost:3000` inside the Polkadot Desktop Host. See [`pla
 When the Rust trait surface changes:
 
 ```bash
-./scripts/codegen.sh
+make codegen      # regenerate the TS client and refresh the playground snapshot
+make playground   # rebuild the playground against the refreshed snapshot
 ```
 
 This repopulates the ignored generated TS under `js/packages/truapi/`, including the playground metadata.
-
-After regenerating, refresh the playground's frozen snapshot:
-
-```bash
-( cd js/packages/truapi && npm run build )
-( cd playground && rm -rf node_modules/@parity && yarn install )
-```
 
 ## Protocol versions
 
