@@ -272,7 +272,6 @@ above this RFC.
 
 ```rust
 struct CoinPaymentCheque {
-  version: u8, // 0
   id: CoinPaymentReceivable,
   amount: Balance,
   encrypted_secrets: Vec<u8>
