@@ -85,6 +85,10 @@ Emits when the route changes from outside the app: Host back/forward, or a paste
 - **Length / charset.** Routes MUST be valid UTF-8. Hosts MAY impose a maximum length (recommended: at least 2048 bytes) and MUST return `GenericErr` for over-long routes; apps should avoid stuffing application state into the route.
 - **Permissioning.** No permission prompt. The route is information the app already has; relaying it to the address bar does not disclose anything new to the user. (The Host MAY still rate-limit `host_route_set` to mitigate history-stack abuse.)
 
+### Web-host shim
+
+A Web host MAY monkey-patch `history.pushState`, `history.replaceState`, and the `popstate` / `hashchange` events on the iframe's `window` to call these TrUAPI methods underneath. With that shim in place, apps written against the standard web History API "just work" — their existing router (Next.js, React Router, vanilla `pushState`, etc.) drives the Host address bar with no TrUAPI-specific code. The shim is a Host implementation detail, not part of the protocol; non-web hosts implement these methods natively.
+
 ## Drawbacks
 
 - Hosts must implement the no-echo rule on `host_route_changed` correctly, or naive apps will loop.

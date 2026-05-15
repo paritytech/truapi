@@ -15,4 +15,10 @@ versioned_type! {
     pub enum HostPushNotificationRequest { V1 => v01::HostPushNotificationRequest }
     pub enum HostPushNotificationResponse { V1 }
     pub enum HostPushNotificationError { V1 => v01::GenericError }
+    pub enum HostRouteGetResponse { V1 => v01::HostRouteGetResponse }
+    pub enum HostRouteGetError { V1 => v01::GenericError }
+    pub enum HostRouteSetRequest { V1 => v01::HostRouteSetRequest }
+    pub enum HostRouteSetResponse { V1 }
+    pub enum HostRouteSetError { V1 => v01::GenericError }
+    pub enum HostRouteChangedItem { V1 => v01::HostRouteChangedItem }
 }
