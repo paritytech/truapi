@@ -224,7 +224,9 @@ fn refund(
 
 fn listen_for(
   receivable: CoinPaymentReceivable
-) -> Result<(CoinPaymentTransmissionChannel, Resolvable<CoinPaymentCheque>), CoinPaymentError>;
+) -> Result<Subscription<CoinPaymentListenForItem>, CoinPaymentError>;
+// CoinPaymentListenForItem = Channel(CoinPaymentTransmissionChannel) | Cheque(CoinPaymentCheque)
+// The subscription emits Channel first, then Cheque when one arrives.
 ```
 
 ### Core Types
@@ -442,13 +444,13 @@ receivable public key, and return the resulting cheque.
 #### `listen_for`
 
 Creates or selects a standard transmission channel for a receivable and returns
-a resolvable cheque future. Products use this when they need an invoice that can
-receive a cheque asynchronously.
+a subscription that emits channel and cheque items. Products use this when they
+need an invoice that can receive a cheque asynchronously.
 
-The returned channel is suitable for inclusion in an invoice. The returned
-future resolves when a cheque for the receivable arrives through that channel.
-Receipt of a cheque is not payment finality; the receiver still needs to call
-`deposit`.
+The subscription emits a `Channel` item first, suitable for inclusion in an
+invoice. It then emits a `Cheque` item when a cheque for the receivable arrives
+through that channel. Receipt of a cheque is not payment finality; the receiver
+still needs to call `deposit`.
 
 #### `deposit`
 
@@ -500,12 +502,12 @@ let amount = 1000; // Ten dollars to invoice.
 let old_balance = query_purse(my_purse)?.balance;
 
 let receiver = create_receivable(my_purse)?;
-let (handoff, future_cheque) = listen_for(receiver)?;
+let mut listener = listen_for(receiver)?;
 
-let invoice = CoinPaymentInvoice { version: 0, handoff, receiver, amount };
-display_as_qr_or_link(invoice);
+let handoff = listener.next().await; // Channel item
+display_as_qr_or_link(handoff, receiver, amount);
 
-let cheque = future_cheque.await;
+let cheque = listener.next().await;  // Cheque item
 let deposit_status = deposit(cheque)?;
 
 let payment_reference = loop {
@@ -633,7 +635,7 @@ struct HostPaymentTopUpRequest {
   source: PaymentTopUpSource
 }
 
-struct HostPaymentRequestRequest {
+struct HostPaymentRequest {
   from: Option<CoinPaymentPurseId>,
   amount: Balance,
   destination: [u8; 32]
