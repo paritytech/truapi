@@ -236,7 +236,7 @@ const MAIN_PURSE: PurseId = u32::MAX;
 type Balance = u32;
 type Timestamp = u64;
 type CoinPaymentProductId = String;
-type Resolvable<T> = async T;
+type Resolvable<T> = Stream<T>;
 type CoinPaymentReceivable = [u8; 32]; // public key
 type CoinPaymentMerkleRoot = [u8; 32];
 type CoinPaymentTransactionHash = [u8; 32];
@@ -249,6 +249,12 @@ struct CoinPaymentPurseInfo {
   balance: Balance
 }
 ```
+
+`Resolvable<T>` is RFC shorthand for a long-running operation that emits
+ordered updates. In TrUAPI this is represented as a subscription/stream whose
+items are `T`, not as a single `async T` value. A stream must deliver updates in
+order and must emit at most one terminal item for operations whose status type
+has terminal variants such as `Done` or `Failed`.
 
 `MAIN_PURSE` is the ordinary user-owned Coinage purse. Products should not
 assume access to it. Product-created purses are separate, firewalled balances
@@ -354,26 +360,13 @@ struct CoinPaymentInvoice {
 }
 ```
 
-`CoinPaymentTransmissionChannel::Standard` represents posting coin secrets device-to-device
-using statement store and falling back to HOP when the cheque is too large. The
-topic is identified explicitly in V1, though future versions may derive it from
-the receiver.
-
-### Binding Semantics
-
-The canonical generated TrUAPI client domain is `coinPayment`, with methods
-derived from the `host_coin_payment_*` host calls. Concrete browser and mobile
-bindings may use camelCase method names, base64 or byte-array serialization for
-fixed byte arrays, and subscription or polling APIs for resolvable values.
-Those bindings must preserve the core semantics of this RFC: stable typed
-errors, ordered status delivery, a single terminal `Done` or `Failed` status for
-each operation, and opaque byte fields that products do not interpret.
-
-Bindings may split `host_coin_payment_listen_for` into separate channel
-creation, invoice encoding, and cheque-awaiting helpers when required by the
-host bridge. Such helpers are binding conveniences; the normative behavior is
-that a receivable can be associated with a transmission channel and an
-asynchronous cheque result.
+`CoinPaymentTransmissionChannel::Standard` is the V1 handoff descriptor for the
+default host-managed cheque transport. It carries an explicit topic so a payer
+user agent can transmit the encrypted cheque to the receiver user agent after
+scanning or opening an invoice. Current hosts may implement that handoff with
+statement store and fall back to HOP when a cheque is too large. Products must
+treat the channel as an opaque delivery descriptor and must not infer payer
+identity, purse identity, POS references, or settlement state from it.
 
 ### Call Semantics
 
@@ -441,12 +434,12 @@ receivable public key, and return the resulting cheque.
 
 #### `host_coin_payment_listen_for`
 
-Creates or selects a standard transmission channel for a receivable and returns
-a resolvable cheque future. Products use this when they need an invoice that can
+Creates or selects a transmission channel for a receivable and returns a
+resolvable cheque stream. Products use this when they need an invoice that can
 receive a cheque asynchronously.
 
 The returned channel is suitable for inclusion in an invoice. The returned
-future resolves when a cheque for the receivable arrives through that channel.
+stream emits the cheque when one arrives for the receivable through that channel.
 Receipt of a cheque is not payment finality; the receiver still needs to call
 `deposit`.
 
