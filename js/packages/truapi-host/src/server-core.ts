@@ -181,11 +181,30 @@ function buildDispatchTable(entries: HostDispatchEntry[]): DispatchTable {
   return { byRequest, byStart, stopIds, startToStop };
 }
 
+/**
+ * In-progress slot from when a `start` frame arrives until the handler's
+ * `start` function returns the cleanup. A `stop` frame that lands during
+ * this window flips `stopped`, so the start-resolution path can tear the
+ * subscription back down instead of registering an orphaned active slot.
+ **/
+interface PendingSubscription {
+  readonly kind: "pending";
+  readonly port: SubscriptionFramePort;
+  stopped: boolean;
+}
+
+/**
+ * Fully-registered subscription: `start` returned, `cleanup` is captured,
+ * the slot is the authority for stop/interrupt teardown.
+ **/
 interface ActiveSubscription {
+  readonly kind: "active";
   readonly entry: SubscriptionEntry;
   readonly cleanup: SubscriptionCleanup;
   readonly port: SubscriptionFramePort;
 }
+
+type SubscriptionSlot = PendingSubscription | ActiveSubscription;
 
 /**
  * Wire a host server to a `Provider`. The server subscribes to inbound
@@ -198,7 +217,7 @@ export function createHostServer(
   hooks: HostServerHooks = {},
 ): TrUApiHostServer {
   const table = buildDispatchTable(entries);
-  const activeSubscriptions = new Map<string, ActiveSubscription>();
+  const subscriptions = new Map<string, SubscriptionSlot>();
   let disposed = false;
 
   /**
@@ -224,15 +243,21 @@ export function createHostServer(
   }
 
   /**
-   * Look up the dispatch entry for a subscription frame's stop id and
-   * remove the active subscription, invoking its cleanup.
+   * Tear down a subscription identified by its originating request id.
+   * If the slot is still pending (handler's `start` has not returned yet),
+   * record the stop so the start-resolution path can clean up without
+   * leaving the handler subscribed.
    **/
   function tearDownSubscription(requestId: string): void {
-    const active = activeSubscriptions.get(requestId);
-    if (!active) return;
-    activeSubscriptions.delete(requestId);
+    const slot = subscriptions.get(requestId);
+    if (!slot) return;
+    if (slot.kind === "pending") {
+      slot.stopped = true;
+      return;
+    }
+    subscriptions.delete(requestId);
     try {
-      active.cleanup();
+      slot.cleanup();
     } catch {
       // handler cleanup errors are isolated from the dispatcher
     }
@@ -257,11 +282,10 @@ export function createHostServer(
         if (closed || disposed) return;
         closed = true;
         send(requestId, ids.interrupt, payload);
-        // The host has interrupted the subscription locally. Remove it
-        // from the active map so further stop frames are no-ops, but do
-        // not re-invoke the handler-supplied cleanup, the handler is in
+        // The host has interrupted the subscription locally. Drop the
+        // slot so further stop frames are no-ops; the handler is in
         // charge of its own teardown when it called `interrupt`.
-        activeSubscriptions.delete(requestId);
+        subscriptions.delete(requestId);
       },
       get isClosed() {
         return closed || disposed;
@@ -283,57 +307,84 @@ export function createHostServer(
 
     const requestEntry = table.byRequest.get(payload.id);
     if (requestEntry) {
-      Promise.resolve()
-        .then(() => requestEntry.handle(payload.value, ctx))
-        .then(
-          (responseBytes) => {
-            send(requestId, requestEntry.ids.response, responseBytes);
-          },
-          (error) => {
-            hooks.onRequestHandlerError?.(
-              requestEntry.ids,
-              toError(error),
-              ctx,
-            );
-          },
-        );
+      let pending: Promise<Uint8Array>;
+      try {
+        pending = requestEntry.handle(payload.value, ctx);
+      } catch (error) {
+        hooks.onRequestHandlerError?.(requestEntry.ids, toError(error), ctx);
+        return;
+      }
+      pending.then(
+        (responseBytes) => {
+          send(requestId, requestEntry.ids.response, responseBytes);
+        },
+        (error) => {
+          hooks.onRequestHandlerError?.(requestEntry.ids, toError(error), ctx);
+        },
+      );
       return;
     }
 
     const subEntry = table.byStart.get(payload.id);
     if (subEntry) {
-      if (activeSubscriptions.has(requestId)) {
+      if (subscriptions.has(requestId)) {
         // A second start frame for the same requestId is a protocol
         // violation, drop it.
         return;
       }
       const port = makeFramePort(requestId, subEntry.ids);
-      Promise.resolve()
-        .then(() => subEntry.start(payload.value, ctx, port))
-        .then(
-          (cleanup) => {
-            if (disposed || port.isClosed) {
-              try {
-                cleanup();
-              } catch {
-                // ignore
-              }
-              return;
-            }
-            activeSubscriptions.set(requestId, {
-              entry: subEntry,
-              cleanup,
-              port,
-            });
-          },
-          (error) => {
-            hooks.onSubscriptionStartError?.(
-              subEntry.ids,
-              toError(error),
-              ctx,
-            );
-          },
-        );
+      const pending: PendingSubscription = {
+        kind: "pending",
+        port,
+        stopped: false,
+      };
+      // Reserve the slot synchronously so that a stop frame arriving
+      // before `start` resolves can mark it stopped instead of finding
+      // an empty map.
+      subscriptions.set(requestId, pending);
+
+      const finish = (cleanup: SubscriptionCleanup): void => {
+        const current = subscriptions.get(requestId);
+        if (
+          current !== pending ||
+          disposed ||
+          pending.stopped ||
+          port.isClosed
+        ) {
+          if (current === pending) subscriptions.delete(requestId);
+          try {
+            cleanup();
+          } catch {
+            // ignore
+          }
+          return;
+        }
+        subscriptions.set(requestId, {
+          kind: "active",
+          entry: subEntry,
+          cleanup,
+          port,
+        });
+      };
+      const fail = (error: unknown): void => {
+        if (subscriptions.get(requestId) === pending) {
+          subscriptions.delete(requestId);
+        }
+        hooks.onSubscriptionStartError?.(subEntry.ids, toError(error), ctx);
+      };
+
+      let startResult: Promise<SubscriptionCleanup> | SubscriptionCleanup;
+      try {
+        startResult = subEntry.start(payload.value, ctx, port);
+      } catch (error) {
+        fail(error);
+        return;
+      }
+      if (startResult instanceof Promise) {
+        startResult.then(finish, fail);
+      } else {
+        finish(startResult);
+      }
       return;
     }
 
@@ -357,10 +408,16 @@ export function createHostServer(
   function dispose(): void {
     if (disposed) return;
     disposed = true;
-    for (const [requestId, active] of activeSubscriptions) {
-      activeSubscriptions.delete(requestId);
+    for (const [requestId, slot] of subscriptions) {
+      subscriptions.delete(requestId);
+      if (slot.kind === "pending") {
+        // The pending slot's start-resolution path will see `disposed`
+        // and invoke its own cleanup.
+        slot.stopped = true;
+        continue;
+      }
       try {
-        active.cleanup();
+        slot.cleanup();
       } catch {
         // ignore handler cleanup errors during shutdown
       }

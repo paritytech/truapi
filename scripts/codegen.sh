@@ -7,8 +7,12 @@
 #                                     --output js/packages/truapi/src/generated
 #                                     --playground-output js/packages/truapi/src/playground
 #                                     --client-examples-output js/packages/truapi/test/generated/examples
-#                                     --version V1
+#                                     --host-output js/packages/truapi-host/src/generated
 #                                     --codec-version 1
+#
+# The client surface defaults to the latest wire version any versioned
+# wrapper exposes; pass `--client-version V<N>` to pin to an older one.
+# The host package always covers every wire version a wrapper has shipped.
 #
 # Run from the repo root.
 
@@ -24,7 +28,6 @@ cargo run -p truapi-codegen -- \
   --playground-output js/packages/truapi/src/playground \
   --client-examples-output js/packages/truapi/test/generated/examples \
   --host-output js/packages/truapi-host/src/generated \
-  --version V1 \
   --codec-version 1
 
 npm exec --yes -- prettier --write \

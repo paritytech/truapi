@@ -22,6 +22,51 @@ struct CodecContext {
     generic_codecs: HashMap<String, String>,
 }
 
+/// How a `TypeRef::Named` resolves its name when rendered to TS.
+///
+/// - `Public` strips the V0N prefix via `public_versioned_type_name` and
+///   qualifies every named type with `T.*`. Used by the client/playground/
+///   examples generators that emit version-aliased public names (e.g.
+///   `T.HostAccountGetRequest`).
+/// - `Raw` preserves the V0N prefix. Used by the host generator so its
+///   emission references stable per-version names (e.g.
+///   `V01HostAccountGetRequest`) that don't shift when `--client-version`
+///   changes. Foreign (non-V0N) types are still qualified with `T.*`.
+/// - `RawLocal` is like `Raw`, but emits V0N-prefixed types **bare** (no
+///   `T.*`) because they live in the same file as the emission. Used for
+///   `types-by-version.ts` where the V0N types are locally defined.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum NameMode {
+    #[default]
+    Public,
+    Raw,
+    RawLocal,
+}
+
+fn resolve_named(name: &str, mode: NameMode) -> String {
+    match mode {
+        NameMode::Public => public_versioned_type_name(name),
+        NameMode::Raw | NameMode::RawLocal => name.to_string(),
+    }
+}
+
+/// Decide how to namespace a resolved type name for `qualified` rendering.
+/// `Public` and `Raw` both prefix every name with `T.*`. `RawLocal` leaves
+/// V0N-prefixed names bare because they are defined in the same file as
+/// the current emission (`types-by-version.ts`).
+fn qualify_named(resolved: &str, mode: NameMode) -> String {
+    match mode {
+        NameMode::Public | NameMode::Raw => format!("T.{resolved}"),
+        NameMode::RawLocal => {
+            if version_prefixed_type(resolved).is_some() {
+                resolved.to_string()
+            } else {
+                format!("T.{resolved}")
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct PublicService<'a> {
     trait_def: &'a TraitDef,
@@ -170,6 +215,19 @@ fn collect_versioned_wrappers(api: &ApiDefinition) -> HashMap<String, VersionedW
         .iter()
         .filter_map(|ty| detect_versioned_wrapper(ty).map(|w| (ty.name.clone(), w)))
         .collect()
+}
+
+/// Return the highest protocol version exposed by any versioned wrapper in
+/// `api`, falling back to `1` if the API has none. Used as the default for
+/// the client target version when the caller did not pass `--client-version`,
+/// so an unconfigured codegen run produces a client that speaks the latest
+/// wire format the Rust trait surface has shipped.
+pub fn latest_wire_version(api: &ApiDefinition) -> u32 {
+    collect_versioned_wrappers(api)
+        .values()
+        .flat_map(|wrapper| wrapper.variants.keys().copied())
+        .max()
+        .unwrap_or(1)
 }
 
 fn validate_versioned_wrapper_shapes(api: &ApiDefinition) -> Result<()> {
@@ -1141,9 +1199,18 @@ fn versioned_kind_codec_expr(
     qualified: bool,
     ctx: &CodecContext,
 ) -> Result<String> {
+    versioned_kind_codec_expr_mode(kind, qualified, ctx, NameMode::Public)
+}
+
+fn versioned_kind_codec_expr_mode(
+    kind: &VersionedKind,
+    qualified: bool,
+    ctx: &CodecContext,
+    mode: NameMode,
+) -> Result<String> {
     match kind {
         VersionedKind::Unit => Ok("S._void".to_string()),
-        VersionedKind::Tuple(inner) => codec_expr(inner, qualified, ctx),
+        VersionedKind::Tuple(inner) => codec_expr_mode(inner, qualified, ctx, mode),
     }
 }
 
@@ -1559,10 +1626,24 @@ fn should_rename_wire_wrapper(
 }
 
 fn type_codec_expr(ty: &TypeDef, type_name: &str, ctx: &CodecContext) -> Result<String> {
+    type_codec_expr_mode_qualified(ty, type_name, ctx, NameMode::Public, false)
+}
+
+fn type_codec_expr_mode_qualified(
+    ty: &TypeDef,
+    type_name: &str,
+    ctx: &CodecContext,
+    mode: NameMode,
+    qualified: bool,
+) -> Result<String> {
     match &ty.kind {
-        TypeDefKind::Alias(type_ref) => codec_expr(type_ref, false, ctx),
-        TypeDefKind::Struct(fields) => struct_codec_expr(fields, type_name, false, ctx),
-        TypeDefKind::TupleStruct(fields) => unnamed_fields_codec_expr(fields, false, ctx),
+        TypeDefKind::Alias(type_ref) => codec_expr_mode(type_ref, qualified, ctx, mode),
+        TypeDefKind::Struct(fields) => {
+            struct_codec_expr_mode(fields, type_name, qualified, ctx, mode)
+        }
+        TypeDefKind::TupleStruct(fields) => {
+            unnamed_fields_codec_expr_mode(fields, qualified, ctx, mode)
+        }
         TypeDefKind::Enum(variants) => {
             if is_unit_only_enum(ty) {
                 unit_enum_codec_expr(variants)
@@ -1573,7 +1654,7 @@ fn type_codec_expr(ty: &TypeDef, type_name: &str, ctx: &CodecContext) -> Result<
                         Ok(format!(
                             "{}: {}",
                             variant.name,
-                            variant_codec_expr(&variant.fields, false, ctx)?
+                            variant_codec_expr_mode(&variant.fields, qualified, ctx, mode)?
                         ))
                     })
                     .collect::<Result<Vec<_>>>()?
@@ -1626,11 +1707,12 @@ fn unit_enum_summary(variants: &[VariantDef]) -> String {
     )
 }
 
-fn variant_value_type(fields: &VariantFields) -> Result<String> {
+fn variant_value_type_mode(fields: &VariantFields, mode: NameMode) -> Result<String> {
+    let qualified = matches!(mode, NameMode::Raw | NameMode::RawLocal);
     match fields {
         VariantFields::Unit => Ok("undefined".to_string()),
-        VariantFields::Unnamed(types) => unnamed_fields_type(types),
-        VariantFields::Named(fields) => inline_object_type(fields, false),
+        VariantFields::Unnamed(types) => unnamed_fields_type_mode(types, qualified, mode),
+        VariantFields::Named(fields) => inline_object_type_mode(fields, qualified, mode),
     }
 }
 
@@ -1639,74 +1721,88 @@ fn variant_value_type(fields: &VariantFields) -> Result<String> {
 /// `{ tag: "X" }` while the codec round-trip (`{ tag, value: undefined }`)
 /// still type-checks.
 fn enum_variant_ts_type(variant: &VariantDef) -> Result<String> {
+    enum_variant_ts_type_mode(variant, NameMode::Public)
+}
+
+fn enum_variant_ts_type_mode(variant: &VariantDef, mode: NameMode) -> Result<String> {
     Ok(match &variant.fields {
         VariantFields::Unit => format!("{{ tag: \"{}\"; value?: undefined }}", variant.name),
         fields => format!(
             "{{ tag: \"{}\"; value: {} }}",
             variant.name,
-            variant_value_type(fields)?
+            variant_value_type_mode(fields, mode)?
         ),
     })
 }
 
-fn variant_codec_expr(
+fn variant_codec_expr_mode(
     fields: &VariantFields,
     qualified: bool,
     ctx: &CodecContext,
+    mode: NameMode,
 ) -> Result<String> {
     match fields {
         VariantFields::Unit => Ok("S._void".to_string()),
-        VariantFields::Unnamed(types) => unnamed_fields_codec_expr(types, qualified, ctx),
-        VariantFields::Named(fields) => struct_codec_expr(
+        VariantFields::Unnamed(types) => {
+            unnamed_fields_codec_expr_mode(types, qualified, ctx, mode)
+        }
+        VariantFields::Named(fields) => struct_codec_expr_mode(
             fields,
-            &inline_object_type(fields, qualified)?,
+            &inline_object_type_mode(fields, qualified, mode)?,
             qualified,
             ctx,
+            mode,
         ),
     }
 }
 
 fn unnamed_fields_type(types: &[TypeRef]) -> Result<String> {
+    unnamed_fields_type_mode(types, false, NameMode::Public)
+}
+
+fn unnamed_fields_type_mode(types: &[TypeRef], qualified: bool, mode: NameMode) -> Result<String> {
     if types.is_empty() {
         Ok("undefined".to_string())
     } else if types.len() == 1 {
-        ts_type(&types[0])
+        ts_type_with_named(&types[0], qualified, mode)
     } else {
         Ok(format!(
             "[{}]",
             types
                 .iter()
-                .map(ts_type)
+                .map(|ty| ts_type_with_named(ty, qualified, mode))
                 .collect::<Result<Vec<_>>>()?
                 .join(", ")
         ))
     }
 }
 
-fn unnamed_fields_codec_expr(
+fn unnamed_fields_codec_expr_mode(
     types: &[TypeRef],
     qualified: bool,
     ctx: &CodecContext,
+    mode: NameMode,
 ) -> Result<String> {
     if types.is_empty() {
         Ok("S._void".to_string())
     } else if types.len() == 1 {
-        codec_expr(&types[0], qualified, ctx)
+        codec_expr_mode(&types[0], qualified, ctx, mode)
     } else {
         let codecs = types
             .iter()
-            .map(|ty| codec_expr(ty, qualified, ctx))
+            .map(|ty| codec_expr_mode(ty, qualified, ctx, mode))
             .collect::<Result<Vec<_>>>()?
             .join(", ");
         Ok(format!("S.Tuple({codecs})"))
     }
 }
 
-fn struct_codec_expr(
+fn struct_codec_expr_mode(
     fields: &[FieldDef],
     type_name: &str,
     qualified: bool,
     ctx: &CodecContext,
+    mode: NameMode,
 ) -> Result<String> {
     let field_specs = fields
         .iter()
@@ -1715,7 +1811,7 @@ fn struct_codec_expr(
             Ok(format!(
                 "{}: {}",
                 name,
-                codec_expr(&field.type_ref, qualified, ctx)?
+                codec_expr_mode(&field.type_ref, qualified, ctx, mode)?
             ))
         })
         .collect::<Result<Vec<_>>>()?
@@ -1725,7 +1821,7 @@ fn struct_codec_expr(
     ))
 }
 
-fn inline_object_type(fields: &[FieldDef], qualified: bool) -> Result<String> {
+fn inline_object_type_mode(fields: &[FieldDef], qualified: bool, mode: NameMode) -> Result<String> {
     Ok(format!(
         "{{ {} }}",
         fields
@@ -1736,13 +1832,13 @@ fn inline_object_type(fields: &[FieldDef], qualified: bool) -> Result<String> {
                     Ok(format!(
                         "{}?: {}",
                         name,
-                        ts_inner_option_with_named(&field.type_ref, qualified)?
+                        ts_inner_option_with_named(&field.type_ref, qualified, mode)?
                     ))
                 } else {
                     Ok(format!(
                         "{}: {}",
                         name,
-                        ts_type_with_named(&field.type_ref, qualified)?
+                        ts_type_with_named(&field.type_ref, qualified, mode)?
                     ))
                 }
             })
@@ -1756,13 +1852,22 @@ fn method_payload_codec_expr(
     qualified: bool,
     ctx: &CodecContext,
 ) -> Result<String> {
+    method_payload_codec_expr_mode(params, qualified, ctx, NameMode::Public)
+}
+
+fn method_payload_codec_expr_mode(
+    params: &[ParamDef],
+    qualified: bool,
+    ctx: &CodecContext,
+    mode: NameMode,
+) -> Result<String> {
     match params.len() {
         0 => Ok("S._void".to_string()),
-        1 => codec_expr(&params[0].type_ref, qualified, ctx),
+        1 => codec_expr_mode(&params[0].type_ref, qualified, ctx, mode),
         _ => {
             let codecs = params
                 .iter()
-                .map(|param| codec_expr(&param.type_ref, qualified, ctx))
+                .map(|param| codec_expr_mode(&param.type_ref, qualified, ctx, mode))
                 .collect::<Result<Vec<_>>>()?
                 .join(", ");
             Ok(format!("S.Tuple({codecs})"))
@@ -1771,6 +1876,19 @@ fn method_payload_codec_expr(
 }
 
 fn codec_expr(ty: &TypeRef, qualified: bool, ctx: &CodecContext) -> Result<String> {
+    codec_expr_mode(ty, qualified, ctx, NameMode::Public)
+}
+
+fn codec_expr_raw(ty: &TypeRef, qualified: bool, ctx: &CodecContext) -> Result<String> {
+    codec_expr_mode(ty, qualified, ctx, NameMode::Raw)
+}
+
+fn codec_expr_mode(
+    ty: &TypeRef,
+    qualified: bool,
+    ctx: &CodecContext,
+    mode: NameMode,
+) -> Result<String> {
     match ty {
         TypeRef::Primitive(name) => match name.as_str() {
             "bool" => Ok("S.bool".to_string()),
@@ -1788,15 +1906,19 @@ fn codec_expr(ty: &TypeRef, qualified: bool, ctx: &CodecContext) -> Result<Strin
             _ => bail!("Unsupported primitive type `{name}` in TypeScript codec generation"),
         },
         TypeRef::Named { name, args } => {
-            let name = public_versioned_type_name(name);
-            let target = if qualified { format!("T.{name}") } else { name };
+            let resolved = resolve_named(name, mode);
+            let target = if qualified {
+                qualify_named(&resolved, mode)
+            } else {
+                resolved
+            };
 
             if args.is_empty() {
                 Ok(target)
             } else {
                 let codecs = args
                     .iter()
-                    .map(|arg| codec_expr(arg, qualified, ctx))
+                    .map(|arg| codec_expr_mode(arg, qualified, ctx, mode))
                     .collect::<Result<Vec<_>>>()?
                     .join(", ");
                 Ok(format!("{target}({codecs})"))
@@ -1804,16 +1926,22 @@ fn codec_expr(ty: &TypeRef, qualified: bool, ctx: &CodecContext) -> Result<Strin
         }
         TypeRef::Vec(inner) => match inner.as_ref() {
             TypeRef::Primitive(name) if name == "u8" => Ok("S.Hex()".to_string()),
-            _ => Ok(format!("S.Vector({})", codec_expr(inner, qualified, ctx)?)),
+            _ => Ok(format!(
+                "S.Vector({})",
+                codec_expr_mode(inner, qualified, ctx, mode)?
+            )),
         },
-        TypeRef::Option(inner) => Ok(format!("S.Option({})", codec_expr(inner, qualified, ctx)?)),
+        TypeRef::Option(inner) => Ok(format!(
+            "S.Option({})",
+            codec_expr_mode(inner, qualified, ctx, mode)?
+        )),
         TypeRef::Tuple(items) => {
             if items.is_empty() {
                 Ok("S._void".to_string())
             } else {
                 let codecs = items
                     .iter()
-                    .map(|item| codec_expr(item, qualified, ctx))
+                    .map(|item| codec_expr_mode(item, qualified, ctx, mode))
                     .collect::<Result<Vec<_>>>()?
                     .join(", ");
                 Ok(format!("S.Tuple({codecs})"))
@@ -1823,7 +1951,7 @@ fn codec_expr(ty: &TypeRef, qualified: bool, ctx: &CodecContext) -> Result<Strin
             TypeRef::Primitive(name) if name == "u8" => Ok(format!("S.Hex({len})")),
             _ => Ok(format!(
                 "S.Vector({}, {})",
-                codec_expr(inner, qualified, ctx)?,
+                codec_expr_mode(inner, qualified, ctx, mode)?,
                 len
             )),
         },
@@ -1837,10 +1965,10 @@ fn codec_expr(ty: &TypeRef, qualified: bool, ctx: &CodecContext) -> Result<Strin
 }
 
 fn ts_type(ty: &TypeRef) -> Result<String> {
-    ts_type_with_named(ty, false)
+    ts_type_with_named(ty, false, NameMode::Public)
 }
 
-fn ts_type_with_named(ty: &TypeRef, qualified: bool) -> Result<String> {
+fn ts_type_with_named(ty: &TypeRef, qualified: bool, mode: NameMode) -> Result<String> {
     match ty {
         TypeRef::Primitive(name) => match name.as_str() {
             "bool" => Ok("boolean".to_string()),
@@ -1850,15 +1978,19 @@ fn ts_type_with_named(ty: &TypeRef, qualified: bool) -> Result<String> {
             _ => bail!("Unsupported primitive type `{name}` in TypeScript type generation"),
         },
         TypeRef::Named { name, args } => {
-            let name = public_versioned_type_name(name);
-            let target = if qualified { format!("T.{name}") } else { name };
+            let resolved = resolve_named(name, mode);
+            let target = if qualified {
+                qualify_named(&resolved, mode)
+            } else {
+                resolved
+            };
 
             if args.is_empty() {
                 Ok(target)
             } else {
                 let args = args
                     .iter()
-                    .map(|arg| ts_type_with_named(arg, qualified))
+                    .map(|arg| ts_type_with_named(arg, qualified, mode))
                     .collect::<Result<Vec<_>>>()?
                     .join(", ");
                 Ok(format!("{target}<{args}>"))
@@ -1866,11 +1998,14 @@ fn ts_type_with_named(ty: &TypeRef, qualified: bool) -> Result<String> {
         }
         TypeRef::Vec(inner) => match inner.as_ref() {
             TypeRef::Primitive(name) if name == "u8" => Ok(hex_string_ts_name(qualified)),
-            _ => Ok(format!("Array<{}>", ts_type_with_named(inner, qualified)?)),
+            _ => Ok(format!(
+                "Array<{}>",
+                ts_type_with_named(inner, qualified, mode)?
+            )),
         },
         TypeRef::Option(inner) => Ok(format!(
             "{} | undefined",
-            ts_type_with_named(inner, qualified)?
+            ts_type_with_named(inner, qualified, mode)?
         )),
         TypeRef::Tuple(items) => {
             if items.is_empty() {
@@ -1880,7 +2015,7 @@ fn ts_type_with_named(ty: &TypeRef, qualified: bool) -> Result<String> {
                     "[{}]",
                     items
                         .iter()
-                        .map(|item| ts_type_with_named(item, qualified))
+                        .map(|item| ts_type_with_named(item, qualified, mode))
                         .collect::<Result<Vec<_>>>()?
                         .join(", ")
                 ))
@@ -1888,7 +2023,10 @@ fn ts_type_with_named(ty: &TypeRef, qualified: bool) -> Result<String> {
         }
         TypeRef::Array(inner, _len) => match inner.as_ref() {
             TypeRef::Primitive(name) if name == "u8" => Ok(hex_string_ts_name(qualified)),
-            _ => Ok(format!("Array<{}>", ts_type_with_named(inner, qualified)?)),
+            _ => Ok(format!(
+                "Array<{}>",
+                ts_type_with_named(inner, qualified, mode)?
+            )),
         },
         TypeRef::Generic(name) => Ok(name.clone()),
         TypeRef::Unit => Ok("undefined".to_string()),
@@ -1902,18 +2040,22 @@ fn hex_string_ts_name(_qualified: bool) -> String {
 }
 
 fn ts_inner_option(ty: &TypeRef) -> Result<String> {
-    ts_inner_option_with_named(ty, false)
+    ts_inner_option_with_named(ty, false, NameMode::Public)
 }
 
-fn ts_inner_option_with_named(ty: &TypeRef, qualified: bool) -> Result<String> {
+fn ts_inner_option_with_named(ty: &TypeRef, qualified: bool, mode: NameMode) -> Result<String> {
     match ty {
-        TypeRef::Option(inner) => ts_type_with_named(inner, qualified),
-        other => ts_type_with_named(other, qualified),
+        TypeRef::Option(inner) => ts_type_with_named(inner, qualified, mode),
+        other => ts_type_with_named(other, qualified, mode),
     }
 }
 
 fn ts_type_qualified(ty: &TypeRef) -> Result<String> {
-    ts_type_with_named(ty, true)
+    ts_type_with_named(ty, true, NameMode::Public)
+}
+
+fn ts_type_qualified_raw(ty: &TypeRef) -> Result<String> {
+    ts_type_with_named(ty, true, NameMode::Raw)
 }
 
 fn ts_field_name(name: &str, ty: &TypeRef) -> (String, bool) {
@@ -1923,14 +2065,18 @@ fn ts_field_name(name: &str, ty: &TypeRef) -> (String, bool) {
 }
 
 fn payload_type(params: &[ParamDef]) -> Result<String> {
+    payload_type_mode(params, NameMode::Public)
+}
+
+fn payload_type_mode(params: &[ParamDef], mode: NameMode) -> Result<String> {
     match params.len() {
         0 => Ok("undefined".to_string()),
-        1 => ts_type_qualified(&params[0].type_ref),
+        1 => ts_type_with_named(&params[0].type_ref, true, mode),
         _ => Ok(format!(
             "[{}]",
             params
                 .iter()
-                .map(|param| ts_type_qualified(&param.type_ref))
+                .map(|param| ts_type_with_named(&param.type_ref, true, mode))
                 .collect::<Result<Vec<_>>>()?
                 .join(", ")
         )),
@@ -2007,22 +2153,40 @@ fn to_camel_case(s: &str) -> String {
 /// Generates the host-side TypeScript dispatcher, typed handler interfaces,
 /// and barrel files for an extracted API definition into `output_dir`.
 ///
-/// The host package re-exports types and wire-table from `@parity/truapi`,
-/// so a single rustdoc run drives both packages.
-pub fn generate_host(api: &ApiDefinition, output_dir: &str, target_version: u32) -> Result<()> {
+/// Unlike the client generator, the host emission does not take a target
+/// wire version. A host must be able to dispatch frames from any client
+/// version it has shipped to, so the generator emits dispatch entries that
+/// cover every variant of every wrapper a method touches.
+///
+/// Per-version inner types are emitted into `types-by-version.ts` under
+/// their raw V0N-prefixed names (e.g. `V01HostAccountGetRequest`). This
+/// decouples the host from the client's `--client-version` choice: when a
+/// future `@parity/truapi` is built for V2, its unprefixed `HostAccountGetRequest`
+/// alias points at the V2 inner, but the host's `V01HostAccountGetRequest`
+/// keeps its V1 shape because it lives in this package.
+///
+/// Non-versioned helper types (`HexString`, `ProductAccountId` if it lives
+/// outside `v0N::`, etc.) continue to come from `@parity/truapi`.
+pub fn generate_host(api: &ApiDefinition, output_dir: &str) -> Result<()> {
     fs::create_dir_all(output_dir)?;
     validate_versioned_wrapper_shapes(api)?;
 
+    let by_version = generate_host_versioned_types(api)?;
+    fs::write(
+        Path::new(output_dir).join("types-by-version.ts"),
+        by_version,
+    )?;
+
     fs::write(
         Path::new(output_dir).join("types.ts"),
-        "// Auto-generated by truapi-codegen. Do not edit.\n\nexport * from '@parity/truapi';\n",
+        "// Auto-generated by truapi-codegen. Do not edit.\n\nexport * from '@parity/truapi';\nexport * from './types-by-version.js';\n",
     )?;
     fs::write(
         Path::new(output_dir).join("wire-table.ts"),
         "// Auto-generated by truapi-codegen. Do not edit.\n\nexport * from '@parity/truapi';\n",
     )?;
 
-    let server_code = generate_host_server(api, target_version)?;
+    let server_code = generate_host_server(api)?;
     fs::write(Path::new(output_dir).join("server.ts"), server_code)?;
 
     fs::write(
@@ -2033,7 +2197,302 @@ pub fn generate_host(api: &ApiDefinition, output_dir: &str, target_version: u32)
     Ok(())
 }
 
-fn generate_host_server(api: &ApiDefinition, target_version: u32) -> Result<String> {
+/// Emit type and codec definitions for every V0N-prefixed type in the API,
+/// using raw V0N names for all references (including transitive ones). The
+/// host's `server.ts` references types via these raw names so that the
+/// shapes the dispatcher decodes don't shift when `@parity/truapi`'s
+/// `--client-version` changes.
+fn generate_host_versioned_types(api: &ApiDefinition) -> Result<String> {
+    let mut out = String::new();
+    writedoc!(
+        out,
+        r#"
+        // Auto-generated by truapi-codegen. Do not edit.
+        //
+        // Per-version inner type and codec definitions for the host
+        // dispatcher. Names are V0N-prefixed so they remain stable across
+        // any `--client-version` choice for `@parity/truapi`.
+
+        import * as S from '@parity/truapi/scale';
+        import type {{ HexString }} from '@parity/truapi/scale';
+        import * as T from '@parity/truapi';
+
+        "#
+    )
+    .unwrap();
+
+    let ctx = CodecContext::default();
+    for ty in &api.types {
+        // Only V0N-prefixed types are emitted here; everything else stays
+        // in `@parity/truapi`.
+        if version_prefixed_type(&ty.name).is_none() {
+            continue;
+        }
+        // Versioned wrapper enums themselves (`HostAccountGetRequest`) are
+        // never referenced by the host (the host emits inline tagged-union
+        // literals against the inner types directly), so skip them.
+        if detect_versioned_wrapper(ty).is_some() {
+            continue;
+        }
+        if !ty.generic_params.is_empty() {
+            bail!(
+                "generic V0N-prefixed type `{}` is not supported by the host generator",
+                ty.name
+            );
+        }
+        write_host_type_definition(&mut out, ty)?;
+        writeln!(out).unwrap();
+        write_host_codec_definition(&mut out, ty, &ctx)?;
+        writeln!(out).unwrap();
+    }
+    Ok(out)
+}
+
+fn write_host_type_definition(out: &mut String, ty: &TypeDef) -> Result<()> {
+    let emitted_name = ty.name.clone();
+    let mode = NameMode::RawLocal;
+    write_jsdoc(out, "", ty.docs.as_deref());
+    match &ty.kind {
+        TypeDefKind::Alias(type_ref) => {
+            writeln!(
+                out,
+                "export type {emitted_name} = {};",
+                ts_type_with_named(type_ref, true, mode)?
+            )
+            .unwrap();
+        }
+        TypeDefKind::Struct(fields) => {
+            writeln!(out, "export interface {emitted_name} {{").unwrap();
+            for field in fields {
+                let (ts_name, optional) = ts_field_name(&field.name, &field.type_ref);
+                write_jsdoc(out, "  ", field.docs.as_deref());
+                if optional {
+                    writeln!(
+                        out,
+                        "  {ts_name}?: {};",
+                        ts_inner_option_with_named(&field.type_ref, true, mode)?
+                    )
+                    .unwrap();
+                } else {
+                    writeln!(
+                        out,
+                        "  {ts_name}: {};",
+                        ts_type_with_named(&field.type_ref, true, mode)?
+                    )
+                    .unwrap();
+                }
+            }
+            writeln!(out, "}}").unwrap();
+        }
+        TypeDefKind::TupleStruct(fields) => {
+            writeln!(
+                out,
+                "export type {emitted_name} = {};",
+                unnamed_fields_type_mode(fields, true, mode)?
+            )
+            .unwrap();
+        }
+        TypeDefKind::Enum(variants) => {
+            if is_unit_only_enum(ty) {
+                writeln!(
+                    out,
+                    "export type {emitted_name} = {};",
+                    unit_enum_union_type(variants)?
+                )
+                .unwrap();
+            } else {
+                writeln!(out, "export type {emitted_name} =").unwrap();
+                for variant in variants {
+                    write_jsdoc(out, "  ", variant.docs.as_deref());
+                    writeln!(out, "  | {}", enum_variant_ts_type_mode(variant, mode)?).unwrap();
+                }
+                writeln!(out, ";").unwrap();
+            }
+        }
+    }
+    Ok(())
+}
+
+fn write_host_codec_definition(out: &mut String, ty: &TypeDef, ctx: &CodecContext) -> Result<()> {
+    let mode = NameMode::RawLocal;
+    let emitted_name = ty.name.clone();
+    let codec_body = type_codec_expr_mode_qualified(ty, &emitted_name, ctx, mode, true)?;
+    writeln!(
+        out,
+        "export const {emitted_name}: S.Codec<{emitted_name}> = S.lazy((): S.Codec<{emitted_name}> => {codec_body});",
+    )
+    .unwrap();
+    Ok(())
+}
+
+/// Set of wire versions a host dispatch entry must handle for a given
+/// method: the intersection of variant sets across every versioned wrapper
+/// the method touches. Empty when the method has no versioned wrapper at
+/// all (unversioned input/output struct).
+fn method_wire_versions(
+    method: &MethodDef,
+    wrappers: &HashMap<String, VersionedWrapper>,
+) -> Result<BTreeSet<u32>> {
+    let wrapper_names = method_versioned_wrappers(method, wrappers);
+    if wrapper_names.is_empty() {
+        return Ok(BTreeSet::new());
+    }
+    let mut candidates: Option<BTreeSet<u32>> = None;
+    for wrapper_name in wrapper_names {
+        let wrapper = wrappers
+            .get(&wrapper_name)
+            .expect("method_versioned_wrappers only returns known wrappers");
+        let versions: BTreeSet<u32> = wrapper.variants.keys().copied().collect();
+        candidates = Some(match candidates {
+            Some(current) => current.intersection(&versions).copied().collect(),
+            None => versions,
+        });
+    }
+    let result = candidates.unwrap_or_default();
+    if result.is_empty() {
+        bail!(
+            "method `{}` references versioned wrappers with disjoint variant sets; cannot dispatch on the host",
+            method.name
+        );
+    }
+    Ok(result)
+}
+
+/// TS type literal and inner SCALE codec for a single version of a value
+/// type. Used as the per-arm payload of `host_union_type` /
+/// `host_indexed_codec` to build versioned union types / `indexedTaggedUnion`
+/// codecs.
+struct HostVersionedShape {
+    version: u32,
+    inner_type_ts: String,
+    inner_codec_expr: String,
+}
+
+/// Resolve the per-version inner type and codec for the method's request
+/// payload. Returns `None` for the unversioned-struct case so callers can
+/// fall back to a single-shape payload.
+fn host_request_shapes_for_versions(
+    params: &[ParamDef],
+    wrappers: &HashMap<String, VersionedWrapper>,
+    ctx: &CodecContext,
+    versions: &BTreeSet<u32>,
+) -> Result<Option<Vec<HostVersionedShape>>> {
+    if params.len() == 1
+        && let Some((wrapper_name, wrapper)) = versioned_wrapper_for(&params[0].type_ref, wrappers)
+    {
+        let mut shapes = Vec::new();
+        for version in versions {
+            let variant = wrapper.variants.get(version).ok_or_else(|| {
+                anyhow::anyhow!("versioned wrapper `{wrapper_name}` has no V{version} variant")
+            })?;
+            shapes.push(match &variant.kind {
+                VersionedKind::Unit => HostVersionedShape {
+                    version: *version,
+                    inner_type_ts: "undefined".to_string(),
+                    inner_codec_expr: "S._void".to_string(),
+                },
+                VersionedKind::Tuple(inner) => HostVersionedShape {
+                    version: *version,
+                    inner_type_ts: ts_type_qualified_raw(inner)?,
+                    inner_codec_expr: codec_expr_raw(inner, true, ctx)?,
+                },
+            });
+        }
+        return Ok(Some(shapes));
+    }
+    if params.is_empty() {
+        // No-param method: still emit a per-version `S._void` envelope so
+        // the dispatcher can validate the inbound version byte.
+        let shapes = versions
+            .iter()
+            .map(|v| HostVersionedShape {
+                version: *v,
+                inner_type_ts: "undefined".to_string(),
+                inner_codec_expr: "S._void".to_string(),
+            })
+            .collect();
+        return Ok(Some(shapes));
+    }
+    Ok(None)
+}
+
+/// Resolve the per-version inner shape for a response/item/error/reason
+/// position. Versioned wrappers fan out across `versions`; unversioned
+/// types (including `()`) repeat the same shape per version. Returns `None`
+/// only for unversioned types when `versions` is empty (no versioned
+/// wrapper anywhere on the method), letting callers fall back to a
+/// non-`indexedTaggedUnion` codec for fully-unversioned methods.
+fn host_response_shapes_for_versions(
+    ty: &TypeRef,
+    wrappers: &HashMap<String, VersionedWrapper>,
+    ctx: &CodecContext,
+    versions: &BTreeSet<u32>,
+) -> Result<Option<Vec<HostVersionedShape>>> {
+    if let Some((wrapper_name, wrapper)) = versioned_wrapper_for(ty, wrappers) {
+        let mut shapes = Vec::new();
+        for version in versions {
+            let variant = wrapper.variants.get(version).ok_or_else(|| {
+                anyhow::anyhow!("versioned wrapper `{wrapper_name}` has no V{version} variant")
+            })?;
+            shapes.push(match &variant.kind {
+                VersionedKind::Unit => HostVersionedShape {
+                    version: *version,
+                    inner_type_ts: "undefined".to_string(),
+                    inner_codec_expr: "S._void".to_string(),
+                },
+                VersionedKind::Tuple(inner) => HostVersionedShape {
+                    version: *version,
+                    inner_type_ts: ts_type_qualified_raw(inner)?,
+                    inner_codec_expr: codec_expr_raw(inner, true, ctx)?,
+                },
+            });
+        }
+        return Ok(Some(shapes));
+    }
+    if versions.is_empty() {
+        return Ok(None);
+    }
+    // Non-versioned type referenced from a versioned method position
+    // (e.g. `()` in `Result<(), VersionedErr>`). The shape is the same for
+    // every version, but we render it with raw-mode names anyway so a
+    // future V0N-prefixed transitive reference stays stable.
+    let inner_type_ts = ts_type_qualified_raw(ty)?;
+    let inner_codec_expr = codec_expr_raw(ty, true, ctx)?;
+    let shapes = versions
+        .iter()
+        .map(|v| HostVersionedShape {
+            version: *v,
+            inner_type_ts: inner_type_ts.clone(),
+            inner_codec_expr: inner_codec_expr.clone(),
+        })
+        .collect();
+    Ok(Some(shapes))
+}
+
+/// Render a TS union type `{ tag: 'V1'; value: T1 } | { tag: 'V2'; value: T2 } | ...`.
+///
+/// A variant whose inner TS type renders as `undefined` emits the optional
+/// form `{ tag: 'V<n>'; value?: undefined }` to match how the SCALE codec
+/// shapes unit variants on decode.
+fn host_union_type<F>(shapes: &[HostVersionedShape], inner_type: F) -> String
+where
+    F: Fn(&HostVersionedShape) -> String,
+{
+    shapes
+        .iter()
+        .map(|s| {
+            let inner = inner_type(s);
+            if inner == "undefined" {
+                format!("{{ tag: 'V{}'; value?: undefined }}", s.version)
+            } else {
+                format!("{{ tag: 'V{}'; value: {} }}", s.version, inner)
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" | ")
+}
+
+fn generate_host_server(api: &ApiDefinition) -> Result<String> {
     let mut out = String::new();
     writedoc!(
         out,
@@ -2041,7 +2500,7 @@ fn generate_host_server(api: &ApiDefinition, target_version: u32) -> Result<Stri
         // Auto-generated by truapi-codegen. Do not edit.
 
         import * as S from '@parity/truapi/scale';
-        import * as T from '@parity/truapi';
+        import * as T from './types.js';
         import * as W from '@parity/truapi/wire-table';
         import type {{
           HexString,
@@ -2078,7 +2537,7 @@ fn generate_host_server(api: &ApiDefinition, target_version: u32) -> Result<Stri
     let mut services_with_methods = Vec::new();
     for service in &services {
         let trait_def = service.trait_def;
-        let methods = included_methods(trait_def, &wrappers, target_version)?;
+        let methods = host_included_methods(trait_def, &wrappers)?;
         if methods.is_empty() {
             continue;
         }
@@ -2089,14 +2548,7 @@ fn generate_host_server(api: &ApiDefinition, target_version: u32) -> Result<Stri
         write_jsdoc(&mut out, "", trait_def.docs.as_deref());
         writeln!(out, "export interface {}HostHandlers {{", trait_def.name).unwrap();
         for method in methods {
-            emit_host_handler_signature(
-                &mut out,
-                trait_def,
-                method,
-                &wrappers,
-                &ctx,
-                target_version,
-            )?;
+            emit_host_handler_signature(&mut out, trait_def, method, &wrappers, &ctx)?;
         }
         writedoc!(out, "}}\n\n").unwrap();
 
@@ -2108,7 +2560,7 @@ fn generate_host_server(api: &ApiDefinition, target_version: u32) -> Result<Stri
         .unwrap();
         writeln!(out, "  return [").unwrap();
         for method in methods {
-            emit_host_entry(&mut out, trait_def, method, &wrappers, &ctx, target_version)?;
+            emit_host_entry(&mut out, trait_def, method, &wrappers, &ctx)?;
         }
         writedoc!(out, "  ];\n}}\n\n").unwrap();
     }
@@ -2163,31 +2615,208 @@ fn generate_host_server(api: &ApiDefinition, target_version: u32) -> Result<Stri
     Ok(out)
 }
 
-fn host_request_wire_type(payload: &PayloadEmission) -> String {
-    // For versioned wrappers, `wire_codec_expr` is the wrapper type alias
-    // (`T.VersionedXxxRequest`) and doubles as the TS type. For unversioned
-    // methods, fall back to the inner TS type because the codec expression
-    // is an inline `S.Struct({...})` that isn't a usable type reference.
-    match payload.wire_version {
-        Some(_) => payload.wire_codec_expr.clone(),
-        None => payload.inner_type_ts.clone(),
+/// Like `included_methods` but for the host generator: include any method
+/// with at least one shared wire version across its wrappers, or no
+/// versioned wrappers at all.
+fn host_included_methods<'a>(
+    trait_def: &'a TraitDef,
+    wrappers: &HashMap<String, VersionedWrapper>,
+) -> Result<Vec<&'a MethodDef>> {
+    trait_def
+        .methods
+        .iter()
+        .filter_map(
+            |method| match host_method_is_included(trait_def, method, wrappers) {
+                Ok(true) => Some(Ok(method)),
+                Ok(false) => None,
+                Err(err) => Some(Err(err)),
+            },
+        )
+        .collect()
+}
+
+fn host_method_is_included(
+    trait_def: &TraitDef,
+    method: &MethodDef,
+    wrappers: &HashMap<String, VersionedWrapper>,
+) -> Result<bool> {
+    wire_ids_for_method(trait_def, method)?;
+    let wrapper_names = method_versioned_wrappers(method, wrappers);
+    if wrapper_names.is_empty() {
+        return Ok(true);
+    }
+    Ok(!method_wire_versions(method, wrappers)?.is_empty())
+}
+
+/// TS type for the handler's `request` parameter. A versioned method emits
+/// the union over every shared wire version. An unversioned request emits
+/// the plain payload struct type (works whether or not the method's other
+/// positions are versioned).
+fn host_request_type(
+    params: &[ParamDef],
+    wrappers: &HashMap<String, VersionedWrapper>,
+    ctx: &CodecContext,
+    versions: &BTreeSet<u32>,
+) -> Result<String> {
+    match host_request_shapes_for_versions(params, wrappers, ctx, versions)? {
+        Some(shapes) => Ok(host_union_type(&shapes, |s| s.inner_type_ts.clone())),
+        None => {
+            if params.is_empty() {
+                Ok("undefined".to_string())
+            } else {
+                payload_type(params)
+            }
+        }
     }
 }
 
-fn host_response_versioned_type(
-    response: &ResponseEmission,
-    error: &ResponseEmission,
-    wire_version: Option<u32>,
-) -> String {
-    let inner = format!(
-        "S.ResultPayload<{ok}, {err}>",
-        ok = response.inner_type_ts,
-        err = error.inner_type_ts,
-    );
-    match wire_version {
-        Some(version) => format!("{{ tag: 'V{version}'; value: {inner} }}"),
-        None => inner,
+/// TS type for a `Promise<...>` return of a request handler. Each Result
+/// position is versioned independently: if both `ok` and `err` are
+/// versioned wrappers, emit a union over `{ tag: 'V<n>'; value: S.ResultPayload<...> }`.
+/// If neither side is versioned, emit a plain `S.ResultPayload`. Mixed
+/// shapes are a wire-design error and rejected.
+fn host_request_response_type(
+    ok: &TypeRef,
+    err: &TypeRef,
+    wrappers: &HashMap<String, VersionedWrapper>,
+    ctx: &CodecContext,
+    versions: &BTreeSet<u32>,
+) -> Result<String> {
+    let err_inner = call_error_inner(err).unwrap_or(err);
+    let ok_shapes = host_response_shapes_for_versions(ok, wrappers, ctx, versions)?;
+    let err_shapes = host_response_shapes_for_versions(err_inner, wrappers, ctx, versions)?;
+    match (ok_shapes, err_shapes) {
+        (None, None) => {
+            let ok_ts = ts_type_qualified_raw(ok)?;
+            let err_ts = ts_type_qualified_raw(err_inner)?;
+            Ok(format!("S.ResultPayload<{ok_ts}, {err_ts}>"))
+        }
+        (Some(o), Some(e)) => {
+            let mut arms = Vec::new();
+            for (oo, ee) in o.iter().zip(e.iter()) {
+                debug_assert_eq!(oo.version, ee.version);
+                arms.push(format!(
+                    "{{ tag: 'V{v}'; value: S.ResultPayload<{ok}, {err}> }}",
+                    v = oo.version,
+                    ok = oo.inner_type_ts,
+                    err = ee.inner_type_ts,
+                ));
+            }
+            Ok(arms.join(" | "))
+        }
+        // Unreachable: `host_response_shapes_for_versions` returns the
+        // same `Option` variant for both positions when called with the
+        // same non-empty `versions` set.
+        _ => bail!("internal: mismatched per-version shapes for `{ok:?}` and `{err_inner:?}`"),
     }
+}
+
+/// TS type for a subscription item or interrupt reason. Unversioned types
+/// (or unversioned positions of an otherwise-versioned method) get their
+/// plain TS shape.
+fn host_value_type(
+    ty: &TypeRef,
+    wrappers: &HashMap<String, VersionedWrapper>,
+    ctx: &CodecContext,
+    versions: &BTreeSet<u32>,
+) -> Result<String> {
+    match host_response_shapes_for_versions(ty, wrappers, ctx, versions)? {
+        Some(shapes) => Ok(host_union_type(&shapes, |s| s.inner_type_ts.clone())),
+        None => ts_type_qualified_raw(ty),
+    }
+}
+
+/// Codec for decoding the request bytes of a method. A versioned request
+/// gets an `indexedTaggedUnion` over inner per-version codecs; an
+/// unversioned request gets the inline struct codec.
+fn host_request_codec(
+    params: &[ParamDef],
+    wrappers: &HashMap<String, VersionedWrapper>,
+    ctx: &CodecContext,
+    versions: &BTreeSet<u32>,
+) -> Result<String> {
+    match host_request_shapes_for_versions(params, wrappers, ctx, versions)? {
+        Some(shapes) => indexed_versioned_codec_expr(
+            shapes.into_iter().map(|s| (s.version, s.inner_codec_expr)),
+        ),
+        None => {
+            if params.is_empty() {
+                Ok("S._void".to_string())
+            } else {
+                method_payload_codec_expr_mode(params, true, ctx, NameMode::Raw)
+            }
+        }
+    }
+}
+
+/// Codec for encoding the response of a request method. Per-position: if
+/// both Ok and Err are versioned, build `indexedTaggedUnion({V<n>: [n-1,
+/// S.Result(ok_n, err_n)], ...})`. If neither is versioned, fall back to
+/// `S.Result(ok, err)`.
+fn host_response_codec(
+    ok: &TypeRef,
+    err: &TypeRef,
+    wrappers: &HashMap<String, VersionedWrapper>,
+    ctx: &CodecContext,
+    versions: &BTreeSet<u32>,
+) -> Result<String> {
+    let err_inner = call_error_inner(err).unwrap_or(err);
+    let ok_shapes = host_response_shapes_for_versions(ok, wrappers, ctx, versions)?;
+    let err_shapes = host_response_shapes_for_versions(err_inner, wrappers, ctx, versions)?;
+    match (ok_shapes, err_shapes) {
+        (None, None) => {
+            let ok_codec = codec_expr_raw(ok, true, ctx)?;
+            let err_codec = codec_expr_raw(err_inner, true, ctx)?;
+            Ok(format!("S.Result({ok_codec}, {err_codec})"))
+        }
+        (Some(o), Some(e)) => {
+            indexed_versioned_codec_expr(o.iter().zip(e.iter()).map(|(oo, ee)| {
+                (
+                    oo.version,
+                    format!(
+                        "S.Result({ok}, {err})",
+                        ok = oo.inner_codec_expr,
+                        err = ee.inner_codec_expr,
+                    ),
+                )
+            }))
+        }
+        _ => bail!("internal: mismatched per-version shapes for `{ok:?}` and `{err_inner:?}`"),
+    }
+}
+
+/// Codec for encoding a subscription item or interrupt reason. Versioned
+/// positions build an `indexedTaggedUnion`; unversioned positions get the
+/// plain inline codec.
+fn host_value_codec(
+    ty: &TypeRef,
+    wrappers: &HashMap<String, VersionedWrapper>,
+    ctx: &CodecContext,
+    versions: &BTreeSet<u32>,
+) -> Result<String> {
+    match host_response_shapes_for_versions(ty, wrappers, ctx, versions)? {
+        Some(shapes) => indexed_versioned_codec_expr(
+            shapes.into_iter().map(|s| (s.version, s.inner_codec_expr)),
+        ),
+        None => codec_expr_raw(ty, true, ctx),
+    }
+}
+
+/// Codec + literal value for a void interrupt frame in a plain (non-result)
+/// subscription. The client ignores these bytes; we encode the lowest known
+/// version so the codec stays in shape.
+fn host_void_interrupt(versions: &BTreeSet<u32>) -> Result<(String, String)> {
+    if versions.is_empty() {
+        return Ok(("S._void".to_string(), "undefined".to_string()));
+    }
+    let entries: Vec<(u32, String)> = versions
+        .iter()
+        .map(|v| (*v, "S._void".to_string()))
+        .collect();
+    let codec = indexed_versioned_codec_expr(entries)?;
+    let first = versions.iter().next().expect("non-empty checked above");
+    let value = format!("{{ tag: 'V{first}' as const, value: undefined }}");
+    Ok((codec, value))
 }
 
 fn emit_host_handler_signature(
@@ -2196,15 +2825,13 @@ fn emit_host_handler_signature(
     method: &MethodDef,
     wrappers: &HashMap<String, VersionedWrapper>,
     ctx: &CodecContext,
-    target_version: u32,
 ) -> Result<()> {
     let ts_method_name = to_camel_case(&strip_prefix(&method.name));
-    let wire_version = method_wire_version(method, wrappers, target_version)?;
-    let payload = emit_payload(&method.params, wrappers, ctx, wire_version)?;
-    let has_request_param = !payload.param_list.is_empty()
-        || (trait_def.name == "System" && method.name == "handshake");
-    let request_type = host_request_wire_type(&payload);
+    let versions = method_wire_versions(method, wrappers)?;
+    let has_request_param =
+        !method.params.is_empty() || (trait_def.name == "System" && method.name == "handshake");
     let request_param = if has_request_param {
+        let request_type = host_request_type(&method.params, wrappers, ctx, &versions)?;
         format!(", request: {request_type}")
     } else {
         String::new()
@@ -2213,9 +2840,7 @@ fn emit_host_handler_signature(
 
     match (&method.kind, &method.return_type) {
         (MethodKind::Request, ReturnType::Result { ok, err }) => {
-            let response = emit_response(ok, wrappers, ctx, wire_version)?;
-            let error = emit_error_response(err, wrappers, ctx, wire_version)?;
-            let response_type = host_response_versioned_type(&response, &error, wire_version);
+            let response_type = host_request_response_type(ok, err, wrappers, ctx, &versions)?;
             writeln!(
                 out,
                 "  {ts_method_name}(ctx: CallContext{request_param}): Promise<{response_type}>;",
@@ -2223,22 +2848,24 @@ fn emit_host_handler_signature(
             .unwrap();
         }
         (MethodKind::Subscription, ReturnType::Subscription(ty)) => {
-            let response = emit_response(ty, wrappers, ctx, wire_version)?;
+            let item_type = host_value_type(ty, wrappers, ctx, &versions)?;
             writeln!(
                 out,
                 "  {ts_method_name}(ctx: CallContext{request_param}): ObservableLike<{item_type}>;",
-                item_type = response.wire_type_ts,
             )
             .unwrap();
         }
         (MethodKind::ResultSubscription, ReturnType::ResultSubscription { item, err }) => {
-            let response = emit_response(item, wrappers, ctx, wire_version)?;
-            let error = emit_error_response(err, wrappers, ctx, wire_version)?;
+            let item_type = host_value_type(item, wrappers, ctx, &versions)?;
+            let reason_type = host_value_type(
+                call_error_inner(err).unwrap_or(err),
+                wrappers,
+                ctx,
+                &versions,
+            )?;
             writeln!(
                 out,
                 "  {ts_method_name}(ctx: CallContext{request_param}): ObservableLike<{item_type}, {reason_type}>;",
-                item_type = response.wire_type_ts,
-                reason_type = error.wire_type_ts,
             )
             .unwrap();
         }
@@ -2260,42 +2887,29 @@ fn emit_host_entry(
     method: &MethodDef,
     wrappers: &HashMap<String, VersionedWrapper>,
     ctx: &CodecContext,
-    target_version: u32,
 ) -> Result<()> {
     let ts_method_name = to_camel_case(&strip_prefix(&method.name));
     let wire_const = wire_const_name(&trait_def.name, &method.name);
-    let wire_version = method_wire_version(method, wrappers, target_version)?;
-    let payload = emit_payload(&method.params, wrappers, ctx, wire_version)?;
-    let has_request_param = !payload.param_list.is_empty()
-        || (trait_def.name == "System" && method.name == "handshake");
+    let versions = method_wire_versions(method, wrappers)?;
+    let has_request_param =
+        !method.params.is_empty() || (trait_def.name == "System" && method.name == "handshake");
+    let request_codec = host_request_codec(&method.params, wrappers, ctx, &versions)?;
     let request_decode_stmt = if has_request_param {
-        format!("const request = {}.dec(bytes);", payload.wire_codec_expr)
+        format!("const request = {request_codec}.dec(bytes);")
     } else {
         // No-param methods still carry a one-byte versioned envelope; decode
         // it for validation and discard the result.
-        format!("{}.dec(bytes);", payload.wire_codec_expr)
+        format!("{request_codec}.dec(bytes);")
+    };
+    let call_args = if has_request_param {
+        "ctx, request"
+    } else {
+        "ctx"
     };
 
     match (&method.kind, &method.return_type) {
         (MethodKind::Request, ReturnType::Result { ok, err }) => {
-            let response = emit_response(ok, wrappers, ctx, wire_version)?;
-            let error = emit_error_response(err, wrappers, ctx, wire_version)?;
-            let response_codec = match wire_version {
-                Some(version) => versioned_result_codec_expr(
-                    version,
-                    &response.inner_codec_expr,
-                    &error.inner_codec_expr,
-                )?,
-                None => format!(
-                    "S.Result({}, {})",
-                    response.wire_codec_expr, error.wire_codec_expr,
-                ),
-            };
-            let call_args = if has_request_param {
-                "ctx, request"
-            } else {
-                "ctx"
-            };
+            let response_codec = host_response_codec(ok, err, wrappers, ctx, &versions)?;
             writedoc!(
                 out,
                 "
@@ -2313,19 +2927,8 @@ fn emit_host_entry(
             .unwrap();
         }
         (MethodKind::Subscription, ReturnType::Subscription(ty)) => {
-            let response = emit_response(ty, wrappers, ctx, wire_version)?;
-            let call_args = if has_request_param {
-                "ctx, request"
-            } else {
-                "ctx"
-            };
-            let (interrupt_codec, interrupt_value) = match wire_version {
-                Some(version) => (
-                    indexed_versioned_codec_expr([(version, "S._void".to_string())])?,
-                    format!("{{ tag: 'V{version}' as const, value: undefined }}"),
-                ),
-                None => ("S._void".to_string(), "undefined".to_string()),
-            };
+            let item_codec = host_value_codec(ty, wrappers, ctx, &versions)?;
+            let (interrupt_codec, interrupt_value) = host_void_interrupt(&versions)?;
             writedoc!(
                 out,
                 "
@@ -2341,19 +2944,18 @@ fn emit_host_entry(
                         return () => sub.unsubscribe();
                       }},
                     }},
-                ",
-                item_codec = response.wire_codec_expr,
+                "
             )
             .unwrap();
         }
         (MethodKind::ResultSubscription, ReturnType::ResultSubscription { item, err }) => {
-            let response = emit_response(item, wrappers, ctx, wire_version)?;
-            let error = emit_error_response(err, wrappers, ctx, wire_version)?;
-            let call_args = if has_request_param {
-                "ctx, request"
-            } else {
-                "ctx"
-            };
+            let item_codec = host_value_codec(item, wrappers, ctx, &versions)?;
+            let interrupt_codec = host_value_codec(
+                call_error_inner(err).unwrap_or(err),
+                wrappers,
+                ctx,
+                &versions,
+            )?;
             writedoc!(
                 out,
                 "
@@ -2369,9 +2971,7 @@ fn emit_host_entry(
                         return () => sub.unsubscribe();
                       }},
                     }},
-                ",
-                item_codec = response.wire_codec_expr,
-                interrupt_codec = error.wire_codec_expr,
+                "
             )
             .unwrap();
         }
@@ -2624,6 +3224,30 @@ mod tests {
             }
             other => panic!("unexpected wrapper kind: {other:?}"),
         }
+    }
+
+    #[test]
+    fn latest_wire_version_falls_back_to_one_without_wrappers() {
+        let api = ApiDefinition {
+            traits: Vec::new(),
+            public_trait_order: Vec::new(),
+            types: Vec::new(),
+        };
+        assert_eq!(latest_wire_version(&api), 1);
+    }
+
+    #[test]
+    fn latest_wire_version_picks_highest_variant_across_wrappers() {
+        let api = ApiDefinition {
+            traits: Vec::new(),
+            public_trait_order: Vec::new(),
+            types: vec![
+                versioned_tuple_wrapper_variants("OneWrapper", &[(1, "Legacy")]),
+                versioned_tuple_wrapper_variants("TwoWrapper", &[(1, "Legacy"), (3, "Latest")]),
+                versioned_tuple_wrapper_variants("ThreeWrapper", &[(2, "Middle")]),
+            ],
+        };
+        assert_eq!(latest_wire_version(&api), 3);
     }
 
     #[test]
