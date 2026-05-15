@@ -255,7 +255,7 @@ function handshakeResponsePayload(value) {
   const completions = [];
   const errors = [];
 
-  const sub = client.payment.balanceSubscribe({ request: { purse: null } }).subscribe({
+  const sub = client.payment.balanceSubscribe({ request: {} }).subscribe({
       complete: () => completions.push(true),
       error: (error) => errors.push(error),
     });

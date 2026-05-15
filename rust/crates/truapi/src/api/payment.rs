@@ -25,7 +25,7 @@ pub trait Payment: Send + Sync {
     ///
     /// export function watchPaymentBalance(truapi: Client): Subscription {
     ///   return truapi.payment.balanceSubscribe({
-    ///     request: { purse: null },
+    ///     request: {},
     ///   }).subscribe({
     ///     next: (balance: HostPaymentBalanceSubscribeItem) =>
     ///       console.log(balance),
