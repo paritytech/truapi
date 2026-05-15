@@ -1,15 +1,26 @@
 //! Unified [`Notifications`] trait.
 
 use crate::versioned::notifications::{
+    HostPushAddRulesError, HostPushAddRulesRequest, HostPushAddRulesResponse,
+    HostPushListRulesError, HostPushListRulesRequest, HostPushListRulesResponse,
     HostPushNotificationError, HostPushNotificationRequest, HostPushNotificationResponse,
-    HostPushSubscribeError, HostPushSubscribeRequest, HostPushSubscribeResponse,
-    HostPushUnsubscribeError, HostPushUnsubscribeRequest, HostPushUnsubscribeResponse,
+    HostPushRemoveRulesError, HostPushRemoveRulesRequest, HostPushRemoveRulesResponse,
+    HostPushSetRulesError, HostPushSetRulesRequest, HostPushSetRulesResponse,
 };
 use crate::wire;
 use crate::{CallContext, CallError};
 
 /// Notification methods: locally-rendered notifications and Statement Store
 /// subscription rules for backend-delivered pushes.
+///
+/// The rule-management methods (`push_add_rules`, `push_remove_rules`,
+/// `push_list_rules`, `push_set_rules`) mirror the rule-management endpoints
+/// of the push-notifications v2 backend design:
+///
+/// - <https://hackmd.io/@1JCaGppGSUqHtJilikYaKw/r16YTVg5Ze> — v2,
+///   backend-mediated
+/// - <https://hackmd.io/@1JCaGppGSUqHtJilikYaKw/SyPN2yV6lx> — v1,
+///   peer-to-peer (historical context)
 pub trait Notifications: Send + Sync {
     /// Send a notification to the user, rendered immediately by the host.
     ///
@@ -31,53 +42,94 @@ pub trait Notifications: Send + Sync {
         request: HostPushNotificationRequest,
     ) -> Result<HostPushNotificationResponse, CallError<HostPushNotificationError>>;
 
-    /// Register a `(signer, topic)` rule so the user is woken up by a push
-    /// when a signed statement matching the rule appears on the Statement
-    /// Store.
+    /// Register one or more `(signer, topic)` rules so the user is woken up
+    /// by a push when a signed statement matching any registered rule
+    /// appears on the Statement Store. Mirrors
+    /// `POST /v1/subscriptions/rules` from the v2 push backend spec.
     ///
     /// ```ts
     /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function subscribeToAnnouncements(
+    /// export async function addAnnouncementsRules(
     ///   truapi: Client,
-    ///   signer: Uint8Array,
-    ///   topic: Uint8Array,
+    ///   rules: Array<{ signer: Uint8Array; topic: Uint8Array }>,
     /// ): Promise<void> {
-    ///   const result = await truapi.notifications.pushSubscribe({
-    ///     rule: { signer, topic },
-    ///   });
+    ///   const result = await truapi.notifications.pushAddRules({ rules });
     ///
     ///   if (result.isErr()) throw result.error;
     /// }
     /// ```
     #[wire(request_id = 134)]
-    async fn push_subscribe(
+    async fn push_add_rules(
         &self,
         cx: &CallContext,
-        request: HostPushSubscribeRequest,
-    ) -> Result<HostPushSubscribeResponse, CallError<HostPushSubscribeError>>;
+        request: HostPushAddRulesRequest,
+    ) -> Result<HostPushAddRulesResponse, CallError<HostPushAddRulesError>>;
 
-    /// Remove a previously registered subscription rule.
+    /// Remove one or more previously registered subscription rules. Mirrors
+    /// `DELETE /v1/subscriptions/rules` from the v2 push backend spec.
     ///
     /// ```ts
     /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function unsubscribeFromAnnouncements(
+    /// export async function removeAnnouncementsRules(
     ///   truapi: Client,
-    ///   signer: Uint8Array,
-    ///   topic: Uint8Array,
+    ///   rules: Array<{ signer: Uint8Array; topic: Uint8Array }>,
     /// ): Promise<void> {
-    ///   const result = await truapi.notifications.pushUnsubscribe({
-    ///     rule: { signer, topic },
-    ///   });
+    ///   const result = await truapi.notifications.pushRemoveRules({ rules });
     ///
     ///   if (result.isErr()) throw result.error;
     /// }
     /// ```
     #[wire(request_id = 136)]
-    async fn push_unsubscribe(
+    async fn push_remove_rules(
         &self,
         cx: &CallContext,
-        request: HostPushUnsubscribeRequest,
-    ) -> Result<HostPushUnsubscribeResponse, CallError<HostPushUnsubscribeError>>;
+        request: HostPushRemoveRulesRequest,
+    ) -> Result<HostPushRemoveRulesResponse, CallError<HostPushRemoveRulesError>>;
+
+    /// List the calling product's currently registered subscription rules.
+    /// Useful for reconciling local UI state with what the host believes is
+    /// active (e.g. after logout/login). Mirrors
+    /// `GET /v1/subscriptions` from the v2 push backend spec.
+    ///
+    /// ```ts
+    /// import { type Client } from "@parity/truapi";
+    ///
+    /// export async function listRules(truapi: Client) {
+    ///   const result = await truapi.notifications.pushListRules({});
+    ///   if (result.isErr()) throw result.error;
+    ///   return result.value.rules;
+    /// }
+    /// ```
+    #[wire(request_id = 138)]
+    async fn push_list_rules(
+        &self,
+        cx: &CallContext,
+        request: HostPushListRulesRequest,
+    ) -> Result<HostPushListRulesResponse, CallError<HostPushListRulesError>>;
+
+    /// Atomically replace the calling product's entire rule set with the
+    /// supplied vector. After a successful call, the product's active rules
+    /// are exactly `rules`. Mirrors `PUT /v1/subscriptions/rules` from the
+    /// v2 push backend spec.
+    ///
+    /// ```ts
+    /// import { type Client } from "@parity/truapi";
+    ///
+    /// export async function setRules(
+    ///   truapi: Client,
+    ///   rules: Array<{ signer: Uint8Array; topic: Uint8Array }>,
+    /// ): Promise<void> {
+    ///   const result = await truapi.notifications.pushSetRules({ rules });
+    ///
+    ///   if (result.isErr()) throw result.error;
+    /// }
+    /// ```
+    #[wire(request_id = 140)]
+    async fn push_set_rules(
+        &self,
+        cx: &CallContext,
+        request: HostPushSetRulesRequest,
+    ) -> Result<HostPushSetRulesResponse, CallError<HostPushSetRulesError>>;
 }
