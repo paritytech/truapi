@@ -2485,6 +2485,44 @@ where
 }
 
 fn generate_host_server(api: &ApiDefinition) -> Result<String> {
+    let ctx = CodecContext::default();
+    let wrappers = collect_versioned_wrappers(api);
+    let services = public_services(api)?;
+
+    let mut services_with_methods = Vec::new();
+    for service in &services {
+        let trait_def = service.trait_def;
+        let methods = host_included_methods(trait_def, &wrappers)?;
+        if methods.is_empty() {
+            continue;
+        }
+        services_with_methods.push((trait_def, methods));
+    }
+
+    // Only import the response-payload helpers actually referenced by this
+    // generation. `MethodKind::Request` methods need `toResponsePayload`
+    // (versioned) or `toFlatResponsePayload` (unversioned).
+    let mut needs_versioned_helper = false;
+    let mut needs_flat_helper = false;
+    for (_, methods) in &services_with_methods {
+        for method in methods {
+            if !matches!(method.kind, MethodKind::Request) {
+                continue;
+            }
+            if method_wire_versions(method, &wrappers)?.is_empty() {
+                needs_flat_helper = true;
+            } else {
+                needs_versioned_helper = true;
+            }
+        }
+    }
+    let helper_imports = match (needs_versioned_helper, needs_flat_helper) {
+        (true, true) => "  toFlatResponsePayload,\n  toResponsePayload,\n",
+        (true, false) => "  toResponsePayload,\n",
+        (false, true) => "  toFlatResponsePayload,\n",
+        (false, false) => "",
+    };
+
     let mut out = String::new();
     writedoc!(
         out,
@@ -2505,7 +2543,7 @@ fn generate_host_server(api: &ApiDefinition) -> Result<String> {
         }} from '@parity/truapi';
         import {{
           createHostServer,
-          type CallContext,
+        {helper_imports}  type CallContext,
           type HostDispatchEntry,
           type HostServerHooks,
           type TrUApiHostServer,
@@ -2524,20 +2562,6 @@ fn generate_host_server(api: &ApiDefinition) -> Result<String> {
         "#
     )
     .unwrap();
-
-    let ctx = CodecContext::default();
-    let wrappers = collect_versioned_wrappers(api);
-    let services = public_services(api)?;
-
-    let mut services_with_methods = Vec::new();
-    for service in &services {
-        let trait_def = service.trait_def;
-        let methods = host_included_methods(trait_def, &wrappers)?;
-        if methods.is_empty() {
-            continue;
-        }
-        services_with_methods.push((trait_def, methods));
-    }
 
     for (trait_def, methods) in &services_with_methods {
         for method in methods {
@@ -3028,9 +3052,8 @@ fn emit_host_entry(
                       ids: W.{wire_const},
                       async handle(ctx, bytes) {{
                         const request = {request_codec}.dec(bytes);
-                        const response = await handlers.{ts_method_name}(ctx, request).match(
-                          (ok) => ({{ tag: ok.tag, value: {{ success: true as const, value: ok.value }} }}),
-                          (err) => ({{ tag: err.tag, value: {{ success: false as const, value: err.value }} }}),
+                        const response = toResponsePayload(
+                          await handlers.{ts_method_name}(ctx, request),
                         );
                         return {response_codec}.enc(response);
                       }},
@@ -3136,9 +3159,8 @@ fn emit_host_entry_unversioned(
                       ids: W.{wire_const},
                       async handle(ctx, bytes) {{
                         {request_decode_stmt}
-                        const response = await handlers.{ts_method_name}({call_args}).match(
-                          (value) => ({{ success: true as const, value }}),
-                          (error) => ({{ success: false as const, value: error }}),
+                        const response = toFlatResponsePayload(
+                          await handlers.{ts_method_name}({call_args}),
                         );
                         return {response_codec}.enc(response);
                       }},

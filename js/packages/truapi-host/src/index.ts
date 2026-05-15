@@ -1,3 +1,5 @@
+import type { Result } from "neverthrow";
+
 import {
   decodeWireMessage,
   encodeWireMessage,
@@ -5,6 +7,61 @@ import {
   type RequestFrameIds,
   type SubscriptionFrameIds,
 } from "@parity/truapi";
+
+/**
+ * Map a handler's versioned `Result<{tag, value: Ok}, {tag, value: Err}>`
+ * into the wire-shape `{ tag, value: { success, value } }` the response
+ * codec encodes. The version tag flows from whichever arm is settled, so a
+ * V1 handler return stays V1 on the wire.
+ *
+ * Generated dispatcher entries call this so the per-method `await
+ * handler.match(...)` boilerplate lives in one place instead of being
+ * cloned at every request method.
+ **/
+/**
+ * `Versioned<V, T>` mirrors how generated unions render unit variants: a
+ * unit `value` becomes `value?: undefined` so handlers can return
+ * `{ tag: "V1" }` without naming the field. Non-unit values keep `value: T`
+ * as required.
+ **/
+type Versioned<V extends string, T> = [T] extends [undefined]
+  ? { tag: V; value?: undefined }
+  : { tag: V; value: T };
+
+export function toResponsePayload<V extends string, Ok, Err>(
+  result: Result<Versioned<V, Ok>, Versioned<V, Err>>,
+): {
+  tag: V;
+  value: { success: true; value: Ok } | { success: false; value: Err };
+} {
+  return result.match(
+    (ok) => ({
+      tag: ok.tag,
+      // `value` is optional in unit-variant inputs; reading it returns
+      // `undefined` which is what the wire codec expects in that arm.
+      value: { success: true as const, value: ok.value as Ok },
+    }),
+    (err) => ({
+      tag: err.tag,
+      value: { success: false as const, value: err.value as Err },
+    }),
+  );
+}
+
+/**
+ * Flat counterpart to [`toResponsePayload`] for methods that carry no
+ * version wrapper on either side. Generated for the unversioned dispatch
+ * path; collapses a `Result<Ok, Err>` into the wire `{ success, value }`
+ * envelope without a tag.
+ **/
+export function toFlatResponsePayload<Ok, Err>(
+  result: Result<Ok, Err>,
+): { success: true; value: Ok } | { success: false; value: Err } {
+  return result.match(
+    (value) => ({ success: true as const, value }),
+    (value) => ({ success: false as const, value }),
+  );
+}
 
 /**
  * Per-call context handed to every host handler. Carries the wire
