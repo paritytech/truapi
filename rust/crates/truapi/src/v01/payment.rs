@@ -7,13 +7,6 @@ pub type Balance = u128;
 /// CoinPayment purse identifier.
 pub type PurseId = u32;
 
-/// Optional RFC 0017 purse selector for RFC 0006 payment operations.
-///
-/// `None` selects the ordinary user-owned main purse. `Some(purse)` selects a
-/// specific CoinPayment purse when the calling product is authorized to access
-/// it.
-pub type PaymentPurse = Option<PurseId>;
-
 /// Request to subscribe to payment balance updates.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostPaymentBalanceSubscribeRequest {

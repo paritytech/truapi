@@ -150,19 +150,6 @@ pub enum CoinPaymentTransmissionChannel {
     },
 }
 
-/// Customer-facing payment request datagram.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct CoinPaymentInvoice {
-    /// Invoice format version. V1 uses 0.
-    pub version: u8,
-    /// Handoff channel for the cheque.
-    pub handoff: CoinPaymentTransmissionChannel,
-    /// Receivable public key.
-    pub receiver: CoinPaymentReceivable,
-    /// Requested amount.
-    pub amount: CoinPaymentBalance,
-}
-
 /// Request to create a new firewalled CoinPayment purse.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostCoinPaymentCreatePurseRequest {
