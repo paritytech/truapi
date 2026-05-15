@@ -61,7 +61,7 @@ jobs:
 
       - name: Install dependencies
         if: steps.version.outputs.proceed == 'true'
-        run: npm ci --ignore-scripts
+        run: npm ci
 
       - name: Build @parity/truapi
         if: steps.version.outputs.proceed == 'true'
