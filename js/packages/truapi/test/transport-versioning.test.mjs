@@ -255,7 +255,7 @@ function handshakeResponsePayload(value) {
   const completions = [];
   const errors = [];
 
-  const sub = client.payment.balanceSubscribe({ purse: null }).subscribe({
+  const sub = client.payment.balanceSubscribe({ request: { purse: null } }).subscribe({
       complete: () => completions.push(true),
       error: (error) => errors.push(error),
     });
@@ -265,7 +265,7 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: sub.subscriptionId,
       payload: {
-        id: W.HOST_PAYMENT_BALANCE_SUBSCRIBE.interrupt,
+        id: W.PAYMENT_BALANCE_SUBSCRIBE.interrupt,
         value: T.VersionedHostPaymentBalanceSubscribeError.enc({
           tag: "V1",
           value: reason,
@@ -299,12 +299,12 @@ function handshakeResponsePayload(value) {
       error: (error) => errors.push(error),
     });
 
-  const reason = { tag: "Denied", value: undefined };
+  const reason = "Denied";
   const frame = unwrap(
     encodeWireMessage({
       requestId: sub.subscriptionId,
       payload: {
-        id: W.HOST_COIN_PAYMENT_REBALANCE_PURSE.interrupt,
+        id: W.COIN_PAYMENT_HOST_COIN_PAYMENT_REBALANCE_PURSE.interrupt,
         value: T.VersionedHostCoinPaymentRebalancePurseError.enc({
           tag: "V1",
           value: reason,
