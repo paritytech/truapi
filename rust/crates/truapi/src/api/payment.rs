@@ -2,8 +2,8 @@
 
 use crate::versioned::payment::{
     HostPaymentBalanceSubscribeError, HostPaymentBalanceSubscribeItem,
-    HostPaymentBalanceSubscribeRequest, HostPaymentRequestError, HostPaymentRequestRequest,
-    HostPaymentRequestResponse, HostPaymentStatusSubscribeError, HostPaymentStatusSubscribeItem,
+    HostPaymentBalanceSubscribeRequest, HostPaymentError, HostPaymentRequest, HostPaymentResponse,
+    HostPaymentStatusSubscribeError, HostPaymentStatusSubscribeItem,
     HostPaymentStatusSubscribeRequest, HostPaymentTopUpError, HostPaymentTopUpRequest,
     HostPaymentTopUpResponse,
 };
@@ -50,12 +50,12 @@ pub trait Payment: Send + Sync {
     /// ```ts
     /// import {
     ///   type Client,
-    ///   type HostPaymentRequestResponse,
+    ///   type HostPaymentResponse,
     /// } from "@parity/truapi";
     ///
     /// export async function requestPayment(
     ///   truapi: Client,
-    /// ): Promise<HostPaymentRequestResponse> {
+    /// ): Promise<HostPaymentResponse> {
     ///   const result = await truapi.payment.request({
     ///     amount: 1000000000000n,
     ///     destination: "0x0000000000000000000000000000000000000000000000000000000000000000",
@@ -69,8 +69,8 @@ pub trait Payment: Send + Sync {
     async fn request(
         &self,
         _cx: &CallContext,
-        _request: HostPaymentRequestRequest,
-    ) -> Result<HostPaymentRequestResponse, CallError<HostPaymentRequestError>> {
+        _request: HostPaymentRequest,
+    ) -> Result<HostPaymentResponse, CallError<HostPaymentError>> {
         Err(CallError::unavailable())
     }
 
