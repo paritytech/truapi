@@ -1,8 +1,8 @@
-# RFC-0010: W3S Allowance Management in TrUAPI
+# RFC-0014: W3S Allowance Management in TrUAPI
 
 |                 |                                                                                                                                       |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| **RFC Number**  | 10                                                                                                                                    |
+| **RFC Number**  | 14                                                                                                                                    |
 | **Start Date**  | 2026-04-14                                                                                                                            |
 | **Description** | TrUAPI calls and Accounts Protocol companion for granting products access to Bulletin, Statement Store, and Smart Contract allowances |
 | **Authors**     | Valentin Sergeev                                                                                                                      |
