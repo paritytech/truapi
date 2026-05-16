@@ -9,16 +9,6 @@ import {
 } from "@parity/truapi";
 
 /**
- * Map a handler's versioned `Result<{tag, value: Ok}, {tag, value: Err}>`
- * into the wire-shape `{ tag, value: { success, value } }` the response
- * codec encodes. The version tag flows from whichever arm is settled, so a
- * V1 handler return stays V1 on the wire.
- *
- * Generated dispatcher entries call this so the per-method `await
- * handler.match(...)` boilerplate lives in one place instead of being
- * cloned at every request method.
- **/
-/**
  * `Versioned<V, T>` mirrors how generated unions render unit variants: a
  * unit `value` becomes `value?: undefined` so handlers can return
  * `{ tag: "V1" }` without naming the field. Non-unit values keep `value: T`
@@ -28,6 +18,16 @@ type Versioned<V extends string, T> = [T] extends [undefined]
   ? { tag: V; value?: undefined }
   : { tag: V; value: T };
 
+/**
+ * Map a handler's versioned `Result<{tag, value: Ok}, {tag, value: Err}>`
+ * into the wire-shape `{ tag, value: { success, value } }` the response
+ * codec encodes. The version tag flows from whichever arm is settled, so a
+ * V1 handler return stays V1 on the wire.
+ *
+ * Generated dispatcher entries call this so the per-method `await
+ * handler.match(...)` boilerplate lives in one place instead of being
+ * cloned at every request method.
+ **/
 export function toResponsePayload<V extends string, Ok, Err>(
   result: Result<Versioned<V, Ok>, Versioned<V, Err>>,
 ): {
