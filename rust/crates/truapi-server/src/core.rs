@@ -57,7 +57,7 @@ impl TrUApiCore {
     where
         P: Platform + 'static,
     {
-        let runtime = Arc::new(PlatformRuntimeHost::new(platform));
+        let runtime = Arc::new(PlatformRuntimeHost::new(platform, spawner.clone()));
         let session_state = runtime.session_state();
         let mut dispatcher = Dispatcher::new(spawner);
         dispatcher::register(&mut dispatcher, runtime);

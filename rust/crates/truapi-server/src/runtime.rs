@@ -8,11 +8,16 @@
 
 use std::sync::Arc;
 
+use crate::chain_runtime::{
+    ChainRuntime, RuntimeChainProvider, RuntimeFailure, RuntimeFailureKind,
+};
 use crate::host_logic::dotns::{NavigateDecision, parse_navigate};
 use crate::host_logic::features::feature_supported;
 use crate::host_logic::permissions::{Decision, PermissionsService};
 use crate::host_logic::session::SessionState;
+use crate::subscription::Spawner;
 
+use futures::StreamExt;
 use truapi::api::{
     Account, Chain, Chat, Entropy, JsonRpc, LocalStorage, Payment, Permissions, Preimage,
     ResourceAllocation, Signing, StatementStore, System, Theme,
@@ -74,16 +79,19 @@ use truapi::versioned::system::{
 };
 use truapi::{CallContext, CallError, Subscription};
 use truapi_platform::{
-    Accounts as PlatformAccounts, Navigation as PlatformNavigation,
-    Notifications as PlatformNotifications, Platform, Preimage as PlatformPreimage,
-    Signing as PlatformSigning, StatementStore as PlatformStatementStore,
-    Storage as PlatformStorage,
+    Accounts as PlatformAccounts, ChainProvider as PlatformChainProvider, GenesisHash,
+    JsonRpcConnection, Navigation as PlatformNavigation, Notifications as PlatformNotifications,
+    Platform, Preimage as PlatformPreimage, Signing as PlatformSigning,
+    StatementStore as PlatformStatementStore, Storage as PlatformStorage,
 };
 
 /// Adapter that exposes a [`truapi_platform::Platform`] through the
 /// `truapi::api::*` trait set the generated dispatcher routes to.
 pub struct PlatformRuntimeHost<P> {
     platform: Arc<P>,
+    /// chainHead-v1 state machine. The provider adapter forwards
+    /// [`PlatformChainProvider::connect`] into the json-rpc layer.
+    chain: ChainRuntime,
     /// Currently-paired session, pushed by the host through a side channel.
     /// Account-management subscriptions read from this in lieu of round-tripping
     /// a callback on every connection-status query.
@@ -92,12 +100,19 @@ pub struct PlatformRuntimeHost<P> {
 
 impl<P> PlatformRuntimeHost<P> {
     /// Wrap a platform implementation. The runtime takes ownership via `Arc`.
-    pub fn new(platform: Arc<P>) -> Self
+    /// `spawner` is used by the embedded chain runtime to drive json-rpc
+    /// response loops and follow-setup futures.
+    pub fn new(platform: Arc<P>, spawner: Spawner) -> Self
     where
         P: Platform + 'static,
     {
+        let chain_provider: Arc<dyn RuntimeChainProvider> =
+            Arc::new(PlatformChainRuntimeProvider {
+                platform: platform.clone(),
+            });
         Self {
             platform,
+            chain: ChainRuntime::new(chain_provider, spawner),
             session_state: SessionState::new(),
         }
     }
@@ -109,9 +124,44 @@ impl<P> PlatformRuntimeHost<P> {
     }
 }
 
+/// Adapter from `truapi_platform::ChainProvider` into the
+/// [`RuntimeChainProvider`] surface the chain runtime expects.
+/// Reuses the platform-supplied json-rpc connection and converts the
+/// platform `GenericError` into a `RuntimeFailure::Unavailable`.
+struct PlatformChainRuntimeProvider<P> {
+    platform: Arc<P>,
+}
+
+#[async_trait::async_trait]
+impl<P> RuntimeChainProvider for PlatformChainRuntimeProvider<P>
+where
+    P: Platform + 'static,
+{
+    async fn connect(
+        &self,
+        genesis_hash: GenesisHash,
+    ) -> Result<Arc<dyn JsonRpcConnection>, RuntimeFailure> {
+        PlatformChainProvider::connect(self.platform.as_ref(), genesis_hash)
+            .await
+            .map(Arc::from)
+            .map_err(|_| RuntimeFailure::unavailable("remote_chain_connect"))
+    }
+}
+
 fn unsupported_with_reason<E>(reason: &str) -> CallError<E> {
     CallError::HostFailure {
         reason: reason.to_string(),
+    }
+}
+
+fn runtime_failure_to_call_error<E>(failure: RuntimeFailure) -> CallError<E> {
+    match failure.kind() {
+        RuntimeFailureKind::Unavailable => CallError::HostFailure {
+            reason: failure.reason(),
+        },
+        RuntimeFailureKind::HostFailure => CallError::HostFailure {
+            reason: failure.reason(),
+        },
     }
 }
 
@@ -448,9 +498,12 @@ where
 // Chain
 // ---------------------------------------------------------------------------
 //
-// Every method on the Chain trait is stubbed as `CallError::Unsupported`.
-// The platform exposes only the raw `ChainProvider::connect` JSON-RPC bridge;
-// the typed chainHead surface is not implemented here.
+// The chain surface is backed by `ChainRuntime`, which keeps one
+// `chainHead_v1` connection per genesis hash on top of the platform-supplied
+// `ChainProvider::connect`. Requests go through `request_value` and parse
+// json-rpc responses into typed v01 results; follow notifications are
+// translated into `RemoteChainHeadFollowItem` items on the subscription
+// stream.
 
 impl<P> Chain for PlatformRuntimeHost<P>
 where
@@ -458,112 +511,178 @@ where
 {
     async fn follow_head_subscribe(
         &self,
-        _cx: &CallContext,
-        _request: RemoteChainHeadFollowRequest,
+        cx: &CallContext,
+        request: RemoteChainHeadFollowRequest,
     ) -> Subscription<RemoteChainHeadFollowItem> {
-        Subscription::empty()
+        let RemoteChainHeadFollowRequest::V1(inner) = request;
+        let follow_subscription_id = cx.request_id().to_string();
+        let stream = self
+            .chain
+            .remote_chain_head_follow(follow_subscription_id, inner)
+            .map(RemoteChainHeadFollowItem::V1);
+        Subscription::new(Box::pin(stream))
     }
 
     async fn get_head_header(
         &self,
         _cx: &CallContext,
-        _request: RemoteChainHeadHeaderRequest,
+        request: RemoteChainHeadHeaderRequest,
     ) -> Result<RemoteChainHeadHeaderResponse, CallError<RemoteChainHeadHeaderError>> {
-        Err(CallError::Unsupported)
+        let RemoteChainHeadHeaderRequest::V1(inner) = request;
+        self.chain
+            .remote_chain_head_header(inner)
+            .await
+            .map(RemoteChainHeadHeaderResponse::V1)
+            .map_err(runtime_failure_to_call_error)
     }
 
     async fn get_head_body(
         &self,
         _cx: &CallContext,
-        _request: RemoteChainHeadBodyRequest,
+        request: RemoteChainHeadBodyRequest,
     ) -> Result<RemoteChainHeadBodyResponse, CallError<RemoteChainHeadBodyError>> {
-        Err(CallError::Unsupported)
+        let RemoteChainHeadBodyRequest::V1(inner) = request;
+        self.chain
+            .remote_chain_head_body(inner)
+            .await
+            .map(RemoteChainHeadBodyResponse::V1)
+            .map_err(runtime_failure_to_call_error)
     }
 
     async fn get_head_storage(
         &self,
         _cx: &CallContext,
-        _request: RemoteChainHeadStorageRequest,
+        request: RemoteChainHeadStorageRequest,
     ) -> Result<RemoteChainHeadStorageResponse, CallError<RemoteChainHeadStorageError>> {
-        Err(CallError::Unsupported)
+        let RemoteChainHeadStorageRequest::V1(inner) = request;
+        self.chain
+            .remote_chain_head_storage(inner)
+            .await
+            .map(RemoteChainHeadStorageResponse::V1)
+            .map_err(runtime_failure_to_call_error)
     }
 
     async fn call_head(
         &self,
         _cx: &CallContext,
-        _request: RemoteChainHeadCallRequest,
+        request: RemoteChainHeadCallRequest,
     ) -> Result<RemoteChainHeadCallResponse, CallError<RemoteChainHeadCallError>> {
-        Err(CallError::Unsupported)
+        let RemoteChainHeadCallRequest::V1(inner) = request;
+        self.chain
+            .remote_chain_head_call(inner)
+            .await
+            .map(RemoteChainHeadCallResponse::V1)
+            .map_err(runtime_failure_to_call_error)
     }
 
     async fn unpin_head(
         &self,
         _cx: &CallContext,
-        _request: RemoteChainHeadUnpinRequest,
+        request: RemoteChainHeadUnpinRequest,
     ) -> Result<RemoteChainHeadUnpinResponse, CallError<RemoteChainHeadUnpinError>> {
-        Err(CallError::Unsupported)
+        let RemoteChainHeadUnpinRequest::V1(inner) = request;
+        self.chain
+            .remote_chain_head_unpin(inner)
+            .await
+            .map(|()| RemoteChainHeadUnpinResponse::V1)
+            .map_err(runtime_failure_to_call_error)
     }
 
     async fn continue_head(
         &self,
         _cx: &CallContext,
-        _request: RemoteChainHeadContinueRequest,
+        request: RemoteChainHeadContinueRequest,
     ) -> Result<RemoteChainHeadContinueResponse, CallError<RemoteChainHeadContinueError>> {
-        Err(CallError::Unsupported)
+        let RemoteChainHeadContinueRequest::V1(inner) = request;
+        self.chain
+            .remote_chain_head_continue(inner)
+            .await
+            .map(|()| RemoteChainHeadContinueResponse::V1)
+            .map_err(runtime_failure_to_call_error)
     }
 
     async fn stop_head_operation(
         &self,
         _cx: &CallContext,
-        _request: RemoteChainHeadStopOperationRequest,
+        request: RemoteChainHeadStopOperationRequest,
     ) -> Result<RemoteChainHeadStopOperationResponse, CallError<RemoteChainHeadStopOperationError>>
     {
-        Err(CallError::Unsupported)
+        let RemoteChainHeadStopOperationRequest::V1(inner) = request;
+        self.chain
+            .remote_chain_head_stop_operation(inner)
+            .await
+            .map(|()| RemoteChainHeadStopOperationResponse::V1)
+            .map_err(runtime_failure_to_call_error)
     }
 
     async fn get_spec_genesis_hash(
         &self,
         _cx: &CallContext,
-        _request: RemoteChainSpecGenesisHashRequest,
+        request: RemoteChainSpecGenesisHashRequest,
     ) -> Result<RemoteChainSpecGenesisHashResponse, CallError<RemoteChainSpecGenesisHashError>>
     {
-        Err(CallError::Unsupported)
+        let RemoteChainSpecGenesisHashRequest::V1(inner) = request;
+        self.chain
+            .remote_chain_spec_genesis_hash(inner.genesis_hash)
+            .await
+            .map(RemoteChainSpecGenesisHashResponse::V1)
+            .map_err(runtime_failure_to_call_error)
     }
 
     async fn get_spec_chain_name(
         &self,
         _cx: &CallContext,
-        _request: RemoteChainSpecChainNameRequest,
+        request: RemoteChainSpecChainNameRequest,
     ) -> Result<RemoteChainSpecChainNameResponse, CallError<RemoteChainSpecChainNameError>> {
-        Err(CallError::Unsupported)
+        let RemoteChainSpecChainNameRequest::V1(inner) = request;
+        self.chain
+            .remote_chain_spec_chain_name(inner.genesis_hash)
+            .await
+            .map(RemoteChainSpecChainNameResponse::V1)
+            .map_err(runtime_failure_to_call_error)
     }
 
     async fn get_spec_properties(
         &self,
         _cx: &CallContext,
-        _request: RemoteChainSpecPropertiesRequest,
+        request: RemoteChainSpecPropertiesRequest,
     ) -> Result<RemoteChainSpecPropertiesResponse, CallError<RemoteChainSpecPropertiesError>> {
-        Err(CallError::Unsupported)
+        let RemoteChainSpecPropertiesRequest::V1(inner) = request;
+        self.chain
+            .remote_chain_spec_properties(inner.genesis_hash)
+            .await
+            .map(RemoteChainSpecPropertiesResponse::V1)
+            .map_err(runtime_failure_to_call_error)
     }
 
     async fn broadcast_transaction(
         &self,
         _cx: &CallContext,
-        _request: RemoteChainTransactionBroadcastRequest,
+        request: RemoteChainTransactionBroadcastRequest,
     ) -> Result<
         RemoteChainTransactionBroadcastResponse,
         CallError<RemoteChainTransactionBroadcastError>,
     > {
-        Err(CallError::Unsupported)
+        let RemoteChainTransactionBroadcastRequest::V1(inner) = request;
+        self.chain
+            .remote_chain_transaction_broadcast(inner)
+            .await
+            .map(RemoteChainTransactionBroadcastResponse::V1)
+            .map_err(runtime_failure_to_call_error)
     }
 
     async fn stop_transaction(
         &self,
         _cx: &CallContext,
-        _request: RemoteChainTransactionStopRequest,
+        request: RemoteChainTransactionStopRequest,
     ) -> Result<RemoteChainTransactionStopResponse, CallError<RemoteChainTransactionStopError>>
     {
-        Err(CallError::Unsupported)
+        let RemoteChainTransactionStopRequest::V1(inner) = request;
+        self.chain
+            .remote_chain_transaction_stop(inner)
+            .await
+            .map(|()| RemoteChainTransactionStopResponse::V1)
+            .map_err(runtime_failure_to_call_error)
     }
 }
 
@@ -586,6 +705,7 @@ impl<P> Theme for PlatformRuntimeHost<P> where P: Platform + 'static {}
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chain_runtime::thread_per_task_spawner;
     use async_trait::async_trait;
     use futures::stream::{self, BoxStream};
     use parity_scale_codec::Encode;
@@ -597,6 +717,10 @@ mod tests {
         Preimage as PlatformPreimage, Signing as PlatformSigning,
         StatementStore as PlatformStatementStore, Storage as PlatformStorage,
     };
+
+    fn test_spawner() -> Spawner {
+        thread_per_task_spawner()
+    }
 
     /// Minimal Platform impl that only answers `feature_supported`. Every
     /// other callback returns a unit value or empty stream, so the runtime
@@ -793,7 +917,7 @@ mod tests {
 
     #[test]
     fn feature_supported_round_trips_through_runtime() {
-        let host = PlatformRuntimeHost::new(Arc::new(StubPlatform));
+        let host = PlatformRuntimeHost::new(Arc::new(StubPlatform), test_spawner());
         let cx = CallContext::new();
         let request = HostFeatureSupportedRequest::V1(v01::HostFeatureSupportedRequest::Chain {
             genesis_hash: vec![0u8; 32],
@@ -805,7 +929,7 @@ mod tests {
 
     #[test]
     fn navigate_to_uses_dotns_decision_and_then_platform() {
-        let host = PlatformRuntimeHost::new(Arc::new(StubPlatform));
+        let host = PlatformRuntimeHost::new(Arc::new(StubPlatform), test_spawner());
         let cx = CallContext::new();
         let request = HostNavigateToRequest::V1(v01::HostNavigateToRequest {
             url: "mytestapp.dot".to_string(),
@@ -816,7 +940,7 @@ mod tests {
 
     #[test]
     fn navigate_to_rejects_empty_input_without_calling_platform() {
-        let host = PlatformRuntimeHost::new(Arc::new(StubPlatform));
+        let host = PlatformRuntimeHost::new(Arc::new(StubPlatform), test_spawner());
         let cx = CallContext::new();
         let request = HostNavigateToRequest::V1(v01::HostNavigateToRequest {
             url: "".to_string(),
@@ -832,7 +956,7 @@ mod tests {
 
     #[test]
     fn request_login_returns_unsupported() {
-        let host = PlatformRuntimeHost::new(Arc::new(StubPlatform));
+        let host = PlatformRuntimeHost::new(Arc::new(StubPlatform), test_spawner());
         let cx = CallContext::new();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
         let err = futures::executor::block_on(host.request_login(&cx, request)).unwrap_err();
@@ -841,7 +965,7 @@ mod tests {
 
     #[test]
     fn permissions_grants_and_caches() {
-        let host = PlatformRuntimeHost::new(Arc::new(StubPlatform));
+        let host = PlatformRuntimeHost::new(Arc::new(StubPlatform), test_spawner());
         let cx = CallContext::new();
         let request = HostDevicePermissionRequest::V1(v01::HostDevicePermissionRequest::Camera);
         let response =
@@ -852,7 +976,7 @@ mod tests {
 
     #[test]
     fn feature_supported_encodes_response_to_known_bytes() {
-        let host = PlatformRuntimeHost::new(Arc::new(StubPlatform));
+        let host = PlatformRuntimeHost::new(Arc::new(StubPlatform), test_spawner());
         let cx = CallContext::new();
         let request = HostFeatureSupportedRequest::V1(v01::HostFeatureSupportedRequest::Chain {
             genesis_hash: vec![0u8; 32],

@@ -12,6 +12,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod chain_runtime;
 pub mod core;
 pub mod debug_log;
 pub mod dispatcher;
@@ -22,6 +23,9 @@ pub mod subscription;
 pub mod transport;
 
 pub mod generated;
+
+#[cfg(feature = "smoldot")]
+pub mod smoldot_provider;
 
 #[cfg(all(not(target_arch = "wasm32"), feature = "ws-bridge"))]
 pub mod ws_bridge;
