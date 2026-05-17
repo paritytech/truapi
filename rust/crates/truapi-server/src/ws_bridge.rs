@@ -213,6 +213,11 @@ async fn accept_loop(
     }
 }
 
+// `clippy::result_large_err` fires on the handshake callback because
+// tokio-tungstenite's `ErrorResponse` type carries the full HTTP response
+// (~136 bytes). The closure signature is dictated by tokio-tungstenite's
+// API, so the lint can only be silenced at the call site.
+#[allow(clippy::result_large_err)]
 async fn handle_connection(
     stream: tokio::net::TcpStream,
     peer: SocketAddr,
