@@ -42,7 +42,7 @@ fn parse_rust(src: &str) -> Vec<Row> {
         let mut is_subscription = false;
         for inner in iter.by_ref() {
             let t = inner.trim();
-            if t.starts_with("WireKind::Subscription") {
+            if t.contains("WireKind::Subscription") {
                 is_subscription = true;
             }
             if let Some(rest) = t
@@ -76,30 +76,26 @@ fn parse_rust(src: &str) -> Vec<Row> {
 }
 
 fn parse_ts(src: &str) -> Vec<Row> {
-    // Recognises the TS shape emitted by truapi-codegen, which (per the
-    // current codegen.rs) writes one object per method with literal
-    // numeric ids. The exact key names may evolve; this scanner accepts
-    // both the request/response and start/stop/interrupt/receive shapes.
+    // The TS codegen emits one named `export const FOO_BAR = { ... }` per
+    // method. The const name is `SCREAMING_SNAKE_CASE` of the method name;
+    // we lowercase it to match the Rust `method:` strings.
     let mut out = Vec::new();
     let mut iter = src.lines().peekable();
     while let Some(line) = iter.next() {
         let trimmed = line.trim();
-        let Some(rest) = trimmed
-            .strip_prefix("method: '")
-            .or_else(|| trimmed.strip_prefix("method: \""))
-        else {
+        let Some(rest) = trimmed.strip_prefix("export const ") else {
             continue;
         };
-        let Some(end) = rest.find(['\'', '"']) else {
+        let Some(name_end) = rest.find(|c: char| !(c.is_ascii_alphanumeric() || c == '_')) else {
             continue;
         };
-        let method = rest[..end].to_string();
+        let method = rest[..name_end].to_ascii_lowercase();
         let mut request_or_start = None;
         let mut response_or_receive = None;
         let mut is_subscription = false;
         for inner in iter.by_ref() {
             let t = inner.trim();
-            if t.contains("subscription") || t.contains("start:") {
+            if t.starts_with("start:") || t.contains("SubscriptionFrameIds") {
                 is_subscription = true;
             }
             if let Some(rest) = t
@@ -116,7 +112,7 @@ fn parse_ts(src: &str) -> Vec<Row> {
                 let n: u8 = rest.trim_end_matches(',').parse().unwrap_or(0);
                 response_or_receive = Some(n);
             }
-            if t == "}," || t == "}" {
+            if t.starts_with("} as const") || t == "}" {
                 if let (Some(rs), Some(rr)) = (request_or_start, response_or_receive) {
                     out.push(Row {
                         method,
