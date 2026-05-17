@@ -55,8 +55,7 @@ struct Cli {
     /// Output directory for the generated Rust dispatcher / wire-table (optional).
     ///
     /// When set, emits `dispatcher.rs` and `wire_table.rs` for the
-    /// `truapi-server` crate to include. Phase 4 will wire this up to
-    /// `scripts/codegen.sh`; until then the flag is opt-in.
+    /// `truapi-server` crate to include.
     #[arg(long)]
     rust_output: Option<PathBuf>,
 }

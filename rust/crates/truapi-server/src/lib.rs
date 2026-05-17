@@ -1,11 +1,10 @@
 //! TrUAPI server runtime: dispatcher, frames, SCALE encoding, stream management.
 //!
-//! Phase 4c adds the runtime + host_logic + core layers on top of the
-//! 4a skeleton. The platform path (`TrUApiCore::from_platform`) wraps a
+//! The platform path (`TrUApiCore::from_platform`) wraps a
 //! [`truapi_platform::Platform`] in a `PlatformRuntimeHost` that implements
 //! every `truapi::api::*` trait by delegating to platform callbacks.
 //!
-//! Phase 4e adds the host-facing bridges:
+//! Host-facing bridges:
 //! - [`ws_bridge`] (feature `ws-bridge`): localhost WebSocket bridge for
 //!   native WebView hosts (Android/iOS).
 //! - [`native`]: UniFFI surface exposing `NativeTrUApiCore` + `HostCallbacks`.

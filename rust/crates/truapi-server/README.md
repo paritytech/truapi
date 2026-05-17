@@ -14,11 +14,6 @@
 - the auto-generated dispatcher/wire-table tables shipped under
   [`crate::generated`]
 
-This crate is **Phase 4a** of the rust-core port (issue #96): only the
-frame, dispatcher, subscription, transport and committed-codegen modules
-are present. `core`, `runtime`, `host_logic`, chain, ws_bridge, native
-and wasm bridges arrive in later waves.
-
 ## Wire envelope
 
 Every frame on the wire is encoded as:

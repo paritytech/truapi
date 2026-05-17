@@ -14,7 +14,7 @@ use truapi::api::{
 use truapi::versioned;
 
 use crate::dispatcher::Dispatcher;
-use crate::frame::ProtocolMessage;
+use crate::frame::{encode_call_error_payload, encode_decode_error};
 use crate::subscription::subscription_stream;
 
 /// Register every TrUAPI method with the dispatcher.
@@ -85,12 +85,12 @@ where
                 Box::pin(async move {
                     let request: versioned::account::HostAccountGetRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::account::HostAccountGetResponse =
                         match host.get_account(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -109,12 +109,12 @@ where
                 Box::pin(async move {
                     let request: versioned::account::HostAccountGetAliasRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::account::HostAccountGetAliasResponse =
                         match host.get_account_alias(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -133,12 +133,12 @@ where
                 Box::pin(async move {
                     let request: versioned::account::HostAccountCreateProofRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::account::HostAccountCreateProofResponse =
                         match host.create_account_proof(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -157,12 +157,12 @@ where
                 Box::pin(async move {
                     let request: versioned::account::HostGetLegacyAccountsRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::account::HostGetLegacyAccountsResponse =
                         match host.get_legacy_accounts(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -181,12 +181,12 @@ where
                 Box::pin(async move {
                     let request: versioned::account::HostGetUserIdRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::account::HostGetUserIdResponse =
                         match host.get_user_id(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -205,12 +205,12 @@ where
                 Box::pin(async move {
                     let request: versioned::account::HostRequestLoginRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::account::HostRequestLoginResponse =
                         match host.request_login(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -235,7 +235,7 @@ where
                 Box::pin(async move {
                     let request: versioned::chain::RemoteChainHeadFollowRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let stream = host.follow_head_subscribe(&cx, request).await;
                     Ok(subscription_stream::<
@@ -255,12 +255,12 @@ where
                 Box::pin(async move {
                     let request: versioned::chain::RemoteChainHeadHeaderRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::chain::RemoteChainHeadHeaderResponse =
                         match host.get_head_header(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -279,12 +279,12 @@ where
                 Box::pin(async move {
                     let request: versioned::chain::RemoteChainHeadBodyRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::chain::RemoteChainHeadBodyResponse =
                         match host.get_head_body(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -303,12 +303,12 @@ where
                 Box::pin(async move {
                     let request: versioned::chain::RemoteChainHeadStorageRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::chain::RemoteChainHeadStorageResponse =
                         match host.get_head_storage(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -327,12 +327,12 @@ where
                 Box::pin(async move {
                     let request: versioned::chain::RemoteChainHeadCallRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::chain::RemoteChainHeadCallResponse =
                         match host.call_head(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -351,12 +351,12 @@ where
                 Box::pin(async move {
                     let request: versioned::chain::RemoteChainHeadUnpinRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::chain::RemoteChainHeadUnpinResponse =
                         match host.unpin_head(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -375,12 +375,12 @@ where
                 Box::pin(async move {
                     let request: versioned::chain::RemoteChainHeadContinueRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::chain::RemoteChainHeadContinueResponse =
                         match host.continue_head(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -399,12 +399,12 @@ where
                 Box::pin(async move {
                     let request: versioned::chain::RemoteChainHeadStopOperationRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::chain::RemoteChainHeadStopOperationResponse =
                         match host.stop_head_operation(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -423,12 +423,12 @@ where
                 Box::pin(async move {
                     let request: versioned::chain::RemoteChainSpecGenesisHashRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::chain::RemoteChainSpecGenesisHashResponse =
                         match host.get_spec_genesis_hash(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -447,12 +447,12 @@ where
                 Box::pin(async move {
                     let request: versioned::chain::RemoteChainSpecChainNameRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::chain::RemoteChainSpecChainNameResponse =
                         match host.get_spec_chain_name(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -471,12 +471,12 @@ where
                 Box::pin(async move {
                     let request: versioned::chain::RemoteChainSpecPropertiesRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::chain::RemoteChainSpecPropertiesResponse =
                         match host.get_spec_properties(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -495,12 +495,12 @@ where
                 Box::pin(async move {
                     let request: versioned::chain::RemoteChainTransactionBroadcastRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::chain::RemoteChainTransactionBroadcastResponse =
                         match host.broadcast_transaction(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -519,12 +519,12 @@ where
                 Box::pin(async move {
                     let request: versioned::chain::RemoteChainTransactionStopRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::chain::RemoteChainTransactionStopResponse =
                         match host.stop_transaction(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -549,12 +549,12 @@ where
                 Box::pin(async move {
                     let request: versioned::chat::HostChatCreateRoomRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::chat::HostChatCreateRoomResponse =
                         match host.create_room(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -573,12 +573,12 @@ where
                 Box::pin(async move {
                     let request: versioned::chat::HostChatRegisterBotRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::chat::HostChatRegisterBotResponse =
                         match host.register_bot(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -615,12 +615,12 @@ where
                 Box::pin(async move {
                     let request: versioned::chat::HostChatPostMessageRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::chat::HostChatPostMessageResponse =
                         match host.post_message(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -657,7 +657,7 @@ where
                 Box::pin(async move {
                     let request: versioned::chat::ProductChatCustomMessageRenderSubscribeRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let stream = host.custom_message_render_subscribe(&cx, request).await;
                     Ok(subscription_stream::<
@@ -683,12 +683,12 @@ where
                 Box::pin(async move {
                     let request: versioned::entropy::HostDeriveEntropyRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::entropy::HostDeriveEntropyResponse =
                         match host.derive(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -713,12 +713,12 @@ where
                 Box::pin(async move {
                     let request: versioned::jsonrpc::HostJsonrpcMessageSendRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::jsonrpc::HostJsonrpcMessageSendResponse =
                         match host.send_message(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -737,7 +737,7 @@ where
                 Box::pin(async move {
                     let request: versioned::jsonrpc::HostJsonrpcMessageSubscribeRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let stream = host.subscribe_messages(&cx, request).await;
                     Ok(subscription_stream::<
@@ -763,12 +763,12 @@ where
                 Box::pin(async move {
                     let request: versioned::local_storage::HostLocalStorageReadRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::local_storage::HostLocalStorageReadResponse =
                         match host.read(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -787,12 +787,12 @@ where
                 Box::pin(async move {
                     let request: versioned::local_storage::HostLocalStorageWriteRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::local_storage::HostLocalStorageWriteResponse =
                         match host.write(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -811,12 +811,12 @@ where
                 Box::pin(async move {
                     let request: versioned::local_storage::HostLocalStorageClearRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::local_storage::HostLocalStorageClearResponse =
                         match host.clear(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -841,11 +841,11 @@ where
                 Box::pin(async move {
                     let request: versioned::payment::HostPaymentBalanceSubscribeRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let stream = match host.balance_subscribe(&cx, request).await {
                         Ok(sub) => sub,
-                        Err(err) => return Err(ProtocolMessage::call_error(err)),
+                        Err(err) => return Err(encode_call_error_payload(err)),
                     };
                     Ok(subscription_stream::<
                         versioned::payment::HostPaymentBalanceSubscribeItem,
@@ -864,12 +864,12 @@ where
                 Box::pin(async move {
                     let request: versioned::payment::HostPaymentRequestRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::payment::HostPaymentRequestResponse =
                         match host.request(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -888,11 +888,11 @@ where
                 Box::pin(async move {
                     let request: versioned::payment::HostPaymentStatusSubscribeRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let stream = match host.status_subscribe(&cx, request).await {
                         Ok(sub) => sub,
-                        Err(err) => return Err(ProtocolMessage::call_error(err)),
+                        Err(err) => return Err(encode_call_error_payload(err)),
                     };
                     Ok(subscription_stream::<
                         versioned::payment::HostPaymentStatusSubscribeItem,
@@ -911,12 +911,12 @@ where
                 Box::pin(async move {
                     let request: versioned::payment::HostPaymentTopUpRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::payment::HostPaymentTopUpResponse =
                         match host.top_up(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -941,12 +941,12 @@ where
                 Box::pin(async move {
                     let request: versioned::permissions::HostDevicePermissionRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::permissions::HostDevicePermissionResponse =
                         match host.request_device_permission(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -965,12 +965,12 @@ where
                 Box::pin(async move {
                     let request: versioned::permissions::RemotePermissionRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::permissions::RemotePermissionResponse =
                         match host.request_remote_permission(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -995,7 +995,7 @@ where
                 Box::pin(async move {
                     let request: versioned::preimage::RemotePreimageLookupSubscribeRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let stream = host.lookup_subscribe(&cx, request).await;
                     Ok(subscription_stream::<
@@ -1015,12 +1015,12 @@ where
                 Box::pin(async move {
                     let request: versioned::preimage::RemotePreimageSubmitRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::preimage::RemotePreimageSubmitResponse =
                         match host.submit(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -1042,11 +1042,11 @@ where
             let host = host.clone();
             Box::pin(async move {
                 let request: versioned::resource_allocation::HostRequestResourceAllocationRequest =
-                    Decode::decode(&mut &bytes[..]).map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                    Decode::decode(&mut &bytes[..]).map_err(|e| encode_decode_error(e.to_string()))?;
                 let cx = CallContext::with_request_id(request_id.clone());
                 let response: versioned::resource_allocation::HostRequestResourceAllocationResponse = match host.request(&cx, request).await {
                     Ok(value) => value,
-                    Err(err) => return Err(ProtocolMessage::call_error(err)),
+                    Err(err) => return Err(encode_call_error_payload(err)),
                 };
                 let mut buf = Vec::with_capacity(1 + response.size_hint());
                 buf.push(0u8);
@@ -1070,12 +1070,12 @@ where
                 Box::pin(async move {
                     let request: versioned::signing::HostCreateTransactionRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::signing::HostCreateTransactionResponse =
                         match host.create_transaction(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -1091,11 +1091,11 @@ where
             let host = host.clone();
             Box::pin(async move {
                 let request: versioned::signing::HostCreateTransactionWithLegacyAccountRequest =
-                    Decode::decode(&mut &bytes[..]).map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                    Decode::decode(&mut &bytes[..]).map_err(|e| encode_decode_error(e.to_string()))?;
                 let cx = CallContext::with_request_id(request_id.clone());
                 let response: versioned::signing::HostCreateTransactionWithLegacyAccountResponse = match host.create_transaction_with_legacy_account(&cx, request).await {
                     Ok(value) => value,
-                    Err(err) => return Err(ProtocolMessage::call_error(err)),
+                    Err(err) => return Err(encode_call_error_payload(err)),
                 };
                 let mut buf = Vec::with_capacity(1 + response.size_hint());
                 buf.push(0u8);
@@ -1113,12 +1113,12 @@ where
                 Box::pin(async move {
                     let request: versioned::signing::HostSignRawWithLegacyAccountRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::signing::HostSignRawWithLegacyAccountResponse =
                         match host.sign_raw_with_legacy_account(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -1137,12 +1137,12 @@ where
                 Box::pin(async move {
                     let request: versioned::signing::HostSignPayloadWithLegacyAccountRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::signing::HostSignPayloadWithLegacyAccountResponse =
                         match host.sign_payload_with_legacy_account(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -1161,12 +1161,12 @@ where
                 Box::pin(async move {
                     let request: versioned::signing::HostSignRawRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::signing::HostSignRawResponse =
                         match host.sign_raw(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -1185,12 +1185,12 @@ where
                 Box::pin(async move {
                     let request: versioned::signing::HostSignPayloadRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::signing::HostSignPayloadResponse =
                         match host.sign_payload(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -1215,7 +1215,7 @@ where
                 Box::pin(async move {
                     let request: versioned::statement_store::RemoteStatementStoreSubscribeRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let stream = host.subscribe(&cx, request).await;
                     Ok(subscription_stream::<
@@ -1232,11 +1232,11 @@ where
             let host = host.clone();
             Box::pin(async move {
                 let request: versioned::statement_store::RemoteStatementStoreCreateProofRequest =
-                    Decode::decode(&mut &bytes[..]).map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                    Decode::decode(&mut &bytes[..]).map_err(|e| encode_decode_error(e.to_string()))?;
                 let cx = CallContext::with_request_id(request_id.clone());
                 let response: versioned::statement_store::RemoteStatementStoreCreateProofResponse = match host.create_proof(&cx, request).await {
                     Ok(value) => value,
-                    Err(err) => return Err(ProtocolMessage::call_error(err)),
+                    Err(err) => return Err(encode_call_error_payload(err)),
                 };
                 let mut buf = Vec::with_capacity(1 + response.size_hint());
                 buf.push(0u8);
@@ -1251,11 +1251,11 @@ where
             let host = host.clone();
             Box::pin(async move {
                 let request: versioned::statement_store::RemoteStatementStoreCreateProofAuthorizedRequest =
-                    Decode::decode(&mut &bytes[..]).map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                    Decode::decode(&mut &bytes[..]).map_err(|e| encode_decode_error(e.to_string()))?;
                 let cx = CallContext::with_request_id(request_id.clone());
                 let response: versioned::statement_store::RemoteStatementStoreCreateProofAuthorizedResponse = match host.create_proof_authorized(&cx, request).await {
                     Ok(value) => value,
-                    Err(err) => return Err(ProtocolMessage::call_error(err)),
+                    Err(err) => return Err(encode_call_error_payload(err)),
                 };
                 let mut buf = Vec::with_capacity(1 + response.size_hint());
                 buf.push(0u8);
@@ -1273,11 +1273,11 @@ where
                 Box::pin(async move {
                     let request: versioned::statement_store::RemoteStatementStoreSubmitRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     match host.submit(&cx, request).await {
                         Ok(()) => Ok(vec![0u8]),
-                        Err(err) => Err(ProtocolMessage::call_error(err)),
+                        Err(err) => Err(encode_call_error_payload(err)),
                     }
                 })
             },
@@ -1298,12 +1298,12 @@ where
                 Box::pin(async move {
                     let request: versioned::system::HostHandshakeRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::system::HostHandshakeResponse =
                         match host.handshake(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -1322,12 +1322,12 @@ where
                 Box::pin(async move {
                     let request: versioned::system::HostFeatureSupportedRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::system::HostFeatureSupportedResponse =
                         match host.feature_supported(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -1346,12 +1346,12 @@ where
                 Box::pin(async move {
                     let request: versioned::system::HostPushNotificationRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::system::HostPushNotificationResponse =
                         match host.push_notification(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);
@@ -1370,12 +1370,12 @@ where
                 Box::pin(async move {
                     let request: versioned::system::HostNavigateToRequest =
                         Decode::decode(&mut &bytes[..])
-                            .map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;
+                            .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     let response: versioned::system::HostNavigateToResponse =
                         match host.navigate_to(&cx, request).await {
                             Ok(value) => value,
-                            Err(err) => return Err(ProtocolMessage::call_error(err)),
+                            Err(err) => return Err(encode_call_error_payload(err)),
                         };
                     let mut buf = Vec::with_capacity(1 + response.size_hint());
                     buf.push(0u8);

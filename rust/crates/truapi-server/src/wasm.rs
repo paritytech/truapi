@@ -5,12 +5,8 @@
 //! constructor. The bridge implements every host-side capability the
 //! [`truapi_platform::Platform`] trait set requires. Internally the bridge
 //! is wrapped in a [`SendWrapper`] so it satisfies the `Send` bound that
-//! `async_trait`-generated futures inherit — sound on wasm32 because the
+//! `async_trait`-generated futures inherit; sound on wasm32 because the
 //! runtime is single-threaded.
-//!
-//! Adaptation note: the JS bridge exposes `devicePermission` and
-//! `remotePermission` as separate callbacks (matching the v0.1 split) and
-//! retains `featureSupported` + `navigateTo`.
 
 use std::cell::Cell;
 use std::rc::Rc;

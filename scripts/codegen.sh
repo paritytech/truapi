@@ -29,10 +29,6 @@ cargo run -p truapi-codegen -- \
   --client-examples-output js/packages/truapi/test/generated/examples \
   --host-output js/packages/truapi-host/src/generated \
   --codec-version 1
-# TODO(phase-4): add --rust-output rust/crates/truapi-server/src/generated
-# once the truapi-server crate lands. The Phase 1 emitter is already
-# wired (see `truapi-codegen --rust-output`), but the output references
-# `crate::dispatcher::Dispatcher` etc. that only exist inside truapi-server.
 
 npm exec --yes -- prettier --write \
   "js/packages/truapi/src/generated/**/*.ts" \

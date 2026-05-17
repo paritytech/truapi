@@ -9,9 +9,8 @@
 //! 3. SCALE-encodes the versioned response wrapper back onto the wire.
 //!
 //! The generated file expects to live inside a `truapi-server` crate
-//! and references `crate::dispatcher::Dispatcher`. The Phase 1 codegen
-//! does not attempt to compile the output; only string-diff golden
-//! tests guard it.
+//! and references `crate::dispatcher::Dispatcher`. The codegen itself
+//! does not compile the output; string-diff golden tests guard it.
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
@@ -232,7 +231,7 @@ impl MethodEmission {
             .unwrap();
             writeln!(
                 out,
-                "                    Decode::decode(&mut &bytes[..]).map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;"
+                "                    Decode::decode(&mut &bytes[..]).map_err(|e| encode_decode_error(e.to_string()))?;"
             )
             .unwrap();
             "&cx, request"
@@ -255,7 +254,7 @@ impl MethodEmission {
                 writeln!(out, "                    Ok(value) => value,").unwrap();
                 writeln!(
                     out,
-                    "                    Err(err) => return Err(ProtocolMessage::call_error(err)),"
+                    "                    Err(err) => return Err(encode_call_error_payload(err)),"
                 )
                 .unwrap();
                 writeln!(out, "                }};").unwrap();
@@ -277,7 +276,7 @@ impl MethodEmission {
                 writeln!(out, "                    Ok(()) => Ok(vec![0u8]),").unwrap();
                 writeln!(
                     out,
-                    "                    Err(err) => Err(ProtocolMessage::call_error(err)),"
+                    "                    Err(err) => Err(encode_call_error_payload(err)),"
                 )
                 .unwrap();
                 writeln!(out, "                }}").unwrap();
@@ -316,7 +315,7 @@ impl MethodEmission {
             .unwrap();
             writeln!(
                 out,
-                "                    Decode::decode(&mut &bytes[..]).map_err(|e| ProtocolMessage::decode_error(e.to_string()))?;"
+                "                    Decode::decode(&mut &bytes[..]).map_err(|e| encode_decode_error(e.to_string()))?;"
             )
             .unwrap();
             writeln!(
@@ -333,7 +332,7 @@ impl MethodEmission {
                 writeln!(out, "                    Ok(sub) => sub,").unwrap();
                 writeln!(
                     out,
-                    "                    Err(err) => return Err(ProtocolMessage::call_error(err)),"
+                    "                    Err(err) => return Err(encode_call_error_payload(err)),"
                 )
                 .unwrap();
                 writeln!(out, "                }};").unwrap();
@@ -360,7 +359,7 @@ impl MethodEmission {
                 writeln!(out, "                    Ok(sub) => sub,").unwrap();
                 writeln!(
                     out,
-                    "                    Err(err) => return Err(ProtocolMessage::call_error(err)),"
+                    "                    Err(err) => return Err(encode_call_error_payload(err)),"
                 )
                 .unwrap();
                 writeln!(out, "                }};").unwrap();
@@ -413,7 +412,11 @@ fn write_imports(out: &mut String, traits: &[&TraitDef]) {
     writeln!(out, "use truapi::versioned;").unwrap();
     writeln!(out).unwrap();
     writeln!(out, "use crate::dispatcher::Dispatcher;").unwrap();
-    writeln!(out, "use crate::frame::ProtocolMessage;").unwrap();
+    writeln!(
+        out,
+        "use crate::frame::{{encode_call_error_payload, encode_decode_error}};"
+    )
+    .unwrap();
     writeln!(out, "use crate::subscription::subscription_stream;").unwrap();
 }
 

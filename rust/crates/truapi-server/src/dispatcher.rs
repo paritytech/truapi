@@ -25,16 +25,19 @@ pub const LATEST_PROTOCOL_VERSION: u8 = 1;
 /// required to be `Send` because the truapi trait uses `async fn`, whose
 /// auto-Send-ness is not guaranteed. The `request_id` is the per-frame
 /// identifier; handlers thread it into the `CallContext` so trait methods
-/// can correlate logs/cancellation with the originating request.
-pub type RequestHandler = Arc<
-    dyn Fn(String, Vec<u8>) -> LocalBoxFuture<'static, Result<Vec<u8>, ProtocolMessage>>
-        + Send
-        + Sync,
->;
+/// can correlate logs/cancellation with the originating request. On the
+/// error path handlers return the SCALE-encoded `CallError` payload bytes
+/// (typically via [`crate::frame::encode_decode_error`] or
+/// [`crate::frame::encode_call_error_payload`]); the dispatcher wraps them
+/// into the response envelope.
+pub type RequestHandler =
+    Arc<dyn Fn(String, Vec<u8>) -> LocalBoxFuture<'static, Result<Vec<u8>, Vec<u8>>> + Send + Sync>;
 
-/// A handler for a subscription method.
+/// A handler for a subscription method. On the error path the handler
+/// returns the SCALE-encoded `CallError` payload bytes; the dispatcher
+/// wraps them into an `_interrupt` envelope.
 pub type SubscriptionHandler = Arc<
-    dyn Fn(String, Vec<u8>) -> LocalBoxFuture<'static, Result<SubscriptionStream, ProtocolMessage>>
+    dyn Fn(String, Vec<u8>) -> LocalBoxFuture<'static, Result<SubscriptionStream, Vec<u8>>>
         + Send
         + Sync,
 >;
@@ -81,7 +84,7 @@ impl Dispatcher {
     /// since each wire method must own exactly one handler.
     pub fn on_request<F>(&mut self, method: &str, handler: F) -> Option<RequestHandler>
     where
-        F: Fn(String, Vec<u8>) -> LocalBoxFuture<'static, Result<Vec<u8>, ProtocolMessage>>
+        F: Fn(String, Vec<u8>) -> LocalBoxFuture<'static, Result<Vec<u8>, Vec<u8>>>
             + Send
             + Sync
             + 'static,
@@ -94,10 +97,7 @@ impl Dispatcher {
     /// registered handler if any.
     pub fn on_subscription<F>(&mut self, method: &str, handler: F) -> Option<SubscriptionHandler>
     where
-        F: Fn(
-                String,
-                Vec<u8>,
-            ) -> LocalBoxFuture<'static, Result<SubscriptionStream, ProtocolMessage>>
+        F: Fn(String, Vec<u8>) -> LocalBoxFuture<'static, Result<SubscriptionStream, Vec<u8>>>
             + Send
             + Sync
             + 'static,
@@ -120,19 +120,19 @@ impl Dispatcher {
                     let result = handler(request_id, message.payload.value).await;
                     // On the wire, every response is `Result<Ok, Err>`-shaped:
                     // the handler returns `Ok(bytes)` already prefixed with a
-                    // `0x00` discriminant for success, and `Err(ProtocolMessage)`
-                    // whose payload is the SCALE-encoded `CallError`. The
-                    // error path prepends `0x01` here so the wire payload is
-                    // always `[disc][value...]`.
+                    // `0x00` discriminant for success, and `Err(bytes)` whose
+                    // bytes are the SCALE-encoded `CallError`. The error path
+                    // prepends `0x01` here so the wire payload is always
+                    // `[disc][value...]`.
                     let payload = match result {
                         Ok(value) => Payload {
                             tag: compose_action(&method, FrameKind::Response),
                             value,
                         },
-                        Err(err_message) => {
-                            let mut value = Vec::with_capacity(1 + err_message.payload.value.len());
+                        Err(err_bytes) => {
+                            let mut value = Vec::with_capacity(1 + err_bytes.len());
                             value.push(1u8);
-                            value.extend_from_slice(&err_message.payload.value);
+                            value.extend_from_slice(&err_bytes);
                             Payload {
                                 tag: compose_action(&method, FrameKind::Response),
                                 value,
@@ -158,12 +158,12 @@ impl Dispatcher {
                                 transport,
                             );
                         }
-                        Err(err_message) => {
+                        Err(err_bytes) => {
                             transport.send(ProtocolMessage {
                                 request_id: message.request_id,
                                 payload: Payload {
                                     tag: compose_action(&method, FrameKind::Interrupt),
-                                    value: err_message.payload.value,
+                                    value: err_bytes,
                                 },
                             });
                         }
@@ -255,7 +255,7 @@ mod tests {
         dispatcher.on_request("fake_method", |_request_id, _bytes| {
             Box::pin(async move {
                 let err: CallError<()> = CallError::Denied;
-                Err(ProtocolMessage::call_error(err))
+                Err(crate::frame::encode_call_error_payload(err))
             })
         });
         let transport = Arc::new(RecordingTransport::default());

@@ -1,73 +1,62 @@
 //! Golden snapshot test for the Rust dispatcher emitter.
 //!
-//! The `ApiDefinition` model has no `Deserialize` impl (it is built by
-//! the rustdoc extractor), so the "fixture" is a small JSON description
-//! that this test deserializes into an `ApiDefinition` via a private
-//! helper. The expected `dispatcher.rs` / `wire_table.rs` outputs live
-//! under `tests/golden/`.
+//! Each test runs `cargo +nightly rustdoc -p truapi` into its own
+//! `--target-dir` under a per-test tempdir so concurrent test execution
+//! cannot race on the shared `target/doc/truapi.json` path. Nightly Rust
+//! is required; if it is not available the test panics rather than
+//! silently passing (set up rustup with `rustup toolchain install nightly`).
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
-/// Run the codegen binary directly. The binary accepts a rustdoc JSON
-/// path; instead of generating that file at test time, this test boots
-/// the codegen library via a small helper binary we ship alongside.
-/// Easier: invoke the library's emitter via the codegen crate's
-/// public modules. Since `truapi-codegen` is a `bin` crate, we use a
-/// trick: include the source as a path with `#[path = "..."]`.
-///
-/// Simpler approach: drive the test through the binary's CLI by
-/// pre-generating a rustdoc JSON fixture. To avoid checking in a 12 MB
-/// rustdoc dump, the test runs `cargo +nightly rustdoc -p truapi`
-/// itself when the workspace toolchain has the nightly compiler. If
-/// nightly isn't available the test prints a notice and exits.
-#[test]
-fn golden_dispatcher_and_wire_table() {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let workspace_root = manifest_dir
+/// Run `cargo +nightly rustdoc -p truapi --output-format json` into the
+/// given `target_dir` and return the path to the produced JSON file.
+/// Panics with a clear message if nightly is unavailable so CI cannot
+/// pass vacuously.
+fn produce_rustdoc_json(workspace_root: &Path, target_dir: &Path) -> PathBuf {
+    let output = Command::new("cargo")
+        .args(["+nightly", "rustdoc", "-p", "truapi", "--target-dir"])
+        .arg(target_dir)
+        .args(["--", "-Z", "unstable-options", "--output-format", "json"])
+        .current_dir(workspace_root)
+        .output()
+        .expect(
+            "failed to spawn `cargo +nightly rustdoc`; install nightly via \
+             `rustup toolchain install nightly`",
+        );
+    assert!(
+        output.status.success(),
+        "`cargo +nightly rustdoc` failed (status {}); nightly toolchain is required.\nstdout:\n{}\nstderr:\n{}",
+        output.status,
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr),
+    );
+    let json = target_dir.join("doc/truapi.json");
+    assert!(
+        json.exists(),
+        "rustdoc JSON not found at {} after successful rustdoc invocation",
+        json.display(),
+    );
+    json
+}
+
+fn workspace_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .ancestors()
         .nth(3)
         .expect("workspace root above rust/crates/truapi-codegen")
-        .to_path_buf();
+        .to_path_buf()
+}
 
-    // Generate rustdoc JSON for the truapi crate. This is what
-    // scripts/codegen.sh uses in production. Skip the test if nightly
-    // rustc isn't installed (the toolchain is required by `--output-format json`).
-    let rustdoc = Command::new("cargo")
-        .args([
-            "+nightly",
-            "rustdoc",
-            "-p",
-            "truapi",
-            "--",
-            "-Z",
-            "unstable-options",
-            "--output-format",
-            "json",
-        ])
-        .current_dir(&workspace_root)
-        .status();
-    let rustdoc_status = match rustdoc {
-        Ok(status) => status,
-        Err(err) => {
-            eprintln!("skipping golden test: cargo +nightly rustdoc unavailable ({err})");
-            return;
-        }
-    };
-    if !rustdoc_status.success() {
-        eprintln!("skipping golden test: cargo +nightly rustdoc exited with {rustdoc_status}",);
-        return;
-    }
-
-    let rustdoc_json = workspace_root.join("target/doc/truapi.json");
-    assert!(
-        rustdoc_json.exists(),
-        "rustdoc JSON not found at {}",
-        rustdoc_json.display()
-    );
+#[test]
+fn golden_dispatcher_and_wire_table() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace = workspace_root();
 
     let tempdir = tempfile::tempdir().expect("tempdir");
+    let rustdoc_json = produce_rustdoc_json(&workspace, &tempdir.path().join("rustdoc-target"));
+
     let out = Command::new(env!("CARGO_BIN_EXE_truapi-codegen"))
         .args([
             "--input",
@@ -118,38 +107,9 @@ fn golden_dispatcher_and_wire_table() {
 /// inline unit tests might miss because they exercise smaller APIs.
 #[test]
 fn binary_emission_is_idempotent() {
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let workspace_root = manifest_dir
-        .ancestors()
-        .nth(3)
-        .expect("workspace root above rust/crates/truapi-codegen")
-        .to_path_buf();
-
-    // Reuse the rustdoc JSON if the golden test already produced it.
-    let rustdoc_json = workspace_root.join("target/doc/truapi.json");
-    if !rustdoc_json.exists() {
-        let rustdoc = Command::new("cargo")
-            .args([
-                "+nightly",
-                "rustdoc",
-                "-p",
-                "truapi",
-                "--",
-                "-Z",
-                "unstable-options",
-                "--output-format",
-                "json",
-            ])
-            .current_dir(&workspace_root)
-            .status();
-        match rustdoc {
-            Ok(s) if s.success() => {}
-            _ => {
-                eprintln!("skipping idempotence test: nightly rustdoc unavailable");
-                return;
-            }
-        }
-    }
+    let workspace = workspace_root();
+    let tempdir = tempfile::tempdir().expect("tempdir");
+    let rustdoc_json = produce_rustdoc_json(&workspace, &tempdir.path().join("rustdoc-target"));
 
     let run_once = || -> (String, String) {
         let tmp = tempfile::tempdir().unwrap();

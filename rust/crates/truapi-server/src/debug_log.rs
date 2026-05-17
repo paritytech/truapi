@@ -32,7 +32,6 @@ pub fn emit(line: &str) {
 /// Wasm variant of `emit`: routes to the browser console.
 #[cfg(target_arch = "wasm32")]
 pub fn emit(line: &str) {
-    // Stub: full wasm bridge lands in Phase 4e along with web-sys.
     let _ = line;
 }
 

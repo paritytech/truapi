@@ -6,11 +6,6 @@
 //! resulting platform is fed into [`TrUApiCore::from_platform`] so the rest
 //! of the dispatcher pipeline behaves identically to the WS-bridge and wasm
 //! flavors.
-//!
-//! Note on adaptation: the bridge exposes `device_permission` and
-//! `remote_permission` as separate callbacks (matching the v0.1 platform
-//! surface) rather than the merged `prompt_permission` shape used by older
-//! prototypes. `feature_supported` and `navigate_to` are retained.
 
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
@@ -424,10 +419,9 @@ impl Storage for CallbackPlatform {
     }
 }
 
-// Account/signing/statement-store/preimage/chain capabilities aren't wired
-// through the callback surface yet. The platform trait requires impls, so
-// we stub them as "unavailable" responses or empty streams. Filling these
-// in is a future phase when the corresponding native callbacks land.
+// Account/signing/statement-store/preimage/chain capabilities are not wired
+// through the callback surface. The platform trait requires impls, so we
+// stub them as "unavailable" responses or empty streams.
 
 #[async_trait]
 impl ChainProvider for CallbackPlatform {
@@ -436,7 +430,7 @@ impl ChainProvider for CallbackPlatform {
         _genesis_hash: truapi_platform::GenesisHash,
     ) -> Result<Box<dyn JsonRpcConnection>, v01::GenericError> {
         Err(v01::GenericError::GenericError(v01::GenericErr {
-            reason: "chain provider not yet wired through native callbacks".into(),
+            reason: "chain provider not wired through native callbacks".into(),
         }))
     }
 }
@@ -556,7 +550,7 @@ impl Preimage for CallbackPlatform {
 }
 
 fn unavailable_reason(method: &str) -> String {
-    format!("{method} unavailable on native host (callback not yet wired)")
+    format!("{method} unavailable on native host (callback not wired)")
 }
 
 struct NativeCallbackTransport {

@@ -121,12 +121,32 @@ pub fn device_storage_key(permission: &HostDevicePermissionRequest) -> String {
 }
 
 /// Canonical storage key for a remote permission bundle. Permissions inside
-/// the bundle are sorted so equivalent batches (same set, different order)
-/// collapse to one storage entry.
+/// the bundle are canonicalized (variants sorted, domain lists sorted) then
+/// SCALE-encoded and hex-encoded so attacker-controlled domain strings cannot
+/// collide with another bundle by injecting separator characters.
 pub fn remote_storage_key(request: &RemotePermissionRequest) -> String {
-    let mut slugs: Vec<String> = request.permissions.iter().map(remote_slug).collect();
-    slugs.sort();
-    format!("{PERMISSION_KEY_PREFIX}remote:{}", slugs.join("|"))
+    let canonical = canonical_remote_bundle(request);
+    format!(
+        "{PERMISSION_KEY_PREFIX}remote:{}",
+        hex::encode(canonical.encode())
+    )
+}
+
+fn canonical_remote_bundle(request: &RemotePermissionRequest) -> RemotePermissionRequest {
+    let mut permissions: Vec<RemotePermission> = request
+        .permissions
+        .iter()
+        .map(|p| match p {
+            RemotePermission::Remote { domains } => {
+                let mut sorted = domains.clone();
+                sorted.sort();
+                RemotePermission::Remote { domains: sorted }
+            }
+            other => other.clone(),
+        })
+        .collect();
+    permissions.sort_by_key(|p| p.encode());
+    RemotePermissionRequest { permissions }
 }
 
 fn device_slug(permission: &HostDevicePermissionRequest) -> &'static str {
@@ -140,20 +160,6 @@ fn device_slug(permission: &HostDevicePermissionRequest) -> &'static str {
         HostDevicePermissionRequest::Clipboard => "clipboard",
         HostDevicePermissionRequest::OpenUrl => "open-url",
         HostDevicePermissionRequest::Biometrics => "biometrics",
-    }
-}
-
-fn remote_slug(permission: &RemotePermission) -> String {
-    match permission {
-        RemotePermission::Remote { domains } => {
-            let mut sorted = domains.clone();
-            sorted.sort();
-            format!("domains:{}", sorted.join(","))
-        }
-        RemotePermission::WebRtc => "web-rtc".to_string(),
-        RemotePermission::ChainSubmit => "chain-submit".to_string(),
-        RemotePermission::PreimageSubmit => "preimage-submit".to_string(),
-        RemotePermission::StatementSubmit => "statement-submit".to_string(),
     }
 }
 
@@ -246,19 +252,23 @@ mod tests {
         let chain = RemotePermissionRequest {
             permissions: vec![RemotePermission::ChainSubmit],
         };
-        assert_eq!(
-            remote_storage_key(&chain),
-            "truapi:permissions:remote:chain-submit",
+        let expected = format!(
+            "truapi:permissions:remote:{}",
+            hex::encode(canonical_remote_bundle(&chain).encode())
         );
-        let domains = RemotePermissionRequest {
+        assert_eq!(remote_storage_key(&chain), expected);
+
+        let unsorted = RemotePermissionRequest {
             permissions: vec![RemotePermission::Remote {
                 domains: vec!["b.example.com".into(), "a.example.com".into()],
             }],
         };
-        assert_eq!(
-            remote_storage_key(&domains),
-            "truapi:permissions:remote:domains:a.example.com,b.example.com",
-        );
+        let sorted = RemotePermissionRequest {
+            permissions: vec![RemotePermission::Remote {
+                domains: vec!["a.example.com".into(), "b.example.com".into()],
+            }],
+        };
+        assert_eq!(remote_storage_key(&unsorted), remote_storage_key(&sorted));
     }
 
     #[test]
@@ -270,6 +280,56 @@ mod tests {
             permissions: vec![RemotePermission::ChainSubmit, RemotePermission::WebRtc],
         };
         assert_eq!(remote_storage_key(&a), remote_storage_key(&b));
+    }
+
+    #[test]
+    fn remote_storage_key_handles_separator_chars_in_domains() {
+        // Domain strings containing `|`, `,`, or the `truapi:permissions:`
+        // prefix must not be able to forge a key that matches an unrelated
+        // bundle. We compare against a benign bundle with the same logical
+        // set of domains but no injection attempt.
+        let injecting = RemotePermissionRequest {
+            permissions: vec![RemotePermission::Remote {
+                domains: vec![
+                    "a|b".into(),
+                    "c,d".into(),
+                    "truapi:permissions:remote:web-rtc".into(),
+                ],
+            }],
+        };
+        let benign_same_set = RemotePermissionRequest {
+            permissions: vec![RemotePermission::Remote {
+                domains: vec!["x".into(), "y".into(), "z".into()],
+            }],
+        };
+        let injecting_key = remote_storage_key(&injecting);
+        let benign_key = remote_storage_key(&benign_same_set);
+        assert_ne!(injecting_key, benign_key);
+
+        // The injecting bundle must also be distinct from a bundle that
+        // pretends to be `WebRtc + domains` via crafted strings.
+        let webrtc_plus_domains = RemotePermissionRequest {
+            permissions: vec![
+                RemotePermission::WebRtc,
+                RemotePermission::Remote {
+                    domains: vec!["a".into(), "b".into()],
+                },
+            ],
+        };
+        assert_ne!(injecting_key, remote_storage_key(&webrtc_plus_domains));
+
+        // Re-ordering the same domains in the injecting bundle still collapses
+        // to a single key (canonicalization is order-independent).
+        let injecting_reordered = RemotePermissionRequest {
+            permissions: vec![RemotePermission::Remote {
+                domains: vec![
+                    "truapi:permissions:remote:web-rtc".into(),
+                    "c,d".into(),
+                    "a|b".into(),
+                ],
+            }],
+        };
+        assert_eq!(injecting_key, remote_storage_key(&injecting_reordered));
     }
 
     #[test]

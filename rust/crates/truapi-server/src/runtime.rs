@@ -2,10 +2,9 @@
 //! typed `truapi::api::*` host traits the generated dispatcher routes to.
 //!
 //! Most methods are straight delegations to the platform; the rest are
-//! either stubbed out as `CallError::Unsupported` (because the v0.1 platform
-//! surface does not yet cover them) or carry host-agnostic logic owned by
-//! the core (e.g. `dotns` URL parsing for `navigate_to`, the permission
-//! cache layer).
+//! either stubbed out (as `CallError::Unsupported` for the Chain surface)
+//! or carry host-agnostic logic owned by the core (e.g. `dotns` URL
+//! parsing for `navigate_to`, the permission cache layer).
 
 use std::sync::Arc;
 
@@ -335,7 +334,7 @@ where
         _request: HostRequestLoginRequest,
     ) -> Result<HostRequestLoginResponse, CallError<HostRequestLoginError>> {
         Err(unsupported_with_reason(
-            "request_login is not part of the v0.1 platform surface",
+            "request_login is not implemented by the platform layer",
         ))
     }
 }
@@ -370,7 +369,7 @@ where
 
     // create_transaction, create_transaction_with_legacy_account,
     // sign_payload_with_legacy_account, sign_raw_with_legacy_account fall
-    // back to the trait defaults (Err(CallError::unavailable())). The v0.1
+    // back to the trait defaults (Err(CallError::unavailable())). The
     // platform surface only covers host_sign_payload / host_sign_raw.
 }
 
@@ -418,8 +417,8 @@ where
             .map_err(|err| CallError::Domain(RemoteStatementStoreCreateProofError::V1(err)))
     }
 
-    // create_proof_authorized falls back to the default. The v0.1 platform
-    // surface does not expose pre-allocated allowance signing yet.
+    // create_proof_authorized falls back to the default. The platform
+    // surface does not expose pre-allocated allowance signing.
 }
 
 // ---------------------------------------------------------------------------
@@ -441,7 +440,7 @@ where
         Subscription::new(stream)
     }
 
-    // submit falls back to the default. The platform surface does not yet
+    // submit falls back to the default. The platform surface does not
     // include preimage submission.
 }
 
@@ -449,9 +448,9 @@ where
 // Chain
 // ---------------------------------------------------------------------------
 //
-// Every method on the Chain trait is stubbed as Unsupported: the v0.1
-// platform surface exposes only the raw `ChainProvider::connect` JSON-RPC
-// bridge. A chainHead state machine lives in a later phase (see Phase 4d).
+// Every method on the Chain trait is stubbed as `CallError::Unsupported`.
+// The platform exposes only the raw `ChainProvider::connect` JSON-RPC bridge;
+// the typed chainHead surface is not implemented here.
 
 impl<P> Chain for PlatformRuntimeHost<P>
 where
@@ -470,9 +469,7 @@ where
         _cx: &CallContext,
         _request: RemoteChainHeadHeaderRequest,
     ) -> Result<RemoteChainHeadHeaderResponse, CallError<RemoteChainHeadHeaderError>> {
-        Err(unsupported_with_reason(
-            "chain runtime not yet provided by the platform layer",
-        ))
+        Err(CallError::Unsupported)
     }
 
     async fn get_head_body(
@@ -480,9 +477,7 @@ where
         _cx: &CallContext,
         _request: RemoteChainHeadBodyRequest,
     ) -> Result<RemoteChainHeadBodyResponse, CallError<RemoteChainHeadBodyError>> {
-        Err(unsupported_with_reason(
-            "chain runtime not yet provided by the platform layer",
-        ))
+        Err(CallError::Unsupported)
     }
 
     async fn get_head_storage(
@@ -490,9 +485,7 @@ where
         _cx: &CallContext,
         _request: RemoteChainHeadStorageRequest,
     ) -> Result<RemoteChainHeadStorageResponse, CallError<RemoteChainHeadStorageError>> {
-        Err(unsupported_with_reason(
-            "chain runtime not yet provided by the platform layer",
-        ))
+        Err(CallError::Unsupported)
     }
 
     async fn call_head(
@@ -500,9 +493,7 @@ where
         _cx: &CallContext,
         _request: RemoteChainHeadCallRequest,
     ) -> Result<RemoteChainHeadCallResponse, CallError<RemoteChainHeadCallError>> {
-        Err(unsupported_with_reason(
-            "chain runtime not yet provided by the platform layer",
-        ))
+        Err(CallError::Unsupported)
     }
 
     async fn unpin_head(
@@ -510,9 +501,7 @@ where
         _cx: &CallContext,
         _request: RemoteChainHeadUnpinRequest,
     ) -> Result<RemoteChainHeadUnpinResponse, CallError<RemoteChainHeadUnpinError>> {
-        Err(unsupported_with_reason(
-            "chain runtime not yet provided by the platform layer",
-        ))
+        Err(CallError::Unsupported)
     }
 
     async fn continue_head(
@@ -520,9 +509,7 @@ where
         _cx: &CallContext,
         _request: RemoteChainHeadContinueRequest,
     ) -> Result<RemoteChainHeadContinueResponse, CallError<RemoteChainHeadContinueError>> {
-        Err(unsupported_with_reason(
-            "chain runtime not yet provided by the platform layer",
-        ))
+        Err(CallError::Unsupported)
     }
 
     async fn stop_head_operation(
@@ -531,9 +518,7 @@ where
         _request: RemoteChainHeadStopOperationRequest,
     ) -> Result<RemoteChainHeadStopOperationResponse, CallError<RemoteChainHeadStopOperationError>>
     {
-        Err(unsupported_with_reason(
-            "chain runtime not yet provided by the platform layer",
-        ))
+        Err(CallError::Unsupported)
     }
 
     async fn get_spec_genesis_hash(
@@ -542,9 +527,7 @@ where
         _request: RemoteChainSpecGenesisHashRequest,
     ) -> Result<RemoteChainSpecGenesisHashResponse, CallError<RemoteChainSpecGenesisHashError>>
     {
-        Err(unsupported_with_reason(
-            "chain runtime not yet provided by the platform layer",
-        ))
+        Err(CallError::Unsupported)
     }
 
     async fn get_spec_chain_name(
@@ -552,9 +535,7 @@ where
         _cx: &CallContext,
         _request: RemoteChainSpecChainNameRequest,
     ) -> Result<RemoteChainSpecChainNameResponse, CallError<RemoteChainSpecChainNameError>> {
-        Err(unsupported_with_reason(
-            "chain runtime not yet provided by the platform layer",
-        ))
+        Err(CallError::Unsupported)
     }
 
     async fn get_spec_properties(
@@ -562,9 +543,7 @@ where
         _cx: &CallContext,
         _request: RemoteChainSpecPropertiesRequest,
     ) -> Result<RemoteChainSpecPropertiesResponse, CallError<RemoteChainSpecPropertiesError>> {
-        Err(unsupported_with_reason(
-            "chain runtime not yet provided by the platform layer",
-        ))
+        Err(CallError::Unsupported)
     }
 
     async fn broadcast_transaction(
@@ -575,9 +554,7 @@ where
         RemoteChainTransactionBroadcastResponse,
         CallError<RemoteChainTransactionBroadcastError>,
     > {
-        Err(unsupported_with_reason(
-            "chain runtime not yet provided by the platform layer",
-        ))
+        Err(CallError::Unsupported)
     }
 
     async fn stop_transaction(
@@ -586,9 +563,7 @@ where
         _request: RemoteChainTransactionStopRequest,
     ) -> Result<RemoteChainTransactionStopResponse, CallError<RemoteChainTransactionStopError>>
     {
-        Err(unsupported_with_reason(
-            "chain runtime not yet provided by the platform layer",
-        ))
+        Err(CallError::Unsupported)
     }
 }
 

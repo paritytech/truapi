@@ -2,8 +2,7 @@
 //!
 //! Emits the server-side wire dispatcher (`dispatcher.rs`) and the
 //! discriminant lookup table (`wire_table.rs`). The generated files are
-//! intended to be included in the `truapi-server` crate (Phase 4); the
-//! codegen itself only diffs string output.
+//! intended to be included in the `truapi-server` crate.
 
 use std::fs;
 use std::path::Path;

@@ -32,31 +32,20 @@ pub struct ProtocolMessage {
     pub payload: Payload,
 }
 
-impl ProtocolMessage {
-    /// Build a placeholder error frame for a decode failure. The dispatcher
-    /// overlays `request_id` and the response tag before sending.
-    pub fn decode_error(reason: String) -> Self {
-        let err: CallError<()> = CallError::MalformedFrame { reason };
-        Self {
-            request_id: String::new(),
-            payload: Payload {
-                tag: String::new(),
-                value: encode_call_error(&err),
-            },
-        }
-    }
+/// Encode `CallError::MalformedFrame { reason }` as the SCALE-encoded payload
+/// bytes a handler returns on a decode failure. The dispatcher wraps these
+/// bytes into a response frame with the matching `request_id` and response
+/// tag.
+pub fn encode_decode_error(reason: String) -> Vec<u8> {
+    let err: CallError<()> = CallError::MalformedFrame { reason };
+    encode_call_error(&err)
+}
 
-    /// Build a placeholder error frame for a host-side failure. The dispatcher
-    /// overlays `request_id` and the response tag before sending.
-    pub fn call_error<E: Encode>(err: CallError<E>) -> Self {
-        Self {
-            request_id: String::new(),
-            payload: Payload {
-                tag: String::new(),
-                value: encode_call_error(&err),
-            },
-        }
-    }
+/// Encode a `CallError<E>` as the SCALE-encoded payload bytes a handler
+/// returns on the error path. The dispatcher wraps these bytes into a
+/// response frame with the matching `request_id` and response tag.
+pub fn encode_call_error_payload<E: Encode>(err: CallError<E>) -> Vec<u8> {
+    encode_call_error(&err)
 }
 
 impl Encode for ProtocolMessage {
@@ -517,5 +506,38 @@ mod tests {
             ProtocolMessage::decode(&mut &bytes[..]).is_err(),
             "decoding the 0xFF poison slot must fail",
         );
+    }
+
+    #[test]
+    fn encode_decode_error_matches_malformed_frame_variant() {
+        let bytes = encode_decode_error("bad input".to_string());
+        let mut expected = Vec::new();
+        let err: CallError<()> = CallError::MalformedFrame {
+            reason: "bad input".to_string(),
+        };
+        match &err {
+            CallError::MalformedFrame { reason } => {
+                3u8.encode_to(&mut expected);
+                reason.encode_to(&mut expected);
+            }
+            _ => unreachable!(),
+        }
+        assert_eq!(bytes, expected);
+    }
+
+    #[test]
+    fn encode_call_error_payload_matches_call_error_variants() {
+        let denied: CallError<()> = CallError::Denied;
+        assert_eq!(encode_call_error_payload(denied), vec![1u8]);
+
+        let unsupported: CallError<()> = CallError::Unsupported;
+        assert_eq!(encode_call_error_payload(unsupported), vec![2u8]);
+
+        let host: CallError<()> = CallError::HostFailure {
+            reason: "x".to_string(),
+        };
+        let mut expected = vec![4u8];
+        "x".to_string().encode_to(&mut expected);
+        assert_eq!(encode_call_error_payload(host), expected);
     }
 }
