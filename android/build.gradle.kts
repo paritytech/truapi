@@ -1,10 +1,11 @@
 // TrUAPI Android host adapter.
 //
 // Wraps the UniFFI-generated bindings in `src/main/kotlin/generated/uniffi/`
-// behind a thin Kotlin API and provides a WebView byte transport for the
-// product page. The Rust core (compiled to libtruapi_server.so) handles all
-// wire decoding, routing, subscription lifecycle, and host capability
-// dispatch.
+// behind a thin Kotlin API. Products running in a `WebView` connect to the
+// Rust core through its localhost WebSocket bridge (see
+// `TrUAPIHostCore.startWsBridge`); the Rust core (compiled to
+// `libtruapi_server.so`) handles wire decoding, routing, subscription
+// lifecycle, and host capability dispatch.
 
 plugins {
     id("com.android.library")

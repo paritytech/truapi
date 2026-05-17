@@ -12,9 +12,11 @@ export type {
   TrUApiTransport,
 } from "./transport.js";
 export type { CreateTransportOptions } from "./client.js";
+export type { WebSocketProviderOptions } from "./transport.js";
 export {
   SubscriptionError,
   createMessagePortProvider,
+  createWebSocketProvider,
   decodeWireMessage,
   encodeWireMessage,
 } from "./transport.js";

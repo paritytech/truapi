@@ -491,3 +491,131 @@ export function createMessagePortProvider(
     },
   };
 }
+
+/**
+ * Options accepted by `createWebSocketProvider`.
+ **/
+export interface WebSocketProviderOptions {
+  /**
+   * Override the `WebSocket` constructor. Useful for non-browser runtimes
+   * (Node, tests) where the global isn't available.
+   **/
+  WebSocket?: typeof WebSocket;
+}
+
+/**
+ * Create a provider backed by a binary WebSocket. Used by products that
+ * connect through the native host's localhost WS bridge — the host exposes
+ * an endpoint shaped like `ws://127.0.0.1:<port>/?t=<token>` and the product
+ * passes that URL straight to this constructor.
+ **/
+export function createWebSocketProvider(
+  url: string,
+  options: WebSocketProviderOptions = {},
+): Provider {
+  const WebSocketCtor = options.WebSocket ?? globalThis.WebSocket;
+  if (!WebSocketCtor) {
+    throw new Error("WebSocket constructor not available in this environment");
+  }
+
+  const socket = new WebSocketCtor(url);
+  socket.binaryType = "arraybuffer";
+
+  let closedError: Error | null = null;
+  const pending: Uint8Array[] = [];
+  const listeners: Array<(message: Uint8Array) => void> = [];
+  const closeListeners: Array<(error: Error) => void> = [];
+
+  function notifyClose(error: unknown) {
+    const nextError = error instanceof Error ? error : new Error(String(error));
+    if (closedError) {
+      return;
+    }
+    closedError = nextError;
+    pending.length = 0;
+    for (const listener of [...closeListeners]) {
+      listener(nextError);
+    }
+  }
+
+  socket.onopen = () => {
+    for (const msg of pending) {
+      try {
+        socket.send(msg);
+      } catch (error) {
+        notifyClose(error);
+        return;
+      }
+    }
+    pending.length = 0;
+  };
+
+  socket.onmessage = (event: MessageEvent) => {
+    const data = event.data;
+    if (!(data instanceof ArrayBuffer)) {
+      return;
+    }
+    const bytes = new Uint8Array(data);
+    for (const listener of [...listeners]) listener(bytes);
+  };
+
+  socket.onerror = () => {
+    notifyClose(new Error("websocket error"));
+  };
+
+  socket.onclose = (event: CloseEvent) => {
+    notifyClose(
+      new Error(
+        `websocket closed (code=${event.code}, reason=${event.reason || "unknown"})`,
+      ),
+    );
+  };
+
+  return {
+    postMessage(message) {
+      if (closedError) {
+        throw closedError;
+      }
+      if (socket.readyState === WebSocketCtor.OPEN) {
+        try {
+          socket.send(message);
+        } catch (error) {
+          notifyClose(error);
+          throw error instanceof Error ? error : new Error(String(error));
+        }
+      } else if (socket.readyState === WebSocketCtor.CONNECTING) {
+        pending.push(message);
+      } else {
+        throw new Error("websocket not open");
+      }
+    },
+    subscribe(callback) {
+      listeners.push(callback);
+      return () => {
+        const idx = listeners.indexOf(callback);
+        if (idx >= 0) listeners.splice(idx, 1);
+      };
+    },
+    subscribeClose(callback) {
+      if (closedError) {
+        callback(closedError);
+        return () => {};
+      }
+      closeListeners.push(callback);
+      return () => {
+        const idx = closeListeners.indexOf(callback);
+        if (idx >= 0) closeListeners.splice(idx, 1);
+      };
+    },
+    dispose() {
+      notifyClose(new Error("websocket provider disposed"));
+      try {
+        socket.close();
+      } catch {
+        // ignore duplicate close during shutdown
+      }
+      listeners.length = 0;
+      closeListeners.length = 0;
+    },
+  };
+}

@@ -4,20 +4,24 @@
 // the sibling `truapi_server.swift` file) owns wire decoding, request
 // routing, subscription lifecycle, and platform trait dispatch.
 //
-// This file layers two things on top of the generated bindings:
+// This file exposes:
 //
 //   * `HostBridge` - a Swift-friendly callback bundle the embedding app
 //     implements. It splits device and remote permissions, mirroring the
 //     `Permissions` platform trait in the Rust core.
-//   * `WebViewTransport` - a base64-over-`WKScriptMessageHandler` byte pipe
-//     between a `WKWebView` and any `CoreInbound`.
+//   * `TrUAPIHostCore` - owning wrapper around the UniFFI-generated
+//     `NativeTrUApiCore`. Holds the bridge alive for the lifetime of the
+//     core and exposes session + WS-bridge controls.
+//   * `LocalhostBridgeBootstrap` - small JS snippet that publishes the WS
+//     bridge endpoint to the product page so it can dial back in.
 //
-// `LocalhostBridgeBootstrap` is retained from earlier iOS shells for hosts
-// that prefer the localhost WebSocket bridge over the direct WK script
-// bridge.
+// Products running inside a `WKWebView` connect to the Rust core via the
+// localhost WebSocket bridge. The earlier base64-over-`WKScriptMessageHandler`
+// transport has been removed; products use `@parity/truapi`'s
+// `createWebSocketProvider(url)` with the URL the bootstrap script
+// publishes.
 
 import Foundation
-import WebKit
 
 /// Package metadata.
 public enum TrUAPIHost {
@@ -25,12 +29,13 @@ public enum TrUAPIHost {
 }
 
 /// Bootstrap helper for the native localhost WebSocket bridge that the Rust
-/// core can stand up via `NativeTrUApiCore.startWsBridge(bindPort:)` when
-/// the cdylib is built with the `ws-bridge` feature.
+/// core stands up via `NativeTrUApiCore.startWsBridge(bindPort:)` when the
+/// cdylib is built with the `ws-bridge` feature.
 public enum LocalhostBridgeBootstrap {
     /// Returns a `<script>`-injectable snippet that publishes the endpoint
     /// metadata on `window.__truapi_localhost` and fires a `truapi-native-ready`
-    /// event. The product client reads this and dials back in.
+    /// event. The product reads the URL and passes it to
+    /// `createWebSocketProvider` from `@parity/truapi`.
     public static func script(port: UInt16, token: String) -> String {
         let url = "ws://127.0.0.1:\(port)/?t=\(token)"
         let safeUrl = escapeJavaScriptString(url)
@@ -154,19 +159,16 @@ private final class HostCallbackAdapter: HostCallbacks, @unchecked Sendable {
     }
 }
 
-/// Sink for opaque wire frames coming from the WebView. The Rust core
-/// (via `TrUAPIHostCore`) is the typical implementor; tests may use a stub.
-public protocol CoreInbound: AnyObject {
-    func receiveFromProduct(_ frame: Data)
-}
-
-/// Owning wrapper around the Rust-backed `NativeTrUApiCore`. Implements
-/// `CoreInbound` so a `WebViewTransport` can hand inbound frames over
-/// directly, and exposes session and WS bridge controls.
+/// Owning wrapper around the Rust-backed `NativeTrUApiCore`. Holds the bridge
+/// adapter alive for the lifetime of the core and exposes session +
+/// WS-bridge controls.
 ///
-/// Holds a strong reference to the bridge adapter so the UniFFI callback
-/// vtable stays valid for the lifetime of the core.
-public final class TrUAPIHostCore: CoreInbound {
+/// Hosts integrating with a `WKWebView`-based product call `startWsBridge`
+/// and pass the resulting `ws://127.0.0.1:<port>/?t=<token>` URL to the
+/// product via `LocalhostBridgeBootstrap.script(...)`. The product wires
+/// that URL into `@parity/truapi`'s `createWebSocketProvider`. Direct
+/// `receiveFromProduct` is available for tests and alternative transports.
+public final class TrUAPIHostCore {
     private let inner: NativeTrUApiCore
     // Retained so the UniFFI callback vtable stays valid for the lifetime
     // of `inner`. Not read directly; the suppression keeps -Wunused happy.
@@ -179,6 +181,9 @@ public final class TrUAPIHostCore: CoreInbound {
         _ = self.callbackRetainer
     }
 
+    /// Deliver an opaque SCALE-encoded wire frame into the Rust core. The
+    /// WS bridge feeds the core internally; this entrypoint is exposed for
+    /// tests and alternative transports.
     public func receiveFromProduct(_ frame: Data) {
         _ = inner.receiveFromProduct(frame: frame)
     }
@@ -198,8 +203,10 @@ public final class TrUAPIHostCore: CoreInbound {
         inner.clearActiveSession()
     }
 
-    /// Start the localhost WebSocket bridge.
-    /// Requires the `ws-bridge` feature in the cdylib.
+    /// Start the localhost WebSocket bridge. Requires the `ws-bridge`
+    /// feature in the cdylib. Pair the returned `WsBridgeEndpoint` with
+    /// `LocalhostBridgeBootstrap.script(...)` to hand the URL to the
+    /// product page.
     public func startWsBridge(bindPort: UInt16 = 0) throws -> WsBridgeEndpoint {
         try inner.startWsBridge(bindPort: bindPort)
     }
@@ -213,94 +220,5 @@ public final class TrUAPIHostCore: CoreInbound {
     /// request frame so the iOS shell can verify the wire path.
     public func debugSmokeFeatureRequestFrame() -> Data {
         inner.debugSmokeFeatureRequestFrame()
-    }
-}
-
-/// The iOS-side byte transport. Wraps a `WKWebView`; forwards bytes between
-/// the JS bridge and a `CoreInbound` (typically a `TrUAPIHostCore`).
-@MainActor
-public final class WebViewTransport: NSObject, WKScriptMessageHandler {
-    private weak var webView: WKWebView?
-    private weak var core: AnyObject?
-    private let coreSend: (Data) -> Void
-    private let callbackName: String
-    private let messageName: String
-
-    public init(
-        webView: WKWebView,
-        core: CoreInbound,
-        callbackName: String = "__trUApiReceive",
-        messageName: String = "trUApi"
-    ) {
-        self.webView = webView
-        self.core = core
-        self.coreSend = { [weak core] frame in core?.receiveFromProduct(frame) }
-        self.callbackName = callbackName
-        self.messageName = messageName
-        super.init()
-    }
-
-    /// JS bootstrap to inject as a `WKUserScript` so the page exposes a
-    /// `window.trUApi` byte-pipe matching the JS host adapter shape.
-    public var bootstrapScript: String {
-        return """
-        (function() {
-          var listeners = [];
-          window.\(callbackName) = function(b64) {
-            try {
-              var bin = atob(b64);
-              var bytes = new Uint8Array(bin.length);
-              for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-              listeners.forEach(function(l) { l(bytes); });
-            } catch (e) { console.error('trUApi recv error', e); }
-          };
-          function toB64(u8) {
-            var s = '';
-            for (var i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]);
-            return btoa(s);
-          }
-          window.trUApi = {
-            postMessage: function(bytes) {
-              window.webkit.messageHandlers.\(messageName).postMessage(toB64(bytes));
-            },
-            subscribe: function(cb) {
-              listeners.push(cb);
-              return function() {
-                var i = listeners.indexOf(cb);
-                if (i >= 0) listeners.splice(i, 1);
-              };
-            }
-          };
-          window.dispatchEvent(new Event('truapi-native-ready'));
-        })();
-        """
-    }
-
-    public func attach(to controller: WKUserContentController) {
-        controller.add(self, name: messageName)
-        let script = WKUserScript(source: bootstrapScript, injectionTime: .atDocumentStart, forMainFrameOnly: true)
-        controller.addUserScript(script)
-    }
-
-    public func detach(from controller: WKUserContentController) {
-        controller.removeScriptMessageHandler(forName: messageName)
-    }
-
-    /// Called by the host (typically from `HostBridge.onCoreResponse`) when
-    /// the core has bytes to push back into the product app.
-    public func sendToProduct(_ frame: Data) {
-        guard let webView else { return }
-        let b64 = frame.base64EncodedString()
-        let js = "window.\(callbackName) && window.\(callbackName)('\(b64)')"
-        webView.evaluateJavaScript(js, completionHandler: nil)
-    }
-
-    public func userContentController(
-        _ userContentController: WKUserContentController,
-        didReceive message: WKScriptMessage
-    ) {
-        guard let b64 = message.body as? String,
-              let data = Data(base64Encoded: b64) else { return }
-        coreSend(data)
     }
 }

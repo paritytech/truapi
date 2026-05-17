@@ -5,24 +5,24 @@
 // wire protocol, request routing, subscription lifecycle, and platform trait
 // dispatch.
 //
-// This file exposes two things on top of the generated bindings:
+// This file exposes:
 //
-//   * `HostBridge` - a Kotlin-friendly callback interface the embedding app
+//   * `HostBridge` - the Kotlin-friendly callback interface the embedding app
 //     implements. It splits device and remote permissions, mirroring the
 //     `Permissions` platform trait in the Rust core.
-//   * `WebViewTransport` - a thin byte transport that forwards opaque wire
-//     bytes between a `WebView` and the Rust core. Bytes traverse the
-//     `JavascriptInterface` boundary as base64 because the bridge cannot
-//     carry binary types directly.
+//   * `TrUAPIHostCore` - owning wrapper around the UniFFI-generated
+//     `NativeTrUApiCore`. Holds the bridge alive for the lifetime of the
+//     core and exposes session + WS-bridge controls.
 //
-// The transport is independent of the core: tests can stand up a
-// `WebViewTransport` against a non-UniFFI stub by implementing `CoreInbound`.
+// Products running inside a `WebView` connect to the Rust core via the
+// localhost WebSocket bridge. Start it with `core.startWsBridge()` and load
+// the product page with the resulting `ws://127.0.0.1:<port>/?t=<token>` URL
+// passed through to the product's `@parity/truapi` `createWebSocketProvider`
+// call. The base64 `JavascriptInterface` shim previously living here has
+// been removed.
 
 package io.parity.truapi
 
-import android.util.Base64
-import android.webkit.JavascriptInterface
-import android.webkit.WebView
 import uniffi.truapi_server.HostCallbacks
 import uniffi.truapi_server.HostNavigateRejection
 import uniffi.truapi_server.HostRejection
@@ -137,27 +137,28 @@ private class HostCallbackAdapter(private val bridge: HostBridge) : HostCallback
 }
 
 /**
- * Sink for opaque wire frames coming from the WebView. The Rust core is the
- * typical implementor (via [TrUAPIHostCore]); tests may use a stub.
- */
-fun interface CoreInbound {
-    fun receiveFromProduct(frame: ByteArray)
-}
-
-/**
- * Owning wrapper around the Rust-backed [NativeTrUApiCore]. Implements
- * [CoreInbound] so a [WebViewTransport] can deliver inbound frames directly,
- * and exposes session and WS bridge controls.
+ * Owning wrapper around the Rust-backed [NativeTrUApiCore]. Holds the bridge
+ * alive for the lifetime of the core and exposes session + WS-bridge
+ * controls.
  *
- * The wrapper holds a strong reference to the bridge so the JNA callback
- * registration stays alive for the lifetime of the core.
+ * Hosts integrating with a `WebView`-based product call [startWsBridge] and
+ * pass the resulting `ws://127.0.0.1:<port>/?t=<token>` URL to the product
+ * (typically via a query string or page-bootstrap hook). The product wires
+ * that URL into `@parity/truapi`'s `createWebSocketProvider`. Direct
+ * [receiveFromProduct] calls are still available for tests or alternative
+ * transports.
  */
-class TrUAPIHostCore(bridge: HostBridge) : CoreInbound, AutoCloseable {
+class TrUAPIHostCore(bridge: HostBridge) : AutoCloseable {
     @Suppress("unused") // retained to keep JNA callbacks alive
     private val callbackRetainer: HostCallbacks = HostCallbackAdapter(bridge)
     private val inner: NativeTrUApiCore = NativeTrUApiCore(callbackRetainer)
 
-    override fun receiveFromProduct(frame: ByteArray): Unit {
+    /**
+     * Deliver an opaque SCALE-encoded wire frame into the Rust core. The WS
+     * bridge feeds the core internally; this entrypoint is exposed for tests
+     * and alternative transports.
+     */
+    fun receiveFromProduct(frame: ByteArray) {
         inner.receiveFromProduct(frame)
     }
 
@@ -173,7 +174,12 @@ class TrUAPIHostCore(bridge: HostBridge) : CoreInbound, AutoCloseable {
         inner.clearActiveSession()
     }
 
-    /** Start the localhost WebSocket bridge (requires the `ws-bridge` feature in the cdylib). */
+    /**
+     * Start the localhost WebSocket bridge (requires the `ws-bridge` feature
+     * in the cdylib). The returned [WsBridgeEndpoint] carries the port and
+     * session token; build a `ws://127.0.0.1:<port>/?t=<token>` URL and pass
+     * it to the product's `createWebSocketProvider` call.
+     */
     @Throws(WsBridgeStartException::class)
     fun startWsBridge(bindPort: UShort = 0u): WsBridgeEndpoint =
         inner.startWsBridge(bindPort)
@@ -189,79 +195,5 @@ class TrUAPIHostCore(bridge: HostBridge) : CoreInbound, AutoCloseable {
 
     override fun close() {
         inner.close()
-    }
-}
-
-/**
- * Wraps a [WebView] and forwards opaque wire bytes between JS and [core].
- * Attach with [attach] before loading the page so the JS shim is installed.
- */
-class WebViewTransport(
-    private val webView: WebView,
-    private val core: CoreInbound,
-    private val callbackName: String = "__trUApiReceive",
-    private val interfaceName: String = "TrUApi",
-) {
-    fun attach() {
-        webView.addJavascriptInterface(JsInterface(), interfaceName)
-    }
-
-    fun detach() {
-        webView.removeJavascriptInterface(interfaceName)
-    }
-
-    /**
-     * JS bootstrap to inject at document start so the page exposes a
-     * `window.trUApi` byte-pipe matching the JS host adapter shape.
-     */
-    val bootstrapScript: String = """
-        (function() {
-          var listeners = [];
-          window.$callbackName = function(b64) {
-            try {
-              var bin = atob(b64);
-              var bytes = new Uint8Array(bin.length);
-              for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-              listeners.forEach(function(l) { l(bytes); });
-            } catch (e) { console.error('trUApi recv error', e); }
-          };
-          function toB64(u8) {
-            var s = '';
-            for (var i = 0; i < u8.length; i++) s += String.fromCharCode(u8[i]);
-            return btoa(s);
-          }
-          window.trUApi = {
-            postMessage: function(bytes) {
-              window.$interfaceName.postMessage(toB64(bytes));
-            },
-            subscribe: function(cb) {
-              listeners.push(cb);
-              return function() {
-                var i = listeners.indexOf(cb);
-                if (i >= 0) listeners.splice(i, 1);
-              };
-            }
-          };
-          window.dispatchEvent(new Event('truapi-native-ready'));
-        })();
-    """.trimIndent()
-
-    /** Called when the core has bytes to push to the product app. */
-    fun sendToProduct(frame: ByteArray) {
-        val b64 = Base64.encodeToString(frame, Base64.NO_WRAP)
-        val js = "window.$callbackName && window.$callbackName('$b64')"
-        webView.post { webView.evaluateJavascript(js, null) }
-    }
-
-    private inner class JsInterface {
-        @JavascriptInterface
-        fun postMessage(b64: String) {
-            val frame = try {
-                Base64.decode(b64, Base64.NO_WRAP)
-            } catch (_: IllegalArgumentException) {
-                return
-            }
-            core.receiveFromProduct(frame)
-        }
     }
 }

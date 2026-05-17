@@ -1,6 +1,6 @@
 # TrUAPI Android host adapter
 
-*Thin Kotlin shell over the Rust TrUAPI core (UniFFI) plus an Android `WebView` byte transport. Wire decoding, request routing, and subscription lifecycle stay in the Rust core.*
+*Thin Kotlin shell over the Rust TrUAPI core (UniFFI). Wire decoding, request routing, and subscription lifecycle stay in the Rust core; products connect through the localhost WebSocket bridge.*
 
 This directory is an Android library module: include it from a parent project's `settings.gradle.kts` (e.g. `include(":truapi-android"); project(":truapi-android").projectDir = file("vendor/truapi/android")`). It does not ship with its own Gradle wrapper or root settings — pulling it into a consuming project supplies those.
 
@@ -9,9 +9,8 @@ This directory is an Android library module: include it from a parent project's 
 The public surface lives in [`src/main/kotlin/io/parity/truapi/TrUAPIHost.kt`](src/main/kotlin/io/parity/truapi/TrUAPIHost.kt):
 
 - `HostBridge` - callback bundle the embedding app implements. Split into device permissions, remote permissions, navigation, push, feature support, and scoped storage.
-- `TrUAPIHostCore` - owning wrapper around the UniFFI-generated `NativeTrUApiCore`. Implements `CoreInbound`, owns the bridge lifetime, exposes session and WS bridge controls.
-- `WebViewTransport` - base64-over-`JavascriptInterface` byte pipe between a `WebView` and any `CoreInbound`. Injects a `window.trUApi` shim that matches the JS host adapter shape.
-- `bootstrapScript` - the JS shim, exposed so apps can inject it through their own WebView bootstrap path.
+- `HostStorage` - simple read/write/clear interface the host backs with its own persistence.
+- `TrUAPIHostCore` - owning wrapper around the UniFFI-generated `NativeTrUApiCore`. Holds the bridge alive for the lifetime of the core, exposes session controls and the localhost WebSocket bridge.
 
 The generated UniFFI bindings live under `src/main/kotlin/generated/uniffi/truapi_server/`. They are committed (they're large and consumers should not need a Rust toolchain).
 
@@ -19,26 +18,15 @@ The generated UniFFI bindings live under `src/main/kotlin/generated/uniffi/truap
 
 ```text
 product app in WebView
-  Uint8Array frames via window.trUApi
+  Uint8Array frames via @parity/truapi createWebSocketProvider
            |
-           v
-WebViewTransport
-  base64 over Android JS bridge
-           |
-           v
-TrUAPIHostCore (CoreInbound)
-  → uniffi → libtruapi_server.so
+           v   ws://127.0.0.1:<port>/?t=<token>
+TrUAPIHostCore.startWsBridge()
+  → libtruapi_server.so (tokio WS server)
+  → Rust dispatcher
 ```
 
-Inbound flow:
-
-1. Product JS calls `window.trUApi.postMessage(bytes)`
-2. `WebViewTransport` receives base64 through `@JavascriptInterface`
-3. `TrUAPIHostCore.receiveFromProduct(...)` forwards bytes into the Rust dispatcher
-4. The Rust core emits a response frame; `HostBridge.onCoreResponse(...)` fires
-5. The embedder typically pumps the response back through `WebViewTransport.sendToProduct(...)`, which calls `window.__trUApiReceive(...)`
-
-The Rust core also calls `HostBridge` directly for platform capabilities: `navigateTo`, `pushNotification`, `devicePermission`, `remotePermission`, `featureSupported`, and the `storage` slot.
+The product running in the `WebView` opens a `WebSocket` to the localhost port + token returned by `startWsBridge`. From there the Rust core handles the wire protocol directly. Outbound responses and host-side capability callbacks (`navigateTo`, `pushNotification`, `devicePermission`, `remotePermission`, `featureSupported`, `storage`) reach the embedder through `HostBridge`.
 
 ## Permissions split
 
@@ -56,7 +44,6 @@ import android.webkit.WebView
 import io.parity.truapi.HostBridge
 import io.parity.truapi.HostStorage
 import io.parity.truapi.TrUAPIHostCore
-import io.parity.truapi.WebViewTransport
 import uniffi.truapi_server.HostNavigateRejection
 import uniffi.truapi_server.HostRejection
 
@@ -67,9 +54,9 @@ class MyStorage : HostStorage {
     override fun clear(key: String) { map.remove(key) }
 }
 
-class MyBridge(private val transport: WebViewTransport) : HostBridge {
+class MyBridge : HostBridge {
     override val storage = MyStorage()
-    override fun onCoreResponse(frame: ByteArray) = transport.sendToProduct(frame)
+    override fun onCoreResponse(frame: ByteArray) { /* not used in WS-bridge mode */ }
     override fun navigateTo(url: String) { /* open in browser */ }
     override fun pushNotification(payload: ByteArray) { /* show notification */ }
     override fun devicePermission(request: ByteArray): Boolean = TODO("prompt user")
@@ -77,16 +64,16 @@ class MyBridge(private val transport: WebViewTransport) : HostBridge {
     override fun featureSupported(request: ByteArray): Boolean = false
 }
 
-val webView: WebView = existingWebView
-lateinit var transport: WebViewTransport
-val bridge = MyBridge(transport = WebViewTransport(webView, core = object : io.parity.truapi.CoreInbound {
-    override fun receiveFromProduct(frame: ByteArray) = core.receiveFromProduct(frame)
-}).also { transport = it })
-val core = TrUAPIHostCore(bridge)
-transport.attach()
-```
+val core = TrUAPIHostCore(MyBridge())
+val endpoint = core.startWsBridge()
+val wsUrl = "ws://127.0.0.1:${endpoint.port.toInt()}/?t=${endpoint.token}"
 
-(In practice, build the `TrUAPIHostCore` first, hand it to a `WebViewTransport`, and have the bridge close back over the same transport instance.)
+// Inject `wsUrl` into the product page (e.g. as a query string or via an
+// initial WKUserScript). Product JS uses `@parity/truapi`'s
+// `createWebSocketProvider(wsUrl)` to open the wire.
+val webView: WebView = existingWebView
+webView.loadUrl("https://your-product.example/?truapi=${java.net.URLEncoder.encode(wsUrl, "UTF-8")}")
+```
 
 ## Loading the cdylib
 
@@ -98,7 +85,7 @@ src/main/jniLibs/armeabi-v7a/libtruapi_server.so
 src/main/jniLibs/x86_64/libtruapi_server.so
 ```
 
-Build the cdylib with the `ws-bridge` feature if you want `startWsBridge` to be functional:
+Build the cdylib with the `ws-bridge` feature so `startWsBridge` is functional:
 
 ```
 cargo build -p truapi-server --release --features ws-bridge --target <android-target>
@@ -115,3 +102,5 @@ cargo run -p uniffi-bindgen-cli -- generate \
   --language kotlin \
   --out-dir android/src/main/kotlin/generated
 ```
+
+Or run `make uniffi` from the repo root.

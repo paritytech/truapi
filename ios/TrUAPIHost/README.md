@@ -1,15 +1,15 @@
 # TrUAPI iOS host adapter
 
-*Thin Swift shell over the Rust TrUAPI core (UniFFI) plus a `WKWebView` byte transport. Wire decoding, request routing, and subscription lifecycle stay in the Rust core.*
+*Thin Swift shell over the Rust TrUAPI core (UniFFI). Wire decoding, request routing, and subscription lifecycle stay in the Rust core; products connect through the localhost WebSocket bridge.*
 
 ## What this package is for
 
 The public surface lives in [`Sources/TrUAPIHost/TrUAPIHost.swift`](Sources/TrUAPIHost/TrUAPIHost.swift):
 
 - `HostBridge` - callback bundle the embedding app implements. Split into device permissions, remote permissions, navigation, push, feature support, and scoped storage.
-- `TrUAPIHostCore` - owning wrapper around the UniFFI-generated `NativeTrUApiCore`. Implements `CoreInbound`, owns the bridge lifetime, exposes session and WS bridge controls.
-- `WebViewTransport` - base64-over-`WKScriptMessageHandler` byte pipe between a `WKWebView` and any `CoreInbound`. Installs a `window.trUApi` shim that matches the JS host adapter shape.
-- `LocalhostBridgeBootstrap` - script for the localhost WebSocket bridge mode (when the cdylib is built with `--features ws-bridge` and `TrUAPIHostCore.startWsBridge(...)` is invoked).
+- `HostStorageBackend` - simple read/write/clear protocol the host backs with its own persistence.
+- `TrUAPIHostCore` - owning wrapper around the UniFFI-generated `NativeTrUApiCore`. Holds the bridge alive for the lifetime of the core, exposes session controls and the localhost WebSocket bridge.
+- `LocalhostBridgeBootstrap` - helper that produces a JS snippet publishing the WS bridge endpoint to the product page so it can dial back in.
 
 The generated UniFFI bindings live alongside the shell in `Sources/TrUAPIHost/truapi_server.swift` and the C header / module map in `Sources/truapi_serverFFI/include/`. They are committed (they're large and consumers should not need a Rust toolchain).
 
@@ -17,29 +17,15 @@ The generated UniFFI bindings live alongside the shell in `Sources/TrUAPIHost/tr
 
 ```text
 product app in WKWebView
-  Uint8Array frames via window.trUApi
+  Uint8Array frames via @parity/truapi createWebSocketProvider
            |
-           v
-WebViewTransport
-  base64 over WKScriptMessageHandler
-           |
-           v
-TrUAPIHostCore (CoreInbound)
-  → uniffi → libtruapi_server
+           v   ws://127.0.0.1:<port>/?t=<token>
+TrUAPIHostCore.startWsBridge()
+  → libtruapi_server (tokio WS server)
+  → Rust dispatcher
 ```
 
-For embedded apps that prefer the localhost WebSocket bridge:
-
-```text
-product app in WKWebView
-  binary frames via localhost WebSocket
-           |
-           v
-Rust core WS bridge (started via startWsBridge)
-           |
-           v
-Rust core dispatcher
-```
+The product running in the `WKWebView` opens a `WebSocket` to the localhost port + token returned by `startWsBridge`. From there the Rust core handles the wire protocol directly. Outbound responses and host-side capability callbacks (`navigateTo`, `pushNotification`, `devicePermission`, `remotePermission`, `featureSupported`, `storage`) reach the embedder through `HostBridge`.
 
 ## Permissions split
 
@@ -66,10 +52,11 @@ final class MyStorage: HostStorageBackend, @unchecked Sendable {
 
 final class MyBridge: HostBridge, @unchecked Sendable {
     let storage: HostStorageBackend = MyStorage()
-    weak var transport: WebViewTransport?
 
     func onCoreResponse(frame: Data) {
-        Task { @MainActor in transport?.sendToProduct(frame) }
+        // Not used in WS-bridge mode: responses are written directly to the
+        // WebSocket by the Rust core. Implement if you wire an alternative
+        // transport via `core.receiveFromProduct(_:)`.
     }
 
     func navigateTo(url: String) throws { /* open in browser */ }
@@ -81,16 +68,24 @@ final class MyBridge: HostBridge, @unchecked Sendable {
 
 let bridge = MyBridge()
 let core = TrUAPIHostCore(bridge: bridge)
+let endpoint = try core.startWsBridge()
 
 let contentController = WKUserContentController()
+let bootstrapScript = LocalhostBridgeBootstrap.script(port: endpoint.port, token: endpoint.token)
+let userScript = WKUserScript(
+    source: bootstrapScript,
+    injectionTime: .atDocumentStart,
+    forMainFrameOnly: true
+)
+contentController.addUserScript(userScript)
+
 let configuration = WKWebViewConfiguration()
 configuration.userContentController = contentController
 let webView = WKWebView(frame: .zero, configuration: configuration)
-
-let transport = WebViewTransport(webView: webView, core: core)
-bridge.transport = transport
-transport.attach(to: contentController)
+webView.load(URLRequest(url: URL(string: "https://your-product.example/")!))
 ```
+
+The product page reads `window.__truapi_localhost.url` (set by the bootstrap script) and passes it to `@parity/truapi`'s `createWebSocketProvider(url)`.
 
 ## Linking the cdylib
 
@@ -123,3 +118,5 @@ cp /tmp/uniffi-swift-out/truapi_serverFFI.h \
 cp /tmp/uniffi-swift-out/truapi_serverFFI.modulemap \
    ios/TrUAPIHost/Sources/truapi_serverFFI/include/module.modulemap
 ```
+
+Or run `make uniffi` from the repo root.
