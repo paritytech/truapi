@@ -133,45 +133,24 @@ impl Transport for ResponseTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_trait::async_trait;
     use futures::stream::{self, BoxStream};
     use parity_scale_codec::Encode;
     use truapi::v01;
-    use truapi::versioned::account::{
-        HostAccountConnectionStatusSubscribeItem, HostAccountCreateProofRequest,
-        HostAccountCreateProofResponse, HostAccountGetAliasRequest, HostAccountGetAliasResponse,
-        HostAccountGetRequest, HostAccountGetResponse, HostGetLegacyAccountsRequest,
-        HostGetLegacyAccountsResponse, HostGetUserIdRequest, HostGetUserIdResponse,
-    };
     use truapi::versioned::local_storage::{
         HostLocalStorageClearRequest, HostLocalStorageReadRequest, HostLocalStorageWriteRequest,
     };
     use truapi::versioned::permissions::RemotePermissionRequest;
-    use truapi::versioned::preimage::{
-        RemotePreimageLookupSubscribeItem, RemotePreimageLookupSubscribeRequest,
-    };
-    use truapi::versioned::signing::{
-        HostSignPayloadRequest, HostSignPayloadResponse, HostSignRawRequest, HostSignRawResponse,
-    };
-    use truapi::versioned::statement_store::{
-        RemoteStatementStoreCreateProofRequest, RemoteStatementStoreCreateProofResponse,
-        RemoteStatementStoreSubmitRequest, RemoteStatementStoreSubscribeItem,
-        RemoteStatementStoreSubscribeRequest,
-    };
     use truapi::versioned::system::{
         HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostPushNotificationRequest,
     };
     use truapi_platform::{
-        Accounts as PlatformAccounts, ChainProvider, Features, GenesisHash, JsonRpcConnection,
-        Navigation, Notifications, Permissions, Preimage as PlatformPreimage,
-        Signing as PlatformSigning, StatementStore as PlatformStatementStore, Storage,
+        ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, Permissions, Storage,
     };
 
     use crate::frame::{FrameKind, Payload, compose_action};
 
     struct StubPlatform;
 
-    #[async_trait]
     impl Storage for StubPlatform {
         async fn read(
             &self,
@@ -191,14 +170,12 @@ mod tests {
         }
     }
 
-    #[async_trait]
     impl Navigation for StubPlatform {
         async fn navigate_to(&self, _url: String) -> Result<(), v01::HostNavigateToError> {
             Ok(())
         }
     }
 
-    #[async_trait]
     impl Notifications for StubPlatform {
         async fn push_notification(
             &self,
@@ -208,7 +185,6 @@ mod tests {
         }
     }
 
-    #[async_trait]
     impl Permissions for StubPlatform {
         async fn device_permission(
             &self,
@@ -224,7 +200,6 @@ mod tests {
         }
     }
 
-    #[async_trait]
     impl Features for StubPlatform {
         async fn feature_supported(
             &self,
@@ -245,105 +220,12 @@ mod tests {
         }
     }
 
-    #[async_trait]
     impl ChainProvider for StubPlatform {
         async fn connect(
             &self,
-            _genesis_hash: GenesisHash,
+            _genesis_hash: Vec<u8>,
         ) -> Result<Box<dyn JsonRpcConnection>, v01::GenericError> {
             Ok(Box::new(DeadConnection))
-        }
-    }
-
-    #[async_trait]
-    impl PlatformAccounts for StubPlatform {
-        async fn host_account_get(
-            &self,
-            _request: HostAccountGetRequest,
-        ) -> Result<HostAccountGetResponse, v01::HostAccountGetError> {
-            Err(v01::HostAccountGetError::NotConnected)
-        }
-        async fn host_account_get_alias(
-            &self,
-            _request: HostAccountGetAliasRequest,
-        ) -> Result<HostAccountGetAliasResponse, v01::HostAccountGetError> {
-            Err(v01::HostAccountGetError::NotConnected)
-        }
-        async fn host_account_create_proof(
-            &self,
-            _request: HostAccountCreateProofRequest,
-        ) -> Result<HostAccountCreateProofResponse, v01::HostAccountCreateProofError> {
-            Err(v01::HostAccountCreateProofError::RingNotFound)
-        }
-        async fn host_get_legacy_accounts(
-            &self,
-            _request: HostGetLegacyAccountsRequest,
-        ) -> Result<HostGetLegacyAccountsResponse, v01::HostAccountGetError> {
-            Ok(HostGetLegacyAccountsResponse::V1(
-                v01::HostGetLegacyAccountsResponse { accounts: vec![] },
-            ))
-        }
-        async fn host_account_connection_status_subscribe(
-            &self,
-        ) -> BoxStream<'static, HostAccountConnectionStatusSubscribeItem> {
-            Box::pin(stream::empty())
-        }
-        async fn host_get_user_id(
-            &self,
-            _request: HostGetUserIdRequest,
-        ) -> Result<HostGetUserIdResponse, v01::HostGetUserIdError> {
-            Err(v01::HostGetUserIdError::NotConnected)
-        }
-    }
-
-    #[async_trait]
-    impl PlatformSigning for StubPlatform {
-        async fn host_sign_payload(
-            &self,
-            _request: HostSignPayloadRequest,
-        ) -> Result<HostSignPayloadResponse, v01::HostSignPayloadError> {
-            Err(v01::HostSignPayloadError::Rejected)
-        }
-        async fn host_sign_raw(
-            &self,
-            _request: HostSignRawRequest,
-        ) -> Result<HostSignRawResponse, v01::HostSignPayloadError> {
-            Err(v01::HostSignPayloadError::Rejected)
-        }
-    }
-
-    #[async_trait]
-    impl PlatformStatementStore for StubPlatform {
-        async fn remote_statement_store_subscribe(
-            &self,
-            _request: RemoteStatementStoreSubscribeRequest,
-        ) -> BoxStream<'static, RemoteStatementStoreSubscribeItem> {
-            Box::pin(stream::empty())
-        }
-        async fn remote_statement_store_submit(
-            &self,
-            _request: RemoteStatementStoreSubmitRequest,
-        ) -> Result<(), v01::GenericError> {
-            Ok(())
-        }
-        async fn remote_statement_store_create_proof(
-            &self,
-            _request: RemoteStatementStoreCreateProofRequest,
-        ) -> Result<
-            RemoteStatementStoreCreateProofResponse,
-            v01::RemoteStatementStoreCreateProofError,
-        > {
-            Err(v01::RemoteStatementStoreCreateProofError::UnableToSign)
-        }
-    }
-
-    #[async_trait]
-    impl PlatformPreimage for StubPlatform {
-        async fn remote_preimage_lookup_subscribe(
-            &self,
-            _request: RemotePreimageLookupSubscribeRequest,
-        ) -> BoxStream<'static, RemotePreimageLookupSubscribeItem> {
-            Box::pin(stream::empty())
         }
     }
 
@@ -407,122 +289,6 @@ mod tests {
             Arc::new(StubPlatform),
             crate::subscription::thread_per_subscription_spawner(),
         )
-    }
-
-    fn product_id() -> v01::ProductAccountId {
-        v01::ProductAccountId {
-            dot_ns_identifier: "test.dot".into(),
-            derivation_index: 0,
-        }
-    }
-
-    fn ring_location() -> v01::RingLocation {
-        v01::RingLocation {
-            genesis_hash: vec![0u8; 32],
-            ring_root_hash: vec![0u8; 32],
-            hints: None,
-        }
-    }
-
-    #[test]
-    fn get_account_round_trips_stub_not_connected() {
-        let core = make_core();
-        let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
-            product_account_id: product_id(),
-        });
-        let payload = run_request(&core, "account_get_account", request.encode());
-        // Err disc 0x01, Domain disc 0x00, V1 variant 0x00, NotConnected variant 0x00.
-        assert_eq!(payload, vec![0x01, 0x00, 0x00, 0x00]);
-    }
-
-    #[test]
-    fn get_account_alias_round_trips_stub_not_connected() {
-        let core = make_core();
-        let request = HostAccountGetAliasRequest::V1(v01::HostAccountGetAliasRequest {
-            product_account_id: product_id(),
-        });
-        let payload = run_request(&core, "account_get_account_alias", request.encode());
-        // Err disc 0x01, Domain disc 0x00, V1 variant 0x00, NotConnected variant 0x00.
-        assert_eq!(payload, vec![0x01, 0x00, 0x00, 0x00]);
-    }
-
-    #[test]
-    fn create_account_proof_round_trips_stub_ring_not_found() {
-        let core = make_core();
-        let request = HostAccountCreateProofRequest::V1(v01::HostAccountCreateProofRequest {
-            product_account_id: product_id(),
-            ring_location: ring_location(),
-            context: vec![],
-        });
-        let payload = run_request(&core, "account_create_account_proof", request.encode());
-        // Err disc 0x01, Domain disc 0x00, V1 variant 0x00, RingNotFound variant 0x00.
-        assert_eq!(payload, vec![0x01, 0x00, 0x00, 0x00]);
-    }
-
-    #[test]
-    fn get_legacy_accounts_round_trips_empty_list() {
-        let core = make_core();
-        let request = HostGetLegacyAccountsRequest::V1;
-        let payload = run_request(&core, "account_get_legacy_accounts", request.encode());
-        // Ok disc + decoded inner equals the stub response.
-        assert_eq!(payload[0], 0x00, "Ok disc");
-        let expected = HostGetLegacyAccountsResponse::V1(v01::HostGetLegacyAccountsResponse {
-            accounts: vec![],
-        });
-        let decoded =
-            HostGetLegacyAccountsResponse::decode(&mut &payload[1..]).expect("decode inner");
-        assert_eq!(decoded, expected);
-    }
-
-    #[test]
-    fn get_user_id_round_trips_stub_not_connected() {
-        let core = make_core();
-        let request = HostGetUserIdRequest::V1;
-        let payload = run_request(&core, "account_get_user_id", request.encode());
-        // Err disc 0x01, Domain disc 0x00, V1 variant 0x00, NotConnected variant.
-        // HostGetUserIdError variant order: PermissionDenied=0, NotConnected=1.
-        assert_eq!(payload, vec![0x01, 0x00, 0x00, 0x01]);
-    }
-
-    #[test]
-    fn sign_payload_round_trips_stub_rejected() {
-        let core = make_core();
-        let request = HostSignPayloadRequest::V1(v01::HostSignPayloadRequest {
-            account: product_id(),
-            block_hash: vec![],
-            block_number: vec![],
-            era: vec![],
-            genesis_hash: vec![],
-            method: vec![],
-            nonce: vec![],
-            spec_version: vec![],
-            tip: vec![],
-            transaction_version: vec![],
-            signed_extensions: vec![],
-            version: 4,
-            asset_id: None,
-            metadata_hash: None,
-            mode: None,
-            with_signed_transaction: None,
-        });
-        let payload = run_request(&core, "signing_sign_payload", request.encode());
-        // Err disc 0x01, Domain disc 0x00, V1 variant 0x00, Rejected variant.
-        // HostSignPayloadError: FailedToDecode=0, Rejected=1.
-        assert_eq!(payload, vec![0x01, 0x00, 0x00, 0x01]);
-    }
-
-    #[test]
-    fn sign_raw_round_trips_stub_rejected() {
-        let core = make_core();
-        let request = HostSignRawRequest::V1(v01::HostSignRawRequest {
-            account: product_id(),
-            payload: v01::RawPayload::Bytes {
-                bytes: vec![1, 2, 3],
-            },
-        });
-        let payload = run_request(&core, "signing_sign_raw", request.encode());
-        // Same as sign_payload: HostSignPayloadError::Rejected discriminant.
-        assert_eq!(payload, vec![0x01, 0x00, 0x00, 0x01]);
     }
 
     #[test]

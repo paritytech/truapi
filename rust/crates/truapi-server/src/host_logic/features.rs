@@ -10,7 +10,7 @@ use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupporte
 use truapi_platform::Features;
 
 /// Forward a feature-support query to the platform implementation.
-pub async fn feature_supported<P: Features + ?Sized>(
+pub async fn feature_supported<P: Features>(
     platform: &P,
     request: HostFeatureSupportedRequest,
 ) -> Result<HostFeatureSupportedResponse, GenericError> {
@@ -20,12 +20,10 @@ pub async fn feature_supported<P: Features + ?Sized>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use async_trait::async_trait;
     use truapi::v01;
 
     struct AlwaysSupported;
 
-    #[async_trait]
     impl Features for AlwaysSupported {
         async fn feature_supported(
             &self,
@@ -40,7 +38,6 @@ mod tests {
 
     struct AlwaysUnsupported;
 
-    #[async_trait]
     impl Features for AlwaysUnsupported {
         async fn feature_supported(
             &self,

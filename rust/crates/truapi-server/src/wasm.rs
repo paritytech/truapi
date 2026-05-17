@@ -4,43 +4,24 @@
 //! The browser side hands a `callbacks` object (a `JsBridge`) to the
 //! constructor. The bridge implements every host-side capability the
 //! [`truapi_platform::Platform`] trait set requires. Internally the bridge
-//! is wrapped in a [`SendWrapper`] so it satisfies the `Send` bound that
-//! `async_trait`-generated futures inherit; sound on wasm32 because the
-//! runtime is single-threaded.
+//! is wrapped in a [`SendWrapper`] so it satisfies the `Send` bound the
+//! platform trait set imposes; sound on wasm32 because the runtime is
+//! single-threaded.
 
 use std::cell::Cell;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use async_trait::async_trait;
 use futures::channel::mpsc;
 use futures::stream::{BoxStream, StreamExt};
 use js_sys::{Function, Reflect, Uint8Array};
 use parity_scale_codec::{Decode, Encode};
 use send_wrapper::SendWrapper;
 use truapi::v01;
-use truapi::versioned::account::{
-    HostAccountConnectionStatusSubscribeItem, HostAccountCreateProofRequest,
-    HostAccountCreateProofResponse, HostAccountGetAliasRequest, HostAccountGetAliasResponse,
-    HostAccountGetRequest, HostAccountGetResponse, HostGetLegacyAccountsRequest,
-    HostGetLegacyAccountsResponse, HostGetUserIdRequest, HostGetUserIdResponse,
-};
-use truapi::versioned::preimage::{
-    RemotePreimageLookupSubscribeItem, RemotePreimageLookupSubscribeRequest,
-};
-use truapi::versioned::signing::{
-    HostSignPayloadRequest, HostSignPayloadResponse, HostSignRawRequest, HostSignRawResponse,
-};
-use truapi::versioned::statement_store::{
-    RemoteStatementStoreCreateProofRequest, RemoteStatementStoreCreateProofResponse,
-    RemoteStatementStoreSubmitRequest, RemoteStatementStoreSubscribeItem,
-    RemoteStatementStoreSubscribeRequest,
-};
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use truapi_platform::{
-    Accounts, ChainProvider, Features, GenesisHash, JsonRpcConnection, Navigation, Notifications,
-    Permissions, Preimage, Signing, StatementStore, Storage,
+    ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, Permissions, Storage,
 };
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -61,18 +42,6 @@ struct JsBridge {
     local_storage_read: Function,
     local_storage_write: Function,
     local_storage_clear: Function,
-    account_get: Function,
-    account_get_alias: Function,
-    account_create_proof: Function,
-    get_legacy_accounts: Function,
-    account_connection_status_subscribe: Function,
-    get_user_id: Function,
-    sign_payload: Function,
-    sign_raw: Function,
-    statement_store_subscribe: Function,
-    statement_store_submit: Function,
-    statement_store_create_proof: Function,
-    preimage_lookup_subscribe: Function,
     /// Optional. Hosts that own JSON-RPC connections (e.g. dotli with its
     /// "smoldot vs RPC node" toggle) provide this; otherwise chain calls
     /// fail with an "unavailable" reason.
@@ -92,21 +61,6 @@ impl JsBridge {
             local_storage_read: get_function(callbacks, "localStorageRead")?,
             local_storage_write: get_function(callbacks, "localStorageWrite")?,
             local_storage_clear: get_function(callbacks, "localStorageClear")?,
-            account_get: get_function(callbacks, "accountGet")?,
-            account_get_alias: get_function(callbacks, "accountGetAlias")?,
-            account_create_proof: get_function(callbacks, "accountCreateProof")?,
-            get_legacy_accounts: get_function(callbacks, "getLegacyAccounts")?,
-            account_connection_status_subscribe: get_function(
-                callbacks,
-                "accountConnectionStatusSubscribe",
-            )?,
-            get_user_id: get_function(callbacks, "getUserId")?,
-            sign_payload: get_function(callbacks, "signPayload")?,
-            sign_raw: get_function(callbacks, "signRaw")?,
-            statement_store_subscribe: get_function(callbacks, "statementStoreSubscribe")?,
-            statement_store_submit: get_function(callbacks, "statementStoreSubmit")?,
-            statement_store_create_proof: get_function(callbacks, "statementStoreCreateProof")?,
-            preimage_lookup_subscribe: get_function(callbacks, "preimageLookupSubscribe")?,
             chain_connect: get_optional_function(callbacks, "chainConnect")?,
             emit_frame: get_function(callbacks, "emitFrame")?,
             dispose: get_optional_function(callbacks, "dispose")?.unwrap_or_else(noop_function),
@@ -150,7 +104,6 @@ impl WasmPlatform {
     }
 }
 
-#[async_trait]
 impl Navigation for WasmPlatform {
     async fn navigate_to(&self, url: String) -> Result<(), v01::HostNavigateToError> {
         invoke_navigate_to(&self.bridge, &url)
@@ -159,7 +112,6 @@ impl Navigation for WasmPlatform {
     }
 }
 
-#[async_trait]
 impl Notifications for WasmPlatform {
     async fn push_notification(
         &self,
@@ -171,7 +123,6 @@ impl Notifications for WasmPlatform {
     }
 }
 
-#[async_trait]
 impl Permissions for WasmPlatform {
     async fn device_permission(
         &self,
@@ -194,7 +145,6 @@ impl Permissions for WasmPlatform {
     }
 }
 
-#[async_trait]
 impl Features for WasmPlatform {
     async fn feature_supported(
         &self,
@@ -209,7 +159,6 @@ impl Features for WasmPlatform {
     }
 }
 
-#[async_trait]
 impl Storage for WasmPlatform {
     async fn read(&self, key: String) -> Result<Option<Vec<u8>>, v01::HostLocalStorageReadError> {
         invoke_local_storage_read(&self.bridge, &key)
@@ -234,11 +183,10 @@ impl Storage for WasmPlatform {
     }
 }
 
-#[async_trait]
 impl ChainProvider for WasmPlatform {
     async fn connect(
         &self,
-        genesis_hash: GenesisHash,
+        genesis_hash: Vec<u8>,
     ) -> Result<Box<dyn JsonRpcConnection>, v01::GenericError> {
         let chain_connect = match self.bridge.chain_connect.clone() {
             Some(f) => f,
@@ -296,125 +244,9 @@ impl ChainProvider for WasmPlatform {
     }
 }
 
-#[async_trait]
-impl Accounts for WasmPlatform {
-    async fn host_account_get(
-        &self,
-        request: HostAccountGetRequest,
-    ) -> Result<HostAccountGetResponse, v01::HostAccountGetError> {
-        invoke_request_response(&self.bridge.account_get, request.encode())
-            .await
-            .map_err(|reason| v01::HostAccountGetError::Unknown { reason })
-    }
-
-    async fn host_account_get_alias(
-        &self,
-        request: HostAccountGetAliasRequest,
-    ) -> Result<HostAccountGetAliasResponse, v01::HostAccountGetError> {
-        invoke_request_response(&self.bridge.account_get_alias, request.encode())
-            .await
-            .map_err(|reason| v01::HostAccountGetError::Unknown { reason })
-    }
-
-    async fn host_account_create_proof(
-        &self,
-        request: HostAccountCreateProofRequest,
-    ) -> Result<HostAccountCreateProofResponse, v01::HostAccountCreateProofError> {
-        invoke_request_response(&self.bridge.account_create_proof, request.encode())
-            .await
-            .map_err(|reason| v01::HostAccountCreateProofError::Unknown { reason })
-    }
-
-    async fn host_get_legacy_accounts(
-        &self,
-        request: HostGetLegacyAccountsRequest,
-    ) -> Result<HostGetLegacyAccountsResponse, v01::HostAccountGetError> {
-        invoke_request_response(&self.bridge.get_legacy_accounts, request.encode())
-            .await
-            .map_err(|reason| v01::HostAccountGetError::Unknown { reason })
-    }
-
-    async fn host_account_connection_status_subscribe(
-        &self,
-    ) -> BoxStream<'static, HostAccountConnectionStatusSubscribeItem> {
-        invoke_subscription(&self.bridge.account_connection_status_subscribe, None)
-    }
-
-    async fn host_get_user_id(
-        &self,
-        request: HostGetUserIdRequest,
-    ) -> Result<HostGetUserIdResponse, v01::HostGetUserIdError> {
-        invoke_request_response(&self.bridge.get_user_id, request.encode())
-            .await
-            .map_err(|reason| v01::HostGetUserIdError::Unknown { reason })
-    }
-}
-
-#[async_trait]
-impl Signing for WasmPlatform {
-    async fn host_sign_payload(
-        &self,
-        request: HostSignPayloadRequest,
-    ) -> Result<HostSignPayloadResponse, v01::HostSignPayloadError> {
-        invoke_request_response(&self.bridge.sign_payload, request.encode())
-            .await
-            .map_err(|reason| v01::HostSignPayloadError::Unknown { reason })
-    }
-
-    async fn host_sign_raw(
-        &self,
-        request: HostSignRawRequest,
-    ) -> Result<HostSignRawResponse, v01::HostSignPayloadError> {
-        invoke_request_response(&self.bridge.sign_raw, request.encode())
-            .await
-            .map_err(|reason| v01::HostSignPayloadError::Unknown { reason })
-    }
-}
-
-#[async_trait]
-impl StatementStore for WasmPlatform {
-    async fn remote_statement_store_subscribe(
-        &self,
-        request: RemoteStatementStoreSubscribeRequest,
-    ) -> BoxStream<'static, RemoteStatementStoreSubscribeItem> {
-        invoke_subscription(
-            &self.bridge.statement_store_subscribe,
-            Some(request.encode()),
-        )
-    }
-
-    async fn remote_statement_store_submit(
-        &self,
-        request: RemoteStatementStoreSubmitRequest,
-    ) -> Result<(), v01::GenericError> {
-        invoke_unit(&self.bridge.statement_store_submit, request.encode())
-            .await
-            .map_err(generic)
-    }
-
-    async fn remote_statement_store_create_proof(
-        &self,
-        request: RemoteStatementStoreCreateProofRequest,
-    ) -> Result<RemoteStatementStoreCreateProofResponse, v01::RemoteStatementStoreCreateProofError>
-    {
-        invoke_request_response(&self.bridge.statement_store_create_proof, request.encode())
-            .await
-            .map_err(|reason| v01::RemoteStatementStoreCreateProofError::Unknown { reason })
-    }
-}
-
-#[async_trait]
-impl Preimage for WasmPlatform {
-    async fn remote_preimage_lookup_subscribe(
-        &self,
-        request: RemotePreimageLookupSubscribeRequest,
-    ) -> BoxStream<'static, RemotePreimageLookupSubscribeItem> {
-        invoke_subscription(
-            &self.bridge.preimage_lookup_subscribe,
-            Some(request.encode()),
-        )
-    }
-}
+// Account/signing/statement-store/preimage flows live in the Rust core
+// itself; their `truapi::api::*` trait defaults return `Unsupported` and
+// the WASM bridge no longer exposes JS callbacks for them.
 
 struct JsCallbackJsonRpcConnection {
     send_fn: SendWrapper<Function>,
@@ -553,96 +385,6 @@ fn invoke_local_storage_clear(
         let returned = fn_.call1(&JsValue::NULL, &arg).map_err(js_to_string)?;
         await_optional_promise(returned).await.map(|_| ())
     })
-}
-
-/// Invoke an async JS callback with a SCALE-encoded request. The callback
-/// may return a `Uint8Array` of SCALE-encoded response bytes directly or
-/// wrapped in a `Promise`. Any thrown error is converted to a string
-/// reason for the corresponding domain error.
-///
-/// `JsFuture` is `!Send`, so the body runs inside a `SendWrapper`. Safe
-/// on wasm32 because the runtime is single-threaded.
-fn invoke_request_response<T>(
-    fn_: &Function,
-    request: Vec<u8>,
-) -> impl std::future::Future<Output = Result<T, String>> + Send
-where
-    T: Decode,
-{
-    let fn_ = fn_.clone();
-    SendWrapper::new(async move {
-        let arg = Uint8Array::from(request.as_slice());
-        let returned = fn_.call1(&JsValue::NULL, &arg).map_err(js_to_string)?;
-        let resolved = await_optional_promise(returned).await?;
-        let bytes = resolved
-            .dyn_into::<Uint8Array>()
-            .map_err(|_| "callback must resolve to Uint8Array".to_string())?
-            .to_vec();
-        T::decode(&mut &*bytes).map_err(|err| format!("failed to decode response: {err}"))
-    })
-}
-
-/// Invoke a JS subscription callback. The callback receives an optional
-/// request payload followed by a `sendItem(bytes)` function used to push
-/// SCALE-encoded items back to Rust, and returns an optional dispose
-/// function. Dropping the stream disposes the subscription on the JS side.
-fn invoke_subscription<T>(fn_: &Function, request: Option<Vec<u8>>) -> BoxStream<'static, T>
-where
-    T: Decode + Send + 'static,
-{
-    let (tx, rx) = mpsc::unbounded::<Vec<u8>>();
-    let send_closure = Closure::wrap(Box::new(move |bytes: Uint8Array| {
-        let _ = tx.unbounded_send(bytes.to_vec());
-    }) as Box<dyn FnMut(Uint8Array)>);
-
-    let call_result = match request {
-        Some(req) => {
-            let req_arg = Uint8Array::from(req.as_slice());
-            fn_.call2(
-                &JsValue::NULL,
-                &req_arg,
-                send_closure.as_ref().unchecked_ref(),
-            )
-        }
-        None => fn_.call1(&JsValue::NULL, send_closure.as_ref().unchecked_ref()),
-    };
-
-    let dispose = call_result.ok().and_then(|v| v.dyn_into::<Function>().ok());
-
-    let guard = SendWrapper::new(SubscriptionGuard {
-        _send: send_closure,
-        dispose,
-    });
-
-    futures::stream::unfold((rx, guard), |(mut rx, guard)| async move {
-        loop {
-            match rx.next().await {
-                Some(bytes) => match T::decode(&mut &*bytes) {
-                    Ok(item) => return Some((item, (rx, guard))),
-                    Err(err) => {
-                        web_sys::console::error_1(
-                            &format!("subscription item decode error: {err}").into(),
-                        );
-                    }
-                },
-                None => return None,
-            }
-        }
-    })
-    .boxed()
-}
-
-struct SubscriptionGuard {
-    _send: Closure<dyn FnMut(Uint8Array)>,
-    dispose: Option<Function>,
-}
-
-impl Drop for SubscriptionGuard {
-    fn drop(&mut self) {
-        if let Some(dispose) = self.dispose.take() {
-            let _ = dispose.call0(&JsValue::NULL);
-        }
-    }
 }
 
 fn js_to_string(value: JsValue) -> String {

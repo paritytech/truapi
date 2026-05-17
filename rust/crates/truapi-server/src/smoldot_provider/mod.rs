@@ -16,7 +16,7 @@ use futures::stream::BoxStream;
 use smoldot_light::{
     AddChainConfig, AddChainConfigJsonRpc, AddChainError, ChainId, Client, JsonRpcResponses,
 };
-use truapi_platform::{GenesisHash, JsonRpcConnection};
+use truapi_platform::JsonRpcConnection;
 
 use crate::chain_runtime::{RuntimeChainProvider, RuntimeFailure};
 
@@ -137,7 +137,7 @@ impl SmoldotChainProvider {
     }
 }
 
-fn encode_genesis_hash(hash: &GenesisHash) -> String {
+fn encode_genesis_hash(hash: &[u8]) -> String {
     let mut out = String::with_capacity(2 + hash.len() * 2);
     out.push_str("0x");
     for byte in hash {
@@ -150,7 +150,7 @@ fn encode_genesis_hash(hash: &GenesisHash) -> String {
 impl RuntimeChainProvider for SmoldotChainProvider {
     async fn connect(
         &self,
-        genesis_hash: GenesisHash,
+        genesis_hash: Vec<u8>,
     ) -> Result<Arc<dyn JsonRpcConnection>, RuntimeFailure> {
         let key = encode_genesis_hash(&genesis_hash);
         let entry = self
@@ -254,7 +254,7 @@ mod tests {
     use super::*;
     use std::time::{Duration, Instant};
 
-    fn paseo_genesis_bytes() -> GenesisHash {
+    fn paseo_genesis_bytes() -> Vec<u8> {
         let clean = PASEO_RELAY_GENESIS.trim_start_matches("0x");
         let mut out = Vec::with_capacity(32);
         for pair in clean.as_bytes().chunks(2) {

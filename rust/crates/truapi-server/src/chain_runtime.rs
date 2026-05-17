@@ -37,7 +37,7 @@ use truapi::v01::{
     RemoteChainTransactionBroadcastResponse, RemoteChainTransactionStopRequest, RuntimeApi,
     RuntimeSpec, RuntimeType, StorageQueryItem, StorageQueryType, StorageResultItem,
 };
-use truapi_platform::{GenesisHash, JsonRpcConnection};
+use truapi_platform::JsonRpcConnection;
 
 use crate::subscription::Spawner;
 
@@ -112,7 +112,7 @@ pub trait RuntimeChainProvider: Send + Sync {
     /// `genesis_hash`.
     async fn connect(
         &self,
-        genesis_hash: GenesisHash,
+        genesis_hash: Vec<u8>,
     ) -> Result<Arc<dyn JsonRpcConnection>, RuntimeFailure>;
 }
 
@@ -125,7 +125,7 @@ pub struct UnavailableChainProvider;
 impl RuntimeChainProvider for UnavailableChainProvider {
     async fn connect(
         &self,
-        _genesis_hash: GenesisHash,
+        _genesis_hash: Vec<u8>,
     ) -> Result<Arc<dyn JsonRpcConnection>, RuntimeFailure> {
         Err(RuntimeFailure::unavailable("remote_chain_connect"))
     }
@@ -403,7 +403,7 @@ impl ChainRuntime {
     /// Echo back the chain genesis hash via chainSpec_v1_genesisHash.
     pub async fn remote_chain_spec_genesis_hash(
         &self,
-        genesis_hash: GenesisHash,
+        genesis_hash: Vec<u8>,
     ) -> Result<RemoteChainSpecGenesisHashResponse, RuntimeFailure> {
         let method = "remote_chain_spec_genesis_hash";
         let connection = self.connection_for(method, &genesis_hash).await?;
@@ -428,7 +428,7 @@ impl ChainRuntime {
     /// Fetch the chain display name via chainSpec_v1_chainName.
     pub async fn remote_chain_spec_chain_name(
         &self,
-        genesis_hash: GenesisHash,
+        genesis_hash: Vec<u8>,
     ) -> Result<RemoteChainSpecChainNameResponse, RuntimeFailure> {
         let method = "remote_chain_spec_chain_name";
         let connection = self.connection_for(method, &genesis_hash).await?;
@@ -447,7 +447,7 @@ impl ChainRuntime {
     /// Fetch the chain JSON properties via chainSpec_v1_properties.
     pub async fn remote_chain_spec_properties(
         &self,
-        genesis_hash: GenesisHash,
+        genesis_hash: Vec<u8>,
     ) -> Result<RemoteChainSpecPropertiesResponse, RuntimeFailure> {
         let method = "remote_chain_spec_properties";
         let connection = self.connection_for(method, &genesis_hash).await?;
@@ -507,7 +507,7 @@ impl ChainRuntime {
     async fn connection_for(
         &self,
         method: &'static str,
-        genesis_hash: &GenesisHash,
+        genesis_hash: &[u8],
     ) -> Result<Arc<ChainConnection>, RuntimeFailure> {
         let key = encode_hex(genesis_hash);
         if let Some(connection) = self.connections.lock().unwrap().get(&key).cloned() {
@@ -517,17 +517,17 @@ impl ChainRuntime {
             self.connections.lock().unwrap().remove(&key);
         }
 
-        let rpc =
-            self.provider
-                .connect(genesis_hash.clone())
-                .await
-                .map_err(|failure| match failure.kind() {
-                    RuntimeFailureKind::Unavailable => RuntimeFailure::unavailable(method),
-                    RuntimeFailureKind::HostFailure => {
-                        RuntimeFailure::host_failure(method, failure.reason())
-                    }
-                })?;
-        let connection = ChainConnection::new(genesis_hash.clone(), rpc, self.spawner.clone());
+        let rpc = self
+            .provider
+            .connect(genesis_hash.to_owned())
+            .await
+            .map_err(|failure| match failure.kind() {
+                RuntimeFailureKind::Unavailable => RuntimeFailure::unavailable(method),
+                RuntimeFailureKind::HostFailure => {
+                    RuntimeFailure::host_failure(method, failure.reason())
+                }
+            })?;
+        let connection = ChainConnection::new(genesis_hash.to_owned(), rpc, self.spawner.clone());
         self.connections
             .lock()
             .unwrap()
@@ -620,7 +620,7 @@ impl ChainRuntime {
             })
     }
 
-    fn cleanup_follow(&self, genesis_hash: &GenesisHash, local_follow_id: &str) {
+    fn cleanup_follow(&self, genesis_hash: &[u8], local_follow_id: &str) {
         let key = encode_hex(genesis_hash);
         let Some(connection) = self.connections.lock().unwrap().get(&key).cloned() else {
             return;
@@ -638,7 +638,7 @@ enum FollowSignal {
 }
 
 struct ChainConnection {
-    genesis_hash: GenesisHash,
+    genesis_hash: Vec<u8>,
     rpc: Arc<dyn JsonRpcConnection>,
     request_ids: AtomicU64,
     closed: AtomicBool,
@@ -649,11 +649,7 @@ struct ChainConnection {
 }
 
 impl ChainConnection {
-    fn new(
-        genesis_hash: GenesisHash,
-        rpc: Arc<dyn JsonRpcConnection>,
-        spawner: Spawner,
-    ) -> Arc<Self> {
+    fn new(genesis_hash: Vec<u8>, rpc: Arc<dyn JsonRpcConnection>, spawner: Spawner) -> Arc<Self> {
         let connection = Arc::new(Self {
             genesis_hash,
             rpc,
@@ -1334,7 +1330,7 @@ mod tests {
     impl RuntimeChainProvider for ScriptedProvider {
         async fn connect(
             &self,
-            _genesis_hash: GenesisHash,
+            _genesis_hash: Vec<u8>,
         ) -> Result<Arc<dyn JsonRpcConnection>, RuntimeFailure> {
             self.connect_calls.fetch_add(1, Ordering::SeqCst);
             let receiver = self.receiver.lock().unwrap().take();
@@ -1398,7 +1394,7 @@ mod tests {
     impl RuntimeChainProvider for ChannelProvider {
         async fn connect(
             &self,
-            _genesis_hash: GenesisHash,
+            _genesis_hash: Vec<u8>,
         ) -> Result<Arc<dyn JsonRpcConnection>, RuntimeFailure> {
             let rx = self.receiver.lock().unwrap().take();
             Ok(Arc::new(ChannelConnection {

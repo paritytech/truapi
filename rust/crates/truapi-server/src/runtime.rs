@@ -24,12 +24,7 @@ use truapi::api::{
 };
 use truapi::v01;
 use truapi::versioned::account::{
-    HostAccountConnectionStatusSubscribeItem, HostAccountCreateProofError,
-    HostAccountCreateProofRequest, HostAccountCreateProofResponse, HostAccountGetAliasError,
-    HostAccountGetAliasRequest, HostAccountGetAliasResponse, HostAccountGetError,
-    HostAccountGetRequest, HostAccountGetResponse, HostGetLegacyAccountsError,
-    HostGetLegacyAccountsRequest, HostGetLegacyAccountsResponse, HostGetUserIdError,
-    HostGetUserIdRequest, HostGetUserIdResponse, HostRequestLoginError, HostRequestLoginRequest,
+    HostAccountConnectionStatusSubscribeItem, HostRequestLoginError, HostRequestLoginRequest,
     HostRequestLoginResponse,
 };
 use truapi::versioned::chain::{
@@ -59,19 +54,6 @@ use truapi::versioned::permissions::{
     HostDevicePermissionError, HostDevicePermissionRequest, HostDevicePermissionResponse,
     RemotePermissionError, RemotePermissionRequest, RemotePermissionResponse,
 };
-use truapi::versioned::preimage::{
-    RemotePreimageLookupSubscribeItem, RemotePreimageLookupSubscribeRequest,
-};
-use truapi::versioned::signing::{
-    HostSignPayloadError, HostSignPayloadRequest, HostSignPayloadResponse, HostSignRawError,
-    HostSignRawRequest, HostSignRawResponse,
-};
-use truapi::versioned::statement_store::{
-    RemoteStatementStoreCreateProofError, RemoteStatementStoreCreateProofRequest,
-    RemoteStatementStoreCreateProofResponse, RemoteStatementStoreSubmitError,
-    RemoteStatementStoreSubmitRequest, RemoteStatementStoreSubscribeItem,
-    RemoteStatementStoreSubscribeRequest,
-};
 use truapi::versioned::system::{
     HostFeatureSupportedError, HostFeatureSupportedRequest, HostFeatureSupportedResponse,
     HostNavigateToError, HostNavigateToRequest, HostNavigateToResponse, HostPushNotificationError,
@@ -79,10 +61,8 @@ use truapi::versioned::system::{
 };
 use truapi::{CallContext, CallError, Subscription};
 use truapi_platform::{
-    Accounts as PlatformAccounts, ChainProvider as PlatformChainProvider, GenesisHash,
-    JsonRpcConnection, Navigation as PlatformNavigation, Notifications as PlatformNotifications,
-    Platform, Preimage as PlatformPreimage, Signing as PlatformSigning,
-    StatementStore as PlatformStatementStore, Storage as PlatformStorage,
+    ChainProvider as PlatformChainProvider, JsonRpcConnection, Navigation as PlatformNavigation,
+    Notifications as PlatformNotifications, Platform, Storage as PlatformStorage,
 };
 
 /// Adapter that exposes a [`truapi_platform::Platform`] through the
@@ -139,7 +119,7 @@ where
 {
     async fn connect(
         &self,
-        genesis_hash: GenesisHash,
+        genesis_hash: Vec<u8>,
     ) -> Result<Arc<dyn JsonRpcConnection>, RuntimeFailure> {
         PlatformChainProvider::connect(self.platform.as_ref(), genesis_hash)
             .await
@@ -316,6 +296,13 @@ where
 // ---------------------------------------------------------------------------
 // Account
 // ---------------------------------------------------------------------------
+//
+// Most Account surface methods fall back to the trait defaults
+// (`Err(CallError::unavailable())`). The platform layer no longer owns
+// account/signing/statement-store/preimage flows; those live in the Rust
+// core itself. We only override `connection_status_subscribe` (so the
+// session-state holder feeds it) and `request_login` (which has no
+// useful default).
 
 impl<P> Account for PlatformRuntimeHost<P>
 where
@@ -326,56 +313,6 @@ where
         _cx: &CallContext,
     ) -> Subscription<HostAccountConnectionStatusSubscribeItem> {
         Subscription::new(self.session_state.subscribe())
-    }
-
-    async fn get_account(
-        &self,
-        _cx: &CallContext,
-        request: HostAccountGetRequest,
-    ) -> Result<HostAccountGetResponse, CallError<HostAccountGetError>> {
-        PlatformAccounts::host_account_get(self.platform.as_ref(), request)
-            .await
-            .map_err(|err| CallError::Domain(HostAccountGetError::V1(err)))
-    }
-
-    async fn get_account_alias(
-        &self,
-        _cx: &CallContext,
-        request: HostAccountGetAliasRequest,
-    ) -> Result<HostAccountGetAliasResponse, CallError<HostAccountGetAliasError>> {
-        PlatformAccounts::host_account_get_alias(self.platform.as_ref(), request)
-            .await
-            .map_err(|err| CallError::Domain(HostAccountGetAliasError::V1(err)))
-    }
-
-    async fn create_account_proof(
-        &self,
-        _cx: &CallContext,
-        request: HostAccountCreateProofRequest,
-    ) -> Result<HostAccountCreateProofResponse, CallError<HostAccountCreateProofError>> {
-        PlatformAccounts::host_account_create_proof(self.platform.as_ref(), request)
-            .await
-            .map_err(|err| CallError::Domain(HostAccountCreateProofError::V1(err)))
-    }
-
-    async fn get_legacy_accounts(
-        &self,
-        _cx: &CallContext,
-        request: HostGetLegacyAccountsRequest,
-    ) -> Result<HostGetLegacyAccountsResponse, CallError<HostGetLegacyAccountsError>> {
-        PlatformAccounts::host_get_legacy_accounts(self.platform.as_ref(), request)
-            .await
-            .map_err(|err| CallError::Domain(HostGetLegacyAccountsError::V1(err)))
-    }
-
-    async fn get_user_id(
-        &self,
-        _cx: &CallContext,
-        request: HostGetUserIdRequest,
-    ) -> Result<HostGetUserIdResponse, CallError<HostGetUserIdError>> {
-        PlatformAccounts::host_get_user_id(self.platform.as_ref(), request)
-            .await
-            .map_err(|err| CallError::Domain(HostGetUserIdError::V1(err)))
     }
 
     async fn request_login(
@@ -389,110 +326,11 @@ where
     }
 }
 
-// ---------------------------------------------------------------------------
-// Signing
-// ---------------------------------------------------------------------------
+impl<P> Signing for PlatformRuntimeHost<P> where P: Platform + 'static {}
 
-impl<P> Signing for PlatformRuntimeHost<P>
-where
-    P: Platform + 'static,
-{
-    async fn sign_payload(
-        &self,
-        _cx: &CallContext,
-        request: HostSignPayloadRequest,
-    ) -> Result<HostSignPayloadResponse, CallError<HostSignPayloadError>> {
-        PlatformSigning::host_sign_payload(self.platform.as_ref(), request)
-            .await
-            .map_err(|err| CallError::Domain(HostSignPayloadError::V1(err)))
-    }
+impl<P> StatementStore for PlatformRuntimeHost<P> where P: Platform + 'static {}
 
-    async fn sign_raw(
-        &self,
-        _cx: &CallContext,
-        request: HostSignRawRequest,
-    ) -> Result<HostSignRawResponse, CallError<HostSignRawError>> {
-        PlatformSigning::host_sign_raw(self.platform.as_ref(), request)
-            .await
-            .map_err(|err| CallError::Domain(HostSignRawError::V1(err)))
-    }
-
-    // create_transaction, create_transaction_with_legacy_account,
-    // sign_payload_with_legacy_account, sign_raw_with_legacy_account fall
-    // back to the trait defaults (Err(CallError::unavailable())). The
-    // platform surface only covers host_sign_payload / host_sign_raw.
-}
-
-// ---------------------------------------------------------------------------
-// StatementStore
-// ---------------------------------------------------------------------------
-
-impl<P> StatementStore for PlatformRuntimeHost<P>
-where
-    P: Platform + 'static,
-{
-    async fn subscribe(
-        &self,
-        _cx: &CallContext,
-        request: RemoteStatementStoreSubscribeRequest,
-    ) -> Subscription<RemoteStatementStoreSubscribeItem> {
-        let stream = PlatformStatementStore::remote_statement_store_subscribe(
-            self.platform.as_ref(),
-            request,
-        )
-        .await;
-        Subscription::new(stream)
-    }
-
-    async fn submit(
-        &self,
-        _cx: &CallContext,
-        request: RemoteStatementStoreSubmitRequest,
-    ) -> Result<(), CallError<RemoteStatementStoreSubmitError>> {
-        PlatformStatementStore::remote_statement_store_submit(self.platform.as_ref(), request)
-            .await
-            .map_err(|err| CallError::Domain(RemoteStatementStoreSubmitError::V1(err)))
-    }
-
-    async fn create_proof(
-        &self,
-        _cx: &CallContext,
-        request: RemoteStatementStoreCreateProofRequest,
-    ) -> Result<
-        RemoteStatementStoreCreateProofResponse,
-        CallError<RemoteStatementStoreCreateProofError>,
-    > {
-        PlatformStatementStore::remote_statement_store_create_proof(self.platform.as_ref(), request)
-            .await
-            .map_err(|err| CallError::Domain(RemoteStatementStoreCreateProofError::V1(err)))
-    }
-
-    // create_proof_authorized falls back to the default. The platform
-    // surface does not expose pre-allocated allowance signing.
-}
-
-// ---------------------------------------------------------------------------
-// Preimage
-// ---------------------------------------------------------------------------
-
-impl<P> Preimage for PlatformRuntimeHost<P>
-where
-    P: Platform + 'static,
-{
-    async fn lookup_subscribe(
-        &self,
-        _cx: &CallContext,
-        request: RemotePreimageLookupSubscribeRequest,
-    ) -> Subscription<RemotePreimageLookupSubscribeItem> {
-        let stream =
-            PlatformPreimage::remote_preimage_lookup_subscribe(self.platform.as_ref(), request)
-                .await;
-        Subscription::new(stream)
-    }
-
-    // submit falls back to the default. The platform surface does not
-    // include preimage submission.
-}
+impl<P> Preimage for PlatformRuntimeHost<P> where P: Platform + 'static {}
 
 // ---------------------------------------------------------------------------
 // Chain
@@ -706,16 +544,13 @@ impl<P> Theme for PlatformRuntimeHost<P> where P: Platform + 'static {}
 mod tests {
     use super::*;
     use crate::chain_runtime::thread_per_task_spawner;
-    use async_trait::async_trait;
     use futures::stream::{self, BoxStream};
     use parity_scale_codec::Encode;
     use truapi::v01;
     use truapi_platform::{
-        Accounts as PlatformAccounts, ChainProvider, Features as PlatformFeatures, GenesisHash,
-        JsonRpcConnection, Navigation as PlatformNavigation,
-        Notifications as PlatformNotifications, Permissions as PlatformPermissions,
-        Preimage as PlatformPreimage, Signing as PlatformSigning,
-        StatementStore as PlatformStatementStore, Storage as PlatformStorage,
+        ChainProvider, Features as PlatformFeatures, JsonRpcConnection,
+        Navigation as PlatformNavigation, Notifications as PlatformNotifications,
+        Permissions as PlatformPermissions, Storage as PlatformStorage,
     };
 
     fn test_spawner() -> Spawner {
@@ -727,7 +562,6 @@ mod tests {
     /// can exercise its delegation paths without pulling in a real backend.
     struct StubPlatform;
 
-    #[async_trait]
     impl PlatformStorage for StubPlatform {
         async fn read(
             &self,
@@ -747,14 +581,12 @@ mod tests {
         }
     }
 
-    #[async_trait]
     impl PlatformNavigation for StubPlatform {
         async fn navigate_to(&self, _url: String) -> Result<(), v01::HostNavigateToError> {
             Ok(())
         }
     }
 
-    #[async_trait]
     impl PlatformNotifications for StubPlatform {
         async fn push_notification(
             &self,
@@ -764,7 +596,6 @@ mod tests {
         }
     }
 
-    #[async_trait]
     impl PlatformPermissions for StubPlatform {
         async fn device_permission(
             &self,
@@ -781,7 +612,6 @@ mod tests {
         }
     }
 
-    #[async_trait]
     impl PlatformFeatures for StubPlatform {
         async fn feature_supported(
             &self,
@@ -802,116 +632,12 @@ mod tests {
         }
     }
 
-    #[async_trait]
     impl ChainProvider for StubPlatform {
         async fn connect(
             &self,
-            _genesis_hash: GenesisHash,
+            _genesis_hash: Vec<u8>,
         ) -> Result<Box<dyn JsonRpcConnection>, v01::GenericError> {
             Ok(Box::new(DeadConnection))
-        }
-    }
-
-    #[async_trait]
-    impl PlatformAccounts for StubPlatform {
-        async fn host_account_get(
-            &self,
-            _request: truapi::versioned::account::HostAccountGetRequest,
-        ) -> Result<truapi::versioned::account::HostAccountGetResponse, v01::HostAccountGetError>
-        {
-            Err(v01::HostAccountGetError::NotConnected)
-        }
-        async fn host_account_get_alias(
-            &self,
-            _request: truapi::versioned::account::HostAccountGetAliasRequest,
-        ) -> Result<truapi::versioned::account::HostAccountGetAliasResponse, v01::HostAccountGetError>
-        {
-            Err(v01::HostAccountGetError::NotConnected)
-        }
-        async fn host_account_create_proof(
-            &self,
-            _request: truapi::versioned::account::HostAccountCreateProofRequest,
-        ) -> Result<
-            truapi::versioned::account::HostAccountCreateProofResponse,
-            v01::HostAccountCreateProofError,
-        > {
-            Err(v01::HostAccountCreateProofError::RingNotFound)
-        }
-        async fn host_get_legacy_accounts(
-            &self,
-            _request: truapi::versioned::account::HostGetLegacyAccountsRequest,
-        ) -> Result<
-            truapi::versioned::account::HostGetLegacyAccountsResponse,
-            v01::HostAccountGetError,
-        > {
-            Ok(
-                truapi::versioned::account::HostGetLegacyAccountsResponse::V1(
-                    v01::HostGetLegacyAccountsResponse { accounts: vec![] },
-                ),
-            )
-        }
-        async fn host_account_connection_status_subscribe(
-            &self,
-        ) -> BoxStream<'static, HostAccountConnectionStatusSubscribeItem> {
-            Box::pin(stream::empty())
-        }
-        async fn host_get_user_id(
-            &self,
-            _request: truapi::versioned::account::HostGetUserIdRequest,
-        ) -> Result<truapi::versioned::account::HostGetUserIdResponse, v01::HostGetUserIdError>
-        {
-            Err(v01::HostGetUserIdError::NotConnected)
-        }
-    }
-
-    #[async_trait]
-    impl PlatformSigning for StubPlatform {
-        async fn host_sign_payload(
-            &self,
-            _request: HostSignPayloadRequest,
-        ) -> Result<HostSignPayloadResponse, v01::HostSignPayloadError> {
-            Err(v01::HostSignPayloadError::Rejected)
-        }
-        async fn host_sign_raw(
-            &self,
-            _request: HostSignRawRequest,
-        ) -> Result<HostSignRawResponse, v01::HostSignPayloadError> {
-            Err(v01::HostSignPayloadError::Rejected)
-        }
-    }
-
-    #[async_trait]
-    impl PlatformStatementStore for StubPlatform {
-        async fn remote_statement_store_subscribe(
-            &self,
-            _request: RemoteStatementStoreSubscribeRequest,
-        ) -> BoxStream<'static, RemoteStatementStoreSubscribeItem> {
-            Box::pin(stream::empty())
-        }
-        async fn remote_statement_store_submit(
-            &self,
-            _request: RemoteStatementStoreSubmitRequest,
-        ) -> Result<(), v01::GenericError> {
-            Ok(())
-        }
-        async fn remote_statement_store_create_proof(
-            &self,
-            _request: RemoteStatementStoreCreateProofRequest,
-        ) -> Result<
-            RemoteStatementStoreCreateProofResponse,
-            v01::RemoteStatementStoreCreateProofError,
-        > {
-            Err(v01::RemoteStatementStoreCreateProofError::UnableToSign)
-        }
-    }
-
-    #[async_trait]
-    impl PlatformPreimage for StubPlatform {
-        async fn remote_preimage_lookup_subscribe(
-            &self,
-            _request: RemotePreimageLookupSubscribeRequest,
-        ) -> BoxStream<'static, RemotePreimageLookupSubscribeItem> {
-            Box::pin(stream::empty())
         }
     }
 

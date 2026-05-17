@@ -11,34 +11,14 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use async_trait::async_trait;
 use futures::executor::ThreadPool;
 use futures::future::BoxFuture;
-use futures::stream::{self, BoxStream};
 use futures::task::SpawnExt;
 use parity_scale_codec::{Decode, Encode};
 use truapi::v01;
-use truapi::versioned::account::{
-    HostAccountConnectionStatusSubscribeItem, HostAccountCreateProofRequest,
-    HostAccountCreateProofResponse, HostAccountGetAliasRequest, HostAccountGetAliasResponse,
-    HostAccountGetRequest, HostAccountGetResponse, HostGetLegacyAccountsRequest,
-    HostGetLegacyAccountsResponse, HostGetUserIdRequest, HostGetUserIdResponse,
-};
-use truapi::versioned::preimage::{
-    RemotePreimageLookupSubscribeItem, RemotePreimageLookupSubscribeRequest,
-};
-use truapi::versioned::signing::{
-    HostSignPayloadRequest, HostSignPayloadResponse, HostSignRawRequest, HostSignRawResponse,
-};
-use truapi::versioned::statement_store::{
-    RemoteStatementStoreCreateProofRequest, RemoteStatementStoreCreateProofResponse,
-    RemoteStatementStoreSubmitRequest, RemoteStatementStoreSubscribeItem,
-    RemoteStatementStoreSubscribeRequest,
-};
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use truapi_platform::{
-    Accounts, ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, Permissions,
-    Preimage, Signing, StatementStore, Storage,
+    ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, Permissions, Storage,
 };
 
 use crate::subscription::Spawner;
@@ -359,7 +339,6 @@ struct CallbackPlatform {
     callbacks: Arc<dyn HostCallbacks>,
 }
 
-#[async_trait]
 impl Navigation for CallbackPlatform {
     async fn navigate_to(&self, url: String) -> Result<(), v01::HostNavigateToError> {
         self.callbacks.on_core_log(
@@ -370,7 +349,6 @@ impl Navigation for CallbackPlatform {
     }
 }
 
-#[async_trait]
 impl Notifications for CallbackPlatform {
     async fn push_notification(
         &self,
@@ -386,7 +364,6 @@ impl Notifications for CallbackPlatform {
     }
 }
 
-#[async_trait]
 impl Permissions for CallbackPlatform {
     async fn device_permission(
         &self,
@@ -419,7 +396,6 @@ impl Permissions for CallbackPlatform {
     }
 }
 
-#[async_trait]
 impl Features for CallbackPlatform {
     async fn feature_supported(
         &self,
@@ -435,7 +411,6 @@ impl Features for CallbackPlatform {
     }
 }
 
-#[async_trait]
 impl Storage for CallbackPlatform {
     async fn read(&self, key: String) -> Result<Option<Vec<u8>>, v01::HostLocalStorageReadError> {
         self.callbacks.local_storage_read(key).map_err(Into::into)
@@ -456,138 +431,20 @@ impl Storage for CallbackPlatform {
     }
 }
 
-// Account/signing/statement-store/preimage/chain capabilities are not wired
-// through the callback surface. The platform trait requires impls, so we
-// stub them as "unavailable" responses or empty streams.
+// Chain capability is not wired through the callback surface. The platform
+// trait requires an impl, so we stub it as an "unavailable" response.
+// Account/signing/statement-store/preimage flows live in the Rust core
+// itself; their `truapi::api::*` trait defaults return `Unsupported`.
 
-#[async_trait]
 impl ChainProvider for CallbackPlatform {
     async fn connect(
         &self,
-        _genesis_hash: truapi_platform::GenesisHash,
+        _genesis_hash: Vec<u8>,
     ) -> Result<Box<dyn JsonRpcConnection>, v01::GenericError> {
         Err(v01::GenericError::GenericError(v01::GenericErr {
             reason: "chain provider not wired through native callbacks".into(),
         }))
     }
-}
-
-#[async_trait]
-impl Accounts for CallbackPlatform {
-    async fn host_account_get(
-        &self,
-        _request: HostAccountGetRequest,
-    ) -> Result<HostAccountGetResponse, v01::HostAccountGetError> {
-        Err(v01::HostAccountGetError::Unknown {
-            reason: unavailable_reason("host_account_get"),
-        })
-    }
-
-    async fn host_account_get_alias(
-        &self,
-        _request: HostAccountGetAliasRequest,
-    ) -> Result<HostAccountGetAliasResponse, v01::HostAccountGetError> {
-        Err(v01::HostAccountGetError::Unknown {
-            reason: unavailable_reason("host_account_get_alias"),
-        })
-    }
-
-    async fn host_account_create_proof(
-        &self,
-        _request: HostAccountCreateProofRequest,
-    ) -> Result<HostAccountCreateProofResponse, v01::HostAccountCreateProofError> {
-        Err(v01::HostAccountCreateProofError::Unknown {
-            reason: unavailable_reason("host_account_create_proof"),
-        })
-    }
-
-    async fn host_get_legacy_accounts(
-        &self,
-        _request: HostGetLegacyAccountsRequest,
-    ) -> Result<HostGetLegacyAccountsResponse, v01::HostAccountGetError> {
-        Ok(HostGetLegacyAccountsResponse::V1(
-            v01::HostGetLegacyAccountsResponse { accounts: vec![] },
-        ))
-    }
-
-    async fn host_account_connection_status_subscribe(
-        &self,
-    ) -> BoxStream<'static, HostAccountConnectionStatusSubscribeItem> {
-        Box::pin(stream::empty())
-    }
-
-    async fn host_get_user_id(
-        &self,
-        _request: HostGetUserIdRequest,
-    ) -> Result<HostGetUserIdResponse, v01::HostGetUserIdError> {
-        Err(v01::HostGetUserIdError::Unknown {
-            reason: unavailable_reason("host_get_user_id"),
-        })
-    }
-}
-
-#[async_trait]
-impl Signing for CallbackPlatform {
-    async fn host_sign_payload(
-        &self,
-        _request: HostSignPayloadRequest,
-    ) -> Result<HostSignPayloadResponse, v01::HostSignPayloadError> {
-        Err(v01::HostSignPayloadError::Unknown {
-            reason: unavailable_reason("host_sign_payload"),
-        })
-    }
-
-    async fn host_sign_raw(
-        &self,
-        _request: HostSignRawRequest,
-    ) -> Result<HostSignRawResponse, v01::HostSignPayloadError> {
-        Err(v01::HostSignPayloadError::Unknown {
-            reason: unavailable_reason("host_sign_raw"),
-        })
-    }
-}
-
-#[async_trait]
-impl StatementStore for CallbackPlatform {
-    async fn remote_statement_store_subscribe(
-        &self,
-        _request: RemoteStatementStoreSubscribeRequest,
-    ) -> BoxStream<'static, RemoteStatementStoreSubscribeItem> {
-        Box::pin(stream::empty())
-    }
-
-    async fn remote_statement_store_submit(
-        &self,
-        _request: RemoteStatementStoreSubmitRequest,
-    ) -> Result<(), v01::GenericError> {
-        Err(v01::GenericError::GenericError(v01::GenericErr {
-            reason: unavailable_reason("remote_statement_store_submit"),
-        }))
-    }
-
-    async fn remote_statement_store_create_proof(
-        &self,
-        _request: RemoteStatementStoreCreateProofRequest,
-    ) -> Result<RemoteStatementStoreCreateProofResponse, v01::RemoteStatementStoreCreateProofError>
-    {
-        Err(v01::RemoteStatementStoreCreateProofError::Unknown {
-            reason: unavailable_reason("remote_statement_store_create_proof"),
-        })
-    }
-}
-
-#[async_trait]
-impl Preimage for CallbackPlatform {
-    async fn remote_preimage_lookup_subscribe(
-        &self,
-        _request: RemotePreimageLookupSubscribeRequest,
-    ) -> BoxStream<'static, RemotePreimageLookupSubscribeItem> {
-        Box::pin(stream::empty())
-    }
-}
-
-fn unavailable_reason(method: &str) -> String {
-    format!("{method} unavailable on native host (callback not wired)")
 }
 
 struct NativeCallbackTransport {
