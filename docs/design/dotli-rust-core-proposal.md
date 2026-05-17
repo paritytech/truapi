@@ -229,43 +229,43 @@ Two cores. The per-tab Rust core handles product-specific work (account, signing
 
 ## Recommendation
 
-**Land Option 1 first; promote to Option 2 if and only if N-tab measurements warrant it.**
+**Land Option 2: the Rust core lives in a SharedWorker scoped to `host.dot.li`.** The protocol iframe in each tab becomes a thin shim that constructs the SharedWorker once per browser, exposes the small set of platform callbacks the worker can't make from its own context (modal UI prompts routed back via postMessage), and relays MessagePorts from the host shell at `dot.li` to the worker.
 
 Reasons:
 
-1. Option 1 is the minimum viable deviation from today's topology. It removes `*.app.dot.li` (the user's primary ask), it puts the Rust core on its existing isolated origin (`host.dot.li`), and it preserves the per-tab core lifecycle that's easy to reason about. It's also what the wire-format unification and chain-provider unification work converges on naturally — those issues already assume a per-tab Rust core in a Web Worker; Option 1 just specifies *which* iframe spawns it.
+1. **Stable origin for persistent state.** `host.dot.li` is the only origin in the topology that doesn't change with every CID update. `truapi-platform::Storage` lives in IndexedDB on that origin so granted permissions, session state, content caches, and chain warm-start data survive product upgrades.
 
-2. Option 2's win is real but only if N is real. Today's typical dot.li session is N=1 to N=2 concurrent products. The smoldot cost of N=2 cores in Rust-WASM is roughly the cost of N=2 in JS today (which we've shipped without complaint). The SharedWorker plumbing buys nothing until N=5+ becomes a documented use case.
+2. **One core per browser, not per tab.** SharedWorker semantics make session state, permission grants, and chain connections implicit cross-tab state. This replaces dotli's current `BroadcastChannel` glue for shared auth, and folds the existing standalone `protocol-shared-worker.ts` smoldot worker into the same process: smoldot is embedded inside `truapi-server`, not a parallel SharedWorker.
 
-3. Option 3 trades architectural cleanliness for the wrong things: it eliminates `host.dot.li` (saving one DNS record and one nginx route — pennies) at the cost of putting smoldot's WebSocket churn on the user-visible origin and tying chain warm-start state to whatever `dot.li`'s storage policy looks like. The current isolation is worth keeping.
+3. **No protocol logic on the user-visible thread.** The host shell at `dot.li` renders the top bar and modals; it never decodes a TrUAPI frame. Heavy crypto + smoldot + libp2p stay off any paint-frame budget.
 
-4. Option 4 is the right answer if and only if Option 1's per-tab smoldot becomes a measured problem. It's sized appropriately for that future. Designing it now is gold-plating.
+4. **Falls back cleanly when SharedWorker isn't available.** Feature-detect (`typeof SharedWorker !== "undefined"`) and downgrade to a per-tab `Worker` (Option 1 behavior). The same `@parity/truapi-host-shared` entry point covers both — only the constructor differs. Safari 16+ ships SharedWorker, so the fallback is only for very old engines.
+
+5. **iOS lifecycle is acceptable.** iOS may suspend a SharedWorker when all tabs are backgrounded. The amortization benefit shrinks but isn't worse than a per-tab Worker (which also dies with its tab on iOS). Cross-tab payoff is still real on desktop and is a no-cost win when the browser keeps the worker alive.
+
+Options 1 (per-tab worker in protocol iframe), 3 (worker on the user-visible `dot.li` origin), and 4 (hybrid) remain in the comparison table for context; Option 2 supersedes them.
 
 ## Migration considerations
 
-To get from today's topology to Option 1:
+To get from today's topology to Option 2:
 
-1. **Ship the Rust core** (`truapi-server` WASM) loaded by the protocol iframe at `host.dot.li`. Today it's loaded by `apps/host` via a Worker spawned from the host page; move that spawn into `apps/protocol`. The Worker is on `host.dot.li`'s origin in either case if we're already importing `@parity/truapi-host-shared/dist/worker-runtime.js?worker` from the protocol iframe.
+1. **Ship `truapi-server` WASM as a SharedWorker entrypoint.** `@parity/truapi-host-shared/dist/worker-runtime.js` is imported by the protocol iframe at `host.dot.li` via `new SharedWorker(...)`. Smoldot is embedded inside the WASM, so dotli's existing `apps/protocol/src/protocol-shared-worker.ts` retires in the same step.
 
-2. **Move content fetching into the Rust core**. Today `apps/sandbox` does P2P/Helia. Port that to Rust (libp2p in Rust-WASM, or HTTP gateway behind a feature flag). Add a `content_fetch(cid) → bytes` method to the protocol surface.
+2. **Migrate auth-storage from localStorage to IndexedDB.** The current `apps/protocol/src/main.ts` shared-auth handler writes `PAPP_${siteId}_${key}` keys to `localStorage`. SharedWorkers have no `localStorage`; persistent state lives in IDB. The protocol-iframe shim runs a one-shot migration: enumerate `localStorage` for `PAPP_*` keys, write them into IDB, then clear localStorage. Cross-tab notifications switch from `BroadcastChannel` to the SharedWorker fan-out.
 
-3. **Add a service worker on `host.dot.li`** that intercepts `/__product/<cid>/*` and serves from the core's content cache. Register at protocol-iframe boot.
+3. **Move content fetching into the Rust core.** Today `apps/sandbox` does P2P/Helia in the product iframe. Port that to Rust (libp2p-in-WASM, or HTTP gateway behind a feature flag). Add `content_fetch(cid) → bytes` to the protocol surface.
 
-4. **Switch the product iframe to opaque origin**. Use `sandbox="allow-scripts allow-forms allow-pointer-lock allow-popups"` (note: no `allow-same-origin`). Verify products handle the storage no-op correctly — they should already, in the TrUAPI model.
+4. **Add a service worker on `host.dot.li`** that intercepts `/__product/<cid>/*` and serves from the core's content cache. Register at protocol-iframe boot.
 
-5. **Render the product iframe inside the protocol iframe**. The protocol iframe goes from `display: none` to full-viewport; the host page's topbar overlays it (or wraps via flex layout).
+5. **Switch the product iframe to opaque origin.** Use `sandbox="allow-scripts allow-forms allow-pointer-lock allow-popups"` (no `allow-same-origin`). Verify products handle the storage no-op correctly — they should already, in the TrUAPI model.
 
-6. **Retire `apps/sandbox` and `*.app.dot.li`**. Drop the vite build, the nginx wildcard route, and the DNS record.
+6. **Render the product iframe inside the protocol iframe.** The protocol iframe goes from `display: none` to full-viewport; the host page's topbar overlays it (or wraps via flex layout).
 
-7. **DOTNS resolution moves into the core** (also covered by the layer-2 ownership work).
+7. **Retire `apps/sandbox` and `*.app.dot.li`.** Drop the vite build, the nginx wildcard route, and the DNS record.
 
-The order matters: 1, 2, 3, 4 can land independently and behind feature flags. 5, 6 require the previous steps to be working in production. 7 is parallel to 1.
+8. **DOTNS resolution moves into the core** (also covered by the layer-2 ownership work).
 
-To get from Option 1 to Option 2 later:
-
-1. Wrap the per-tab Worker in a SharedWorker registration; feature-detect (`typeof SharedWorker !== "undefined"`) and fall back to a per-tab Worker if missing — the API is broadly available now (Safari iOS 16+ included), so this fallback is mainly for very old browsers.
-2. The per-iframe protocol iframe becomes a thin port-relay.
-3. The Rust core's storage layer needs to handle multiple concurrent product label namespaces; today's per-tab core already needs this, no change.
+Order: steps 1 and 2 are blocking — without IDB-backed storage and the SharedWorker entrypoint, the rest can't migrate. 3, 4 can land independently and behind feature flags. 5, 6 require previous steps in production. 7, 8 are parallel to 1.
 
 ## What native (iOS / Android) keeps in mind
 

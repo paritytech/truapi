@@ -35,27 +35,72 @@ The point of these diagrams: justify what is **in scope** for the dotli migratio
 
                        AFTER (this refactor)
    ┌─────────────────────────────────────────────────────────────┐
-   │ Product iframe (sandbox)                                    │
+   │ Product iframe ── origin: <cid>.app.dot.li ── (per-CID)     │
    │   @parity/truapi (codegen) ─── product client               │
    └──────────────────────┬──────────────────────────────────────┘
-                          │  MessageChannel  (TrUAPI wire)
+                          │  MessageChannel (TrUAPI wire bytes)
+                          │  port handed off via the host shell
+                          │  during the `truapi-init` handshake
                           ▼
    ┌─────────────────────────────────────────────────────────────┐
-   │ dot.li main thread        ┌───────────── Web Worker ──────┐ │
-   │                           │                               │ │
-   │  bridge.ts ◄── port ────► │  truapi-server (Rust → WASM)  │ │
-   │                           │  ──────────────────────────── │ │
-   │  host-callbacks/          │  routing • codecs • subs      │ │
-   │  ┌─────────────────┐ ◄──► │  permissions service          │ │
-   │  │ thin syscall    │      │  statement mapping            │ │
-   │  │ shims (JS)      │      │  dotns parsing • rate limit   │ │
-   │  └────────┬────────┘      │                               │ │
-   │           ▼               └───────────────────────────────┘ │
-   │   OS primitives                                             │
+   │ Host shell ── origin: dot.li ── (user-visible UI)           │
+   │ - top bar, modal prompts                                    │
+   │ - creates the protocol iframe + product iframe              │
+   │ - relays MessagePorts between them (no protocol logic)      │
+   └──────────────────────┬──────────────────────────────────────┘
+                          │  MessageChannel port (transferred)
+                          ▼
+   ┌─────────────────────────────────────────────────────────────┐
+   │ Protocol iframe ── origin: host.dot.li ── (STABLE origin)   │
+   │ (hidden iframe embedded by every dot.li tab)                │
+   │                                                             │
+   │  thin JS shim:                                              │
+   │  - constructs the SharedWorker below                        │
+   │  - exposes platform callbacks the WASM core can't make      │
+   │    directly from a worker (modal UI prompts are routed      │
+   │    back through the host shell at dot.li)                   │
+   │  - migrates legacy localStorage sessions into IndexedDB     │
+   │                                                             │
+   │           ┌────────── SharedWorker (host.dot.li) ─────────┐ │
+   │           │                                               │ │
+   │           │  truapi-server (Rust → WASM)                  │ │
+   │           │  ──────────────────────────                   │ │
+   │           │  routing • SCALE codecs • subscriptions       │ │
+   │           │  permissions service                          │ │
+   │           │  statement mapping                            │ │
+   │           │  dotns parsing • rate limit                   │ │
+   │           │  embedded smoldot ── chain provider           │ │
+   │           │  session state                                │ │
+   │           │                                               │ │
+   │           │  storage: IndexedDB on host.dot.li            │ │
+   │           │  (stable across product CID changes; shared   │ │
+   │           │   across every tab via SharedWorker semantics)│ │
+   │           └───────────────────────────────────────────────┘ │
    └─────────────────────────────────────────────────────────────┘
 
    Same logic, written once in Rust, shared across iOS / Android / web.
 ```
+
+### Origin model — why host.dot.li
+
+Production nginx routes (see `dotli/nginx/nginx.polkadot`):
+
+| Hostname                  | Build       | Role                                                              |
+|---------------------------|-------------|-------------------------------------------------------------------|
+| `dot.li` and `*.dot.li`   | host        | Main shell — user-visible UI, top bar, dApp loader               |
+| `<cid>.app.dot.li`        | sandbox     | Product iframes — origin changes every CID update                |
+| `host.dot.li`             | protocol    | Stable-origin protocol iframe — hidden, embedded by every tab    |
+
+Product iframes can't host the protocol core: their origin changes with every app CID, so any `localStorage` / IndexedDB / OPFS state would be lost on every update. The host shell at `dot.li` is stable but cohabits with user-facing UI; running heavy crypto + smoldot there would block paint frames.
+
+The protocol iframe at `host.dot.li` has neither problem: it's a stable origin and it has no UI, so a same-origin `SharedWorker` constructed from it runs the WASM core off the main thread while keeping `truapi`'s persistent state on a stable origin.
+
+`SharedWorker` semantics give two further wins:
+
+- **One core per browser, not per tab.** Session state, permission grants, and chain connections are implicit cross-tab state. Replaces the existing `BroadcastChannel` glue for shared auth.
+- **Embedded smoldot.** Since the SharedWorker is already the single per-origin core, smoldot lives inside it. Dotli's separate `protocol-shared-worker.ts` smoldot SharedWorker collapses into this one.
+
+`SharedWorker` does not expose `localStorage` (main-thread only). The `truapi-platform::Storage` impl persists to **IndexedDB** on the `host.dot.li` origin. The thin JS shim in the protocol iframe runs a one-time migration of the existing `PAPP_${siteId}_*` localStorage keys into IDB so sessions survive the cutover.
 
 ---
 
@@ -78,9 +123,15 @@ The point of these diagrams: justify what is **in scope** for the dotli migratio
 
    ──── DEPS ADDED ────
 
-   @parity/truapi-host-shared      worker side: runs Rust WASM core
-   @parity/truapi-host-web         main side : MessageChannel bridge
-   @parity/truapi           types from codegen
+   @parity/truapi-host-shared      SharedWorker entrypoint that imports
+                                   the WASM core (smoldot embedded)
+   @parity/truapi-host-web         protocol-iframe shim: constructs the
+                                   SharedWorker, exposes the platform
+                                   callbacks the worker can't make from
+                                   its own context (modal UI, etc.),
+                                   relays MessagePort handoffs from the
+                                   host shell at dot.li
+   @parity/truapi                  types from codegen
 
    ──── KEPT ──────────
 
