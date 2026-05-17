@@ -28,6 +28,7 @@ hex = "0.4"
 tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "macros", "io-util"], optional = true }
 tokio-tungstenite = { version = "0.21", default-features = false, features = ["handshake"], optional = true }
 rand = { version = "0.8", optional = true }
+futures = { version = "0.3", features = ["thread-pool"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = "0.3"

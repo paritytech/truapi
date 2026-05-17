@@ -13,7 +13,7 @@ use std::sync::atomic::AtomicU8;
 use futures::future::LocalBoxFuture;
 
 use crate::frame::{FrameKind, Payload, ProtocolMessage, compose_action};
-use crate::subscription::{SubscriptionManager, SubscriptionStream};
+use crate::subscription::{Spawner, SubscriptionManager, SubscriptionStream};
 use crate::transport::Transport;
 
 /// Latest wire-codec version this server implements. Used as the default
@@ -55,18 +55,19 @@ pub struct Dispatcher {
 
 impl Dispatcher {
     /// Construct a dispatcher with a fresh negotiated-version slot
-    /// (defaults to [`LATEST_PROTOCOL_VERSION`]).
-    pub fn new() -> Self {
-        Self::with_negotiated_version(Arc::new(AtomicU8::new(LATEST_PROTOCOL_VERSION)))
+    /// (defaults to [`LATEST_PROTOCOL_VERSION`]). Subscriptions are driven
+    /// on `spawner`.
+    pub fn new(spawner: Spawner) -> Self {
+        Self::with_negotiated_version(spawner, Arc::new(AtomicU8::new(LATEST_PROTOCOL_VERSION)))
     }
 
     /// Construct a dispatcher that shares its negotiated-version slot
     /// with another component (typically the host's handshake handler).
-    pub fn with_negotiated_version(negotiated_version: Arc<AtomicU8>) -> Self {
+    pub fn with_negotiated_version(spawner: Spawner, negotiated_version: Arc<AtomicU8>) -> Self {
         Self {
             request_handlers: HashMap::new(),
             subscription_handlers: HashMap::new(),
-            subscriptions: SubscriptionManager::new(),
+            subscriptions: SubscriptionManager::new(spawner),
             negotiated_version,
         }
     }
@@ -179,12 +180,6 @@ impl Dispatcher {
     }
 }
 
-impl Default for Dispatcher {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -232,7 +227,7 @@ mod tests {
     /// drop rather than panicking or sending a bogus response.
     #[test]
     fn dispatch_unknown_method_silently_drops() {
-        let dispatcher = Dispatcher::new();
+        let dispatcher = Dispatcher::new(crate::subscription::thread_per_subscription_spawner());
         let transport = Arc::new(RecordingTransport::default());
         let transport_dyn: Arc<dyn Transport> = transport.clone();
         let frame = make_frame(
@@ -251,7 +246,8 @@ mod tests {
     /// discriminant byte (the Result wire shape).
     #[test]
     fn dispatch_request_handler_error_emits_response_with_err_discriminant() {
-        let mut dispatcher = Dispatcher::new();
+        let mut dispatcher =
+            Dispatcher::new(crate::subscription::thread_per_subscription_spawner());
         dispatcher.on_request("fake_method", |_request_id, _bytes| {
             Box::pin(async move {
                 let err: CallError<()> = CallError::Denied;
@@ -286,7 +282,8 @@ mod tests {
     /// returns the previous handler, so callers can detect collisions.
     #[test]
     fn register_request_twice_returns_previous_handler() {
-        let mut dispatcher = Dispatcher::new();
+        let mut dispatcher =
+            Dispatcher::new(crate::subscription::thread_per_subscription_spawner());
         let prev = dispatcher.on_request("fake_method", |_request_id, _bytes| {
             Box::pin(async move { Ok(Vec::new()) })
         });

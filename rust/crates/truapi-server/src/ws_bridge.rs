@@ -572,7 +572,10 @@ mod tests {
     /// the bridge echoes the SCALE-encoded `feature_supported` response.
     #[test]
     fn round_trip_feature_supported_through_bridge() {
-        let core = Arc::new(TrUApiCore::from_platform(Arc::new(StubPlatform)));
+        let core = Arc::new(TrUApiCore::from_platform(
+            Arc::new(StubPlatform),
+            crate::subscription::thread_per_subscription_spawner(),
+        ));
         let logger: BridgeLogger = Arc::new(|_, _| {});
         let (mut bridge, endpoint) = WsBridge::start(0, core, logger).expect("start bridge");
         let url = format!("ws://127.0.0.1:{}/?t={}", endpoint.port, endpoint.token);

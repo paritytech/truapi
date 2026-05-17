@@ -1,13 +1,15 @@
 //! Subscription lifecycle management.
 //!
 //! Tracks active subscriptions (start/receive/stop/interrupt) and handles
-//! cleanup when either side terminates.
+//! cleanup when either side terminates. Each registered subscription drives
+//! its stream on a caller-supplied [`Spawner`]; the manager itself never
+//! creates threads or runtimes.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use futures::StreamExt;
-use futures::future::{Either, select};
+use futures::future::{BoxFuture, Either, select};
 use futures::stream::BoxStream;
 use parity_scale_codec::Encode;
 
@@ -16,13 +18,23 @@ use crate::transport::Transport;
 
 type StopFn = Box<dyn FnOnce() + Send>;
 
-fn spawn_subscription<F>(future: F)
-where
-    F: std::future::Future<Output = ()> + Send + 'static,
-{
-    std::thread::spawn(move || {
-        futures::executor::block_on(future);
-    });
+/// Spawns a subscription-driving future onto the caller's runtime. The
+/// future is `Send` because the inner [`SubscriptionStream`] is a
+/// `BoxStream<'static, _>` and every captured value the manager threads
+/// through it is also `Send`. Each platform bridge supplies an
+/// implementation that hands the future to the runtime driving its
+/// transport (tokio `LocalSet`, `wasm_bindgen_futures::spawn_local`, ...).
+pub type Spawner = Arc<dyn Fn(BoxFuture<'static, ()>) + Send + Sync>;
+
+/// Convenience spawner for tests and embedders that don't yet wire a
+/// real runtime: starts a fresh OS thread per subscription and drives the
+/// future with `futures::executor::block_on`. Not available on wasm32 since
+/// the platform has no threads.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn thread_per_subscription_spawner() -> Spawner {
+    Arc::new(|fut: BoxFuture<'static, ()>| {
+        std::thread::spawn(move || futures::executor::block_on(fut));
+    })
 }
 
 /// One yielded value of a subscription stream after SCALE-encoding.
@@ -54,13 +66,15 @@ where
 /// Manages active subscriptions on the server side.
 pub struct SubscriptionManager {
     active: Arc<Mutex<HashMap<String, StopFn>>>,
+    spawner: Spawner,
 }
 
 impl SubscriptionManager {
-    /// Create an empty manager.
-    pub fn new() -> Self {
+    /// Create an empty manager driven by `spawner`.
+    pub fn new(spawner: Spawner) -> Self {
         Self {
             active: Arc::new(Mutex::new(HashMap::new())),
+            spawner,
         }
     }
 
@@ -95,7 +109,7 @@ impl SubscriptionManager {
 
         let active = self.active.clone();
 
-        spawn_subscription(async move {
+        let future: BoxFuture<'static, ()> = Box::pin(async move {
             let completed = {
                 let mut cancel_rx = cancel_rx;
                 loop {
@@ -145,6 +159,8 @@ impl SubscriptionManager {
                 });
             }
         });
+
+        (self.spawner)(future);
     }
 
     /// Handle a `_stop` frame from the product side.
@@ -170,16 +186,11 @@ impl SubscriptionManager {
     }
 }
 
-impl Default for SubscriptionManager {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use futures::stream;
+    use std::sync::atomic::{AtomicUsize, Ordering};
 
     /// Transport that records every frame and notifies waiters when it
     /// reaches a target count. Used to wait for the subscription's
@@ -243,7 +254,7 @@ mod tests {
     fn register_then_stop_emits_no_extra_frames() {
         let transport_typed = Arc::new(RecordingTransport::new());
         let transport_dyn: Arc<dyn Transport> = transport_typed.clone();
-        let manager = SubscriptionManager::new();
+        let manager = SubscriptionManager::new(thread_per_subscription_spawner());
         let slow_stream: SubscriptionStream = Box::pin(stream::pending());
         manager.register("p:1".to_string(), "demo_method", slow_stream, transport_dyn);
         manager.handle_stop("p:1");
@@ -261,7 +272,7 @@ mod tests {
     fn register_completion_emits_interrupt() {
         let transport_typed = Arc::new(RecordingTransport::new());
         let transport_dyn: Arc<dyn Transport> = transport_typed.clone();
-        let manager = SubscriptionManager::new();
+        let manager = SubscriptionManager::new(thread_per_subscription_spawner());
         let items = dummy_stream(vec![vec![0xaa], vec![0xbb]]);
         manager.register("p:1".to_string(), "demo_method", items, transport_dyn);
         let observed = transport_typed.wait_for(3, std::time::Duration::from_secs(2));
@@ -282,7 +293,7 @@ mod tests {
     fn double_stop_is_idempotent() {
         let transport_typed = Arc::new(RecordingTransport::new());
         let transport_dyn: Arc<dyn Transport> = transport_typed.clone();
-        let manager = SubscriptionManager::new();
+        let manager = SubscriptionManager::new(thread_per_subscription_spawner());
         let slow_stream: SubscriptionStream = Box::pin(stream::pending());
         manager.register("p:1".to_string(), "demo_method", slow_stream, transport_dyn);
         manager.handle_stop("p:1");
@@ -292,6 +303,34 @@ mod tests {
         assert!(
             transport_typed.sent().is_empty(),
             "double-stop must not emit any frame"
+        );
+    }
+
+    /// The manager must drive subscriptions through the injected spawner,
+    /// not by reaching out to `std::thread::spawn` itself. The counter
+    /// inside the test spawner is the proof.
+    #[test]
+    fn subscription_uses_provided_spawner_not_native_thread() {
+        let invocations = Arc::new(AtomicUsize::new(0));
+        let invocations_for_spawner = invocations.clone();
+        let spawner: Spawner = Arc::new(move |fut: BoxFuture<'static, ()>| {
+            invocations_for_spawner.fetch_add(1, Ordering::SeqCst);
+            std::thread::spawn(move || futures::executor::block_on(fut));
+        });
+
+        let transport_typed = Arc::new(RecordingTransport::new());
+        let transport_dyn: Arc<dyn Transport> = transport_typed.clone();
+        let manager = SubscriptionManager::new(spawner);
+        let items = dummy_stream(vec![vec![0xcc]]);
+        manager.register("p:1".to_string(), "demo_method", items, transport_dyn);
+
+        // Wait for the worker future to drain to completion so we know
+        // the spawner closure ran on this path.
+        let _ = transport_typed.wait_for(2, std::time::Duration::from_secs(2));
+        assert_eq!(
+            invocations.load(Ordering::SeqCst),
+            1,
+            "spawner must be invoked exactly once per register",
         );
     }
 }

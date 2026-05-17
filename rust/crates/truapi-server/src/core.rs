@@ -21,6 +21,7 @@ use truapi_platform::Platform;
 use crate::generated::dispatcher;
 use crate::host_logic::session::SessionState;
 use crate::runtime::PlatformRuntimeHost;
+use crate::subscription::Spawner;
 use crate::{Dispatcher, ProtocolMessage, Transport};
 
 /// Top-level core. Owns the dispatcher and, on the platform path, the shared
@@ -36,11 +37,12 @@ impl TrUApiCore {
     /// Build a core around a direct `TrUApi` implementation. The session
     /// state holder is unused on this path (no platform pushes updates),
     /// but is created anyway so the public API surface stays consistent.
-    pub fn new<P>(host: Arc<P>) -> Self
+    /// Subscription work runs on `spawner`.
+    pub fn new<P>(host: Arc<P>, spawner: Spawner) -> Self
     where
         P: TrUApi + 'static,
     {
-        let mut dispatcher = Dispatcher::new();
+        let mut dispatcher = Dispatcher::new(spawner);
         dispatcher::register(&mut dispatcher, host);
         Self {
             dispatcher,
@@ -50,13 +52,14 @@ impl TrUApiCore {
 
     /// Build a core around a [`Platform`] implementation. Wraps the platform
     /// in a [`PlatformRuntimeHost`] before registering with the dispatcher.
-    pub fn from_platform<P>(platform: Arc<P>) -> Self
+    /// Subscription work runs on `spawner`.
+    pub fn from_platform<P>(platform: Arc<P>, spawner: Spawner) -> Self
     where
         P: Platform + 'static,
     {
         let runtime = Arc::new(PlatformRuntimeHost::new(platform));
         let session_state = runtime.session_state();
-        let mut dispatcher = Dispatcher::new();
+        let mut dispatcher = Dispatcher::new(spawner);
         dispatcher::register(&mut dispatcher, runtime);
         Self {
             dispatcher,
@@ -340,7 +343,10 @@ mod tests {
 
     #[test]
     fn from_platform_dispatches_feature_supported() {
-        let core = TrUApiCore::from_platform(Arc::new(StubPlatform));
+        let core = TrUApiCore::from_platform(
+            Arc::new(StubPlatform),
+            crate::subscription::thread_per_subscription_spawner(),
+        );
         let request = HostFeatureSupportedRequest::V1(v01::HostFeatureSupportedRequest::Chain {
             genesis_hash: vec![0u8; 32],
         });

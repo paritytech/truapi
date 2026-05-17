@@ -12,7 +12,10 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
+use futures::executor::ThreadPool;
+use futures::future::BoxFuture;
 use futures::stream::{self, BoxStream};
+use futures::task::SpawnExt;
 use parity_scale_codec::{Decode, Encode};
 use truapi::v01;
 use truapi::versioned::account::{
@@ -38,6 +41,7 @@ use truapi_platform::{
     Preimage, Signing, StatementStore, Storage,
 };
 
+use crate::subscription::Spawner;
 #[cfg(feature = "ws-bridge")]
 use crate::ws_bridge::{BridgeLogger, WsBridge, WsBridgeEndpoint, WsBridgeStartError};
 use crate::{Payload, ProtocolMessage, TrUApiCore, Transport};
@@ -169,6 +173,11 @@ impl NativeTrUApiCore {
     /// over its [`HostCallbacks`] trait object; the core wraps it in a
     /// [`CallbackPlatform`] and feeds the result into
     /// [`TrUApiCore::from_platform`].
+    ///
+    /// Subscriptions registered through this core run on a shared
+    /// `futures::executor::ThreadPool`. The pool sticks around for the
+    /// lifetime of the core; new subscriptions never spawn a fresh OS
+    /// thread each.
     #[uniffi::constructor]
     pub fn new(callbacks: Box<dyn HostCallbacks>) -> Arc<Self> {
         let callbacks: Arc<dyn HostCallbacks> = callbacks.into();
@@ -180,8 +189,9 @@ impl NativeTrUApiCore {
         let platform = Arc::new(CallbackPlatform {
             callbacks: callbacks.clone(),
         });
+        let spawner = native_thread_pool_spawner(&callbacks);
         Arc::new(Self {
-            core: Arc::new(TrUApiCore::from_platform(platform)),
+            core: Arc::new(TrUApiCore::from_platform(platform, spawner)),
             callbacks,
             #[cfg(feature = "ws-bridge")]
             bridge: std::sync::Mutex::new(None),
@@ -314,6 +324,33 @@ impl NativeTrUApiCore {
     pub fn stop_ws_bridge(&self) {
         if let Some(mut bridge) = self.bridge.lock().unwrap().take() {
             bridge.stop();
+        }
+    }
+}
+
+/// Build a [`Spawner`] backed by a shared `futures::executor::ThreadPool`.
+/// The pool is sized at the default (one worker per logical CPU). Falls
+/// back to a thread-per-subscription spawner if the pool fails to build,
+/// which only ever happens if the host has no available threads at all.
+fn native_thread_pool_spawner(callbacks: &Arc<dyn HostCallbacks>) -> Spawner {
+    match ThreadPool::new() {
+        Ok(pool) => {
+            let callbacks = callbacks.clone();
+            Arc::new(move |fut: BoxFuture<'static, ()>| {
+                if let Err(err) = pool.spawn(fut) {
+                    callbacks.on_core_log(
+                        "truapi.native.core.subscription.spawn_failed".to_string(),
+                        format!("{err}"),
+                    );
+                }
+            })
+        }
+        Err(err) => {
+            callbacks.on_core_log(
+                "truapi.native.core.subscription.pool_unavailable".to_string(),
+                format!("{err}; falling back to thread-per-subscription"),
+            );
+            crate::subscription::thread_per_subscription_spawner()
         }
     }
 }

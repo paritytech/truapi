@@ -47,6 +47,7 @@ use wasm_bindgen::prelude::*;
 
 use crate::TrUApiCore;
 use crate::frame::ProtocolMessage;
+use crate::subscription::Spawner;
 use crate::transport::Transport;
 
 /// Bundle of JS-side callbacks the bridge invokes. Names map to camelCase
@@ -714,7 +715,10 @@ impl WasmTrUApiCore {
         });
         let dispose_fn = SendWrapper::new(bridge.dispose.clone());
         let platform = Arc::new(WasmPlatform::new(bridge));
-        let core = TrUApiCore::from_platform(platform);
+        let spawner: Spawner = Arc::new(|fut| {
+            wasm_bindgen_futures::spawn_local(fut);
+        });
+        let core = TrUApiCore::from_platform(platform, spawner);
         Ok(Self {
             inner: Rc::new(WasmCoreInner {
                 core,

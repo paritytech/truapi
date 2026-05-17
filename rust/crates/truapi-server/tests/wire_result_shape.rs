@@ -234,7 +234,10 @@ fn dispatch(core: &TrUApiCore, frame: ProtocolMessage) -> ProtocolMessage {
 
 #[test]
 fn feature_supported_ok_response_uses_ok_discriminant() {
-    let core = TrUApiCore::from_platform(Arc::new(StubPlatform));
+    let core = TrUApiCore::from_platform(
+        Arc::new(StubPlatform),
+        truapi_server::subscription::thread_per_subscription_spawner(),
+    );
     let request = HostFeatureSupportedRequest::V1(v01::HostFeatureSupportedRequest::Chain {
         genesis_hash: vec![0u8; 32],
     });
@@ -263,7 +266,10 @@ fn feature_supported_ok_response_uses_ok_discriminant() {
 
 #[test]
 fn local_storage_read_err_response_uses_err_discriminant() {
-    let core = TrUApiCore::from_platform(Arc::new(StubPlatform));
+    let core = TrUApiCore::from_platform(
+        Arc::new(StubPlatform),
+        truapi_server::subscription::thread_per_subscription_spawner(),
+    );
     let request = truapi::versioned::local_storage::HostLocalStorageReadRequest::V1(
         v01::HostLocalStorageReadRequest {
             key: "missing".to_string(),
