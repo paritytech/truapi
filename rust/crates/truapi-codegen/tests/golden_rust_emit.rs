@@ -15,8 +15,16 @@ use std::process::Command;
 /// Panics with a clear message if nightly is unavailable so CI cannot
 /// pass vacuously.
 fn produce_rustdoc_json(workspace_root: &Path, target_dir: &Path) -> PathBuf {
+    produce_rustdoc_json_for_package(workspace_root, target_dir, "truapi")
+}
+
+fn produce_rustdoc_json_for_package(
+    workspace_root: &Path,
+    target_dir: &Path,
+    package: &str,
+) -> PathBuf {
     let output = Command::new("cargo")
-        .args(["+nightly", "rustdoc", "-p", "truapi", "--target-dir"])
+        .args(["+nightly", "rustdoc", "-p", package, "--target-dir"])
         .arg(target_dir)
         .args(["--", "-Z", "unstable-options", "--output-format", "json"])
         .current_dir(workspace_root)
@@ -27,12 +35,13 @@ fn produce_rustdoc_json(workspace_root: &Path, target_dir: &Path) -> PathBuf {
         );
     assert!(
         output.status.success(),
-        "`cargo +nightly rustdoc` failed (status {}); nightly toolchain is required.\nstdout:\n{}\nstderr:\n{}",
+        "`cargo +nightly rustdoc -p {package}` failed (status {}); nightly toolchain is required.\nstdout:\n{}\nstderr:\n{}",
         output.status,
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr),
     );
-    let json = target_dir.join("doc/truapi.json");
+    let json_name = package.replace('-', "_");
+    let json = target_dir.join(format!("doc/{json_name}.json"));
     assert!(
         json.exists(),
         "rustdoc JSON not found at {} after successful rustdoc invocation",
@@ -136,4 +145,52 @@ fn binary_emission_is_idempotent() {
     let (b_disp, b_wire) = run_once();
     assert_eq!(a_disp, b_disp, "dispatcher.rs differs between runs");
     assert_eq!(a_wire, b_wire, "wire_table.rs differs between runs");
+}
+
+#[test]
+fn golden_host_callbacks_ts() {
+    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let workspace = workspace_root();
+
+    let tempdir = tempfile::tempdir().expect("tempdir");
+    let truapi_json = produce_rustdoc_json(&workspace, &tempdir.path().join("rustdoc-target"));
+    let platform_json = produce_rustdoc_json_for_package(
+        &workspace,
+        &tempdir.path().join("rustdoc-platform-target"),
+        "truapi-platform",
+    );
+
+    let out = Command::new(env!("CARGO_BIN_EXE_truapi-codegen"))
+        .args([
+            "--input",
+            truapi_json.to_str().unwrap(),
+            "--output",
+            tempdir.path().join("ts").to_str().unwrap(),
+            "--platform-input",
+            platform_json.to_str().unwrap(),
+            "--platform-ts-output",
+            tempdir.path().join("platform").to_str().unwrap(),
+        ])
+        .output()
+        .expect("run truapi-codegen");
+    assert!(
+        out.status.success(),
+        "codegen failed: stdout=\n{}\nstderr=\n{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr),
+    );
+
+    let golden_path = manifest_dir.join("tests/golden/host-callbacks.ts");
+    let golden =
+        fs::read_to_string(&golden_path).unwrap_or_else(|e| panic!("read host-callbacks.ts: {e}"));
+    let actual = fs::read_to_string(tempdir.path().join("platform/host-callbacks.ts"))
+        .expect("read generated host-callbacks.ts");
+    if golden != actual {
+        let dump = manifest_dir.join("tests/golden/host-callbacks.ts.actual");
+        let _ = fs::write(&dump, &actual);
+        panic!(
+            "golden mismatch for host-callbacks.ts; wrote actual to {}",
+            dump.display()
+        );
+    }
 }

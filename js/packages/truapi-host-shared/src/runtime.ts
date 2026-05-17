@@ -1,5 +1,25 @@
 import type { Provider } from "@parity/truapi";
 
+// The typed capability interfaces below come straight from the
+// `truapi-platform` Rust crate via `truapi-codegen --platform-ts-output`.
+// They are the host-author-facing surface: each method takes/returns
+// typed wrappers (`HostDevicePermissionRequest`, etc.) rather than raw
+// SCALE bytes. The `WasmRawCallbacks` interface declared further down
+// is the byte-oriented wire surface the WASM core invokes; the SCALE
+// adapter that sits between the typed `HostCallbacks` and the raw
+// callbacks is not yet in this package, but consumers can already build
+// against the typed surface.
+export type {
+  ChainProvider,
+  Features,
+  HostCallbacks,
+  JsonRpcConnection as PlatformJsonRpcConnection,
+  Navigation,
+  Notifications,
+  Permissions,
+  Storage,
+} from "./generated/host-callbacks.js";
+
 /**
  * Async-or-sync return. Synchronous hosts (e.g. the dotli main-thread
  * shell hitting localStorage) can return a plain value; the WASM bridge
@@ -32,6 +52,13 @@ export interface ChainConnection {
  * callbacks return `Promise<Uint8Array>` (or `Promise<bool>` for the
  * permission prompts); subscription callbacks accept a `sendItem` sink
  * and return an optional `dispose` function.
+ *
+ * This interface is the SCALE-byte-level wire surface between the WASM
+ * core and JS; the typed `HostCallbacks` interface above is the
+ * host-author surface. They overlap on the capability methods covered by
+ * `truapi-platform` but `WasmRawCallbacks` additionally carries
+ * account / signing / statement-store callbacks that live in the Rust
+ * core, not in the platform trait set.
  */
 export interface WasmRawCallbacks {
   navigateTo(url: string): Promise<void>;

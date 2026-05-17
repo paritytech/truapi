@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
-# Regenerate js/packages/truapi/src/generated/* from rust/crates/truapi.
+# Regenerate js/packages/truapi/src/generated/* from rust/crates/truapi
+# plus js/packages/truapi-host-shared/src/generated/* from rust/crates/truapi-platform.
 #
 # Pipeline:
 #   1. cargo +nightly rustdoc -p truapi --output-format json -> target/doc/truapi.json
-#   2. cargo run -p truapi-codegen -- --input target/doc/truapi.json
+#   2. cargo +nightly rustdoc -p truapi-platform --output-format json -> target/doc/truapi_platform.json
+#   3. cargo run -p truapi-codegen -- --input target/doc/truapi.json
 #                                     --output js/packages/truapi/src/generated
 #                                     --playground-output js/packages/truapi/src/playground
 #                                     --client-examples-output js/packages/truapi/test/generated/examples
 #                                     --host-output js/packages/truapi-host/src/generated
+#                                     --platform-input target/doc/truapi_platform.json
+#                                     --platform-ts-output js/packages/truapi-host-shared/src/generated
 #                                     --codec-version 1
 #
 # The client surface defaults to the latest wire version any versioned
@@ -22,19 +26,23 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 cargo +nightly rustdoc -p truapi -- -Z unstable-options --output-format json
+cargo +nightly rustdoc -p truapi-platform -- -Z unstable-options --output-format json
 cargo run -p truapi-codegen -- \
   --input target/doc/truapi.json \
   --output js/packages/truapi/src/generated \
   --playground-output js/packages/truapi/src/playground \
   --client-examples-output js/packages/truapi/test/generated/examples \
   --host-output js/packages/truapi-host/src/generated \
+  --platform-input target/doc/truapi_platform.json \
+  --platform-ts-output js/packages/truapi-host-shared/src/generated \
   --codec-version 1
 
 npm exec --yes -- prettier --write \
   "js/packages/truapi/src/generated/**/*.ts" \
   "js/packages/truapi/src/playground/**/*.ts" \
   "js/packages/truapi/test/generated/examples/**/*.ts" \
-  "js/packages/truapi-host/src/generated/**/*.ts"
+  "js/packages/truapi-host/src/generated/**/*.ts" \
+  "js/packages/truapi-host-shared/src/generated/**/*.ts"
 
 # Rebuild dist/ so downstream consumers (in particular the playground,
 # which picks up @parity/truapi via yarn 1.x file: snapshot) see the
@@ -54,3 +62,4 @@ echo "Generated client at js/packages/truapi/src/generated/"
 echo "Generated playground metadata at js/packages/truapi/src/playground/codegen/"
 echo "Generated client examples at js/packages/truapi/test/generated/examples/"
 echo "Generated host package at js/packages/truapi-host/src/generated/"
+echo "Generated host-callbacks at js/packages/truapi-host-shared/src/generated/"

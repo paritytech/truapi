@@ -12,9 +12,11 @@ use indoc::{formatdoc, writedoc};
 use crate::rustdoc::*;
 
 mod examples;
+mod host_callbacks;
 mod playground;
 
 pub use examples::generate_client_examples;
+pub use host_callbacks::generate as generate_host_callbacks;
 pub use playground::generate_playground_services;
 
 #[derive(Default)]

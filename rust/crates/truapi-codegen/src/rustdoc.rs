@@ -213,7 +213,7 @@ struct ItemCandidate {
 }
 
 #[derive(Debug, Default)]
-struct NameContext {
+pub(crate) struct NameContext {
     by_item_id: HashMap<String, String>,
     by_path: HashMap<String, String>,
 }
@@ -815,7 +815,7 @@ fn extract_generic_arg(
     resolve_type(&generic, names)
 }
 
-fn resolve_type(ty: &serde_json::Value, names: &NameContext) -> Result<TypeRef> {
+pub(crate) fn resolve_type(ty: &serde_json::Value, names: &NameContext) -> Result<TypeRef> {
     if let Some(name) = ty.get("generic").and_then(|value| value.as_str()) {
         return Ok(TypeRef::Generic(name.to_string()));
     }
@@ -1238,7 +1238,7 @@ fn value_id(value: &serde_json::Value) -> Result<String> {
     bail!("Expected rustdoc item id, got {}", summarize_json(value))
 }
 
-fn summarize_json(value: &serde_json::Value) -> String {
+pub(crate) fn summarize_json(value: &serde_json::Value) -> String {
     const LIMIT: usize = 200;
 
     let mut text =
