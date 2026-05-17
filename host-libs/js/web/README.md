@@ -1,0 +1,49 @@
+# @parity/host-web
+
+Browser TrUAPI host wrapper:
+
+- `createIframeHost` — embed a product iframe, transfer a `MessagePort`
+  into it via the `truapi-init` handshake, and hand the host-side port
+  back to the caller.
+- `createWebWorkerProvider` — spawn the truapi-server WASM core inside a
+  Web Worker and bridge it into a `Provider` (so smoldot, header
+  verification, and dispatcher work run off the page main thread).
+
+## Example
+
+```ts
+import { createMessagePortProvider, createTransport } from "@parity/truapi";
+import { createHostServer } from "@parity/truapi-host";
+import HostWorker from "@parity/host-shared/dist/worker-runtime.js?worker";
+import { createIframeHost, createWebWorkerProvider } from "@parity/host-web";
+
+// 1. WASM core inside a Worker, exposed as a Provider.
+const coreProvider = await createWebWorkerProvider(new HostWorker(), {
+  navigateTo: async (url) => window.open(url, "_blank"),
+  pushNotification: async () => {},
+  devicePermission: async () => true,
+  remotePermission: async () => true,
+  featureSupported: async (payload) => payload,
+  localStorageRead: async () => undefined,
+  localStorageWrite: async () => {},
+  localStorageClear: async () => {},
+  /* ...remaining account / signing / store callbacks */
+} as never);
+
+// 2. Wire the iframe's MessageChannel into the same provider.
+createIframeHost({
+  iframeUrl: "http://localhost:5174",
+  container: document.getElementById("app")!,
+  onPort: (port) => {
+    const iframeProvider = createMessagePortProvider(port);
+    // hand both providers off to your host server / transport pair
+    createHostServer(iframeProvider, [
+      /* dispatch entries */
+    ]);
+  },
+});
+```
+
+The window-level legacy `postMessage` fallback present in earlier
+prototypes is intentionally not provided here; products must use the
+canonical MessageChannel rail.

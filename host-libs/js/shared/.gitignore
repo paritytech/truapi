@@ -1,0 +1,8 @@
+node_modules/
+*.tsbuildinfo
+# Ignore compiled TS output but keep the committed WASM artifacts.
+dist/*.js
+dist/*.d.ts
+dist/*.js.map
+dist/*.d.ts.map
+!dist/wasm/

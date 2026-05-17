@@ -1,0 +1,13 @@
+{
+  "name": "truapi-server",
+  "description": "TrUAPI server runtime: dispatcher, frames, SCALE, streams",
+  "version": "0.1.0",
+  "license": "MIT",
+  "files": [
+    "truapi_server_bg.wasm",
+    "truapi_server.js",
+    "truapi_server.d.ts"
+  ],
+  "main": "truapi_server.js",
+  "types": "truapi_server.d.ts"
+}
