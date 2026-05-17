@@ -629,4 +629,61 @@ mod tests {
 
         bridge.stop();
     }
+
+    /// A handshake with the wrong `?t=` token must be rejected at the HTTP
+    /// upgrade step with a 401, not silently dropped.
+    #[test]
+    fn wrong_token_is_rejected_at_handshake() {
+        let core = Arc::new(TrUApiCore::from_platform(
+            Arc::new(StubPlatform),
+            crate::subscription::thread_per_subscription_spawner(),
+        ));
+        let logger: BridgeLogger = Arc::new(|_, _| {});
+        let (mut bridge, endpoint) = WsBridge::start(0, core, logger).expect("start bridge");
+        let url = format!("ws://127.0.0.1:{}/?t=bogus", endpoint.port);
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime");
+
+        let err = rt
+            .block_on(async { tokio_tungstenite::connect_async(&url).await })
+            .expect_err("connection must be refused");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("401") || msg.to_lowercase().contains("unauthorized"),
+            "expected 401/unauthorized rejection, got: {msg}",
+        );
+
+        bridge.stop();
+    }
+
+    /// Dropping a `WsBridge` handle without an explicit `stop()` must still
+    /// shut the worker thread down cleanly. `Drop::drop` calls `stop`, and
+    /// a second `stop` (from drop after the test's explicit one) is a
+    /// no-op.
+    #[test]
+    fn drop_calls_stop_idempotently() {
+        let core = Arc::new(TrUApiCore::from_platform(
+            Arc::new(StubPlatform),
+            crate::subscription::thread_per_subscription_spawner(),
+        ));
+        let logger: BridgeLogger = Arc::new(|_, _| {});
+        let (bridge, _endpoint) = WsBridge::start(0, core, logger).expect("start bridge");
+        // Drop the bridge; the worker thread must join via Drop.
+        drop(bridge);
+
+        // Build a second bridge and explicitly stop twice. The second
+        // call has no shutdown sender and no thread handle left to join,
+        // so it returns without panicking.
+        let core = Arc::new(TrUApiCore::from_platform(
+            Arc::new(StubPlatform),
+            crate::subscription::thread_per_subscription_spawner(),
+        ));
+        let logger: BridgeLogger = Arc::new(|_, _| {});
+        let (mut bridge, _endpoint) = WsBridge::start(0, core, logger).expect("start bridge");
+        bridge.stop();
+        bridge.stop();
+    }
 }

@@ -444,4 +444,110 @@ mod tests {
                 .unwrap();
         assert_eq!(after, Some(Decision::Granted));
     }
+
+    /// Prompt callback failure collapses to `Denied` and is persisted.
+    /// Critically, the next `check_or_prompt_device` call must not
+    /// re-prompt; cached denials short-circuit just like cached grants.
+    struct FailingPrompt;
+
+    #[async_trait]
+    impl Permissions for FailingPrompt {
+        async fn device_permission(
+            &self,
+            _request: HostDevicePermissionRequest,
+        ) -> Result<HostDevicePermissionResponse, GenericError> {
+            Err(GenericError::GenericError(v01::GenericErr {
+                reason: "boom".into(),
+            }))
+        }
+
+        async fn remote_permission(
+            &self,
+            _request: RemotePermissionRequest,
+        ) -> Result<RemotePermissionResponse, GenericError> {
+            Err(GenericError::GenericError(v01::GenericErr {
+                reason: "boom".into(),
+            }))
+        }
+    }
+
+    #[test]
+    fn prompt_failure_collapses_to_denial_and_persists() {
+        let storage = MemStorage::default();
+        let prompt = FailingPrompt;
+        let service = PermissionsService::new(&storage, &prompt);
+
+        let decision = futures::executor::block_on(
+            service.check_or_prompt_device(HostDevicePermissionRequest::Camera),
+        )
+        .unwrap();
+        assert_eq!(decision, Decision::Denied);
+
+        // The denial is persisted; peek now returns Some(Denied).
+        let cached =
+            futures::executor::block_on(service.peek_device(&HostDevicePermissionRequest::Camera))
+                .unwrap();
+        assert_eq!(cached, Some(Decision::Denied));
+    }
+
+    /// A corrupt SCALE-encoded cache entry must be treated as "no cache",
+    /// not panic. The service falls back to prompting.
+    #[test]
+    fn corrupt_cache_entry_returns_none() {
+        let storage = MemStorage::default();
+        // Write garbage bytes under the canonical key.
+        futures::executor::block_on(storage.write(
+            device_storage_key(&HostDevicePermissionRequest::Camera),
+            vec![0xff, 0xfe, 0xfd],
+        ))
+        .unwrap();
+
+        let prompt = ScriptedPrompt::new(vec![true], vec![]);
+        let service = PermissionsService::new(&storage, &prompt);
+
+        let peeked =
+            futures::executor::block_on(service.peek_device(&HostDevicePermissionRequest::Camera))
+                .unwrap();
+        assert_eq!(peeked, None, "corrupt entry must decode as absent");
+    }
+
+    /// Storage failures must propagate to the caller; the service must not
+    /// swallow them by silently returning a default Decision.
+    #[derive(Default)]
+    struct FailingStorage;
+
+    #[async_trait]
+    impl Storage for FailingStorage {
+        async fn read(&self, _key: StorageKey) -> Result<Option<StorageValue>, StorageError> {
+            Err(v01::HostLocalStorageReadError::Unknown {
+                reason: "read failed".into(),
+            })
+        }
+        async fn write(&self, _key: StorageKey, _value: StorageValue) -> Result<(), StorageError> {
+            Err(v01::HostLocalStorageReadError::Unknown {
+                reason: "write failed".into(),
+            })
+        }
+        async fn clear(&self, _key: StorageKey) -> Result<(), StorageError> {
+            Err(v01::HostLocalStorageReadError::Unknown {
+                reason: "clear failed".into(),
+            })
+        }
+    }
+
+    #[test]
+    fn storage_read_error_propagates() {
+        let storage = FailingStorage;
+        let prompt = ScriptedPrompt::new(vec![], vec![]);
+        let service = PermissionsService::new(&storage, &prompt);
+
+        let err = futures::executor::block_on(
+            service.check_or_prompt_device(HostDevicePermissionRequest::Camera),
+        )
+        .expect_err("read failure must surface");
+        assert!(matches!(
+            err,
+            v01::HostLocalStorageReadError::Unknown { .. }
+        ));
+    }
 }

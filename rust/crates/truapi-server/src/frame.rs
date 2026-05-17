@@ -540,4 +540,79 @@ mod tests {
         "x".to_string().encode_to(&mut expected);
         assert_eq!(encode_call_error_payload(host), expected);
     }
+
+    /// `id_for_tag` resolves a known tag (`system_feature_supported_request`,
+    /// id 2 per the generated table) without going through round-trip code.
+    #[test]
+    fn id_for_tag_known_method_returns_id() {
+        assert_eq!(id_for_tag("system_handshake_request"), Some(0));
+        assert_eq!(id_for_tag("system_handshake_response"), Some(1));
+        assert_eq!(id_for_tag("system_feature_supported_request"), Some(2));
+        assert_eq!(id_for_tag("system_feature_supported_response"), Some(3));
+        assert_eq!(id_for_tag("account_get_account_request"), Some(22));
+    }
+
+    /// `tag_for_id` maps a known id back to its tag, and the result is a
+    /// `&'static str` that compares equal to the same value the codec
+    /// composes.
+    #[test]
+    fn tag_for_id_known_id_returns_static_str() {
+        assert_eq!(tag_for_id(0), Some("system_handshake_request"));
+        assert_eq!(tag_for_id(2), Some("system_feature_supported_request"));
+        assert_eq!(tag_for_id(3), Some("system_feature_supported_response"));
+        // The leaked-tag cache hands out the same `&'static str` on
+        // repeated lookups for the same id.
+        assert!(std::ptr::eq(tag_for_id(2).unwrap(), tag_for_id(2).unwrap()));
+    }
+
+    /// Unmapped slots return None; 0xFF is the documented poison slot and
+    /// every id past the populated range is also unmapped.
+    #[test]
+    fn tag_for_id_unmapped_id_returns_none() {
+        assert!(tag_for_id(0xFF).is_none());
+        assert!(tag_for_id(250).is_none());
+    }
+
+    /// `compose_action` and `FrameKind::from_tag` must be exact inverses
+    /// for every `FrameKind` variant. This pins the suffix table.
+    #[test]
+    fn compose_action_round_trips_each_framekind() {
+        for kind in [
+            FrameKind::Request,
+            FrameKind::Response,
+            FrameKind::Start,
+            FrameKind::Receive,
+            FrameKind::Stop,
+            FrameKind::Interrupt,
+        ] {
+            let tag = compose_action("system_feature_supported", kind);
+            let (method, parsed_kind) =
+                FrameKind::from_tag(&tag).expect("from_tag must parse the composed tag");
+            assert_eq!(method, "system_feature_supported");
+            assert_eq!(parsed_kind, kind, "round-trip mismatch for {kind:?}");
+            assert_eq!(tag, format!("system_feature_supported_{}", kind.suffix()));
+        }
+    }
+
+    /// IdFactory mints monotonically increasing ids prefixed with the
+    /// configured string.
+    #[test]
+    fn id_factory_minted_ids_are_unique_and_monotonic() {
+        let mut factory = IdFactory::new("p:");
+        assert_eq!(factory.next_id(), "p:1");
+        assert_eq!(factory.next_id(), "p:2");
+        assert_eq!(factory.next_id(), "p:3");
+    }
+
+    /// Two distinct factories each maintain their own counter; minting from
+    /// one does not advance the other.
+    #[test]
+    fn two_factories_dont_share_state() {
+        let mut a = IdFactory::new("a:");
+        let mut b = IdFactory::new("b:");
+        assert_eq!(a.next_id(), "a:1");
+        assert_eq!(b.next_id(), "b:1");
+        assert_eq!(a.next_id(), "a:2");
+        assert_eq!(b.next_id(), "b:2");
+    }
 }

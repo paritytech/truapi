@@ -734,4 +734,57 @@ mod tests {
         assert!(core.set_active_session(vec![0u8; 32], None, None));
         core.clear_active_session();
     }
+
+    /// Calling `start_ws_bridge` twice on the same `NativeTrUApiCore`
+    /// without an intervening `stop_ws_bridge` is a hard error. The bridge
+    /// is single-instance per core, so the second start must surface
+    /// `AlreadyRunning` rather than silently leaking a worker thread.
+    #[cfg(feature = "ws-bridge")]
+    #[test]
+    fn start_ws_bridge_twice_returns_already_running() {
+        struct Noop;
+        impl HostCallbacks for Noop {
+            fn on_core_log(&self, _marker: String, _detail: String) {}
+            fn on_core_response(&self, _frame: Vec<u8>) {}
+            fn navigate_to(&self, _url: String) -> Result<(), HostNavigateRejection> {
+                Ok(())
+            }
+            fn push_notification(&self, _payload: Vec<u8>) -> Result<(), HostRejection> {
+                Ok(())
+            }
+            fn device_permission(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
+                Ok(false)
+            }
+            fn remote_permission(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
+                Ok(false)
+            }
+            fn feature_supported(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
+                Ok(false)
+            }
+            fn local_storage_read(
+                &self,
+                _key: String,
+            ) -> Result<Option<Vec<u8>>, HostStorageError> {
+                Ok(None)
+            }
+            fn local_storage_write(
+                &self,
+                _key: String,
+                _value: Vec<u8>,
+            ) -> Result<(), HostStorageError> {
+                Ok(())
+            }
+            fn local_storage_clear(&self, _key: String) -> Result<(), HostStorageError> {
+                Ok(())
+            }
+        }
+
+        let core = NativeTrUApiCore::new(Box::new(Noop));
+        let _first = core.start_ws_bridge(0).expect("first start must succeed");
+        let err = core
+            .start_ws_bridge(0)
+            .expect_err("second start must error");
+        assert!(matches!(err, WsBridgeStartError::AlreadyRunning));
+        core.stop_ws_bridge();
+    }
 }

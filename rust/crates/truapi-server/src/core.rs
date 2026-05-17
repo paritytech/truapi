@@ -143,6 +143,10 @@ mod tests {
         HostAccountGetRequest, HostAccountGetResponse, HostGetLegacyAccountsRequest,
         HostGetLegacyAccountsResponse, HostGetUserIdRequest, HostGetUserIdResponse,
     };
+    use truapi::versioned::local_storage::{
+        HostLocalStorageClearRequest, HostLocalStorageReadRequest, HostLocalStorageWriteRequest,
+    };
+    use truapi::versioned::permissions::RemotePermissionRequest;
     use truapi::versioned::preimage::{
         RemotePreimageLookupSubscribeItem, RemotePreimageLookupSubscribeRequest,
     };
@@ -154,7 +158,9 @@ mod tests {
         RemoteStatementStoreSubmitRequest, RemoteStatementStoreSubscribeItem,
         RemoteStatementStoreSubscribeRequest,
     };
-    use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
+    use truapi::versioned::system::{
+        HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostPushNotificationRequest,
+    };
     use truapi_platform::{
         Accounts as PlatformAccounts, ChainProvider, Features, GenesisHash, JsonRpcConnection,
         Navigation, Notifications, Permissions, Preimage as PlatformPreimage,
@@ -370,5 +376,272 @@ mod tests {
         // Wire payload is `Result<Ok, Err>`-shaped:
         // [Ok disc=0x00][V1 variant 0x00][supported=1]
         assert_eq!(response.payload.value, vec![0x00, 0x00, 0x01]);
+    }
+
+    /// Drive a request frame through `TrUApiCore::receive_from_product`,
+    /// decode the response envelope, and return its payload bytes (without
+    /// the wrapping ProtocolMessage). Shared by the runtime-delegation
+    /// tests below.
+    fn run_request(core: &TrUApiCore, method: &str, request_bytes: Vec<u8>) -> Vec<u8> {
+        let frame = ProtocolMessage {
+            request_id: "p:1".into(),
+            payload: Payload {
+                tag: compose_action(method, FrameKind::Request),
+                value: request_bytes,
+            },
+        };
+        let response_bytes = core
+            .receive_from_product(&frame.encode())
+            .expect("dispatcher should emit a response");
+        let response = ProtocolMessage::decode(&mut &response_bytes[..]).expect("decode response");
+        assert_eq!(response.request_id, "p:1");
+        assert_eq!(
+            response.payload.tag,
+            compose_action(method, FrameKind::Response),
+        );
+        response.payload.value
+    }
+
+    fn make_core() -> TrUApiCore {
+        TrUApiCore::from_platform(
+            Arc::new(StubPlatform),
+            crate::subscription::thread_per_subscription_spawner(),
+        )
+    }
+
+    fn product_id() -> v01::ProductAccountId {
+        v01::ProductAccountId {
+            dot_ns_identifier: "test.dot".into(),
+            derivation_index: 0,
+        }
+    }
+
+    fn ring_location() -> v01::RingLocation {
+        v01::RingLocation {
+            genesis_hash: vec![0u8; 32],
+            ring_root_hash: vec![0u8; 32],
+            hints: None,
+        }
+    }
+
+    #[test]
+    fn get_account_round_trips_stub_not_connected() {
+        let core = make_core();
+        let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
+            product_account_id: product_id(),
+        });
+        let payload = run_request(&core, "account_get_account", request.encode());
+        // Err disc 0x01, Domain disc 0x00, V1 variant 0x00, NotConnected variant 0x00.
+        assert_eq!(payload, vec![0x01, 0x00, 0x00, 0x00]);
+    }
+
+    #[test]
+    fn get_account_alias_round_trips_stub_not_connected() {
+        let core = make_core();
+        let request = HostAccountGetAliasRequest::V1(v01::HostAccountGetAliasRequest {
+            product_account_id: product_id(),
+        });
+        let payload = run_request(&core, "account_get_account_alias", request.encode());
+        // Err disc 0x01, Domain disc 0x00, V1 variant 0x00, NotConnected variant 0x00.
+        assert_eq!(payload, vec![0x01, 0x00, 0x00, 0x00]);
+    }
+
+    #[test]
+    fn create_account_proof_round_trips_stub_ring_not_found() {
+        let core = make_core();
+        let request = HostAccountCreateProofRequest::V1(v01::HostAccountCreateProofRequest {
+            product_account_id: product_id(),
+            ring_location: ring_location(),
+            context: vec![],
+        });
+        let payload = run_request(&core, "account_create_account_proof", request.encode());
+        // Err disc 0x01, Domain disc 0x00, V1 variant 0x00, RingNotFound variant 0x00.
+        assert_eq!(payload, vec![0x01, 0x00, 0x00, 0x00]);
+    }
+
+    #[test]
+    fn get_legacy_accounts_round_trips_empty_list() {
+        let core = make_core();
+        let request = HostGetLegacyAccountsRequest::V1;
+        let payload = run_request(&core, "account_get_legacy_accounts", request.encode());
+        // Ok disc + decoded inner equals the stub response.
+        assert_eq!(payload[0], 0x00, "Ok disc");
+        let expected = HostGetLegacyAccountsResponse::V1(v01::HostGetLegacyAccountsResponse {
+            accounts: vec![],
+        });
+        let decoded =
+            HostGetLegacyAccountsResponse::decode(&mut &payload[1..]).expect("decode inner");
+        assert_eq!(decoded, expected);
+    }
+
+    #[test]
+    fn get_user_id_round_trips_stub_not_connected() {
+        let core = make_core();
+        let request = HostGetUserIdRequest::V1;
+        let payload = run_request(&core, "account_get_user_id", request.encode());
+        // Err disc 0x01, Domain disc 0x00, V1 variant 0x00, NotConnected variant.
+        // HostGetUserIdError variant order: PermissionDenied=0, NotConnected=1.
+        assert_eq!(payload, vec![0x01, 0x00, 0x00, 0x01]);
+    }
+
+    #[test]
+    fn sign_payload_round_trips_stub_rejected() {
+        let core = make_core();
+        let request = HostSignPayloadRequest::V1(v01::HostSignPayloadRequest {
+            account: product_id(),
+            block_hash: vec![],
+            block_number: vec![],
+            era: vec![],
+            genesis_hash: vec![],
+            method: vec![],
+            nonce: vec![],
+            spec_version: vec![],
+            tip: vec![],
+            transaction_version: vec![],
+            signed_extensions: vec![],
+            version: 4,
+            asset_id: None,
+            metadata_hash: None,
+            mode: None,
+            with_signed_transaction: None,
+        });
+        let payload = run_request(&core, "signing_sign_payload", request.encode());
+        // Err disc 0x01, Domain disc 0x00, V1 variant 0x00, Rejected variant.
+        // HostSignPayloadError: FailedToDecode=0, Rejected=1.
+        assert_eq!(payload, vec![0x01, 0x00, 0x00, 0x01]);
+    }
+
+    #[test]
+    fn sign_raw_round_trips_stub_rejected() {
+        let core = make_core();
+        let request = HostSignRawRequest::V1(v01::HostSignRawRequest {
+            account: product_id(),
+            payload: v01::RawPayload::Bytes {
+                bytes: vec![1, 2, 3],
+            },
+        });
+        let payload = run_request(&core, "signing_sign_raw", request.encode());
+        // Same as sign_payload: HostSignPayloadError::Rejected discriminant.
+        assert_eq!(payload, vec![0x01, 0x00, 0x00, 0x01]);
+    }
+
+    #[test]
+    fn local_storage_read_round_trips_none() {
+        let core = make_core();
+        let request = HostLocalStorageReadRequest::V1(v01::HostLocalStorageReadRequest {
+            key: "missing".into(),
+        });
+        let payload = run_request(&core, "local_storage_read", request.encode());
+        // Ok disc 0x00, V1 variant 0x00, Option::None = 0x00.
+        assert_eq!(payload, vec![0x00, 0x00, 0x00]);
+    }
+
+    #[test]
+    fn local_storage_write_round_trips_unit_ok() {
+        let core = make_core();
+        let request = HostLocalStorageWriteRequest::V1(v01::HostLocalStorageWriteRequest {
+            key: "k".into(),
+            value: vec![1, 2, 3],
+        });
+        let payload = run_request(&core, "local_storage_write", request.encode());
+        // Ok disc 0x00, V1 variant 0x00.
+        assert_eq!(payload, vec![0x00, 0x00]);
+    }
+
+    #[test]
+    fn local_storage_clear_round_trips_unit_ok() {
+        let core = make_core();
+        let request =
+            HostLocalStorageClearRequest::V1(v01::HostLocalStorageClearRequest { key: "k".into() });
+        let payload = run_request(&core, "local_storage_clear", request.encode());
+        // Ok disc 0x00, V1 variant 0x00.
+        assert_eq!(payload, vec![0x00, 0x00]);
+    }
+
+    #[test]
+    fn push_notification_round_trips_ok() {
+        let core = make_core();
+        let request = HostPushNotificationRequest::V1(v01::HostPushNotificationRequest {
+            text: "hi".into(),
+            deeplink: None,
+        });
+        let payload = run_request(&core, "system_push_notification", request.encode());
+        // Stub returns Ok(()), so wire is Ok disc 0x00 + V1 variant 0x00.
+        assert_eq!(payload, vec![0x00, 0x00]);
+    }
+
+    #[test]
+    fn request_remote_permission_round_trips_granted() {
+        let core = make_core();
+        let request = RemotePermissionRequest::V1(v01::RemotePermissionRequest {
+            permissions: vec![v01::RemotePermission::ChainSubmit],
+        });
+        let payload = run_request(
+            &core,
+            "permissions_request_remote_permission",
+            request.encode(),
+        );
+        // Stub permissions grants every request. Wire is Ok disc 0x00, V1
+        // variant 0x00, granted=1.
+        assert_eq!(payload, vec![0x00, 0x00, 0x01]);
+    }
+
+    /// `connection_status_subscribe` produces a stream whose first item is
+    /// the current session state. Drive it through the dispatcher with a
+    /// recording transport and assert exactly one `_receive` frame appears.
+    #[test]
+    fn connection_status_subscribe_yields_initial_disconnected() {
+        use std::sync::Mutex;
+
+        #[derive(Default)]
+        struct RecordingTransport {
+            sent: Mutex<Vec<ProtocolMessage>>,
+        }
+        impl Transport for RecordingTransport {
+            fn send(&self, message: ProtocolMessage) {
+                self.sent.lock().unwrap().push(message);
+            }
+            fn on_message(
+                &self,
+                _handler: Box<dyn Fn(ProtocolMessage) + Send + Sync>,
+            ) -> Box<dyn FnOnce()> {
+                Box::new(|| {})
+            }
+        }
+
+        let core = make_core();
+        let transport = Arc::new(RecordingTransport::default());
+        let dyn_transport: Arc<dyn Transport> = transport.clone();
+
+        let frame = ProtocolMessage {
+            request_id: "p:1".into(),
+            payload: Payload {
+                tag: compose_action("account_connection_status_subscribe", FrameKind::Start),
+                value: Vec::new(),
+            },
+        };
+        futures::executor::block_on(core.dispatch(frame, dyn_transport));
+
+        // Wait briefly for the spawned thread to emit the initial item.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        loop {
+            if !transport.sent.lock().unwrap().is_empty() {
+                break;
+            }
+            if std::time::Instant::now() > deadline {
+                panic!("subscription did not yield an item in time");
+            }
+            std::thread::sleep(std::time::Duration::from_millis(10));
+        }
+
+        let sent = transport.sent.lock().unwrap().clone();
+        assert!(!sent.is_empty(), "expected at least one _receive frame");
+        let first = &sent[0];
+        assert_eq!(
+            first.payload.tag,
+            compose_action("account_connection_status_subscribe", FrameKind::Receive,),
+        );
+        // V1(Disconnected): V1 variant 0x00, Disconnected discriminant 0x00.
+        assert_eq!(first.payload.value, vec![0x00, 0x00]);
     }
 }

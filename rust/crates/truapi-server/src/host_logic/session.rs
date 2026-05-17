@@ -230,4 +230,46 @@ mod tests {
             VersionedItem::V1(HostAccountConnectionStatusSubscribeItem::Connected)
         );
     }
+
+    /// Clearing a never-set session is a no-op and must not synthesize a
+    /// spurious `Disconnected` event for live subscribers.
+    #[test]
+    fn clear_when_empty_is_silent_no_op() {
+        let state = SessionState::new();
+        let mut stream = state.subscribe();
+        // Drain the initial Disconnected.
+        let _ = block_on(stream.next());
+
+        state.clear_session();
+
+        let pending = stream.next().now_or_never();
+        assert!(pending.is_none(), "no event expected when clear is a no-op",);
+    }
+
+    /// Dropping a subscriber's stream must remove that sender from the
+    /// broadcast list. The next broadcast prunes it; the surviving stream
+    /// still receives the event.
+    #[test]
+    fn dropped_subscriber_is_pruned() {
+        let state = SessionState::new();
+        let mut survivor = state.subscribe();
+        let dropping = state.subscribe();
+        let _ = block_on(survivor.next());
+        // Drain the initial item from the dropping stream too so we don't
+        // accidentally test buffered-but-undelivered.
+        drop(dropping);
+
+        state.set_session(info(0x33));
+        let next = block_on(survivor.next()).expect("survivor must receive Connected");
+        assert_eq!(
+            next,
+            VersionedItem::V1(HostAccountConnectionStatusSubscribeItem::Connected),
+        );
+
+        // Internally, `set_session`'s broadcast call `retain`-prunes any
+        // dropped senders. After the call the subscribers list should have
+        // exactly one entry (the survivor).
+        let inner = state.inner.lock().unwrap();
+        assert_eq!(inner.subscribers.len(), 1, "dropped subscriber not pruned");
+    }
 }

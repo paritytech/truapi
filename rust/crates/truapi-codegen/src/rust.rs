@@ -345,4 +345,157 @@ mod tests {
         );
         assert_eq!(module_for_trait("Account"), "account");
     }
+
+    /// A request-kind method must not carry subscription wire ids. The
+    /// emitter rejects `start_id` / `stop_id` / `interrupt_id` / `receive_id`
+    /// on a `MethodKind::Request`.
+    #[test]
+    fn wire_table_request_with_subscription_id_errors() {
+        let mut method = make_request_method("alpha", 10);
+        method.wire.start_id = Some(99);
+        let api = ApiDefinition {
+            traits: vec![TraitDef {
+                name: "Permissions".to_string(),
+                methods: vec![method],
+                docs: None,
+            }],
+            public_trait_order: vec!["Permissions".to_string()],
+            types: vec![],
+        };
+        let err = generate_wire_table(&api).expect_err("request kind + start_id must error");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("must not use subscription wire ids"),
+            "unexpected error message: {msg}",
+        );
+    }
+
+    /// A subscription-kind method must not carry request wire ids.
+    #[test]
+    fn wire_table_subscription_with_request_id_errors() {
+        let mut method = make_subscription_method("connection_status_subscribe", 18);
+        method.wire.request_id = Some(99);
+        let api = ApiDefinition {
+            traits: vec![TraitDef {
+                name: "Account".to_string(),
+                methods: vec![method],
+                docs: None,
+            }],
+            public_trait_order: vec!["Account".to_string()],
+            types: vec![],
+        };
+        let err = generate_wire_table(&api).expect_err("subscription kind + request_id must error");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("must not use request wire ids"),
+            "unexpected error message: {msg}",
+        );
+    }
+
+    /// A request-kind method missing the mandatory `request_id` annotation
+    /// must fail emission, not silently default to 0.
+    #[test]
+    fn wire_table_missing_request_id_errors() {
+        let mut method = make_request_method("alpha", 10);
+        method.wire.request_id = None;
+        let api = ApiDefinition {
+            traits: vec![TraitDef {
+                name: "Permissions".to_string(),
+                methods: vec![method],
+                docs: None,
+            }],
+            public_trait_order: vec!["Permissions".to_string()],
+            types: vec![],
+        };
+        let err = generate_wire_table(&api).expect_err("missing request_id annotation must error");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("missing #[wire(request_id"),
+            "unexpected error message: {msg}",
+        );
+    }
+
+    /// Subscription-kind method missing `start_id` is similarly rejected.
+    #[test]
+    fn wire_table_missing_start_id_errors() {
+        let mut method = make_subscription_method("connection_status_subscribe", 18);
+        method.wire.start_id = None;
+        let api = ApiDefinition {
+            traits: vec![TraitDef {
+                name: "Account".to_string(),
+                methods: vec![method],
+                docs: None,
+            }],
+            public_trait_order: vec!["Account".to_string()],
+            types: vec![],
+        };
+        let err = generate_wire_table(&api).expect_err("missing start_id annotation must error");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("missing #[wire(start_id"),
+            "unexpected error message: {msg}",
+        );
+    }
+
+    /// The dispatcher expects each method to take exactly one versioned
+    /// wrapper parameter (plus `&self` and `&CallContext`, which are
+    /// elided from `params`). A method with two params errors out.
+    #[test]
+    fn dispatcher_multi_param_method_errors() {
+        let mut method = make_request_method("alpha", 10);
+        method.params.push(ParamDef {
+            name: "extra".to_string(),
+            type_ref: TypeRef::Named {
+                name: "ExtraWrapper".to_string(),
+                args: vec![],
+            },
+        });
+        let api = ApiDefinition {
+            traits: vec![TraitDef {
+                name: "Permissions".to_string(),
+                methods: vec![method],
+                docs: None,
+            }],
+            public_trait_order: vec!["Permissions".to_string()],
+            types: vec![],
+        };
+        let err = generate_dispatcher(&api).expect_err("two-param method must error");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("expected at most one request parameter"),
+            "unexpected error message: {msg}",
+        );
+    }
+
+    /// The response wrapper extraction expects a `TypeRef::Named` with no
+    /// generic args. Anything else (primitives, tuples, generics) errors.
+    #[test]
+    fn dispatcher_non_named_root_response_errors() {
+        let mut method = make_request_method("alpha", 10);
+        method.return_type = ReturnType::Result {
+            ok: TypeRef::Primitive("u32".to_string()),
+            err: TypeRef::Named {
+                name: "CallError".to_string(),
+                args: vec![TypeRef::Named {
+                    name: "ErrWrapper".to_string(),
+                    args: vec![],
+                }],
+            },
+        };
+        let api = ApiDefinition {
+            traits: vec![TraitDef {
+                name: "Permissions".to_string(),
+                methods: vec![method],
+                docs: None,
+            }],
+            public_trait_order: vec!["Permissions".to_string()],
+            types: vec![],
+        };
+        let err = generate_dispatcher(&api).expect_err("primitive response must error");
+        let msg = format!("{err}");
+        assert!(
+            msg.contains("response is not a versioned wrapper"),
+            "unexpected error message: {msg}",
+        );
+    }
 }
