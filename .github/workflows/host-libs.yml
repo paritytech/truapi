@@ -1,0 +1,46 @@
+name: host-libs
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'host-libs/**'
+      - 'rust/crates/truapi-server/**'
+  pull_request:
+    paths:
+      - 'host-libs/**'
+      - 'rust/crates/truapi-server/**'
+
+jobs:
+  wasm-bundle-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
+      - name: Rebuild WASM and assert clean tree
+        run: |
+          make wasm
+          if ! git diff --quiet host-libs/js/shared/dist/wasm; then
+            echo "::error::Committed WASM artifacts are stale. Run 'make wasm' and commit the result."
+            git diff --stat host-libs/js/shared/dist/wasm
+            exit 1
+          fi
+  host-libs-js-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Build @parity/truapi-host (dep)
+        run: cd js/packages/truapi-host && npm install --no-fund --no-audit && npm run build
+      - name: Build @parity/truapi client (dep)
+        run: cd js/packages/truapi && npm install --no-fund --no-audit && npm run build
+      - name: Test @parity/host-shared
+        run: cd host-libs/js/shared && npm install --no-fund --no-audit && npm test
+      - name: Test @parity/host-web
+        run: cd host-libs/js/web && npm install --no-fund --no-audit && npm test
+      - name: Test @parity/host-electron
+        run: cd host-libs/js/electron && npm install --no-fund --no-audit && npm test

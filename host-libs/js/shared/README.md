@@ -63,6 +63,14 @@ const server = createHostServer(provider, [
 
 For web hosts see `@parity/host-web`'s `createWebWorkerProvider`.
 
+## Publishing
+
+TODO: npm publish workflow not yet wired. The `@parity/host-shared`,
+`@parity/host-web`, and `@parity/host-electron` packages need a release-process
+discussion before we add a publish job to `.github/workflows/`. Until then,
+consumers should depend on the package via the workspace `file:` link or by
+publishing locally with `npm pack`.
+
 ## Architecture
 
 ```text

@@ -55,13 +55,42 @@ rust/crates/
   truapi/                Rust trait and type definitions (v01, v02)
   truapi-codegen/        rustdoc JSON to TypeScript client + Rust dispatcher
   truapi-macros/         #[wire(id = N)] proc-macro
+  truapi-platform/       Host syscall traits used by truapi-server (storage, navigation, consent, ...)
+  truapi-server/         Rust runtime that hosts implement: dispatcher, frames, SCALE, WASM + UniFFI surfaces
+  uniffi-bindgen-cli/    Thin CLI wrapper around uniffi::uniffi_bindgen_main() for the workspace
 js/packages/
   truapi/                @parity/truapi TypeScript client
+  truapi-host/           @parity/truapi-host host-side codegen and dispatcher
+host-libs/
+  js/shared/             @parity/host-shared: WASM-backed Provider + worker entrypoint
+  js/web/                @parity/host-web: iframe MessageChannel host + Web Worker provider
+  js/electron/           @parity/host-electron: Electron MessagePortMain provider
+  android/               Kotlin shell + generated UniFFI bindings for truapi-server
+  ios/                   Swift shell + generated UniFFI bindings for truapi-server
 playground/              Interactive Next.js playground (truapi-playground.dot)
 hosts/dotli/             dotli host, vendored as a submodule
 docs/                    Design docs, RFCs, feature proposals
 scripts/codegen.sh       Regenerate the TS client from the Rust source
 ```
+
+### Native + JS host SDKs
+
+Hosts integrate the Rust core through one of the `@parity/host-*` packages in
+[`host-libs/js/`](host-libs/js):
+
+- [`@parity/host-shared`](host-libs/js/shared) ships the `truapi-server` WASM
+  bundle, the `Provider` factories that drive it, and a Web Worker entrypoint
+  so the WASM core can run off the page main thread.
+- [`@parity/host-web`](host-libs/js/web) wires the WASM provider into a browser
+  host: iframe MessageChannel handshake plus `createWebWorkerProvider`.
+- [`@parity/host-electron`](host-libs/js/electron) wraps an Electron
+  `MessagePortMain` as a `Provider`, pairs with `host-shared`'s Node-side WASM
+  runtime.
+
+Native shells live alongside the JS packages: [`host-libs/android`](host-libs/android)
+links the `truapi-server` cdylib via UniFFI-generated Kotlin bindings; the
+matching Swift bindings under [`host-libs/ios`](host-libs/ios) power the iOS
+shell. Both are regenerated from the same Rust source via `make uniffi`.
 
 ## How it works
 
@@ -78,9 +107,11 @@ Common tasks are wrapped in the top-level `Makefile`. Run `make help` for the fu
 
 ```bash
 make setup    # submodules + JS dependencies
-make build    # Rust workspace + TypeScript client
-make test     # Rust + TypeScript client tests
+make build    # Rust workspace + TypeScript client + host-libs JS packages
+make test     # Rust + TypeScript client + host-libs tests
 make check    # full suite: build, fmt, clippy, test, TS tests, playground build + lint
+make wasm     # rebuild truapi-server WASM artifacts under host-libs/js/shared/dist/wasm/
+make uniffi   # regenerate UniFFI Kotlin + Swift bindings under host-libs/{android,ios}/
 ```
 
 To run the playground locally:
