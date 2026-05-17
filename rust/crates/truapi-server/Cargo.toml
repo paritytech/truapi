@@ -1,0 +1,53 @@
+[package]
+name = "truapi-server"
+version = "0.1.0"
+edition.workspace = true
+description = "TrUAPI server runtime: dispatcher, frames, SCALE, streams"
+license = "MIT"
+
+[lib]
+crate-type = ["rlib", "cdylib", "staticlib"]
+
+[features]
+default = []
+ws-bridge = ["dep:tokio", "dep:tokio-tungstenite", "dep:rand"]
+
+[dependencies]
+truapi = { path = "../truapi" }
+truapi-platform = { path = "../truapi-platform" }
+async-trait = "0.1"
+futures = "0.3"
+parity-scale-codec = { version = "3", features = ["derive"] }
+thiserror = "1"
+unicode-normalization = "0.1"
+url = "2"
+uniffi = "0.29.4"
+hex = "0.4"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "macros", "io-util"], optional = true }
+tokio-tungstenite = { version = "0.21", default-features = false, features = ["handshake"], optional = true }
+rand = { version = "0.8", optional = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3"
+wasm-bindgen = "0.2.118"
+wasm-bindgen-futures = "0.4"
+futures-timer = { version = "3", features = ["wasm-bindgen"] }
+futures-util = "0.3"
+getrandom = { version = "0.2", features = ["js"] }
+pin-project = "1"
+send_wrapper = { version = "0.6", features = ["futures"] }
+web-time = "1"
+web-sys = { version = "0.3", features = [
+    "BinaryType",
+    "CloseEvent",
+    "console",
+    "Event",
+    "MessageEvent",
+    "WebSocket",
+] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "macros", "io-util", "time"] }
+tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect"] }

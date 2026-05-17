@@ -1,7 +1,9 @@
 use anyhow::{Context, Result};
 use clap::Parser;
+use std::path::PathBuf;
 use std::str::FromStr;
 
+mod rust;
 mod rustdoc;
 mod ts;
 
@@ -49,6 +51,14 @@ struct Cli {
     /// Output directory for the generated `@parity/truapi-host` TypeScript surface (optional).
     #[arg(long)]
     host_output: Option<String>,
+
+    /// Output directory for the generated Rust dispatcher / wire-table (optional).
+    ///
+    /// When set, emits `dispatcher.rs` and `wire_table.rs` for the
+    /// `truapi-server` crate to include. Phase 4 will wire this up to
+    /// `scripts/codegen.sh`; until then the flag is opt-in.
+    #[arg(long)]
+    rust_output: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -110,6 +120,11 @@ fn main() -> Result<()> {
     if let Some(path) = &cli.host_output {
         ts::generate_host(&api, path).with_context(|| format!("writing host package to {path}"))?;
         println!("Generated host package in {path}");
+    }
+    if let Some(path) = &cli.rust_output {
+        rust::generate(&api, path)
+            .with_context(|| format!("writing Rust dispatcher to {}", path.display()))?;
+        println!("Wrote Rust dispatcher to {}", path.display());
     }
     Ok(())
 }

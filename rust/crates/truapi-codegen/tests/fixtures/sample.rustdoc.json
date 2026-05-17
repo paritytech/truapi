@@ -1,0 +1,3 @@
+{
+  "_comment": "Placeholder fixture: the golden test drives the binary against the truapi crate's real rustdoc JSON (regenerated at test time). Checking in a 12 MB rustdoc dump would dwarf the rest of the repo; the test instead invokes `cargo +nightly rustdoc -p truapi` and parses the result. This file exists so the path referenced in the test layout is real."
+}
