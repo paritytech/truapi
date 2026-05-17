@@ -1,4 +1,4 @@
-// Smoke test that the dispatcher re-export from @parity/host-shared
+// Smoke test that the dispatcher re-export from @parity/truapi-host-shared
 // routes inbound request frames to a registered handler and emits a
 // response frame back through the provider, end-to-end.
 

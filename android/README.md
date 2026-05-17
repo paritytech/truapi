@@ -2,6 +2,8 @@
 
 *Thin Kotlin shell over the Rust TrUAPI core (UniFFI) plus an Android `WebView` byte transport. Wire decoding, request routing, and subscription lifecycle stay in the Rust core.*
 
+This directory is an Android library module: include it from a parent project's `settings.gradle.kts` (e.g. `include(":truapi-android"); project(":truapi-android").projectDir = file("vendor/truapi/android")`). It does not ship with its own Gradle wrapper or root settings — pulling it into a consuming project supplies those.
+
 ## What this package is for
 
 The public surface lives in [`src/main/kotlin/io/parity/truapi/TrUAPIHost.kt`](src/main/kotlin/io/parity/truapi/TrUAPIHost.kt):
@@ -111,5 +113,5 @@ cargo build -p truapi-server --release --features ws-bridge
 cargo run -p uniffi-bindgen-cli -- generate \
   --library target/release/libtruapi_server.so \
   --language kotlin \
-  --out-dir host-libs/android/src/main/kotlin/generated
+  --out-dir android/src/main/kotlin/generated
 ```

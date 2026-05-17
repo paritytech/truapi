@@ -1,5 +1,5 @@
 {
-  "name": "@parity/host-shared",
+  "name": "@parity/truapi-host-shared",
   "version": "0.1.0",
   "description": "Shared TrUAPI host runtime: WASM-backed provider, dispatcher adapters, worker entry-point",
   "license": "MIT",
@@ -38,8 +38,8 @@
     "test": "for f in test/*.test.mjs; do echo \"=== $f ===\" && node --test \"$f\" || exit 1; done"
   },
   "dependencies": {
-    "@parity/truapi": "file:../../../js/packages/truapi",
-    "@parity/truapi-host": "file:../../../js/packages/truapi-host"
+    "@parity/truapi": "file:../truapi",
+    "@parity/truapi-host": "file:../truapi-host"
   },
   "devDependencies": {
     "typescript": "^5.7"

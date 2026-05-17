@@ -1,4 +1,4 @@
-# @parity/host-web
+# @parity/truapi-host-web
 
 Browser TrUAPI host wrapper:
 
@@ -14,8 +14,8 @@ Browser TrUAPI host wrapper:
 ```ts
 import { createMessagePortProvider, createTransport } from "@parity/truapi";
 import { createHostServer } from "@parity/truapi-host";
-import HostWorker from "@parity/host-shared/dist/worker-runtime.js?worker";
-import { createIframeHost, createWebWorkerProvider } from "@parity/host-web";
+import HostWorker from "@parity/truapi-host-shared/dist/worker-runtime.js?worker";
+import { createIframeHost, createWebWorkerProvider } from "@parity/truapi-host-web";
 
 // 1. WASM core inside a Worker, exposed as a Provider.
 const coreProvider = await createWebWorkerProvider(new HostWorker(), {
@@ -50,8 +50,8 @@ canonical MessageChannel rail.
 
 ## Publishing
 
-TODO: npm publish workflow not yet wired. The `@parity/host-shared`,
-`@parity/host-web`, and `@parity/host-electron` packages need a release-process
+TODO: npm publish workflow not yet wired. The `@parity/truapi-host-shared`,
+`@parity/truapi-host-web`, and `@parity/truapi-host-electron` packages need a release-process
 discussion before we add a publish job to `.github/workflows/`. Until then,
 consumers should depend on the package via the workspace `file:` link or by
 publishing locally with `npm pack`.

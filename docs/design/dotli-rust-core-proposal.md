@@ -245,7 +245,7 @@ Reasons:
 
 To get from today's topology to Option 1:
 
-1. **Ship the Rust core** (`truapi-server` WASM) loaded by the protocol iframe at `host.dot.li`. Today it's loaded by `apps/host` via a Worker spawned from the host page; move that spawn into `apps/protocol`. The Worker is on `host.dot.li`'s origin in either case if we're already importing `@parity/host-shared/dist/worker-runtime.js?worker` from the protocol iframe.
+1. **Ship the Rust core** (`truapi-server` WASM) loaded by the protocol iframe at `host.dot.li`. Today it's loaded by `apps/host` via a Worker spawned from the host page; move that spawn into `apps/protocol`. The Worker is on `host.dot.li`'s origin in either case if we're already importing `@parity/truapi-host-shared/dist/worker-runtime.js?worker` from the protocol iframe.
 
 2. **Move content fetching into the Rust core**. Today `apps/sandbox` does P2P/Helia. Port that to Rust (libp2p in Rust-WASM, or HTTP gateway behind a feature flag). Add a `content_fetch(cid) → bytes` method to the protocol surface.
 

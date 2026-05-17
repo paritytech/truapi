@@ -1,5 +1,5 @@
 {
-  "name": "@parity/host-web",
+  "name": "@parity/truapi-host-web",
   "version": "0.1.0",
   "description": "Browser TrUAPI host wrapper: iframe embedding and Web Worker-backed WASM provider",
   "license": "MIT",
@@ -23,8 +23,8 @@
     "test": "for f in test/*.test.mjs; do echo \"=== $f ===\" && node --test \"$f\" || exit 1; done"
   },
   "dependencies": {
-    "@parity/host-shared": "file:../shared",
-    "@parity/truapi": "file:../../../js/packages/truapi"
+    "@parity/truapi-host-shared": "file:../truapi-host-shared",
+    "@parity/truapi": "file:../truapi"
   },
   "devDependencies": {
     "typescript": "^5.7"

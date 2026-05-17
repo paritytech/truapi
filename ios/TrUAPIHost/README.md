@@ -117,9 +117,9 @@ cargo run -p uniffi-bindgen-cli -- generate \
   --language swift \
   --out-dir /tmp/uniffi-swift-out
 cp /tmp/uniffi-swift-out/truapi_server.swift \
-   host-libs/ios/TrUAPIHost/Sources/TrUAPIHost/truapi_server.swift
+   ios/TrUAPIHost/Sources/TrUAPIHost/truapi_server.swift
 cp /tmp/uniffi-swift-out/truapi_serverFFI.h \
-   host-libs/ios/TrUAPIHost/Sources/truapi_serverFFI/include/truapi_serverFFI.h
+   ios/TrUAPIHost/Sources/truapi_serverFFI/include/truapi_serverFFI.h
 cp /tmp/uniffi-swift-out/truapi_serverFFI.modulemap \
-   host-libs/ios/TrUAPIHost/Sources/truapi_serverFFI/include/module.modulemap
+   ios/TrUAPIHost/Sources/truapi_serverFFI/include/module.modulemap
 ```

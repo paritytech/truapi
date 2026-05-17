@@ -6,7 +6,7 @@ import type {
   SubscriptionName,
   WasmRawCallbacks,
   WorkerToMain,
-} from "@parity/host-shared";
+} from "@parity/truapi-host-shared";
 
 interface WorkerProviderState {
   worker: Worker;
@@ -223,7 +223,7 @@ export interface CreateWebWorkerProviderOptions {
  * typically import the worker entry-point with `?worker`:
  *
  * ```ts
- * import HostWorker from "@parity/host-shared/dist/worker-runtime.js?worker";
+ * import HostWorker from "@parity/truapi-host-shared/dist/worker-runtime.js?worker";
  * const worker = new HostWorker();
  * const provider = await createWebWorkerProvider(worker, callbacks);
  * ```

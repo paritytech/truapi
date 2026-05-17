@@ -1,5 +1,5 @@
 // Generic dispatcher utilities sit in `@parity/truapi-host`. This module
-// re-exports them so hosts that depend on `@parity/host-shared` get the
+// re-exports them so hosts that depend on `@parity/truapi-host-shared` get the
 // dispatcher entry-point without a separate install.
 
 export {

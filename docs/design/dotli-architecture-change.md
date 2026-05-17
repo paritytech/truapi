@@ -78,8 +78,8 @@ The point of these diagrams: justify what is **in scope** for the dotli migratio
 
    ──── DEPS ADDED ────
 
-   @parity/host-shared      worker side: runs Rust WASM core
-   @parity/host-web         main side : MessageChannel bridge
+   @parity/truapi-host-shared      worker side: runs Rust WASM core
+   @parity/truapi-host-web         main side : MessageChannel bridge
    @parity/truapi           types from codegen
 
    ──── KEPT ──────────

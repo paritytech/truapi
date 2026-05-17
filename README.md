@@ -59,38 +59,37 @@ rust/crates/
   truapi-server/         Rust runtime that hosts implement: dispatcher, frames, SCALE, WASM + UniFFI surfaces
   uniffi-bindgen-cli/    Thin CLI wrapper around uniffi::uniffi_bindgen_main() for the workspace
 js/packages/
-  truapi/                @parity/truapi TypeScript client
-  truapi-host/           @parity/truapi-host host-side codegen and dispatcher
-host-libs/
-  js/shared/             @parity/host-shared: WASM-backed Provider + worker entrypoint
-  js/web/                @parity/host-web: iframe MessageChannel host + Web Worker provider
-  js/electron/           @parity/host-electron: Electron MessagePortMain provider
-  android/               Kotlin shell + generated UniFFI bindings for truapi-server
-  ios/                   Swift shell + generated UniFFI bindings for truapi-server
-playground/              Interactive Next.js playground (truapi-playground.dot)
-hosts/dotli/             dotli host, vendored as a submodule
-docs/                    Design docs, RFCs, feature proposals
-scripts/codegen.sh       Regenerate the TS client from the Rust source
+  truapi/                  @parity/truapi TypeScript client
+  truapi-host/             @parity/truapi-host host-side codegen and dispatcher
+  truapi-host-shared/      @parity/truapi-host-shared: WASM-backed Provider + worker entrypoint
+  truapi-host-web/         @parity/truapi-host-web: iframe MessageChannel host + Web Worker provider
+  truapi-host-electron/    @parity/truapi-host-electron: Electron MessagePortMain provider
+android/                   Kotlin shell + generated UniFFI bindings for truapi-server
+ios/                       Swift shell + generated UniFFI bindings for truapi-server
+playground/                Interactive Next.js playground (truapi-playground.dot)
+hosts/dotli/               dotli host, vendored as a submodule
+docs/                      Design docs, RFCs, feature proposals
+scripts/codegen.sh         Regenerate the TS client from the Rust source
 ```
 
 ### Native + JS host SDKs
 
-Hosts integrate the Rust core through one of the `@parity/host-*` packages in
-[`host-libs/js/`](host-libs/js):
+Hosts integrate the Rust core through one of the `@parity/truapi-host-*` packages:
 
-- [`@parity/host-shared`](host-libs/js/shared) ships the `truapi-server` WASM
-  bundle, the `Provider` factories that drive it, and a Web Worker entrypoint
-  so the WASM core can run off the page main thread.
-- [`@parity/host-web`](host-libs/js/web) wires the WASM provider into a browser
-  host: iframe MessageChannel handshake plus `createWebWorkerProvider`.
-- [`@parity/host-electron`](host-libs/js/electron) wraps an Electron
-  `MessagePortMain` as a `Provider`, pairs with `host-shared`'s Node-side WASM
-  runtime.
+- [`@parity/truapi-host-shared`](js/packages/truapi-host-shared) ships the
+  `truapi-server` WASM bundle, the `Provider` factories that drive it, and a
+  Web Worker entrypoint so the WASM core can run off the page main thread.
+- [`@parity/truapi-host-web`](js/packages/truapi-host-web) wires the WASM
+  provider into a browser host: iframe MessageChannel handshake plus
+  `createWebWorkerProvider`.
+- [`@parity/truapi-host-electron`](js/packages/truapi-host-electron) wraps an
+  Electron `MessagePortMain` as a `Provider`, pairs with
+  `truapi-host-shared`'s Node-side WASM runtime.
 
-Native shells live alongside the JS packages: [`host-libs/android`](host-libs/android)
-links the `truapi-server` cdylib via UniFFI-generated Kotlin bindings; the
-matching Swift bindings under [`host-libs/ios`](host-libs/ios) power the iOS
-shell. Both are regenerated from the same Rust source via `make uniffi`.
+Native shells sit at the repository root: [`android/`](android) links the
+`truapi-server` cdylib via UniFFI-generated Kotlin bindings; the matching
+Swift bindings under [`ios/`](ios) power the iOS shell. Both are regenerated
+from the same Rust source via `make uniffi`.
 
 ## How it works
 
@@ -107,11 +106,11 @@ Common tasks are wrapped in the top-level `Makefile`. Run `make help` for the fu
 
 ```bash
 make setup    # submodules + JS dependencies
-make build    # Rust workspace + TypeScript client + host-libs JS packages
-make test     # Rust + TypeScript client + host-libs tests
+make build    # Rust workspace + TypeScript client + @parity/truapi-host-* packages
+make test     # Rust + TypeScript client + @parity/truapi-host-* tests
 make check    # full suite: build, fmt, clippy, test, TS tests, playground build + lint
-make wasm     # rebuild truapi-server WASM artifacts under host-libs/js/shared/dist/wasm/
-make uniffi   # regenerate UniFFI Kotlin + Swift bindings under host-libs/{android,ios}/
+make wasm     # rebuild truapi-server WASM artifacts under js/packages/truapi-host-shared/dist/wasm/
+make uniffi   # regenerate UniFFI Kotlin + Swift bindings under android/ and ios/
 ```
 
 To run the playground locally:

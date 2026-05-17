@@ -1584,7 +1584,9 @@ mod tests {
         );
 
         // Wait until the follow setup roundtrips and lands in `sent`.
-        for _ in 0..100 {
+        // Generous timeout so the test stays robust under loaded CI runners
+        // where the spawner can be slow to schedule the request task.
+        for _ in 0..500 {
             if !sent.lock().unwrap().is_empty() {
                 break;
             }
@@ -1593,8 +1595,8 @@ mod tests {
 
         drop(stream);
 
-        // Give the cleanup a moment to run.
-        for _ in 0..100 {
+        // Wait for the cleanup task to run and emit the unfollow request.
+        for _ in 0..500 {
             if sent.lock().unwrap().len() >= 2 {
                 break;
             }

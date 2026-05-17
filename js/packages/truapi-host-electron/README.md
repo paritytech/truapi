@@ -1,9 +1,9 @@
-# @parity/host-electron
+# @parity/truapi-host-electron
 
 Electron TrUAPI host wrapper. Exposes `createElectronProvider`, which
 wraps an Electron `MessagePortMain` as a `Provider` from
 `@parity/truapi`. Pair it with `createNodeWasmProvider` from
-`@parity/host-shared` and `createHostServer` from `@parity/truapi-host`
+`@parity/truapi-host-shared` and `createHostServer` from `@parity/truapi-host`
 to assemble a full Electron host.
 
 ## Architecture
@@ -16,9 +16,9 @@ to assemble a full Electron host.
 ## Example
 
 ```ts
-import { createNodeWasmProvider } from "@parity/host-shared";
+import { createNodeWasmProvider } from "@parity/truapi-host-shared";
 import { createHostServer } from "@parity/truapi-host";
-import { createElectronProvider } from "@parity/host-electron";
+import { createElectronProvider } from "@parity/truapi-host-electron";
 
 const coreProvider = await createNodeWasmProvider(callbacks);
 const rendererProvider = createElectronProvider({ port: messagePortMain });
@@ -30,8 +30,8 @@ const server = createHostServer(rendererProvider, [
 
 ## Publishing
 
-TODO: npm publish workflow not yet wired. The `@parity/host-shared`,
-`@parity/host-web`, and `@parity/host-electron` packages need a release-process
+TODO: npm publish workflow not yet wired. The `@parity/truapi-host-shared`,
+`@parity/truapi-host-web`, and `@parity/truapi-host-electron` packages need a release-process
 discussion before we add a publish job to `.github/workflows/`. Until then,
 consumers should depend on the package via the workspace `file:` link or by
 publishing locally with `npm pack`.

@@ -15,18 +15,17 @@ rust/crates/
   truapi-server/         Rust runtime hosts implement; ships as WASM (browser/node) and via UniFFI (iOS/Android)
   uniffi-bindgen-cli/    Thin CLI wrapper around uniffi::uniffi_bindgen_main()
 js/packages/
-  truapi/                @parity/truapi TS package; generated TS lives under ignored paths
-  truapi-host/           @parity/truapi-host host-side codegen + dispatcher
-host-libs/
-  js/shared/             @parity/host-shared: WASM-backed Provider, worker entrypoint, pre-built WASM under dist/wasm/
-  js/web/                @parity/host-web: iframe MessageChannel + Web Worker WASM provider
-  js/electron/           @parity/host-electron: Electron MessagePortMain provider
-  android/               Kotlin shell + UniFFI bindings (generated under src/main/kotlin/generated)
-  ios/                   Swift shell + UniFFI bindings (generated under Sources/Generated)
-playground/              Next.js interactive playground; deploys to truapi-playground.dot
-hosts/dotli/             dotli submodule
-docs/                    design docs, RFCs, feature proposals
-scripts/codegen.sh       regenerate the TS client from the Rust crate
+  truapi/                  @parity/truapi TS package; generated TS lives under ignored paths
+  truapi-host/             @parity/truapi-host host-side codegen + dispatcher
+  truapi-host-shared/      @parity/truapi-host-shared: WASM-backed Provider, worker entrypoint, pre-built WASM under dist/wasm/
+  truapi-host-web/         @parity/truapi-host-web: iframe MessageChannel + Web Worker WASM provider
+  truapi-host-electron/    @parity/truapi-host-electron: Electron MessagePortMain provider
+android/                   Kotlin shell + UniFFI bindings (generated under src/main/kotlin/generated)
+ios/                       Swift shell + UniFFI bindings (generated under TrUAPIHost/Sources)
+playground/                Next.js interactive playground; deploys to truapi-playground.dot
+hosts/dotli/               dotli submodule
+docs/                      design docs, RFCs, feature proposals
+scripts/codegen.sh         regenerate the TS client from the Rust crate
 ```
 
 ### Crate + binding invariants
@@ -38,10 +37,11 @@ scripts/codegen.sh       regenerate the TS client from the Rust crate
   `truapi::versioned::*` and `truapi::v01::*`. The runtime crates re-export
   rather than redefine.
 - Pre-built `truapi-server` WASM artifacts are committed under
-  `host-libs/js/shared/dist/wasm/{web,node}/`. Regenerate via `make wasm`
-  whenever `rust/crates/truapi-server/` changes; CI verifies the committed
-  bundle is up to date.
-- UniFFI bindings under `host-libs/{android,ios}/` are generated from the
+  `js/packages/truapi-host-shared/dist/wasm/{web,node}/`. Regenerate via
+  `make wasm` whenever `rust/crates/truapi-server/` changes. CI rebuilds the
+  bundle as a smoke check; exact byte-identity isn't enforced because
+  wasm-pack output depends on Rust/wasm-bindgen versions.
+- UniFFI bindings under `android/` and `ios/` are generated from the
   `truapi-server` cdylib via `make uniffi`. The generated Swift modulemap may
   need a one-time relocation into `Sources/truapi_serverFFI/include/` — the
   `make uniffi` target prints a reminder.
