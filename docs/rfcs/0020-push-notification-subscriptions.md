@@ -34,12 +34,9 @@ Publisher app                                          Subscriber app
 (organizer side)                                       (attendee side)
         |                                                       ^   |
         |                                                       |   |
-        |                                                       |   |  (1) pushAddRules({
-        |                                              (6) push |   |        topics: [
-        |                                               back to |   |          T_announcements
-        |                                                caller |   |        ]
-        |                                                       |   |      })
-        |                                                       |   |
+        |                                              (6) push |   |  (1) pushAddRules({ topics: [ T_announcements ] })
+        |                                               back to |   |
+        |                                                caller |   |
         |                                                       |   v
         |                  +------------------------------------+---+------+
         |                  |  Host                                         |
