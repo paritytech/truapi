@@ -13,7 +13,7 @@ pub trait Notifications: Send + Sync {
     /// Send a push notification to the user.
     ///
     /// Returns a [`NotificationId`](crate::v01::NotificationId) that can be
-    /// passed to [`push_notification_cancel`](Self::push_notification_cancel)
+    /// passed to [`cancel_push_notification`](Self::cancel_push_notification)
     /// to retract a scheduled notification. When `scheduled_at` is set the host
     /// persists the notification across restarts and fires it through the
     /// platform-native scheduler. See [RFC 0019].
@@ -29,7 +29,7 @@ pub trait Notifications: Send + Sync {
     /// export async function pushNotification(
     ///   truapi: Client,
     /// ): Promise<HostPushNotificationResponse> {
-    ///   const result = await truapi.notifications.pushNotification({
+    ///   const result = await truapi.notifications.sendPushNotification({
     ///     text: "Hello!",
     ///   });
     ///
@@ -38,7 +38,7 @@ pub trait Notifications: Send + Sync {
     /// }
     /// ```
     #[wire(request_id = 4)]
-    async fn push_notification(
+    async fn send_push_notification(
         &self,
         cx: &CallContext,
         request: HostPushNotificationRequest,
@@ -57,7 +57,7 @@ pub trait Notifications: Send + Sync {
     /// export async function cancelNotification(
     ///   truapi: Client,
     /// ): Promise<void> {
-    ///   const result = await truapi.notifications.pushNotificationCancel({
+    ///   const result = await truapi.notifications.cancelPushNotification({
     ///     id: 1,
     ///   });
     ///
@@ -65,7 +65,7 @@ pub trait Notifications: Send + Sync {
     /// }
     /// ```
     #[wire(request_id = 134)]
-    async fn push_notification_cancel(
+    async fn cancel_push_notification(
         &self,
         cx: &CallContext,
         request: HostPushNotificationCancelRequest,
