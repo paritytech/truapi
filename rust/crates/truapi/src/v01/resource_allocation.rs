@@ -1,6 +1,6 @@
 use parity_scale_codec::{Decode, Encode};
 
-/// A resource the host can pre-allocate on behalf of the product (RFC 0014).
+/// A resource the host can pre-allocate on behalf of the product (RFC 0010).
 ///
 /// For the slot-table allowances (`StatementStoreAllowance`,
 /// `BulletinAllowance`, `SmartContractAllowance`), pre-allocation is
@@ -20,7 +20,7 @@ pub enum AllocatableResource {
     AutoSigning,
 }
 
-/// Outcome of allocating a single resource (RFC 0014).
+/// Outcome of allocating a single resource (RFC 0010).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum AllocationOutcome {
     /// Resource is now available for use.
@@ -31,14 +31,14 @@ pub enum AllocationOutcome {
     NotAvailable,
 }
 
-/// Batched resource pre-allocation request (RFC 0014).
+/// Batched resource pre-allocation request (RFC 0010).
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostRequestResourceAllocationRequest {
     /// Resources to allocate.
     pub resources: Vec<AllocatableResource>,
 }
 
-/// Per-resource outcomes for a batched allocation request (RFC 0014).
+/// Per-resource outcomes for a batched allocation request (RFC 0010).
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostRequestResourceAllocationResponse {
     /// Per-resource allocation outcomes, in the same order as the request.
