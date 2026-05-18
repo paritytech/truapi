@@ -64,7 +64,7 @@ for (const service of services) {
       assert.doesNotThrow(() => fn.call(serviceClient, { request }), label);
     } else {
       await assert.rejects(
-        () => fn.call(serviceClient, request),
+        async () => fn.call(serviceClient, request),
         (error) => error === ENCODED,
         label,
       );
