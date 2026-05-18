@@ -2,15 +2,14 @@
 
 use crate::versioned::system::{
     HostFeatureSupportedError, HostFeatureSupportedRequest, HostFeatureSupportedResponse,
-    HostHandshakeError, HostHandshakeRequest, HostHandshakeResponse, HostNavigateToError,
-    HostNavigateToRequest, HostNavigateToResponse, HostPushNotificationError,
+    HostHandshakeError, HostHandshakeRequest, HostHandshakeResponse, HostPushNotificationError,
     HostPushNotificationRequest, HostPushNotificationResponse,
 };
 use crate::wire;
 use crate::{CallContext, CallError};
 
-/// General-purpose TrUAPI methods for handshake, feature detection,
-/// navigation, and notifications.
+/// General-purpose TrUAPI methods for handshake, feature detection, and
+/// notifications.
 pub trait System: Send + Sync {
     /// Negotiate the wire codec version with the product.
     ///
@@ -82,24 +81,4 @@ pub trait System: Send + Sync {
         cx: &CallContext,
         request: HostPushNotificationRequest,
     ) -> Result<HostPushNotificationResponse, CallError<HostPushNotificationError>>;
-
-    /// Request the host to open a URL.
-    ///
-    /// ```ts
-    /// import { type Client } from "@parity/truapi";
-    ///
-    /// export async function navigateToDocs(truapi: Client): Promise<void> {
-    ///   const result = await truapi.system.navigateTo({
-    ///     url: "https://example.com",
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    /// }
-    /// ```
-    #[wire(request_id = 6)]
-    async fn navigate_to(
-        &self,
-        cx: &CallContext,
-        request: HostNavigateToRequest,
-    ) -> Result<HostNavigateToResponse, CallError<HostNavigateToError>>;
 }

@@ -11,12 +11,6 @@ pub enum HostFeatureSupportedRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub enum HostNavigateToError {
-    PermissionDenied,
-    Unknown { reason: String },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostPushNotificationRequest {
     /// Notification text.
     pub text: String,
@@ -41,10 +35,4 @@ pub struct HostHandshakeRequest {
 pub struct HostFeatureSupportedResponse {
     /// Whether the feature is supported.
     pub supported: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct HostNavigateToRequest {
-    /// URL to open.
-    pub url: String,
 }
