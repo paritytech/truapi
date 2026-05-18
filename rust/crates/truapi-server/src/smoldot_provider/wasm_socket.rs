@@ -4,9 +4,9 @@ use futures::{io, prelude::*};
 use send_wrapper::SendWrapper;
 use wasm_bindgen::{JsCast, prelude::*};
 
+use derive_more::Display;
 use std::{
     collections::VecDeque,
-    fmt,
     pin::Pin,
     sync::{Arc, Mutex},
     task::Poll,
@@ -14,18 +14,11 @@ use std::{
 };
 
 /// Errors returned by the wasm-side socket constructor.
-#[derive(Debug)]
+#[derive(Debug, Display)]
 pub enum Error {
     /// Wraps a JS-side connection failure.
+    #[display("Failed to connect {_0}")]
     ConnectionError(String),
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::ConnectionError(msg) => write!(f, "Failed to connect {msg}"),
-        }
-    }
 }
 
 impl std::error::Error for Error {}

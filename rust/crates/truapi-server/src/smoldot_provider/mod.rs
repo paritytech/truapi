@@ -6,9 +6,9 @@
 //! the chain runtime.
 
 use std::collections::HashMap;
-use std::fmt;
 use std::sync::{Arc, Mutex};
 
+use derive_more::Display;
 use futures::SinkExt;
 use futures::StreamExt;
 use futures::channel::mpsc;
@@ -43,21 +43,14 @@ const ASSET_HUB_PASEO_GENESIS: &str =
     "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2";
 
 /// Errors returned by [`SmoldotChainProvider::with_bundled_specs`].
-#[derive(Debug)]
+#[derive(Debug, Display)]
 pub enum SmoldotInitError {
     /// Failed to add the Paseo relay chain to the client.
+    #[display("failed to add relay chain: {_0}")]
     AddRelay(AddChainError),
     /// Failed to add the Asset Hub parachain to the client.
+    #[display("failed to add parachain: {_0}")]
     AddParaChain(AddChainError),
-}
-
-impl fmt::Display for SmoldotInitError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::AddRelay(err) => write!(f, "failed to add relay chain: {err}"),
-            Self::AddParaChain(err) => write!(f, "failed to add parachain: {err}"),
-        }
-    }
 }
 
 impl std::error::Error for SmoldotInitError {}
