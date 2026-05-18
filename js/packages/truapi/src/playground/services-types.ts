@@ -5,6 +5,8 @@ export interface MethodInfo {
   requestDescription?: string;
   defaultRequest?: string;
   noParams?: boolean;
+  exampleSource?: string;
+  exampleFunctionName?: string;
 }
 
 export interface ServiceInfo {
