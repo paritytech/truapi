@@ -50,8 +50,8 @@ The goal is to define a minimal Coinage substrate:
 - a `CoinPaymentReceivable` public key that identifies a payment and protects transmitted
   coin secrets;
 - a standard `CoinPaymentCheque` structure for encrypted coin-secret transmission;
-- a standard `CoinPaymentInvoice` structure that regular user agents can understand from a
-  QR code or deep link;
+- a standard invoice convention (channel + receivable + amount) that user agents
+  can understand from a QR code or deep link;
 - clearing status and evidence references without exposing raw private payment
   data.
 
@@ -158,71 +158,55 @@ payer's device. The payer's user agent can then describe the payment request,
 seek user confirmation, create a cheque, and transmit it without product-level
 interaction on the payer side.
 
-The invoice URI is host-profiled rather than globally tied to one branded app
-scheme:
-
-```text
-<ua-invoice-scheme>://coinpayment/invoice?payload=<base64url-no-padding(CoinPaymentInvoiceV0)>
-```
-
-The payload is the canonical SCALE encoding of the V0 `CoinPaymentInvoice`
-using the TrUAPI schema defined by this RFC. A host profile chooses the
-concrete URI scheme that it registers or understands. For the Polkadot app host
-profile, the URI is:
-
-```text
-polkadotapp://coinpayment/invoice?payload=<base64url-no-padding(CoinPaymentInvoiceV0)>
-```
-
-Native user agents can register their concrete scheme with the operating
-system. Web or PWA user agents can parse the same URI from their in-app QR
-scanner without requiring OS-level scheme registration. Hosts may accept
-additional aliases for compatibility, but products should emit the concrete
-scheme named by the target host profile.
+The invoice URI scheme and payload encoding are product-layer concerns. A
+product constructs an invoice by combining a `CoinPaymentTransmissionChannel`,
+a `CoinPaymentReceivable`, and a `Balance` into whatever URI or QR format its
+host profile defines. This RFC does not prescribe a canonical invoice wire
+type; the three constituent values are individually defined above.
 
 ## Detailed Design
 
 ### API Calls
 
 ```rust
-fn host_coin_payment_create_purse(
+fn create_purse(
   name: String
 ) -> Result<PurseId, CoinPaymentError>;
 
-fn host_coin_payment_query_purse(
+fn query_purse(
   purse: PurseId
 ) -> Result<CoinPaymentPurseInfo, CoinPaymentError>;
 
-fn host_coin_payment_rebalance_purse(
+fn rebalance_purse(
   from: PurseId,
   to: PurseId,
   amount: Balance
 ) -> Result<Resolvable<CoinPaymentStatus>, CoinPaymentError>;
 
-fn host_coin_payment_delete_purse(
+fn delete_purse(
   target: PurseId,
   drain_into: PurseId
 ) -> Result<Resolvable<CoinPaymentStatus>, CoinPaymentError>;
 
-fn host_coin_payment_create_receivable(
+fn create_receivable(
   into: PurseId
 ) -> Result<CoinPaymentReceivable, CoinPaymentError>;
 
-fn host_coin_payment_create_cheque(
+fn create_cheque(
   from: PurseId,
   to: CoinPaymentReceivable,
   amount: Balance
 ) -> Result<CoinPaymentCheque, CoinPaymentError>;
 
-fn host_coin_payment_deposit(
+fn deposit(
   cheque: CoinPaymentCheque
 ) -> Result<Resolvable<CoinPaymentStatus>, CoinPaymentError>;
 
-fn host_coin_payment_refund(
+fn refund(
   receivable: CoinPaymentReceivable
 ) -> Result<Resolvable<CoinPaymentStatus>, CoinPaymentError>;
 
-fn host_coin_payment_listen_for(
+fn listen_for(
   receivable: CoinPaymentReceivable
 ) -> Result<Subscription<CoinPaymentListenForItem>, CoinPaymentError>;
 // CoinPaymentListenForItem =
@@ -354,12 +338,6 @@ enum CoinPaymentTransmissionChannel {
   // Future RFCs may define additional channel variants.
 }
 
-struct CoinPaymentInvoice {
-  version: u8, // 0
-  handoff: CoinPaymentTransmissionChannel,
-  receiver: CoinPaymentReceivable,
-  amount: Balance
-}
 ```
 
 `CoinPaymentTransmissionChannel::Standard` is the V1 handoff descriptor for the
@@ -372,7 +350,7 @@ identity, purse identity, POS references, or settlement state from it.
 
 ### Call Semantics
 
-#### `host_coin_payment_create_purse`
+#### `coin_payment.create_purse`
 
 Creates a new firewalled Coinage purse.
 
@@ -388,7 +366,7 @@ The user agent must:
 The product must not receive Coinage keys, derivation paths, source coin IDs, or
 raw private payment material.
 
-#### `host_coin_payment_query_purse`
+#### `coin_payment.query_purse`
 
 Returns purse metadata and funding/balance status when authorized.
 
@@ -397,7 +375,7 @@ purse or has otherwise been granted access. The returned information must not
 expose source coins, coin secrets, derivation paths, recycler internals, or raw
 proofs.
 
-#### `host_coin_payment_rebalance_purse`
+#### `coin_payment.rebalance_purse`
 
 Transfers balance between local purses.
 
@@ -405,14 +383,14 @@ The user agent must authorize access to both purses and decide whether explicit
 user consent is required. Products use this for local aggregation, for example
 moving funds from a terminal purse into a store purse.
 
-#### `host_coin_payment_delete_purse`
+#### `coin_payment.delete_purse`
 
 Deletes a purse after draining its balance into another local purse.
 
 The user agent must authorize the operation, preserve any durable audit state it
 needs for recovery or user overview, and must not delete `MAIN_PURSE`.
 
-#### `host_coin_payment_create_receivable`
+#### `coin_payment.create_receivable`
 
 Creates a receivable public key for depositing into a purse.
 
@@ -426,7 +404,7 @@ The user agent must:
 The product can place this receivable into an invoice. The product cannot use it
 to decrypt cheques or claim coins.
 
-#### `host_coin_payment_create_cheque`
+#### `coin_payment.create_cheque`
 
 Creates a cheque paying from a local purse to a receivable.
 
@@ -434,7 +412,7 @@ The user agent must authorize access to the source purse, decide whether user
 confirmation is required, select suitable coins, encrypt their secrets to the
 receivable public key, and return the resulting cheque.
 
-#### `host_coin_payment_listen_for`
+#### `coin_payment.listen_for`
 
 Creates or selects a transmission channel for a receivable and returns a
 subscription that emits channel and cheque items. Products use this when they
@@ -445,7 +423,7 @@ invoice. It then emits a `Cheque` item when a cheque for the receivable arrives
 through that channel. Receipt of a cheque is not payment finality; the receiver
 still needs to call `deposit`.
 
-#### `host_coin_payment_deposit`
+#### `coin_payment.deposit`
 
 Attempts to claim coins from a cheque into the purse associated with the
 cheque's receivable.
@@ -457,7 +435,7 @@ after the deposit has completed.
 `Done` means the host has verified the Coinage claim evidence represented by the
 returned `CoinPaymentClearingReference`.
 
-#### `host_coin_payment_refund`
+#### `coin_payment.refund`
 
 Attempts to return coins associated with a receivable back to the sender when
 possible.
@@ -485,30 +463,29 @@ Non-normative example for a product issuing an invoice:
 let my_purse: PurseId = match read_storage("purse") {
   Some(p) => p,
   None => {
-    let p = host_coin_payment_create_purse("Product purse")?;
+    let p = coin_payment.create_purse("Product purse")?;
     write_storage("purse", p);
     p
   }
 };
 
 let amount = 1000; // Ten dollars to invoice.
-let old_balance = host_coin_payment_query_purse(my_purse)?.balance;
+let old_balance = coin_payment.query_purse(my_purse)?.balance;
 
-let receiver = host_coin_payment_create_receivable(my_purse)?;
-let mut listener = host_coin_payment_listen_for(receiver)?;
+let receiver = coin_payment.create_receivable(my_purse)?;
+let mut listener = coin_payment.listen_for(receiver)?;
 
 let handoff = listener.next().await; // Channel item.
-let invoice = CoinPaymentInvoice { version: 0, handoff, receiver, amount };
-display_as_qr_or_link(invoice);
+display_as_qr_or_link(handoff, receiver, amount);
 
 let cheque = listener.next().await; // Cheque item.
-let deposit_status = host_coin_payment_deposit(cheque)?;
+let deposit_status = coin_payment.deposit(cheque)?;
 
 let payment_reference = loop {
   match deposit_status.await_changed() {
     CoinPaymentStatus::Failed { error, cleared, reference } => {
       if cleared > 0 {
-        host_coin_payment_refund(receiver)?;
+        coin_payment.refund(receiver)?;
       }
       return Err(error);
     }
@@ -522,11 +499,11 @@ let payment_reference = loop {
   }
 };
 
-let new_balance = host_coin_payment_query_purse(my_purse)?.balance;
+let new_balance = coin_payment.query_purse(my_purse)?.balance;
 assert_eq!(new_balance, old_balance + amount);
 
 if refund_is_needed {
-  let refund_status = host_coin_payment_refund(receiver)?;
+  let refund_status = coin_payment.refund(receiver)?;
   let refund_reference = loop {
     match refund_status.await_changed() {
       CoinPaymentStatus::Done { reference, .. } |
@@ -678,7 +655,7 @@ as product-specific layers on top of this API.
 Mapping:
 
 - merchant/store/terminal operating unit -> one or more CoinPayment purses;
-- checkout QR/deep link -> product-created `CoinPaymentInvoice`;
+- checkout QR/deep link -> product-created invoice (channel + receivable + amount);
 - customer payment -> payer user agent creates and transmits a `CoinPaymentCheque`;
 - merchant acceptance -> receiver user agent deposits the cheque and observes
   `CoinPaymentStatus`;
