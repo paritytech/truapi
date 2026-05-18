@@ -1,4 +1,3 @@
-import type { Monaco } from "@monaco-editor/react";
 import {
   runExample,
   type LogEntry,
@@ -52,7 +51,6 @@ const LONG_TIMEOUT_METHODS = new Set([
 ]);
 
 type RunOneOpts = {
-  monaco: Monaco;
   serviceName: string;
   method: MethodInfo;
   onUpdate: (id: string, entry: TestEntry) => void;
@@ -62,7 +60,6 @@ type RunOneOpts = {
 };
 
 async function runOne({
-  monaco,
   serviceName,
   method,
   onUpdate,
@@ -93,10 +90,8 @@ async function runOne({
 
   try {
     const run = await runExample({
-      monaco,
       source,
       functionName: method.exampleFunctionName,
-      uri: `file:///playground/auto-test/${serviceName}-${method.name}.ts`,
       client: getClient(),
       onLog,
     });
@@ -173,7 +168,6 @@ async function runSubscription(
 }
 
 export async function runSingleTest(
-  monaco: Monaco,
   services: ServiceInfo[],
   serviceName: string,
   methodName: string,
@@ -184,7 +178,6 @@ export async function runSingleTest(
   const method = svc?.methods.find((m: MethodInfo) => m.name === methodName);
   if (!svc || !method) return;
   await runOne({
-    monaco,
     serviceName,
     method,
     onUpdate,
@@ -194,7 +187,6 @@ export async function runSingleTest(
 }
 
 export async function runAutoTests(
-  monaco: Monaco,
   services: ServiceInfo[],
   onUpdate: (id: string, entry: TestEntry) => void,
   signal?: AbortSignal,
@@ -207,7 +199,6 @@ export async function runAutoTests(
         for (const m of svc.methods) {
           if (signal?.aborted) return;
           await runOne({
-            monaco,
             serviceName: svc.name,
             method: m,
             onUpdate,
@@ -220,7 +211,6 @@ export async function runAutoTests(
       for (const m of svc.methods) {
         tasks.push(() =>
           runOne({
-            monaco,
             serviceName: svc.name,
             method: m,
             onUpdate,

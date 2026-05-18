@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import type { Monaco } from "@monaco-editor/react";
 import { stringify } from "@/src/lib/host-api-bridge";
 import { ExampleEditor } from "@/src/components/ExampleEditor";
 import {
@@ -30,6 +29,21 @@ function renderWithLinks(text: string) {
 
 const CALL_TIMEOUT_MS = 30_000;
 
+function formatError(value: unknown): string {
+  if (value instanceof Error) {
+    const message = value.message || value.name || "Error";
+    const payload = (value as Error & { payload?: unknown }).payload;
+    if (payload && typeof payload === "object") {
+      const payloadStr = stringify(payload);
+      if (payloadStr === stringify({ reason: message })) return message;
+      return `${message}\n\n${payloadStr}`;
+    }
+    return message;
+  }
+  if (typeof value === "string") return value;
+  return stringify(value);
+}
+
 export function MethodView({
   service,
   method,
@@ -48,7 +62,6 @@ export function MethodView({
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState("");
-  const [monaco, setMonaco] = useState<Monaco | null>(null);
   const [activeSub, setActiveSub] = useState<RunSubscription | null>(null);
   const callAbortRef = useRef<((reason: string) => void) | null>(null);
 
@@ -87,12 +100,10 @@ export function MethodView({
   }, []);
 
   const runnable =
-    !!methodInfo?.exampleSource &&
-    !!methodInfo?.exampleFunctionName &&
-    !!monaco;
+    !!methodInfo?.exampleSource && !!methodInfo?.exampleFunctionName;
 
   const handleRun = async () => {
-    if (!runnable || !methodInfo || !monaco) return;
+    if (!runnable || !methodInfo) return;
     setRunning(true);
     setError("");
     setResult("");
@@ -100,10 +111,8 @@ export function MethodView({
     try {
       const client = getClient();
       const run = await runExample({
-        monaco,
         source,
         functionName: methodInfo.exampleFunctionName!,
-        uri: `file:///playground/${service}-${method}.ts`,
         client,
         onLog,
       });
@@ -132,7 +141,7 @@ export function MethodView({
         setActiveSub(run.subscription);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(formatError(err));
       setRunning(false);
     }
   };
@@ -205,7 +214,6 @@ export function MethodView({
             <ExampleEditor
               source={source}
               onChange={setSource}
-              onReady={setMonaco}
               uri={`file:///playground/${service}-${method}.ts`}
             />
           </>
@@ -217,7 +225,7 @@ export function MethodView({
         <div className="actions">
           {!runnable ? (
             <button type="button" className="btn btn--primary" disabled>
-              {monaco ? "Not supported" : "Loading…"}
+              Not supported
             </button>
           ) : kind === "subscription" ? (
             activeSub ? (
