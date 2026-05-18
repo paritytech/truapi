@@ -42,10 +42,11 @@ pub trait Notifications: Send + Sync {
         request: HostPushNotificationRequest,
     ) -> Result<HostPushNotificationResponse, CallError<HostPushNotificationError>>;
 
-    /// Register one or more `(signer, topic)` rules so the user is woken up
-    /// by a push when a signed statement matching any registered rule
-    /// appears on the Statement Store. Mirrors
-    /// `POST /v1/subscriptions/rules` from the v2 push backend spec.
+    /// Register one or more topic rules so the user is woken up by a push
+    /// when a signed statement matching any registered rule appears on the
+    /// Statement Store. Mirrors `POST /v1/subscriptions/rules` from the v2
+    /// push backend spec. The signer is injected by the host (based on the
+    /// calling product's identity) when relaying the rule to the backend.
     ///
     /// ```ts
     /// import { type Client } from "@parity/truapi";
@@ -54,12 +55,7 @@ pub trait Notifications: Send + Sync {
     ///   truapi: Client,
     /// ): Promise<void> {
     ///   const result = await truapi.notifications.pushAddRules({
-    ///     rules: [
-    ///       {
-    ///         signer: "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///         topic: "0x00",
-    ///       },
-    ///     ],
+    ///     rules: [{ topic: "0x00" }],
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;
@@ -82,12 +78,7 @@ pub trait Notifications: Send + Sync {
     ///   truapi: Client,
     /// ): Promise<void> {
     ///   const result = await truapi.notifications.pushRemoveRules({
-    ///     rules: [
-    ///       {
-    ///         signer: "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///         topic: "0x00",
-    ///       },
-    ///     ],
+    ///     rules: [{ topic: "0x00" }],
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;
@@ -131,12 +122,7 @@ pub trait Notifications: Send + Sync {
     ///
     /// export async function setRules(truapi: Client): Promise<void> {
     ///   const result = await truapi.notifications.pushSetRules({
-    ///     rules: [
-    ///       {
-    ///         signer: "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///         topic: "0x00",
-    ///       },
-    ///     ],
+    ///     rules: [{ topic: "0x00" }],
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;

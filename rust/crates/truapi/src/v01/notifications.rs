@@ -11,28 +11,19 @@ pub struct HostPushNotificationRequest {
     pub deeplink: Option<String>,
 }
 
-/// 32-byte statement signer key.
-///
-/// Matches the `signer` field of [`StatementProof::Sr25519`] and
-/// [`StatementProof::Ed25519`].
-///
-/// [`StatementProof::Sr25519`]: super::StatementProof::Sr25519
-/// [`StatementProof::Ed25519`]: super::StatementProof::Ed25519
-pub type StatementSigner = [u8; 32];
-
-/// A single `(signer, topic)` rule the user wants to be woken up for.
+/// A single topic the user wants to be woken up for.
 ///
 /// The host's push backend delivers a push to the user's device(s) whenever
-/// a signed statement appears on the Statement Store whose signer equals
-/// `signer` and whose `topics` list contains `topic`.
+/// a signed statement appears on the Statement Store whose signer matches
+/// the calling product's identity and whose `topics` list contains `topic`.
+/// The product does not specify the signer; the host injects it when
+/// forwarding the rule to the push backend.
 ///
-/// At the host level the effective key is `(product, signer, topic)`: rules
-/// are scoped per calling product, so two products can register the same
-/// `(signer, topic)` pair independently and never see each other's rules.
+/// At the host level the effective key is `(product, topic)`: rules are
+/// scoped per calling product, so two products can register the same topic
+/// independently and never see each other's rules.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct PushSubscriptionRule {
-    /// Signer the matching statement must be signed by.
-    pub signer: StatementSigner,
     /// Topic the matching statement must carry in its `topics` list.
     pub topic: Topic,
 }

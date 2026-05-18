@@ -10,7 +10,7 @@ pr:
 
 ## Summary
 
-Adds four TrUAPI methods — `push_add_rules`, `push_remove_rules`, `push_list_rules`, `push_set_rules` — that mirror the rule-management endpoints of the [v2 push backend spec](https://hackmd.io/@1JCaGppGSUqHtJilikYaKw/r16YTVg5Ze). A rule is a `(signer, topic)` pair: the host's push backend delivers a push to the user's device(s) whenever a signed statement matching that pair appears on the Statement Store. The product never sees push tokens.
+Adds four TrUAPI methods — `push_add_rules`, `push_remove_rules`, `push_list_rules`, `push_set_rules` — that mirror the rule-management endpoints of the [v2 push backend spec](https://hackmd.io/@1JCaGppGSUqHtJilikYaKw/r16YTVg5Ze). From the product's point of view a rule is just a `topic`: the product does not specify the signer, the host injects it when forwarding the rule to its push backend. The backend then delivers a push to the user's device(s) whenever a signed statement matching the resulting `(signer, topic)` pair appears on the Statement Store. The product never sees push tokens.
 
 The method names use `add` / `remove` rather than `subscribe` / `unsubscribe` because the `_subscribe` suffix is reserved for streaming TrUAPI methods (e.g. `statementStore.subscribe`).
 
@@ -23,11 +23,11 @@ This RFC exposes a TrUAPI-shaped surface over the rule-management API defined in
 
 ## Motivation
 
-The push-notifications v2 design assigns delivery to a host-side push backend that tails the Statement Store, verifies signatures, and delivers pushes only for `(signer, topic)` pairs the user has whitelisted. TrUAPI needs a primitive that lets a product manipulate that whitelist.
+The push-notifications v2 design assigns delivery to a host-side push backend that tails the Statement Store, verifies signatures, and delivers pushes only for `(signer, topic)` pairs the user has whitelisted. TrUAPI needs a primitive that lets a product manipulate that whitelist. The product supplies the `topic`; the host fills in the `signer` from the calling product's identity before forwarding to the backend.
 
 ### Worked example: festival announcements
 
-A conference product publishes festival-wide announcements as signed statements on a well-known topic. When the user taps "notify me about announcements," the subscriber app calls `push_add_rules({ rules: [{ signer: festival_signer, topic: announcements_topic }] })`. From that point on, the user is woken up for new announcements even with the product closed:
+A conference product publishes festival-wide announcements as signed statements on a well-known topic, signed with the product's own identity key (`pkProduct`). When the user taps "notify me about announcements," the subscriber app calls `push_add_rules({ rules: [{ topic: announcements_topic }] })`. The host injects `pkProduct` as the signer when relaying to the backend, so from that point on the user is woken up for new announcements even with the product closed:
 
 ```
 Publisher app                                          Subscriber app
@@ -36,17 +36,17 @@ Publisher app                                          Subscriber app
         |                                                       |   |
         |                                                       |   |  (1) pushAddRules({
         |                                              (6) push |   |        rules: [{
-        |                                               back to |   |          signer: pkPublisher,
-        |                                                caller |   |          topic:  T_announcements
-        |                                                       |   |        }]
+        |                                               back to |   |          topic: T_announcements
+        |                                                caller |   |        }]
         |                                                       |   |      })
         |                                                       |   |
         |                                                       |   v
         |                  +------------------------------------+---+------+
-        |                  |  Push backend                                 |
-        |                  |  stores rule:                                 |
-        |                  |  (pkPublisher, T_announcements)               |
-        |                  |    -> this subscriber app                     |
+        |                  |  Host                                         |
+        |                  |  injects signer = pkProduct, then forwards    |
+        |                  |  to push backend:                             |
+        |                  |    rule (pkProduct, T_announcements)          |
+        |                  |      -> this subscriber app                   |
         |                  +-----------------------+-----------------------+
         |                                          ^
         |                                          |  (4) tail / match rule
@@ -99,16 +99,15 @@ async fn push_set_rules(
 `Topic` is reused from `v01::statement_store`.
 
 ```rust
-pub type StatementSigner = [u8; 32];
-
-/// A single (signer, topic) rule the user wants to be woken up for.
+/// A single topic the user wants to be woken up for.
 ///
-/// At the host level the effective key is (product, signer, topic): rules
-/// are scoped per calling product, so two products can register the same
-/// (signer, topic) pair independently and never see each other's rules.
+/// At the host level the effective key is (product, topic): rules are scoped
+/// per calling product, so two products can register the same topic
+/// independently and never see each other's rules. The product does not
+/// specify the signer; the host injects it when forwarding the rule to the
+/// push backend.
 pub struct PushSubscriptionRule {
-    pub signer: StatementSigner,
-    pub topic:  Topic,
+    pub topic: Topic,
 }
 
 pub struct HostPushAddRulesRequest    { pub rules: Vec<PushSubscriptionRule> }
