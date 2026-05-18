@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { Monaco } from "@monaco-editor/react";
 import {
   subscribeConnectionStatus,
   type ConnectionStatus,
@@ -112,6 +113,7 @@ export default function PlaygroundPage() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [testResults, setTestResults] = useState<Record<string, TestEntry>>({});
   const [isTestRunning, setIsTestRunning] = useState(false);
+  const [monaco, setMonaco] = useState<Monaco | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -142,7 +144,7 @@ export default function PlaygroundPage() {
 
   const handleRunTests = useCallback(
     async (mode: "all" | "safe") => {
-      if (isTestRunning) return;
+      if (isTestRunning || !monaco) return;
       const excludeSet = mode === "safe" ? EXCLUDED_METHODS : new Set<string>();
       const controller = new AbortController();
       abortRef.current = controller;
@@ -157,6 +159,7 @@ export default function PlaygroundPage() {
       setTestResults(initial);
       try {
         await runAutoTests(
+          monaco,
           services,
           (id, entry) => {
             setTestResults((prev) => ({ ...prev, [id]: entry }));
@@ -175,7 +178,7 @@ export default function PlaygroundPage() {
         setIsTestRunning(false);
       }
     },
-    [isTestRunning],
+    [isTestRunning, monaco],
   );
 
   const handleStopTests = useCallback(() => {
@@ -188,8 +191,9 @@ export default function PlaygroundPage() {
       methodName: string,
       requestOverride?: string,
     ) => {
-      if (isTestRunning) return;
+      if (isTestRunning || !monaco) return;
       await runSingleTest(
+        monaco,
         services,
         serviceName,
         methodName,
@@ -199,7 +203,7 @@ export default function PlaygroundPage() {
         requestOverride,
       );
     },
-    [isTestRunning],
+    [isTestRunning, monaco],
   );
 
   if (status === null || status === "connecting") {
@@ -235,6 +239,8 @@ export default function PlaygroundPage() {
               onStop={handleStopTests}
               onRetry={handleRetryTest}
               onBack={() => setSelection(null)}
+              onMonacoReady={setMonaco}
+              monacoReady={monaco !== null}
             />
           ) : selection ? (
             <MethodView
