@@ -105,6 +105,28 @@ fn generate_playground_services_code(api: &ApiDefinition, target_version: u32) -
                 )
                 .unwrap();
             }
+            if let Some(client_example) = docs.client_example.as_deref() {
+                let function_name = extract_exported_function_name(client_example).ok_or_else(
+                    || {
+                        anyhow::anyhow!(
+                            "method `{}` has a ```ts example but no `export function` declaration",
+                            method.name,
+                        )
+                    },
+                )?;
+                writeln!(
+                    out,
+                    "        exampleSource: {},",
+                    ts_string_literal(client_example)
+                )
+                .unwrap();
+                writeln!(
+                    out,
+                    "        exampleFunctionName: {},",
+                    ts_string_literal(&function_name)
+                )
+                .unwrap();
+            }
             writeln!(out, "      }},").unwrap();
         }
 
