@@ -1,8 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import type { Monaco } from "@monaco-editor/react";
 import type { MethodInfo, ServiceInfo } from "@/src/lib/services";
 import type { TestEntry, TestStatus } from "@/src/lib/auto-test";
-import { ExampleEditor } from "@/src/components/ExampleEditor";
 
 const STATUS_LABEL: Record<TestStatus, string> = {
   idle: "—",
@@ -20,8 +18,6 @@ export function AutoTestView({
   onStop,
   onRetry,
   onBack,
-  onMonacoReady,
-  monacoReady,
 }: {
   services: ServiceInfo[];
   testResults: Record<string, TestEntry>;
@@ -34,8 +30,6 @@ export function AutoTestView({
     requestOverride?: string,
   ) => void;
   onBack: () => void;
-  onMonacoReady: (monaco: Monaco) => void;
-  monacoReady: boolean;
 }) {
   const [mode, setMode] = useState<"all" | "safe">("safe");
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -73,18 +67,6 @@ export function AutoTestView({
 
   return (
     <div>
-      <div
-        aria-hidden
-        style={{ position: "absolute", left: -9999, width: 1, height: 1 }}
-      >
-        <ExampleEditor
-          source=""
-          onChange={() => {}}
-          onReady={onMonacoReady}
-          uri="file:///playground/auto-test-bootstrap.ts"
-        />
-      </div>
-
       <div className="view__top">
         <button
           type="button"
@@ -144,11 +126,10 @@ export function AutoTestView({
             <button
               type="button"
               className="btn btn--primary"
-              disabled={!monacoReady}
               onClick={() => onRun(mode)}
             >
               <span className="btn__glyph">▶</span>
-              {monacoReady ? "Run All Tests" : "Loading editor…"}
+              Run All Tests
             </button>
           )}
           {hasResults && (

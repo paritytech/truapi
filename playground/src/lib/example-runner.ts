@@ -1,4 +1,4 @@
-import type { Monaco } from "@monaco-editor/react";
+import { transform } from "sucrase";
 import type { TrUApiClient } from "@parity/truapi";
 
 export type LogEntry = {
@@ -16,6 +16,11 @@ export type RunResult =
   | { kind: "subscription"; subscription: RunSubscription };
 
 const IMPORT_RE = /^\s*import\s+[^;]*?from\s+["']@parity\/truapi["'];?\s*$/gm;
+// `new Function(...)` can't take ESM `export` declarations. The example is
+// inlined into a function body, so we drop the keyword and keep the rest of
+// the declaration intact.
+const EXPORT_RE =
+  /^(\s*)export\s+(async\s+function|function|const|let|var|class)\b/gm;
 
 export class ExampleSyntaxError extends Error {}
 
@@ -26,33 +31,26 @@ type ConsoleShim = {
 };
 
 export async function runExample(opts: {
-  monaco: Monaco;
   source: string;
   functionName: string;
-  uri: string;
   client: TrUApiClient;
   onLog: (entry: LogEntry) => void;
 }): Promise<RunResult> {
-  const { monaco, source, functionName, uri, client, onLog } = opts;
+  const { source, functionName, client, onLog } = opts;
 
-  const modelUri = monaco.Uri.parse(uri);
-  const existing = monaco.editor.getModel(modelUri);
-  if (existing) {
-    if (existing.getValue() !== source) existing.setValue(source);
-  } else {
-    monaco.editor.createModel(source, "typescript", modelUri);
+  // Monaco supplies the editor (with TS typecheck + intellisense); sucrase
+  // strips TS types here so the runner doesn't depend on Monaco's bundled TS
+  // worker (which omits `getEmitOutput`).
+  let js: string;
+  try {
+    js = transform(source, { transforms: ["typescript"] }).code;
+  } catch (err) {
+    throw new ExampleSyntaxError(
+      err instanceof Error ? err.message : String(err),
+    );
   }
 
-  const workerFactory = await monaco.languages.typescript.getTypeScriptWorker();
-  const worker = await workerFactory(modelUri);
-  const emit = await worker.getEmitOutput(modelUri.toString());
-  if (emit.emitSkipped || emit.outputFiles.length === 0) {
-    throw new ExampleSyntaxError("Monaco TS worker did not emit JS output");
-  }
-  const jsFile = emit.outputFiles.find((f) => f.name.endsWith(".js"));
-  if (!jsFile) throw new ExampleSyntaxError("no .js output file from worker");
-
-  const stripped = jsFile.text.replace(IMPORT_RE, "");
+  const stripped = js.replace(IMPORT_RE, "").replace(EXPORT_RE, "$1$2");
 
   const wrapped =
     "const console = { log: __console.log, error: __console.error, warn: __console.warn };\n" +
