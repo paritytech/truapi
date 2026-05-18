@@ -1,18 +1,42 @@
 # TrUAPI Android host adapter
 
-*Thin Kotlin shell over the Rust TrUAPI core (UniFFI). Wire decoding, request routing, and subscription lifecycle stay in the Rust core; products connect through the localhost WebSocket bridge.*
+*Kotlin wrapper around the TrUAPI Rust core (UniFFI). Wire decoding, request routing, and subscription lifecycle stay in the Rust core; products connect through the localhost WebSocket bridge.*
 
-This directory is an Android library module: include it from a parent project's `settings.gradle.kts` (e.g. `include(":truapi-android"); project(":truapi-android").projectDir = file("vendor/truapi/android")`). It does not ship with its own Gradle wrapper or root settings, pulling it into a consuming project supplies those.
+Distributed as a Maven artifact built on demand from git tags by [JitPack](https://jitpack.io/), no Maven Central account required on either side.
 
-## What this package is for
+## Consume
+
+Add the JitPack Maven repository and the artifact to your app's Gradle build:
+
+```kotlin
+// settings.gradle.kts
+dependencyResolutionManagement {
+    repositories {
+        google()
+        mavenCentral()
+        maven { url = uri("https://jitpack.io") }
+    }
+}
+```
+
+```kotlin
+// app/build.gradle.kts
+dependencies {
+    implementation("com.github.paritytech.truapi:truapi-android:0.1.0")
+}
+```
+
+JitPack fetches the tag `0.1.0` from `paritytech/truapi`, runs `gradle :truapi-android:publishReleasePublicationToMavenLocal` against it (driven by `jitpack.yml` at the repo root), and serves the resulting AAR + POM + sources jar. First fetch takes ~1 minute while JitPack builds; subsequent consumers hit the cache.
+
+The artifact bundles the Kotlin host adapter (`io.parity.truapi.*`) and the generated UniFFI bindings (`uniffi.truapi_server.*`). It does **not** bundle the native `libtruapi_server.so` cdylib, integrators build that per Android ABI and drop it into their app's `src/main/jniLibs/<abi>/` (see "Linking the cdylib" below).
+
+## Public surface
 
 The public surface lives in [`src/main/kotlin/io/parity/truapi/TrUAPIHost.kt`](src/main/kotlin/io/parity/truapi/TrUAPIHost.kt):
 
-- `HostBridge` - callback bundle the embedding app implements. Split into device permissions, remote permissions, navigation, push, feature support, and scoped storage.
-- `HostStorage` - simple read/write/clear interface the host backs with its own persistence.
+- `HostBridge` - callback bundle the embedding app implements. Splits device permissions, remote permissions, navigation, push, feature support, and scoped storage.
+- `HostStorage` - read/write/clear interface the host backs with its own persistence.
 - `TrUAPIHostCore` - owning wrapper around the UniFFI-generated `NativeTrUApiCore`. Holds the bridge alive for the lifetime of the core, exposes session controls and the localhost WebSocket bridge.
-
-The generated UniFFI bindings live under `src/main/kotlin/generated/uniffi/truapi_server/`. They are committed (they're large and consumers should not need a Rust toolchain).
 
 ## Architecture
 
@@ -44,8 +68,6 @@ import android.webkit.WebView
 import io.parity.truapi.HostBridge
 import io.parity.truapi.HostStorage
 import io.parity.truapi.TrUAPIHostCore
-import uniffi.truapi_server.HostNavigateRejection
-import uniffi.truapi_server.HostRejection
 
 class MyStorage : HostStorage {
     private val map = mutableMapOf<String, ByteArray>()
@@ -56,7 +78,7 @@ class MyStorage : HostStorage {
 
 class MyBridge : HostBridge {
     override val storage = MyStorage()
-    override fun onCoreResponse(frame: ByteArray) { /* not used in WS-bridge mode */ }
+    override fun onCoreResponse(frame: ByteArray) { /* WS bridge handles outbound */ }
     override fun navigateTo(url: String) { /* open in browser */ }
     override fun pushNotification(payload: ByteArray) { /* show notification */ }
     override fun devicePermission(request: ByteArray): Boolean = TODO("prompt user")
@@ -68,16 +90,15 @@ val core = TrUAPIHostCore(MyBridge())
 val endpoint = core.startWsBridge()
 val wsUrl = "ws://127.0.0.1:${endpoint.port.toInt()}/?t=${endpoint.token}"
 
-// Inject `wsUrl` into the product page (e.g. as a query string or via an
-// initial WKUserScript). Product JS uses `@parity/truapi`'s
-// `createWebSocketProvider(wsUrl)` to open the wire.
+// Inject `wsUrl` into the product page; product JS calls
+// `@parity/truapi`'s `createWebSocketProvider(wsUrl)` to open the wire.
 val webView: WebView = existingWebView
 webView.loadUrl("https://your-product.example/?truapi=${java.net.URLEncoder.encode(wsUrl, "UTF-8")}")
 ```
 
-## Loading the cdylib
+## Linking the cdylib
 
-JNA looks for `libtruapi_server.so` in the standard `jniLibs` paths. Bundle the per-ABI builds under:
+The native runtime ships separately. JNA looks for `libtruapi_server.so` in the standard `jniLibs` paths; bundle the per-ABI builds under:
 
 ```
 src/main/jniLibs/arm64-v8a/libtruapi_server.so
@@ -85,15 +106,40 @@ src/main/jniLibs/armeabi-v7a/libtruapi_server.so
 src/main/jniLibs/x86_64/libtruapi_server.so
 ```
 
-Build the cdylib with the `ws-bridge` feature so `startWsBridge` is functional:
+Cross-build the cdylib for each Android ABI from the truapi monorepo. The friendliest path is [`cargo-ndk`](https://github.com/bbqsrc/cargo-ndk):
 
+```bash
+cargo install cargo-ndk
+cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 \
+  -o app/src/main/jniLibs \
+  build --release -p truapi-server --features ws-bridge
 ```
-cargo build -p truapi-server --release --features ws-bridge --target <android-target>
+
+`cargo-ndk` requires the Android NDK installed and the matching Rust targets (`rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android`). Pre-built ABI bundles distributed inside the AAR are tracked as a follow-up so consumers eventually don't need a Rust toolchain at all.
+
+## Maintainers: cutting a release
+
+JitPack builds on demand from any git tag in `paritytech/truapi`, so a release is just:
+
+1. Bump `publicationVersion` in `android/build.gradle.kts`.
+2. Commit. Open a PR. Merge.
+3. Tag the merge commit with the version: `git tag truapi-host-android@0.1.0 && git push origin truapi-host-android@0.1.0`.
+
+That's the entire release flow, the iOS Swift Package follows the same pattern. The first consumer to pull the tag will trigger JitPack to build the artifact; subsequent fetches hit the cache.
+
+For local development, publish into the dev `~/.m2`:
+
+```bash
+gradle :truapi-android:publishReleasePublicationToMavenLocal
+# or
+make android-publish-local
 ```
 
-## Regenerating the bindings
+The artifact lands under `~/.m2/repository/io/parity/truapi-host-android/<version>/`. Consumers pointing at `mavenLocal()` can resolve it via `io.parity:truapi-host-android:<version>`.
 
-The committed bindings under `src/main/kotlin/generated/uniffi/` are produced from the workspace `uniffi-bindgen-cli`:
+## Regenerating the UniFFI bindings
+
+The committed Kotlin bindings under `src/main/kotlin/generated/uniffi/` are produced from the workspace `uniffi-bindgen-cli`:
 
 ```bash
 cargo build -p truapi-server --release --features ws-bridge

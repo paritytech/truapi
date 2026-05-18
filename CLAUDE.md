@@ -20,8 +20,8 @@ js/packages/
   truapi-host-shared/      @parity/truapi-host-shared: WASM-backed Provider, worker entrypoint, pre-built WASM under dist/wasm/
   truapi-host-web/         @parity/truapi-host-web: iframe MessageChannel + Web Worker WASM provider
   truapi-host-electron/    @parity/truapi-host-electron: Electron MessagePortMain provider
-android/                   Kotlin shell + UniFFI bindings (generated under src/main/kotlin/generated)
-ios/                       Swift shell + UniFFI bindings (generated under TrUAPIHost/Sources)
+android/                   io.parity:truapi-host-android Maven library (AAR + UniFFI Kotlin bindings)
+ios/                       TrUAPIHost Swift Package (sources + UniFFI Swift bindings)
 playground/                Next.js interactive playground; deploys to truapi-playground.dot
 hosts/dotli/               dotli submodule
 docs/                      design docs, RFCs, feature proposals

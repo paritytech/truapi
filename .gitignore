@@ -11,6 +11,12 @@ lerna-debug.log*
 node_modules
 target
 
+# Gradle (Android workspace at repo root)
+/.gradle/
+/build/
+/android/build/
+local.properties
+
 # Editor / OS
 .vscode/*
 !.vscode/extensions.json

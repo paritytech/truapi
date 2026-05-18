@@ -3,7 +3,7 @@
 # Run `make help` for the list of targets.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup build codegen test check playground wasm uniffi
+.PHONY: help setup build codegen test check playground wasm uniffi android-publish-local
 
 TRUAPI_PKG := js/packages/truapi
 PLAYGROUND := playground
@@ -62,6 +62,9 @@ uniffi: ## Regenerate Kotlin + Swift bindings from truapi-server cdylib.
 		ios/TrUAPIHost/Sources/truapi_serverFFI/include/truapi_serverFFI.h
 	cp $(UNIFFI_SWIFT_TMP)/truapi_serverFFI.modulemap \
 		ios/TrUAPIHost/Sources/truapi_serverFFI/include/module.modulemap
+
+android-publish-local: ## Publish io.parity:truapi-host-android to ~/.m2 (dev workflow).
+	gradle :truapi-android:publishReleasePublicationToMavenLocal --no-daemon
 
 test: ## Run Rust + TypeScript client tests.
 	cargo test --workspace --features ws-bridge

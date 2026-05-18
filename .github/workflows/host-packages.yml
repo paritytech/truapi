@@ -59,3 +59,26 @@ jobs:
         run: cd js/packages/truapi-host-web && npm install --no-fund --no-audit && npm test
       - name: Test @parity/truapi-host-electron
         run: cd js/packages/truapi-host-electron && npm install --no-fund --no-audit && npm test
+  android-assemble:
+    # Smoke-builds the Android library + verifies the Maven publication
+    # can be assembled (writes to maven-local). No release happens here;
+    # the actual publish runs from release-android.yml on tagged commits.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Assemble truapi-host-android (release)
+        run: gradle :truapi-android:assembleRelease --no-daemon --stacktrace
+      - name: Build Maven publication into local repo
+        run: gradle :truapi-android:publishReleasePublicationToMavenLocal --no-daemon --stacktrace
+      - name: Sanity-check published artifacts
+        run: |
+          set -eux
+          base="$HOME/.m2/repository/io/parity/truapi-host-android/0.1.0"
+          test -s "$base/truapi-host-android-0.1.0.aar"
+          test -s "$base/truapi-host-android-0.1.0.pom"
+          test -s "$base/truapi-host-android-0.1.0-sources.jar"

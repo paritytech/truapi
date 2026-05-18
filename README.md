@@ -86,10 +86,12 @@ Hosts integrate the Rust core through one of the `@parity/truapi-host-*` package
   Electron `MessagePortMain` as a `Provider`, pairs with
   `truapi-host-shared`'s Node-side WASM runtime.
 
-Native shells sit at the repository root: [`android/`](android) links the
-`truapi-server` cdylib via UniFFI-generated Kotlin bindings; the matching
-Swift bindings under [`ios/`](ios) power the iOS shell. Both are regenerated
-from the same Rust source via `make uniffi`.
+Native shells sit at the repository root and ship as versioned packages from git tags:
+
+- [`android/`](android) builds the `io.parity:truapi-host-android` Maven artifact (AAR + POM + sources jar). Distributed via JitPack as `com.github.paritytech.truapi:truapi-android:<tag>`.
+- [`ios/TrUAPIHost/`](ios/TrUAPIHost) is a Swift Package consumed via `.package(url:)` or `.package(path:)`.
+
+Both link the `truapi-server` cdylib via UniFFI-generated bindings. The bindings are regenerated from the same Rust source via `make uniffi`.
 
 ## How it works
 
