@@ -1,11 +1,16 @@
 ---
 title: "Scheduled Push Notifications"
 owner: "@johnthecat"
+breaking: true
 ---
 
 # RFC 0019 — Scheduled Push Notifications
 
 ## Summary
+
+> **Breaking change.** This RFC changes the request and response wire types for
+> `send_push_notification` and introduces a new `cancel_push_notification`
+> method. Existing clients and hosts must update their payloads.
 
 This RFC extends `send_push_notification` so a product can schedule a notification to fire at a future wall-clock instant, returning a per-product `NotificationId` that the product can later use to cancel the pending delivery via a new `cancel_push_notification` method. Scheduled notifications behave like reminders: the host MUST persist them across app and device restarts and fire them through the OS scheduler. The change is targeted at the v0.2 protocol surface as defined in `truapi-spec/src/v02/mod.rs`.
 
