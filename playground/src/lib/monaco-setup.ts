@@ -1,21 +1,20 @@
 import type { Monaco } from "@monaco-editor/react";
 import { loader } from "@monaco-editor/react";
-import * as monaco from "monaco-editor";
 import { truapiDts } from "@parity/truapi/playground/codegen/truapi-dts";
 
-// Use the bundled `monaco-editor` package so the playground stays offline-
-// deployable. Otherwise `@monaco-editor/react` would fetch Monaco from a CDN
-// at runtime.
 let loaderConfigured = false;
-function configureLoader(): void {
+async function configureLoader(): Promise<void> {
   if (loaderConfigured) return;
   loaderConfigured = true;
+  // Lazy-import monaco-editor on the client only. Importing it eagerly at
+  // module scope crashes Next's SSR prerender (`window is not defined`).
+  const monaco = await import("monaco-editor");
   loader.config({ monaco });
 }
 
 let monacoConfigured = false;
 export function setupMonaco(m: Monaco): void {
-  configureLoader();
+  void configureLoader();
   if (monacoConfigured) return;
   monacoConfigured = true;
 
@@ -40,8 +39,4 @@ export function setupMonaco(m: Monaco): void {
     noSemanticValidation: false,
     noSyntaxValidation: false,
   });
-}
-
-export function ensureLoaderConfigured(): void {
-  configureLoader();
 }
