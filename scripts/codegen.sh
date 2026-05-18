@@ -39,10 +39,18 @@ npm exec --yes -- prettier --write \
 # Rebuild dist/ so downstream consumers (in particular the playground,
 # which picks up @parity/truapi via yarn 1.x file: snapshot) see the
 # regenerated bindings without a separate npm run build step.
+#
+# The build runs twice: the first pass emits the freshly-generated client
+# sources to dist/, then `bundle-truapi-dts.mjs` snapshots dist/*.d.ts into
+# src/playground/codegen/truapi-dts.ts so Monaco can register the package as
+# an ambient module without HTTP fetches. The second pass compiles the new
+# truapi-dts.ts itself.
 if [ "${TRUAPI_SKIP_PACKAGE_BUILD:-0}" != "1" ]; then
   if [ ! -d js/packages/truapi/node_modules ]; then
     npm ci --prefix js/packages/truapi
   fi
+  npm run build --prefix js/packages/truapi
+  node scripts/bundle-truapi-dts.mjs
   npm run build --prefix js/packages/truapi
   if [ ! -d js/packages/truapi-host/node_modules ]; then
     npm install --prefix js/packages/truapi-host
