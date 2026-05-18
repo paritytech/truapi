@@ -244,8 +244,12 @@ fn extract_default_request_from_client_example(
         return Ok(None);
     };
     let json = ts_request_to_playground_json(request);
-    validate_default_request(method_name, "ts rustdoc example", &json)?;
-    let value = serde_json::from_str::<serde_json::Value>(&json)?;
+    if validate_default_request(method_name, "ts rustdoc example", &json).is_err() {
+        return Ok(None);
+    }
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(&json) else {
+        return Ok(None);
+    };
     Ok(Some(serde_json::to_string_pretty(&value)?))
 }
 

@@ -124,17 +124,22 @@ pub trait StatementStore: Send + Sync {
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function submitStatement(truapi: Client): Promise<void> {
-    ///   const result = await truapi.statementStore.submit({
-    ///     proof: {
-    ///       tag: "Sr25519",
-    ///       value: {
-    ///         signature: "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-    ///         signer: "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///       },
+    ///   const proofResult = await truapi.statementStore.createProof({
+    ///     productAccountId: {
+    ///       dotNsIdentifier: "truapi-playground.dot",
+    ///       derivationIndex: 0,
     ///     },
+    ///     statement: {
+    ///       expiry: 9999999999999n,
+    ///       topics: [],
+    ///     },
+    ///   });
+    ///   if (proofResult.isErr()) throw proofResult.error;
+    ///
+    ///   const result = await truapi.statementStore.submit({
+    ///     proof: proofResult.value.proof,
     ///     topics: [],
     ///   });
-    ///
     ///   if (result.isErr()) throw result.error;
     /// }
     /// ```
