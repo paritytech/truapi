@@ -42,8 +42,8 @@ pub trait Notifications: Send + Sync {
         request: HostPushNotificationRequest,
     ) -> Result<HostPushNotificationResponse, CallError<HostPushNotificationError>>;
 
-    /// Register one or more topic rules so the user is woken up by a push
-    /// when a signed statement matching any registered rule appears on the
+    /// Register one or more topics so the user is woken up by a push when a
+    /// signed statement matching any registered topic appears on the
     /// Statement Store. Mirrors `POST /v1/subscriptions/rules` from the v2
     /// push backend spec. The signer is injected by the host (based on the
     /// calling product's identity) when relaying the rule to the backend.
@@ -55,7 +55,7 @@ pub trait Notifications: Send + Sync {
     ///   truapi: Client,
     /// ): Promise<void> {
     ///   const result = await truapi.notifications.pushAddRules({
-    ///     rules: [{ topic: "0x00" }],
+    ///     topics: ["0x00"],
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;
@@ -68,7 +68,7 @@ pub trait Notifications: Send + Sync {
         request: HostPushAddRulesRequest,
     ) -> Result<HostPushAddRulesResponse, CallError<HostPushAddRulesError>>;
 
-    /// Remove one or more previously registered subscription rules. Mirrors
+    /// Remove one or more previously registered topics. Mirrors
     /// `DELETE /v1/subscriptions/rules` from the v2 push backend spec.
     ///
     /// ```ts
@@ -78,7 +78,7 @@ pub trait Notifications: Send + Sync {
     ///   truapi: Client,
     /// ): Promise<void> {
     ///   const result = await truapi.notifications.pushRemoveRules({
-    ///     rules: [{ topic: "0x00" }],
+    ///     topics: ["0x00"],
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;
@@ -91,10 +91,10 @@ pub trait Notifications: Send + Sync {
         request: HostPushRemoveRulesRequest,
     ) -> Result<HostPushRemoveRulesResponse, CallError<HostPushRemoveRulesError>>;
 
-    /// List the calling product's currently registered subscription rules.
-    /// Useful for reconciling local UI state with what the host believes is
-    /// active (e.g. after logout/login). Mirrors
-    /// `GET /v1/subscriptions` from the v2 push backend spec.
+    /// List the calling product's currently registered topics. Useful for
+    /// reconciling local UI state with what the host believes is active
+    /// (e.g. after logout/login). Mirrors `GET /v1/subscriptions` from the
+    /// v2 push backend spec.
     ///
     /// ```ts
     /// import { type Client } from "@parity/truapi";
@@ -102,7 +102,7 @@ pub trait Notifications: Send + Sync {
     /// export async function listRules(truapi: Client) {
     ///   const result = await truapi.notifications.pushListRules({});
     ///   if (result.isErr()) throw result.error;
-    ///   return result.value.rules;
+    ///   return result.value.topics;
     /// }
     /// ```
     #[wire(request_id = 138)]
@@ -112,17 +112,17 @@ pub trait Notifications: Send + Sync {
         request: HostPushListRulesRequest,
     ) -> Result<HostPushListRulesResponse, CallError<HostPushListRulesError>>;
 
-    /// Atomically replace the calling product's entire rule set with the
-    /// supplied vector. After a successful call, the product's active rules
-    /// are exactly `rules`. Mirrors `PUT /v1/subscriptions/rules` from the
-    /// v2 push backend spec.
+    /// Atomically replace the calling product's entire topic set with the
+    /// supplied vector. After a successful call, the product's active
+    /// topics are exactly `topics`. Mirrors `PUT /v1/subscriptions/rules`
+    /// from the v2 push backend spec.
     ///
     /// ```ts
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function setRules(truapi: Client): Promise<void> {
     ///   const result = await truapi.notifications.pushSetRules({
-    ///     rules: [{ topic: "0x00" }],
+    ///     topics: ["0x00"],
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;

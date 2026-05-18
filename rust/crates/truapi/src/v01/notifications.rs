@@ -11,29 +11,18 @@ pub struct HostPushNotificationRequest {
     pub deeplink: Option<String>,
 }
 
-/// A single topic the user wants to be woken up for.
-///
-/// The host's push backend delivers a push to the user's device(s) whenever
-/// a signed statement appears on the Statement Store whose signer matches
-/// the calling product's identity and whose `topics` list contains `topic`.
-/// The product does not specify the signer; the host injects it when
-/// forwarding the rule to the push backend.
+/// Request to register one or more topics the user wants to be woken up for.
+/// Each topic is added independently; existing rules are not touched.
 ///
 /// At the host level the effective key is `(product, topic)`: rules are
 /// scoped per calling product, so two products can register the same topic
-/// independently and never see each other's rules.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct PushSubscriptionRule {
-    /// Topic the matching statement must carry in its `topics` list.
-    pub topic: Topic,
-}
-
-/// Request to register one or more subscription rules with the host. Each
-/// rule is added independently; existing rules are not touched.
+/// independently and never see each other's rules. The product does not
+/// specify the signer; the host injects it when forwarding the rule to the
+/// push backend.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostPushAddRulesRequest {
-    /// Rules to register.
-    pub rules: Vec<PushSubscriptionRule>,
+    /// Topics to register.
+    pub topics: Vec<Topic>,
 }
 
 /// Failure modes for [`HostPushAddRulesRequest`].
@@ -48,12 +37,12 @@ pub enum HostPushAddRulesError {
     Unknown { reason: String },
 }
 
-/// Request to remove one or more previously registered subscription rules.
-/// Rules not currently active are ignored.
+/// Request to remove one or more previously registered topics.
+/// Topics not currently active are ignored.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostPushRemoveRulesRequest {
-    /// Rules to remove.
-    pub rules: Vec<PushSubscriptionRule>,
+    /// Topics to remove.
+    pub topics: Vec<Topic>,
 }
 
 /// Failure modes for [`HostPushRemoveRulesRequest`].
@@ -72,11 +61,11 @@ pub enum HostPushRemoveRulesError {
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostPushListRulesRequest {}
 
-/// Snapshot of the calling product's currently registered subscription rules.
+/// Snapshot of the calling product's currently registered topics.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostPushListRulesResponse {
-    /// Currently registered rules for this product, in unspecified order.
-    pub rules: Vec<PushSubscriptionRule>,
+    /// Currently registered topics for this product, in unspecified order.
+    pub topics: Vec<Topic>,
 }
 
 /// Failure modes for [`HostPushListRulesRequest`].
@@ -89,13 +78,13 @@ pub enum HostPushListRulesError {
     Unknown { reason: String },
 }
 
-/// Atomic replace of the calling product's full rule set with the supplied
-/// vector. After a successful call, the product's active rules are exactly
-/// `rules`.
+/// Atomic replace of the calling product's full topic set with the supplied
+/// vector. After a successful call, the product's active topics are exactly
+/// `topics`.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostPushSetRulesRequest {
-    /// Rules that should be active for this product after the call.
-    pub rules: Vec<PushSubscriptionRule>,
+    /// Topics that should be active for this product after the call.
+    pub topics: Vec<Topic>,
 }
 
 /// Failure modes for [`HostPushSetRulesRequest`].

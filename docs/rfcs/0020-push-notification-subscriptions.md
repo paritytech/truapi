@@ -27,7 +27,7 @@ The push-notifications v2 design assigns delivery to a host-side push backend th
 
 ### Worked example: festival announcements
 
-A conference product publishes festival-wide announcements as signed statements on a well-known topic, signed with the product's own identity key (`pkProduct`). When the user taps "notify me about announcements," the subscriber app calls `push_add_rules({ rules: [{ topic: announcements_topic }] })`. The host injects `pkProduct` as the signer when relaying to the backend, so from that point on the user is woken up for new announcements even with the product closed:
+A conference product publishes festival-wide announcements as signed statements on a well-known topic, signed with the product's own identity key (`pkProduct`). When the user taps "notify me about announcements," the subscriber app calls `push_add_rules({ topics: [announcements_topic] })`. The host injects `pkProduct` as the signer when relaying to the backend, so from that point on the user is woken up for new announcements even with the product closed:
 
 ```
 Publisher app                                          Subscriber app
@@ -35,9 +35,9 @@ Publisher app                                          Subscriber app
         |                                                       ^   |
         |                                                       |   |
         |                                                       |   |  (1) pushAddRules({
-        |                                              (6) push |   |        rules: [{
-        |                                               back to |   |          topic: T_announcements
-        |                                                caller |   |        }]
+        |                                              (6) push |   |        topics: [
+        |                                               back to |   |          T_announcements
+        |                                                caller |   |        ]
         |                                                       |   |      })
         |                                                       |   |
         |                                                       |   v
@@ -98,25 +98,16 @@ async fn push_set_rules(
 
 `Topic` is reused from `v01::statement_store`.
 
-```rust
-/// A single topic the user wants to be woken up for.
-///
-/// At the host level the effective key is (product, topic): rules are scoped
-/// per calling product, so two products can register the same topic
-/// independently and never see each other's rules. The product does not
-/// specify the signer; the host injects it when forwarding the rule to the
-/// push backend.
-pub struct PushSubscriptionRule {
-    pub topic: Topic,
-}
+A rule is just a `Topic`. At the host level the effective key is `(product, topic)`: rules are scoped per calling product, so two products can register the same topic independently and never see each other's rules. The product does not specify the signer; the host injects it when forwarding the rule to the push backend.
 
-pub struct HostPushAddRulesRequest    { pub rules: Vec<PushSubscriptionRule> }
-pub struct HostPushRemoveRulesRequest { pub rules: Vec<PushSubscriptionRule> }
+```rust
+pub struct HostPushAddRulesRequest    { pub topics: Vec<Topic> }
+pub struct HostPushRemoveRulesRequest { pub topics: Vec<Topic> }
 pub struct HostPushListRulesRequest;
-pub struct HostPushSetRulesRequest    { pub rules: Vec<PushSubscriptionRule> }
+pub struct HostPushSetRulesRequest    { pub topics: Vec<Topic> }
 
 pub struct HostPushListRulesResponse {
-    pub rules: Vec<PushSubscriptionRule>,
+    pub topics: Vec<Topic>,
 }
 
 pub enum HostPushAddRulesError {
