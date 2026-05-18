@@ -716,6 +716,25 @@ button {
   color: var(--console-mute);
 }
 
+/* Monaco example editor */
+
+.example-editor {
+  position: relative;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--paper);
+  overflow: hidden;
+}
+.example-editor::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: linear-gradient(to bottom, var(--accent) 0%, transparent 100%);
+  opacity: 0.6;
+  pointer-events: none;
+  z-index: 1;
+}
 /* Call button row */
 
 .actions {
