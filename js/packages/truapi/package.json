@@ -33,6 +33,10 @@
     "./playground/services-types": {
       "types": "./dist/playground/services-types.d.ts",
       "import": "./dist/playground/services-types.js"
+    },
+    "./playground/codegen/truapi-dts": {
+      "types": "./dist/playground/codegen/truapi-dts.d.ts",
+      "import": "./dist/playground/codegen/truapi-dts.js"
     }
   },
   "scripts": {
