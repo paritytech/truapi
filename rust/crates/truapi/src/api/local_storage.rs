@@ -13,16 +13,9 @@ pub trait LocalStorage: Send + Sync {
     /// Read a value by key.
     ///
     /// ```ts
-    /// import { type Client, type HexString } from "@parity/truapi";
-    ///
-    /// export async function readLocalValue(
-    ///   truapi: Client,
-    /// ): Promise<HexString | undefined> {
-    ///   const result = await truapi.localStorage.read({ key: "test-key" });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value.value;
-    /// }
+    /// const result = await truapi.localStorage.read({ key: "test-key" });
+    /// if (result.isErr()) throw result.error;
+    /// console.log(result.value.value);
     /// ```
     #[wire(request_id = 12)]
     async fn read(
@@ -34,16 +27,12 @@ pub trait LocalStorage: Send + Sync {
     /// Write a value to a key.
     ///
     /// ```ts
-    /// import { type Client } from "@parity/truapi";
-    ///
-    /// export async function writeLocalValue(truapi: Client): Promise<void> {
-    ///   const result = await truapi.localStorage.write({
-    ///     key: "test-key",
-    ///     value: "0x48656c6c6f",
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    /// }
+    /// const result = await truapi.localStorage.write({
+    ///   key: "test-key",
+    ///   value: "0x48656c6c6f",
+    /// });
+    /// if (result.isErr()) throw result.error;
+    /// console.log("ok");
     /// ```
     #[wire(request_id = 14)]
     async fn write(
@@ -55,13 +44,9 @@ pub trait LocalStorage: Send + Sync {
     /// Clear a value by key.
     ///
     /// ```ts
-    /// import { type Client } from "@parity/truapi";
-    ///
-    /// export async function clearLocalValue(truapi: Client): Promise<void> {
-    ///   const result = await truapi.localStorage.clear({ key: "test-key" });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    /// }
+    /// const result = await truapi.localStorage.clear({ key: "test-key" });
+    /// if (result.isErr()) throw result.error;
+    /// console.log("ok");
     /// ```
     #[wire(request_id = 16)]
     async fn clear(

@@ -9,19 +9,11 @@ pub trait Theme: Send + Sync {
     /// Subscribe to host theme changes.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type Subscription,
-    ///   type HostThemeSubscribeItem,
-    /// } from "@parity/truapi";
-    ///
-    /// export function watchTheme(truapi: Client): Subscription {
-    ///   return truapi.theme.subscribe().subscribe({
-    ///     next: (theme: HostThemeSubscribeItem) => console.log(theme),
-    ///     error: (error: Error) => console.error(error),
-    ///     complete: () => console.log("completed"),
-    ///   });
-    /// }
+    /// truapi.theme.subscribe().subscribe({
+    ///   next: (theme) => console.log(theme),
+    ///   error: (error) => console.error(error),
+    ///   complete: () => console.log("completed"),
+    /// });
     /// ```
     #[wire(start_id = 104)]
     async fn subscribe(&self, _cx: &CallContext) -> Subscription<HostThemeSubscribeItem> {

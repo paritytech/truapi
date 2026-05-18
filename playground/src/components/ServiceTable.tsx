@@ -3,7 +3,7 @@ import type { TestEntry } from "@/src/lib/auto-test";
 import { AUTO_TEST_ID } from "@/src/lib/auto-test";
 
 function hasExample(method: MethodInfo): boolean {
-  return !!method.exampleSource && !!method.exampleFunctionName;
+  return !!method.exampleSource;
 }
 
 const KIND_LABEL: Record<string, string> = {

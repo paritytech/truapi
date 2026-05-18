@@ -31,11 +31,29 @@ export function setupMonaco(m: Monaco): void {
     allowNonTsExtensions: true,
     esModuleInterop: true,
     lib: ["esnext", "dom"],
+    moduleDetection: 3 as never,
   });
 
   ts.typescriptDefaults.addExtraLib(
     `declare module "@parity/truapi" {\n${truapiDts}\n}\n`,
     "file:///node_modules/@parity/truapi/index.d.ts",
+  );
+
+  ts.typescriptDefaults.addExtraLib(
+    [
+      `declare global {`,
+      `  const truapi: import("@parity/truapi").Client;`,
+      `  interface Console {`,
+      `    log(...args: unknown[]): void;`,
+      `    warn(...args: unknown[]): void;`,
+      `    error(...args: unknown[]): void;`,
+      `  }`,
+      `  const console: Console;`,
+      `}`,
+      `export {};`,
+      ``,
+    ].join("\n"),
+    "file:///playground/__ambient.d.ts",
   );
 
   ts.typescriptDefaults.setDiagnosticsOptions({

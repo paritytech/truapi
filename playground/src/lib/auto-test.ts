@@ -74,7 +74,7 @@ async function runOne({
     onUpdate(id, { status: "skipped" });
     return;
   }
-  if (!method.exampleSource || !method.exampleFunctionName) {
+  if (!method.exampleSource) {
     onUpdate(id, { status: "skipped" });
     return;
   }
@@ -91,7 +91,7 @@ async function runOne({
   try {
     const run = await runExample({
       source,
-      functionName: method.exampleFunctionName,
+      kind: method.type,
       client: getClient(),
       onLog,
     });

@@ -1,5 +1,5 @@
 import { transform } from "sucrase";
-import type { TrUApiClient } from "@parity/truapi";
+import type { Subscription, TrUApiClient } from "@parity/truapi";
 
 export type LogEntry = {
   level: "log" | "error" | "warn";
@@ -16,9 +16,6 @@ export type RunResult =
   | { kind: "subscription"; subscription: RunSubscription };
 
 const IMPORT_RE = /^\s*import\s+[^;]*?from\s+["']@parity\/truapi["'];?\s*$/gm;
-// `new Function(...)` can't take ESM `export` declarations. The example is
-// inlined into a function body, so we drop the keyword and keep the rest of
-// the declaration intact.
 const EXPORT_RE =
   /^(\s*)export\s+(async\s+function|function|const|let|var|class)\b/gm;
 
@@ -30,17 +27,21 @@ type ConsoleShim = {
   warn: (...args: unknown[]) => void;
 };
 
+const AsyncFunction = Object.getPrototypeOf(
+  async function () {},
+).constructor as new (...args: string[]) => (
+  truapi: unknown,
+  __console: ConsoleShim,
+) => Promise<unknown>;
+
 export async function runExample(opts: {
   source: string;
-  functionName: string;
+  kind: "unary" | "subscription";
   client: TrUApiClient;
   onLog: (entry: LogEntry) => void;
 }): Promise<RunResult> {
-  const { source, functionName, client, onLog } = opts;
+  const { source, kind, client, onLog } = opts;
 
-  // Monaco supplies the editor (with TS typecheck + intellisense); sucrase
-  // strips TS types here so the runner doesn't depend on Monaco's bundled TS
-  // worker (which omits `getEmitOutput`).
   let js: string;
   try {
     js = transform(source, { transforms: ["typescript"] }).code;
@@ -51,17 +52,11 @@ export async function runExample(opts: {
   }
 
   const stripped = js.replace(IMPORT_RE, "").replace(EXPORT_RE, "$1$2");
+  const body = `const console = __console;\n${stripped}`;
 
-  const wrapped =
-    "const console = { log: __console.log, error: __console.error, warn: __console.warn };\n" +
-    stripped +
-    "\nreturn " +
-    functionName +
-    "(truapi);\n";
-
-  let factory: (truapi: TrUApiClient, __console: ConsoleShim) => unknown;
+  let run: (truapi: unknown, c: ConsoleShim) => Promise<unknown>;
   try {
-    factory = new Function("truapi", "__console", wrapped) as typeof factory;
+    run = new AsyncFunction("truapi", "__console", body);
   } catch (err) {
     throw new ExampleSyntaxError(
       `wrap failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -74,18 +69,94 @@ export async function runExample(opts: {
     warn: (...args) => onLog({ level: "warn", text: format(args) }),
   };
 
-  const ret = factory(client, consoleShim);
+  const tracked: Subscription[] = [];
+  const trackingClient = createTrackingClient(client, (sub) =>
+    tracked.push(sub),
+  );
 
-  if (ret && typeof (ret as { then?: unknown }).then === "function") {
-    return { kind: "unary", promise: ret as Promise<unknown> };
+  const promise = run(trackingClient, consoleShim);
+
+  if (kind === "subscription") {
+    await promise;
+    return {
+      kind: "subscription",
+      subscription: {
+        unsubscribe: () => {
+          for (const sub of tracked) {
+            try {
+              sub.unsubscribe();
+            } catch {
+              /* benign */
+            }
+          }
+        },
+        subscriptionId: tracked[0]?.subscriptionId,
+      },
+    };
   }
-  if (
-    ret &&
-    typeof (ret as { unsubscribe?: unknown }).unsubscribe === "function"
-  ) {
-    return { kind: "subscription", subscription: ret as RunSubscription };
-  }
-  throw new Error("example must return Promise or Subscription");
+
+  return { kind: "unary", promise };
+}
+
+function createTrackingClient(
+  client: TrUApiClient,
+  onSub: (sub: Subscription) => void,
+): unknown {
+  return new Proxy(client as unknown as Record<string, unknown>, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (!isPlainServiceObject(value)) return value;
+      return wrapService(value, onSub);
+    },
+  });
+}
+
+function wrapService(
+  svc: object,
+  onSub: (sub: Subscription) => void,
+): unknown {
+  return new Proxy(svc as Record<string, unknown>, {
+    get(target, prop, receiver) {
+      const value = Reflect.get(target, prop, receiver);
+      if (typeof value !== "function") return value;
+      return (...args: unknown[]) => {
+        const out = (value as (...a: unknown[]) => unknown).apply(target, args);
+        if (out && typeof (out as { subscribe?: unknown }).subscribe === "function") {
+          return wrapObservable(out as ObservableLike, onSub);
+        }
+        return out;
+      };
+    },
+  });
+}
+
+type ObservableLike = {
+  subscribe: (...args: unknown[]) => Subscription;
+};
+
+function wrapObservable(
+  observable: ObservableLike,
+  onSub: (sub: Subscription) => void,
+): ObservableLike {
+  return new Proxy(observable, {
+    get(target, prop, receiver) {
+      if (prop !== "subscribe") return Reflect.get(target, prop, receiver);
+      return (...args: unknown[]) => {
+        const sub = target.subscribe(...args);
+        onSub(sub);
+        return sub;
+      };
+    },
+  });
+}
+
+function isPlainServiceObject(value: unknown): value is object {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    !(value instanceof Promise) &&
+    typeof (value as { subscribe?: unknown }).subscribe !== "function"
+  );
 }
 
 function format(args: unknown[]): string {

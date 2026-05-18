@@ -17,20 +17,11 @@ pub trait Account: Send + Sync {
     /// Subscribe to account connection status changes.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type Subscription,
-    ///   type HostAccountConnectionStatusSubscribeItem,
-    /// } from "@parity/truapi";
-    ///
-    /// export function watchAccountConnection(truapi: Client): Subscription {
-    ///   return truapi.account.connectionStatusSubscribe().subscribe({
-    ///     next: (status: HostAccountConnectionStatusSubscribeItem) =>
-    ///       console.log(status),
-    ///     error: (error: Error) => console.error(error),
-    ///     complete: () => console.log("completed"),
-    ///   });
-    /// }
+    /// truapi.account.connectionStatusSubscribe().subscribe({
+    ///   next: (status) => console.log(status),
+    ///   error: (error) => console.error(error),
+    ///   complete: () => console.log("completed"),
+    /// });
     /// ```
     #[wire(start_id = 18)]
     async fn connection_status_subscribe(
@@ -43,21 +34,14 @@ pub trait Account: Send + Sync {
     /// Retrieve a product-scoped account.
     ///
     /// ```ts
-    /// import { type Client, type HostAccountGetResponse } from "@parity/truapi";
-    ///
-    /// export async function getAccount(
-    ///   truapi: Client,
-    /// ): Promise<HostAccountGetResponse> {
-    ///   const result = await truapi.account.getAccount({
-    ///     productAccountId: {
-    ///       dotNsIdentifier: "truapi-playground.dot",
-    ///       derivationIndex: 0,
-    ///     },
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await truapi.account.getAccount({
+    ///   productAccountId: {
+    ///     dotNsIdentifier: "truapi-playground.dot",
+    ///     derivationIndex: 0,
+    ///   },
+    /// });
+    /// if (result.isErr()) throw result.error;
+    /// console.log(result.value);
     /// ```
     #[wire(request_id = 22)]
     async fn get_account(
@@ -71,24 +55,14 @@ pub trait Account: Send + Sync {
     /// Retrieve a contextual alias for a product account.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type HostAccountGetAliasResponse,
-    /// } from "@parity/truapi";
-    ///
-    /// export async function getAccountAlias(
-    ///   truapi: Client,
-    /// ): Promise<HostAccountGetAliasResponse> {
-    ///   const result = await truapi.account.getAccountAlias({
-    ///     productAccountId: {
-    ///       dotNsIdentifier: "truapi-playground.dot",
-    ///       derivationIndex: 0,
-    ///     },
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await truapi.account.getAccountAlias({
+    ///   productAccountId: {
+    ///     dotNsIdentifier: "truapi-playground.dot",
+    ///     derivationIndex: 0,
+    ///   },
+    /// });
+    /// if (result.isErr()) throw result.error;
+    /// console.log(result.value);
     /// ```
     #[wire(request_id = 24)]
     async fn get_account_alias(
@@ -102,30 +76,20 @@ pub trait Account: Send + Sync {
     /// Generate a ring VRF proof for a product account.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type HostAccountCreateProofResponse,
-    /// } from "@parity/truapi";
-    ///
-    /// export async function createAccountProof(
-    ///   truapi: Client,
-    /// ): Promise<HostAccountCreateProofResponse> {
-    ///   const result = await truapi.account.createAccountProof({
-    ///     productAccountId: {
-    ///       dotNsIdentifier: "truapi-playground.dot",
-    ///       derivationIndex: 0,
-    ///     },
-    ///     ringLocation: {
-    ///       genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///       ringRootHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///       hints: { palletInstance: 42 },
-    ///     },
-    ///     context: "0x",
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await truapi.account.createAccountProof({
+    ///   productAccountId: {
+    ///     dotNsIdentifier: "truapi-playground.dot",
+    ///     derivationIndex: 0,
+    ///   },
+    ///   ringLocation: {
+    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///     ringRootHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///     hints: { palletInstance: 42 },
+    ///   },
+    ///   context: "0x",
+    /// });
+    /// if (result.isErr()) throw result.error;
+    /// console.log(result.value);
     /// ```
     #[wire(request_id = 26)]
     async fn create_account_proof(
@@ -139,19 +103,9 @@ pub trait Account: Send + Sync {
     /// List non-product accounts the user owns.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type HostGetLegacyAccountsResponse,
-    /// } from "@parity/truapi";
-    ///
-    /// export async function getLegacyAccounts(
-    ///   truapi: Client,
-    /// ): Promise<HostGetLegacyAccountsResponse> {
-    ///   const result = await truapi.account.getLegacyAccounts();
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await truapi.account.getLegacyAccounts();
+    /// if (result.isErr()) throw result.error;
+    /// console.log(result.value);
     /// ```
     #[wire(request_id = 28)]
     async fn get_legacy_accounts(
@@ -165,19 +119,9 @@ pub trait Account: Send + Sync {
     /// Fetch the user's primary identity.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type HostGetUserIdResponse,
-    /// } from "@parity/truapi";
-    ///
-    /// export async function getUserId(
-    ///   truapi: Client,
-    /// ): Promise<HostGetUserIdResponse> {
-    ///   const result = await truapi.account.getUserId();
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await truapi.account.getUserId();
+    /// if (result.isErr()) throw result.error;
+    /// console.log(result.value);
     /// ```
     #[wire(request_id = 110)]
     async fn get_user_id(
@@ -194,21 +138,11 @@ pub trait Account: Send + Sync {
     /// "Sign in" button), not automatically on load.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type HostRequestLoginResponse,
-    /// } from "@parity/truapi";
-    ///
-    /// export async function requestLogin(
-    ///   truapi: Client,
-    /// ): Promise<HostRequestLoginResponse> {
-    ///   const result = await truapi.account.requestLogin({
-    ///     reason: "Sign in to vote on Referendum #42",
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await truapi.account.requestLogin({
+    ///   reason: "Sign in to vote on Referendum #42",
+    /// });
+    /// if (result.isErr()) throw result.error;
+    /// console.log(result.value);
     /// ```
     #[wire(request_id = 112)]
     async fn request_login(

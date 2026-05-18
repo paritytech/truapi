@@ -99,8 +99,7 @@ export function MethodView({
     setLogs((prev) => [...prev, entry]);
   }, []);
 
-  const runnable =
-    !!methodInfo?.exampleSource && !!methodInfo?.exampleFunctionName;
+  const runnable = !!methodInfo?.exampleSource;
 
   const handleRun = async () => {
     if (!runnable || !methodInfo) return;
@@ -112,7 +111,7 @@ export function MethodView({
       const client = getClient();
       const run = await runExample({
         source,
-        functionName: methodInfo.exampleFunctionName!,
+        kind: methodInfo.type,
         client,
         onLog,
       });

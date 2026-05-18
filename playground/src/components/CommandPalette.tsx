@@ -23,7 +23,7 @@ function flatten(services: ServiceInfo[]): FlatMethod[] {
         name: m.name,
         type: m.type,
         description: m.description,
-        supported: !!m.exampleSource && !!m.exampleFunctionName,
+        supported: !!m.exampleSource,
       });
     }
   }

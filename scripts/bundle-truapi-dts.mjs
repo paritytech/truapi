@@ -22,9 +22,16 @@ async function* walk(dir) {
   }
 }
 
+// Relative cross-file imports/exports inside the concatenated bundle have no
+// real target once everything is wrapped in a single `declare module
+// "@parity/truapi"` block — strip them so the local declarations elsewhere in
+// the bundle take effect. External imports (e.g. neverthrow) are left alone.
+const RELATIVE_IMPORT_RE =
+  /^(?:import|export)[^;]*?from\s+["'](?:\.\.?\/)[^"']*["'];?\s*\n?/gm;
+
 const chunks = [];
 for await (const path of walk(DIST)) {
-  const text = await readFile(path, "utf8");
+  const text = (await readFile(path, "utf8")).replace(RELATIVE_IMPORT_RE, "");
   const rel = relative(DIST, path);
   chunks.push(`// ${rel}\n${text}`);
 }

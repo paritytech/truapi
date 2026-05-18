@@ -52,6 +52,10 @@ export function ExampleEditor({
           setupMonaco(monaco);
           onReady?.(monaco);
         }}
+        onMount={(editor) => {
+          const action = editor.getAction("editor.foldAllMarkerRegions");
+          if (action) void action.run();
+        }}
         options={{
           minimap: { enabled: false },
           fontSize: 13,

@@ -4,7 +4,6 @@ export interface MethodInfo {
   description?: string;
   requestDescription?: string;
   exampleSource?: string;
-  exampleFunctionName?: string;
 }
 
 export interface ServiceInfo {
