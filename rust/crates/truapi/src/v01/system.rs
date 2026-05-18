@@ -21,15 +21,6 @@ pub enum HostNavigateToError {
     Unknown { reason: String },
 }
 
-/// Request to display a push notification to the user.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct HostPushNotificationRequest {
-    /// Notification text.
-    pub text: String,
-    /// Optional URL to open on tap.
-    pub deeplink: Option<String>,
-}
-
 /// Error from [`crate::api::System::handshake`] (RFC 0009).
 ///
 /// The handshake is the first call on a fresh connection; it does not require
