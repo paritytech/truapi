@@ -505,7 +505,7 @@ export interface WebSocketProviderOptions {
 
 /**
  * Create a provider backed by a binary WebSocket. Used by products that
- * connect through the native host's localhost WS bridge — the host exposes
+ * connect through the native host's localhost WS bridge, the host exposes
  * an endpoint shaped like `ws://127.0.0.1:<port>/?t=<token>` and the product
  * passes that URL straight to this constructor.
  **/
@@ -523,8 +523,8 @@ export function createWebSocketProvider(
 
   let closedError: Error | null = null;
   const pending: Uint8Array[] = [];
-  const listeners: Array<(message: Uint8Array) => void> = [];
-  const closeListeners: Array<(error: Error) => void> = [];
+  const listeners = new Set<(message: Uint8Array) => void>();
+  const closeListeners = new Set<(error: Error) => void>();
 
   function notifyClose(error: unknown) {
     const nextError = error instanceof Error ? error : new Error(String(error));
@@ -590,10 +590,9 @@ export function createWebSocketProvider(
       }
     },
     subscribe(callback) {
-      listeners.push(callback);
+      listeners.add(callback);
       return () => {
-        const idx = listeners.indexOf(callback);
-        if (idx >= 0) listeners.splice(idx, 1);
+        listeners.delete(callback);
       };
     },
     subscribeClose(callback) {
@@ -601,10 +600,9 @@ export function createWebSocketProvider(
         callback(closedError);
         return () => {};
       }
-      closeListeners.push(callback);
+      closeListeners.add(callback);
       return () => {
-        const idx = closeListeners.indexOf(callback);
-        if (idx >= 0) closeListeners.splice(idx, 1);
+        closeListeners.delete(callback);
       };
     },
     dispose() {
@@ -614,8 +612,8 @@ export function createWebSocketProvider(
       } catch {
         // ignore duplicate close during shutdown
       }
-      listeners.length = 0;
-      closeListeners.length = 0;
+      listeners.clear();
+      closeListeners.clear();
     },
   };
 }

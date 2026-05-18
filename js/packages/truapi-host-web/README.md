@@ -2,10 +2,10 @@
 
 Browser TrUAPI host wrapper:
 
-- `createIframeHost` — embed a product iframe, transfer a `MessagePort`
+- `createIframeHost`, embed a product iframe, transfer a `MessagePort`
   into it via the `truapi-init` handshake, and hand the host-side port
   back to the caller.
-- `createWebWorkerProvider` — spawn the truapi-server WASM core inside a
+- `createWebWorkerProvider`, spawn the truapi-server WASM core inside a
   Web Worker and bridge it into a `Provider` (so smoldot, header
   verification, and dispatcher work run off the page main thread).
 

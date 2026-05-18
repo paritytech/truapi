@@ -63,7 +63,7 @@ function resolveAllowedOrigin(
  * Embed a product iframe and transfer a `MessagePort` into it. The host
  * keeps the other end and passes it to a `Provider` (typically via
  * `createMessagePortProvider`). All product traffic flows over the
- * MessageChannel — there is no `window.postMessage` legacy fallback.
+ * MessageChannel.
  */
 export function createIframeHost(options: IframeHostOptions): IframeHost {
   const {

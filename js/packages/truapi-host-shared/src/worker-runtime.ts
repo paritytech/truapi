@@ -23,7 +23,7 @@ interface WasmModuleShape {
   setDebugEnabled: (enabled: boolean) => void;
 }
 
-// Resolved at runtime — the wasm-pack artifact lives outside `src/` so a
+// Resolved at runtime, the wasm-pack artifact lives outside `src/` so a
 // static import would leak into the TS rootDir. The relative path is
 // resolved against `dist/worker-runtime.js` once compiled. Indirected
 // through a variable so TS skips the static module-existence check.

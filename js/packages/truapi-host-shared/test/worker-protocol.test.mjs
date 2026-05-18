@@ -11,7 +11,7 @@ import * as shared from "../dist/index.js";
 import * as workerProtocol from "../dist/worker-protocol.js";
 
 test("worker-protocol module loads without runtime types (TS-only)", () => {
-  // The .js module compiles down to an empty body — assert that no
+  // The .js module compiles down to an empty body, assert that no
   // runtime symbols are exported, since CallbackName / SubscriptionName
   // / MainToWorker / WorkerToMain are type-only.
   assert.deepEqual(Object.keys(workerProtocol), []);

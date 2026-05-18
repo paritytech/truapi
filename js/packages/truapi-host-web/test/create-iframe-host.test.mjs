@@ -86,7 +86,7 @@ test("createIframeHost hands back a MessagePort and posts truapi-init on load", 
     assert.equal(origin, "http://localhost:5174");
     assert.equal(transferList.length, 1);
 
-    // Idempotent — a second load event must not send another init.
+    // Idempotent, a second load event must not send another init.
     onLoad();
     assert.equal(contentPostMessage.mock.callCount(), 1);
 

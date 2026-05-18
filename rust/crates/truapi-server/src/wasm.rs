@@ -244,9 +244,10 @@ impl ChainProvider for WasmPlatform {
     }
 }
 
-// Account/signing/statement-store/preimage flows live in the Rust core
-// itself; their `truapi::api::*` trait defaults return `Unsupported` and
-// the WASM bridge no longer exposes JS callbacks for them.
+// Account, signing, statement-store, and preimage flows live in the Rust
+// core itself. Their `truapi::api::*` trait defaults return `Unsupported`
+// until those in-core implementations land. The JS bridge only carries
+// callbacks for the platform capabilities the core cannot satisfy alone.
 
 struct JsCallbackJsonRpcConnection {
     send_fn: SendWrapper<Function>,

@@ -50,8 +50,12 @@ export function createElectronProvider(
   };
 
   const onClose = (): void => {
+    if (disposed) return;
+    disposed = true;
     const error = new Error("electron message port closed");
     for (const listener of [...closeListeners]) listener(error);
+    listeners.clear();
+    closeListeners.clear();
   };
 
   port.on("message", onMessage);

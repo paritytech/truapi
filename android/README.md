@@ -2,7 +2,7 @@
 
 *Thin Kotlin shell over the Rust TrUAPI core (UniFFI). Wire decoding, request routing, and subscription lifecycle stay in the Rust core; products connect through the localhost WebSocket bridge.*
 
-This directory is an Android library module: include it from a parent project's `settings.gradle.kts` (e.g. `include(":truapi-android"); project(":truapi-android").projectDir = file("vendor/truapi/android")`). It does not ship with its own Gradle wrapper or root settings — pulling it into a consuming project supplies those.
+This directory is an Android library module: include it from a parent project's `settings.gradle.kts` (e.g. `include(":truapi-android"); project(":truapi-android").projectDir = file("vendor/truapi/android")`). It does not ship with its own Gradle wrapper or root settings, pulling it into a consuming project supplies those.
 
 ## What this package is for
 

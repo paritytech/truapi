@@ -16,10 +16,9 @@
 //     bridge endpoint to the product page so it can dial back in.
 //
 // Products running inside a `WKWebView` connect to the Rust core via the
-// localhost WebSocket bridge. The earlier base64-over-`WKScriptMessageHandler`
-// transport has been removed; products use `@parity/truapi`'s
-// `createWebSocketProvider(url)` with the URL the bootstrap script
-// publishes.
+// localhost WebSocket bridge. The bootstrap script publishes the URL
+// (`ws://127.0.0.1:<port>/?t=<token>`); products feed it to
+// `@parity/truapi`'s `createWebSocketProvider(url)`.
 
 import Foundation
 
@@ -171,14 +170,13 @@ private final class HostCallbackAdapter: HostCallbacks, @unchecked Sendable {
 public final class TrUAPIHostCore {
     private let inner: NativeTrUApiCore
     // Retained so the UniFFI callback vtable stays valid for the lifetime
-    // of `inner`. Not read directly; the suppression keeps -Wunused happy.
+    // of `inner`.
     private let callbackRetainer: HostCallbacks
 
     public init(bridge: HostBridge) {
         let adapter = HostCallbackAdapter(bridge: bridge)
         self.callbackRetainer = adapter
         self.inner = NativeTrUApiCore(callbacks: adapter)
-        _ = self.callbackRetainer
     }
 
     /// Deliver an opaque SCALE-encoded wire frame into the Rust core. The

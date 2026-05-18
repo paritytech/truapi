@@ -43,7 +43,7 @@ scripts/codegen.sh         regenerate the TS client from the Rust crate
   wasm-pack output depends on Rust/wasm-bindgen versions.
 - UniFFI bindings under `android/` and `ios/` are generated from the
   `truapi-server` cdylib via `make uniffi`. The generated Swift modulemap may
-  need a one-time relocation into `Sources/truapi_serverFFI/include/` — the
+  need a one-time relocation into `Sources/truapi_serverFFI/include/`, the
   `make uniffi` target prints a reminder.
 
 ## Code style
@@ -56,7 +56,7 @@ scripts/codegen.sh         regenerate the TS client from the Rust crate
 - Don't introduce typealias chains that just rename a public type from another crate (e.g. `pub type StorageError = crate::v01::HostLocalStorageReadError`). Use the canonical name directly. A typealias is only worth its indirection when it captures a real abstraction.
 - After any code change, update `README.md` (and CLAUDE.md if the layout changed) so the top-level docs reflect what the repo actually contains. Stale docs are a regression.
 - In codegen emitters, prefer `indoc::writedoc!` / `formatdoc!` over chains of `writeln!`. A single `writedoc!` with a multi-line raw string keeps the emitted shape visible in source instead of fragmenting it across one-line `writeln!` calls. Reserve `writeln!` for the genuinely-one-line case (a single import, a single statement inside a loop).
-- In PR descriptions, issue comments, and other artifacts that outlive the conversation: describe the resulting state, not the transition between commits. Avoid "previously X, now Y", "we removed", "the old shim is gone", "this PR replaces" — those read as ephemeral history once the PR is squash-merged. Write what the system *does* after the change, not what each commit *changed* on the way there. (Commit messages are the place for transition narrative; they survive in `git log` even after the squash.)
+- In PR descriptions, issue comments, and other artifacts that outlive the conversation: describe the resulting state, not the transition between commits. Avoid "previously X, now Y", "we removed", "the old shim is gone", "this PR replaces", those read as ephemeral history once the PR is squash-merged. Write what the system *does* after the change, not what each commit *changed* on the way there. (Commit messages are the place for transition narrative; they survive in `git log` even after the squash.)
 
 ## First-time setup
 

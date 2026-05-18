@@ -219,7 +219,7 @@ export interface CreateWebWorkerProviderOptions {
  * `Provider`. The provider can be handed to `createHostServer` from
  * `@parity/truapi-host`.
  *
- * The caller is responsible for instantiating the Worker — Vite users
+ * The caller is responsible for instantiating the Worker, Vite users
  * typically import the worker entry-point with `?worker`:
  *
  * ```ts
@@ -288,6 +288,7 @@ export function createWebWorkerProvider(
 
     const onError = (e: ErrorEvent): void => {
       cleanupInit();
+      worker.terminate();
       reject(new Error(`worker init failed: ${e.message}`));
     };
 
@@ -304,6 +305,7 @@ export function createWebWorkerProvider(
         resolve(buildProvider(state));
       } else if (msg.kind === "error") {
         cleanupInit();
+        worker.terminate();
         reject(new Error(`worker init reported error: ${msg.error}`));
       }
     };

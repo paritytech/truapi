@@ -18,8 +18,7 @@
 // localhost WebSocket bridge. Start it with `core.startWsBridge()` and load
 // the product page with the resulting `ws://127.0.0.1:<port>/?t=<token>` URL
 // passed through to the product's `@parity/truapi` `createWebSocketProvider`
-// call. The base64 `JavascriptInterface` shim previously living here has
-// been removed.
+// call.
 
 package io.parity.truapi
 
@@ -149,7 +148,6 @@ private class HostCallbackAdapter(private val bridge: HostBridge) : HostCallback
  * transports.
  */
 class TrUAPIHostCore(bridge: HostBridge) : AutoCloseable {
-    @Suppress("unused") // retained to keep JNA callbacks alive
     private val callbackRetainer: HostCallbacks = HostCallbackAdapter(bridge)
     private val inner: NativeTrUApiCore = NativeTrUApiCore(callbackRetainer)
 

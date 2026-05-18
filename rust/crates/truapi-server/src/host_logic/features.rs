@@ -1,9 +1,8 @@
 //! Feature-detection delegation.
 //!
-//! Unlike older drafts that baked a genesis-hash allow-list into core, the
-//! v0.1 surface treats `feature_supported` as a pure platform syscall: each
-//! host owns the set of chains it can service. This module is a thin shim
-//! that forwards the request through to [`truapi_platform::Features`].
+//! `feature_supported` is a platform syscall: each host owns the set of
+//! chains it can service. This module is a thin shim that forwards the
+//! request through to [`truapi_platform::Features`].
 
 use truapi::v01::GenericError;
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};

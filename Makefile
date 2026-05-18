@@ -34,17 +34,34 @@ wasm: ## Rebuild the truapi-server WASM artifacts under js/packages/truapi-host-
 	cd rust/crates/truapi-server && wasm-pack build --target web --no-default-features --out-dir ../../../$(WASM_DIST)/web
 	cd rust/crates/truapi-server && wasm-pack build --target nodejs --no-default-features --out-dir ../../../$(WASM_DIST)/node
 
+UNIFFI_CDYLIB_DIR := target/release
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+UNIFFI_CDYLIB := $(UNIFFI_CDYLIB_DIR)/libtruapi_server.dylib
+else
+UNIFFI_CDYLIB := $(UNIFFI_CDYLIB_DIR)/libtruapi_server.so
+endif
+
+UNIFFI_SWIFT_TMP := target/uniffi-swift-out
+
 uniffi: ## Regenerate Kotlin + Swift bindings from truapi-server cdylib.
 	cargo build -p truapi-server --release --features ws-bridge
 	cargo run -p uniffi-bindgen-cli -- generate \
-		--library target/release/libtruapi_server.so \
+		--library $(UNIFFI_CDYLIB) \
 		--language kotlin \
 		--out-dir android/src/main/kotlin/generated
+	rm -rf $(UNIFFI_SWIFT_TMP)
+	mkdir -p $(UNIFFI_SWIFT_TMP)
 	cargo run -p uniffi-bindgen-cli -- generate \
-		--library target/release/libtruapi_server.so \
+		--library $(UNIFFI_CDYLIB) \
 		--language swift \
-		--out-dir ios/TrUAPIHost/Sources/Generated
-	@echo "Reminder: the iOS Generated/*.modulemap may need renaming to module.modulemap and moving to Sources/truapi_serverFFI/include/"
+		--out-dir $(UNIFFI_SWIFT_TMP)
+	cp $(UNIFFI_SWIFT_TMP)/truapi_server.swift \
+		ios/TrUAPIHost/Sources/TrUAPIHost/truapi_server.swift
+	cp $(UNIFFI_SWIFT_TMP)/truapi_serverFFI.h \
+		ios/TrUAPIHost/Sources/truapi_serverFFI/include/truapi_serverFFI.h
+	cp $(UNIFFI_SWIFT_TMP)/truapi_serverFFI.modulemap \
+		ios/TrUAPIHost/Sources/truapi_serverFFI/include/module.modulemap
 
 test: ## Run Rust + TypeScript client tests.
 	cargo test --workspace --features ws-bridge

@@ -71,11 +71,11 @@ pub struct PlatformReturn {
 pub enum PlatformInner {
     /// `()` (or no return).
     Unit,
-    /// `Result<Ok, Err>` — the TS surface returns `Promise<Ok>` and rejects with `Err`.
+    /// `Result<Ok, Err>`. The TS surface returns `Promise<Ok>` and rejects with `Err`.
     Result { ok: TypeRef, err: TypeRef },
-    /// `BoxStream<'static, T>` — a stream of `T` items.
+    /// `BoxStream<'static, T>`, a stream of `T` items.
     Stream(TypeRef),
-    /// `Box<dyn TraitName>` — a trait object handle to a named trait.
+    /// `Box<dyn TraitName>`, a trait object handle to a named trait.
     TraitObject(String),
     /// Any other concrete type, returned as-is.
     Plain(TypeRef),

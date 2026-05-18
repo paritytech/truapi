@@ -297,12 +297,13 @@ where
 // Account
 // ---------------------------------------------------------------------------
 //
-// Most Account surface methods fall back to the trait defaults
-// (`Err(CallError::unavailable())`). The platform layer no longer owns
-// account/signing/statement-store/preimage flows; those live in the Rust
-// core itself. We only override `connection_status_subscribe` (so the
-// session-state holder feeds it) and `request_login` (which has no
-// useful default).
+// Account-management flows live in the Rust core itself, backed by the
+// `Storage` capability for key material. Most Account trait methods fall
+// back to the `truapi::api::*` defaults, which return
+// `Err(CallError::unavailable())` until those in-core implementations
+// land. `PlatformRuntimeHost` only overrides
+// `connection_status_subscribe` (fed by the session-state holder) and
+// `request_login` (no useful default).
 
 impl<P> Account for PlatformRuntimeHost<P>
 where

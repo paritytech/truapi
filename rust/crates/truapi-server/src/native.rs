@@ -431,10 +431,11 @@ impl Storage for CallbackPlatform {
     }
 }
 
-// Chain capability is not wired through the callback surface. The platform
-// trait requires an impl, so we stub it as an "unavailable" response.
-// Account/signing/statement-store/preimage flows live in the Rust core
-// itself; their `truapi::api::*` trait defaults return `Unsupported`.
+// `ChainProvider` is not exposed through the callback surface. The trait
+// is required for `Platform`, so the impl stubs `connect` as
+// `Unavailable`. Hosts that need chain access wire it directly into the
+// Rust core (e.g. via `RuntimeChainProvider`) rather than through the
+// JNI/Swift callback boundary.
 
 impl ChainProvider for CallbackPlatform {
     async fn connect(
