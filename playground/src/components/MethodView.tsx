@@ -1,5 +1,15 @@
-import { useState, useEffect, useRef } from "react";
-import { getMethodBinding, stringify } from "@/src/lib/host-api-bridge";
+"use client";
+
+import { useState, useEffect, useRef, useCallback } from "react";
+import type { Monaco } from "@monaco-editor/react";
+import { stringify } from "@/src/lib/host-api-bridge";
+import { ExampleEditor } from "@/src/components/ExampleEditor";
+import {
+  runExample,
+  type LogEntry,
+  type RunSubscription,
+} from "@/src/lib/example-runner";
+import { getClient } from "@/src/lib/transport";
 import { services } from "@/src/lib/services";
 import type { MethodInfo, ServiceInfo } from "@/src/lib/services";
 
@@ -18,23 +28,7 @@ function renderWithLinks(text: string) {
   });
 }
 
-// SDK errors are Error subclasses with a `payload` field. JSON.stringify drops
-// `message` (non-enumerable) and emits the redundant instance/name/payload trio.
-// Surface the message and append the payload only when it adds information.
-function formatError(value: unknown): string {
-  if (value instanceof Error) {
-    const message = value.message || value.name || "Error";
-    const payload = (value as Error & { payload?: unknown }).payload;
-    if (payload && typeof payload === "object") {
-      const payloadStr = stringify(payload);
-      if (payloadStr === stringify({ reason: message })) return message;
-      return `${message}\n\n${payloadStr}`;
-    }
-    return message;
-  }
-  if (typeof value === "string") return value;
-  return stringify(value);
-}
+const CALL_TIMEOUT_MS = 30_000;
 
 export function MethodView({
   service,
@@ -48,138 +42,116 @@ export function MethodView({
   const methodInfo = services
     .find((s: ServiceInfo) => s.name === service)
     ?.methods.find((m: MethodInfo) => m.name === method);
-  const noParams = methodInfo?.noParams ?? false;
 
-  const formatDefault = (raw: string) => {
-    try {
-      return JSON.stringify(JSON.parse(raw), null, 2);
-    } catch {
-      return raw;
-    }
-  };
-
-  const buildInitialRequest = () =>
-    formatDefault(methodInfo?.defaultRequest ?? "{}");
-
-  const [request, setRequest] = useState(buildInitialRequest);
-
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
-  }, [request]);
+  const [source, setSource] = useState(methodInfo?.exampleSource ?? "");
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState("");
+  const [monaco, setMonaco] = useState<Monaco | null>(null);
+  const [activeSub, setActiveSub] = useState<RunSubscription | null>(null);
+  const callAbortRef = useRef<((reason: string) => void) | null>(null);
 
   useEffect(() => {
-    setRequest(buildInitialRequest());
-    setResponse("");
+    setSource(methodInfo?.exampleSource ?? "");
+    setLogs([]);
     setError("");
-    setStreamLog([]);
-    setStreamActive(false);
+    setResult("");
+    setRunning(false);
     setActiveSub((prev) => {
-      prev?.unsubscribe();
+      try {
+        prev?.unsubscribe();
+      } catch {
+        /* benign */
+      }
       return null;
     });
+    callAbortRef.current?.("method changed");
+    callAbortRef.current = null;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [service, method]);
 
-  const [response, setResponse] = useState<string>("");
-  const [error, setError] = useState<string>("");
-  const [loading, setLoading] = useState(false);
-  const [streamLog, setStreamLog] = useState<string[]>([]);
-  const [streamActive, setStreamActive] = useState(false);
-  const [activeSub, setActiveSub] = useState<{
-    unsubscribe: () => void;
-  } | null>(null);
-
-  useEffect(() => {
-    return () => {
-      activeSub?.unsubscribe();
-    };
-  }, [activeSub]);
-  const callAbortRef = useRef<((reason: string) => void) | null>(null);
-
-  const CALL_TIMEOUT_MS = 30_000;
-
-  const binding = getMethodBinding(service, method);
-
-  const handleCall = async () => {
-    if (!binding) return;
-    setResponse("");
-    setError("");
-    setStreamLog([]);
-
-    let parsed: unknown;
-    if (noParams) {
-      parsed = null;
-    } else {
+  useEffect(
+    () => () => {
       try {
-        parsed = JSON.parse(request);
+        activeSub?.unsubscribe();
       } catch {
-        setError("Invalid JSON request");
-        return;
+        /* benign */
       }
-    }
+    },
+    [activeSub],
+  );
 
-    if (binding.isStream) {
-      setStreamActive(true);
-      const sub = binding.subscribe(
-        parsed,
-        (event) => {
-          setStreamLog((prev) => [...prev, stringify(event)]);
-        },
-        (error) => {
-          setStreamLog((prev) => [
-            ...prev,
-            error
-              ? `--- stream error: ${error.message} ---`
-              : "--- stream ended ---",
-          ]);
-          setStreamActive(false);
-          setActiveSub(null);
-        },
-      );
-      setActiveSub(sub);
-    } else {
-      setLoading(true);
-      let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-      const abortPromise = new Promise<never>((_, reject) => {
-        callAbortRef.current = (reason: string) => reject(new Error(reason));
-        timeoutHandle = setTimeout(
-          () =>
-            reject(
-              new Error(`Call timed out after ${CALL_TIMEOUT_MS / 1000}s`),
-            ),
-          CALL_TIMEOUT_MS,
-        );
+  const onLog = useCallback((entry: LogEntry) => {
+    setLogs((prev) => [...prev, entry]);
+  }, []);
+
+  const runnable =
+    !!methodInfo?.exampleSource &&
+    !!methodInfo?.exampleFunctionName &&
+    !!monaco;
+
+  const handleRun = async () => {
+    if (!runnable || !methodInfo || !monaco) return;
+    setRunning(true);
+    setError("");
+    setResult("");
+    setLogs([]);
+    try {
+      const client = getClient();
+      const run = await runExample({
+        monaco,
+        source,
+        functionName: methodInfo.exampleFunctionName!,
+        uri: `file:///playground/${service}-${method}.ts`,
+        client,
+        onLog,
       });
-      try {
-        const result = await Promise.race([binding.call(parsed), abortPromise]);
-        if (result.ok) {
-          setResponse(stringify(result.data) ?? "null");
-        } else {
-          setError(formatError(result.data));
+
+      if (run.kind === "unary") {
+        let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+        const abortPromise = new Promise<never>((_, reject) => {
+          callAbortRef.current = (reason: string) => reject(new Error(reason));
+          timeoutHandle = setTimeout(
+            () =>
+              reject(
+                new Error(`Call timed out after ${CALL_TIMEOUT_MS / 1000}s`),
+              ),
+            CALL_TIMEOUT_MS,
+          );
+        });
+        try {
+          const value = await Promise.race([run.promise, abortPromise]);
+          setResult(stringify(value) ?? "null");
+        } finally {
+          if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+          callAbortRef.current = null;
+          setRunning(false);
         }
-      } catch (e: unknown) {
-        setError(formatError(e));
-      } finally {
-        if (timeoutHandle !== null) clearTimeout(timeoutHandle);
-        callAbortRef.current = null;
-        setLoading(false);
+      } else {
+        setActiveSub(run.subscription);
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setRunning(false);
     }
   };
 
   const handleStop = () => {
-    if (loading && callAbortRef.current) {
+    if (callAbortRef.current) {
       callAbortRef.current("Call aborted");
       return;
     }
-    activeSub?.unsubscribe();
-    setStreamActive(false);
-    setActiveSub(null);
-    setStreamLog((prev) => [...prev, "--- stopped ---"]);
+    if (activeSub) {
+      try {
+        activeSub.unsubscribe();
+      } catch {
+        /* benign */
+      }
+      setActiveSub(null);
+      setRunning(false);
+      setLogs((prev) => [...prev, { level: "log", text: "--- stopped ---" }]);
+    }
   };
 
   const kind = methodInfo?.type ?? "unary";
@@ -207,7 +179,6 @@ export function MethodView({
         {kind === "subscription" ? "Subscription" : "Request / Response"}
       </div>
 
-      {/* Description */}
       {methodInfo?.description && (
         <div className="panel">
           <div className="panel__head">
@@ -218,45 +189,38 @@ export function MethodView({
       )}
 
       <div className="panel">
-        {!noParams && (
+        {methodInfo?.exampleSource ? (
           <>
             <div className="panel__head">
-              <span className="panel__label">Request Payload</span>
+              <span className="panel__label">Example</span>
               <span className="panel__label" style={{ color: "var(--ink-4)" }}>
-                JSON
+                TypeScript
               </span>
             </div>
-            {methodInfo?.requestDescription && (
+            {methodInfo.requestDescription && (
               <div className="panel__hint">
                 {renderWithLinks(methodInfo.requestDescription)}
               </div>
             )}
-            <div className="editor">
-              <textarea
-                ref={textareaRef}
-                className="editor__area"
-                data-testid="request-editor"
-                value={request}
-                spellCheck={false}
-                autoCapitalize="off"
-                autoCorrect="off"
-                onChange={(e) => setRequest(e.target.value)}
-              />
-            </div>
+            <ExampleEditor
+              source={source}
+              onChange={setSource}
+              onReady={setMonaco}
+              uri={`file:///playground/${service}-${method}.ts`}
+            />
           </>
-        )}
-        {noParams && (
+        ) : (
           <div className="panel__head">
-            <span className="panel__label">No Parameters</span>
+            <span className="panel__label">No runnable example</span>
           </div>
         )}
         <div className="actions">
-          {!binding ? (
+          {!runnable ? (
             <button type="button" className="btn btn--primary" disabled>
-              Not supported
+              {monaco ? "Not supported" : "Loading…"}
             </button>
-          ) : binding.isStream ? (
-            streamActive ? (
+          ) : kind === "subscription" ? (
+            activeSub ? (
               <button
                 type="button"
                 className="btn btn--stop"
@@ -264,20 +228,20 @@ export function MethodView({
                 onClick={handleStop}
               >
                 <span className="btn__glyph">■</span>
-                Stop stream
+                Stop
               </button>
             ) : (
               <button
                 type="button"
                 className="btn btn--primary"
                 data-testid="subscribe-button"
-                onClick={handleCall}
+                onClick={handleRun}
               >
                 <span className="btn__glyph">●</span>
-                Subscribe
+                Run example
               </button>
             )
-          ) : loading ? (
+          ) : running ? (
             <button
               type="button"
               className="btn btn--stop"
@@ -285,32 +249,31 @@ export function MethodView({
               onClick={handleStop}
             >
               <span className="btn__glyph">■</span>
-              Stop (calling…)
+              Stop (running…)
             </button>
           ) : (
             <button
               type="button"
               className="btn btn--primary"
               data-testid="call-button"
-              onClick={handleCall}
+              onClick={handleRun}
             >
               <span className="btn__glyph">→</span>
-              Call method
+              Run example
             </button>
           )}
         </div>
       </div>
 
-      {/* Response */}
-      {(response || error || streamLog.length > 0) && (
+      {(result || error || logs.length > 0) && (
         <div className="console">
           <div className="console__head">
             <span className="console__title">
               {error
                 ? "Error"
-                : binding?.isStream
+                : kind === "subscription"
                   ? "Stream output"
-                  : "Response"}
+                  : "Result"}
             </span>
             <span className="console__dots" aria-hidden>
               <i />
@@ -326,28 +289,25 @@ export function MethodView({
               {error}
             </div>
           )}
-          {response && (
+          {result && (
             <div className="console__body" data-testid="response-content">
-              {response}
+              {result}
             </div>
           )}
-          {streamLog.length > 0 && (
+          {logs.length > 0 && (
             <div className="console__body" data-testid="stream-log">
-              {streamLog.map((entry, i) => {
-                const isMeta = entry.startsWith("---");
-                return (
-                  <div
-                    key={i}
-                    className={`console__entry${isMeta ? " console__entry--meta" : ""}`}
-                    data-testid="stream-entry"
-                  >
-                    <span className="console__entry-i">
-                      {isMeta ? "··" : String(i + 1).padStart(2, "0")}
-                    </span>
-                    <span className="console__entry-body">{entry}</span>
-                  </div>
-                );
-              })}
+              {logs.map((entry, i) => (
+                <div
+                  key={i}
+                  className={`console__entry console__entry--${entry.level}`}
+                  data-testid="stream-entry"
+                >
+                  <span className="console__entry-i">
+                    {String(i + 1).padStart(2, "0")}
+                  </span>
+                  <span className="console__entry-body">{entry.text}</span>
+                </div>
+              ))}
             </div>
           )}
         </div>
