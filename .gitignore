@@ -14,7 +14,7 @@ target
 # Gradle (Android workspace at repo root)
 /.gradle/
 /build/
-/android/build/
+/android/*/build/
 local.properties
 
 # Editor / OS

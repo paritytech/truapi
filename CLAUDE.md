@@ -20,8 +20,10 @@ js/packages/
   truapi-host-shared/      @parity/truapi-host-shared: WASM-backed Provider, worker entrypoint, pre-built WASM under dist/wasm/
   truapi-host-web/         @parity/truapi-host-web: iframe MessageChannel + Web Worker WASM provider
   truapi-host-electron/    @parity/truapi-host-electron: Electron MessagePortMain provider
-android/                   io.parity:truapi-host-android Maven library (AAR + UniFFI Kotlin bindings)
-ios/                       TrUAPIHost Swift Package (sources + UniFFI Swift bindings)
+android/
+  truapi-host/             io.parity:truapi-host-android Maven library (AAR + UniFFI Kotlin bindings)
+ios/
+  truapi-host/             TrUAPIHost Swift Package (sources + UniFFI Swift bindings)
 playground/                Next.js interactive playground; deploys to truapi-playground.dot
 hosts/dotli/               dotli submodule
 docs/                      design docs, RFCs, feature proposals
@@ -41,7 +43,7 @@ scripts/codegen.sh         regenerate the TS client from the Rust crate
   `make wasm` whenever `rust/crates/truapi-server/` changes. CI rebuilds the
   bundle as a smoke check; exact byte-identity isn't enforced because
   wasm-pack output depends on Rust/wasm-bindgen versions.
-- UniFFI bindings under `android/` and `ios/` are generated from the
+- UniFFI bindings under `android/truapi-host/` and `ios/truapi-host/` are generated from the
   `truapi-server` cdylib via `make uniffi`. The generated Swift modulemap may
   need a one-time relocation into `Sources/truapi_serverFFI/include/`, the
   `make uniffi` target prints a reminder.

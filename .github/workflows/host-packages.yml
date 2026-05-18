@@ -72,9 +72,9 @@ jobs:
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
       - name: Assemble truapi-host-android (release)
-        run: gradle :truapi-android:assembleRelease --no-daemon --stacktrace
+        run: gradle :truapi-host:assembleRelease --no-daemon --stacktrace
       - name: Build Maven publication into local repo
-        run: gradle :truapi-android:publishReleasePublicationToMavenLocal --no-daemon --stacktrace
+        run: gradle :truapi-host:publishReleasePublicationToMavenLocal --no-daemon --stacktrace
       - name: Sanity-check published artifacts
         run: |
           set -eux

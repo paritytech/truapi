@@ -17,7 +17,9 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        minSdk = 26
+        // minSdk 29 matches the polkadot-app-android-v2 floor; raise here
+        // first and bump consumers' floors if we ever depend on a newer API.
+        minSdk = 29
         consumerProguardFiles("consumer-rules.pro")
     }
 
@@ -107,7 +109,7 @@ publishing {
         // Maven Local for `gradle publishToMavenLocal` during development
         // and for JitPack's build environment (see `jitpack.yml`).
         // Consumers fetch the published artifact via JitPack at
-        // `com.github.paritytech.truapi:truapi-android:<tag>` after the
+        // `com.github.paritytech.truapi:truapi-host:<tag>` after the
         // repo is tagged.
         mavenLocal()
     }

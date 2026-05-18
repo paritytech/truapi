@@ -12,12 +12,12 @@ It does not add custom logic. It forwards directly into UniFFI's standard CLI en
 cargo run -p uniffi-bindgen-cli -- generate \
   --library target/debug/libtruapi_server.so \
   --language kotlin \
-  --out-dir android/src/generated
+  --out-dir android/truapi-host/src/main/kotlin/generated
 
 cargo run -p uniffi-bindgen-cli -- generate \
   --library target/debug/libtruapi_server.dylib \
   --language swift \
-  --out-dir ios/TrUAPIHost/Sources/Generated
+  --out-dir ios/truapi-host/Sources/Generated
 ```
 
 See `uniffi-bindgen --help` for the full CLI surface.

@@ -1,4 +1,4 @@
-// Empty root project. All build logic lives in the `:truapi-android` module
+// Empty root project. All build logic lives in the `:truapi-host` module
 // under `android/`. This file exists so `./gradlew` finds a build script at
 // the workspace root.
 

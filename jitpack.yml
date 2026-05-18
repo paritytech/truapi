@@ -4,10 +4,10 @@
 # https://jitpack.io/com.github.paritytech.truapi/. It tells JitPack
 # which JDK to use and which Gradle command to run to produce the
 # Maven publication. Consumers depend on the resulting artifact as
-# `com.github.paritytech.truapi:truapi-android:<tag>`.
+# `com.github.paritytech.truapi:truapi-host:<tag>`.
 
 jdk:
   - openjdk17
 
 install:
-  - gradle :truapi-android:publishReleasePublicationToMavenLocal
+  - gradle :truapi-host:publishReleasePublicationToMavenLocal

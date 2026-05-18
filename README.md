@@ -64,8 +64,10 @@ js/packages/
   truapi-host-shared/      @parity/truapi-host-shared: WASM-backed Provider + worker entrypoint
   truapi-host-web/         @parity/truapi-host-web: iframe MessageChannel host + Web Worker provider
   truapi-host-electron/    @parity/truapi-host-electron: Electron MessagePortMain provider
-android/                   Kotlin shell + generated UniFFI bindings for truapi-server
-ios/                       Swift shell + generated UniFFI bindings for truapi-server
+android/
+  truapi-host/             io.parity:truapi-host-android Maven library (AAR + UniFFI Kotlin bindings)
+ios/
+  truapi-host/             TrUAPIHost Swift Package (sources + UniFFI Swift bindings)
 playground/                Interactive Next.js playground (truapi-playground.dot)
 hosts/dotli/               dotli host, vendored as a submodule
 docs/                      Design docs, RFCs, feature proposals
@@ -86,10 +88,12 @@ Hosts integrate the Rust core through one of the `@parity/truapi-host-*` package
   Electron `MessagePortMain` as a `Provider`, pairs with
   `truapi-host-shared`'s Node-side WASM runtime.
 
-Native shells sit at the repository root and ship as versioned packages from git tags:
+Native shells sit one level under `android/` and `ios/` and ship as versioned packages from git tags:
 
-- [`android/`](android) builds the `io.parity:truapi-host-android` Maven artifact (AAR + POM + sources jar). Distributed via JitPack as `com.github.paritytech.truapi:truapi-android:<tag>`.
-- [`ios/TrUAPIHost/`](ios/TrUAPIHost) is a Swift Package consumed via `.package(url:)` or `.package(path:)`.
+- [`android/truapi-host/`](android/truapi-host) builds the `io.parity:truapi-host-android` Maven artifact (AAR + POM + sources jar). Distributed via JitPack as `com.github.paritytech.truapi:truapi-host:<tag>`.
+- [`ios/truapi-host/`](ios/truapi-host) is a Swift Package consumed via `.package(url:)` or `.package(path:)`.
+
+The nested layout leaves room for additional packages alongside (e.g. `android/widgets/`, `ios/something-else/`) without re-shaping the top-level directories.
 
 Both link the `truapi-server` cdylib via UniFFI-generated bindings. The bindings are regenerated from the same Rust source via `make uniffi`.
 
@@ -112,7 +116,7 @@ make build    # Rust workspace + TypeScript client + @parity/truapi-host-* packa
 make test     # Rust + TypeScript client + @parity/truapi-host-* tests
 make check    # full suite: build, fmt, clippy, test, TS tests, playground build + lint
 make wasm     # rebuild truapi-server WASM artifacts under js/packages/truapi-host-shared/dist/wasm/
-make uniffi   # regenerate UniFFI Kotlin + Swift bindings under android/ and ios/
+make uniffi   # regenerate UniFFI Kotlin + Swift bindings under android/truapi-host/ and ios/truapi-host/
 ```
 
 To run the playground locally:

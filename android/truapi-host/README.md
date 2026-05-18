@@ -22,13 +22,20 @@ dependencyResolutionManagement {
 ```kotlin
 // app/build.gradle.kts
 dependencies {
-    implementation("com.github.paritytech.truapi:truapi-android:0.1.0")
+    implementation("com.github.paritytech.truapi:truapi-host:0.1.0")
 }
 ```
 
-JitPack fetches the tag `0.1.0` from `paritytech/truapi`, runs `gradle :truapi-android:publishReleasePublicationToMavenLocal` against it (driven by `jitpack.yml` at the repo root), and serves the resulting AAR + POM + sources jar. First fetch takes ~1 minute while JitPack builds; subsequent consumers hit the cache.
+JitPack fetches the tag `0.1.0` from `paritytech/truapi`, runs `gradle :truapi-host:publishReleasePublicationToMavenLocal` against it (driven by `jitpack.yml` at the repo root), and serves the resulting AAR + POM + sources jar. First fetch takes ~1 minute while JitPack builds; subsequent consumers hit the cache.
 
 The artifact bundles the Kotlin host adapter (`io.parity.truapi.*`) and the generated UniFFI bindings (`uniffi.truapi_server.*`). It does **not** bundle the native `libtruapi_server.so` cdylib, integrators build that per Android ABI and drop it into their app's `src/main/jniLibs/<abi>/` (see "Linking the cdylib" below).
+
+### Compatibility
+
+- **minSdk**: 29 (Android 10). Aligns with the polkadot-app-android-v2 floor.
+- **AGP**: built with 8.5.2; AGP 8.5+ consumers are fine. AAR is forward-compatible with newer AGPs.
+- **Kotlin**: built with 1.9.24. Newer Kotlin compilers (2.x) read 1.9 metadata fine.
+- **Transitive dependency**: the AAR pulls `net.java.dev.jna:jna:5.14.0` (UniFFI's runtime). Consumers that don't already use JNA will see ~1.5MB added to their app.
 
 ## Public surface
 
@@ -106,7 +113,31 @@ src/main/jniLibs/armeabi-v7a/libtruapi_server.so
 src/main/jniLibs/x86_64/libtruapi_server.so
 ```
 
-Cross-build the cdylib for each Android ABI from the truapi monorepo. The friendliest path is [`cargo-ndk`](https://github.com/bbqsrc/cargo-ndk):
+Cross-build the cdylib for each Android ABI from the truapi monorepo. Two options, pick whichever fits the host app's existing toolchain:
+
+**Option A: `mozilla-rust-android-gradle` plugin.** Recommended if the host app already uses it (polkadot-app-android-v2 does, for `bandersnatch-crypto`). Vendor `paritytech/truapi` as a git submodule, add a small Gradle module that points the plugin at `rust/crates/truapi-server`:
+
+```kotlin
+// app/build.gradle.kts (or a dedicated :truapi-cdylib module)
+plugins {
+    alias(libs.plugins.mozilla.rust.android)
+}
+
+cargo {
+    module = "<path>/truapi/rust/crates/truapi-server"
+    libname = "truapi_server"
+    targets = listOf("arm64", "arm", "x86_64")
+    profile = "release"
+    features { defaultAnd(arrayOf("ws-bridge")) }
+}
+
+tasks.matching { it.name.matches("merge.*JniLibFolders".toRegex()) }.configureEach {
+    inputs.dir(layout.buildDirectory.dir("rustJniLibs/android"))
+    dependsOn("cargoBuild")
+}
+```
+
+**Option B: `cargo-ndk` from the command line.** Standalone, no Gradle plugin required:
 
 ```bash
 cargo install cargo-ndk
@@ -115,13 +146,15 @@ cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 \
   build --release -p truapi-server --features ws-bridge
 ```
 
-`cargo-ndk` requires the Android NDK installed and the matching Rust targets (`rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android`). Pre-built ABI bundles distributed inside the AAR are tracked as a follow-up so consumers eventually don't need a Rust toolchain at all.
+Both options require the Android NDK installed and the matching Rust targets (`rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android`).
+
+Pre-built per-ABI `.so` files bundled inside the AAR are tracked as a follow-up so consumers eventually don't need a Rust toolchain at all.
 
 ## Maintainers: cutting a release
 
 JitPack builds on demand from any git tag in `paritytech/truapi`, so a release is just:
 
-1. Bump `publicationVersion` in `android/build.gradle.kts`.
+1. Bump `publicationVersion` in `android/truapi-host/build.gradle.kts`.
 2. Commit. Open a PR. Merge.
 3. Tag the merge commit with the version: `git tag truapi-host-android@0.1.0 && git push origin truapi-host-android@0.1.0`.
 
@@ -130,7 +163,7 @@ That's the entire release flow, the iOS Swift Package follows the same pattern. 
 For local development, publish into the dev `~/.m2`:
 
 ```bash
-gradle :truapi-android:publishReleasePublicationToMavenLocal
+gradle :truapi-host:publishReleasePublicationToMavenLocal
 # or
 make android-publish-local
 ```
@@ -146,7 +179,7 @@ cargo build -p truapi-server --release --features ws-bridge
 cargo run -p uniffi-bindgen-cli -- generate \
   --library target/release/libtruapi_server.so \
   --language kotlin \
-  --out-dir android/src/main/kotlin/generated
+  --out-dir android/truapi-host/src/main/kotlin/generated
 ```
 
 Or run `make uniffi` from the repo root.

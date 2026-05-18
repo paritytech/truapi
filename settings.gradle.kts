@@ -1,9 +1,9 @@
-// Gradle workspace root for the Android host library.
+// Gradle workspace root for the Android host packages.
 //
-// The library module under `android/` is published as a Maven artifact
-// (`io.parity:truapi-host-android`). Run `./gradlew :truapi-android:publish*`
-// from this directory; consumers integrate via Maven coordinates, not by
-// including this module from their own settings.gradle.kts.
+// Library modules live one level down at `android/<package>/`. Run
+// `gradle :<package>:publish*` from this directory; consumers integrate
+// via Maven coordinates, not by including a module from their own
+// settings.gradle.kts.
 //
 // The rest of the repo (Rust crates, JS packages, iOS Swift Package) does
 // not use Gradle.
@@ -26,5 +26,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "truapi"
 
-include(":truapi-android")
-project(":truapi-android").projectDir = file("android")
+include(":truapi-host")
+project(":truapi-host").projectDir = file("android/truapi-host")
