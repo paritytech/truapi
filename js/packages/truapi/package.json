@@ -26,6 +26,14 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./scale": {
+      "types": "./dist/scale.d.ts",
+      "import": "./dist/scale.js"
+    },
+    "./wire-table": {
+      "types": "./dist/generated/wire-table.d.ts",
+      "import": "./dist/generated/wire-table.js"
+    },
     "./playground/services": {
       "types": "./dist/playground/codegen/services.d.ts",
       "import": "./dist/playground/codegen/services.js"
