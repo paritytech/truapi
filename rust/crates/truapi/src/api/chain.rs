@@ -69,11 +69,7 @@ pub trait Chain: Send + Sync {
     ///
     /// // #region helpers
     /// async function waitForFollow(genesisHash: `0x${string}`) {
-    ///   return await new Promise<{
-    ///     sub: { unsubscribe: () => void; subscriptionId: string };
-    ///     subscriptionId: string;
-    ///     hash: `0x${string}`;
-    ///   }>((resolve, reject) => {
+    ///   return await new Promise<any>((resolve, reject) => {
     ///     const sub = truapi.chain
     ///       .followHeadSubscribe({ request: { genesisHash, withRuntime: false } })
     ///       .subscribe({
@@ -363,11 +359,7 @@ pub trait Chain: Send + Sync {
     ///
     /// // #region helpers
     /// async function waitForFollow(genesisHash: `0x${string}`) {
-    ///   return await new Promise<{
-    ///     sub: { unsubscribe: () => void; subscriptionId: string };
-    ///     subscriptionId: string;
-    ///     hash: `0x${string}`;
-    ///   }>((resolve, reject) => {
+    ///   return await new Promise<any>((resolve, reject) => {
     ///     const sub = truapi.chain
     ///       .followHeadSubscribe({ request: { genesisHash, withRuntime: false } })
     ///       .subscribe({
@@ -417,10 +409,7 @@ pub trait Chain: Send + Sync {
     ///
     /// // #region helpers
     /// async function waitForFollow(genesisHash: `0x${string}`) {
-    ///   return await new Promise<{
-    ///     sub: { unsubscribe: () => void; subscriptionId: string };
-    ///     subscriptionId: string;
-    ///   }>((resolve, reject) => {
+    ///   return await new Promise<any>((resolve, reject) => {
     ///     const sub = truapi.chain
     ///       .followHeadSubscribe({ request: { genesisHash, withRuntime: false } })
     ///       .subscribe({
@@ -466,10 +455,7 @@ pub trait Chain: Send + Sync {
     ///
     /// // #region helpers
     /// async function waitForFollow(genesisHash: `0x${string}`) {
-    ///   return await new Promise<{
-    ///     sub: { unsubscribe: () => void; subscriptionId: string };
-    ///     subscriptionId: string;
-    ///   }>((resolve, reject) => {
+    ///   return await new Promise<any>((resolve, reject) => {
     ///     const sub = truapi.chain
     ///       .followHeadSubscribe({ request: { genesisHash, withRuntime: false } })
     ///       .subscribe({

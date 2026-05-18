@@ -63,6 +63,7 @@ export function MethodView({
   const [error, setError] = useState("");
   const [result, setResult] = useState("");
   const [activeSub, setActiveSub] = useState<RunSubscription | null>(null);
+  const [tab, setTab] = useState<"example" | "output">("example");
   const callAbortRef = useRef<((reason: string) => void) | null>(null);
 
   useEffect(() => {
@@ -81,6 +82,7 @@ export function MethodView({
     });
     callAbortRef.current?.("method changed");
     callAbortRef.current = null;
+    setTab("example");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [service, method]);
 
@@ -164,6 +166,16 @@ export function MethodView({
 
   const kind = methodInfo?.type ?? "unary";
 
+  const status: Status = error
+    ? "error"
+    : activeSub
+      ? "streaming"
+      : running
+        ? "running"
+        : result
+          ? "success"
+          : "idle";
+
   return (
     <div>
       <div className="view__top">
@@ -196,129 +208,154 @@ export function MethodView({
         </div>
       )}
 
-      <div className="panel">
-        {methodInfo?.exampleSource ? (
+      <div className="panel panel--workspace">
+        <div className="tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "example"}
+            className={`tab${tab === "example" ? " tab--active" : ""}`}
+            onClick={() => setTab("example")}
+          >
+            Example
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "output"}
+            className={`tab${tab === "output" ? " tab--active" : ""}`}
+            onClick={() => setTab("output")}
+          >
+            Output
+            <span
+              className="tab__led"
+              data-status={status}
+              aria-hidden
+              title={LED_LABEL[status]}
+            />
+          </button>
+          <span className="tabs__filler" />
+          <span className="tabs__lang">TypeScript</span>
+        </div>
+
+        {tab === "example" ? (
           <>
-            <div className="panel__head">
-              <span className="panel__label">Example</span>
-              <span className="panel__label" style={{ color: "var(--ink-4)" }}>
-                TypeScript
-              </span>
-            </div>
-            {methodInfo.requestDescription && (
+            {methodInfo?.exampleSource ? (
+              <>
+                {methodInfo.requestDescription && (
+                  <div className="panel__hint">
+                    {renderWithLinks(methodInfo.requestDescription)}
+                  </div>
+                )}
+                <ExampleEditor
+                  source={source}
+                  onChange={setSource}
+                  uri={`file:///playground/${service}-${method}.ts`}
+                />
+              </>
+            ) : (
               <div className="panel__hint">
-                {renderWithLinks(methodInfo.requestDescription)}
+                This method has no runnable example yet.
               </div>
             )}
-            <ExampleEditor
-              source={source}
-              onChange={setSource}
-              uri={`file:///playground/${service}-${method}.ts`}
-            />
+            <div className="actions">
+              {!runnable ? (
+                <button type="button" className="btn btn--primary" disabled>
+                  Not supported
+                </button>
+              ) : kind === "subscription" ? (
+                activeSub ? (
+                  <button
+                    type="button"
+                    className="btn btn--stop"
+                    data-testid="stop-button"
+                    onClick={handleStop}
+                  >
+                    <span className="btn__glyph">■</span>
+                    Stop
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn--primary"
+                    data-testid="subscribe-button"
+                    onClick={handleRun}
+                  >
+                    <span className="btn__glyph">●</span>
+                    Run example
+                  </button>
+                )
+              ) : running ? (
+                <button
+                  type="button"
+                  className="btn btn--stop"
+                  data-testid="stop-button"
+                  onClick={handleStop}
+                >
+                  <span className="btn__glyph">■</span>
+                  Stop (running…)
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn--primary"
+                  data-testid="call-button"
+                  onClick={handleRun}
+                >
+                  <span className="btn__glyph">→</span>
+                  Run example
+                </button>
+              )}
+            </div>
           </>
         ) : (
-          <div className="panel__head">
-            <span className="panel__label">No runnable example</span>
+          <div className="console console--inline" data-status={status}>
+            {error ? (
+              <div
+                className="console__body console__body--error"
+                data-testid="error-display"
+              >
+                {error}
+              </div>
+            ) : result ? (
+              <div className="console__body" data-testid="response-content">
+                {result}
+              </div>
+            ) : logs.length > 0 ? (
+              <div className="console__body" data-testid="stream-log">
+                {logs.map((entry, i) => (
+                  <div
+                    key={i}
+                    className={`console__entry console__entry--${entry.level}`}
+                    data-testid="stream-entry"
+                  >
+                    <span className="console__entry-i">
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
+                    <span className="console__entry-body">{entry.text}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="console__body console__body--empty">
+                {runnable
+                  ? "Run the example to see output here."
+                  : "This method has no runnable example yet."}
+              </div>
+            )}
           </div>
         )}
-        <div className="actions">
-          {!runnable ? (
-            <button type="button" className="btn btn--primary" disabled>
-              Not supported
-            </button>
-          ) : kind === "subscription" ? (
-            activeSub ? (
-              <button
-                type="button"
-                className="btn btn--stop"
-                data-testid="stop-button"
-                onClick={handleStop}
-              >
-                <span className="btn__glyph">■</span>
-                Stop
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="btn btn--primary"
-                data-testid="subscribe-button"
-                onClick={handleRun}
-              >
-                <span className="btn__glyph">●</span>
-                Run example
-              </button>
-            )
-          ) : running ? (
-            <button
-              type="button"
-              className="btn btn--stop"
-              data-testid="stop-button"
-              onClick={handleStop}
-            >
-              <span className="btn__glyph">■</span>
-              Stop (running…)
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="btn btn--primary"
-              data-testid="call-button"
-              onClick={handleRun}
-            >
-              <span className="btn__glyph">→</span>
-              Run example
-            </button>
-          )}
-        </div>
       </div>
-
-      {(result || error || logs.length > 0) && (
-        <div className="console">
-          <div className="console__head">
-            <span className="console__title">
-              {error
-                ? "Error"
-                : kind === "subscription"
-                  ? "Stream output"
-                  : "Result"}
-            </span>
-            <span className="console__dots" aria-hidden>
-              <i />
-              <i />
-              <i />
-            </span>
-          </div>
-          {error && (
-            <div
-              className="console__body console__body--error"
-              data-testid="error-display"
-            >
-              {error}
-            </div>
-          )}
-          {result && (
-            <div className="console__body" data-testid="response-content">
-              {result}
-            </div>
-          )}
-          {logs.length > 0 && (
-            <div className="console__body" data-testid="stream-log">
-              {logs.map((entry, i) => (
-                <div
-                  key={i}
-                  className={`console__entry console__entry--${entry.level}`}
-                  data-testid="stream-entry"
-                >
-                  <span className="console__entry-i">
-                    {String(i + 1).padStart(2, "0")}
-                  </span>
-                  <span className="console__entry-body">{entry.text}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
+
+type Status = "idle" | "running" | "streaming" | "success" | "error";
+
+const LED_LABEL: Record<Status, string> = {
+  idle: "Idle",
+  running: "Running",
+  streaming: "Streaming",
+  success: "Success",
+  error: "Error",
+};

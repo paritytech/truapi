@@ -644,6 +644,98 @@ button {
   overflow: hidden;
 }
 
+.panel--workspace {
+  padding-top: 0;
+}
+
+/* Tab bar inside the workspace panel */
+
+.tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 -20px 16px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--rule);
+}
+.tab {
+  appearance: none;
+  background: transparent;
+  border: none;
+  font: inherit;
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding: 14px 12px 12px;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: color 120ms ease;
+}
+.tab:hover {
+  color: var(--ink-2);
+}
+.tab--active {
+  color: var(--ink);
+}
+.tab--active::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: -1px;
+  height: 2px;
+  background: var(--ink);
+  border-radius: 2px;
+}
+.tabs__filler {
+  flex: 1;
+}
+.tabs__lang {
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  padding-right: 6px;
+}
+.tab__led {
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--ink-4);
+  transition: background 180ms ease, box-shadow 180ms ease;
+}
+.tab__led[data-status="running"] {
+  background: var(--accent);
+  animation: led-pulse 1.2s ease-in-out infinite;
+}
+.tab__led[data-status="streaming"] {
+  background: var(--accent);
+  animation: led-pulse 2s ease-in-out infinite;
+}
+.tab__led[data-status="success"] {
+  background: var(--good);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 25%, transparent);
+}
+.tab__led[data-status="error"] {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 25%, transparent);
+}
+
+/* Inline console (no outer head, since the tab bar provides it) */
+
+.console--inline {
+  background: var(--console-bg);
+  border: 1px solid var(--console-rule);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
 .panel__head {
   display: flex;
   align-items: baseline;
@@ -835,6 +927,43 @@ button {
 }
 .console__body--error {
   color: #ffb4b4;
+}
+.console__body--empty {
+  color: var(--console-mute);
+  font-style: italic;
+  font-size: 12px;
+  max-height: none;
+}
+
+.console__led {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--console-rule);
+  flex-shrink: 0;
+  transition: background 180ms ease, box-shadow 180ms ease;
+}
+.console__led[data-status="running"] {
+  background: var(--accent);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 50%, transparent);
+  animation: led-pulse 1.2s ease-in-out infinite;
+}
+.console__led[data-status="streaming"] {
+  background: var(--accent);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 50%, transparent);
+  animation: led-pulse 2s ease-in-out infinite;
+}
+.console__led[data-status="success"] {
+  background: var(--good);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--good) 25%, transparent);
+}
+.console__led[data-status="error"] {
+  background: var(--danger);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--danger) 25%, transparent);
+}
+@keyframes led-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 40%, transparent); }
+  50%      { box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 0%, transparent); }
 }
 .console__entry {
   display: flex;
