@@ -19,11 +19,20 @@ struct Cli {
     #[arg(short, long, default_value = "generated")]
     output: String,
 
-    /// TrUAPI protocol version for the generated TypeScript package.
+    /// TrUAPI protocol version the **client** package is built against.
     ///
-    /// Accepts `V<N>` or `<N>`, for example `V1`, `V2`, or `2`.
-    #[arg(long, default_value = "V1")]
-    version: ProtocolVersionArg,
+    /// Only affects the `@parity/truapi` client surface (and the playground
+    /// and client-examples derived from it). The `@parity/truapi-host`
+    /// output always covers every wire version a wrapper has shipped: a
+    /// host must be able to dispatch frames from any client version it has
+    /// shipped to.
+    ///
+    /// Defaults to the highest version any versioned wrapper in the Rust
+    /// trait surface exposes, so an unconfigured run produces a client
+    /// that speaks the latest wire format. Pass `V<N>` or `<N>` (e.g.
+    /// `V1`, `V2`, or `2`) to pin to an older version.
+    #[arg(long)]
+    client_version: Option<ProtocolVersionArg>,
 
     /// Wire codec version for generated handshake calls.
     #[arg(long, default_value_t = 1)]
@@ -36,6 +45,10 @@ struct Cli {
     /// Output directory for generated TypeScript client example snippets (optional).
     #[arg(long)]
     client_examples_output: Option<String>,
+
+    /// Output directory for the generated `@parity/truapi-host` TypeScript surface (optional).
+    #[arg(long)]
+    host_output: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -74,22 +87,29 @@ fn main() -> Result<()> {
     let api = rustdoc::extract_api(&krate)
         .with_context(|| format!("extracting API definition from {input}"))?;
     let output = &cli.output;
-    ts::generate(&api, output, cli.version.number(), cli.codec_version)
+    let client_version = cli
+        .client_version
+        .map(|v| v.number())
+        .unwrap_or_else(|| ts::latest_wire_version(&api));
+    ts::generate(&api, output, client_version, cli.codec_version)
         .with_context(|| format!("writing TypeScript client to {output}"))?;
-    let version_number = cli.version.number();
     let codec_version = cli.codec_version;
     println!(
-        "Generated TypeScript client for TrUAPI V{version_number} codec {codec_version} in {output}",
+        "Generated TypeScript client for TrUAPI V{client_version} codec {codec_version} in {output}",
     );
     if let Some(path) = &cli.playground_output {
-        ts::generate_playground_services(&api, path, cli.version.number())
+        ts::generate_playground_services(&api, path, client_version)
             .with_context(|| format!("writing playground metadata to {path}"))?;
         println!("Generated playground metadata in {path}");
     }
     if let Some(path) = &cli.client_examples_output {
-        ts::generate_client_examples(&api, path, cli.version.number())
+        ts::generate_client_examples(&api, path, client_version)
             .with_context(|| format!("writing client examples to {path}"))?;
         println!("Generated client examples in {path}");
+    }
+    if let Some(path) = &cli.host_output {
+        ts::generate_host(&api, path).with_context(|| format!("writing host package to {path}"))?;
+        println!("Generated host package in {path}");
     }
     Ok(())
 }
