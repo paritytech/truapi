@@ -28,7 +28,7 @@ pub fn generate_client_examples(
         methods.sort_by_key(|method| (method_wire_sort_id(method), method.name.as_str()));
 
         for method in methods {
-            let docs = split_playground_docs(method.docs.as_deref(), &method.name)?;
+            let docs = split_playground_docs(method.docs.as_deref())?;
             let Some(client_example) = docs.client_example else {
                 continue;
             };
