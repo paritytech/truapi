@@ -643,10 +643,48 @@ fn playground_request_description(
         .unwrap_or(value)
 }
 
+pub(super) fn extract_exported_function_name(source: &str) -> Option<String> {
+    for line in source.lines() {
+        let trimmed = line.trim_start();
+        let Some(rest) = trimmed.strip_prefix("export ") else {
+            continue;
+        };
+        let rest = rest.strip_prefix("async ").unwrap_or(rest);
+        let Some(rest) = rest.strip_prefix("function ") else {
+            continue;
+        };
+        let name: String = rest
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '$')
+            .collect();
+        if !name.is_empty() {
+            return Some(name);
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
-    use super::ts_request_to_playground_json;
+    use super::{extract_exported_function_name, ts_request_to_playground_json};
     use serde_json::json;
+
+    #[test]
+    fn extract_exported_function_name_matches_named_exports() {
+        let src = "import { Client } from \"@parity/truapi\";\n\nexport async function getThing(truapi: Client) {\n  return null;\n}\n";
+        assert_eq!(
+            extract_exported_function_name(src),
+            Some("getThing".to_string()),
+        );
+
+        let sync = "export function followX(truapi: Client) { return null; }";
+        assert_eq!(
+            extract_exported_function_name(sync),
+            Some("followX".to_string()),
+        );
+
+        assert_eq!(extract_exported_function_name("const x = 1;"), None);
+    }
 
     #[test]
     fn ts_request_to_playground_json_normalizes_ts_style_literals() {
