@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ServiceInfo } from "@/src/lib/services";
-import { isMethodSupported } from "@/src/lib/host-api-bridge";
 
 interface FlatMethod {
   service: string;
@@ -24,7 +23,7 @@ function flatten(services: ServiceInfo[]): FlatMethod[] {
         name: m.name,
         type: m.type,
         description: m.description,
-        supported: isMethodSupported(svc.name, m.name),
+        supported: !!m.exampleSource && !!m.exampleFunctionName,
       });
     }
   }
