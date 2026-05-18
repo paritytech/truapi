@@ -10,15 +10,16 @@ pub struct ProductAccountId {
     pub derivation_index: u32,
 }
 
-/// An account with its public key and optional display name.
+/// A user-imported (legacy) account: public key plus an optional user-chosen
+/// display name.
 ///
-/// Used by [`HostGetLegacyAccountsResponse`] for non-product (legacy) accounts
-/// that may carry a display name.
+/// Returned by [`HostGetLegacyAccountsResponse`]. Distinct from
+/// [`ProductAccount`], which is protocol-derived and never carries a label.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct Account {
+pub struct LegacyAccount {
     /// The account public key (variable-length bytes).
     pub public_key: Vec<u8>,
-    /// Optional human-readable display name.
+    /// Optional user-chosen display name.
     pub name: Option<String>,
 }
 
@@ -169,9 +170,9 @@ pub struct HostAccountCreateProofResponse {
     pub proof: Vec<u8>,
 }
 
-/// Response containing all non-product accounts owned by the user.
+/// Response containing all legacy (user-imported) accounts owned by the user.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostGetLegacyAccountsResponse {
-    /// Non-product accounts.
-    pub accounts: Vec<Account>,
+    /// Legacy accounts.
+    pub accounts: Vec<LegacyAccount>,
 }
