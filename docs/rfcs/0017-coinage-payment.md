@@ -206,7 +206,7 @@ fn refund(
   receivable: CoinPaymentReceivable
 ) -> Result<Resolvable<CoinPaymentStatus>, CoinPaymentError>;
 
-fn listen_for(
+fn listen_for_payment(
   receivable: CoinPaymentReceivable
 ) -> Result<Subscription<CoinPaymentListenForItem>, CoinPaymentError>;
 // CoinPaymentListenForItem =
@@ -412,7 +412,7 @@ The user agent must authorize access to the source purse, decide whether user
 confirmation is required, select suitable coins, encrypt their secrets to the
 receivable public key, and return the resulting cheque.
 
-#### `coin_payment.listen_for`
+#### `coin_payment.listen_for_payment`
 
 Creates or selects a transmission channel for a receivable and returns a
 subscription that emits channel and cheque items. Products use this when they
@@ -473,7 +473,7 @@ let amount = 1000; // Ten dollars to invoice.
 let old_balance = coin_payment.query_purse(my_purse)?.balance;
 
 let receiver = coin_payment.create_receivable(my_purse)?;
-let mut listener = coin_payment.listen_for(receiver)?;
+let mut listener = coin_payment.listen_for_payment(receiver)?;
 
 let handoff = listener.next().await; // Channel item.
 display_as_qr_or_link(handoff, receiver, amount);

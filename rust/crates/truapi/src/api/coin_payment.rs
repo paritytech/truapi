@@ -288,7 +288,7 @@ pub trait CoinPayment: Send + Sync {
     ///   receivable: CoinPaymentReceivable,
     /// ): Subscription {
     ///   return truapi.coinPayment
-    ///     .listenFor({ request: { receivable } })
+    ///     .listenForPayment({ request: { receivable } })
     ///     .subscribe({
     ///       next: (item: HostCoinPaymentListenForItem) => console.log(item),
     ///       error: (error: SubscriptionError<HostCoinPaymentListenForError>) =>
@@ -297,7 +297,7 @@ pub trait CoinPayment: Send + Sync {
     /// }
     /// ```
     #[wire(start_id = 158)]
-    async fn listen_for(
+    async fn listen_for_payment(
         &self,
         _cx: &CallContext,
         _request: HostCoinPaymentListenForRequest,
