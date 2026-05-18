@@ -40,8 +40,10 @@ pub trait Payment: Send + Sync {
     ///   amount: 1000000000000n,
     ///   destination: "0x0000000000000000000000000000000000000000000000000000000000000000",
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value);
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 124)]
     async fn request(
@@ -82,8 +84,10 @@ pub trait Payment: Send + Sync {
     ///   amount: 1000000000000n,
     ///   source: { tag: "ProductAccount", value: { derivationIndex: 0 } },
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log("ok");
+    /// result.match(
+    ///   () => console.log("ok"),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 122)]
     async fn top_up(

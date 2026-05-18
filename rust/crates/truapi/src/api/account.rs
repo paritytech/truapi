@@ -40,8 +40,10 @@ pub trait Account: Send + Sync {
     ///     derivationIndex: 0,
     ///   },
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value);
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 22)]
     async fn get_account(
@@ -61,8 +63,10 @@ pub trait Account: Send + Sync {
     ///     derivationIndex: 0,
     ///   },
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value);
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 24)]
     async fn get_account_alias(
@@ -88,8 +92,10 @@ pub trait Account: Send + Sync {
     ///   },
     ///   context: "0x",
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value);
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 26)]
     async fn create_account_proof(
@@ -104,8 +110,10 @@ pub trait Account: Send + Sync {
     ///
     /// ```ts
     /// const result = await truapi.account.getLegacyAccounts();
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value);
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 28)]
     async fn get_legacy_accounts(
@@ -120,8 +128,10 @@ pub trait Account: Send + Sync {
     ///
     /// ```ts
     /// const result = await truapi.account.getUserId();
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value);
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 110)]
     async fn get_user_id(
@@ -141,8 +151,10 @@ pub trait Account: Send + Sync {
     /// const result = await truapi.account.requestLogin({
     ///   reason: "Sign in to vote on Referendum #42",
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value);
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 112)]
     async fn request_login(

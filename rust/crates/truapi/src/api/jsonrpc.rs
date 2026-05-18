@@ -16,8 +16,10 @@ pub trait JsonRpc: Send + Sync {
     ///   genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///   message: '{"jsonrpc":"2.0","id":1,"method":"system_name","params":[]}',
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log("ok");
+    /// result.match(
+    ///   () => console.log("ok"),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 70)]
     async fn send_message(

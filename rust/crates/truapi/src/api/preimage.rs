@@ -37,8 +37,10 @@ pub trait Preimage: Send + Sync {
     ///
     /// ```ts
     /// const result = await truapi.preimage.submit("0xdeadbeef");
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value);
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 68)]
     async fn submit(

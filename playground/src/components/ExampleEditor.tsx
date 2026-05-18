@@ -71,6 +71,7 @@ export function ExampleEditor({
           overviewRulerLanes: 0,
           hideCursorInOverviewRuler: true,
           overviewRulerBorder: false,
+          fixedOverflowWidgets: true,
           scrollbar: {
             verticalScrollbarSize: 8,
             horizontalScrollbarSize: 8,

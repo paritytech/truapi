@@ -13,8 +13,10 @@ pub trait Permissions: Send + Sync {
     ///
     /// ```ts
     /// const result = await truapi.permissions.requestDevicePermission("Camera");
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value);
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 8)]
     async fn request_device_permission(
@@ -29,8 +31,10 @@ pub trait Permissions: Send + Sync {
     /// const result = await truapi.permissions.requestRemotePermission({
     ///   permissions: [{ tag: "Remote", value: { domains: ["api.example.com"] } }],
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value);
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 10)]
     async fn request_remote_permission(

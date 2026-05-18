@@ -20,8 +20,10 @@ pub trait Chat: Send + Sync {
     ///   name: "Test Room",
     ///   icon: "",
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value);
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 38)]
     async fn create_room(
@@ -40,8 +42,10 @@ pub trait Chat: Send + Sync {
     ///   name: "Test Bot",
     ///   icon: "",
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value);
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 40)]
     async fn register_bot(
@@ -73,8 +77,10 @@ pub trait Chat: Send + Sync {
     ///   roomId: "test-room",
     ///   payload: { tag: "Text", value: { text: "Hello from playground!" } },
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value);
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 46)]
     async fn post_message(

@@ -488,8 +488,10 @@ pub trait Chain: Send + Sync {
     /// const result = await truapi.chain.getSpecGenesisHash({
     ///   genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value);
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 94)]
     async fn get_spec_genesis_hash(
@@ -507,8 +509,10 @@ pub trait Chain: Send + Sync {
     /// const result = await truapi.chain.getSpecChainName({
     ///   genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value);
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 96)]
     async fn get_spec_chain_name(
@@ -525,8 +529,10 @@ pub trait Chain: Send + Sync {
     /// const result = await truapi.chain.getSpecProperties({
     ///   genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value);
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 98)]
     async fn get_spec_properties(
@@ -544,8 +550,10 @@ pub trait Chain: Send + Sync {
     ///   genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///   transaction: "0x",
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value);
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 100)]
     async fn broadcast_transaction(
@@ -566,8 +574,10 @@ pub trait Chain: Send + Sync {
     ///   genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///   operationId: "op-id",
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log("ok");
+    /// result.match(
+    ///   () => console.log("ok"),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 102)]
     async fn stop_transaction(

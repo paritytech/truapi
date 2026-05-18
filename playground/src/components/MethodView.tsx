@@ -12,21 +12,6 @@ import { getClient } from "@/src/lib/transport";
 import { services } from "@/src/lib/services";
 import type { MethodInfo, ServiceInfo } from "@/src/lib/services";
 
-function renderWithLinks(text: string) {
-  const parts = text.split(/(\[[^\]]+\]\("[^"]+"\))/g);
-  return parts.map((part, i) => {
-    const match = part.match(/^\[([^\]]+)\]\("([^"]+)"\)$/);
-    if (match) {
-      return (
-        <a key={i} href={match[2]} target="_blank" rel="noreferrer">
-          {match[1]}
-        </a>
-      );
-    }
-    return part;
-  });
-}
-
 const CALL_TIMEOUT_MS = 30_000;
 
 function formatError(value: unknown): string {
@@ -65,6 +50,7 @@ export function MethodView({
   const [activeSub, setActiveSub] = useState<RunSubscription | null>(null);
   const [tab, setTab] = useState<"example" | "output">("example");
   const callAbortRef = useRef<((reason: string) => void) | null>(null);
+  const cancelRunRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     setSource(methodInfo?.exampleSource ?? "");
@@ -82,6 +68,8 @@ export function MethodView({
     });
     callAbortRef.current?.("method changed");
     callAbortRef.current = null;
+    cancelRunRef.current?.();
+    cancelRunRef.current = null;
     setTab("example");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [service, method]);
@@ -97,6 +85,14 @@ export function MethodView({
     [activeSub],
   );
 
+  useEffect(
+    () => () => {
+      cancelRunRef.current?.();
+      cancelRunRef.current = null;
+    },
+    [],
+  );
+
   const onLog = useCallback((entry: LogEntry) => {
     setLogs((prev) => [...prev, entry]);
   }, []);
@@ -109,6 +105,7 @@ export function MethodView({
     setError("");
     setResult("");
     setLogs([]);
+    setTab("output");
     try {
       const client = getClient();
       const run = await runExample({
@@ -119,6 +116,7 @@ export function MethodView({
       });
 
       if (run.kind === "unary") {
+        cancelRunRef.current = run.cancel;
         let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
         const abortPromise = new Promise<never>((_, reject) => {
           callAbortRef.current = (reason: string) => reject(new Error(reason));
@@ -136,6 +134,7 @@ export function MethodView({
         } finally {
           if (timeoutHandle !== null) clearTimeout(timeoutHandle);
           callAbortRef.current = null;
+          cancelRunRef.current = null;
           setRunning(false);
         }
       } else {
@@ -241,18 +240,11 @@ export function MethodView({
         {tab === "example" ? (
           <>
             {methodInfo?.exampleSource ? (
-              <>
-                {methodInfo.requestDescription && (
-                  <div className="panel__hint">
-                    {renderWithLinks(methodInfo.requestDescription)}
-                  </div>
-                )}
-                <ExampleEditor
-                  source={source}
-                  onChange={setSource}
-                  uri={`file:///playground/${service}-${method}.ts`}
-                />
-              </>
+              <ExampleEditor
+                source={source}
+                onChange={setSource}
+                uri={`file:///playground/${service}-${method}.ts`}
+              />
             ) : (
               <div className="panel__hint">
                 This method has no runnable example yet.
@@ -338,9 +330,13 @@ export function MethodView({
               </div>
             ) : (
               <div className="console__body console__body--empty">
-                {runnable
-                  ? "Run the example to see output here."
-                  : "This method has no runnable example yet."}
+                {!runnable
+                  ? "This method has no runnable example yet."
+                  : status === "running"
+                    ? "Waiting for response…"
+                    : status === "streaming"
+                      ? "Waiting for first event…"
+                      : "Run the example to see output here."}
               </div>
             )}
           </div>

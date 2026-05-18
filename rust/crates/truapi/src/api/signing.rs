@@ -40,8 +40,10 @@ pub trait Signing: Send + Sync {
     ///     },
     ///   },
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value);
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 30)]
     async fn create_transaction(
@@ -71,8 +73,10 @@ pub trait Signing: Send + Sync {
     ///     },
     ///   },
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value);
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 32)]
     async fn create_transaction_with_legacy_account(
@@ -96,8 +100,10 @@ pub trait Signing: Send + Sync {
     ///     value: { bytes: "0x48656c6c6f" },
     ///   },
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value);
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 34)]
     async fn sign_raw_with_legacy_account(
@@ -129,8 +135,10 @@ pub trait Signing: Send + Sync {
     ///     version: 4,
     ///   },
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value);
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 36)]
     async fn sign_payload_with_legacy_account(
@@ -156,8 +164,10 @@ pub trait Signing: Send + Sync {
     ///     },
     ///   },
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value);
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 114)]
     async fn sign_raw(
@@ -185,8 +195,10 @@ pub trait Signing: Send + Sync {
     ///   transactionVersion: "0x00000000",
     ///   version: 4,
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value);
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 116)]
     async fn sign_payload(

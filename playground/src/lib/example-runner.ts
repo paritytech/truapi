@@ -12,7 +12,7 @@ export type RunSubscription = {
 };
 
 export type RunResult =
-  | { kind: "unary"; promise: Promise<unknown> }
+  | { kind: "unary"; promise: Promise<unknown>; cancel: () => void }
   | { kind: "subscription"; subscription: RunSubscription };
 
 const IMPORT_RE = /^\s*import\s+[^;]*?from\s+["']@parity\/truapi["'];?\s*$/gm;
@@ -74,6 +74,16 @@ export async function runExample(opts: {
     tracked.push(sub),
   );
 
+  const unsubscribeAll = () => {
+    for (const sub of tracked) {
+      try {
+        sub.unsubscribe();
+      } catch {
+        /* benign */
+      }
+    }
+  };
+
   const promise = run(trackingClient, consoleShim);
 
   if (kind === "subscription") {
@@ -81,21 +91,14 @@ export async function runExample(opts: {
     return {
       kind: "subscription",
       subscription: {
-        unsubscribe: () => {
-          for (const sub of tracked) {
-            try {
-              sub.unsubscribe();
-            } catch {
-              /* benign */
-            }
-          }
-        },
+        unsubscribe: unsubscribeAll,
         subscriptionId: tracked[0]?.subscriptionId,
       },
     };
   }
 
-  return { kind: "unary", promise };
+  promise.finally(unsubscribeAll);
+  return { kind: "unary", promise, cancel: unsubscribeAll };
 }
 
 function createTrackingClient(

@@ -14,8 +14,10 @@ pub trait LocalStorage: Send + Sync {
     ///
     /// ```ts
     /// const result = await truapi.localStorage.read({ key: "test-key" });
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value.value);
+    /// result.match(
+    ///   (response) => console.log(response.value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 12)]
     async fn read(
@@ -31,8 +33,10 @@ pub trait LocalStorage: Send + Sync {
     ///   key: "test-key",
     ///   value: "0x48656c6c6f",
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log("ok");
+    /// result.match(
+    ///   () => console.log("ok"),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 14)]
     async fn write(
@@ -45,8 +49,10 @@ pub trait LocalStorage: Send + Sync {
     ///
     /// ```ts
     /// const result = await truapi.localStorage.clear({ key: "test-key" });
-    /// if (result.isErr()) throw result.error;
-    /// console.log("ok");
+    /// result.match(
+    ///   () => console.log("ok"),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 16)]
     async fn clear(

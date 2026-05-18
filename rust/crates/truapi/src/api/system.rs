@@ -16,8 +16,10 @@ pub trait System: Send + Sync {
     ///
     /// ```ts
     /// const result = await truapi.system.handshake();
-    /// if (result.isErr()) throw result.error;
-    /// console.log("ok");
+    /// result.match(
+    ///   () => console.log("ok"),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 0)]
     async fn handshake(
@@ -44,8 +46,10 @@ pub trait System: Send + Sync {
     ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///   },
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value.supported);
+    /// result.match(
+    ///   (value) => console.log(value.supported),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 2)]
     async fn feature_supported(
@@ -60,8 +64,10 @@ pub trait System: Send + Sync {
     /// const result = await truapi.system.pushNotification({
     ///   text: "Hello!",
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log("ok");
+    /// result.match(
+    ///   () => console.log("ok"),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 4)]
     async fn push_notification(
@@ -76,8 +82,10 @@ pub trait System: Send + Sync {
     /// const result = await truapi.system.navigateTo({
     ///   url: "https://example.com",
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log("ok");
+    /// result.match(
+    ///   () => console.log("ok"),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 6)]
     async fn navigate_to(

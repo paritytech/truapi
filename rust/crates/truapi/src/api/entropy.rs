@@ -14,8 +14,10 @@ pub trait Entropy: Send + Sync {
     /// const result = await truapi.entropy.derive({
     ///   context: "0x70726f647563742d6b6579",
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value);
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 108)]
     async fn derive(

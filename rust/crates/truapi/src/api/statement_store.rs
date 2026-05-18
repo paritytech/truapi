@@ -46,8 +46,10 @@ pub trait StatementStore: Send + Sync {
     ///     topics: [],
     ///   },
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value);
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 60)]
     async fn create_proof(
@@ -69,8 +71,10 @@ pub trait StatementStore: Send + Sync {
     ///   expiry: 9999999999999n,
     ///   topics: [],
     /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log(result.value);
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 132)]
     async fn create_proof_authorized(
@@ -99,14 +103,19 @@ pub trait StatementStore: Send + Sync {
     ///     topics: [],
     ///   },
     /// });
-    /// if (proofResult.isErr()) throw proofResult.error;
-    ///
-    /// const result = await truapi.statementStore.submit({
-    ///   proof: proofResult.value.proof,
-    ///   topics: [],
-    /// });
-    /// if (result.isErr()) throw result.error;
-    /// console.log("ok");
+    /// await proofResult.match(
+    ///   async (proof) => {
+    ///     const result = await truapi.statementStore.submit({
+    ///       proof: proof.proof,
+    ///       topics: [],
+    ///     });
+    ///     result.match(
+    ///       () => console.log("ok"),
+    ///       (error) => console.error(error),
+    ///     );
+    ///   },
+    ///   async (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 62)]
     async fn submit(
