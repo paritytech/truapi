@@ -30,7 +30,7 @@ pub struct HostPushNotificationResponse {
 
 /// Push notification error.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub enum PushNotificationError {
+pub enum HostPushNotificationError {
     /// The host-wide queue of pending scheduled notifications is full.
     ScheduleLimitReached,
     /// Catch-all.
