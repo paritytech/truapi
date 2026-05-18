@@ -3,8 +3,6 @@ export interface MethodInfo {
   type: "unary" | "subscription";
   description?: string;
   requestDescription?: string;
-  defaultRequest?: string;
-  noParams?: boolean;
   exampleSource?: string;
   exampleFunctionName?: string;
 }
