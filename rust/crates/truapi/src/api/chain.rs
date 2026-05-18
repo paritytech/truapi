@@ -67,14 +67,45 @@ pub trait Chain: Send + Sync {
     /// export async function getChainHeadHeader(
     ///   truapi: Client,
     /// ): Promise<RemoteChainHeadHeaderResponse> {
-    ///   const result = await truapi.chain.getHeadHeader({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     followSubscriptionId: "",
-    ///     hash: "0x0000000000000000000000000000000000000000000000000000000000000000",
+    ///   const genesisHash =
+    ///     "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2";
+    ///
+    ///   let cleanup = () => {};
+    ///   const { subscriptionId, finalizedHash } = await new Promise<{
+    ///     subscriptionId: string;
+    ///     finalizedHash: `0x${string}`;
+    ///   }>((resolve, reject) => {
+    ///     const sub = truapi.chain
+    ///       .followHeadSubscribe({
+    ///         request: { genesisHash, withRuntime: false },
+    ///       })
+    ///       .subscribe({
+    ///         next: (item) => {
+    ///           if (item.tag === "Initialized") {
+    ///             resolve({
+    ///               subscriptionId: sub.subscriptionId,
+    ///               finalizedHash: item.value.finalizedBlockHashes[0],
+    ///             });
+    ///           }
+    ///         },
+    ///         error: reject,
+    ///         complete: () =>
+    ///           reject(new Error("follow ended before Initialized")),
+    ///       });
+    ///     cleanup = () => sub.unsubscribe();
     ///   });
     ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
+    ///   try {
+    ///     const result = await truapi.chain.getHeadHeader({
+    ///       genesisHash,
+    ///       followSubscriptionId: subscriptionId,
+    ///       hash: finalizedHash,
+    ///     });
+    ///     if (result.isErr()) throw result.error;
+    ///     return result.value;
+    ///   } finally {
+    ///     cleanup();
+    ///   }
     /// }
     /// ```
     #[wire(request_id = 80)]
@@ -89,22 +120,69 @@ pub trait Chain: Send + Sync {
     /// Fetch a block body.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type RemoteChainHeadBodyResponse,
-    /// } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
     /// export async function getChainHeadBody(
     ///   truapi: Client,
-    /// ): Promise<RemoteChainHeadBodyResponse> {
-    ///   const result = await truapi.chain.getHeadBody({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     followSubscriptionId: "",
-    ///     hash: "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///   });
+    /// ): Promise<{ hexBlobs: string[] }> {
+    ///   const genesisHash =
+    ///     "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2";
     ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
+    ///   let operationId: string | null = null;
+    ///   let cleanup = () => {};
+    ///
+    ///   const body = await new Promise<{ hexBlobs: string[] }>(
+    ///     (resolve, reject) => {
+    ///       const sub = truapi.chain
+    ///         .followHeadSubscribe({
+    ///           request: { genesisHash, withRuntime: false },
+    ///         })
+    ///         .subscribe({
+    ///           next: async (item) => {
+    ///             try {
+    ///               if (item.tag === "Initialized") {
+    ///                 const started = await truapi.chain.getHeadBody({
+    ///                   genesisHash,
+    ///                   followSubscriptionId: sub.subscriptionId,
+    ///                   hash: item.value.finalizedBlockHashes[0],
+    ///                 });
+    ///                 if (started.isErr()) throw started.error;
+    ///                 const op = started.value.operation;
+    ///                 if (op.tag !== "Started") {
+    ///                   throw new Error("body call rejected: " + op.tag);
+    ///                 }
+    ///                 operationId = op.value.operationId;
+    ///               } else if (
+    ///                 operationId &&
+    ///                 (item.tag === "OperationBodyDone" ||
+    ///                   item.tag === "OperationError" ||
+    ///                   item.tag === "OperationInaccessible") &&
+    ///                 item.value.operationId === operationId
+    ///               ) {
+    ///                 if (item.tag === "OperationBodyDone") {
+    ///                   resolve({
+    ///                     hexBlobs: item.value.value as unknown as string[],
+    ///                   });
+    ///                 } else if (item.tag === "OperationError") {
+    ///                   reject(new Error("operation error: " + item.value.error));
+    ///                 } else {
+    ///                   reject(new Error("operation inaccessible"));
+    ///                 }
+    ///               }
+    ///             } catch (err) {
+    ///               reject(err as Error);
+    ///             }
+    ///           },
+    ///           error: reject,
+    ///           complete: () =>
+    ///             reject(new Error("follow ended before body result")),
+    ///         });
+    ///       cleanup = () => sub.unsubscribe();
+    ///     },
+    ///   );
+    ///
+    ///   cleanup();
+    ///   return body;
     /// }
     /// ```
     #[wire(request_id = 82)]
@@ -119,28 +197,81 @@ pub trait Chain: Send + Sync {
     /// Query runtime storage at a specific block.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type RemoteChainHeadStorageResponse,
-    /// } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function getChainHeadStorage(
-    ///   truapi: Client,
-    /// ): Promise<RemoteChainHeadStorageResponse> {
-    ///   const result = await truapi.chain.getHeadStorage({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     followSubscriptionId: "",
-    ///     hash: "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///     items: [
-    ///       {
-    ///         key: "0x26aa394eea5630e07c48ae0c9558cef7",
-    ///         queryType: "Value",
-    ///       },
-    ///     ],
-    ///   });
+    /// export async function getChainHeadStorage(truapi: Client): Promise<{
+    ///   items: unknown[];
+    /// }> {
+    ///   const genesisHash =
+    ///     "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2";
+    ///   const storageKey = "0x26aa394eea5630e07c48ae0c9558cef7";
     ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
+    ///   let operationId: string | null = null;
+    ///   let cleanup = () => {};
+    ///   const items: unknown[] = [];
+    ///
+    ///   const done = await new Promise<{ items: unknown[] }>(
+    ///     (resolve, reject) => {
+    ///       const sub = truapi.chain
+    ///         .followHeadSubscribe({
+    ///           request: { genesisHash, withRuntime: false },
+    ///         })
+    ///         .subscribe({
+    ///           next: async (item) => {
+    ///             try {
+    ///               if (item.tag === "Initialized") {
+    ///                 const started = await truapi.chain.getHeadStorage({
+    ///                   genesisHash,
+    ///                   followSubscriptionId: sub.subscriptionId,
+    ///                   hash: item.value.finalizedBlockHashes[0],
+    ///                   items: [{ key: storageKey, queryType: "Value" }],
+    ///                 });
+    ///                 if (started.isErr()) throw started.error;
+    ///                 const op = started.value.operation;
+    ///                 if (op.tag !== "Started") {
+    ///                   throw new Error("storage call rejected: " + op.tag);
+    ///                 }
+    ///                 operationId = op.value.operationId;
+    ///               } else if (
+    ///                 operationId &&
+    ///                 (item.tag === "OperationStorageItems" ||
+    ///                   item.tag === "OperationStorageDone" ||
+    ///                   item.tag === "OperationWaitingForContinue" ||
+    ///                   item.tag === "OperationError" ||
+    ///                   item.tag === "OperationInaccessible") &&
+    ///                 item.value.operationId === operationId
+    ///               ) {
+    ///                 if (item.tag === "OperationStorageItems") {
+    ///                   items.push(...item.value.items);
+    ///                 } else if (item.tag === "OperationWaitingForContinue") {
+    ///                   const cont = await truapi.chain.continueHead({
+    ///                     genesisHash,
+    ///                     followSubscriptionId: sub.subscriptionId,
+    ///                     operationId,
+    ///                   });
+    ///                   if (cont.isErr()) throw cont.error;
+    ///                 } else if (item.tag === "OperationStorageDone") {
+    ///                   resolve({ items });
+    ///                 } else if (item.tag === "OperationError") {
+    ///                   reject(new Error("operation error: " + item.value.error));
+    ///                 } else {
+    ///                   reject(new Error("operation inaccessible"));
+    ///                 }
+    ///               }
+    ///             } catch (err) {
+    ///               reject(err as Error);
+    ///             }
+    ///           },
+    ///           error: reject,
+    ///           complete: () =>
+    ///             reject(new Error("follow ended before storage result")),
+    ///         });
+    ///       cleanup = () => sub.unsubscribe();
+    ///     },
+    ///   );
+    ///
+    ///   cleanup();
+    ///   return done;
     /// }
     /// ```
     #[wire(request_id = 84)]
@@ -155,24 +286,71 @@ pub trait Chain: Send + Sync {
     /// Invoke a runtime call at a specific block.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type RemoteChainHeadCallResponse,
-    /// } from "@parity/truapi";
+    /// import { type Client } from "@parity/truapi";
     ///
     /// export async function callChainHeadRuntime(
     ///   truapi: Client,
-    /// ): Promise<RemoteChainHeadCallResponse> {
-    ///   const result = await truapi.chain.callHead({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     followSubscriptionId: "",
-    ///     hash: "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///     function: "Core_version",
-    ///     callParameters: "0x",
-    ///   });
+    /// ): Promise<{ output: string }> {
+    ///   const genesisHash =
+    ///     "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2";
     ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
+    ///   let operationId: string | null = null;
+    ///   let cleanup = () => {};
+    ///
+    ///   const callResult = await new Promise<{ output: string }>(
+    ///     (resolve, reject) => {
+    ///       const sub = truapi.chain
+    ///         .followHeadSubscribe({
+    ///           request: { genesisHash, withRuntime: false },
+    ///         })
+    ///         .subscribe({
+    ///           next: async (item) => {
+    ///             try {
+    ///               if (item.tag === "Initialized") {
+    ///                 const started = await truapi.chain.callHead({
+    ///                   genesisHash,
+    ///                   followSubscriptionId: sub.subscriptionId,
+    ///                   hash: item.value.finalizedBlockHashes[0],
+    ///                   function: "Core_version",
+    ///                   callParameters: "0x",
+    ///                 });
+    ///                 if (started.isErr()) throw started.error;
+    ///                 const op = started.value.operation;
+    ///                 if (op.tag !== "Started") {
+    ///                   throw new Error("call rejected: " + op.tag);
+    ///                 }
+    ///                 operationId = op.value.operationId;
+    ///               } else if (
+    ///                 operationId &&
+    ///                 (item.tag === "OperationCallDone" ||
+    ///                   item.tag === "OperationError" ||
+    ///                   item.tag === "OperationInaccessible") &&
+    ///                 item.value.operationId === operationId
+    ///               ) {
+    ///                 if (item.tag === "OperationCallDone") {
+    ///                   resolve({
+    ///                     output: item.value.output as unknown as string,
+    ///                   });
+    ///                 } else if (item.tag === "OperationError") {
+    ///                   reject(new Error("operation error: " + item.value.error));
+    ///                 } else {
+    ///                   reject(new Error("operation inaccessible"));
+    ///                 }
+    ///               }
+    ///             } catch (err) {
+    ///               reject(err as Error);
+    ///             }
+    ///           },
+    ///           error: reject,
+    ///           complete: () =>
+    ///             reject(new Error("follow ended before call result")),
+    ///         });
+    ///       cleanup = () => sub.unsubscribe();
+    ///     },
+    ///   );
+    ///
+    ///   cleanup();
+    ///   return callResult;
     /// }
     /// ```
     #[wire(request_id = 86)]
@@ -190,15 +368,44 @@ pub trait Chain: Send + Sync {
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function unpinChainHead(truapi: Client): Promise<void> {
-    ///   const result = await truapi.chain.unpinHead({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     followSubscriptionId: "",
-    ///     hashes: [
-    ///       "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///     ],
+    ///   const genesisHash =
+    ///     "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2";
+    ///
+    ///   let cleanup = () => {};
+    ///   const { subscriptionId, finalizedHash } = await new Promise<{
+    ///     subscriptionId: string;
+    ///     finalizedHash: `0x${string}`;
+    ///   }>((resolve, reject) => {
+    ///     const sub = truapi.chain
+    ///       .followHeadSubscribe({
+    ///         request: { genesisHash, withRuntime: false },
+    ///       })
+    ///       .subscribe({
+    ///         next: (item) => {
+    ///           if (item.tag === "Initialized") {
+    ///             resolve({
+    ///               subscriptionId: sub.subscriptionId,
+    ///               finalizedHash: item.value.finalizedBlockHashes[0],
+    ///             });
+    ///           }
+    ///         },
+    ///         error: reject,
+    ///         complete: () =>
+    ///           reject(new Error("follow ended before Initialized")),
+    ///       });
+    ///     cleanup = () => sub.unsubscribe();
     ///   });
     ///
-    ///   if (result.isErr()) throw result.error;
+    ///   try {
+    ///     const result = await truapi.chain.unpinHead({
+    ///       genesisHash,
+    ///       followSubscriptionId: subscriptionId,
+    ///       hashes: [finalizedHash],
+    ///     });
+    ///     if (result.isErr()) throw result.error;
+    ///   } finally {
+    ///     cleanup();
+    ///   }
     /// }
     /// ```
     #[wire(request_id = 88)]
@@ -218,13 +425,36 @@ pub trait Chain: Send + Sync {
     /// export async function continueChainHeadOperation(
     ///   truapi: Client,
     /// ): Promise<void> {
-    ///   const result = await truapi.chain.continueHead({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     followSubscriptionId: "",
-    ///     operationId: "op-id",
+    ///   const genesisHash =
+    ///     "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2";
+    ///
+    ///   let cleanup = () => {};
+    ///   const subscriptionId = await new Promise<string>((resolve, reject) => {
+    ///     const sub = truapi.chain
+    ///       .followHeadSubscribe({
+    ///         request: { genesisHash, withRuntime: false },
+    ///       })
+    ///       .subscribe({
+    ///         next: (item) => {
+    ///           if (item.tag === "Initialized") resolve(sub.subscriptionId);
+    ///         },
+    ///         error: reject,
+    ///         complete: () =>
+    ///           reject(new Error("follow ended before Initialized")),
+    ///       });
+    ///     cleanup = () => sub.unsubscribe();
     ///   });
     ///
-    ///   if (result.isErr()) throw result.error;
+    ///   try {
+    ///     const result = await truapi.chain.continueHead({
+    ///       genesisHash,
+    ///       followSubscriptionId: subscriptionId,
+    ///       operationId: "op-id",
+    ///     });
+    ///     if (result.isErr()) throw result.error;
+    ///   } finally {
+    ///     cleanup();
+    ///   }
     /// }
     /// ```
     #[wire(request_id = 90)]
@@ -244,13 +474,36 @@ pub trait Chain: Send + Sync {
     /// export async function stopChainHeadOperation(
     ///   truapi: Client,
     /// ): Promise<void> {
-    ///   const result = await truapi.chain.stopHeadOperation({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     followSubscriptionId: "",
-    ///     operationId: "op-id",
+    ///   const genesisHash =
+    ///     "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2";
+    ///
+    ///   let cleanup = () => {};
+    ///   const subscriptionId = await new Promise<string>((resolve, reject) => {
+    ///     const sub = truapi.chain
+    ///       .followHeadSubscribe({
+    ///         request: { genesisHash, withRuntime: false },
+    ///       })
+    ///       .subscribe({
+    ///         next: (item) => {
+    ///           if (item.tag === "Initialized") resolve(sub.subscriptionId);
+    ///         },
+    ///         error: reject,
+    ///         complete: () =>
+    ///           reject(new Error("follow ended before Initialized")),
+    ///       });
+    ///     cleanup = () => sub.unsubscribe();
     ///   });
     ///
-    ///   if (result.isErr()) throw result.error;
+    ///   try {
+    ///     const result = await truapi.chain.stopHeadOperation({
+    ///       genesisHash,
+    ///       followSubscriptionId: subscriptionId,
+    ///       operationId: "op-id",
+    ///     });
+    ///     if (result.isErr()) throw result.error;
+    ///   } finally {
+    ///     cleanup();
+    ///   }
     /// }
     /// ```
     #[wire(request_id = 92)]
