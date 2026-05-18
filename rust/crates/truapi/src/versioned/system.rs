@@ -12,7 +12,4 @@ versioned_type! {
     pub enum HostNavigateToRequest { V1 => v01::HostNavigateToRequest }
     pub enum HostNavigateToResponse { V1 }
     pub enum HostNavigateToError { V1 => v01::HostNavigateToError }
-    pub enum HostPushNotificationRequest { V1 => v01::HostPushNotificationRequest }
-    pub enum HostPushNotificationResponse { V1 }
-    pub enum HostPushNotificationError { V1 => v01::GenericError }
 }

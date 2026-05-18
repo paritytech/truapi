@@ -7,6 +7,7 @@ pub mod coin_payment;
 pub mod entropy;
 pub mod jsonrpc;
 pub mod local_storage;
+pub mod notifications;
 pub mod payment;
 pub mod permissions;
 pub mod preimage;
@@ -23,6 +24,7 @@ pub use coin_payment::CoinPayment;
 pub use entropy::Entropy;
 pub use jsonrpc::JsonRpc;
 pub use local_storage::LocalStorage;
+pub use notifications::Notifications;
 pub use payment::Payment;
 pub use permissions::Permissions;
 pub use preimage::Preimage;
@@ -41,6 +43,7 @@ pub trait TrUApi:
     + Entropy
     + JsonRpc
     + LocalStorage
+    + Notifications
     + Payment
     + Permissions
     + Preimage
@@ -62,6 +65,7 @@ impl<T> TrUApi for T where
         + Entropy
         + JsonRpc
         + LocalStorage
+        + Notifications
         + Payment
         + Permissions
         + Preimage
