@@ -2036,11 +2036,13 @@ mod tests {
     fn service_display_name_formats_known_acronyms() {
         let json_rpc = TraitDef {
             name: "JsonRpc".to_string(),
+            module_path: Vec::new(),
             methods: Vec::new(),
             docs: None,
         };
         let system = TraitDef {
             name: "System".to_string(),
+            module_path: Vec::new(),
             methods: Vec::new(),
             docs: None,
         };
@@ -2078,6 +2080,7 @@ mod tests {
         ApiDefinition {
             traits: vec![TraitDef {
                 name: "Example".to_string(),
+                module_path: Vec::new(),
                 methods,
                 docs: None,
             }],
@@ -2353,6 +2356,7 @@ mod tests {
         let api = ApiDefinition {
             traits: vec![TraitDef {
                 name: "Example".to_string(),
+                module_path: Vec::new(),
                 methods: vec![
                     request_method_with_wrappers(
                         "legacy",
@@ -2398,6 +2402,7 @@ mod tests {
             traits: vec![
                 TraitDef {
                     name: "Legacy".to_string(),
+                    module_path: Vec::new(),
                     methods: vec![request_method_with_wrappers(
                         "legacy_call",
                         Some(2),
@@ -2409,6 +2414,7 @@ mod tests {
                 },
                 TraitDef {
                     name: "FutureOnly".to_string(),
+                    module_path: Vec::new(),
                     methods: vec![request_method_with_wrappers(
                         "future_call",
                         Some(4),
@@ -2445,6 +2451,7 @@ mod tests {
         let api = ApiDefinition {
             traits: vec![TraitDef {
                 name: "Example".to_string(),
+                module_path: Vec::new(),
                 methods: vec![MethodDef {
                     name: "example_call".to_string(),
                     kind: MethodKind::Request,
@@ -2493,6 +2500,7 @@ mod tests {
         let api = ApiDefinition {
             traits: vec![TraitDef {
                 name: "Example".to_string(),
+                module_path: Vec::new(),
                 methods: vec![MethodDef {
                     name: "example_call".to_string(),
                     kind: MethodKind::Request,
@@ -2538,6 +2546,7 @@ mod tests {
         let api = ApiDefinition {
             traits: vec![TraitDef {
                 name: "Example".to_string(),
+                module_path: Vec::new(),
                 methods: vec![MethodDef {
                     name: "example_call".to_string(),
                     kind: MethodKind::Request,

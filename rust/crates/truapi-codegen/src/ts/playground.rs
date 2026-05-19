@@ -64,7 +64,9 @@ fn generate_playground_services_code(api: &ApiDefinition, target_version: u32) -
                 MethodKind::Request => "unary",
                 MethodKind::Subscription | MethodKind::ResultSubscription => "subscription",
             };
-            let signature = build_method_signature(method, &payload, &wrappers, &ctx, wire_version)?;
+            let signature =
+                build_method_signature(method, &payload, &wrappers, &ctx, wire_version)?;
+            let doc_url = build_doc_url(trait_def, method);
 
             writedoc!(
                 out,
@@ -73,10 +75,12 @@ fn generate_playground_services_code(api: &ApiDefinition, target_version: u32) -
                         name: {name},
                         type: {ty},
                         signature: {signature},
+                        docUrl: {doc_url},
                 ",
                 name = ts_string_literal(&method.name),
                 ty = ts_string_literal(method_type),
                 signature = ts_string_literal(&signature),
+                doc_url = ts_string_literal(&doc_url),
             )
             .unwrap();
             if let Some(description) = docs.description {
@@ -169,6 +173,26 @@ pub(super) fn split_playground_docs(docs: Option<&str>) -> Result<PlaygroundDocs
 
 pub(super) fn playground_type_name(value: &str) -> String {
     value.replace("T.", "")
+}
+
+/// Rustdoc URL fragment for the trait method, relative to the cargo doc root
+/// of the truapi crate (e.g. `api/account/trait.Account.html#method.get_account`).
+/// `module_path` is the rustdoc path leading to the trait (e.g.
+/// `["truapi", "api", "account"]`); the crate name is dropped because cargo doc
+/// is published with the crate folder as the root.
+fn build_doc_url(trait_def: &TraitDef, method: &MethodDef) -> String {
+    let module = trait_def
+        .module_path
+        .iter()
+        .skip(1)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("/");
+    format!(
+        "{module}/trait.{trait_name}.html#method.{method}",
+        trait_name = trait_def.name,
+        method = method.name,
+    )
 }
 
 fn build_method_signature(

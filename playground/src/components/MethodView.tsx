@@ -14,10 +14,12 @@ import type { MethodInfo, ServiceInfo } from "@/src/lib/services";
 
 const CALL_TIMEOUT_MS = 30_000;
 
-const CARGO_DOC_BASE = "https://paritytech.github.io/truapi/cargo_doc";
+const CARGO_DOC_BASE =
+  process.env.NEXT_PUBLIC_CARGO_DOC_BASE ??
+  "https://paritytech.github.io/truapi/cargo_doc";
 
-function cargoDocMethodUrl(service: string, method: string): string {
-  return `${CARGO_DOC_BASE}/api/trait.${encodeURIComponent(service)}.html#tymethod.${encodeURIComponent(method)}`;
+function cargoDocMethodUrl(docUrl: string | undefined): string | undefined {
+  return docUrl ? `${CARGO_DOC_BASE}/${docUrl}` : undefined;
 }
 
 function formatError(value: unknown): string {
@@ -214,17 +216,24 @@ export function MethodView({
           {methodInfo.description && (
             <p className="panel__desc">{methodInfo.description}</p>
           )}
-          {methodInfo.signature && (
-            <a
-              className="signature"
-              href={cargoDocMethodUrl(service, method)}
-              target="_blank"
-              rel="noreferrer"
-              title="Open this method's full Rust definition in the cargo doc"
-            >
-              {methodInfo.signature}
-            </a>
-          )}
+          {methodInfo.signature &&
+            (() => {
+              const href = cargoDocMethodUrl(methodInfo.docUrl);
+              const content = methodInfo.signature;
+              return href ? (
+                <a
+                  className="signature"
+                  href={href}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="Open this method's full Rust definition in the cargo doc"
+                >
+                  {content}
+                </a>
+              ) : (
+                <pre className="signature">{content}</pre>
+              );
+            })()}
         </div>
       )}
 

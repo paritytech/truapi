@@ -17,6 +17,9 @@ import {
   runAutoTests,
   runSingleTest,
 } from "@/src/lib/auto-test";
+import packageJson from "../../package.json";
+
+const VERSION_LABEL = `v${packageJson.version}`;
 
 const STATUS_LABEL: Record<string, string> = {
   connected: "Host Linked",
@@ -82,7 +85,7 @@ function Masthead({
         <div className="wordmark">
           <span className="wordmark__dot" aria-hidden />
           <span className="wordmark__name">TrUAPI Playground</span>
-          <span className="wordmark__tag">v0.2</span>
+          <span className="wordmark__tag">{VERSION_LABEL}</span>
         </div>
         <div className="masthead__right">
           {status !== "connected" && (
@@ -111,7 +114,7 @@ function Splash({ status }: { status: ConnectionStatus | null }) {
       <div className="splash__card">
         <div className="splash__eyebrow">
           <span className="wordmark__dot" aria-hidden />
-          <span>TrUAPI Playground · v0.2</span>
+          <span>TrUAPI Playground · {VERSION_LABEL}</span>
         </div>
         <h1 className="splash__title">
           {connecting ? "Linking to host…" : "Host is offline."}
@@ -129,16 +132,50 @@ function Splash({ status }: { status: ConnectionStatus | null }) {
   );
 }
 
+type Selection = { service: string; method: string } | null;
+
+function selectionFromUrl(): Selection {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  const service = params.get("service");
+  const method = params.get("method");
+  if (!service) return null;
+  return { service, method: method ?? "" };
+}
+
+function urlForSelection(selection: Selection): string {
+  if (!selection) return window.location.pathname;
+  const params = new URLSearchParams();
+  params.set("service", selection.service);
+  if (selection.method) params.set("method", selection.method);
+  return `${window.location.pathname}?${params.toString()}`;
+}
+
 export default function PlaygroundPage() {
   const [status, setStatus] = useState<ConnectionStatus | null>(null);
-  const [selection, setSelection] = useState<{
-    service: string;
-    method: string;
-  } | null>(null);
+  const [selection, setSelection] = useState<Selection>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [testResults, setTestResults] = useState<Record<string, TestEntry>>({});
   const [isTestRunning, setIsTestRunning] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Hydrate selection from the URL on mount and respond to back/forward.
+  useEffect(() => {
+    setSelection(selectionFromUrl());
+    const onPop = () => setSelection(selectionFromUrl());
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  // Reflect selection changes into the URL via pushState (skip if already
+  // matching, otherwise back/forward navigation loops).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const next = urlForSelection(selection);
+    if (next !== window.location.pathname + window.location.search) {
+      window.history.pushState({}, "", next);
+    }
+  }, [selection]);
 
   useEffect(() => {
     try {
