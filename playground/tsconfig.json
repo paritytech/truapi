@@ -37,6 +37,7 @@
   "exclude": [
     "node_modules",
     "tests",
+    "test/generated",
     "playwright.config.ts",
     "playwright-report",
     "test-results"

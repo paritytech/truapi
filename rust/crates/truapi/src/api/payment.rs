@@ -15,25 +15,15 @@ pub trait Payment: Send + Sync {
     /// Subscribe to payment balance updates.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type HostPaymentBalanceSubscribeError,
-    ///   type HostPaymentBalanceSubscribeItem,
-    ///   type Subscription,
-    ///   type SubscriptionError,
-    /// } from "@parity/truapi";
+    /// import { from, take } from "rxjs";
     ///
-    /// export function watchPaymentBalance(truapi: Client): Subscription {
-    ///   return truapi.payment.balanceSubscribe({
-    ///     request: {},
-    ///   }).subscribe({
-    ///     next: (balance: HostPaymentBalanceSubscribeItem) =>
-    ///       console.log(balance),
-    ///     error: (error: SubscriptionError<HostPaymentBalanceSubscribeError>) =>
-    ///       console.error(error),
+    /// from(truapi.payment.balanceSubscribe({ request: {} }))
+    ///   .pipe(take(3))
+    ///   .subscribe({
+    ///     next: (balance) => console.log(balance),
+    ///     error: (error) => console.error(error),
     ///     complete: () => console.log("completed"),
     ///   });
-    /// }
     /// ```
     #[wire(start_id = 118)]
     async fn balance_subscribe(
@@ -50,22 +40,14 @@ pub trait Payment: Send + Sync {
     /// Request a payment from the user.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type HostPaymentResponse,
-    /// } from "@parity/truapi";
-    ///
-    /// export async function requestPayment(
-    ///   truapi: Client,
-    /// ): Promise<HostPaymentResponse> {
-    ///   const result = await truapi.payment.request({
-    ///     amount: 1000000000000n,
-    ///     destination: "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await truapi.payment.request({
+    ///   amount: 1000000000000n,
+    ///   destination: "0x0000000000000000000000000000000000000000000000000000000000000000",
+    /// });
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 124)]
     async fn request(
@@ -79,27 +61,17 @@ pub trait Payment: Send + Sync {
     /// Subscribe to payment lifecycle updates for a specific payment.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type HostPaymentStatusSubscribeError,
-    ///   type HostPaymentStatusSubscribeItem,
-    ///   type Subscription,
-    ///   type SubscriptionError,
-    /// } from "@parity/truapi";
+    /// import { from, take } from "rxjs";
     ///
-    /// export function watchPaymentStatus(truapi: Client): Subscription {
-    ///   return truapi.payment
-    ///     .statusSubscribe({
-    ///       request: { paymentId: "payment-id" },
-    ///     })
-    ///     .subscribe({
-    ///       next: (status: HostPaymentStatusSubscribeItem) =>
-    ///         console.log(status),
-    ///       error: (error: SubscriptionError<HostPaymentStatusSubscribeError>) =>
-    ///         console.error(error),
-    ///       complete: () => console.log("completed"),
-    ///     });
-    /// }
+    /// from(
+    ///   truapi.payment.statusSubscribe({ request: { paymentId: "payment-id" } }),
+    /// )
+    ///   .pipe(take(3))
+    ///   .subscribe({
+    ///     next: (status) => console.log(status),
+    ///     error: (error) => console.error(error),
+    ///     complete: () => console.log("completed"),
+    ///   });
     /// ```
     #[wire(start_id = 126)]
     async fn status_subscribe(
@@ -116,16 +88,14 @@ pub trait Payment: Send + Sync {
     /// Top up the user's payment balance.
     ///
     /// ```ts
-    /// import { type Client } from "@parity/truapi";
-    ///
-    /// export async function topUpPaymentBalance(truapi: Client): Promise<void> {
-    ///   const result = await truapi.payment.topUp({
-    ///     amount: 1000000000000n,
-    ///     source: { tag: "ProductAccount", value: { derivationIndex: 0 } },
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    /// }
+    /// const result = await truapi.payment.topUp({
+    ///   amount: 1000000000000n,
+    ///   source: { tag: "ProductAccount", value: { derivationIndex: 0 } },
+    /// });
+    /// result.match(
+    ///   () => console.log("ok"),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 122)]
     async fn top_up(

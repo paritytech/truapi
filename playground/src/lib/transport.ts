@@ -2,14 +2,10 @@ import {
   createClient,
   createMessagePortProvider,
   createTransport,
-  type HexString,
   type Provider,
   type TrUApiClient,
   type TrUApiTransport,
-  type RemoteChainHeadFollowItem,
 } from "@parity/truapi";
-
-type ChainHeadEvent = RemoteChainHeadFollowItem;
 
 export type ConnectionStatus = "disconnected" | "connecting" | "connected";
 
@@ -99,8 +95,6 @@ function createIframeProvider(): Provider {
   return {
     postMessage(message: Uint8Array) {
       if (disposed) throw new Error("iframe provider disposed");
-      // Pin the target origin so SCALE-encoded frames carrying signed
-      // payloads / account ids don't leak to an unrelated frame parent.
       parent.postMessage(message, hostOrigin);
     },
     subscribe(callback: MessageListener) {
@@ -165,9 +159,6 @@ function ensureClient(): TrUApiClient {
   }
   _provider = createSandboxProvider();
   _provider.subscribeClose?.(() => setStatus("disconnected"));
-  // `createTransport` auto-responds to inbound `host_handshake_request`
-  // frames with the versioned response variant requested by the host; see
-  // the matching comment in @parity/truapi/client.ts.
   _transport = createTransport(_provider);
   _client = createClient(_transport);
   return _client;
@@ -193,9 +184,6 @@ export function subscribeConnectionStatus(
 
   if (_status === "disconnected") {
     if (!isCorrectEnvironment()) {
-      // Standalone (not iframed, not webview): no host to talk to. Stay
-      // disconnected so the UI surfaces the OFFLINE chip and method bindings
-      // gracefully refuse to bind.
       return () => {
         _statusListeners.delete(callback);
       };
@@ -224,210 +212,3 @@ export function subscribeConnectionStatus(
 }
 
 export { isCorrectEnvironment };
-
-// ---------------------------------------------------------------------------
-// chain_head_follow helpers
-//
-// `remote_chain_head_*` dependent calls (header, body, storage, call, unpin,
-// continue, stop_operation) are scoped to a live `chain_head_follow`
-// subscription. The bridge auto-opens an ephemeral follow when the caller
-// leaves `followSubscriptionId` empty, fills in the subscription id from
-// `Subscription.subscriptionId`, and unsubscribes once the dependent call
-// (and any matching operation events) settle.
-// ---------------------------------------------------------------------------
-
-type ChainHeadEventListener = (event: ChainHeadEvent) => void;
-
-export interface EphemeralFollow {
-  subscriptionId: string;
-  genesisHash: HexString;
-  finalizedBlockHash: HexString;
-  /** Subscribe to subsequent ChainHeadEvents on this follow. */
-  onEvent: (listener: ChainHeadEventListener) => () => void;
-  /** Send the stop frame and clear listeners. Idempotent. */
-  unsubscribe: () => void;
-}
-
-/** Opens a one-shot `chain_head_follow`, waits for the first `Initialized`
- * event, and resolves with the transport-assigned subscription id plus the
- * first finalized block hash. The follow stays alive until `unsubscribe()` is
- * called; the caller is expected to do so after the dependent call settles. */
-export function openEphemeralFollow(
-  genesisHash: HexString,
-  withRuntime = false,
-  timeoutMs = 15_000,
-): Promise<EphemeralFollow> {
-  const client = getClient();
-  const listeners = new Set<ChainHeadEventListener>();
-
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-    const sub = client.chain
-      .followHeadSubscribe({
-        request: { genesisHash, withRuntime },
-      })
-      .subscribe({
-        next: (event) => {
-          if (!settled) {
-            if (event.tag !== "Initialized") return;
-            const finalizedBlockHash = event.value.finalizedBlockHashes[0];
-            if (!finalizedBlockHash) {
-              settled = true;
-              if (timeoutHandle !== null) clearTimeout(timeoutHandle);
-              try {
-                sub.unsubscribe();
-              } catch {
-                /* benign */
-              }
-              reject(
-                new Error("Initialized event had no finalized block hash"),
-              );
-              return;
-            }
-            settled = true;
-            if (timeoutHandle !== null) clearTimeout(timeoutHandle);
-            resolve({
-              subscriptionId: sub.subscriptionId,
-              genesisHash,
-              finalizedBlockHash,
-              onEvent: (listener) => {
-                listeners.add(listener);
-                return () => listeners.delete(listener);
-              },
-              unsubscribe: () => {
-                try {
-                  sub.unsubscribe();
-                } catch {
-                  /* benign */
-                }
-                listeners.clear();
-              },
-            });
-            return;
-          }
-          for (const listener of listeners) listener(event);
-        },
-        error: (error) => {
-          listeners.clear();
-          if (settled) return;
-          settled = true;
-          if (timeoutHandle !== null) clearTimeout(timeoutHandle);
-          reject(error);
-        },
-        complete: () => {
-          listeners.clear();
-          if (settled) return;
-          settled = true;
-          if (timeoutHandle !== null) clearTimeout(timeoutHandle);
-          reject(new Error("chain_head_follow completed before Initialized"));
-        },
-      });
-    timeoutHandle = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      try {
-        sub.unsubscribe();
-      } catch {
-        /* benign */
-      }
-      reject(
-        new Error(
-          `openEphemeralFollow: no Initialized event within ${timeoutMs}ms`,
-        ),
-      );
-    }, timeoutMs);
-  });
-}
-
-/** Wait for a chain-head operation event matching `operationId` whose tag is
- * one of `terminalTags`. Resolves with the matching event or rejects on
- * timeout. */
-export function awaitChainHeadOperation(
-  follow: EphemeralFollow,
-  operationId: string,
-  terminalTags: readonly string[],
-  timeoutMs = 30_000,
-): Promise<ChainHeadEvent> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-    const cleanup = follow.onEvent((event) => {
-      if (settled) return;
-      if (!terminalTags.includes(event.tag)) return;
-      const eventOpId = (event.value as { operationId?: string } | undefined)
-        ?.operationId;
-      if (eventOpId !== operationId) return;
-      settled = true;
-      if (timeoutHandle !== null) clearTimeout(timeoutHandle);
-      cleanup();
-      resolve(event);
-    });
-    timeoutHandle = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      reject(
-        new Error(
-          `awaitChainHeadOperation: no terminal event for ${operationId} within ${timeoutMs}ms`,
-        ),
-      );
-    }, timeoutMs);
-  });
-}
-
-/** Storage variant: accumulates `OperationStorageItems` until a terminal
- * `OperationStorageDone` / `OperationError` / `OperationInaccessible` event.
- * `onWaitingForContinue` is fired when the host pauses delivery. */
-export function awaitChainHeadStorage(
-  follow: EphemeralFollow,
-  operationId: string,
-  options: {
-    onWaitingForContinue?: () => void;
-    timeoutMs?: number;
-  } = {},
-): Promise<{ items: unknown[]; done: ChainHeadEvent }> {
-  const timeoutMs = options.timeoutMs ?? 30_000;
-  const TERMINAL = [
-    "OperationStorageDone",
-    "OperationError",
-    "OperationInaccessible",
-  ];
-
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const items: unknown[] = [];
-    let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-    const cleanup = follow.onEvent((event) => {
-      if (settled) return;
-      const eventOpId = (event.value as { operationId?: string } | undefined)
-        ?.operationId;
-      if (eventOpId !== operationId) return;
-      if (event.tag === "OperationStorageItems") {
-        const evValue = event.value as { items?: unknown[] };
-        if (Array.isArray(evValue.items)) items.push(...evValue.items);
-        return;
-      }
-      if (event.tag === "OperationWaitingForContinue") {
-        options.onWaitingForContinue?.();
-        return;
-      }
-      if (TERMINAL.includes(event.tag)) {
-        settled = true;
-        if (timeoutHandle !== null) clearTimeout(timeoutHandle);
-        cleanup();
-        resolve({ items, done: event });
-      }
-    });
-    timeoutHandle = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      reject(
-        new Error(
-          `awaitChainHeadStorage: no terminal event for ${operationId} within ${timeoutMs}ms`,
-        ),
-      );
-    }, timeoutMs);
-  });
-}

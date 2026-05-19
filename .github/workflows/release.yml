@@ -65,7 +65,7 @@ jobs:
 
       - name: Build @parity/truapi
         if: steps.version.outputs.proceed == 'true'
-        run: npm run build --prefix js/packages/truapi
+        run: ./scripts/codegen.sh
 
       - name: Tag release
         if: steps.version.outputs.proceed == 'true'
