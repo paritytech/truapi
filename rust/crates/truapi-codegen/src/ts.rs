@@ -722,8 +722,13 @@ fn method_versioned_wrappers(
         ReturnType::Subscription(item) => {
             collect_type_versioned_wrappers(item, wrappers, &mut names);
         }
-        ReturnType::ResultSubscription { item, err: _ } => {
+        ReturnType::ResultSubscription { item, err } => {
             collect_type_versioned_wrappers(item, wrappers, &mut names);
+            collect_type_versioned_wrappers(
+                call_error_inner(err).unwrap_or(err),
+                wrappers,
+                &mut names,
+            );
         }
     }
     names.sort();

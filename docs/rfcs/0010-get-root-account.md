@@ -1,9 +1,16 @@
 ---
 title: "Host API root account access"
 owner: "@johnthecat"
+status: superseded
+superseded_by: 0015
 ---
 
 # RFC 0010 — Host API root account access
+
+> **Superseded by [RFC-0015](0015-get-user-id.md).** This RFC was merged without
+> review and is preserved for historical context. `host_account_get_root` is
+> not implemented; products needing the user's primary identity should use
+> `host_get_user_id`.
 
 ## Summary
 
