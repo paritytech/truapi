@@ -80,17 +80,13 @@ pub trait Notifications: Send + Sync {
     /// calling product's identity) when relaying the rule to the backend.
     ///
     /// ```ts
-    /// import { type Client } from "@parity/truapi";
-    ///
-    /// export async function addAnnouncementsRules(
-    ///   truapi: Client,
-    /// ): Promise<void> {
-    ///   const result = await truapi.notifications.pushAddRules({
-    ///     topics: ["0x00"],
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    /// }
+    /// const result = await truapi.notifications.pushAddRules({
+    ///   topics: ["0x00"],
+    /// });
+    /// result.match(
+    ///   () => console.log("ok"),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 164)]
     async fn push_add_rules(
@@ -103,17 +99,13 @@ pub trait Notifications: Send + Sync {
     /// `DELETE /v1/subscriptions/rules` from the v2 push backend spec.
     ///
     /// ```ts
-    /// import { type Client } from "@parity/truapi";
-    ///
-    /// export async function removeAnnouncementsRules(
-    ///   truapi: Client,
-    /// ): Promise<void> {
-    ///   const result = await truapi.notifications.pushRemoveRules({
-    ///     topics: ["0x00"],
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    /// }
+    /// const result = await truapi.notifications.pushRemoveRules({
+    ///   topics: ["0x00"],
+    /// });
+    /// result.match(
+    ///   () => console.log("ok"),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 166)]
     async fn push_remove_rules(
@@ -128,13 +120,11 @@ pub trait Notifications: Send + Sync {
     /// v2 push backend spec.
     ///
     /// ```ts
-    /// import { type Client } from "@parity/truapi";
-    ///
-    /// export async function listRules(truapi: Client) {
-    ///   const result = await truapi.notifications.pushListRules({});
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value.topics;
-    /// }
+    /// const result = await truapi.notifications.pushListRules({});
+    /// result.match(
+    ///   (value) => console.log(value.topics),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 168)]
     async fn push_list_rules(
@@ -149,15 +139,13 @@ pub trait Notifications: Send + Sync {
     /// from the v2 push backend spec.
     ///
     /// ```ts
-    /// import { type Client } from "@parity/truapi";
-    ///
-    /// export async function setRules(truapi: Client): Promise<void> {
-    ///   const result = await truapi.notifications.pushSetRules({
-    ///     topics: ["0x00"],
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    /// }
+    /// const result = await truapi.notifications.pushSetRules({
+    ///   topics: ["0x00"],
+    /// });
+    /// result.match(
+    ///   () => console.log("ok"),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 170)]
     async fn push_set_rules(
