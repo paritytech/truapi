@@ -23,7 +23,7 @@ jobs:
           node-version: 22
 
       - name: Build @parity/truapi
-        run: npm ci --prefix js/packages/truapi && npm run build --prefix js/packages/truapi
+        run: npm ci && npm run build --prefix js/packages/truapi
 
       - name: Install playground dependencies
         working-directory: playground
