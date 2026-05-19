@@ -81,7 +81,6 @@ pub trait Chain: Send + Sync {
     ///   );
     ///
     /// // #region helpers
-    /// /* eslint-disable @typescript-eslint/no-explicit-any -- inferred from the follow stream */
     /// function followHead({ genesisHash }: { genesisHash: `0x${string}` }) {
     ///   return new Observable<{
     ///     item: any;
@@ -134,7 +133,6 @@ pub trait Chain: Send + Sync {
     /// console.log(body);
     ///
     /// // #region helpers
-    /// /* eslint-disable @typescript-eslint/no-explicit-any -- generic over the chosen chainHead op */
     /// async function withChainOperation(
     ///   genesisHash: `0x${string}`,
     ///   start: (ctx: { subscriptionId: string; hash: `0x${string}` }) => PromiseLike<any>,
@@ -226,7 +224,6 @@ pub trait Chain: Send + Sync {
     /// console.log(items);
     ///
     /// // #region helpers
-    /// /* eslint-disable @typescript-eslint/no-explicit-any -- generic over the chosen chainHead op */
     /// async function withChainOperation(
     ///   genesisHash: `0x${string}`,
     ///   start: (ctx: { subscriptionId: string; hash: `0x${string}` }) => PromiseLike<any>,
@@ -304,7 +301,6 @@ pub trait Chain: Send + Sync {
     /// console.log(output);
     ///
     /// // #region helpers
-    /// /* eslint-disable @typescript-eslint/no-explicit-any -- generic over the chosen chainHead op */
     /// async function withChainOperation(
     ///   genesisHash: `0x${string}`,
     ///   start: (ctx: { subscriptionId: string; hash: `0x${string}` }) => PromiseLike<any>,
@@ -388,7 +384,6 @@ pub trait Chain: Send + Sync {
     ///   );
     ///
     /// // #region helpers
-    /// /* eslint-disable @typescript-eslint/no-explicit-any -- inferred from the follow stream */
     /// function followHead({ genesisHash }: { genesisHash: `0x${string}` }) {
     ///   return new Observable<{
     ///     item: any;
@@ -449,7 +444,6 @@ pub trait Chain: Send + Sync {
     ///   );
     ///
     /// // #region helpers
-    /// /* eslint-disable @typescript-eslint/no-explicit-any -- inferred from the follow stream */
     /// function followHead({ genesisHash }: { genesisHash: `0x${string}` }) {
     ///   return new Observable<{
     ///     item: any;
@@ -510,7 +504,6 @@ pub trait Chain: Send + Sync {
     ///   );
     ///
     /// // #region helpers
-    /// /* eslint-disable @typescript-eslint/no-explicit-any -- inferred from the follow stream */
     /// function followHead({ genesisHash }: { genesisHash: `0x${string}` }) {
     ///   return new Observable<{
     ///     item: any;
