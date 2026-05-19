@@ -135,7 +135,7 @@ pub trait Chain: Send + Sync {
     /// // #region helpers
     /// async function withChainOperation(
     ///   genesisHash: `0x${string}`,
-    ///   start: (ctx: { subscriptionId: string; hash: `0x${string}` }) => Promise<any>,
+    ///   start: (ctx: { subscriptionId: string; hash: `0x${string}` }) => PromiseLike<any>,
     ///   onResult: (item: any, ctx: { sub: any; operationId: string }) => any,
     /// ): Promise<any> {
     ///   return await new Promise<any>((resolve, reject) => {
@@ -226,7 +226,7 @@ pub trait Chain: Send + Sync {
     /// // #region helpers
     /// async function withChainOperation(
     ///   genesisHash: `0x${string}`,
-    ///   start: (ctx: { subscriptionId: string; hash: `0x${string}` }) => Promise<any>,
+    ///   start: (ctx: { subscriptionId: string; hash: `0x${string}` }) => PromiseLike<any>,
     ///   onResult: (item: any, ctx: { sub: any; operationId: string }) => any,
     /// ): Promise<any> {
     ///   return await new Promise<any>((resolve, reject) => {
@@ -303,7 +303,7 @@ pub trait Chain: Send + Sync {
     /// // #region helpers
     /// async function withChainOperation(
     ///   genesisHash: `0x${string}`,
-    ///   start: (ctx: { subscriptionId: string; hash: `0x${string}` }) => Promise<any>,
+    ///   start: (ctx: { subscriptionId: string; hash: `0x${string}` }) => PromiseLike<any>,
     ///   onResult: (item: any, ctx: { sub: any; operationId: string }) => any,
     /// ): Promise<any> {
     ///   return await new Promise<any>((resolve, reject) => {

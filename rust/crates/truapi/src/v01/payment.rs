@@ -1,8 +1,17 @@
 use parity_scale_codec::{Decode, Encode};
 
+use super::coin_payment::CoinPaymentPurseId;
+
 /// Balance amount for payment operations. Interpreted according to the host's
 /// single fixed payment asset (e.g. pUSD).
 pub type Balance = u128;
+
+/// Request to subscribe to payment balance updates.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostPaymentBalanceSubscribeRequest {
+    /// Optional purse selector. `None` means MAIN_PURSE.
+    pub purse: Option<CoinPaymentPurseId>,
+}
 
 /// Current payment balance state pushed to subscribers.
 ///
@@ -38,6 +47,8 @@ pub enum PaymentTopUpSource {
 /// Request to top up the product payment balance.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostPaymentTopUpRequest {
+    /// Optional purse selector. `None` means MAIN_PURSE.
+    pub into: Option<CoinPaymentPurseId>,
     /// Amount to top up.
     pub amount: Balance,
     /// Funding source for the top-up.
@@ -46,7 +57,9 @@ pub struct HostPaymentTopUpRequest {
 
 /// Request to initiate a payment to another account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct HostPaymentRequestRequest {
+pub struct HostPaymentRequest {
+    /// Optional purse selector. `None` means MAIN_PURSE.
+    pub from: Option<CoinPaymentPurseId>,
     /// Amount to pay.
     pub amount: Balance,
     /// Destination account.
@@ -59,7 +72,7 @@ pub struct HostPaymentRequestRequest {
 ///
 /// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct HostPaymentRequestResponse {
+pub struct HostPaymentResponse {
     /// The assigned payment identifier.
     pub id: String,
 }
@@ -119,7 +132,7 @@ pub enum HostPaymentTopUpError {
 ///
 /// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub enum HostPaymentRequestError {
+pub enum HostPaymentError {
     /// User rejected the payment request.
     Rejected,
     /// User's available balance is not sufficient for the requested amount.

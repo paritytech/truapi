@@ -1,6 +1,6 @@
-import { err, ok, type Result } from "neverthrow";
+import { err, ok, type Result, type ResultAsync } from "neverthrow";
 
-import { str, u8 } from "./scale.js";
+import { str, u8, type ResultPayload } from "./scale.js";
 
 /**
  * Handle returned by TrUAPI subscription APIs.
@@ -140,7 +140,7 @@ export interface SubscriptionFrameIds {
 /**
  * Options accepted by `TrUApiTransport.request`.
  **/
-export interface RequestParams<Response> {
+export interface RequestParams<Ok, Err> {
   /**
    * Wire discriminants for this request method.
    **/
@@ -152,9 +152,10 @@ export interface RequestParams<Response> {
   payload: Uint8Array;
 
   /**
-   * Decode SCALE response payload bytes into the generated client return type.
+   * Decode SCALE response payload bytes into the wire `ResultPayload`
+   * envelope. The transport unwraps the envelope into `ResultAsync<Ok, Err>`.
    **/
-  decodeResponse: (payload: Uint8Array) => Response;
+  decodeResponse: (payload: Uint8Array) => ResultPayload<Ok, Err>;
 }
 
 /**
@@ -202,9 +203,9 @@ export interface TrUApiTransport {
   readonly codecVersion: number;
 
   /**
-   * Send a one-shot request and resolve with the decoded response payload.
+   * Send a one-shot request and resolve with the typed Ok/Err outcome.
    **/
-  request<Response>(params: RequestParams<Response>): Promise<Response>;
+  request<Ok, Err>(params: RequestParams<Ok, Err>): ResultAsync<Ok, Err>;
 
   /**
    * Start a subscription and return a handle that can stop it.

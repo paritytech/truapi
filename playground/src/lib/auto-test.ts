@@ -19,7 +19,6 @@ export interface TestEntry {
 
 export const EXCLUDED_METHODS = new Set([
   "System/navigate_to",
-  "System/push_notification",
   "Permissions/request_device_permission",
   "Permissions/request_remote_permission",
   "Resource Allocation/request",

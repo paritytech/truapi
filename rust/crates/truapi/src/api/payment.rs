@@ -2,8 +2,8 @@
 
 use crate::versioned::payment::{
     HostPaymentBalanceSubscribeError, HostPaymentBalanceSubscribeItem,
-    HostPaymentBalanceSubscribeRequest, HostPaymentRequestError, HostPaymentRequestRequest,
-    HostPaymentRequestResponse, HostPaymentStatusSubscribeError, HostPaymentStatusSubscribeItem,
+    HostPaymentBalanceSubscribeRequest, HostPaymentError, HostPaymentRequest, HostPaymentResponse,
+    HostPaymentStatusSubscribeError, HostPaymentStatusSubscribeItem,
     HostPaymentStatusSubscribeRequest, HostPaymentTopUpError, HostPaymentTopUpRequest,
     HostPaymentTopUpResponse,
 };
@@ -17,7 +17,7 @@ pub trait Payment: Send + Sync {
     /// ```ts
     /// import { from, take } from "rxjs";
     ///
-    /// from(truapi.payment.balanceSubscribe())
+    /// from(truapi.payment.balanceSubscribe({ request: {} }))
     ///   .pipe(take(3))
     ///   .subscribe({
     ///     next: (balance) => console.log(balance),
@@ -53,8 +53,8 @@ pub trait Payment: Send + Sync {
     async fn request(
         &self,
         _cx: &CallContext,
-        _request: HostPaymentRequestRequest,
-    ) -> Result<HostPaymentRequestResponse, CallError<HostPaymentRequestError>> {
+        _request: HostPaymentRequest,
+    ) -> Result<HostPaymentResponse, CallError<HostPaymentError>> {
         Err(CallError::unavailable())
     }
 

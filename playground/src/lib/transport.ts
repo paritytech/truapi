@@ -190,9 +190,9 @@ export function subscribeConnectionStatus(
     }
     setStatus("connecting");
     try {
-      const handshake = ensureClient()
-        .system.handshake()
-        .then((result) => result.isOk());
+      const handshake = Promise.resolve(ensureClient().system.handshake()).then(
+        (result) => result.isOk(),
+      );
       const timeout = new Promise<boolean>((resolve) =>
         setTimeout(() => resolve(false), HANDSHAKE_TIMEOUT_MS),
       );
