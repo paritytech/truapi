@@ -10,25 +10,48 @@
 // Only consumed by `next dev`. `next build` ignores .env.development.local,
 // so the deployed production URL still wins in CI.
 
-import { writeFile, stat, mkdir, symlink, rm } from "node:fs/promises";
+import { readdir, writeFile, stat, mkdir, symlink, rm } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const CARGO_DOC = join(ROOT, "target/doc/truapi");
-const PUBLIC_LINK = join(ROOT, "playground/public/cargo_doc");
+const DOC_DIR = join(ROOT, "target/doc");
+const CRATE_DOC = join(DOC_DIR, "truapi");
+const STATIC_FILES = join(DOC_DIR, "static.files");
+const PUBLIC_DIR = join(ROOT, "playground/public/cargo_doc");
 const OUT = join(ROOT, "playground/.env.development.local");
 
-await mkdir(dirname(PUBLIC_LINK), { recursive: true });
+await mkdir(dirname(PUBLIC_DIR), { recursive: true });
 
-// Refresh the symlink (rm + symlink) so it always points at the current
-// target/doc, even if a previous run pointed somewhere else.
+let crateExists = true;
 try {
-  await rm(PUBLIC_LINK, { recursive: true, force: true });
+  await stat(CRATE_DOC);
 } catch {
-  /* benign */
+  crateExists = false;
+  console.warn(
+    `write-dev-env: ${CRATE_DOC} does not exist yet — run \`cargo doc -p truapi --no-deps\` to populate it.`,
+  );
 }
-await symlink(CARGO_DOC, PUBLIC_LINK, "dir");
+
+// Refresh public/cargo_doc as a fresh directory of symlinks. Each entry in
+// target/doc/truapi/ is linked at the top level so URLs are
+// /cargo_doc/api/... (no /truapi/ prefix), matching the deployed layout.
+// static.files lives next to truapi/ in target/doc; link it in too so the
+// rustdoc HTML's `../static.files/...` references resolve inside /cargo_doc/.
+await rm(PUBLIC_DIR, { recursive: true, force: true });
+await mkdir(PUBLIC_DIR, { recursive: true });
+
+if (crateExists) {
+  for (const entry of await readdir(CRATE_DOC)) {
+    await symlink(join(CRATE_DOC, entry), join(PUBLIC_DIR, entry));
+  }
+  try {
+    await stat(STATIC_FILES);
+    await symlink(STATIC_FILES, join(PUBLIC_DIR, "static.files"), "dir");
+  } catch {
+    /* no static.files yet — cargo doc not built */
+  }
+}
 
 await mkdir(dirname(OUT), { recursive: true });
 await writeFile(
@@ -38,13 +61,5 @@ await writeFile(
 );
 
 console.log(
-  `wrote ${relative(ROOT, OUT)} (NEXT_PUBLIC_CARGO_DOC_BASE=/cargo_doc) and ${relative(ROOT, PUBLIC_LINK)} -> ${relative(ROOT, CARGO_DOC)}`,
+  `wrote ${relative(ROOT, OUT)} and ${relative(ROOT, PUBLIC_DIR)}/ (symlinks to target/doc/truapi + static.files)`,
 );
-
-try {
-  await stat(CARGO_DOC);
-} catch {
-  console.warn(
-    `write-dev-env: ${CARGO_DOC} does not exist yet — run \`cargo doc -p truapi --no-deps\` to populate it.`,
-  );
-}

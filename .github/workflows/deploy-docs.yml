@@ -51,10 +51,13 @@ jobs:
           mkdir -p site
           # Playground at root.
           cp -R playground/out/. site/
-          # truapi crate's cargo doc mounted directly at /cargo_doc/ (so URLs
-          # are /cargo_doc/api/trait.X.html, not /cargo_doc/truapi/...).
+          # truapi crate's cargo doc mounted at /cargo_doc/ with the crate's
+          # pages flattened (no /truapi/ prefix). static.files is a sibling
+          # in target/doc; copy it alongside so HTML refs like
+          # `../static.files/...` resolve inside /cargo_doc/.
           mkdir -p site/cargo_doc
-          cp -R target/doc/truapi/. site/cargo_doc/
+          cp -RL target/doc/truapi/. site/cargo_doc/
+          cp -RL target/doc/static.files site/cargo_doc/static.files
           touch site/.nojekyll
 
       - name: Upload Pages artifact
