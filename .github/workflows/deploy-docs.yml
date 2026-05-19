@@ -33,14 +33,14 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@nightly
 
-      - name: Build Rust API docs
-        run: cargo doc -p truapi --no-deps
-
       - name: Install workspace dependencies
         run: npm ci
 
-      - name: Run codegen (build @parity/truapi + bundle dts)
+      - name: Run codegen (cargo + rust → ts + truapi build + dts bundle)
         run: ./scripts/codegen.sh
+
+      - name: Build Rust API docs (HTML)
+        run: cargo doc -p truapi --no-deps
 
       - name: Install playground dependencies
         working-directory: playground
