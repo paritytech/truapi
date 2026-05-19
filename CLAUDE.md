@@ -26,6 +26,7 @@ scripts/codegen.sh       regenerate the TS client from the Rust crate
 - Do not add code comments or doc comments that narrate migrations, compatibility shims, or historical changes. Comments should describe only the current code.
 - Remove legacy compatibility code by default. Keep or add it only when explicitly requested.
 - In Rust format strings, prefer inlined variables: `"log value: {value:?}"` over `"log value: {:?}", value`.
+- **No `any` in TypeScript types**: If a type can't be expressed cleanly, stop and ask the user whether to (a) refactor or import the right type or (b) add a scoped `// eslint-disable-next-line @typescript-eslint/no-explicit-any` exception. Never silently leave `any`.
 
 ## First-time setup
 

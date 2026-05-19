@@ -12,16 +12,14 @@ pub trait JsonRpc: Send + Sync {
     /// Send a JSON-RPC message.
     ///
     /// ```ts
-    /// import { type Client } from "@parity/truapi";
-    ///
-    /// export async function sendJsonRpc(truapi: Client): Promise<void> {
-    ///   const result = await truapi.jsonRpc.sendMessage({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     message: '{"jsonrpc":"2.0","id":1,"method":"system_name","params":[]}',
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    /// }
+    /// const result = await truapi.jsonRpc.sendMessage({
+    ///   genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///   message: '{"jsonrpc":"2.0","id":1,"method":"system_name","params":[]}',
+    /// });
+    /// result.match(
+    ///   () => console.log("ok"),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 70)]
     async fn send_message(
@@ -35,27 +33,22 @@ pub trait JsonRpc: Send + Sync {
     /// Subscribe to inbound JSON-RPC messages.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type Subscription,
-    ///   type HostJsonrpcMessageSubscribeItem,
-    /// } from "@parity/truapi";
+    /// import { from, take } from "rxjs";
     ///
-    /// export function subscribeJsonRpc(truapi: Client): Subscription {
-    ///   return truapi.jsonRpc
-    ///     .subscribeMessages({
-    ///       request: {
-    ///         genesisHash:
-    ///           "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///       },
-    ///     })
-    ///     .subscribe({
-    ///       next: (item: HostJsonrpcMessageSubscribeItem) =>
-    ///         console.log(item),
-    ///       error: (error: Error) => console.error(error),
-    ///       complete: () => console.log("completed"),
-    ///     });
-    /// }
+    /// from(
+    ///   truapi.jsonRpc.subscribeMessages({
+    ///     request: {
+    ///       genesisHash:
+    ///         "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///     },
+    ///   }),
+    /// )
+    ///   .pipe(take(3))
+    ///   .subscribe({
+    ///     next: (item) => console.log(item),
+    ///     error: (error) => console.error(error),
+    ///     complete: () => console.log("completed"),
+    ///   });
     /// ```
     #[wire(start_id = 72)]
     async fn subscribe_messages(

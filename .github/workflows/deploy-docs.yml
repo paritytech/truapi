@@ -24,35 +24,53 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
-      - name: Build Rust API docs
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install workspace dependencies
+        run: npm ci
+
+      - name: Run codegen (cargo + rust → ts + truapi build + dts bundle)
+        run: ./scripts/codegen.sh
+
+      - name: Build Rust API docs (HTML)
         run: cargo doc -p truapi --no-deps
 
-      - name: Redirect site root to crate docs
+      - name: Install playground dependencies
+        working-directory: playground
+        run: yarn install --frozen-lockfile
+
+      - name: Build playground (static export)
+        working-directory: playground
+        env:
+          NEXT_PUBLIC_BASE_PATH: /truapi
+        run: yarn build
+
+      - name: Assemble GitHub Pages site
         run: |
-          cat > target/doc/index.html <<'EOF'
-          <!doctype html>
-          <html lang="en">
-            <head>
-              <meta charset="utf-8">
-              <meta http-equiv="refresh" content="0; url=./truapi/">
-              <link rel="canonical" href="./truapi/">
-              <title>TrUAPI Docs</title>
-            </head>
-            <body>
-              <p>Redirecting to <a href="./truapi/">TrUAPI docs</a>…</p>
-            </body>
-          </html>
-          EOF
-          cp target/doc/index.html target/doc/404.html
-          touch target/doc/.nojekyll
+          rm -rf site
+          mkdir -p site
+          # Playground at root.
+          cp -R playground/out/. site/
+          # truapi crate's cargo doc mounted at /cargo_doc/ with the crate's
+          # pages flattened (no /truapi/ prefix). static.files is a sibling
+          # in target/doc; copy it alongside so HTML refs like
+          # `../static.files/...` resolve inside /cargo_doc/.
+          mkdir -p site/cargo_doc
+          cp -RL target/doc/truapi/. site/cargo_doc/
+          cp -RL target/doc/static.files site/cargo_doc/static.files
+          touch site/.nojekyll
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: target/doc
+          path: site
 
   deploy:
     needs: build
