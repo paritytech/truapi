@@ -1,5 +1,6 @@
 import {
   createClient,
+  createIframeProvider,
   createMessagePortProvider,
   createTransport,
   type Provider,
@@ -66,67 +67,17 @@ function resolveHostOrigin(): string | null {
   return null;
 }
 
-function createIframeProvider(): Provider {
-  type MessageListener = (msg: Uint8Array) => void;
-  type CloseListener = (error: Error) => void;
-  const listeners = new Set<MessageListener>();
-  const closeListeners = new Set<CloseListener>();
-  let disposed = false;
-
-  const parent = window.parent;
-  if (!parent) {
-    throw new Error("Iframe provider requires a parent window");
-  }
-
-  const hostOrigin = resolveHostOrigin();
-  if (!hostOrigin) {
-    throw new Error(
-      "Iframe provider could not resolve the host origin from document.referrer; " +
-        "the playground must be embedded by a host that sends a Referer header.",
-    );
-  }
-
-  const onMessage = (event: MessageEvent) => {
-    if (disposed) return;
-    if (event.source !== parent) return;
-    if (event.origin !== hostOrigin) return;
-    if (!(event.data instanceof Uint8Array)) return;
-    for (const listener of listeners) listener(event.data);
-  };
-
-  window.addEventListener("message", onMessage);
-
-  return {
-    postMessage(message: Uint8Array) {
-      if (disposed) throw new Error("iframe provider disposed");
-      parent.postMessage(message, hostOrigin);
-    },
-    subscribe(callback: MessageListener) {
-      listeners.add(callback);
-      return () => {
-        listeners.delete(callback);
-      };
-    },
-    subscribeClose(callback: CloseListener) {
-      closeListeners.add(callback);
-      return () => {
-        closeListeners.delete(callback);
-      };
-    },
-    dispose() {
-      if (disposed) return;
-      disposed = true;
-      window.removeEventListener("message", onMessage);
-      const error = new Error("iframe provider disposed");
-      for (const listener of closeListeners) listener(error);
-      listeners.clear();
-      closeListeners.clear();
-    },
-  };
-}
-
 function createSandboxProvider(): Provider {
-  if (isIframe()) return createIframeProvider();
+  if (isIframe()) {
+    const hostOrigin = resolveHostOrigin();
+    if (!hostOrigin) {
+      throw new Error(
+        "Iframe provider could not resolve the host origin from document.referrer; " +
+          "the playground must be embedded by a host that sends a Referer header.",
+      );
+    }
+    return createIframeProvider({ target: window.parent, hostOrigin });
+  }
   if (isWebview()) {
     const portController = new AbortController();
     const provider = createMessagePortProvider(
