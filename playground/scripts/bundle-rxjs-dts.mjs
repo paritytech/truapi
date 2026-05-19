@@ -8,9 +8,9 @@ import { readdir, readFile, writeFile, mkdir, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ROOT = fileURLToPath(new URL("..", import.meta.url));
-const RXJS_DIR = join(ROOT, "playground/node_modules/rxjs");
-const OUT_DIR = join(ROOT, "playground/src/lib/codegen");
+const PLAYGROUND = fileURLToPath(new URL("..", import.meta.url));
+const RXJS_DIR = join(PLAYGROUND, "node_modules/rxjs");
+const OUT_DIR = join(PLAYGROUND, "src/lib/codegen");
 const OUT = join(OUT_DIR, "rxjs-dts.ts");
 
 async function* walk(dir) {
@@ -71,5 +71,5 @@ await writeFile(
 
 const totalBytes = entries.reduce((acc, e) => acc + e.content.length, 0);
 console.log(
-  `wrote ${relative(ROOT, OUT)} (${entries.length} files, ${totalBytes} bytes)`,
+  `wrote ${relative(PLAYGROUND, OUT)} (${entries.length} files, ${totalBytes} bytes)`,
 );

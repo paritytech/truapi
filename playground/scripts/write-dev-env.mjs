@@ -14,12 +14,13 @@ import { readdir, writeFile, stat, mkdir, symlink, rm } from "node:fs/promises";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ROOT = fileURLToPath(new URL("..", import.meta.url));
+const PLAYGROUND = fileURLToPath(new URL("..", import.meta.url));
+const ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const DOC_DIR = join(ROOT, "target/doc");
 const CRATE_DOC = join(DOC_DIR, "truapi");
 const STATIC_FILES = join(DOC_DIR, "static.files");
-const PUBLIC_DIR = join(ROOT, "playground/public/cargo_doc");
-const OUT = join(ROOT, "playground/.env.development.local");
+const PUBLIC_DIR = join(PLAYGROUND, "public/cargo_doc");
+const OUT = join(PLAYGROUND, ".env.development.local");
 
 await mkdir(dirname(PUBLIC_DIR), { recursive: true });
 
@@ -61,5 +62,5 @@ await writeFile(
 );
 
 console.log(
-  `wrote ${relative(ROOT, OUT)} and ${relative(ROOT, PUBLIC_DIR)}/ (symlinks to target/doc/truapi + static.files)`,
+  `wrote ${relative(PLAYGROUND, OUT)} and ${relative(PLAYGROUND, PUBLIC_DIR)}/ (symlinks to target/doc/truapi + static.files)`,
 );
