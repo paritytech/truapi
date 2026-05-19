@@ -59,12 +59,13 @@ jobs:
           # Playground at root.
           cp -R playground/out/. site/
           # truapi crate's cargo doc mounted at /cargo_doc/ with the crate's
-          # pages flattened (no /truapi/ prefix). static.files is a sibling
-          # in target/doc; copy it alongside so HTML refs like
-          # `../static.files/...` resolve inside /cargo_doc/.
+          # pages flattened (no /truapi/ prefix). rustdoc HTMLs reference
+          # static.files via `../../../static.files/`, which from
+          # /cargo_doc/api/<mod>/ resolves to the site root, so static.files
+          # must be a sibling of cargo_doc/ (not inside it).
           mkdir -p site/cargo_doc
           cp -RL target/doc/truapi/. site/cargo_doc/
-          cp -RL target/doc/static.files site/cargo_doc/static.files
+          cp -RL target/doc/static.files site/static.files
           touch site/.nojekyll
 
       - name: Upload Pages artifact
