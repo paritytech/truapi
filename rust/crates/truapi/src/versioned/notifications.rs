@@ -4,8 +4,11 @@ use crate::v01;
 
 versioned_type! {
     pub enum HostPushNotificationRequest { V1 => v01::HostPushNotificationRequest }
-    pub enum HostPushNotificationResponse { V1 }
-    pub enum HostPushNotificationError { V1 => v01::GenericError }
+    pub enum HostPushNotificationResponse { V1 => v01::HostPushNotificationResponse }
+    pub enum HostPushNotificationError { V1 => v01::HostPushNotificationError }
+    pub enum HostPushNotificationCancelRequest { V1 => v01::HostPushNotificationCancelRequest }
+    pub enum HostPushNotificationCancelResponse { V1 }
+    pub enum HostPushNotificationCancelError { V1 => v01::GenericError }
     pub enum HostPushAddRulesRequest { V1 => v01::HostPushAddRulesRequest }
     pub enum HostPushAddRulesResponse { V1 }
     pub enum HostPushAddRulesError { V1 => v01::HostPushAddRulesError }

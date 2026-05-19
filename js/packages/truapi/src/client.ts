@@ -1,3 +1,5 @@
+import { errAsync, okAsync, ResultAsync } from "neverthrow";
+
 import {
   decodeWireMessage,
   encodeWireMessage,
@@ -306,14 +308,15 @@ export function createTransport(
     truapiVersion,
     codecVersion,
     /**
-     * Send one request frame and resolve with the decoded response payload.
+     * Send one request frame and resolve with the typed Ok/Err outcome
+     * decoded from the response payload's `ResultPayload` envelope.
      */
-    request<Response>({
+    request<Ok, Err>({
       ids,
       payload,
       decodeResponse,
-    }: RequestParams<Response>) {
-      return new Promise<Response>((resolve, reject) => {
+    }: RequestParams<Ok, Err>): ResultAsync<Ok, Err> {
+      const promise = new Promise<ResultPayload<Ok, Err>>((resolve, reject) => {
         if (closedError) {
           reject(closedError);
           return;
@@ -338,6 +341,10 @@ export function createTransport(
           reject(toError(error));
         }
       });
+      return ResultAsync.fromSafePromise(promise).andThen(
+        (result): ResultAsync<Ok, Err> =>
+          result.success ? okAsync(result.value) : errAsync(result.value),
+      );
     },
     /**
      * Start a raw subscription and route incoming receive/interrupt frames to

@@ -70,22 +70,22 @@ Each TrUAPI method mirrors one backend endpoint:
 | `push_set_rules`    | `PUT    /v1/subscriptions/rules` | atomic replace of the full set   |
 
 ```rust
-#[wire(request_id = 134)]
+#[wire(request_id = 164)]
 async fn push_add_rules(
     &self, cx: &CallContext, request: HostPushAddRulesRequest,
 ) -> Result<HostPushAddRulesResponse, CallError<HostPushAddRulesError>>;
 
-#[wire(request_id = 136)]
+#[wire(request_id = 166)]
 async fn push_remove_rules(
     &self, cx: &CallContext, request: HostPushRemoveRulesRequest,
 ) -> Result<HostPushRemoveRulesResponse, CallError<HostPushRemoveRulesError>>;
 
-#[wire(request_id = 138)]
+#[wire(request_id = 168)]
 async fn push_list_rules(
     &self, cx: &CallContext, request: HostPushListRulesRequest,
 ) -> Result<HostPushListRulesResponse, CallError<HostPushListRulesError>>;
 
-#[wire(request_id = 140)]
+#[wire(request_id = 170)]
 async fn push_set_rules(
     &self, cx: &CallContext, request: HostPushSetRulesRequest,
 ) -> Result<HostPushSetRulesResponse, CallError<HostPushSetRulesError>>;

@@ -8,8 +8,8 @@ use crate::versioned::system::{
 use crate::wire;
 use crate::{CallContext, CallError};
 
-/// General-purpose TrUAPI methods for handshake, feature detection, and
-/// navigation.
+/// General-purpose TrUAPI methods for handshake, feature detection,
+/// and navigation.
 pub trait System: Send + Sync {
     /// Negotiate the wire codec version with the product.
     ///

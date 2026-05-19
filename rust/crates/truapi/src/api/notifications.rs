@@ -3,9 +3,11 @@
 use crate::versioned::notifications::{
     HostPushAddRulesError, HostPushAddRulesRequest, HostPushAddRulesResponse,
     HostPushListRulesError, HostPushListRulesRequest, HostPushListRulesResponse,
-    HostPushNotificationError, HostPushNotificationRequest, HostPushNotificationResponse,
-    HostPushRemoveRulesError, HostPushRemoveRulesRequest, HostPushRemoveRulesResponse,
-    HostPushSetRulesError, HostPushSetRulesRequest, HostPushSetRulesResponse,
+    HostPushNotificationCancelError, HostPushNotificationCancelRequest,
+    HostPushNotificationCancelResponse, HostPushNotificationError, HostPushNotificationRequest,
+    HostPushNotificationResponse, HostPushRemoveRulesError, HostPushRemoveRulesRequest,
+    HostPushRemoveRulesResponse, HostPushSetRulesError, HostPushSetRulesRequest,
+    HostPushSetRulesResponse,
 };
 use crate::wire;
 use crate::{CallContext, CallError};
@@ -22,25 +24,66 @@ use crate::{CallContext, CallError};
 /// - <https://hackmd.io/@1JCaGppGSUqHtJilikYaKw/SyPN2yV6lx> — v1,
 ///   peer-to-peer (historical context)
 pub trait Notifications: Send + Sync {
-    /// Send a notification to the user, rendered immediately by the host.
+    /// Send a push notification to the user.
+    ///
+    /// Returns a [`NotificationId`](crate::v01::NotificationId) that can be
+    /// passed to [`cancel_push_notification`](Self::cancel_push_notification)
+    /// to retract a scheduled notification. When `scheduled_at` is set the host
+    /// persists the notification across restarts and fires it through the
+    /// platform-native scheduler. See [RFC 0019].
+    ///
+    /// [RFC 0019]: https://github.com/paritytech/truapi/blob/main/docs/rfcs/0019-scheduled-notifications.md
+    ///
+    /// ```ts
+    /// import {
+    ///   type Client,
+    ///   type HostPushNotificationResponse,
+    /// } from "@parity/truapi";
+    ///
+    /// export async function pushNotification(
+    ///   truapi: Client,
+    /// ): Promise<HostPushNotificationResponse> {
+    ///   const result = await truapi.notifications.sendPushNotification({
+    ///     text: "Hello!",
+    ///   });
+    ///
+    ///   if (result.isErr()) throw result.error;
+    ///   return result.value;
+    /// }
+    /// ```
+    #[wire(request_id = 4)]
+    async fn send_push_notification(
+        &self,
+        cx: &CallContext,
+        request: HostPushNotificationRequest,
+    ) -> Result<HostPushNotificationResponse, CallError<HostPushNotificationError>>;
+
+    /// Cancels a previously issued push notification.
+    ///
+    /// Cancellation is idempotent: returns `Ok(())` whether the notification is
+    /// still pending, already fired, or was never issued. See [RFC 0019].
+    ///
+    /// [RFC 0019]: https://github.com/paritytech/truapi/blob/main/docs/rfcs/0019-scheduled-notifications.md
     ///
     /// ```ts
     /// import { type Client } from "@parity/truapi";
     ///
-    /// export async function pushNotification(truapi: Client): Promise<void> {
-    ///   const result = await truapi.notifications.pushNotification({
-    ///     text: "Hello!",
+    /// export async function cancelNotification(
+    ///   truapi: Client,
+    /// ): Promise<void> {
+    ///   const result = await truapi.notifications.cancelPushNotification({
+    ///     id: 1,
     ///   });
     ///
     ///   if (result.isErr()) throw result.error;
     /// }
     /// ```
-    #[wire(request_id = 4)]
-    async fn push_notification(
+    #[wire(request_id = 134)]
+    async fn cancel_push_notification(
         &self,
         cx: &CallContext,
-        request: HostPushNotificationRequest,
-    ) -> Result<HostPushNotificationResponse, CallError<HostPushNotificationError>>;
+        request: HostPushNotificationCancelRequest,
+    ) -> Result<HostPushNotificationCancelResponse, CallError<HostPushNotificationCancelError>>;
 
     /// Register one or more topics so the user is woken up by a push when a
     /// signed statement matching any registered topic appears on the
@@ -61,7 +104,7 @@ pub trait Notifications: Send + Sync {
     ///   if (result.isErr()) throw result.error;
     /// }
     /// ```
-    #[wire(request_id = 134)]
+    #[wire(request_id = 164)]
     async fn push_add_rules(
         &self,
         cx: &CallContext,
@@ -84,7 +127,7 @@ pub trait Notifications: Send + Sync {
     ///   if (result.isErr()) throw result.error;
     /// }
     /// ```
-    #[wire(request_id = 136)]
+    #[wire(request_id = 166)]
     async fn push_remove_rules(
         &self,
         cx: &CallContext,
@@ -105,7 +148,7 @@ pub trait Notifications: Send + Sync {
     ///   return result.value.topics;
     /// }
     /// ```
-    #[wire(request_id = 138)]
+    #[wire(request_id = 168)]
     async fn push_list_rules(
         &self,
         cx: &CallContext,
@@ -128,7 +171,7 @@ pub trait Notifications: Send + Sync {
     ///   if (result.isErr()) throw result.error;
     /// }
     /// ```
-    #[wire(request_id = 140)]
+    #[wire(request_id = 170)]
     async fn push_set_rules(
         &self,
         cx: &CallContext,
