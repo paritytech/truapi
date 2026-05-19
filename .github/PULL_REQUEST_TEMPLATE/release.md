@@ -16,5 +16,6 @@
 - [ ] Ran `npm run version-packages` to consume the changeset
 - [ ] `js/packages/truapi/package.json` version is bumped
 - [ ] `js/packages/truapi/CHANGELOG.md` has the new entry
+- [ ] `rust/crates/truapi/Cargo.toml` version matches `js/packages/truapi/package.json`
 - [ ] No leftover files under `.changeset/` (other than `config.json`)
 

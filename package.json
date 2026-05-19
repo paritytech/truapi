@@ -16,7 +16,7 @@
     "test": "cargo test --workspace && npm test --prefix js/packages/truapi",
     "lint": "npm run format:check && npm run typecheck",
     "changeset": "changeset",
-    "version-packages": "changeset version"
+    "version-packages": "changeset version && node scripts/sync-cargo-version.mjs"
   },
   "devDependencies": {
     "@changesets/cli": "^2.28.1",
