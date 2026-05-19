@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readdir, readFile, writeFile, mkdir } from "node:fs/promises";
+import { readdir, readFile, writeFile, mkdir, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -7,10 +7,25 @@ const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const DIST = join(ROOT, "js/packages/truapi/dist");
 const OUT_DIR = join(ROOT, "js/packages/truapi/src/playground/codegen");
 const OUT = join(OUT_DIR, "truapi-dts.ts");
-const NEVERTHROW_DTS = join(
-  ROOT,
-  "js/packages/truapi/node_modules/neverthrow/dist/index.d.ts",
-);
+// neverthrow is hoisted to the workspace root in npm workspaces; fall back to
+// the per-package node_modules for non-workspace setups.
+async function resolveNeverthrow() {
+  for (const candidate of [
+    join(ROOT, "node_modules/neverthrow/dist/index.d.ts"),
+    join(ROOT, "js/packages/truapi/node_modules/neverthrow/dist/index.d.ts"),
+  ]) {
+    try {
+      await stat(candidate);
+      return candidate;
+    } catch {
+      /* try next */
+    }
+  }
+  throw new Error(
+    "bundle-truapi-dts: could not find neverthrow's d.ts under node_modules. Run `npm install` first.",
+  );
+}
+const NEVERTHROW_DTS = await resolveNeverthrow();
 
 async function* walk(dir) {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
