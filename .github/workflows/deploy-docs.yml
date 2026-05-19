@@ -48,6 +48,8 @@ jobs:
 
       - name: Build playground (static export)
         working-directory: playground
+        env:
+          NEXT_PUBLIC_BASE_PATH: /truapi
         run: yarn build
 
       - name: Assemble GitHub Pages site
