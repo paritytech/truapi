@@ -12,26 +12,21 @@ pub trait Preimage: Send + Sync {
     /// Subscribe to preimage lookups for a given key.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type Subscription,
-    ///   type RemotePreimageLookupSubscribeItem,
-    /// } from "@parity/truapi";
+    /// import { from, take } from "rxjs";
     ///
-    /// export function lookupPreimage(truapi: Client): Subscription {
-    ///   return truapi.preimage
-    ///     .lookupSubscribe({
-    ///       request: {
-    ///         key: "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///       },
-    ///     })
-    ///     .subscribe({
-    ///       next: (item: RemotePreimageLookupSubscribeItem) =>
-    ///         console.log(item),
-    ///       error: (error: Error) => console.error(error),
-    ///       complete: () => console.log("completed"),
-    ///     });
-    /// }
+    /// from(
+    ///   truapi.preimage.lookupSubscribe({
+    ///     request: {
+    ///       key: "0x0000000000000000000000000000000000000000000000000000000000000000",
+    ///     },
+    ///   }),
+    /// )
+    ///   .pipe(take(3))
+    ///   .subscribe({
+    ///     next: (item) => console.log(item),
+    ///     error: (error) => console.error(error),
+    ///     complete: () => console.log("completed"),
+    ///   });
     /// ```
     #[wire(start_id = 64)]
     async fn lookup_subscribe(
@@ -45,19 +40,11 @@ pub trait Preimage: Send + Sync {
     /// Submit a preimage. Returns the preimage key (hash) on success.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type HexString,
-    /// } from "@parity/truapi";
-    ///
-    /// export async function submitPreimage(
-    ///   truapi: Client,
-    /// ): Promise<HexString> {
-    ///   const result = await truapi.preimage.submit("0xdeadbeef");
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await truapi.preimage.submit("0xdeadbeef");
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 68)]
     async fn submit(

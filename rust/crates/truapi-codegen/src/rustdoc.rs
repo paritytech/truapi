@@ -54,6 +54,9 @@ pub struct ApiDefinition {
 pub struct TraitDef {
     /// Trait name as it appears in source.
     pub name: String,
+    /// Module path leading to the trait, excluding the trait name itself
+    /// (e.g. `["truapi", "api", "account"]`).
+    pub module_path: Vec<String>,
     /// Methods declared on the trait, in declaration order.
     pub methods: Vec<MethodDef>,
     /// Rustdoc comment on the trait, with hidden codegen markers stripped.
@@ -262,7 +265,21 @@ pub fn extract_api(krate: &Crate) -> Result<ApiDefinition> {
             .index
             .get(&candidate.item_id)
             .with_context(|| format!("Missing rustdoc item `{}`", candidate.item_id))?;
-        traits.push(extract_trait(&candidate.item_id, item, krate, &names)?);
+        // `path` ends in the trait's own name; the parent module path is
+        // everything except the last segment.
+        let module_path = candidate
+            .path
+            .iter()
+            .take(candidate.path.len().saturating_sub(1))
+            .cloned()
+            .collect();
+        traits.push(extract_trait(
+            &candidate.item_id,
+            item,
+            krate,
+            &names,
+            module_path,
+        )?);
     }
 
     let mut types = Vec::new();
@@ -517,6 +534,7 @@ fn extract_trait(
     item: &Item,
     krate: &Crate,
     names: &NameContext,
+    module_path: Vec<String>,
 ) -> Result<TraitDef> {
     let name = item
         .name
@@ -547,6 +565,7 @@ fn extract_trait(
 
     Ok(TraitDef {
         name,
+        module_path,
         methods,
         docs: clean_docs(item.docs.as_deref()),
     })

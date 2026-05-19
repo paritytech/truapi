@@ -1,26 +1,27 @@
-import { useState, useEffect, useRef } from "react";
-import { getMethodBinding, stringify } from "@/src/lib/host-api-bridge";
+"use client";
+
+import { useState, useEffect, useRef, useCallback } from "react";
+import { stringify } from "@/src/lib/host-api-bridge";
+import { ExampleEditor } from "@/src/components/ExampleEditor";
+import {
+  runExample,
+  type LogEntry,
+  type RunSubscription,
+} from "@/src/lib/example-runner";
+import { getClient } from "@/src/lib/transport";
 import { services } from "@/src/lib/services";
 import type { MethodInfo, ServiceInfo } from "@/src/lib/services";
 
-function renderWithLinks(text: string) {
-  const parts = text.split(/(\[[^\]]+\]\("[^"]+"\))/g);
-  return parts.map((part, i) => {
-    const match = part.match(/^\[([^\]]+)\]\("([^"]+)"\)$/);
-    if (match) {
-      return (
-        <a key={i} href={match[2]} target="_blank" rel="noreferrer">
-          {match[1]}
-        </a>
-      );
-    }
-    return part;
-  });
+const CALL_TIMEOUT_MS = 30_000;
+
+const CARGO_DOC_BASE =
+  process.env.NEXT_PUBLIC_CARGO_DOC_BASE ??
+  "https://paritytech.github.io/truapi/cargo_doc";
+
+function cargoDocMethodUrl(docUrl: string | undefined): string | undefined {
+  return docUrl ? `${CARGO_DOC_BASE}/${docUrl}` : undefined;
 }
 
-// SDK errors are Error subclasses with a `payload` field. JSON.stringify drops
-// `message` (non-enumerable) and emits the redundant instance/name/payload trio.
-// Surface the message and append the payload only when it adds information.
 function formatError(value: unknown): string {
   if (value instanceof Error) {
     const message = value.message || value.name || "Error";
@@ -48,141 +49,139 @@ export function MethodView({
   const methodInfo = services
     .find((s: ServiceInfo) => s.name === service)
     ?.methods.find((m: MethodInfo) => m.name === method);
-  const noParams = methodInfo?.noParams ?? false;
 
-  const formatDefault = (raw: string) => {
-    try {
-      return JSON.stringify(JSON.parse(raw), null, 2);
-    } catch {
-      return raw;
-    }
-  };
-
-  const buildInitialRequest = () =>
-    formatDefault(methodInfo?.defaultRequest ?? "{}");
-
-  const [request, setRequest] = useState(buildInitialRequest);
-
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    const el = textareaRef.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${el.scrollHeight}px`;
-  }, [request]);
+  const [source, setSource] = useState(methodInfo?.exampleSource ?? "");
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [running, setRunning] = useState(false);
+  const [error, setError] = useState("");
+  const [result, setResult] = useState("");
+  const [activeSub, setActiveSub] = useState<RunSubscription | null>(null);
+  const [tab, setTab] = useState<"example" | "output">("example");
+  const callAbortRef = useRef<((reason: string) => void) | null>(null);
+  const cancelRunRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
-    setRequest(buildInitialRequest());
-    setResponse("");
+    setSource(methodInfo?.exampleSource ?? "");
+    setLogs([]);
     setError("");
-    setStreamLog([]);
-    setStreamActive(false);
+    setResult("");
+    setRunning(false);
     setActiveSub((prev) => {
-      prev?.unsubscribe();
+      try {
+        prev?.unsubscribe();
+      } catch {
+        /* benign */
+      }
       return null;
     });
+    callAbortRef.current?.("method changed");
+    callAbortRef.current = null;
+    cancelRunRef.current?.();
+    cancelRunRef.current = null;
+    setTab("example");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [service, method]);
 
-  const [response, setResponse] = useState<string>("");
-  const [error, setError] = useState<string>("");
-  const [loading, setLoading] = useState(false);
-  const [streamLog, setStreamLog] = useState<string[]>([]);
-  const [streamActive, setStreamActive] = useState(false);
-  const [activeSub, setActiveSub] = useState<{
-    unsubscribe: () => void;
-  } | null>(null);
-
-  useEffect(() => {
-    return () => {
-      activeSub?.unsubscribe();
-    };
-  }, [activeSub]);
-  const callAbortRef = useRef<((reason: string) => void) | null>(null);
-
-  const CALL_TIMEOUT_MS = 30_000;
-
-  const binding = getMethodBinding(service, method);
-
-  const handleCall = async () => {
-    if (!binding) return;
-    setResponse("");
-    setError("");
-    setStreamLog([]);
-
-    let parsed: unknown;
-    if (noParams) {
-      parsed = null;
-    } else {
+  useEffect(
+    () => () => {
       try {
-        parsed = JSON.parse(request);
+        activeSub?.unsubscribe();
       } catch {
-        setError("Invalid JSON request");
-        return;
+        /* benign */
       }
-    }
+    },
+    [activeSub],
+  );
 
-    if (binding.isStream) {
-      setStreamActive(true);
-      const sub = binding.subscribe(
-        parsed,
-        (event) => {
-          setStreamLog((prev) => [...prev, stringify(event)]);
-        },
-        (error) => {
-          setStreamLog((prev) => [
-            ...prev,
-            error
-              ? `--- stream error: ${error.message} ---`
-              : "--- stream ended ---",
-          ]);
-          setStreamActive(false);
-          setActiveSub(null);
-        },
-      );
-      setActiveSub(sub);
-    } else {
-      setLoading(true);
-      let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
-      const abortPromise = new Promise<never>((_, reject) => {
-        callAbortRef.current = (reason: string) => reject(new Error(reason));
-        timeoutHandle = setTimeout(
-          () =>
-            reject(
-              new Error(`Call timed out after ${CALL_TIMEOUT_MS / 1000}s`),
-            ),
-          CALL_TIMEOUT_MS,
-        );
+  useEffect(
+    () => () => {
+      cancelRunRef.current?.();
+      cancelRunRef.current = null;
+    },
+    [],
+  );
+
+  const onLog = useCallback((entry: LogEntry) => {
+    setLogs((prev) => [...prev, entry]);
+  }, []);
+
+  const runnable = !!methodInfo?.exampleSource;
+
+  const handleRun = async () => {
+    if (!runnable || !methodInfo) return;
+    setRunning(true);
+    setError("");
+    setResult("");
+    setLogs([]);
+    setTab("output");
+    try {
+      const client = getClient();
+      const run = await runExample({
+        source,
+        kind: methodInfo.type,
+        client,
+        onLog,
       });
-      try {
-        const result = await Promise.race([binding.call(parsed), abortPromise]);
-        if (result.ok) {
-          setResponse(stringify(result.data) ?? "null");
-        } else {
-          setError(formatError(result.data));
+
+      if (run.kind === "unary") {
+        cancelRunRef.current = run.cancel;
+        let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+        const abortPromise = new Promise<never>((_, reject) => {
+          callAbortRef.current = (reason: string) => reject(new Error(reason));
+          timeoutHandle = setTimeout(
+            () =>
+              reject(
+                new Error(`Call timed out after ${CALL_TIMEOUT_MS / 1000}s`),
+              ),
+            CALL_TIMEOUT_MS,
+          );
+        });
+        try {
+          const value = await Promise.race([run.promise, abortPromise]);
+          setResult(stringify(value) ?? "null");
+        } finally {
+          if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+          callAbortRef.current = null;
+          cancelRunRef.current = null;
+          setRunning(false);
         }
-      } catch (e: unknown) {
-        setError(formatError(e));
-      } finally {
-        if (timeoutHandle !== null) clearTimeout(timeoutHandle);
-        callAbortRef.current = null;
-        setLoading(false);
+      } else {
+        setActiveSub(run.subscription);
       }
+    } catch (err) {
+      setError(formatError(err));
+      setRunning(false);
     }
   };
 
   const handleStop = () => {
-    if (loading && callAbortRef.current) {
+    if (callAbortRef.current) {
       callAbortRef.current("Call aborted");
       return;
     }
-    activeSub?.unsubscribe();
-    setStreamActive(false);
-    setActiveSub(null);
-    setStreamLog((prev) => [...prev, "--- stopped ---"]);
+    if (activeSub) {
+      try {
+        activeSub.unsubscribe();
+      } catch {
+        /* benign */
+      }
+      setActiveSub(null);
+      setRunning(false);
+      setLogs((prev) => [...prev, { level: "log", text: "--- stopped ---" }]);
+    }
   };
 
   const kind = methodInfo?.type ?? "unary";
+
+  const status: Status = error
+    ? "error"
+    : activeSub
+      ? "streaming"
+      : running
+        ? "running"
+        : result
+          ? "success"
+          : "idle";
 
   return (
     <div>
@@ -207,151 +206,182 @@ export function MethodView({
         {kind === "subscription" ? "Subscription" : "Request / Response"}
       </div>
 
-      {/* Description */}
-      {methodInfo?.description && (
+      {(methodInfo?.signature || methodInfo?.description) && (
         <div className="panel">
           <div className="panel__head">
-            <span className="panel__label">Description</span>
+            <span className="panel__label">
+              {methodInfo.description ? "Description" : "API"}
+            </span>
           </div>
-          <p className="panel__desc">{methodInfo.description}</p>
+          {methodInfo.description && (
+            <p className="panel__desc">{methodInfo.description}</p>
+          )}
+          {methodInfo.signature &&
+            (() => {
+              const href = cargoDocMethodUrl(methodInfo.docUrl);
+              const content = methodInfo.signature;
+              return href ? (
+                <a
+                  className="signature"
+                  href={href}
+                  target="_blank"
+                  rel="noreferrer"
+                  title="Open this method's full Rust definition in the cargo doc"
+                >
+                  {content}
+                </a>
+              ) : (
+                <pre className="signature">{content}</pre>
+              );
+            })()}
         </div>
       )}
 
-      <div className="panel">
-        {!noParams && (
+      <div className="panel panel--workspace">
+        <div className="tabs" role="tablist">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "example"}
+            className={`tab${tab === "example" ? " tab--active" : ""}`}
+            onClick={() => setTab("example")}
+          >
+            Example
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={tab === "output"}
+            className={`tab${tab === "output" ? " tab--active" : ""}`}
+            onClick={() => setTab("output")}
+          >
+            Output
+            <span
+              className="tab__led"
+              data-status={status}
+              aria-hidden
+              title={LED_LABEL[status]}
+            />
+          </button>
+          <span className="tabs__filler" />
+          <span className="tabs__lang">TypeScript</span>
+        </div>
+
+        {tab === "example" ? (
           <>
-            <div className="panel__head">
-              <span className="panel__label">Request Payload</span>
-              <span className="panel__label" style={{ color: "var(--ink-4)" }}>
-                JSON
-              </span>
-            </div>
-            {methodInfo?.requestDescription && (
+            {methodInfo?.exampleSource ? (
+              <ExampleEditor
+                source={source}
+                onChange={setSource}
+                uri={`file:///playground/${service}-${method}.ts`}
+              />
+            ) : (
               <div className="panel__hint">
-                {renderWithLinks(methodInfo.requestDescription)}
+                This method has no runnable example yet.
               </div>
             )}
-            <div className="editor">
-              <textarea
-                ref={textareaRef}
-                className="editor__area"
-                data-testid="request-editor"
-                value={request}
-                spellCheck={false}
-                autoCapitalize="off"
-                autoCorrect="off"
-                onChange={(e) => setRequest(e.target.value)}
-              />
+            <div className="actions">
+              {!runnable ? (
+                <button type="button" className="btn btn--primary" disabled>
+                  Not supported
+                </button>
+              ) : kind === "subscription" ? (
+                activeSub ? (
+                  <button
+                    type="button"
+                    className="btn btn--stop"
+                    data-testid="stop-button"
+                    onClick={handleStop}
+                  >
+                    <span className="btn__glyph">■</span>
+                    Stop
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="btn btn--primary"
+                    data-testid="subscribe-button"
+                    onClick={handleRun}
+                  >
+                    <span className="btn__glyph">●</span>
+                    Run example
+                  </button>
+                )
+              ) : running ? (
+                <button
+                  type="button"
+                  className="btn btn--stop"
+                  data-testid="stop-button"
+                  onClick={handleStop}
+                >
+                  <span className="btn__glyph">■</span>
+                  Stop (running…)
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn btn--primary"
+                  data-testid="call-button"
+                  onClick={handleRun}
+                >
+                  <span className="btn__glyph">→</span>
+                  Run example
+                </button>
+              )}
             </div>
           </>
-        )}
-        {noParams && (
-          <div className="panel__head">
-            <span className="panel__label">No Parameters</span>
-          </div>
-        )}
-        <div className="actions">
-          {!binding ? (
-            <button type="button" className="btn btn--primary" disabled>
-              Not supported
-            </button>
-          ) : binding.isStream ? (
-            streamActive ? (
-              <button
-                type="button"
-                className="btn btn--stop"
-                data-testid="stop-button"
-                onClick={handleStop}
+        ) : (
+          <div className="console console--inline" data-status={status}>
+            {error ? (
+              <div
+                className="console__body console__body--error"
+                data-testid="error-display"
               >
-                <span className="btn__glyph">■</span>
-                Stop stream
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="btn btn--primary"
-                data-testid="subscribe-button"
-                onClick={handleCall}
-              >
-                <span className="btn__glyph">●</span>
-                Subscribe
-              </button>
-            )
-          ) : loading ? (
-            <button
-              type="button"
-              className="btn btn--stop"
-              data-testid="stop-button"
-              onClick={handleStop}
-            >
-              <span className="btn__glyph">■</span>
-              Stop (calling…)
-            </button>
-          ) : (
-            <button
-              type="button"
-              className="btn btn--primary"
-              data-testid="call-button"
-              onClick={handleCall}
-            >
-              <span className="btn__glyph">→</span>
-              Call method
-            </button>
-          )}
-        </div>
-      </div>
-
-      {/* Response */}
-      {(response || error || streamLog.length > 0) && (
-        <div className="console">
-          <div className="console__head">
-            <span className="console__title">
-              {error
-                ? "Error"
-                : binding?.isStream
-                  ? "Stream output"
-                  : "Response"}
-            </span>
-            <span className="console__dots" aria-hidden>
-              <i />
-              <i />
-              <i />
-            </span>
-          </div>
-          {error && (
-            <div
-              className="console__body console__body--error"
-              data-testid="error-display"
-            >
-              {error}
-            </div>
-          )}
-          {response && (
-            <div className="console__body" data-testid="response-content">
-              {response}
-            </div>
-          )}
-          {streamLog.length > 0 && (
-            <div className="console__body" data-testid="stream-log">
-              {streamLog.map((entry, i) => {
-                const isMeta = entry.startsWith("---");
-                return (
+                {error}
+              </div>
+            ) : result ? (
+              <div className="console__body" data-testid="response-content">
+                {result}
+              </div>
+            ) : logs.length > 0 ? (
+              <div className="console__body" data-testid="stream-log">
+                {logs.map((entry, i) => (
                   <div
                     key={i}
-                    className={`console__entry${isMeta ? " console__entry--meta" : ""}`}
+                    className={`console__entry console__entry--${entry.level}`}
                     data-testid="stream-entry"
                   >
                     <span className="console__entry-i">
-                      {isMeta ? "··" : String(i + 1).padStart(2, "0")}
+                      {String(i + 1).padStart(2, "0")}
                     </span>
-                    <span className="console__entry-body">{entry}</span>
+                    <span className="console__entry-body">{entry.text}</span>
                   </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
+                ))}
+              </div>
+            ) : (
+              <div className="console__body console__body--empty">
+                {!runnable
+                  ? "This method has no runnable example yet."
+                  : status === "running"
+                    ? "Waiting for response…"
+                    : status === "streaming"
+                      ? "Waiting for first event…"
+                      : "Run the example to see output here."}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
+
+type Status = "idle" | "running" | "streaming" | "success" | "error";
+
+const LED_LABEL: Record<Status, string> = {
+  idle: "Idle",
+  running: "Running",
+  streaming: "Streaming",
+  success: "Success",
+  error: "Error",
+};

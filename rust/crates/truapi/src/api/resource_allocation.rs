@@ -12,25 +12,16 @@ pub trait ResourceAllocation: Send + Sync {
     /// Request the host to pre-allocate one or more resources.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type HostRequestResourceAllocationResponse,
-    /// } from "@parity/truapi";
-    ///
-    /// export async function requestAllocation(
-    ///   truapi: Client,
-    /// ): Promise<HostRequestResourceAllocationResponse> {
-    ///   const result =
-    ///     await truapi.resourceAllocation.request({
-    ///       resources: [
-    ///         { tag: "StatementStoreAllowance" },
-    ///         { tag: "AutoSigning" },
-    ///       ],
-    ///     });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await truapi.resourceAllocation.request({
+    ///   resources: [
+    ///     { tag: "StatementStoreAllowance" },
+    ///     { tag: "AutoSigning" },
+    ///   ],
+    /// });
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 130)]
     async fn request(

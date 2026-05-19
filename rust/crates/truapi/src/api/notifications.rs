@@ -35,21 +35,13 @@ pub trait Notifications: Send + Sync {
     /// [RFC 0019]: https://github.com/paritytech/truapi/blob/main/docs/rfcs/0019-scheduled-notifications.md
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type HostPushNotificationResponse,
-    /// } from "@parity/truapi";
-    ///
-    /// export async function pushNotification(
-    ///   truapi: Client,
-    /// ): Promise<HostPushNotificationResponse> {
-    ///   const result = await truapi.notifications.sendPushNotification({
-    ///     text: "Hello!",
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await truapi.notifications.sendPushNotification({
+    ///   text: "Hello!",
+    /// });
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 4)]
     async fn send_push_notification(
@@ -66,17 +58,13 @@ pub trait Notifications: Send + Sync {
     /// [RFC 0019]: https://github.com/paritytech/truapi/blob/main/docs/rfcs/0019-scheduled-notifications.md
     ///
     /// ```ts
-    /// import { type Client } from "@parity/truapi";
-    ///
-    /// export async function cancelNotification(
-    ///   truapi: Client,
-    /// ): Promise<void> {
-    ///   const result = await truapi.notifications.cancelPushNotification({
-    ///     id: 1,
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    /// }
+    /// const result = await truapi.notifications.cancelPushNotification({
+    ///   id: 1,
+    /// });
+    /// result.match(
+    ///   () => console.log("ok"),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 134)]
     async fn cancel_push_notification(

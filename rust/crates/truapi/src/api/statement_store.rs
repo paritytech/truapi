@@ -16,24 +16,19 @@ pub trait StatementStore: Send + Sync {
     /// Subscribe to statements matching a topic filter.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type Subscription,
-    ///   type RemoteStatementStoreSubscribeItem,
-    /// } from "@parity/truapi";
+    /// import { from, take } from "rxjs";
     ///
-    /// export function subscribeStatements(truapi: Client): Subscription {
-    ///   return truapi.statementStore
-    ///     .subscribe({
-    ///       request: { tag: "MatchAll", value: [] },
-    ///     })
-    ///     .subscribe({
-    ///       next: (statements: RemoteStatementStoreSubscribeItem) =>
-    ///         console.log(statements),
-    ///       error: (error: Error) => console.error(error),
-    ///       complete: () => console.log("completed"),
-    ///     });
-    /// }
+    /// from(
+    ///   truapi.statementStore.subscribe({
+    ///     request: { tag: "MatchAll", value: [] },
+    ///   }),
+    /// )
+    ///   .pipe(take(3))
+    ///   .subscribe({
+    ///     next: (statements) => console.log(statements),
+    ///     error: (error) => console.error(error),
+    ///     complete: () => console.log("completed"),
+    ///   });
     /// ```
     #[wire(start_id = 56)]
     async fn subscribe(
@@ -47,28 +42,20 @@ pub trait StatementStore: Send + Sync {
     /// Create a proof for a statement.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type RemoteStatementStoreCreateProofResponse,
-    /// } from "@parity/truapi";
-    ///
-    /// export async function createStatementProof(
-    ///   truapi: Client,
-    /// ): Promise<RemoteStatementStoreCreateProofResponse> {
-    ///   const result = await truapi.statementStore.createProof({
-    ///     productAccountId: {
-    ///       dotNsIdentifier: "truapi-playground.dot",
-    ///       derivationIndex: 0,
-    ///     },
-    ///     statement: {
-    ///       expiry: 9999999999999n,
-    ///       topics: [],
-    ///     },
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await truapi.statementStore.createProof({
+    ///   productAccountId: {
+    ///     dotNsIdentifier: "truapi-playground.dot",
+    ///     derivationIndex: 0,
+    ///   },
+    ///   statement: {
+    ///     expiry: 9999999999999n,
+    ///     topics: [],
+    ///   },
+    /// });
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 60)]
     async fn create_proof(
@@ -86,23 +73,14 @@ pub trait StatementStore: Send + Sync {
     /// bypassing the per-call signing prompt.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type RemoteStatementStoreCreateProofResponse,
-    /// } from "@parity/truapi";
-    ///
-    /// export async function createAuthorizedStatementProof(
-    ///   truapi: Client,
-    /// ): Promise<RemoteStatementStoreCreateProofResponse> {
-    ///   const result =
-    ///     await truapi.statementStore.createProofAuthorized({
-    ///       expiry: 9999999999999n,
-    ///       topics: [],
-    ///     });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await truapi.statementStore.createProofAuthorized({
+    ///   expiry: 9999999999999n,
+    ///   topics: [],
+    /// });
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 132)]
     async fn create_proof_authorized(
@@ -121,22 +99,29 @@ pub trait StatementStore: Send + Sync {
     /// struct), matching upstream `triangle-js-sdks`.
     ///
     /// ```ts
-    /// import { type Client } from "@parity/truapi";
-    ///
-    /// export async function submitStatement(truapi: Client): Promise<void> {
-    ///   const result = await truapi.statementStore.submit({
-    ///     proof: {
-    ///       tag: "Sr25519",
-    ///       value: {
-    ///         signature: "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-    ///         signer: "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///       },
-    ///     },
+    /// const proofResult = await truapi.statementStore.createProof({
+    ///   productAccountId: {
+    ///     dotNsIdentifier: "truapi-playground.dot",
+    ///     derivationIndex: 0,
+    ///   },
+    ///   statement: {
+    ///     expiry: 9999999999999n,
     ///     topics: [],
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    /// }
+    ///   },
+    /// });
+    /// await proofResult.match(
+    ///   async (proof) => {
+    ///     const result = await truapi.statementStore.submit({
+    ///       proof: proof.proof,
+    ///       topics: [],
+    ///     });
+    ///     result.match(
+    ///       () => console.log("ok"),
+    ///       (error) => console.error(error),
+    ///     );
+    ///   },
+    ///   async (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 62)]
     async fn submit(

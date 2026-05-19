@@ -8,10 +8,8 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "skipLibCheck": true,
-    "baseUrl": ".",
-    "paths": {
-      "@parity/truapi": ["./src/index.ts"]
-    }
+    "esModuleInterop": true,
+    "resolveJsonModule": true
   },
   "include": ["test/generated/examples/**/*.ts"]
 }
