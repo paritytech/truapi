@@ -54,12 +54,16 @@ async function waitForWebviewPort(
  * falling back to `"*"`), since the frames carry signed payloads and account
  * ids that must not leak to an unrelated frame parent. */
 function resolveHostOrigin(): string | null {
-  if (typeof document === "undefined" || !document.referrer) return null;
-  try {
-    return new URL(document.referrer).origin;
-  } catch {
-    return null;
+  if (typeof document !== "undefined" && document.referrer) {
+    try {
+      return new URL(document.referrer).origin;
+    } catch {
+      // fall through to ancestorOrigins
+    }
   }
+  const ancestors = window.location.ancestorOrigins;
+  if (ancestors && ancestors.length > 0) return ancestors[0];
+  return null;
 }
 
 function createIframeProvider(): Provider {
