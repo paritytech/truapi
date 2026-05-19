@@ -6,7 +6,8 @@ fn ts_example_file_stem(name: &str) -> String {
 }
 
 /// Generates standalone TypeScript files for every `ts` rustdoc block so
-/// package CI can typecheck examples against public exports.
+/// the playground's CI can typecheck them against the published types and
+/// the rxjs operators its examples use.
 pub fn generate_client_examples(
     api: &ApiDefinition,
     output_dir: &str,
@@ -32,12 +33,6 @@ pub fn generate_client_examples(
             let Some(client_example) = docs.client_example else {
                 continue;
             };
-            // Examples that reach for rxjs live in the playground (which has
-            // rxjs as a dep). truapi itself stays rxjs-free, so skip those
-            // examples in the standalone typecheck fixtures.
-            if client_example.contains("from \"rxjs\"") {
-                continue;
-            }
             let filename = format!(
                 "{}-{}.ts",
                 ts_example_file_stem(&trait_def.name),

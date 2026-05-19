@@ -6,7 +6,7 @@
 #   2. cargo run -p truapi-codegen -- --input target/doc/truapi.json
 #                                     --output js/packages/truapi/src/generated
 #                                     --playground-output js/packages/truapi/src/playground
-#                                     --client-examples-output js/packages/truapi/test/generated/examples
+#                                     --client-examples-output playground/test/generated/examples
 #                                     --host-output js/packages/truapi-host/src/generated
 #                                     --codec-version 1
 #
@@ -26,14 +26,14 @@ cargo run -p truapi-codegen -- \
   --input target/doc/truapi.json \
   --output js/packages/truapi/src/generated \
   --playground-output js/packages/truapi/src/playground \
-  --client-examples-output js/packages/truapi/test/generated/examples \
+  --client-examples-output playground/test/generated/examples \
   --host-output js/packages/truapi-host/src/generated \
   --codec-version 1
 
 npm exec --yes -- prettier --write \
   "js/packages/truapi/src/generated/**/*.ts" \
   "js/packages/truapi/src/playground/**/*.ts" \
-  "js/packages/truapi/test/generated/examples/**/*.ts" \
+  "playground/test/generated/examples/**/*.ts" \
   "js/packages/truapi-host/src/generated/**/*.ts"
 
 # Rebuild dist/ so downstream consumers (in particular the playground,
@@ -58,5 +58,5 @@ fi
 
 echo "Generated client at js/packages/truapi/src/generated/"
 echo "Generated playground metadata at js/packages/truapi/src/playground/codegen/"
-echo "Generated client examples at js/packages/truapi/test/generated/examples/"
+echo "Generated client examples at playground/test/generated/examples/"
 echo "Generated host package at js/packages/truapi-host/src/generated/"

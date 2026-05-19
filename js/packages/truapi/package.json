@@ -52,10 +52,8 @@
     "build": "tsc",
     "prebuild": "npm run ensure-generated",
     "prepare": "npm run build",
-    "codegen": "cargo run -p truapi-codegen -- --input ../../../target/doc/truapi.json --output src/generated --playground-output src/playground --client-examples-output test/generated/examples",
-    "typecheck": "npm run build && npm run typecheck:examples",
-    "pretypecheck:examples": "npm run ensure-generated",
-    "typecheck:examples": "tsc -p tsconfig.examples.json",
+    "codegen": "cargo run -p truapi-codegen -- --input ../../../target/doc/truapi.json --output src/generated --playground-output src/playground",
+    "typecheck": "npm run build",
     "pretest": "npm run ensure-generated",
     "test": "for f in test/*.test.mjs; do echo \"=== $f ===\" && bun \"$f\" || exit 1; done"
   },
