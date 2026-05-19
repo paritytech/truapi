@@ -64,7 +64,6 @@
   },
   "dependencies": {
     "neverthrow": "^8.2.0",
-    "rxjs": "^7.8.2",
     "scale-ts": "^1.6.1"
   }
 }

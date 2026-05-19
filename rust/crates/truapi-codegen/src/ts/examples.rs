@@ -32,6 +32,12 @@ pub fn generate_client_examples(
             let Some(client_example) = docs.client_example else {
                 continue;
             };
+            // Examples that reach for rxjs live in the playground (which has
+            // rxjs as a dep). truapi itself stays rxjs-free, so skip those
+            // examples in the standalone typecheck fixtures.
+            if client_example.contains("from \"rxjs\"") {
+                continue;
+            }
             let filename = format!(
                 "{}-{}.ts",
                 ts_example_file_stem(&trait_def.name),
