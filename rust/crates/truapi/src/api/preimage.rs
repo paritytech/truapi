@@ -12,12 +12,16 @@ pub trait Preimage: Send + Sync {
     /// Subscribe to preimage lookups for a given key.
     ///
     /// ```ts
-    /// truapi.preimage
-    ///   .lookupSubscribe({
+    /// import { from, take } from "rxjs";
+    ///
+    /// from(
+    ///   truapi.preimage.lookupSubscribe({
     ///     request: {
     ///       key: "0x0000000000000000000000000000000000000000000000000000000000000000",
     ///     },
-    ///   })
+    ///   }),
+    /// )
+    ///   .pipe(take(3))
     ///   .subscribe({
     ///     next: (item) => console.log(item),
     ///     error: (error) => console.error(error),

@@ -70,6 +70,17 @@ function Masthead({
           <span className="wordmark__tag">v0.2</span>
         </div>
         <div className="masthead__right">
+          {status !== "connected" && (
+            <a
+              className="open-in-dotli"
+              href="https://truapi-playground.dot.li"
+              target="_blank"
+              rel="noreferrer"
+              title="Open this playground inside the Polkadot Desktop Host"
+            >
+              Open in dotli ↗
+            </a>
+          )}
           <SearchTrigger onOpen={onSearch} />
           <StatusChip status={status} />
         </div>

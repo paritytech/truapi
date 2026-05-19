@@ -16,6 +16,9 @@ export type RunResult =
   | { kind: "subscription"; subscription: RunSubscription };
 
 const IMPORT_RE = /^\s*import\s+[^;]*?from\s+["']@parity\/truapi["'];?\s*$/gm;
+// `import { from, take, ... } from "rxjs"` → `const { from, take, ... } = __rxjs;`
+const RXJS_IMPORT_RE =
+  /^\s*import\s*(\{[^}]*\})\s*from\s+["']rxjs["'];?\s*$/gm;
 const EXPORT_RE =
   /^(\s*)export\s+(async\s+function|function|const|let|var|class)\b/gm;
 
@@ -32,7 +35,14 @@ const AsyncFunction = Object.getPrototypeOf(
 ).constructor as new (...args: string[]) => (
   truapi: unknown,
   __console: ConsoleShim,
+  __rxjs: unknown,
 ) => Promise<unknown>;
+
+let rxjsModulePromise: Promise<unknown> | null = null;
+function getRxjs(): Promise<unknown> {
+  if (!rxjsModulePromise) rxjsModulePromise = import("rxjs");
+  return rxjsModulePromise;
+}
 
 export async function runExample(opts: {
   source: string;
@@ -51,12 +61,19 @@ export async function runExample(opts: {
     );
   }
 
-  const stripped = js.replace(IMPORT_RE, "").replace(EXPORT_RE, "$1$2");
+  const stripped = js
+    .replace(IMPORT_RE, "")
+    .replace(RXJS_IMPORT_RE, "const $1 = __rxjs;")
+    .replace(EXPORT_RE, "$1$2");
   const body = `const console = __console;\n${stripped}`;
 
-  let run: (truapi: unknown, c: ConsoleShim) => Promise<unknown>;
+  let run: (
+    truapi: unknown,
+    c: ConsoleShim,
+    rxjs: unknown,
+  ) => Promise<unknown>;
   try {
-    run = new AsyncFunction("truapi", "__console", body);
+    run = new AsyncFunction("truapi", "__console", "__rxjs", body);
   } catch (err) {
     throw new ExampleSyntaxError(
       `wrap failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -84,7 +101,8 @@ export async function runExample(opts: {
     }
   };
 
-  const promise = run(trackingClient, consoleShim);
+  const rxjs = await getRxjs();
+  const promise = run(trackingClient, consoleShim, rxjs);
 
   if (kind === "subscription") {
     await promise;

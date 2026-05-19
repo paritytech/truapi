@@ -33,13 +33,17 @@ pub trait JsonRpc: Send + Sync {
     /// Subscribe to inbound JSON-RPC messages.
     ///
     /// ```ts
-    /// truapi.jsonRpc
-    ///   .subscribeMessages({
+    /// import { from, take } from "rxjs";
+    ///
+    /// from(
+    ///   truapi.jsonRpc.subscribeMessages({
     ///     request: {
     ///       genesisHash:
     ///         "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///     },
-    ///   })
+    ///   }),
+    /// )
+    ///   .pipe(take(3))
     ///   .subscribe({
     ///     next: (item) => console.log(item),
     ///     error: (error) => console.error(error),

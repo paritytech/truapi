@@ -1,6 +1,7 @@
 import type { Monaco } from "@monaco-editor/react";
 import { loader } from "@monaco-editor/react";
 import { truapiDts } from "@parity/truapi/playground/codegen/truapi-dts";
+import { rxjsFiles } from "./codegen/rxjs-dts";
 
 export const MONACO_THEME_LIGHT = "truapi-light";
 export const MONACO_THEME_DARK = "truapi-dark";
@@ -38,6 +39,10 @@ export function setupMonaco(m: Monaco): void {
     `declare module "@parity/truapi" {\n${truapiDts}\n}\n`,
     "file:///node_modules/@parity/truapi/index.d.ts",
   );
+
+  for (const file of rxjsFiles) {
+    ts.typescriptDefaults.addExtraLib(file.content, file.path);
+  }
 
   ts.typescriptDefaults.addExtraLib(
     [

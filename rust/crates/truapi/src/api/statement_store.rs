@@ -16,8 +16,14 @@ pub trait StatementStore: Send + Sync {
     /// Subscribe to statements matching a topic filter.
     ///
     /// ```ts
-    /// truapi.statementStore
-    ///   .subscribe({ request: { tag: "MatchAll", value: [] } })
+    /// import { from, take } from "rxjs";
+    ///
+    /// from(
+    ///   truapi.statementStore.subscribe({
+    ///     request: { tag: "MatchAll", value: [] },
+    ///   }),
+    /// )
+    ///   .pipe(take(3))
     ///   .subscribe({
     ///     next: (statements) => console.log(statements),
     ///     error: (error) => console.error(error),

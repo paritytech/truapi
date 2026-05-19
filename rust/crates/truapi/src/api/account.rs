@@ -17,11 +17,15 @@ pub trait Account: Send + Sync {
     /// Subscribe to account connection status changes.
     ///
     /// ```ts
-    /// truapi.account.connectionStatusSubscribe().subscribe({
-    ///   next: (status) => console.log(status),
-    ///   error: (error) => console.error(error),
-    ///   complete: () => console.log("completed"),
-    /// });
+    /// import { from, take } from "rxjs";
+    ///
+    /// from(truapi.account.connectionStatusSubscribe())
+    ///   .pipe(take(3))
+    ///   .subscribe({
+    ///     next: (status) => console.log(status),
+    ///     error: (error) => console.error(error),
+    ///     complete: () => console.log("completed"),
+    ///   });
     /// ```
     #[wire(start_id = 18)]
     async fn connection_status_subscribe(

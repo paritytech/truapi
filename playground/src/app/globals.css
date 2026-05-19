@@ -264,6 +264,34 @@ button {
   .search-btn { padding: 8px 10px; }
 }
 
+.open-in-dotli {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background-image: none;
+  transition: background 120ms ease, transform 80ms ease;
+}
+.open-in-dotli:hover {
+  background: var(--accent);
+  color: var(--accent-ink);
+  transform: translateY(-1px);
+}
+@media (max-width: 700px) {
+  .open-in-dotli {
+    padding: 6px 10px;
+    font-size: 10px;
+  }
+}
+
 .doc-link {
   font-family: var(--font-mono), monospace;
   font-size: 11px;

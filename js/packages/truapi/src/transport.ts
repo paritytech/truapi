@@ -74,14 +74,27 @@ export interface Observer<Item, Reason = never> {
   complete(): void;
 }
 
+declare global {
+  interface SymbolConstructor {
+    readonly observable: unique symbol;
+  }
+}
+
 /**
  * Minimal Observable-compatible object returned by generated subscription APIs.
+ *
+ * Implements the ES Observable interop protocol so that consumers can pass
+ * an instance straight to `rxjs.from(...)`.
  **/
 export interface ObservableLike<Item, Reason = never> {
   /**
    * Start the stream and receive `next`, `error`, and `complete` callbacks.
    **/
   subscribe(observer?: Partial<Observer<Item, Reason>>): Subscription;
+  /**
+   * Observable interop hook. Returns `this`.
+   **/
+  [Symbol.observable](): ObservableLike<Item, Reason>;
 }
 
 /**

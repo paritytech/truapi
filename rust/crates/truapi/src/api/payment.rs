@@ -15,11 +15,15 @@ pub trait Payment: Send + Sync {
     /// Subscribe to payment balance updates.
     ///
     /// ```ts
-    /// truapi.payment.balanceSubscribe().subscribe({
-    ///   next: (balance) => console.log(balance),
-    ///   error: (error) => console.error(error),
-    ///   complete: () => console.log("completed"),
-    /// });
+    /// import { from, take } from "rxjs";
+    ///
+    /// from(truapi.payment.balanceSubscribe())
+    ///   .pipe(take(3))
+    ///   .subscribe({
+    ///     next: (balance) => console.log(balance),
+    ///     error: (error) => console.error(error),
+    ///     complete: () => console.log("completed"),
+    ///   });
     /// ```
     #[wire(start_id = 118)]
     async fn balance_subscribe(
@@ -57,8 +61,12 @@ pub trait Payment: Send + Sync {
     /// Subscribe to payment lifecycle updates for a specific payment.
     ///
     /// ```ts
-    /// truapi.payment
-    ///   .statusSubscribe({ request: { paymentId: "payment-id" } })
+    /// import { from, take } from "rxjs";
+    ///
+    /// from(
+    ///   truapi.payment.statusSubscribe({ request: { paymentId: "payment-id" } }),
+    /// )
+    ///   .pipe(take(3))
     ///   .subscribe({
     ///     next: (status) => console.log(status),
     ///     error: (error) => console.error(error),

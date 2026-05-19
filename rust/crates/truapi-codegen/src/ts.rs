@@ -861,6 +861,12 @@ fn write_observable_helper(out: &mut String) {
     writedoc!(
         out,
         r#"
+        // ES Observable interop key (rxjs reads Symbol.observable, falling
+        // back to "@@observable" on platforms without the well-known symbol).
+        const OBSERVABLE_INTEROP: symbol | string =
+          (typeof Symbol === "function" && (Symbol as {{ observable?: symbol }}).observable) ||
+          "@@observable";
+
         function createObservable<Item, Reason = never>({{
           transport,
           ids,
@@ -874,7 +880,7 @@ fn write_observable_helper(out: &mut String) {
           decodeItem: (payload: Uint8Array) => Item;
           decodeInterrupt?: (payload: Uint8Array) => Reason;
         }}): ObservableLike<Item, Reason> {{
-          return {{
+          const observable: ObservableLike<Item, Reason> = {{
             subscribe(observer: Partial<Observer<Item, Reason>> = {{}}): Subscription {{
               let closed = false;
               let raw: Subscription | undefined;
@@ -930,7 +936,11 @@ fn write_observable_helper(out: &mut String) {
                 }},
               }};
             }},
+            [OBSERVABLE_INTEROP as typeof Symbol.observable]() {{
+              return observable;
+            }},
           }};
+          return observable;
         }}
 
         "#

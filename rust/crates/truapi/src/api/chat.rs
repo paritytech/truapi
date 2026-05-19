@@ -59,11 +59,15 @@ pub trait Chat: Send + Sync {
     /// Subscribe to the list of chat rooms.
     ///
     /// ```ts
-    /// truapi.chat.listSubscribe().subscribe({
-    ///   next: (rooms) => console.log(rooms),
-    ///   error: (error) => console.error(error),
-    ///   complete: () => console.log("completed"),
-    /// });
+    /// import { from, take } from "rxjs";
+    ///
+    /// from(truapi.chat.listSubscribe())
+    ///   .pipe(take(3))
+    ///   .subscribe({
+    ///     next: (rooms) => console.log(rooms),
+    ///     error: (error) => console.error(error),
+    ///     complete: () => console.log("completed"),
+    ///   });
     /// ```
     #[wire(start_id = 42)]
     async fn list_subscribe(&self, _cx: &CallContext) -> Subscription<HostChatListSubscribeItem> {
@@ -94,11 +98,15 @@ pub trait Chat: Send + Sync {
     /// Subscribe to received chat actions.
     ///
     /// ```ts
-    /// truapi.chat.actionSubscribe().subscribe({
-    ///   next: (action) => console.log(action),
-    ///   error: (error) => console.error(error),
-    ///   complete: () => console.log("completed"),
-    /// });
+    /// import { from, take } from "rxjs";
+    ///
+    /// from(truapi.chat.actionSubscribe())
+    ///   .pipe(take(3))
+    ///   .subscribe({
+    ///     next: (action) => console.log(action),
+    ///     error: (error) => console.error(error),
+    ///     complete: () => console.log("completed"),
+    ///   });
     /// ```
     #[wire(start_id = 48)]
     async fn action_subscribe(
@@ -113,14 +121,18 @@ pub trait Chat: Send + Sync {
     /// tree describing the rendered UI.
     ///
     /// ```ts
-    /// truapi.chat
-    ///   .customMessageRenderSubscribe({
+    /// import { from, take } from "rxjs";
+    ///
+    /// from(
+    ///   truapi.chat.customMessageRenderSubscribe({
     ///     request: {
     ///       messageId: "msg-1",
     ///       messageType: "custom-render-demo",
     ///       payload: "0x",
     ///     },
-    ///   })
+    ///   }),
+    /// )
+    ///   .pipe(take(3))
     ///   .subscribe({
     ///     next: (node) => console.log(node),
     ///     error: (error) => console.error(error),

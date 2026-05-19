@@ -24,35 +24,56 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
       - name: Build Rust API docs
         run: cargo doc -p truapi --no-deps
 
-      - name: Redirect site root to crate docs
+      - name: Build @parity/truapi
+        run: npm ci --prefix js/packages/truapi && npm run build --prefix js/packages/truapi
+
+      - name: Install playground dependencies
+        working-directory: playground
+        run: yarn install --frozen-lockfile
+
+      - name: Build playground (static export)
+        working-directory: playground
+        run: yarn build
+
+      - name: Assemble GitHub Pages site
         run: |
-          cat > target/doc/index.html <<'EOF'
+          rm -rf site
+          mkdir -p site
+          # Playground at root.
+          cp -R playground/out/. site/
+          # Cargo doc at /cargo_doc/ with a small redirect index pointing at the crate.
+          mkdir -p site/cargo_doc
+          cp -R target/doc/. site/cargo_doc/
+          cat > site/cargo_doc/index.html <<'EOF'
           <!doctype html>
           <html lang="en">
             <head>
               <meta charset="utf-8">
               <meta http-equiv="refresh" content="0; url=./truapi/">
               <link rel="canonical" href="./truapi/">
-              <title>TrUAPI Docs</title>
+              <title>TrUAPI Cargo Docs</title>
             </head>
             <body>
-              <p>Redirecting to <a href="./truapi/">TrUAPI docs</a>…</p>
+              <p>Redirecting to <a href="./truapi/">TrUAPI crate docs</a>…</p>
             </body>
           </html>
           EOF
-          cp target/doc/index.html target/doc/404.html
-          touch target/doc/.nojekyll
+          touch site/.nojekyll
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: target/doc
+          path: site
 
   deploy:
     needs: build
