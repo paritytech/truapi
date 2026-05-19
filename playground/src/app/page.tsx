@@ -107,31 +107,6 @@ function Masthead({
   );
 }
 
-function Splash({ status }: { status: ConnectionStatus | null }) {
-  const connecting = status === null || status === "connecting";
-  return (
-    <div className="splash">
-      <div className="splash__card">
-        <div className="splash__eyebrow">
-          <span className="wordmark__dot" aria-hidden />
-          <span>TrUAPI Playground · {VERSION_LABEL}</span>
-        </div>
-        <h1 className="splash__title">
-          {connecting ? "Linking to host…" : "Host is offline."}
-        </h1>
-        <p className="splash__body">
-          {connecting
-            ? "Completing the postMessage handshake with the Polkadot Desktop Host. One moment."
-            : "This playground must be opened from inside the Polkadot Desktop Host. While developing locally, launch it through:"}
-        </p>
-        {!connecting && (
-          <code className="splash__code">https://dot.li/localhost:3000</code>
-        )}
-      </div>
-    </div>
-  );
-}
-
 type Selection = { service: string; method: string } | null;
 
 function selectionFromUrl(): Selection {
@@ -264,10 +239,6 @@ export default function PlaygroundPage() {
     },
     [isTestRunning],
   );
-
-  if (status === null || status === "connecting") {
-    return <Splash status={status} />;
-  }
 
   const hasView = selection !== null;
   const isAutoTest = selection?.service === AUTO_TEST_ID;
