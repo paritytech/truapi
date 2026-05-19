@@ -142,14 +142,6 @@ button {
   overflow-x: hidden;
 }
 
-@media (min-width: 901px) {
-  .shell {
-    height: 100vh;
-    min-height: 0;
-    overflow: hidden;
-  }
-}
-
 .masthead {
   flex-shrink: 0;
   background: color-mix(in srgb, var(--bg) 80%, transparent);
@@ -243,6 +235,11 @@ button {
 .search-btn:hover {
   border-color: var(--ink-3);
   color: var(--ink);
+}
+.search-btn__icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
 }
 .search-btn__kbd {
   display: inline-flex;
@@ -373,26 +370,23 @@ button {
 .rail {
   border-right: 1px solid var(--rule);
   padding: 28px 24px 48px;
+  min-width: 0;
+  position: sticky;
+  top: var(--head-h);
+  align-self: start;
+  max-height: calc(100vh - var(--head-h));
   overflow-y: auto;
   overflow-x: hidden;
-  min-height: 0;
-  min-width: 0;
 }
 
 .view {
   padding: 28px 40px 64px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  min-height: 0;
   min-width: 0;
 }
 
-.rail::-webkit-scrollbar,
-.view::-webkit-scrollbar { width: 10px; }
-.rail::-webkit-scrollbar-track,
-.view::-webkit-scrollbar-track { background: transparent; }
-.rail::-webkit-scrollbar-thumb,
-.view::-webkit-scrollbar-thumb {
+.rail::-webkit-scrollbar { width: 10px; }
+.rail::-webkit-scrollbar-track { background: transparent; }
+.rail::-webkit-scrollbar-thumb {
   background: var(--rule-strong);
   border-radius: 999px;
   border: 2px solid transparent;
@@ -407,11 +401,12 @@ button {
   .rail {
     border-right: none;
     padding: 20px 20px 40px;
+    position: static;
+    max-height: none;
     overflow-y: visible;
   }
   .view {
     padding: 20px 20px 48px;
-    overflow-y: visible;
   }
   .board[data-has-view="true"] .rail { display: none; }
   .board[data-has-view="false"] .view { display: none; }
@@ -795,6 +790,35 @@ button {
   color: var(--ink-2);
   margin: 0;
   max-width: 68ch;
+}
+
+.signature {
+  display: block;
+  font-family: var(--font-mono), monospace;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink);
+  background: var(--bg-tint);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  margin: 14px 0 0;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background-image: none;
+  text-decoration: none;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.signature:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent-soft) 35%, var(--bg-tint));
+  color: var(--ink);
+}
+.signature::after {
+  content: " ↗";
+  color: var(--ink-3);
+  font-size: 11px;
 }
 
 /* Request editor */

@@ -51,23 +51,10 @@ jobs:
           mkdir -p site
           # Playground at root.
           cp -R playground/out/. site/
-          # Cargo doc at /cargo_doc/ with a small redirect index pointing at the crate.
+          # truapi crate's cargo doc mounted directly at /cargo_doc/ (so URLs
+          # are /cargo_doc/api/trait.X.html, not /cargo_doc/truapi/...).
           mkdir -p site/cargo_doc
-          cp -R target/doc/. site/cargo_doc/
-          cat > site/cargo_doc/index.html <<'EOF'
-          <!doctype html>
-          <html lang="en">
-            <head>
-              <meta charset="utf-8">
-              <meta http-equiv="refresh" content="0; url=./truapi/">
-              <link rel="canonical" href="./truapi/">
-              <title>TrUAPI Cargo Docs</title>
-            </head>
-            <body>
-              <p>Redirecting to <a href="./truapi/">TrUAPI crate docs</a>…</p>
-            </body>
-          </html>
-          EOF
+          cp -R target/doc/truapi/. site/cargo_doc/
           touch site/.nojekyll
 
       - name: Upload Pages artifact

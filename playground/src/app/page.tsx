@@ -47,7 +47,22 @@ function SearchTrigger({ onOpen }: { onOpen: () => void }) {
       onClick={onOpen}
       aria-label="Search methods"
     >
-      <span aria-hidden>⌕</span>
+      <svg
+        className="search-btn__icon"
+        xmlns="http://www.w3.org/2000/svg"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <circle cx="11" cy="11" r="7" />
+        <path d="m20 20-3.5-3.5" />
+      </svg>
       <span className="search-btn__label">Search</span>
       <span className="search-btn__kbd">{isMac ? "⌘" : "Ctrl"}K</span>
     </button>

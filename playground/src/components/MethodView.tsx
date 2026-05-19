@@ -14,6 +14,12 @@ import type { MethodInfo, ServiceInfo } from "@/src/lib/services";
 
 const CALL_TIMEOUT_MS = 30_000;
 
+const CARGO_DOC_BASE = "https://paritytech.github.io/truapi/cargo_doc";
+
+function cargoDocMethodUrl(service: string, method: string): string {
+  return `${CARGO_DOC_BASE}/api/trait.${encodeURIComponent(service)}.html#tymethod.${encodeURIComponent(method)}`;
+}
+
 function formatError(value: unknown): string {
   if (value instanceof Error) {
     const message = value.message || value.name || "Error";
@@ -198,12 +204,27 @@ export function MethodView({
         {kind === "subscription" ? "Subscription" : "Request / Response"}
       </div>
 
-      {methodInfo?.description && (
+      {(methodInfo?.signature || methodInfo?.description) && (
         <div className="panel">
           <div className="panel__head">
-            <span className="panel__label">Description</span>
+            <span className="panel__label">
+              {methodInfo.description ? "Description" : "API"}
+            </span>
           </div>
-          <p className="panel__desc">{methodInfo.description}</p>
+          {methodInfo.description && (
+            <p className="panel__desc">{methodInfo.description}</p>
+          )}
+          {methodInfo.signature && (
+            <a
+              className="signature"
+              href={cargoDocMethodUrl(service, method)}
+              target="_blank"
+              rel="noreferrer"
+              title="Open this method's full Rust definition in the cargo doc"
+            >
+              {methodInfo.signature}
+            </a>
+          )}
         </div>
       )}
 

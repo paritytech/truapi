@@ -64,6 +64,7 @@ fn generate_playground_services_code(api: &ApiDefinition, target_version: u32) -
                 MethodKind::Request => "unary",
                 MethodKind::Subscription | MethodKind::ResultSubscription => "subscription",
             };
+            let signature = build_method_signature(method, &payload, &wrappers, &ctx, wire_version)?;
 
             writedoc!(
                 out,
@@ -71,9 +72,11 @@ fn generate_playground_services_code(api: &ApiDefinition, target_version: u32) -
                       {{
                         name: {name},
                         type: {ty},
+                        signature: {signature},
                 ",
                 name = ts_string_literal(&method.name),
                 ty = ts_string_literal(method_type),
+                signature = ts_string_literal(&signature),
             )
             .unwrap();
             if let Some(description) = docs.description {
@@ -166,6 +169,49 @@ pub(super) fn split_playground_docs(docs: Option<&str>) -> Result<PlaygroundDocs
 
 pub(super) fn playground_type_name(value: &str) -> String {
     value.replace("T.", "")
+}
+
+fn build_method_signature(
+    method: &MethodDef,
+    payload: &PayloadEmission,
+    wrappers: &HashMap<String, VersionedWrapper>,
+    ctx: &CodecContext,
+    wire_version: Option<u32>,
+) -> Result<String> {
+    let ts_method_name = to_camel_case(&strip_prefix(&method.name));
+    let arg = if payload.param_list.is_empty() {
+        String::new()
+    } else {
+        format!("request: {}", playground_type_name(&payload.inner_type_ts))
+    };
+    let return_ts = match &method.return_type {
+        ReturnType::Result { ok, err } => {
+            let ok_resp = emit_response(ok, wrappers, ctx, wire_version)?;
+            let err_resp = emit_error_response(err, wrappers, ctx, wire_version)?;
+            format!(
+                "Promise<Result<{}, {}>>",
+                playground_type_name(&ok_resp.inner_type_ts),
+                playground_type_name(&err_resp.inner_type_ts),
+            )
+        }
+        ReturnType::Subscription(item) => {
+            let response = emit_response(item, wrappers, ctx, wire_version)?;
+            format!(
+                "ObservableLike<{}>",
+                playground_type_name(&response.inner_type_ts),
+            )
+        }
+        ReturnType::ResultSubscription { item, err } => {
+            let response = emit_response(item, wrappers, ctx, wire_version)?;
+            let err_resp = emit_error_response(err, wrappers, ctx, wire_version)?;
+            format!(
+                "ObservableLike<{}, {}>",
+                playground_type_name(&response.inner_type_ts),
+                playground_type_name(&err_resp.inner_type_ts),
+            )
+        }
+    };
+    Ok(format!("{ts_method_name}({arg}): {return_ts}"))
 }
 
 fn playground_request_description(
