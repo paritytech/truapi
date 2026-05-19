@@ -31,14 +31,16 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v5
 
+      - uses: dtolnay/rust-toolchain@nightly
+
       - name: Build Rust API docs
         run: cargo doc -p truapi --no-deps
 
       - name: Install workspace dependencies
         run: npm ci
 
-      - name: Build @parity/truapi
-        run: npm run build --prefix js/packages/truapi
+      - name: Run codegen (build @parity/truapi + bundle dts)
+        run: ./scripts/codegen.sh
 
       - name: Install playground dependencies
         working-directory: playground

@@ -110,8 +110,8 @@ jobs:
         with:
           node-version: 22
 
-      - name: Build @parity/truapi
-        run: npm ci && npm run build --prefix js/packages/truapi
+      - name: Install workspace deps + build @parity/truapi
+        run: npm ci && ./scripts/codegen.sh
 
       - name: Install playground deps
         working-directory: playground
@@ -152,7 +152,7 @@ jobs:
           bun-version: latest
 
       - name: Build @parity/truapi
-        run: npm ci && npm run build --prefix js/packages/truapi
+        run: npm ci && ./scripts/codegen.sh
 
       - name: Install dotli deps
         working-directory: hosts/dotli
