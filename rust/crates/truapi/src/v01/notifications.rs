@@ -1,6 +1,6 @@
 use parity_scale_codec::{Decode, Encode};
 
-use super::Topic;
+use super::{ProductAccountId, Topic};
 
 /// Opaque identifier for a push notification, unique per product.
 pub type NotificationId = u32;
@@ -52,15 +52,17 @@ pub struct HostPushNotificationCancelRequest {
 /// Request to register one or more topics the user wants to be woken up for.
 /// Each topic is added independently; existing rules are not touched.
 ///
-/// At the host level the effective key is `(product, topic)`: rules are
-/// scoped per calling product, so two products can register the same topic
-/// independently and never see each other's rules. The product does not
-/// specify the signer; the host injects it when forwarding the rule to the
-/// push backend.
+/// When `signer` is `None` the host injects the calling product's own
+/// identity as the signer. Set `signer` explicitly to subscribe to
+/// statements published by a *different* product (e.g. a conference
+/// organizer's announcements).
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostPushAddRulesRequest {
     /// Topics to register.
     pub topics: Vec<Topic>,
+    /// Signer whose statements should trigger a push. Defaults to the
+    /// calling product's own identity when `None`.
+    pub signer: Option<ProductAccountId>,
 }
 
 /// Failure modes for [`HostPushAddRulesRequest`].
@@ -68,9 +70,9 @@ pub struct HostPushAddRulesRequest {
 pub enum HostPushAddRulesError {
     /// The user has not granted `DevicePermission::Notifications`.
     PermissionDenied,
-    /// The host's push backend is currently unreachable; the rule was not
+    /// The notification system is currently unavailable; the rule was not
     /// registered. The product MAY retry later.
-    BackendUnavailable,
+    NotificationSystemUnavailable(String),
     /// Catch-all.
     Unknown { reason: String },
 }
@@ -81,14 +83,17 @@ pub enum HostPushAddRulesError {
 pub struct HostPushRemoveRulesRequest {
     /// Topics to remove.
     pub topics: Vec<Topic>,
+    /// Signer scope. When `None`, removes rules for the calling product's
+    /// own identity.
+    pub signer: Option<ProductAccountId>,
 }
 
 /// Failure modes for [`HostPushRemoveRulesRequest`].
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum HostPushRemoveRulesError {
-    /// The host's push backend is currently unreachable; the rule may still
+    /// The notification system is currently unavailable; the rule may still
     /// be active. The product MAY retry later.
-    BackendUnavailable,
+    NotificationSystemUnavailable(String),
     /// Catch-all.
     Unknown { reason: String },
 }
@@ -109,20 +114,23 @@ pub struct HostPushListRulesResponse {
 /// Failure modes for [`HostPushListRulesRequest`].
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum HostPushListRulesError {
-    /// The host's push backend is currently unreachable. The product MAY
+    /// The notification system is currently unavailable. The product MAY
     /// retry later.
-    BackendUnavailable,
+    NotificationSystemUnavailable(String),
     /// Catch-all.
     Unknown { reason: String },
 }
 
-/// Atomic replace of the calling product's full topic set with the supplied
-/// vector. After a successful call, the product's active topics are exactly
+/// Atomic replace of the full topic set for the given signer with the
+/// supplied vector. After a successful call, the active topics are exactly
 /// `topics`.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostPushSetRulesRequest {
-    /// Topics that should be active for this product after the call.
+    /// Topics that should be active after the call.
     pub topics: Vec<Topic>,
+    /// Signer scope. When `None`, replaces rules for the calling product's
+    /// own identity.
+    pub signer: Option<ProductAccountId>,
 }
 
 /// Failure modes for [`HostPushSetRulesRequest`].
@@ -130,9 +138,9 @@ pub struct HostPushSetRulesRequest {
 pub enum HostPushSetRulesError {
     /// The user has not granted `DevicePermission::Notifications`.
     PermissionDenied,
-    /// The host's push backend is currently unreachable; no change was
+    /// The notification system is currently unavailable; no change was
     /// applied. The product MAY retry later.
-    BackendUnavailable,
+    NotificationSystemUnavailable(String),
     /// Catch-all.
     Unknown { reason: String },
 }

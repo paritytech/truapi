@@ -95,13 +95,13 @@ async fn push_set_rules(
 
 `Topic` is reused from `v01::statement_store`.
 
-A rule is just a `Topic`. At the host level the effective key is `(product, topic)`: rules are scoped per calling product, so two products can register the same topic independently and never see each other's rules. The product does not specify the signer; the host injects it when forwarding the rule to the push backend.
+A rule is a `(signer, topic)` pair. When `signer` is `None` the host injects the calling product's own identity; set it explicitly to subscribe to statements published by a different product.
 
 ```rust
-pub struct HostPushAddRulesRequest    { pub topics: Vec<Topic> }
-pub struct HostPushRemoveRulesRequest { pub topics: Vec<Topic> }
+pub struct HostPushAddRulesRequest    { pub topics: Vec<Topic>, pub signer: Option<ProductAccountId> }
+pub struct HostPushRemoveRulesRequest { pub topics: Vec<Topic>, pub signer: Option<ProductAccountId> }
 pub struct HostPushListRulesRequest;
-pub struct HostPushSetRulesRequest    { pub topics: Vec<Topic> }
+pub struct HostPushSetRulesRequest    { pub topics: Vec<Topic>, pub signer: Option<ProductAccountId> }
 
 pub struct HostPushListRulesResponse {
     pub topics: Vec<Topic>,
@@ -113,25 +113,25 @@ pub enum HostPushAddRulesError {
     /// a product; if the user dismisses or declines, this variant is
     /// returned and no rules are stored.
     PermissionDenied,
-    /// The host could not reach the push backend; no rules were stored.
-    BackendUnavailable,
+    /// The notification system is currently unavailable; no rules were stored.
+    NotificationSystemUnavailable(String),
     /// Catch-all. `reason`
     Unknown { reason: String },
 }
 
 pub enum HostPushRemoveRulsError {
-    BackendUnavailable,
+    NotificationSystemUnavailable(String),
     Unknown { reason: String },
 }
 
 pub enum HostPushListRulesError {
-    BackendUnavailable,
+    NotificationSystemUnavailable(String),
     Unknown { reason: String },
 }
 
 pub enum HostPushSetRulesError {
     PermissionDenied,
-    BackendUnavailable,
+    NotificationSystemUnavailable(String),
     Unknown { reason: String },
 }
 ```
