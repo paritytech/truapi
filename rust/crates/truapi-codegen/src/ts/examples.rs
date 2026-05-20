@@ -35,8 +35,8 @@ declare global {
   };
   /**
    * Start a `chainHead_follow` subscription and emit a {@link ChainHeadCtx}
-   * for every `Initialized` event. The returned Observable errors on
-   * `Stop`, `OperationError`, and `OperationInaccessible`.
+   * for every `Initialized` event. The returned Observable completes on
+   * `Stop` and errors on `OperationError` and `OperationInaccessible`.
    */
   function withChainHeadFollow(opts: {
     genesisHash: `0x${string}`;

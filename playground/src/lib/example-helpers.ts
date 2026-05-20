@@ -31,7 +31,7 @@ export function createWithChainHeadFollow(truapi: Client): WithChainHeadFollow {
                 });
                 return;
               case "Stop":
-                observer.error(new Error("follow stopped"));
+                observer.complete();
                 return;
               case "OperationError":
                 observer.error(
