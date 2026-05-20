@@ -1,5 +1,5 @@
-import { EMPTY, mergeMap, Observable, of, throwError } from "rxjs";
-import type { Client, RemoteChainHeadFollowItem } from "@parity/truapi";
+import { Observable } from "rxjs";
+import type { Client } from "@parity/truapi";
 
 export type ChainHeadCtx = {
   genesisHash: `0x${string}`;
@@ -17,36 +17,36 @@ export function createWithChainHeadFollow(truapi: Client): WithChainHeadFollow {
     genesisHash,
     withRuntime = false,
   }): Observable<ChainHeadCtx> {
-    let subscriptionId = "";
-    return new Observable<RemoteChainHeadFollowItem>((observer) => {
+    return new Observable<ChainHeadCtx>((observer) => {
       const sub = truapi.chain
         .followHeadSubscribe({ request: { genesisHash, withRuntime } })
-        .subscribe(observer);
-      subscriptionId = sub.subscriptionId;
-      return () => {
-        sub.unsubscribe();
-      };
-    }).pipe(
-      mergeMap((item) => {
-        switch (item.tag) {
-          case "Initialized":
-            return of<ChainHeadCtx>({
-              genesisHash,
-              followSubscriptionId: subscriptionId,
-              hash: item.value.finalizedBlockHashes[0],
-            });
-          case "Stop":
-            return throwError(() => new Error("follow stopped"));
-          case "OperationError":
-            return throwError(
-              () => new Error(`operation error: ${item.value.error}`),
-            );
-          case "OperationInaccessible":
-            return throwError(() => new Error("operation inaccessible"));
-          default:
-            return EMPTY;
-        }
-      }),
-    );
+        .subscribe({
+          next: (item) => {
+            switch (item.tag) {
+              case "Initialized":
+                observer.next({
+                  genesisHash,
+                  followSubscriptionId: sub.subscriptionId,
+                  hash: item.value.finalizedBlockHashes[0],
+                });
+                return;
+              case "Stop":
+                observer.error(new Error("follow stopped"));
+                return;
+              case "OperationError":
+                observer.error(
+                  new Error(`operation error: ${item.value.error}`),
+                );
+                return;
+              case "OperationInaccessible":
+                observer.error(new Error("operation inaccessible"));
+                return;
+            }
+          },
+          error: (err) => observer.error(err),
+          complete: () => observer.complete(),
+        });
+      return () => sub.unsubscribe();
+    });
   };
 }
