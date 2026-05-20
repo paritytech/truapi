@@ -8,6 +8,7 @@
 
 - [ ] Added `docs/rfcs/<slug>.md` (no number — CI assigns one on merge)
 - [ ] Filled all RFC sections (Summary, Motivation, Detailed Design, Drawbacks, Alternatives, Unresolved Questions)
+- [ ] Updated Rust traits in `rust/crates/truapi/`
 - [ ] Added label: `rfc`
 
 ### Motivation
