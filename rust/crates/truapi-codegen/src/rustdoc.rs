@@ -92,7 +92,7 @@ pub struct WireAttrs {
 }
 
 /// Wire-shape classification of a trait method.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MethodKind {
     /// One request, one response.
     Request,
