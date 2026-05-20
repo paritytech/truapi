@@ -1,5 +1,6 @@
 import { transform } from "sucrase";
 import type { Subscription, TrUApiClient } from "@parity/truapi";
+import { createWithChainHeadFollow, type WithChainHeadFollow } from "./example-helpers";
 
 export type LogEntry = {
   level: "log" | "error" | "warn";
@@ -36,6 +37,7 @@ const AsyncFunction = Object.getPrototypeOf(
   truapi: unknown,
   __console: ConsoleShim,
   __rxjs: unknown,
+  withChainHeadFollow: WithChainHeadFollow,
 ) => Promise<unknown>;
 
 let rxjsModulePromise: Promise<unknown> | null = null;
@@ -71,9 +73,16 @@ export async function runExample(opts: {
     truapi: unknown,
     c: ConsoleShim,
     rxjs: unknown,
+    withChainHeadFollow: WithChainHeadFollow,
   ) => Promise<unknown>;
   try {
-    run = new AsyncFunction("truapi", "__console", "__rxjs", body);
+    run = new AsyncFunction(
+      "truapi",
+      "__console",
+      "__rxjs",
+      "withChainHeadFollow",
+      body,
+    );
   } catch (err) {
     throw new ExampleSyntaxError(
       `wrap failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -102,7 +111,8 @@ export async function runExample(opts: {
   };
 
   const rxjs = await getRxjs();
-  const promise = run(trackingClient, consoleShim, rxjs);
+  const withChainHeadFollow = createWithChainHeadFollow(trackingClient as TrUApiClient);
+  const promise = run(trackingClient, consoleShim, rxjs, withChainHeadFollow);
 
   if (kind === "subscription") {
     await promise;
