@@ -6,9 +6,10 @@
 
 ### Checklist
 
-- [ ] Added `docs/rfcs/<slug>.md` (no number — CI assigns one on merge)
+- [ ] Added `docs/rfcs/NNNN-short-slug.md` with completed frontmatter
 - [ ] Filled all RFC sections (Summary, Motivation, Detailed Design, Drawbacks, Alternatives, Unresolved Questions)
-- [ ] Added label: `rfc`
+- [ ] Updated `docs/rfcs/_index.md` with a link to the new RFC
+- [ ] Added labels: `rfc`, `proposal`
 
 ### Motivation
 

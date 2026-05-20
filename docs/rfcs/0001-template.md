@@ -3,7 +3,7 @@ title: "RFC Title"
 owner: "@ownerhandle"
 ---
 
-# RFC — Title
+# RFC 0001 — Title
 
 ## Summary
 
