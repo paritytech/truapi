@@ -23,27 +23,25 @@ This RFC exposes a TrUAPI-shaped surface over the rule-management API defined in
 
 ## Motivation
 
-The push-notifications v2 design assigns delivery to a host-side push backend that tails the Statement Store, verifies signatures, and delivers pushes only for `(signer, topic)` pairs the user has whitelisted. TrUAPI needs a primitive that lets a product manipulate that whitelist. The product supplies the `topic`; the host fills in the `signer` from the calling product's identity before forwarding to the backend.
+The push-notifications v2 design assigns delivery to a host-side notification system that tails the Statement Store, verifies signatures, and delivers pushes only for `(signer, topic)` pairs the user has whitelisted. TrUAPI needs a primitive that lets a product manipulate that whitelist. When `signer` is omitted the host defaults to the calling product's own identity; when provided explicitly the product can subscribe to statements from a different product.
 
 ### Worked example: festival announcements
 
-A conference product publishes festival-wide announcements as signed statements on a well-known topic, signed with the product's own identity key (`pkProduct`). When the user taps "notify me about announcements," the subscriber app calls `push_add_rules({ topics: [announcements_topic] })`. The host injects `pkProduct` as the signer when relaying to the backend, so from that point on the user is woken up for new announcements even with the product closed:
+A conference product publishes festival-wide announcements as signed statements on a well-known topic. An attendee's app subscribes by calling `push_add_rules({ topics: [announcements_topic], signer: organizer_id })`, passing the organizer product's `ProductAccountId` explicitly. From that point on the user is woken up for new announcements even with the app closed:
 
 ```
 Publisher app                                          Subscriber app
 (organizer side)                                       (attendee side)
         |                                                       ^   |
         |                                                       |   |
-        |                                              (6) push |   |  (1) pushAddRules({ topics: [ T_announcements ] })
+        |                                              (6) push |   |  (1) pushAddRules({ topics: [T], signer: organizer_id })
         |                                               back to |   |
         |                                                caller |   |
         |                                                       |   v
         |                  +------------------------------------+---+------+
         |                  |  Host                                         |
-        |                  |  injects signer = pkProduct, then forwards    |
-        |                  |  to push backend:                             |
-        |                  |    rule (pkProduct, T_announcements)          |
-        |                  |      -> this subscriber app                   |
+        |                  |  stores rule (organizer_id, T)                |
+        |                  |    -> deliver to this subscriber              |
         |                  +-----------------------+-----------------------+
         |                                          ^
         |                                          |  (4) tail / match rule
