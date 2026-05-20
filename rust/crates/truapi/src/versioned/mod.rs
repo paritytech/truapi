@@ -24,6 +24,7 @@ pub trait IntoVersion: Sized {
 macro_rules! versioned_type {
     (
         $(
+            $(#[$enum_meta:meta])*
             pub enum $name:ident {
                 $($body:tt)*
             }
@@ -32,6 +33,7 @@ macro_rules! versioned_type {
         $(
             versioned_type! {
                 @one
+                $(#[$enum_meta])*
                 pub enum $name {
                     $($body)*
                 }
@@ -41,13 +43,17 @@ macro_rules! versioned_type {
 
     (
         @one
+        $(#[$enum_meta:meta])*
         pub enum $name:ident {
+            $(#[$variant_meta:meta])*
             V1 => $v1:ty $(,)?
         }
     ) => {
+        $(#[$enum_meta])*
         #[doc = concat!("Versioned envelope for [`", stringify!($name), "`].")]
         #[derive(Debug, Clone, PartialEq, Eq, parity_scale_codec::Encode, parity_scale_codec::Decode)]
         pub enum $name {
+            $(#[$variant_meta])*
             #[codec(index = 0)]
             V1($v1),
         }
@@ -61,13 +67,17 @@ macro_rules! versioned_type {
 
     (
         @one
+        $(#[$enum_meta:meta])*
         pub enum $name:ident {
+            $(#[$variant_meta:meta])*
             V1 $(,)?
         }
     ) => {
+        $(#[$enum_meta])*
         #[doc = concat!("Versioned envelope for [`", stringify!($name), "`].")]
         #[derive(Debug, Clone, PartialEq, Eq, parity_scale_codec::Encode, parity_scale_codec::Decode)]
         pub enum $name {
+            $(#[$variant_meta])*
             #[codec(index = 0)]
             V1,
         }
