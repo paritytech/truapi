@@ -2,6 +2,8 @@ use parity_scale_codec::{Decode, Encode};
 
 use super::ProductAccountId;
 
+/// Full Substrate extrinsic signing payload with all fields needed for signature
+/// generation.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostSignPayloadRequest {
     /// Product account that will sign this payload.
@@ -38,18 +40,22 @@ pub struct HostSignPayloadRequest {
     pub with_signed_transaction: Option<bool>,
 }
 
+/// Raw data to sign -- either binary bytes or a string message.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum RawPayload {
+    /// Raw binary data to sign.
     Bytes {
         /// Raw binary payload bytes.
         bytes: Vec<u8>,
     },
+    /// String message to sign.
     Payload {
         /// String payload to sign.
         payload: String,
     },
 }
 
+/// A raw signing request pairing an account with the payload to sign.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostSignRawRequest {
     /// Product account that will sign this payload.
@@ -58,6 +64,7 @@ pub struct HostSignRawRequest {
     pub payload: RawPayload,
 }
 
+/// Result of a signing operation.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostSignPayloadResponse {
     /// The cryptographic signature.
@@ -66,14 +73,21 @@ pub struct HostSignPayloadResponse {
     pub signed_transaction: Option<Vec<u8>>,
 }
 
+/// Signing operation error.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum HostSignPayloadError {
+    /// Payload could not be deserialized.
     FailedToDecode,
+    /// User rejected signing.
     Rejected,
+    /// Not authenticated.
     PermissionDenied,
+    /// Catch-all.
     Unknown { reason: String },
 }
 
+/// Sign raw bytes with a non-product (legacy) account. The signer field
+/// identifies which legacy account to use.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostSignRawWithLegacyAccountRequest {
     /// Signer address (SS58 or hex) of the legacy account.
@@ -82,6 +96,7 @@ pub struct HostSignRawWithLegacyAccountRequest {
     pub payload: RawPayload,
 }
 
+/// Sign a Substrate extrinsic payload with a non-product (legacy) account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostSignPayloadWithLegacyAccountRequest {
     /// Signer address (SS58 or hex) of the legacy account.
@@ -90,18 +105,14 @@ pub struct HostSignPayloadWithLegacyAccountRequest {
     pub payload: HostSignPayloadRequest,
 }
 
+/// Response containing a created transaction.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostCreateTransactionResponse {
     /// SCALE-encoded signed transaction.
     pub transaction: Vec<u8>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct HostCreateTransactionWithLegacyAccountRequest {
-    /// Versioned transaction payload to sign.
-    pub payload: super::VersionedTxPayload,
-}
-
+/// Response containing a transaction created with a non-product account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostCreateTransactionWithLegacyAccountResponse {
     /// SCALE-encoded signed transaction.

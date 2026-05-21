@@ -131,6 +131,75 @@ The Accounts Protocol retains `VersionedTxPayload` because, unlike host API acti
 
 On receipt, the Account Holder reads `payload.signer: ProductAccountId`, picks the chain identified by `payload.genesis_hash`, derives signing context against that runtime, presents the transaction, and on approval returns the encoded signed transaction. The Host maps the response back to `Result<Vec<u8>, CreateTransactionErr>`.
 
+### Rust trait definitions
+
+The wire types live in `rust/crates/truapi/src/v01/transaction.rs`:
+
+```rust
+pub type GenesisHash = [u8; 32];
+pub type AccountId = [u8; 32];
+
+pub struct TxPayloadExtension {
+    pub id: String,
+    pub extra: Vec<u8>,
+    pub additional_signed: Vec<u8>,
+}
+
+pub struct ProductAccountTxPayload {
+    pub signer: ProductAccountId,
+    pub genesis_hash: GenesisHash,
+    pub call_data: Vec<u8>,
+    pub extensions: Vec<TxPayloadExtension>,
+    pub tx_ext_version: u8,
+}
+
+pub struct LegacyAccountTxPayload {
+    pub signer: AccountId,
+    pub genesis_hash: GenesisHash,
+    pub call_data: Vec<u8>,
+    pub extensions: Vec<TxPayloadExtension>,
+    pub tx_ext_version: u8,
+}
+
+pub enum HostCreateTransactionError {
+    FailedToDecode,
+    Rejected,
+    NotSupported { reason: String },
+    PermissionDenied,
+    Unknown { reason: String },
+}
+```
+
+The versioned wrappers (`versioned/signing.rs`) map these into the action enums:
+
+```rust
+versioned_type! {
+    pub enum HostCreateTransactionRequest { V1 => ProductAccountTxPayload }
+    pub enum HostCreateTransactionWithLegacyAccountRequest { V1 => LegacyAccountTxPayload }
+    // responses and error wrappers unchanged
+}
+```
+
+The trait methods (`api/signing.rs`) retain their existing wire IDs:
+
+```rust
+#[wire(request_id = 30)]
+async fn host_create_transaction(
+    &self,
+    cx: &CallContext,
+    request: HostCreateTransactionRequest,
+) -> Result<HostCreateTransactionResponse, CallError<HostCreateTransactionError>>;
+
+#[wire(request_id = 32)]
+async fn host_create_transaction_with_legacy_account(
+    &self,
+    cx: &CallContext,
+    request: HostCreateTransactionWithLegacyAccountRequest,
+) -> Result<HostCreateTransactionWithLegacyAccountResponse, CallError<HostCreateTransactionWithLegacyAccountError>>;
+```
+
+On the wire, `TxPayload<Signer>` from the design section maps to two concrete structs (`ProductAccountTxPayload` / `LegacyAccountTxPayload`) because SCALE codec does not support generics. The field order and types match the triangle-js-sdk implementation in `packages/host-api/src/protocol/v1/createTransaction.ts`.
+
 ## Drawbacks
 
 - **AH must fetch metadata for any chain a product transacts on.** Already true in practice — the AH needs metadata for its own native flows.
