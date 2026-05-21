@@ -402,7 +402,7 @@ export const versions: ExplorerVersion[] = [
         errorType: "HostCreateTransactionError",
         description: "Construct a signed extrinsic for a product account.",
         usageExample:
-          'import {\n  type Client,\n  type HostCreateTransactionResponse,\n} from "@parity/truapi";\n\nexport async function createTransaction(\n  truapi: Client,\n): Promise<HostCreateTransactionResponse> {\n  const result = await truapi.signing.createTransaction({\n    tag: "V1",\n    value: {\n      signer: {\n        dotNsIdentifier: "truapi-playground.dot",\n        derivationIndex: 0,\n      },\n      genesisHash: "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3",\n      callData: "0x0000",\n      extensions: [],\n      txExtVersion: 0,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostCreateTransactionResponse,\n} from "@parity/truapi";\n\nexport async function createTransaction(\n  truapi: Client,\n): Promise<HostCreateTransactionResponse> {\n  const result = await truapi.signing.createTransaction({\n    signer: {\n      dotNsIdentifier: "truapi-playground.dot",\n      derivationIndex: 0,\n    },\n    genesisHash: "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3",\n    callData: "0x0000",\n    extensions: [],\n    txExtVersion: 0,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_create_transaction_with_legacy_account",
@@ -417,7 +417,7 @@ export const versions: ExplorerVersion[] = [
         description:
           "Construct a signed extrinsic for a non-product (legacy) account.",
         usageExample:
-          'import {\n  type Client,\n  type HostCreateTransactionWithLegacyAccountResponse,\n} from "@parity/truapi";\n\nexport async function createTransactionWithLegacyAccount(\n  truapi: Client,\n): Promise<HostCreateTransactionWithLegacyAccountResponse> {\n  const result = await truapi.signing.createTransactionWithLegacyAccount({\n    tag: "V1",\n    value: {\n      signer: "0x0000000000000000000000000000000000000000000000000000000000000000",\n      genesisHash: "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3",\n      callData: "0x0000",\n      extensions: [],\n      txExtVersion: 0,\n    },\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
+          'import {\n  type Client,\n  type HostCreateTransactionWithLegacyAccountResponse,\n} from "@parity/truapi";\n\nexport async function createTransactionWithLegacyAccount(\n  truapi: Client,\n): Promise<HostCreateTransactionWithLegacyAccountResponse> {\n  const result = await truapi.signing.createTransactionWithLegacyAccount({\n    signer: "0x0000000000000000000000000000000000000000000000000000000000000000",\n    genesisHash: "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3",\n    callData: "0x0000",\n    extensions: [],\n    txExtVersion: 0,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}',
       },
       {
         id: "host_sign_raw_with_legacy_account",

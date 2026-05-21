@@ -158,7 +158,7 @@ export const services: ServiceInfo[] = [
         description: "Construct a signed extrinsic for a product account.",
         requestDescription: "ProductAccountTxPayload",
         defaultRequest:
-          '{\n  "tag": "V1",\n  "value": {\n    "callData": "0x0000",\n    "extensions": [],\n    "genesisHash": "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3",\n    "signer": {\n      "derivationIndex": 0,\n      "dotNsIdentifier": "truapi-playground.dot"\n    },\n    "txExtVersion": 0\n  }\n}',
+          '{\n  "callData": "0x0000",\n  "extensions": [],\n  "genesisHash": "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3",\n  "signer": {\n    "derivationIndex": 0,\n    "dotNsIdentifier": "truapi-playground.dot"\n  },\n  "txExtVersion": 0\n}',
       },
       {
         name: "host_create_transaction_with_legacy_account",
@@ -167,7 +167,7 @@ export const services: ServiceInfo[] = [
           "Construct a signed extrinsic for a non-product (legacy) account.",
         requestDescription: "LegacyAccountTxPayload",
         defaultRequest:
-          '{\n  "tag": "V1",\n  "value": {\n    "callData": "0x0000",\n    "extensions": [],\n    "genesisHash": "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3",\n    "signer": "0x0000000000000000000000000000000000000000000000000000000000000000",\n    "txExtVersion": 0\n  }\n}',
+          '{\n  "callData": "0x0000",\n  "extensions": [],\n  "genesisHash": "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3",\n  "signer": "0x0000000000000000000000000000000000000000000000000000000000000000",\n  "txExtVersion": 0\n}',
       },
       {
         name: "host_sign_raw_with_legacy_account",
