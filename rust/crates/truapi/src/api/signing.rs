@@ -30,23 +30,16 @@ pub trait Signing: Send + Sync {
     ///   truapi: Client,
     /// ): Promise<HostCreateTransactionResponse> {
     ///   const result = await truapi.signing.createTransaction({
-    ///     productAccountId: {
-    ///       dotNsIdentifier: "truapi-playground.dot",
-    ///       derivationIndex: 0,
-    ///     },
-    ///     payload: {
-    ///       tag: "V1",
-    ///       value: {
-    ///         callData: "0x0000",
-    ///         extensions: [],
-    ///         txExtVersion: 0,
-    ///         context: {
-    ///           metadata: "0x",
-    ///           tokenSymbol: "DOT",
-    ///           tokenDecimals: 10,
-    ///           bestBlockHeight: 0,
-    ///         },
+    ///     tag: "V1",
+    ///     value: {
+    ///       signer: {
+    ///         dotNsIdentifier: "truapi-playground.dot",
+    ///         derivationIndex: 0,
     ///       },
+    ///       genesisHash: "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3",
+    ///       callData: "0x0000",
+    ///       extensions: [],
+    ///       txExtVersion: 0,
     ///     },
     ///   });
     ///
@@ -63,7 +56,7 @@ pub trait Signing: Send + Sync {
         Err(CallError::unavailable())
     }
 
-    /// Construct a signed extrinsic for a non-product account.
+    /// Construct a signed extrinsic for a non-product (legacy) account.
     ///
     /// ```truapi-client-example
     /// import {
@@ -75,19 +68,13 @@ pub trait Signing: Send + Sync {
     ///   truapi: Client,
     /// ): Promise<HostCreateTransactionWithLegacyAccountResponse> {
     ///   const result = await truapi.signing.createTransactionWithLegacyAccount({
-    ///     payload: {
-    ///       tag: "V1",
-    ///       value: {
-    ///         callData: "0x0000",
-    ///         extensions: [],
-    ///         txExtVersion: 0,
-    ///         context: {
-    ///           metadata: "0x",
-    ///           tokenSymbol: "DOT",
-    ///           tokenDecimals: 10,
-    ///           bestBlockHeight: 0,
-    ///         },
-    ///       },
+    ///     tag: "V1",
+    ///     value: {
+    ///       signer: "0x0000000000000000000000000000000000000000000000000000000000000000",
+    ///       genesisHash: "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3",
+    ///       callData: "0x0000",
+    ///       extensions: [],
+    ///       txExtVersion: 0,
     ///     },
     ///   });
     ///
