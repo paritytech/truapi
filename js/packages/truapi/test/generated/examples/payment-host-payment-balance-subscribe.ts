@@ -10,7 +10,8 @@ import {
 
 export function watchPaymentBalance(truapi: Client): Subscription {
   return truapi.payment.paymentBalanceSubscribe().subscribe({
-    next: (balance: HostPaymentBalanceSubscribeItem) => console.log(balance),
+    next: (balance: HostPaymentBalanceSubscribeItem) =>
+      console.log(balance),
     error: (error: SubscriptionError<HostPaymentBalanceSubscribeError>) =>
       console.error(error),
     complete: () => console.log("completed"),

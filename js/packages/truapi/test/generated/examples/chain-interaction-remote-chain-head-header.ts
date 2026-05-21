@@ -9,8 +9,7 @@ export async function getChainHeadHeader(
   truapi: Client,
 ): Promise<RemoteChainHeadHeaderResponse> {
   const result = await truapi.chainInteraction.chainHeadHeader({
-    genesisHash:
-      "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     followSubscriptionId: "",
     hash: "0x0000000000000000000000000000000000000000000000000000000000000000",
   });

@@ -9,23 +9,16 @@ export async function createTransaction(
   truapi: Client,
 ): Promise<HostCreateTransactionResponse> {
   const result = await truapi.signing.createTransaction({
-    productAccountId: {
-      dotNsIdentifier: "truapi-playground.dot",
-      derivationIndex: 0,
-    },
-    payload: {
-      tag: "V1",
-      value: {
-        callData: "0x0000",
-        extensions: [],
-        txExtVersion: 0,
-        context: {
-          metadata: "0x",
-          tokenSymbol: "DOT",
-          tokenDecimals: 10,
-          bestBlockHeight: 0,
-        },
+    tag: "V1",
+    value: {
+      signer: {
+        dotNsIdentifier: "truapi-playground.dot",
+        derivationIndex: 0,
       },
+      genesisHash: "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3",
+      callData: "0x0000",
+      extensions: [],
+      txExtVersion: 0,
     },
   });
 

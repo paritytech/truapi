@@ -6,8 +6,7 @@ export async function supportsChain(truapi: Client): Promise<boolean> {
   const result = await truapi.trUApiCalls.featureSupported({
     tag: "Chain",
     value: {
-      genesisHash:
-        "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+      genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     },
   });
 

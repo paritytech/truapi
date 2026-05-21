@@ -14,7 +14,8 @@ export function lookupPreimage(truapi: Client): Subscription {
       },
     })
     .subscribe({
-      next: (item: RemotePreimageLookupSubscribeItem) => console.log(item),
+      next: (item: RemotePreimageLookupSubscribeItem) =>
+        console.log(item),
       error: (error: Error) => console.error(error),
       complete: () => console.log("completed"),
     });

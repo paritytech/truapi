@@ -6,8 +6,7 @@ export async function continueChainHeadOperation(
   truapi: Client,
 ): Promise<void> {
   const result = await truapi.chainInteraction.chainHeadContinue({
-    genesisHash:
-      "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     followSubscriptionId: "",
     operationId: "op-id",
   });
