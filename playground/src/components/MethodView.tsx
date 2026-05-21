@@ -138,7 +138,8 @@ export function MethodView({
         });
         try {
           const value = await Promise.race([run.promise, abortPromise]);
-          setResult(stringify(value) ?? "null");
+          const rendered = stringify(value);
+          if (rendered !== undefined) setResult(rendered);
         } finally {
           if (timeoutHandle !== null) clearTimeout(timeoutHandle);
           callAbortRef.current = null;
