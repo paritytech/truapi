@@ -56,53 +56,22 @@ pub trait Chain: Send + Sync {
     /// Fetch a block header.
     ///
     /// ```ts
-    /// import { Observable, filter, mergeMap, take } from "rxjs";
+    /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
-    /// followHead({
-    ///   genesisHash:
-    ///     "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    /// })
-    ///   .pipe(
-    ///     filter(({ item }) => item.tag === "Initialized"),
-    ///     take(1),
-    ///     mergeMap(({ item, followSubscriptionId, genesisHash }) =>
-    ///       truapi.chain.getHeadHeader({
-    ///         genesisHash,
-    ///         followSubscriptionId,
-    ///         hash: item.value.finalizedBlockHashes[0],
-    ///       }),
+    /// const result = await firstValueFrom(
+    ///   withChainHeadFollow({
+    ///     genesisHash:
+    ///       "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///   }).pipe(
+    ///     mergeMap(({ genesisHash, followSubscriptionId, hash }) =>
+    ///       truapi.chain.getHeadHeader({ genesisHash, followSubscriptionId, hash }),
     ///     ),
-    ///   )
-    ///   .subscribe((result) =>
-    ///     result.match(
-    ///       (value) => console.log(value),
-    ///       (error) => console.error(error),
-    ///     ),
-    ///   );
-    ///
-    /// // #region helpers
-    /// function followHead({ genesisHash }: { genesisHash: `0x${string}` }) {
-    ///   return new Observable<{
-    ///     item: any;
-    ///     followSubscriptionId: string;
-    ///     genesisHash: `0x${string}`;
-    ///   }>((observer) => {
-    ///     const sub = truapi.chain
-    ///       .followHeadSubscribe({ request: { genesisHash, withRuntime: false } })
-    ///       .subscribe({
-    ///         next: (item) =>
-    ///           observer.next({
-    ///             item,
-    ///             followSubscriptionId: sub.subscriptionId,
-    ///             genesisHash,
-    ///           }),
-    ///         error: (err) => observer.error(err),
-    ///         complete: () => observer.complete(),
-    ///       });
-    ///     return () => sub.unsubscribe();
-    ///   });
-    /// }
-    /// // #endregion
+    ///   ),
+    /// );
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 80)]
     async fn get_head_header(
@@ -116,68 +85,22 @@ pub trait Chain: Send + Sync {
     /// Fetch a block body.
     ///
     /// ```ts
-    /// const genesisHash =
-    ///   "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2";
-    /// const body = await withChainOperation(
-    ///   genesisHash,
-    ///   ({ subscriptionId, hash }) =>
-    ///     truapi.chain.getHeadBody({
-    ///       genesisHash,
-    ///       followSubscriptionId: subscriptionId,
-    ///       hash,
-    ///     }),
-    ///   (item) => {
-    ///     if (item.tag === "OperationBodyDone") return { done: item.value.value };
-    ///   },
-    /// );
-    /// console.log(body);
+    /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
-    /// // #region helpers
-    /// async function withChainOperation(
-    ///   genesisHash: `0x${string}`,
-    ///   start: (ctx: { subscriptionId: string; hash: `0x${string}` }) => PromiseLike<any>,
-    ///   onResult: (item: any, ctx: { sub: any; operationId: string }) => any,
-    /// ): Promise<any> {
-    ///   return await new Promise<any>((resolve, reject) => {
-    ///     let operationId: string | null = null;
-    ///     const sub = truapi.chain
-    ///       .followHeadSubscribe({ request: { genesisHash, withRuntime: false } })
-    ///       .subscribe({
-    ///         next: async (item) => {
-    ///           try {
-    ///             if (item.tag === "Initialized") {
-    ///               const started = await start({
-    ///                 subscriptionId: sub.subscriptionId,
-    ///                 hash: item.value.finalizedBlockHashes[0],
-    ///               });
-    ///               if (started.isErr()) { reject(started.error); return; }
-    ///               const op = started.value.operation;
-    ///               if (op.tag !== "Started") { reject(new Error("rejected: " + op.tag)); return; }
-    ///               operationId = op.value.operationId;
-    ///               return;
-    ///             }
-    ///             const value = item.value as any;
-    ///             if (!operationId || value?.operationId !== operationId) return;
-    ///             if (item.tag === "OperationError") {
-    ///               reject(new Error("operation error: " + value.error));
-    ///               return;
-    ///             }
-    ///             if (item.tag === "OperationInaccessible") {
-    ///               reject(new Error("operation inaccessible"));
-    ///               return;
-    ///             }
-    ///             const out = await onResult(item, { sub, operationId });
-    ///             if (out && "done" in out) resolve(out.done);
-    ///           } catch (err) {
-    ///             reject(err);
-    ///           }
-    ///         },
-    ///         error: reject,
-    ///         complete: () => reject(new Error("follow ended before result")),
-    ///       });
-    ///   });
-    /// }
-    /// // #endregion
+    /// const result = await firstValueFrom(
+    ///   withChainHeadFollow({
+    ///     genesisHash:
+    ///       "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///   }).pipe(
+    ///     mergeMap(({ genesisHash, followSubscriptionId, hash }) =>
+    ///       truapi.chain.getHeadBody({ genesisHash, followSubscriptionId, hash }),
+    ///     ),
+    ///   ),
+    /// );
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 82)]
     async fn get_head_body(
@@ -191,84 +114,27 @@ pub trait Chain: Send + Sync {
     /// Query runtime storage at a specific block.
     ///
     /// ```ts
-    /// const genesisHash =
-    ///   "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2";
-    /// const storageKey = "0x26aa394eea5630e07c48ae0c9558cef7";
-    /// const items: unknown[] = [];
-    /// await withChainOperation(
-    ///   genesisHash,
-    ///   ({ subscriptionId, hash }) =>
-    ///     truapi.chain.getHeadStorage({
-    ///       genesisHash,
-    ///       followSubscriptionId: subscriptionId,
-    ///       hash,
-    ///       items: [{ key: storageKey, queryType: "Value" }],
-    ///     }),
-    ///   async (item, { sub, operationId }) => {
-    ///     if (item.tag === "OperationStorageItems") items.push(...item.value.items);
-    ///     else if (item.tag === "OperationWaitingForContinue") {
-    ///       const cont = await truapi.chain.continueHead({
-    ///         genesisHash,
-    ///         followSubscriptionId: sub.subscriptionId,
-    ///         operationId,
-    ///       });
-    ///       cont.match(
-    ///         () => {},
-    ///         (error) => console.error(error),
-    ///       );
-    ///     } else if (item.tag === "OperationStorageDone") {
-    ///       return { done: items };
-    ///     }
-    ///   },
-    /// );
-    /// console.log(items);
+    /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
-    /// // #region helpers
-    /// async function withChainOperation(
-    ///   genesisHash: `0x${string}`,
-    ///   start: (ctx: { subscriptionId: string; hash: `0x${string}` }) => PromiseLike<any>,
-    ///   onResult: (item: any, ctx: { sub: any; operationId: string }) => any,
-    /// ): Promise<any> {
-    ///   return await new Promise<any>((resolve, reject) => {
-    ///     let operationId: string | null = null;
-    ///     const sub = truapi.chain
-    ///       .followHeadSubscribe({ request: { genesisHash, withRuntime: false } })
-    ///       .subscribe({
-    ///         next: async (item) => {
-    ///           try {
-    ///             if (item.tag === "Initialized") {
-    ///               const started = await start({
-    ///                 subscriptionId: sub.subscriptionId,
-    ///                 hash: item.value.finalizedBlockHashes[0],
-    ///               });
-    ///               if (started.isErr()) { reject(started.error); return; }
-    ///               const op = started.value.operation;
-    ///               if (op.tag !== "Started") { reject(new Error("rejected: " + op.tag)); return; }
-    ///               operationId = op.value.operationId;
-    ///               return;
-    ///             }
-    ///             const value = item.value as any;
-    ///             if (!operationId || value?.operationId !== operationId) return;
-    ///             if (item.tag === "OperationError") {
-    ///               reject(new Error("operation error: " + value.error));
-    ///               return;
-    ///             }
-    ///             if (item.tag === "OperationInaccessible") {
-    ///               reject(new Error("operation inaccessible"));
-    ///               return;
-    ///             }
-    ///             const out = await onResult(item, { sub, operationId });
-    ///             if (out && "done" in out) resolve(out.done);
-    ///           } catch (err) {
-    ///             reject(err);
-    ///           }
-    ///         },
-    ///         error: reject,
-    ///         complete: () => reject(new Error("follow ended before result")),
-    ///       });
-    ///   });
-    /// }
-    /// // #endregion
+    /// const result = await firstValueFrom(
+    ///   withChainHeadFollow({
+    ///     genesisHash:
+    ///       "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///   }).pipe(
+    ///     mergeMap(({ genesisHash, followSubscriptionId, hash }) =>
+    ///       truapi.chain.getHeadStorage({
+    ///         genesisHash,
+    ///         followSubscriptionId,
+    ///         hash,
+    ///         items: [{ key: "0x26aa394eea5630e07c48ae0c9558cef7", queryType: "Value" }],
+    ///       }),
+    ///     ),
+    ///   ),
+    /// );
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 84)]
     async fn get_head_storage(
@@ -282,70 +148,29 @@ pub trait Chain: Send + Sync {
     /// Invoke a runtime call at a specific block.
     ///
     /// ```ts
-    /// const genesisHash =
-    ///   "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2";
-    /// const output = await withChainOperation(
-    ///   genesisHash,
-    ///   ({ subscriptionId, hash }) =>
-    ///     truapi.chain.callHead({
-    ///       genesisHash,
-    ///       followSubscriptionId: subscriptionId,
-    ///       hash,
-    ///       function: "Core_version",
-    ///       callParameters: "0x",
-    ///     }),
-    ///   (item) => {
-    ///     if (item.tag === "OperationCallDone") return { done: item.value.output };
-    ///   },
-    /// );
-    /// console.log(output);
+    /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
-    /// // #region helpers
-    /// async function withChainOperation(
-    ///   genesisHash: `0x${string}`,
-    ///   start: (ctx: { subscriptionId: string; hash: `0x${string}` }) => PromiseLike<any>,
-    ///   onResult: (item: any, ctx: { sub: any; operationId: string }) => any,
-    /// ): Promise<any> {
-    ///   return await new Promise<any>((resolve, reject) => {
-    ///     let operationId: string | null = null;
-    ///     const sub = truapi.chain
-    ///       .followHeadSubscribe({ request: { genesisHash, withRuntime: false } })
-    ///       .subscribe({
-    ///         next: async (item) => {
-    ///           try {
-    ///             if (item.tag === "Initialized") {
-    ///               const started = await start({
-    ///                 subscriptionId: sub.subscriptionId,
-    ///                 hash: item.value.finalizedBlockHashes[0],
-    ///               });
-    ///               if (started.isErr()) { reject(started.error); return; }
-    ///               const op = started.value.operation;
-    ///               if (op.tag !== "Started") { reject(new Error("rejected: " + op.tag)); return; }
-    ///               operationId = op.value.operationId;
-    ///               return;
-    ///             }
-    ///             const value = item.value as any;
-    ///             if (!operationId || value?.operationId !== operationId) return;
-    ///             if (item.tag === "OperationError") {
-    ///               reject(new Error("operation error: " + value.error));
-    ///               return;
-    ///             }
-    ///             if (item.tag === "OperationInaccessible") {
-    ///               reject(new Error("operation inaccessible"));
-    ///               return;
-    ///             }
-    ///             const out = await onResult(item, { sub, operationId });
-    ///             if (out && "done" in out) resolve(out.done);
-    ///           } catch (err) {
-    ///             reject(err);
-    ///           }
-    ///         },
-    ///         error: reject,
-    ///         complete: () => reject(new Error("follow ended before result")),
-    ///       });
-    ///   });
-    /// }
-    /// // #endregion
+    /// const result = await firstValueFrom(
+    ///   withChainHeadFollow({
+    ///     genesisHash:
+    ///       "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///     withRuntime: true,
+    ///   }).pipe(
+    ///     mergeMap(({ genesisHash, followSubscriptionId, hash }) =>
+    ///       truapi.chain.callHead({
+    ///         genesisHash,
+    ///         followSubscriptionId,
+    ///         hash,
+    ///         function: "Core_version",
+    ///         callParameters: "0x",
+    ///       }),
+    ///     ),
+    ///   ),
+    /// );
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 86)]
     async fn call_head(
@@ -359,53 +184,26 @@ pub trait Chain: Send + Sync {
     /// Release pinned blocks.
     ///
     /// ```ts
-    /// import { Observable, filter, mergeMap, take } from "rxjs";
+    /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
-    /// followHead({
-    ///   genesisHash:
-    ///     "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    /// })
-    ///   .pipe(
-    ///     filter(({ item }) => item.tag === "Initialized"),
-    ///     take(1),
-    ///     mergeMap(({ item, followSubscriptionId, genesisHash }) =>
+    /// const result = await firstValueFrom(
+    ///   withChainHeadFollow({
+    ///     genesisHash:
+    ///       "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///   }).pipe(
+    ///     mergeMap(({ genesisHash, followSubscriptionId, hash }) =>
     ///       truapi.chain.unpinHead({
     ///         genesisHash,
     ///         followSubscriptionId,
-    ///         hashes: [item.value.finalizedBlockHashes[0]],
+    ///         hashes: [hash],
     ///       }),
     ///     ),
-    ///   )
-    ///   .subscribe((result) =>
-    ///     result.match(
-    ///       () => console.log("ok"),
-    ///       (error) => console.error(error),
-    ///     ),
-    ///   );
-    ///
-    /// // #region helpers
-    /// function followHead({ genesisHash }: { genesisHash: `0x${string}` }) {
-    ///   return new Observable<{
-    ///     item: any;
-    ///     followSubscriptionId: string;
-    ///     genesisHash: `0x${string}`;
-    ///   }>((observer) => {
-    ///     const sub = truapi.chain
-    ///       .followHeadSubscribe({ request: { genesisHash, withRuntime: false } })
-    ///       .subscribe({
-    ///         next: (item) =>
-    ///           observer.next({
-    ///             item,
-    ///             followSubscriptionId: sub.subscriptionId,
-    ///             genesisHash,
-    ///           }),
-    ///         error: (err) => observer.error(err),
-    ///         complete: () => observer.complete(),
-    ///       });
-    ///     return () => sub.unsubscribe();
-    ///   });
-    /// }
-    /// // #endregion
+    ///   ),
+    /// );
+    /// result.match(
+    ///   () => console.log("ok"),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 88)]
     async fn unpin_head(
@@ -419,53 +217,26 @@ pub trait Chain: Send + Sync {
     /// Continue a paused chain-head operation.
     ///
     /// ```ts
-    /// import { Observable, filter, mergeMap, take } from "rxjs";
+    /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
-    /// followHead({
-    ///   genesisHash:
-    ///     "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    /// })
-    ///   .pipe(
-    ///     filter(({ item }) => item.tag === "Initialized"),
-    ///     take(1),
-    ///     mergeMap(({ followSubscriptionId, genesisHash }) =>
+    /// const result = await firstValueFrom(
+    ///   withChainHeadFollow({
+    ///     genesisHash:
+    ///       "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///   }).pipe(
+    ///     mergeMap(({ genesisHash, followSubscriptionId }) =>
     ///       truapi.chain.continueHead({
     ///         genesisHash,
     ///         followSubscriptionId,
     ///         operationId: "op-id",
     ///       }),
     ///     ),
-    ///   )
-    ///   .subscribe((result) =>
-    ///     result.match(
-    ///       () => console.log("ok"),
-    ///       (error) => console.error(error),
-    ///     ),
-    ///   );
-    ///
-    /// // #region helpers
-    /// function followHead({ genesisHash }: { genesisHash: `0x${string}` }) {
-    ///   return new Observable<{
-    ///     item: any;
-    ///     followSubscriptionId: string;
-    ///     genesisHash: `0x${string}`;
-    ///   }>((observer) => {
-    ///     const sub = truapi.chain
-    ///       .followHeadSubscribe({ request: { genesisHash, withRuntime: false } })
-    ///       .subscribe({
-    ///         next: (item) =>
-    ///           observer.next({
-    ///             item,
-    ///             followSubscriptionId: sub.subscriptionId,
-    ///             genesisHash,
-    ///           }),
-    ///         error: (err) => observer.error(err),
-    ///         complete: () => observer.complete(),
-    ///       });
-    ///     return () => sub.unsubscribe();
-    ///   });
-    /// }
-    /// // #endregion
+    ///   ),
+    /// );
+    /// result.match(
+    ///   () => console.log("ok"),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 90)]
     async fn continue_head(
@@ -479,53 +250,26 @@ pub trait Chain: Send + Sync {
     /// Stop a chain-head operation.
     ///
     /// ```ts
-    /// import { Observable, filter, mergeMap, take } from "rxjs";
+    /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
-    /// followHead({
-    ///   genesisHash:
-    ///     "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    /// })
-    ///   .pipe(
-    ///     filter(({ item }) => item.tag === "Initialized"),
-    ///     take(1),
-    ///     mergeMap(({ followSubscriptionId, genesisHash }) =>
+    /// const result = await firstValueFrom(
+    ///   withChainHeadFollow({
+    ///     genesisHash:
+    ///       "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///   }).pipe(
+    ///     mergeMap(({ genesisHash, followSubscriptionId }) =>
     ///       truapi.chain.stopHeadOperation({
     ///         genesisHash,
     ///         followSubscriptionId,
     ///         operationId: "op-id",
     ///       }),
     ///     ),
-    ///   )
-    ///   .subscribe((result) =>
-    ///     result.match(
-    ///       () => console.log("ok"),
-    ///       (error) => console.error(error),
-    ///     ),
-    ///   );
-    ///
-    /// // #region helpers
-    /// function followHead({ genesisHash }: { genesisHash: `0x${string}` }) {
-    ///   return new Observable<{
-    ///     item: any;
-    ///     followSubscriptionId: string;
-    ///     genesisHash: `0x${string}`;
-    ///   }>((observer) => {
-    ///     const sub = truapi.chain
-    ///       .followHeadSubscribe({ request: { genesisHash, withRuntime: false } })
-    ///       .subscribe({
-    ///         next: (item) =>
-    ///           observer.next({
-    ///             item,
-    ///             followSubscriptionId: sub.subscriptionId,
-    ///             genesisHash,
-    ///           }),
-    ///         error: (err) => observer.error(err),
-    ///         complete: () => observer.complete(),
-    ///       });
-    ///     return () => sub.unsubscribe();
-    ///   });
-    /// }
-    /// // #endregion
+    ///   ),
+    /// );
+    /// result.match(
+    ///   () => console.log("ok"),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 92)]
     async fn stop_head_operation(
