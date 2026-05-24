@@ -82,7 +82,17 @@ Should be filed as a security-grade bug against the iOS app independent of this 
 
 ## 6. Quint spec status
 
-File: `docs/specs/coinage-layer.qnt`. Currently ~2100 lines. **All 12 work-plan steps complete.**
+File: `docs/specs/coinage-layer.qnt`. Currently **3726 lines**. All 12 original work-plan steps complete, plus 7 behavioral-contract tracks (A–G), plus 3 design-coverage tasks (1–3). **Last committed: `bedc7ae`** (the 3066-line behavioral-contract version); the additional ~660 lines for design-coverage tasks 1–3 are uncommitted.
+
+### Coverage of design doc (`docs/design/coinage-layer.md`)
+
+Roughly **92–93%** of the design is reflected in the spec. See §9 below for the detailed gap analysis.
+
+### Verification status (current uncommitted code)
+
+- **Simulator**: `safety` (28 invariants combined) passes 5 consecutive runs at 2000 traces × 40 steps.
+- **Apalache (on `bedc7ae`, 3066 lines)**: `safety` aggregate clean at `--max-steps=3` (165s); individual invariants like `conservation`, `noEntryOnExpiredRing`, `derivationInjective` clean at depth 3 (~30–80s each).
+- **Apalache (on current 3726 lines)**: not yet re-run after design-coverage additions. Pending.
 
 ### What's modeled
 - **State machines** — coin lifecycle, entry on-chain readiness (with anonymity floor), entry local lifecycle, operation status (full Submitted/InBlock/Finalized/Waiting/Done/SFailed(reason) progression).
@@ -128,12 +138,34 @@ File: `docs/specs/coinage-layer.qnt`. Currently ~2100 lines. **All 12 work-plan 
 2. `quint run docs/specs/coinage-layer.qnt --invariant=safety --max-samples=2000 --max-steps=50` — must pass.
 3. New invariants — additionally checked individually with `--invariant=NAME`.
 
-### Possible future tightening
-- **Apalache check.** `quint verify --apalache` for bounded-state symbolic checking. Currently simulator-only.
-- **Per-tier selection witnesses.** `transferAmount` consumes a caller-supplied subset; tier 2 (split) and tier 3 (unload-into-coins) are subsumed by the predicate `selectionFeasible` but not split into separate actions.
-- **Subscription state.** Streams are not modeled (§8.9). Only the underlying event log is.
-- **Anonymity-floor enforcement.** The spec carries `OnDegraded` as a state but never produces traces with ring sizes < `AnonymityFloor`. Add ring-size tracking + a chain-side action that promotes to `OnDegraded` if floor not met.
-- **Recovery realism.** `recover` currently re-creates an empty purse record; a more faithful model would also reconstruct expected coin/entry records from a hypothetical chain side.
+### Behavioral-contract upgrades (tracks A–G, after step 12)
+- **A**: every API primitive produces a real multi-phase op (Transfer/TopUp/Export/Import/Rebalance).
+- **B**: deterministic-selection ordering scaffolding (`coinOrderLT`, `entryOrderLT`, `coinPriorityRank`, `entryPriorityRank`); `startTransferDeterministic` for single-coin tier-1.
+- **C**: ring sizes tracked; `chainPromoteToDegraded` action; `anonymityFloorEnforced` invariant (later moved out of `safety` — see §11 below).
+- **D**: external offload surplus reload (`opOffboard` requires `surplusExponent`; `opRequested` per-op state var).
+- **E**: `runMaintenanceSweep` actually fires one eligible recycle/rescue per call.
+- **F**: three temporal properties (`everyOpEventuallyTerminates`, `everyAgingCoinEventuallyConsumed`, `everyNearExpiryEntryRescued`). Liveness checking requires Apalache fairness flags; not yet run.
+- **G**: `chainSnipeCoin` adversary action exercises the `FRSnipedCoin` failure path.
+
+### Design-coverage tasks 1–3 (latest, uncommitted)
+- **Task 1**: multi-coin deterministic selection — `selectExactCoverDeterministic` function returning the lex-min exact cover via powerset + lex-min fold; `startTransferDeterministicMulti(p, amount)` action.
+- **Task 2**: multi-group unload — `startExternalOffloadMulti(ents, requested)` locks a set; `opOffboardGroup(h, gExp, gRing, surplusExponent, externalForGroup)` consumes one (denom, ring) group per call; `opCompleteExternalOffload(h)` asserts `externalized == requested`. Legacy single-entry `opOffboard` gated to `lockedEntries.size() == 1`. `canAdvanceToSubmitted` tightened to require pending locks for non-allocate-only kinds.
+- **Task 3**: gap-limit recovery — `chainCoins`/`chainEntries` mirror state vars (with creation-time semantics); `BatchSize=2`, `GapLimit=2`, `MaxScanIndex=10`; pure `gapLimitScanCoins`/`gapLimitScanEntries`; `restartAndRecover(p)` atomic loss+recover action (DEFINED but excluded from default `step` because chain stores creation-state records and would reincarnate locally-spent records, breaking conservation; testable in dedicated scenarios). `recover` refactored to use gap-limit scan with purse cursors updated to max idx+1. Every creation site mirrors into chain. `deletePurse` wipes local AND chain records. `chainMirrorsLocal` invariant added to `safety`.
+
+### Limitations of current spec
+- **Apalache check on current 3726-line spec** not yet re-run after design-coverage tasks. Last Apalache baseline is at commit `bedc7ae` (3066 lines, depth 3).
+- **`restartAndRecover` not in default `step`** — recovery is encoded but only testable in dedicated scenarios. Resolving this needs the chain mirror to track state changes (spends, lock/release) not just creates.
+- **`anonymityFloorEnforced` moved out of `safety`** — `deletePurse` shrinks rings post-seal; the invariant is a per-promotion property (already enforced by `chainPromoteToReady`'s precondition) not a state invariant. Definition still present in spec, just not in the aggregate.
+- **Subscription state (§8.9) absent** — events log is the underlying substrate, but there's no subscription stream entity.
+- **Probabilistic uniform-random jitter** is modeled as deterministic max (Quint can't natively express probability distributions).
+- **Information surface (§12.2)** isn't modeled — would need info-flow formalism.
+
+### What's NOT achievable in pure Quint (~5–8% of design)
+- Probabilistic-distribution semantics (uniform-random jitter).
+- Information-flow / observer / privacy analysis.
+- True cryptographic primitive correctness (BLS/Bandersnatch oracles).
+- Full external-offload planner re-planning loop (Plan → Recycle → Wait → Offboard with re-planning).
+- Multi-entry surplus reload over non-power-of-2 amounts (current model requires `coinValue(surplusExponent) == surplus`).
 
 ## 7. Verification workflow
 
@@ -169,15 +201,63 @@ When in doubt about a design point, the following code is the existing-reality r
 
 ## 10. Open follow-ups (not yet acted on)
 
+- **Commit the post-`bedc7ae` work** (tasks 1, 2, 3) when ready. User will instruct when.
+- **Re-run Apalache** on the current 3726-line spec (was clean at depth 3 on prior 3066-line version). Suggested batch:
+  ```bash
+  for inv in conservation noEntryOnExpiredRing derivationInjective midSubmissionHoldsLocks lockConsistency chainMirrorsLocal safety; do
+    quint verify --invariant=$inv docs/specs/coinage-layer.qnt --max-steps=3
+  done
+  ```
 - File the iOS silent-loss-of-funds bug as a security issue.
-- The PR #122 description currently describes the original *unified* design. Once the bottom-layer split is finalized, the PR should be updated to reflect the split (or split into two PRs).
-- Top-layer (RFC‑17 / Coinage Payment) design has not been written; user wanted to finish the bottom-layer spec first.
+- PR #122 description still reflects the original *unified* design — update after bottom-layer split is finalized.
+- Top-layer (RFC‑17 / Coinage Payment) design not yet started.
 
-## 11. Continuing the work
+## 11. NEXT MAJOR STAGE — Verus Rust implementation
 
-To resume:
-1. Read this file.
+**The user wants to start implementing the Coinage Layer in Rust using Verus, with the Quint spec as the contract source.** This is Stage 2 of the three-stage pipeline (Quint spec → Verus impl → optional Lean refinement) documented in the Obsidian vault notes at:
+- `/Users/torsten/Documents/knowledge/Knowledge/09-Resources/Knowledge/Formal Methods + AI/00_overview.md` (reference + manual)
+- `/Users/torsten/Documents/knowledge/Knowledge/05-Areas/Engineering-Excellence/Formal Methods + AI at Parity.md` (strategy)
+
+### Stack confirmed
+- **Verus** (MIT, github.com/verus-lang/verus) — Rust subset with `spec`, `proof`, `ghost`, `requires`, `ensures`, `invariant`, `decreases`. SMT-backed via Z3.
+- **Claude Code** as the interactive proof assistant (no separate API key needed; AutoVerus requires API access we don't have).
+- **Quint spec** at `docs/specs/coinage-layer.qnt` is the contract source — every Verus `requires`/`ensures` should derive from a Quint invariant or action precondition.
+
+### Suggested pilot scope
+Start with TWO bounded primitives to validate the workflow:
+1. `createPurse(newId, name)` — synchronous, no chain interaction; smallest possible test.
+2. `queryPurse(purseId)` — synchronous read returning `PurseInfo`; tests data structure invariants.
+
+This pilot validates:
+- Verus toolchain setup on the repo
+- Translation pattern from Quint definitions to Verus contracts
+- Claude Code conversational proof workflow
+- Time-box estimate (target: ~1 week per the strategy note)
+
+### Suggested first commands to run after compact
+```bash
+# Verify spec is clean before starting implementation
+quint typecheck docs/specs/coinage-layer.qnt
+quint run docs/specs/coinage-layer.qnt --invariant=safety --max-samples=2000 --max-steps=40
+
+# Install Verus toolchain (one-time)
+# Per https://github.com/verus-lang/verus — installs via `vargo` or rustup component
+# Add a Rust crate within the truapi workspace, e.g. `rust/crates/coinage-layer/`
+
+# First module to translate: PurseId, PurseRec, basic invariants
+```
+
+### Critical context to keep
+- The Quint spec is authoritative. Verus contracts must match Quint semantics; Quint catches design bugs the Rust impl shouldn't introduce.
+- Selection ordering (§6.3) and gap-limit recovery (Appendix C) have specific Quint encodings — see `selectExactCoverDeterministic`, `gapLimitScanCoins`, `coinOrderLT` for reference.
+- Derivation: hard junctions only, `//coinage//coin//<P>//<PAGE>//<I>` and `//coinage//ring-vrf//<P>//<PAGE>//<I>`, page=0 for now.
+
+## 12. Continuing the work after compact
+
+To resume after `/compact`:
+1. Read this file (`docs/specs/COINAGE-LAYER-WORK-NOTES.md`).
 2. Read `docs/design/coinage-layer.md` (current design).
-3. Read `docs/specs/coinage-layer.qnt` (current spec).
-4. Run `quint typecheck docs/specs/coinage-layer.qnt && quint run docs/specs/coinage-layer.qnt --invariant=safety --max-samples=5000 --max-steps=50` to confirm clean baseline.
-5. Pick up at step 1 of §6 of this file.
+3. Read `docs/specs/coinage-layer.qnt` (current spec — 3726 lines).
+4. Verify baseline: `quint typecheck docs/specs/coinage-layer.qnt && quint run docs/specs/coinage-layer.qnt --invariant=safety --max-samples=2000 --max-steps=40`.
+5. Proceed to Verus pilot (§11 above).
+6. If user wants to first commit task 1/2/3 work, do that — uncommitted at the time of compact.
