@@ -96,12 +96,10 @@ pub enum EntryOnChain {
 }
 
 /// Recycler entry local-side state (Quint `EntryLocal`, design §5.4).
-/// `LocalLockedFor` drops the operation-handle payload (the operations
-/// subsystem is not modeled in the pilot).
 #[derive(PartialEq, Eq, Copy, Clone)]
 pub enum EntryLocal {
     LocalAvailable,
-    LocalLockedFor,
+    LocalLockedFor(OpHandle),
     LocalConsumed,
 }
 
@@ -2717,7 +2715,7 @@ impl State {
 
     /// Entry local lifecycle: `LocalAvailable` → `LocalLockedFor`.
     /// Reserve an entry for an in-flight operation.
-    pub fn lock_entry(&mut self, key: (PurseId, u64))
+    pub fn lock_entry(&mut self, key: (PurseId, u64), handle: OpHandle)
         requires
             old(self).invariant(),
             old(self).entries().dom().contains(key),
@@ -2732,19 +2730,19 @@ impl State {
                 idx: old(self).entries()[key].idx,
                 exponent: old(self).entries()[key].exponent,
                 on_chain: old(self).entries()[key].on_chain,
-                local: EntryLocal::LocalLockedFor,
+                local: EntryLocal::LocalLockedFor(handle),
             }),
     {
-        self.set_entry_local(key, EntryLocal::LocalLockedFor);
+        self.set_entry_local(key, EntryLocal::LocalLockedFor(handle));
     }
 
-    /// Entry local lifecycle: `LocalLockedFor` → `LocalConsumed`.
+    /// Entry local lifecycle: `LocalLockedFor(_)` → `LocalConsumed`.
     /// Finalize an entry's consumption after settlement.
     pub fn consume_entry(&mut self, key: (PurseId, u64))
         requires
             old(self).invariant(),
             old(self).entries().dom().contains(key),
-            old(self).entries()[key].local == EntryLocal::LocalLockedFor,
+            exists|h: OpHandle| old(self).entries()[key].local == EntryLocal::LocalLockedFor(h),
         ensures
             final(self).invariant(),
             final(self).purses() == old(self).purses(),
@@ -2761,13 +2759,13 @@ impl State {
         self.set_entry_local(key, EntryLocal::LocalConsumed);
     }
 
-    /// Entry local lifecycle: `LocalLockedFor` → `LocalAvailable`.
+    /// Entry local lifecycle: `LocalLockedFor(_)` → `LocalAvailable`.
     /// Release the entry's reservation when the in-flight operation cancels.
     pub fn release_entry_lock(&mut self, key: (PurseId, u64))
         requires
             old(self).invariant(),
             old(self).entries().dom().contains(key),
-            old(self).entries()[key].local == EntryLocal::LocalLockedFor,
+            exists|h: OpHandle| old(self).entries()[key].local == EntryLocal::LocalLockedFor(h),
         ensures
             final(self).invariant(),
             final(self).purses() == old(self).purses(),
@@ -3630,7 +3628,10 @@ impl State {
             final(self).coins()[new_coin_key].exponent == old(self).entries()[key].exponent,
     {
         let exp = self.read_entry_exponent(key);
-        self.set_entry_local(key, EntryLocal::LocalLockedFor);
+        // For the pilot, unload_via_entry doesn't yet thread an OpHandle.
+        // Use handle = 0 as a placeholder; the handle becomes meaningful
+        // once unload is wired through `tracked_*` composite operations.
+        self.set_entry_local(key, EntryLocal::LocalLockedFor(0));
         self.set_entry_local(key, EntryLocal::LocalConsumed);
         let ghost post_consume_entries = self.entries();
         let new_key = self.add_coin(key.0, exp);
