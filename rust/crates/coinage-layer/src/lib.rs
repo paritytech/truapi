@@ -4116,6 +4116,51 @@ impl State {
         }
     }
 
+    /// Tracked unload via entry: wraps [`Self::unload_via_entry`] in a
+    /// `KExternalOffload` operation. Allocates the op handle, runs the
+    /// unload (entry → coin), then advances the op to `Submitted`.
+    /// Returns `(handle, new_coin_key)` so callers can correlate later
+    /// chain events to this operation.
+    ///
+    /// Quint analog: the full lifecycle of `startExternalOffload`
+    /// reduced to its local-state effects.
+    pub fn tracked_unload_via_entry(&mut self, key: (PurseId, u64))
+        -> (res: (OpHandle, (PurseId, u64)))
+        requires
+            old(self).invariant(),
+            old(self).entries().dom().contains(key),
+            old(self).entries()[key].local == EntryLocal::LocalAvailable,
+            old(self).entries()[key].on_chain == EntryOnChain::Ready,
+            old(self).purses().dom().contains(key.0),
+            old(self).purses()[key.0].next_coin_idx < u64::MAX,
+            old(self).next_age < u64::MAX,
+            old(self).next_handle < u64::MAX,
+        ensures
+            final(self).invariant(),
+            res.0 == old(self).next_handle,
+            final(self).operations().dom().contains(res.0),
+            final(self).operations()[res.0].status == OpStatus::Submitted,
+            final(self).operations()[res.0].kind == OpKind::ExternalOffload,
+            final(self).operations()[res.0].purse == key.0,
+            res.1.0 == key.0,
+            final(self).coins().dom().contains(res.1),
+            final(self).coins()[res.1].state == CoinState::Available,
+            final(self).coins()[res.1].exponent == old(self).entries()[key].exponent,
+    {
+        let handle = self.start_op(OpKind::ExternalOffload, key.0);
+        proof {
+            assert(self.operations()[handle].kind == OpKind::ExternalOffload);
+            assert(self.operations()[handle].purse == key.0);
+        }
+        let new_coin_key = self.unload_via_entry(key, handle);
+        proof {
+            assert(self.operations()[handle].kind == OpKind::ExternalOffload);
+            assert(self.operations()[handle].purse == key.0);
+        }
+        self.mark_op_submitted(handle);
+        (handle, new_coin_key)
+    }
+
     /// Tier-3 unload: consume a `Ready` recycler entry to mint a fresh
     /// `Available` coin in the same purse. The entry walks
     /// `LocalAvailable → LocalLockedFor → LocalConsumed`; the new coin
@@ -4145,6 +4190,11 @@ impl State {
             final(self).coins().dom().contains(new_coin_key),
             final(self).coins()[new_coin_key].state == CoinState::Available,
             final(self).coins()[new_coin_key].exponent == old(self).entries()[key].exponent,
+            // Operations untouched: this is a state-mutating but op-agnostic primitive.
+            final(self).operations() == old(self).operations(),
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
     {
         let exp = self.read_entry_exponent(key);
         self.set_entry_local(key, EntryLocal::LocalLockedFor(handle));
