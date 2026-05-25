@@ -4689,6 +4689,56 @@ impl State {
         c
     }
 
+    /// Exec witness for the [`Self::has_live_coin_in`] spec predicate:
+    /// `true` iff at least one coin in purse `p` is in any non-`Spent`
+    /// state. Pair with [`Self::has_in_flight_op_for_purse`] before
+    /// `delete_purse` to surface "purse not empty" as an early bail
+    /// instead of a precondition trap.
+    pub fn check_has_live_coin_in(&self, p: PurseId) -> (res: bool)
+        requires
+            self.invariant(),
+        ensures
+            res == self.has_live_coin_in(p),
+    {
+        let mut j: usize = 0;
+        while j < self.coins.len()
+            invariant
+                0 <= j <= self.coins.len(),
+                self.invariant(),
+                forall|jj: int| 0 <= jj < j ==>
+                    (#[trigger] self.coins@[jj]).purse != p
+                    || self.coins@[jj].state == CoinState::Spent,
+            decreases self.coins.len() - j,
+        {
+            let c = &self.coins[j];
+            let is_spent = matches!(c.state, CoinState::Spent);
+            if c.purse == p && !is_spent {
+                let key = (c.purse, c.idx);
+                proof {
+                    assert(self.spec_coins@.dom().contains(key));
+                    assert(self.coins()[key].state == self.coins@[j as int].state);
+                }
+                return true;
+            }
+            j = j + 1;
+        }
+        proof {
+            assert forall|k: (PurseId, u64)|
+                #[trigger] self.coins().dom().contains(k)
+                && k.0 == p
+                implies self.coins()[k].state == CoinState::Spent
+            by {
+                let w = choose|jj: int|
+                    0 <= jj < self.coins@.len()
+                    && #[trigger] self.coins@[jj].purse == k.0
+                    && self.coins@[jj].idx == k.1;
+                assert(self.coins@[w].purse == p);
+                assert(self.coins@[w].state == self.coins()[k].state);
+            }
+        }
+        false
+    }
+
     /// Count of operations currently in-flight (non-terminal status).
     pub fn op_count_in_flight(&self) -> (count: usize)
         requires
