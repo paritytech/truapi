@@ -4689,6 +4689,57 @@ impl State {
         c
     }
 
+    /// Count of all coins (any state) in purse `p`. Useful diagnostic
+    /// for "how cluttered is this purse?". Distinguish from
+    /// coin_count_available which excludes locked/spent/pending.
+    pub fn coin_count_in_purse(&self, p: PurseId) -> (count: usize)
+        requires
+            self.invariant(),
+        ensures
+            count <= self.coins@.len(),
+    {
+        let mut c: usize = 0;
+        let mut j: usize = 0;
+        while j < self.coins.len()
+            invariant
+                0 <= j <= self.coins.len(),
+                c <= j,
+                self.invariant(),
+            decreases self.coins.len() - j,
+        {
+            if self.coins[j].purse == p {
+                c = c + 1;
+            }
+            j = j + 1;
+        }
+        c
+    }
+
+    /// Count of all entries (any state) in purse `p`. Entry parallel
+    /// of `coin_count_in_purse`.
+    pub fn entry_count_in_purse(&self, p: PurseId) -> (count: usize)
+        requires
+            self.invariant(),
+        ensures
+            count <= self.entries@.len(),
+    {
+        let mut c: usize = 0;
+        let mut j: usize = 0;
+        while j < self.entries.len()
+            invariant
+                0 <= j <= self.entries.len(),
+                c <= j,
+                self.invariant(),
+            decreases self.entries.len() - j,
+        {
+            if self.entries[j].purse == p {
+                c = c + 1;
+            }
+            j = j + 1;
+        }
+        c
+    }
+
     /// Count of `Available` coins in purse `p`. Used by maintenance
     /// triggers — e.g. "if coin_count_available(p) > threshold, run
     /// rebalance to consolidate into fewer larger coins".
