@@ -2038,6 +2038,37 @@ impl State {
         vstd::pervasive::unreached()
     }
 
+    /// Atomic composite: commit an op that's holding one locked entry.
+    /// Consumes the entry (`LocalLockedFor → LocalConsumed`) and
+    /// marks the op `Done`. Used by the commit path of unload /
+    /// external-offload when the chain has confirmed the entry-spend
+    /// extrinsic.
+    pub fn commit_op_consuming_locked_entry(
+        &mut self,
+        handle: OpHandle,
+        key: (PurseId, u64),
+    )
+        requires
+            old(self).invariant(),
+            old(self).operations().dom().contains(handle),
+            old(self).operations()[handle].status == OpStatus::Finalized,
+            old(self).entries().dom().contains(key),
+            old(self).entries()[key].local == EntryLocal::LocalLockedFor(handle),
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins(),
+            final(self).entries().dom().contains(key),
+            final(self).entries()[key].local == EntryLocal::LocalConsumed,
+            final(self).operations().dom().contains(handle),
+            final(self).operations()[handle].status == OpStatus::Done,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+    {
+        self.consume_entry(key);
+        self.mark_op_done(handle);
+    }
+
     /// Atomic composite: commit an op that's holding one locked coin.
     /// Consumes the coin (`LockedFor → PendingSpend → Spent`) and
     /// marks the op `Done`. Used by the commit path of transfer /
@@ -3563,6 +3594,10 @@ impl State {
                 on_chain: old(self).entries()[key].on_chain,
                 local: EntryLocal::LocalConsumed,
             }),
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
     {
         self.set_entry_local(key, EntryLocal::LocalConsumed);
     }
