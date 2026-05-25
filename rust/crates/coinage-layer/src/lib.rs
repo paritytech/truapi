@@ -184,6 +184,55 @@ pub struct EntryRec {
     pub ring_idx: u64,
 }
 
+/// Spec helper: extract the lock handle from a coin's state, if any.
+/// Returns `Some(h)` for `LockedFor(h)`, `None` otherwise. Avoids
+/// match-bound variables in proof contexts — see Phase 1d note in
+/// project memory.
+pub open spec fn coin_lock_handle(state: CoinState) -> Option<OpHandle> {
+    match state {
+        CoinState::LockedFor(h) => Some(h),
+        _ => None,
+    }
+}
+
+/// Spec helper: extract the lock handle from an entry's local state,
+/// if any. Returns `Some(h)` for `LocalLockedFor(h)`, `None` otherwise.
+pub open spec fn entry_lock_handle(local: EntryLocal) -> Option<OpHandle> {
+    match local {
+        EntryLocal::LocalLockedFor(h) => Some(h),
+        _ => None,
+    }
+}
+
+/// Cross-state lock referential integrity (Phase 1d-deferred
+/// invariant). Every coin in `LockedFor(h)` references an existing
+/// operation `h`; same for every entry in `LocalLockedFor(h)`.
+///
+/// Not part of the State's main `invariant()` predicate — that would
+/// cascade through every method's proof. Instead this is an *opt-in*
+/// predicate that callers can preserve themselves and pass as a
+/// precondition to primitives that need it (e.g. a future bulk-sweep
+/// `cancel_op` that wants to assert "after release, no LockedFor(h)
+/// references h").
+pub open spec fn lock_refint(
+    coins: Map<(PurseId, u64), CoinRec>,
+    entries: Map<(PurseId, u64), EntryRec>,
+    operations: Map<OpHandle, OperationRec>,
+) -> bool {
+    (forall|k: (PurseId, u64)|
+        #[trigger] coins.dom().contains(k)
+        ==> {
+            let h_opt = coin_lock_handle(coins[k].state);
+            h_opt.is_none() || operations.dom().contains(h_opt.unwrap())
+        })
+    && (forall|k: (PurseId, u64)|
+        #[trigger] entries.dom().contains(k)
+        ==> {
+            let h_opt = entry_lock_handle(entries[k].local);
+            h_opt.is_none() || operations.dom().contains(h_opt.unwrap())
+        })
+}
+
 /// True iff `status` is a terminal op state (no further transitions
 /// follow). Quint `isTerminal`.
 pub open spec fn is_terminal_op_status(status: OpStatus) -> bool {
@@ -708,6 +757,7 @@ impl State {
                 next_entry_idx: 0,
             }),
             s.coins().dom() =~= Set::<(PurseId, u64)>::empty(),
+            lock_refint(s.coins(), s.entries(), s.operations()),
     {
         let main_rec = PurseRec {
             id: MAIN_PURSE,
@@ -3113,6 +3163,14 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            // lock_refint preservation: if the old state satisfied
+            // refint AND the handle is a known op, the new state still
+            // satisfies refint (the only new LockedFor edge references h,
+            // which is in operations.dom).
+            (lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
+                && old(self).operations().dom().contains(handle))
+                ==> lock_refint(final(self).coins(), final(self).entries(),
+                                final(self).operations()),
     {
         self.transition_coin_state(key, CoinState::LockedFor(handle));
     }
