@@ -3100,6 +3100,10 @@ impl State {
                 on_chain: new_state,
                 local: old(self).entries()[key].local,
             }),
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
     {
         let ghost old_purses_vec = self.purses@;
         let ghost old_spec_purses = self.spec_purses@;
@@ -3276,6 +3280,57 @@ impl State {
                 && old_entries_vec[jj].idx == key.1;
         }
         vstd::pervasive::unreached()
+    }
+
+    /// Anonymity-floor confirmation: entry's on-chain state advances
+    /// `Waiting → Ready` because the chain has confirmed sufficient
+    /// ring-membership has accumulated. Quint analog:
+    /// `chainPromoteToReady`.
+    pub fn mark_entry_ready(&mut self, key: (PurseId, u64))
+        requires
+            old(self).invariant(),
+            old(self).entries().dom().contains(key),
+            old(self).entries()[key].on_chain == EntryOnChain::Waiting,
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).entries().dom().contains(key),
+            final(self).entries()[key].on_chain == EntryOnChain::Ready,
+            final(self).entries()[key].local == old(self).entries()[key].local,
+            final(self).entries()[key].exponent == old(self).entries()[key].exponent,
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+    {
+        self.set_entry_on_chain(key, EntryOnChain::Ready);
+    }
+
+    /// Anonymity-floor regression: entry's on-chain state degrades
+    /// `Ready → Missing` because subsequent ring activity has dropped
+    /// below the floor (or the entry has expired). Quint analog:
+    /// `chainPromoteToDegraded`.
+    pub fn mark_entry_missing(&mut self, key: (PurseId, u64))
+        requires
+            old(self).invariant(),
+            old(self).entries().dom().contains(key),
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).entries().dom().contains(key),
+            final(self).entries()[key].on_chain == EntryOnChain::Missing,
+            final(self).entries()[key].local == old(self).entries()[key].local,
+            final(self).entries()[key].exponent == old(self).entries()[key].exponent,
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+    {
+        self.set_entry_on_chain(key, EntryOnChain::Missing);
     }
 
     /// Entry local lifecycle: `LocalAvailable` → `LocalLockedFor`.
