@@ -5052,6 +5052,7 @@ impl State {
                 _ => false,
             };
             if op.purse == p && !is_terminal {
+                #[allow(unused_variables)]
                 let h = op.handle;
                 proof {
                     assert(self.spec_operations@.dom().contains(h));
@@ -5098,6 +5099,7 @@ impl State {
             decreases self.operations.len() - j,
         {
             if self.operations[j].purse == p {
+                #[allow(unused_variables)]
                 let h = self.operations[j].handle;
                 proof {
                     assert(self.spec_operations@.dom().contains(h));
