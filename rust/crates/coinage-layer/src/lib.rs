@@ -1139,16 +1139,17 @@ impl State {
         Err(Error::PurseNotFound(p))
     }
 
-    /// Internal: allocate a fresh coin in purse `p` with the given `exponent`.
-    ///
-    /// This is the elemental coin-creating primitive. Higher-level operations
-    /// (top-up, transfer, rebalance) decompose into one or more `add_coin`
-    /// plus updates to coin state. The coin's `idx` is the purse's current
-    /// `next_coin_idx`, after which the per-purse allocator is bumped. The
-    /// coin's `age` is the state-global `next_age`, after which the global
-    /// allocator is bumped — this gives a total order on coin creation
-    /// suitable for the §6.3 priority ordering.
-    pub fn add_coin(&mut self, p: PurseId, exponent: u8) -> (key: (PurseId, u64))
+    /// Allocate a fresh coin in purse `p` carrying a caller-supplied
+    /// chain `account`. Quint analog: the bottom-layer effect of any
+    /// op that delivers a coin (top-up, transfer destination,
+    /// rebalance destination) to a specific chain account. The coin's
+    /// `idx` is the purse's current `next_coin_idx`, after which the
+    /// per-purse allocator is bumped. The coin's `age` is the
+    /// state-global `next_age`, after which the global allocator is
+    /// bumped — this gives a total order on coin creation suitable
+    /// for the §6.3 priority ordering.
+    pub fn add_coin_with_account(&mut self, p: PurseId, exponent: u8, account: u64)
+        -> (key: (PurseId, u64))
         requires
             old(self).invariant(),
             old(self).purses().dom().contains(p),
@@ -1165,7 +1166,7 @@ impl State {
                 exponent,
                 state: CoinState::Pending,
                 age: old(self).next_age,
-                account: 0,
+                account,
             }),
             final(self).next_age == old(self).next_age + 1,
             final(self).purses().dom() =~= old(self).purses().dom(),
@@ -1247,7 +1248,7 @@ impl State {
                     exponent,
                     state: CoinState::Pending,
                     age: cur_age,
-                    account: 0,
+                    account,
                 };
                 self.coins.push(new_coin);
 
@@ -1511,6 +1512,49 @@ impl State {
             assert(self.purses@[w].id != p);
         }
         vstd::pervasive::unreached()
+    }
+
+    /// Allocate a fresh coin in purse `p` without specifying its chain
+    /// account. Thin wrapper over [`Self::add_coin_with_account`] that
+    /// passes `account = 0` — used by callers that don't yet thread the
+    /// chain side (transfer, rebalance, split_coin, top_up_purse).
+    pub fn add_coin(&mut self, p: PurseId, exponent: u8) -> (key: (PurseId, u64))
+        requires
+            old(self).invariant(),
+            old(self).purses().dom().contains(p),
+            old(self).purses()[p].next_coin_idx < u64::MAX,
+            old(self).next_age < u64::MAX,
+        ensures
+            final(self).invariant(),
+            key.0 == p,
+            key.1 == old(self).purses()[p].next_coin_idx,
+            !old(self).coins().dom().contains(key),
+            final(self).coins() == old(self).coins().insert(key, CoinRec {
+                purse: p,
+                idx: key.1,
+                exponent,
+                state: CoinState::Pending,
+                age: old(self).next_age,
+                account: 0,
+            }),
+            final(self).next_age == old(self).next_age + 1,
+            final(self).purses().dom() =~= old(self).purses().dom(),
+            final(self).purses()[p].id == p,
+            final(self).purses()[p].name == old(self).purses()[p].name,
+            final(self).purses()[p].next_coin_idx
+                == old(self).purses()[p].next_coin_idx + 1,
+            final(self).purses()[p].next_entry_idx
+                == old(self).purses()[p].next_entry_idx,
+            forall|q: PurseId| q != p && #[trigger] old(self).purses().dom().contains(q)
+                ==> final(self).purses()[q] == old(self).purses()[q],
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).spec_entries@ == old(self).spec_entries@,
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+    {
+        self.add_coin_with_account(p, exponent, 0)
     }
 
     /// Allocate a fresh recycler entry in purse `p` with full chain
