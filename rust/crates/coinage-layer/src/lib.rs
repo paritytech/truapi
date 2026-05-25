@@ -75,7 +75,7 @@ pub enum CoinState {
 }
 
 /// Coin record (Quint `CoinRec`, design §3.2).
-/// Pilot scope: `account` and `age` are deferred.
+/// Pilot scope: `account`, `age`, `memberKey` are deferred.
 #[derive(Copy, Clone)]
 pub struct CoinRec {
     pub purse: PurseId,
