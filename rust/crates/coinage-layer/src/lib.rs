@@ -2038,6 +2038,47 @@ impl State {
         vstd::pervasive::unreached()
     }
 
+    /// Atomic composite: start a new operation and lock `key`'s coin
+    /// for it. The coin must currently be `Available`; on return it
+    /// is `LockedFor(handle)`, and the operation is in `Preparing`.
+    ///
+    /// This is the canonical entry point for op flows that reserve a
+    /// specific coin upfront (transfer, rebalance, export). Avoids
+    /// the temporal-gap problem of separately starting the op then
+    /// locking the coin, where another concurrent call could observe
+    /// the half-built state.
+    pub fn start_op_locking_coin(
+        &mut self,
+        kind: OpKind,
+        key: (PurseId, u64),
+    ) -> (handle: OpHandle)
+        requires
+            old(self).invariant(),
+            old(self).coins().dom().contains(key),
+            old(self).coins()[key].state == CoinState::Available,
+            old(self).purses().dom().contains(key.0),
+            old(self).next_handle < u64::MAX,
+        ensures
+            final(self).invariant(),
+            handle == old(self).next_handle,
+            final(self).operations().dom().contains(handle),
+            final(self).operations()[handle].status == OpStatus::Preparing,
+            final(self).operations()[handle].kind == kind,
+            final(self).operations()[handle].purse == key.0,
+            final(self).coins().dom().contains(key),
+            final(self).coins()[key].state == CoinState::LockedFor(handle),
+            final(self).coins()[key].exponent == old(self).coins()[key].exponent,
+            final(self).next_handle == old(self).next_handle + 1,
+            final(self).next_age == old(self).next_age,
+    {
+        let handle = self.start_op(kind, key.0);
+        proof {
+            assert(self.coins()[key].state == CoinState::Available);
+        }
+        self.lock_coin(key, handle);
+        handle
+    }
+
     /// Allocate a fresh recycler entry without chain bookkeeping. Thin
     /// wrapper over [`Self::add_entry_with_meta`] that supplies zero
     /// placeholders for `member_key`, `allocated_at`, `ready_at`, and
