@@ -3723,6 +3723,40 @@ impl State {
         vstd::pervasive::unreached()
     }
 
+    /// Variant of [`Self::start_op`] that also appends an
+    /// `OperationStarted` event to the event stream.
+    pub fn start_op_with_event(&mut self, kind: OpKind, purse: PurseId)
+        -> (handle: OpHandle)
+        requires
+            old(self).invariant(),
+            old(self).purses().dom().contains(purse),
+            old(self).next_handle < u64::MAX,
+            old(self).events@.len() < u64::MAX as nat,
+        ensures
+            final(self).invariant(),
+            handle == old(self).next_handle,
+            final(self).operations().dom().contains(handle),
+            final(self).operations()[handle].status == OpStatus::Preparing,
+            final(self).operations()[handle].kind == kind,
+            final(self).operations()[handle].purse == purse,
+            final(self).events@ == old(self).events@.push(Event::OperationStarted {
+                handle,
+                kind,
+                purse,
+            }),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).next_handle == old(self).next_handle + 1,
+            final(self).next_age == old(self).next_age,
+    {
+        let handle = self.start_op(kind, purse);
+        self.emit_event(Event::OperationStarted { handle, kind, purse });
+        handle
+    }
+
     /// Variant of [`Self::mark_op_submitted`] that also appends an
     /// `OperationProgress { Submitted }` event to the event stream.
     pub fn mark_op_submitted_with_event(&mut self, handle: OpHandle)
