@@ -7976,6 +7976,40 @@ impl State {
         sum
     }
 
+    /// Convenience: sum of `Available` coins + ALL LocalAvailable
+    /// entries (Ready + Waiting + Missing), using real `2^exp` values.
+    /// Quint analog: `spendableWhenReady(p) = purseSpendable(p) +
+    /// pursePending(p)`.
+    ///
+    /// Used to distinguish "insufficient funds now" from "insufficient
+    /// even if all in-flight top-ups mature".
+    pub fn spendable_when_ready_real(&self, p: PurseId) -> (total: u64)
+        requires
+            self.invariant(),
+            forall|k: (PurseId, u64)|
+                #[trigger] self.coins().dom().contains(k)
+                ==> self.coins()[k].exponent <= MAX_EXPONENT,
+            forall|k: (PurseId, u64)|
+                #[trigger] self.entries().dom().contains(k)
+                ==> self.entries()[k].exponent <= MAX_EXPONENT,
+            self.coins@.len() <= (u64::MAX / 1073741824) as nat,
+            self.entries@.len() <= (u64::MAX / 1073741824) as nat,
+            (self.coins@.len() as nat + self.entries@.len() as nat)
+                <= (u64::MAX / 1073741824) as nat,
+        ensures
+            total as nat ==
+                sum_avail_real_prefix(self.coins@, p, self.coins@.len() as nat)
+                + sum_pending_real_prefix(self.entries@, p, self.entries@.len() as nat),
+    {
+        let spendable = self.sum_available_real_in(p);
+        let pending = self.sum_pending_real_in(p);
+        proof {
+            assert(spendable as nat <= self.coins@.len() as nat * 1073741824);
+            assert(pending as nat <= self.entries@.len() as nat * 1073741824);
+        }
+        spendable + pending
+    }
+
     /// Real-value (2^exp) variant of [`Self::query_purse`]. Reports
     /// `spendable`, `spendable_strict`, and `pending` using Quint's
     /// production `coinValue = 2^exp` arithmetic via the
