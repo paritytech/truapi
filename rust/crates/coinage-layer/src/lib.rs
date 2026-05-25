@@ -2565,6 +2565,55 @@ impl State {
         new_key
     }
 
+    /// Split a single `Available` coin into a batch of fresh coins in the
+    /// same purse, one per element of `new_exponents`. Quint analog: the
+    /// Tier-2 split step of three-tier selection.
+    ///
+    /// The source coin walks Available → PendingSpend → Spent. The new
+    /// coins arrive in `Pending` state (chain settlement is simulated by
+    /// the existing `add_coin` semantics; the caller invokes
+    /// `mark_coin_observed` on each later if needed).
+    ///
+    /// **Pilot scope:** no value-preservation check between the source
+    /// coin's exponent and the sum of new exponents. The design requires
+    /// `sum(coin_value(new_exp)) == coin_value(old_exp)`; verifying this
+    /// requires the real `2^exp` semantics (deferred — see stage 7c).
+    pub fn split_coin(&mut self, key: (PurseId, u64), new_exponents: Vec<u8>)
+        requires
+            old(self).invariant(),
+            old(self).coins().dom().contains(key),
+            old(self).coins()[key].state == CoinState::Available,
+            old(self).purses().dom().contains(key.0),
+            old(self).purses()[key.0].next_coin_idx as nat + new_exponents@.len()
+                <= u64::MAX as nat,
+        ensures
+            final(self).invariant(),
+            final(self).coins().dom().contains(key),
+            final(self).coins()[key].state == CoinState::Spent,
+            final(self).purses()[key.0].next_coin_idx
+                == old(self).purses()[key.0].next_coin_idx + new_exponents@.len(),
+            // Each new coin key sits at sequential next_coin_idx slots.
+            forall|j: int| 0 <= j < new_exponents@.len() ==>
+                #[trigger] final(self).coins().dom().contains(
+                    (key.0, (old(self).purses()[key.0].next_coin_idx + j) as u64)
+                )
+                && final(self).coins()[
+                    (key.0, (old(self).purses()[key.0].next_coin_idx + j) as u64)
+                ].exponent == new_exponents@[j],
+    {
+        self.mark_coin_pending_spend(key);
+        self.mark_coin_spent(key);
+        let ghost pre_top_up_coins = self.coins();
+        let ghost pre_top_up_purses = self.purses();
+        self.top_up_purse(key.0, new_exponents);
+        proof {
+            // top_up_purse preserves existing keys: key is still in dom with
+            // its Spent state.
+            assert(pre_top_up_coins.dom().contains(key));
+            assert(pre_top_up_coins[key].state == CoinState::Spent);
+        }
+    }
+
     /// Select the first `Available` coin in purse `p` whose `exponent`
     /// meets or exceeds `min_exponent`. Returns `None` if no such coin
     /// exists.
