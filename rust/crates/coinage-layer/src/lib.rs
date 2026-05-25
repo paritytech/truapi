@@ -171,6 +171,81 @@ pub struct OperationRec {
     pub status: OpStatus,
 }
 
+/// Incoming-payment memo entry (Quint `MemoEntry`, §8.3). The layer
+/// treats memos opaquely; only `recipient_account` is used by
+/// `classify_incoming_payment`.
+#[derive(Copy, Clone)]
+pub struct MemoEntry {
+    pub sender_account: u64,
+    pub recipient_account: u64,
+    pub derivation_index: u64,
+}
+
+/// Classification of an incoming chain payment (Quint
+/// `PaymentClassification`, §8.8).
+///
+/// - `Matched`: every memo's recipient is a known local coin account.
+///   The payment is fully accounted for by existing coins.
+/// - `Received`: some — but not all — memos match local coins. The
+///   recipient has new funds beyond what's locally tracked.
+/// - `Unmatched`: no memos match (or the list is empty). The payment
+///   isn't for this host or originates from an unknown sender.
+#[derive(PartialEq, Eq, Copy, Clone)]
+pub enum PaymentClassification {
+    Matched,
+    Received,
+    Unmatched,
+}
+
+/// Spec-only: count memos whose `recipient_account` matches the
+/// account of some coin in the global coin map. Used by
+/// [`classify_incoming_payment`] to decide between Matched / Received
+/// / Unmatched.
+pub open spec fn count_matched_memos(
+    memos: Seq<MemoEntry>,
+    coins: Map<(PurseId, u64), CoinRec>,
+    j: nat,
+) -> nat
+    decreases j
+{
+    if j == 0 {
+        0
+    } else {
+        let prev = count_matched_memos(memos, coins, (j - 1) as nat);
+        let m = memos[(j - 1) as int];
+        if exists|k: (PurseId, u64)|
+            #[trigger] coins.dom().contains(k)
+            && coins[k].account == m.recipient_account
+        {
+            prev + 1
+        } else {
+            prev
+        }
+    }
+}
+
+/// Synchronous classification of an incoming chain payment (Quint
+/// `classifyIncomingPayment`, §8.8). Returns:
+/// - `Unmatched`   if `memos` is empty or no memo matches a local coin.
+/// - `Matched`     if every memo matches a local coin.
+/// - `Received`    if some but not all memos match.
+pub open spec fn classify_incoming_payment(
+    memos: Seq<MemoEntry>,
+    coins: Map<(PurseId, u64), CoinRec>,
+) -> PaymentClassification {
+    let n = memos.len();
+    let matched = count_matched_memos(memos, coins, n);
+    if n == 0 {
+        PaymentClassification::Unmatched
+    } else if matched == 0 {
+        PaymentClassification::Unmatched
+    } else if matched == n {
+        PaymentClassification::Matched
+    } else {
+        PaymentClassification::Received
+    }
+}
+
 /// Single-coin selection result (§6.3 single-coin tier-1 / tier-2 cases).
 /// `Exact` is the design's tier-1 single-coin form (coin value matches
 /// the requested amount). `Split` is the tier-2 form (coin value
