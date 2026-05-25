@@ -691,6 +691,27 @@ pub open spec fn sum_pending_prefix(v: Seq<EntryRec>, p: PurseId, j: nat) -> nat
     }
 }
 
+/// Real-value (2^exp) variant of [`sum_pending_prefix`].
+pub open spec fn sum_pending_real_prefix(v: Seq<EntryRec>, p: PurseId, j: nat) -> nat
+    decreases j
+{
+    if j == 0 {
+        0
+    } else {
+        let prev = sum_pending_real_prefix(v, p, (j - 1) as nat);
+        let e = v[(j - 1) as int];
+        if e.purse == p
+            && e.local == EntryLocal::LocalAvailable
+            && (e.on_chain == EntryOnChain::Waiting
+                || e.on_chain == EntryOnChain::Missing)
+        {
+            prev + coin_value_pow2(e.exponent)
+        } else {
+            prev
+        }
+    }
+}
+
 /// Spec-only recursive sum: total ready entry value across `v[0..j]`
 /// among entries that belong to purse `p`, are `LocalAvailable`, and
 /// are `Ready` on-chain. Used by the strict-spendable aggregation
@@ -708,6 +729,26 @@ pub open spec fn sum_ready_prefix(v: Seq<EntryRec>, p: PurseId, j: nat) -> nat
             && e.on_chain == EntryOnChain::Ready
         {
             prev + coin_value(e.exponent)
+        } else {
+            prev
+        }
+    }
+}
+
+/// Real-value (2^exp) variant of [`sum_ready_prefix`].
+pub open spec fn sum_ready_real_prefix(v: Seq<EntryRec>, p: PurseId, j: nat) -> nat
+    decreases j
+{
+    if j == 0 {
+        0
+    } else {
+        let prev = sum_ready_real_prefix(v, p, (j - 1) as nat);
+        let e = v[(j - 1) as int];
+        if e.purse == p
+            && e.local == EntryLocal::LocalAvailable
+            && e.on_chain == EntryOnChain::Ready
+        {
+            prev + coin_value_pow2(e.exponent)
         } else {
             prev
         }
@@ -7691,6 +7732,110 @@ impl State {
             }
             if e.purse == p && is_local_avail && (is_waiting || is_missing) {
                 let value: u64 = (e.exponent as u64) + 1;
+                sum = sum + value;
+            }
+            j = j + 1;
+        }
+        sum
+    }
+
+    /// Real-value (2^exp) variant of `sum_pending_in`. Used by callers
+    /// that want production-scheme purse-pending totals.
+    pub fn sum_pending_real_in(&self, p: PurseId) -> (sum: u64)
+        requires
+            self.invariant(),
+            forall|k: (PurseId, u64)|
+                #[trigger] self.entries().dom().contains(k)
+                ==> self.entries()[k].exponent <= MAX_EXPONENT,
+            self.entries@.len() <= (u64::MAX / 1073741824) as nat,
+        ensures
+            sum as nat == sum_pending_real_prefix(self.entries@, p,
+                                                  self.entries@.len() as nat),
+            sum as nat <= self.entries@.len() as nat * 1073741824,
+    {
+        let mut sum: u64 = 0;
+        let mut j: usize = 0;
+        while j < self.entries.len()
+            invariant
+                0 <= j <= self.entries.len(),
+                self.entries@.len() <= (u64::MAX / 1073741824) as nat,
+                sum as nat == sum_pending_real_prefix(self.entries@, p, j as nat),
+                sum as nat <= (j as nat) * 1073741824,
+                forall|k: (PurseId, u64)|
+                    #[trigger] self.entries().dom().contains(k)
+                    ==> self.entries()[k].exponent <= MAX_EXPONENT,
+                self.invariant(),
+            decreases self.entries.len() - j,
+        {
+            let e = &self.entries[j];
+            let is_local_avail = matches!(e.local, EntryLocal::LocalAvailable);
+            let is_waiting = matches!(e.on_chain, EntryOnChain::Waiting);
+            let is_missing = matches!(e.on_chain, EntryOnChain::Missing);
+            proof {
+                let entry_key = (self.entries@[j as int].purse,
+                                 self.entries@[j as int].idx);
+                assert(self.spec_entries@.dom().contains(entry_key));
+                assert(self.entries()[entry_key] == self.entries@[j as int]);
+                assert(self.entries()[entry_key].exponent <= MAX_EXPONENT);
+                assert(self.entries@[j as int].exponent <= MAX_EXPONENT);
+                lemma_pow2_at_30();
+                lemma_pow2_monotone(self.entries@[j as int].exponent as nat, 30);
+                assert(sum_pending_real_prefix(self.entries@, p, (j + 1) as nat)
+                    <= sum_pending_real_prefix(self.entries@, p, j as nat) + 1073741824);
+            }
+            if e.purse == p && is_local_avail && (is_waiting || is_missing) {
+                let value = pow2_u64_exec(e.exponent);
+                sum = sum + value;
+            }
+            j = j + 1;
+        }
+        sum
+    }
+
+    /// Real-value (2^exp) variant of `sum_ready_in`.
+    pub fn sum_ready_real_in(&self, p: PurseId) -> (sum: u64)
+        requires
+            self.invariant(),
+            forall|k: (PurseId, u64)|
+                #[trigger] self.entries().dom().contains(k)
+                ==> self.entries()[k].exponent <= MAX_EXPONENT,
+            self.entries@.len() <= (u64::MAX / 1073741824) as nat,
+        ensures
+            sum as nat == sum_ready_real_prefix(self.entries@, p,
+                                                self.entries@.len() as nat),
+            sum as nat <= self.entries@.len() as nat * 1073741824,
+    {
+        let mut sum: u64 = 0;
+        let mut j: usize = 0;
+        while j < self.entries.len()
+            invariant
+                0 <= j <= self.entries.len(),
+                self.entries@.len() <= (u64::MAX / 1073741824) as nat,
+                sum as nat == sum_ready_real_prefix(self.entries@, p, j as nat),
+                sum as nat <= (j as nat) * 1073741824,
+                forall|k: (PurseId, u64)|
+                    #[trigger] self.entries().dom().contains(k)
+                    ==> self.entries()[k].exponent <= MAX_EXPONENT,
+                self.invariant(),
+            decreases self.entries.len() - j,
+        {
+            let e = &self.entries[j];
+            let is_local_avail = matches!(e.local, EntryLocal::LocalAvailable);
+            let is_ready = matches!(e.on_chain, EntryOnChain::Ready);
+            proof {
+                let entry_key = (self.entries@[j as int].purse,
+                                 self.entries@[j as int].idx);
+                assert(self.spec_entries@.dom().contains(entry_key));
+                assert(self.entries()[entry_key] == self.entries@[j as int]);
+                assert(self.entries()[entry_key].exponent <= MAX_EXPONENT);
+                assert(self.entries@[j as int].exponent <= MAX_EXPONENT);
+                lemma_pow2_at_30();
+                lemma_pow2_monotone(self.entries@[j as int].exponent as nat, 30);
+                assert(sum_ready_real_prefix(self.entries@, p, (j + 1) as nat)
+                    <= sum_ready_real_prefix(self.entries@, p, j as nat) + 1073741824);
+            }
+            if e.purse == p && is_local_avail && is_ready {
+                let value = pow2_u64_exec(e.exponent);
                 sum = sum + value;
             }
             j = j + 1;
