@@ -1686,6 +1686,89 @@ impl State {
         }
     }
 
+    /// Find a chain coin (by index in `chain_coins`) whose
+    /// `(purse, idx)` is not in local `coins` AND whose purse exists
+    /// locally AND whose `idx` is below that purse's `next_coin_idx`.
+    /// In other words: a chain coin we lost track of, that is still
+    /// restorable into our current state. The returned `j` satisfies
+    /// exactly the preconditions of [`State::restore_chain_coin`].
+    pub fn find_restorable_missing_chain_coin(&self) -> (res: Option<usize>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some(j) => {
+                    &&& 0 <= j < self.chain_coins@.len()
+                    &&& !self.coins().dom().contains(
+                            (self.chain_coins@[j as int].purse,
+                             self.chain_coins@[j as int].idx))
+                    &&& self.purses().dom().contains(
+                            self.chain_coins@[j as int].purse)
+                    &&& self.chain_coins@[j as int].idx
+                            < self.purses()[self.chain_coins@[j as int].purse]
+                                  .next_coin_idx
+                },
+                None => true,
+            },
+    {
+        let mut j: usize = 0;
+        while j < self.chain_coins.len()
+            invariant
+                0 <= j <= self.chain_coins.len(),
+                self.invariant(),
+            decreases self.chain_coins.len() - j,
+        {
+            let c = self.chain_coins[j];
+            let key = (c.purse, c.idx);
+            if self.coin_state(key).is_none() {
+                // Missing locally. Walk purses to check restorability.
+                let mut i: usize = 0;
+                while i < self.purses.len()
+                    invariant
+                        0 <= i <= self.purses.len(),
+                        self.invariant(),
+                        j < self.chain_coins@.len(),
+                        c == self.chain_coins@[j as int],
+                        key == (c.purse, c.idx),
+                        !self.coins().dom().contains(key),
+                    decreases self.purses.len() - i,
+                {
+                    if self.purses[i].id == c.purse {
+                        let next_idx = self.purses[i].next_coin_idx;
+                        if c.idx < next_idx {
+                            proof {
+                                let m = self.spec_purses@;
+                                let v = self.purses@;
+                                let cc = self.chain_coins@[j as int];
+                                assert(cc == c);
+                                assert(cc.purse == c.purse);
+                                assert(cc.idx == c.idx);
+                                assert(0 <= i < v.len());
+                                assert(v[i as int].id == c.purse);
+                                assert(m.dom().contains(v[i as int].id));
+                                assert(m[v[i as int].id] == v[i as int]@);
+                                assert(m[c.purse] == v[i as int]@);
+                                assert(v[i as int].next_coin_idx == next_idx);
+                                assert(v[i as int]@.next_coin_idx == next_idx as nat);
+                                assert(m[c.purse].next_coin_idx == next_idx as nat);
+                                assert(m.dom().contains(c.purse));
+                                assert(self.purses().dom().contains(cc.purse));
+                                assert(cc.idx < self.purses()[cc.purse].next_coin_idx);
+                                assert(!self.coins().dom().contains((cc.purse, cc.idx)));
+                            }
+                            return Some(j);
+                        }
+                        // Found the purse but slot not allocated yet — skip.
+                        break;
+                    }
+                    i = i + 1;
+                }
+            }
+            j = j + 1;
+        }
+        None
+    }
+
     /// Chain-side mirror: register that an entry exists on chain.
     /// Quint analog: `chainEntries' = chainEntries.put(...)`.
     pub fn chain_register_entry(&mut self, e: EntryRec)
