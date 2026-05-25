@@ -1513,16 +1513,22 @@ impl State {
         vstd::pervasive::unreached()
     }
 
-    /// Internal: allocate a fresh recycler entry in purse `p` with the given
-    /// `exponent` and initial on-chain state. Mirrors `add_coin`'s structure
-    /// for the entries side of state. The entry's `idx` is the purse's
-    /// current `next_entry_idx`, after which the allocator is bumped.
-    pub fn add_entry(
+    /// Allocate a fresh recycler entry in purse `p` with full chain
+    /// bookkeeping: `exponent`, `on_chain`/`local` lifecycle states, and
+    /// the four chain-side metadata fields (`member_key`, `allocated_at`,
+    /// `ready_at`, `ring_idx`). The entry's `idx` is the purse's current
+    /// `next_entry_idx`, after which the allocator is bumped. Quint
+    /// analog: the bottom-layer effect of `topUp`'s entry construction.
+    pub fn add_entry_with_meta(
         &mut self,
         p: PurseId,
         exponent: u8,
         on_chain: EntryOnChain,
         local: EntryLocal,
+        member_key: u64,
+        allocated_at: u64,
+        ready_at: u64,
+        ring_idx: u64,
     ) -> (key: (PurseId, u64))
         requires
             old(self).invariant(),
@@ -1539,10 +1545,10 @@ impl State {
                 exponent,
                 on_chain,
                 local,
-                member_key: 0,
-                allocated_at: 0,
-                ready_at: 0,
-                ring_idx: 0,
+                member_key,
+                allocated_at,
+                ready_at,
+                ring_idx,
             }),
             final(self).coins() == old(self).coins(),
             final(self).coins@ == old(self).coins@,
@@ -1555,6 +1561,10 @@ impl State {
                 == old(self).purses()[p].next_entry_idx + 1,
             forall|q: PurseId| q != p && #[trigger] old(self).purses().dom().contains(q)
                 ==> final(self).purses()[q] == old(self).purses()[q],
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
     {
         let ghost old_v = self.purses@;
         let ghost old_m = self.spec_purses@;
@@ -1578,6 +1588,10 @@ impl State {
                 self.entries@ == old_entries_vec,
                 self.spec_operations@ == old_operations,
                 self.operations@ == old_operations_vec,
+                old_operations == old(self).spec_operations@,
+                old_operations_vec == old(self).operations@,
+                self.next_handle == old(self).next_handle,
+                self.next_age == old(self).next_age,
                 old_m == old(self).spec_purses@,
                 old_v == old(self).purses@,
                 old_entries == old(self).spec_entries@,
@@ -1603,10 +1617,10 @@ impl State {
                     exponent,
                     on_chain,
                     local,
-                    member_key: 0,
-                    allocated_at: 0,
-                    ready_at: 0,
-                    ring_idx: 0,
+                    member_key,
+                    allocated_at,
+                    ready_at,
+                    ring_idx,
                 };
                 self.entries.push(new_entry);
 
@@ -1850,6 +1864,57 @@ impl State {
             assert(self.purses@[w].id != p);
         }
         vstd::pervasive::unreached()
+    }
+
+    /// Allocate a fresh recycler entry without chain bookkeeping. Thin
+    /// wrapper over [`Self::add_entry_with_meta`] that supplies zero
+    /// placeholders for `member_key`, `allocated_at`, `ready_at`, and
+    /// `ring_idx`. Used by callers that don't yet model the chain side
+    /// (notably `reserve_entries`).
+    pub fn add_entry(
+        &mut self,
+        p: PurseId,
+        exponent: u8,
+        on_chain: EntryOnChain,
+        local: EntryLocal,
+    ) -> (key: (PurseId, u64))
+        requires
+            old(self).invariant(),
+            old(self).purses().dom().contains(p),
+            old(self).purses()[p].next_entry_idx < u64::MAX,
+        ensures
+            final(self).invariant(),
+            key.0 == p,
+            key.1 == old(self).purses()[p].next_entry_idx,
+            !old(self).entries().dom().contains(key),
+            final(self).entries() == old(self).entries().insert(key, EntryRec {
+                purse: p,
+                idx: key.1,
+                exponent,
+                on_chain,
+                local,
+                member_key: 0,
+                allocated_at: 0,
+                ready_at: 0,
+                ring_idx: 0,
+            }),
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).purses().dom() =~= old(self).purses().dom(),
+            final(self).purses()[p].id == p,
+            final(self).purses()[p].name == old(self).purses()[p].name,
+            final(self).purses()[p].next_coin_idx
+                == old(self).purses()[p].next_coin_idx,
+            final(self).purses()[p].next_entry_idx
+                == old(self).purses()[p].next_entry_idx + 1,
+            forall|q: PurseId| q != p && #[trigger] old(self).purses().dom().contains(q)
+                ==> final(self).purses()[q] == old(self).purses()[q],
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+    {
+        self.add_entry_with_meta(p, exponent, on_chain, local, 0, 0, 0, 0)
     }
 
     /// Start a new operation in the `Preparing` state. Allocates a fresh
