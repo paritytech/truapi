@@ -2991,6 +2991,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).coins@.len() == old(self).coins@.len(),
             lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
                 ==> lock_refint(final(self).coins(), final(self).entries(),
                                 final(self).operations()),
@@ -3027,6 +3028,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).entries@.len() == old(self).entries@.len(),
             lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
                 ==> lock_refint(final(self).coins(), final(self).entries(),
                                 final(self).operations()),
@@ -3213,6 +3215,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).coins@.len() == old(self).coins@.len(),
             // lock_refint preservation: removing a LockedFor edge can
             // never break refint (no new dangling references).
             lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
@@ -3248,6 +3251,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).coins@.len() == old(self).coins@.len(),
             // lock_refint preservation: removing a LockedFor edge.
             lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
                 ==> lock_refint(final(self).coins(), final(self).entries(),
@@ -3282,6 +3286,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).coins@.len() == old(self).coins@.len(),
     {
         let ghost old_purses_vec = self.purses@;
         let ghost old_spec_purses = self.spec_purses@;
@@ -3313,6 +3318,7 @@ impl State {
                 old_spec_purses == old(self).purses(),
                 old_coins == old(self).spec_coins@,
                 old_coins == old(self).coins(),
+                old_coins_vec == old(self).coins@,
                 old_entries == old(self).spec_entries@,
                 old_entries == old(self).entries(),
                 old_entries_vec == old(self).entries@,
@@ -3452,6 +3458,9 @@ impl State {
                             assert(new_coins_vec[b] == old_coins_vec[b]);
                         }
                     }
+                    // Vec length preservation: state field write doesn't
+                    // change Vec length.
+                    assert(self.coins@.len() == old_coins_vec.len());
                 }
                 return;
             }
@@ -3787,6 +3796,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).entries@.len() == old(self).entries@.len(),
             lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
                 ==> lock_refint(final(self).coins(), final(self).entries(),
                                 final(self).operations()),
@@ -3848,6 +3858,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).entries@.len() == old(self).entries@.len(),
     {
         let ghost old_purses_vec = self.purses@;
         let ghost old_spec_purses = self.spec_purses@;
