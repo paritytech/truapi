@@ -355,6 +355,17 @@ pub open spec fn coin_value_pow2(exp: u8) -> nat {
     pow2_nat(exp as nat)
 }
 
+/// Lexicographic priority comparison for two coins (Quint §6.3
+/// `coinOrderLT`). Returns true if `a` has *higher* priority than `b`
+/// (smaller rank tuple). The rank tuple is `(MaxExp - exp, MaxAge - age,
+/// idx)` — bigger exponent wins, then older (smaller age), then
+/// smaller idx as tiebreaker.
+pub open spec fn coin_priority_lt(a: CoinRec, b: CoinRec) -> bool {
+    a.exponent > b.exponent
+        || (a.exponent == b.exponent && a.age < b.age)
+        || (a.exponent == b.exponent && a.age == b.age && a.idx < b.idx)
+}
+
 /// Spec-only recursive sum: total spendable value across `v[0..j]`
 /// among coins that are `Available` and belong to purse `p`.
 pub open spec fn sum_avail_prefix(v: Seq<CoinRec>, p: PurseId, j: nat) -> nat
@@ -4996,6 +5007,120 @@ impl State {
             PaymentClassification::Matched
         } else {
             PaymentClassification::Received
+        }
+    }
+
+    /// Find the highest-priority `Available` coin in purse `p`,
+    /// breaking ties per the §6.3 coin priority order:
+    /// `(MaxExp - exp, MaxAge - age, idx)` (lex-smallest wins).
+    /// Returns `None` if `p` has no Available coins.
+    pub fn find_top_priority_coin(&self, p: PurseId)
+        -> (res: Option<(PurseId, u64)>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some(key) =>
+                    self.coins().dom().contains(key)
+                    && key.0 == p
+                    && self.coins()[key].state == CoinState::Available
+                    && forall|k: (PurseId, u64)|
+                        #[trigger] self.coins().dom().contains(k)
+                        && k.0 == p
+                        && self.coins()[k].state == CoinState::Available
+                        && k != key
+                        ==> coin_priority_lt(self.coins()[key], self.coins()[k])
+                            || self.coins()[key] == self.coins()[k],
+                None =>
+                    forall|k: (PurseId, u64)|
+                        #[trigger] self.coins().dom().contains(k)
+                        && k.0 == p
+                        ==> self.coins()[k].state != CoinState::Available,
+            },
+    {
+        let mut best: Option<usize> = None;
+        let mut j: usize = 0;
+        while j < self.coins.len()
+            invariant
+                0 <= j <= self.coins.len(),
+                self.invariant(),
+                match best {
+                    Some(bi) =>
+                        0 <= bi < j
+                        && self.coins@[bi as int].purse == p
+                        && self.coins@[bi as int].state == CoinState::Available
+                        && forall|jj: int| 0 <= jj < j ==>
+                            #[trigger] self.coins@[jj].purse != p
+                            || self.coins@[jj].state != CoinState::Available
+                            || coin_priority_lt(self.coins@[bi as int], self.coins@[jj])
+                            || self.coins@[bi as int] == self.coins@[jj],
+                    None =>
+                        forall|jj: int| 0 <= jj < j ==>
+                            (#[trigger] self.coins@[jj]).purse != p
+                            || self.coins@[jj].state != CoinState::Available,
+                },
+            decreases self.coins.len() - j,
+        {
+            let is_avail = matches!(self.coins[j].state, CoinState::Available);
+            if self.coins[j].purse == p && is_avail {
+                match best {
+                    None => { best = Some(j); }
+                    Some(bi) => {
+                        let cur = &self.coins[j];
+                        let cur_better = self.coins[bi].exponent < cur.exponent
+                            || (self.coins[bi].exponent == cur.exponent
+                                && self.coins[bi].age > cur.age)
+                            || (self.coins[bi].exponent == cur.exponent
+                                && self.coins[bi].age == cur.age
+                                && self.coins[bi].idx > cur.idx);
+                        if cur_better {
+                            best = Some(j);
+                        }
+                    }
+                }
+            }
+            j = j + 1;
+        }
+        match best {
+            None => {
+                proof {
+                    assert forall|k: (PurseId, u64)|
+                        #[trigger] self.coins().dom().contains(k)
+                        && k.0 == p
+                        implies self.coins()[k].state != CoinState::Available
+                    by {
+                        let w = choose|jj: int|
+                            0 <= jj < self.coins@.len()
+                            && #[trigger] self.coins@[jj].purse == k.0
+                            && self.coins@[jj].idx == k.1;
+                        assert(self.coins@[w].purse == p);
+                        assert(self.coins@[w].state == self.coins()[k].state);
+                    }
+                }
+                None
+            }
+            Some(bi) => {
+                let key = (self.coins[bi].purse, self.coins[bi].idx);
+                proof {
+                    assert(self.spec_coins@.dom().contains(key));
+                    assert(self.coins()[key] == self.coins@[bi as int]);
+                    assert forall|k: (PurseId, u64)|
+                        #[trigger] self.coins().dom().contains(k)
+                        && k.0 == p
+                        && self.coins()[k].state == CoinState::Available
+                        && k != key
+                        implies coin_priority_lt(self.coins()[key], self.coins()[k])
+                            || self.coins()[key] == self.coins()[k]
+                    by {
+                        let w = choose|jj: int|
+                            0 <= jj < self.coins@.len()
+                            && #[trigger] self.coins@[jj].purse == k.0
+                            && self.coins@[jj].idx == k.1;
+                        assert(self.coins@[w] == self.coins()[k]);
+                    }
+                }
+                Some(key)
+            }
         }
     }
 
