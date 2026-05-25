@@ -1723,6 +1723,30 @@ impl State {
         self.transition_coin_state(key, CoinState::Spent);
     }
 
+    /// Coin lifecycle: `PendingSpend` → `Available`. Called when an
+    /// in-flight operation that had reserved this coin is cancelled
+    /// before chain settlement; the reservation is reverted.
+    pub fn reverse_pending_spend(&mut self, key: (PurseId, u64))
+        requires
+            old(self).invariant(),
+            old(self).coins().dom().contains(key),
+            old(self).coins()[key].state == CoinState::PendingSpend,
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins().insert(key, CoinRec {
+                purse: old(self).coins()[key].purse,
+                idx: old(self).coins()[key].idx,
+                exponent: old(self).coins()[key].exponent,
+                state: CoinState::Available,
+            }),
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).spec_entries@ == old(self).spec_entries@,
+    {
+        self.transition_coin_state(key, CoinState::Available);
+    }
+
     /// Internal: locate the coin keyed `key` in the exec Vec and rewrite its
     /// `state` field to `new_state`; mirror to the ghost map. The state
     /// transition is unconstrained here — callers (`mark_coin_*`) enforce
