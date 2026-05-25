@@ -1643,6 +1643,40 @@ impl State {
         }
     }
 
+    /// Rebalance: move one specific `Available` coin from purse `src` to
+    /// purse `dst`. The source coin transitions Available → PendingSpend
+    /// → Spent; a fresh `Available` coin with the same exponent is minted
+    /// in `dst`'s namespace. Quint §6.1.3 `rebalancePurse`.
+    ///
+    /// Differs from `transfer` in that the caller selects the specific
+    /// coin (no min-exp search), and `src != dst` is required.
+    #[allow(unused_variables)]
+    pub fn rebalance(&mut self, src: PurseId, dst: PurseId, key: (PurseId, u64))
+        -> (new_key: (PurseId, u64))
+        requires
+            old(self).invariant(),
+            src != dst,
+            key.0 == src,
+            old(self).coins().dom().contains(key),
+            old(self).coins()[key].state == CoinState::Available,
+            old(self).purses().dom().contains(dst),
+            old(self).purses()[dst].next_coin_idx < u64::MAX,
+        ensures
+            final(self).invariant(),
+            new_key.0 == dst,
+            new_key.1 == old(self).purses()[dst].next_coin_idx,
+            final(self).coins().dom().contains(new_key),
+            final(self).coins()[new_key].state == CoinState::Available,
+            final(self).coins()[new_key].exponent == old(self).coins()[key].exponent,
+            final(self).coins().dom().contains(key),
+            final(self).coins()[key].state == CoinState::Spent,
+    {
+        let exp = self.read_coin_exponent(key);
+        self.mark_coin_pending_spend(key);
+        self.mark_coin_spent(key);
+        self.add_coin(dst, exp)
+    }
+
     /// Select the first `Available` coin in purse `p` whose `exponent`
     /// meets or exceeds `min_exponent`. Returns `None` if no such coin
     /// exists.
