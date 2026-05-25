@@ -4747,6 +4747,98 @@ impl State {
         None
     }
 
+    /// Synchronous read: the full `CoinRec` for `key`, or `None` if the
+    /// coin doesn't exist. Avoids repeated per-field lookup calls.
+    pub fn coin_record(&self, key: (PurseId, u64)) -> (res: Option<CoinRec>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some(c) =>
+                    self.coins().dom().contains(key)
+                    && c == self.coins()[key],
+                None => !self.coins().dom().contains(key),
+            },
+    {
+        let mut j: usize = 0;
+        while j < self.coins.len()
+            invariant
+                0 <= j <= self.coins.len(),
+                self.invariant(),
+                forall|jj: int| 0 <= jj < j ==>
+                    (#[trigger] self.coins@[jj]).purse != key.0
+                    || self.coins@[jj].idx != key.1,
+            decreases self.coins.len() - j,
+        {
+            if self.coins[j].purse == key.0 && self.coins[j].idx == key.1 {
+                proof {
+                    assert(self.spec_coins@.dom().contains(key));
+                }
+                return Some(self.coins[j]);
+            }
+            j = j + 1;
+        }
+        proof {
+            assert forall|k: (PurseId, u64)|
+                #[trigger] self.coins().dom().contains(k)
+                implies k != key
+            by {
+                let w = choose|jj: int|
+                    0 <= jj < self.coins@.len()
+                    && #[trigger] self.coins@[jj].purse == k.0
+                    && self.coins@[jj].idx == k.1;
+                assert(self.coins@[w].purse == k.0);
+            }
+        }
+        None
+    }
+
+    /// Synchronous read: the full `EntryRec` for `key`, or `None` if
+    /// the entry doesn't exist.
+    pub fn entry_record(&self, key: (PurseId, u64)) -> (res: Option<EntryRec>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some(e) =>
+                    self.entries().dom().contains(key)
+                    && e == self.entries()[key],
+                None => !self.entries().dom().contains(key),
+            },
+    {
+        let mut j: usize = 0;
+        while j < self.entries.len()
+            invariant
+                0 <= j <= self.entries.len(),
+                self.invariant(),
+                forall|jj: int| 0 <= jj < j ==>
+                    (#[trigger] self.entries@[jj]).purse != key.0
+                    || self.entries@[jj].idx != key.1,
+            decreases self.entries.len() - j,
+        {
+            if self.entries[j].purse == key.0 && self.entries[j].idx == key.1 {
+                proof {
+                    assert(self.spec_entries@.dom().contains(key));
+                }
+                return Some(self.entries[j]);
+            }
+            j = j + 1;
+        }
+        proof {
+            assert forall|k: (PurseId, u64)|
+                #[trigger] self.entries().dom().contains(k)
+                implies k != key
+            by {
+                let w = choose|jj: int|
+                    0 <= jj < self.entries@.len()
+                    && #[trigger] self.entries@[jj].purse == k.0
+                    && self.entries@[jj].idx == k.1;
+                assert(self.entries@[w].purse == k.0);
+            }
+        }
+        None
+    }
+
     /// Number of purses in the state.
     pub fn total_purses(&self) -> (count: usize)
         requires
