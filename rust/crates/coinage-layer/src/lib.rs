@@ -198,6 +198,28 @@ pub open spec fn sum_avail_prefix(v: Seq<CoinRec>, p: PurseId, j: nat) -> nat
     }
 }
 
+/// Spec-only sum of coin values across a sequence of keys, looked up
+/// in the coin map. Used to describe selection results.
+pub open spec fn sum_of_coin_values(
+    coins: Map<(PurseId, u64), CoinRec>,
+    keys: Seq<(PurseId, u64)>,
+) -> nat
+    decreases keys.len()
+{
+    if keys.len() == 0 {
+        0
+    } else {
+        let last_idx = (keys.len() - 1) as int;
+        let last_key = keys[last_idx];
+        let rest = sum_of_coin_values(coins, keys.subrange(0, last_idx));
+        if coins.dom().contains(last_key) {
+            rest + coin_value(coins[last_key].exponent)
+        } else {
+            rest
+        }
+    }
+}
+
 impl State {
     /// Spec view of the purse map.
     pub open spec fn purses(&self) -> Map<PurseId, PurseRecSpec> {
@@ -2610,6 +2632,93 @@ impl State {
                 assert(self.coins@[w].state == self.coins()[k].state);
                 assert(self.coins@[w].exponent == self.coins()[k].exponent);
             }
+        }
+        None
+    }
+
+    /// Greedy multi-coin selection. Scans `Available` coins in purse `p` in
+    /// Vec order, accumulating until the running total meets or exceeds
+    /// `requested`. Returns the selected key list, or `None` if the total
+    /// Available value in `p` is insufficient.
+    ///
+    /// **Pilot scope:** this is NOT the design's three-tier exact-cover
+    /// selection (§6.3). Greedy may overshoot `requested` (returning more
+    /// value than asked). Real exact-subset-sum requires powerset
+    /// enumeration with lex-min disambiguation (Quint
+    /// `selectExactCoverDeterministic`); deferred.
+    pub fn select_coins_for_amount(&self, p: PurseId, requested: u64)
+        -> (res: Option<Vec<(PurseId, u64)>>)
+        requires
+            self.invariant(),
+            self.coins@.len() <= (u64::MAX / 256) as nat,
+            // Bound `requested` so `accumulated + value` doesn't overflow when
+            // `accumulated < requested` and `value <= 256`.
+            requested <= u64::MAX - 256,
+            requested >= 1,
+        ensures
+            match res {
+                Some(keys) => {
+                    &&& forall|i: int| 0 <= i < keys@.len() ==>
+                            self.coins().dom().contains(#[trigger] keys@[i])
+                            && keys@[i].0 == p
+                            && self.coins()[keys@[i]].state == CoinState::Available
+                    &&& sum_of_coin_values(self.coins(), keys@) >= requested as nat
+                },
+                None =>
+                    sum_avail_prefix(self.coins@, p, self.coins@.len() as nat)
+                        < requested as nat,
+            },
+    {
+        let mut selected: Vec<(PurseId, u64)> = Vec::new();
+        let mut accumulated: u64 = 0;
+        let mut j: usize = 0;
+        while j < self.coins.len()
+            invariant
+                0 <= j <= self.coins.len(),
+                self.invariant(),
+                self.coins@.len() <= (u64::MAX / 256) as nat,
+                requested <= u64::MAX - 256,
+                accumulated < requested,
+                accumulated as nat == sum_avail_prefix(self.coins@, p, j as nat),
+                accumulated as nat == sum_of_coin_values(self.coins(), selected@),
+                forall|i: int| 0 <= i < selected@.len() ==>
+                    self.coins().dom().contains(#[trigger] selected@[i])
+                    && selected@[i].0 == p
+                    && self.coins()[selected@[i]].state == CoinState::Available,
+            decreases self.coins.len() - j,
+        {
+            let is_avail = matches!(self.coins[j].state, CoinState::Available);
+            proof {
+                // Bound the per-step delta for cumulative overflow safety.
+                assert(sum_avail_prefix(self.coins@, p, (j + 1) as nat)
+                    <= sum_avail_prefix(self.coins@, p, j as nat) + 256);
+            }
+            if self.coins[j].purse == p && is_avail {
+                let key = (self.coins[j].purse, self.coins[j].idx);
+                let value: u64 = (self.coins[j].exponent as u64) + 1;
+                let ghost selected_before = selected@;
+                selected.push(key);
+                assert(value <= 256);
+                assert(accumulated < requested);
+                assert(requested <= u64::MAX - 256);
+                accumulated = accumulated + value;
+                proof {
+                    // (l) gives ghost-map record matches Vec entry.
+                    assert(self.spec_coins@.dom().contains(key));
+                    assert(self.coins()[key].state == CoinState::Available);
+                    // Append-decomposition for sum_of_coin_values.
+                    assert(selected@ =~= selected_before.push(key));
+                    assert(selected@.subrange(0, selected_before.len() as int)
+                        =~= selected_before);
+                    assert(sum_of_coin_values(self.coins(), selected@)
+                        == sum_of_coin_values(self.coins(), selected_before)
+                            + coin_value(self.coins()[key].exponent));
+                }
+                if accumulated >= requested {
+                    return Some(selected);
+                }
+            }
+            j = j + 1;
         }
         None
     }
