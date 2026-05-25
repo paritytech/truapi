@@ -4747,6 +4747,52 @@ impl State {
         None
     }
 
+    /// Synchronous read: the `(kind, purse)` pair of the operation
+    /// `handle`, or `None` if no such operation exists. Used to route
+    /// chain events back to the right purse / op-kind handler.
+    pub fn op_meta(&self, handle: OpHandle) -> (res: Option<(OpKind, PurseId)>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some((k, p)) =>
+                    self.operations().dom().contains(handle)
+                    && k == self.operations()[handle].kind
+                    && p == self.operations()[handle].purse,
+                None => !self.operations().dom().contains(handle),
+            },
+    {
+        let mut j: usize = 0;
+        while j < self.operations.len()
+            invariant
+                0 <= j <= self.operations.len(),
+                self.invariant(),
+                forall|jj: int| 0 <= jj < j ==>
+                    (#[trigger] self.operations@[jj]).handle != handle,
+            decreases self.operations.len() - j,
+        {
+            if self.operations[j].handle == handle {
+                proof {
+                    assert(self.spec_operations@.dom().contains(handle));
+                }
+                return Some((self.operations[j].kind, self.operations[j].purse));
+            }
+            j = j + 1;
+        }
+        proof {
+            assert forall|h: OpHandle|
+                #[trigger] self.operations().dom().contains(h)
+                implies h != handle
+            by {
+                let w = choose|jj: int|
+                    0 <= jj < self.operations@.len()
+                    && #[trigger] self.operations@[jj].handle == h;
+                assert(self.operations@[w].handle == h);
+            }
+        }
+        None
+    }
+
     /// Synchronous read: status of the operation `handle`, or `None`
     /// if no such operation exists. Quint analog: `operations.get(h).status`.
     pub fn op_status(&self, handle: OpHandle) -> (res: Option<OpStatus>)
