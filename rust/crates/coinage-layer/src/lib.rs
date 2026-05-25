@@ -1351,6 +1351,265 @@ impl State {
         vstd::pervasive::unreached()
     }
 
+    /// Internal: scan the coin Vec for the first entry with `purse == p`.
+    /// Returns its index, or `None` if no such coin remains.
+    fn find_coin_with_purse(&self, p: PurseId) -> (res: Option<usize>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some(i) =>
+                    (i as int) < self.coins@.len()
+                    && self.coins@[i as int].purse == p,
+                None =>
+                    forall|j: int| 0 <= j < self.coins@.len()
+                        ==> (#[trigger] self.coins@[j]).purse != p,
+            },
+    {
+        let mut j: usize = 0;
+        while j < self.coins.len()
+            invariant
+                0 <= j <= self.coins.len(),
+                self.invariant(),
+                forall|jj: int| 0 <= jj < j ==>
+                    (#[trigger] self.coins@[jj]).purse != p,
+            decreases self.coins.len() - j,
+        {
+            if self.coins[j].purse == p {
+                return Some(j);
+            }
+            j += 1;
+        }
+        None
+    }
+
+    /// Internal: remove the coin at exec-Vec index `idx`. Vec shrinks by 1
+    /// (via `swap_remove`); the ghost map drops exactly the key that
+    /// belonged to the removed entry.
+    fn remove_coin_at(&mut self, idx: usize)
+        requires
+            old(self).invariant(),
+            (idx as int) < old(self).coins@.len(),
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            ({
+                let removed = old(self).coins@[idx as int];
+                final(self).coins()
+                    == old(self).coins().remove((removed.purse, removed.idx))
+            }),
+            final(self).coins@.len() == old(self).coins@.len() - 1,
+    {
+        let ghost old_purses_vec = self.purses@;
+        let ghost old_spec_purses = self.spec_purses@;
+        let ghost old_next_purse_id = self.next_purse_id;
+        let ghost old_coins = self.spec_coins@;
+        let ghost old_coins_vec = self.coins@;
+        let ghost target_idx = idx as int;
+        let ghost removed_entry = old_coins_vec[target_idx];
+        let ghost removed_key = (removed_entry.purse, removed_entry.idx);
+        let ghost last_idx = old_coins_vec.len() - 1;
+
+        let _ = self.coins.swap_remove(idx);
+        proof {
+            self.spec_coins = Ghost(self.spec_coins@.remove(removed_key));
+
+            let new_coins_vec = self.coins@;
+            let new_coins = self.spec_coins@;
+
+            assert(self.purses@ == old_purses_vec);
+            assert(self.spec_purses@ == old_spec_purses);
+            assert(self.next_purse_id == old_next_purse_id);
+
+            // Vec post-state, from swap_remove spec:
+            //   new_coins_vec == old_coins_vec.update(target_idx, last).drop_last()
+            assert(new_coins_vec.len() == old_coins_vec.len() - 1);
+            assert forall|k: int| 0 <= k < new_coins_vec.len() && k != target_idx implies
+                #[trigger] new_coins_vec[k] == old_coins_vec[k]
+            by {}
+            assert(target_idx < new_coins_vec.len() ==>
+                new_coins_vec[target_idx] == old_coins_vec[last_idx]);
+
+            // Old key at target_idx == removed_key; by (n) old, no other Vec
+            // entry had the same (purse, idx).
+            assert(old_coins_vec[target_idx].purse == removed_key.0);
+            assert(old_coins_vec[target_idx].idx == removed_key.1);
+            assert forall|k: int| 0 <= k < old_coins_vec.len() && k != target_idx implies
+                (#[trigger] old_coins_vec[k]).purse != removed_key.0
+                || old_coins_vec[k].idx != removed_key.1
+            by {}
+
+            // removed_key was in old ghost dom (by old (l)); remove decreases dom by exactly {removed_key}.
+            assert(old_coins.dom().contains(removed_key));
+            assert(new_coins.dom() =~= old_coins.dom().remove(removed_key));
+
+            // (i) coin key consistency.
+            assert forall|k: (PurseId, u64)| #[trigger] new_coins.dom().contains(k)
+                implies new_coins[k].purse == k.0 && new_coins[k].idx == k.1
+            by {
+                assert(old_coins.dom().contains(k));
+            }
+
+            // (j) coin referential integrity.
+            assert forall|k: (PurseId, u64)| #[trigger] new_coins.dom().contains(k)
+                implies self.spec_purses@.dom().contains(k.0)
+            by {
+                assert(old_coins.dom().contains(k));
+            }
+
+            // (k) coin idx below allocator.
+            assert forall|k: (PurseId, u64)| #[trigger] new_coins.dom().contains(k)
+                implies k.1 < self.spec_purses@[k.0].next_coin_idx
+            by {
+                assert(old_coins.dom().contains(k));
+            }
+
+            // (l) every new Vec entry's (purse, idx) is in new ghost.
+            assert forall|jj: int| 0 <= jj < new_coins_vec.len() implies
+                new_coins.dom().contains(
+                    (#[trigger] new_coins_vec[jj].purse, new_coins_vec[jj].idx)
+                )
+                && new_coins[(new_coins_vec[jj].purse, new_coins_vec[jj].idx)]
+                    == new_coins_vec[jj]
+            by {
+                if jj == target_idx {
+                    assert(new_coins_vec[jj] == old_coins_vec[last_idx]);
+                    assert(last_idx != target_idx);
+                    assert(old_coins_vec[last_idx].purse != removed_key.0
+                        || old_coins_vec[last_idx].idx != removed_key.1);
+                    let oc = old_coins_vec[last_idx];
+                    assert(old_coins.dom().contains((oc.purse, oc.idx)));
+                    assert((oc.purse, oc.idx) != removed_key);
+                    assert(old_coins[(oc.purse, oc.idx)] == oc);
+                } else {
+                    assert(new_coins_vec[jj] == old_coins_vec[jj]);
+                    let oc = old_coins_vec[jj];
+                    assert(old_coins.dom().contains((oc.purse, oc.idx)));
+                    assert((oc.purse, oc.idx) != removed_key);
+                    assert(old_coins[(oc.purse, oc.idx)] == oc);
+                }
+            }
+
+            // (m) every new ghost key has a Vec witness.
+            assert forall|k: (PurseId, u64)| #[trigger] new_coins.dom().contains(k)
+                implies exists|jj: int|
+                    0 <= jj < new_coins_vec.len()
+                    && #[trigger] new_coins_vec[jj].purse == k.0
+                    && new_coins_vec[jj].idx == k.1
+            by {
+                assert(old_coins.dom().contains(k));
+                assert(k != removed_key);
+                let w_old = choose|jj: int|
+                    0 <= jj < old_coins_vec.len()
+                    && #[trigger] old_coins_vec[jj].purse == k.0
+                    && old_coins_vec[jj].idx == k.1;
+                assert(w_old != target_idx);
+                if w_old == last_idx {
+                    // Element moved to target_idx by swap_remove.
+                    assert(target_idx < new_coins_vec.len());
+                    assert(new_coins_vec[target_idx] == old_coins_vec[last_idx]);
+                } else {
+                    assert(w_old < last_idx);
+                    assert(w_old < new_coins_vec.len());
+                    assert(new_coins_vec[w_old] == old_coins_vec[w_old]);
+                }
+            }
+
+            // (n) no duplicates in new_coins_vec.
+            assert forall|a: int, b: int|
+                0 <= a < new_coins_vec.len() && 0 <= b < new_coins_vec.len()
+                && (#[trigger] new_coins_vec[a]).purse
+                    == (#[trigger] new_coins_vec[b]).purse
+                && new_coins_vec[a].idx == new_coins_vec[b].idx
+                implies a == b
+            by {
+                if a == target_idx && b == target_idx {
+                } else if a == target_idx {
+                    assert(new_coins_vec[a] == old_coins_vec[last_idx]);
+                    assert(new_coins_vec[b] == old_coins_vec[b]);
+                    assert(b != last_idx);
+                } else if b == target_idx {
+                    assert(new_coins_vec[b] == old_coins_vec[last_idx]);
+                    assert(new_coins_vec[a] == old_coins_vec[a]);
+                    assert(a != last_idx);
+                } else {
+                    assert(new_coins_vec[a] == old_coins_vec[a]);
+                    assert(new_coins_vec[b] == old_coins_vec[b]);
+                }
+            }
+        }
+    }
+
+    /// Remove every coin in purse `p` (any state) from both the exec Vec
+    /// and the ghost map. Purses themselves are not touched.
+    pub fn purge_coins_of_purse(&mut self, p: PurseId)
+        requires
+            old(self).invariant(),
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins().remove_keys(
+                Set::new(|k: (PurseId, u64)| k.0 == p)
+            ),
+            forall|k: (PurseId, u64)|
+                #[trigger] final(self).coins().dom().contains(k) ==> k.0 != p,
+    {
+        let ghost initial_coins = self.spec_coins@;
+
+        loop
+            invariant
+                self.invariant(),
+                self.purses() == old(self).purses(),
+                // Current spec_coins is a subset of initial that preserves all
+                // entries with purse != p.
+                forall|k: (PurseId, u64)| #[trigger] self.spec_coins@.dom().contains(k)
+                    ==> initial_coins.dom().contains(k)
+                        && self.spec_coins@[k] == initial_coins[k],
+                forall|k: (PurseId, u64)|
+                    #[trigger] initial_coins.dom().contains(k) && k.0 != p
+                    ==> self.spec_coins@.dom().contains(k),
+                initial_coins == old(self).coins(),
+            decreases self.coins.len(),
+        {
+            match self.find_coin_with_purse(p) {
+                None => {
+                    // find-None postcondition: forall j. coins@[j].purse != p.
+                    proof {
+                        // No spec_coins key has k.0 == p: if any did, (m) would
+                        // give a Vec witness with purse == p — contradiction.
+                        assert forall|k: (PurseId, u64)|
+                            #[trigger] self.spec_coins@.dom().contains(k)
+                            implies k.0 != p
+                        by {
+                            if k.0 == p {
+                                let w = choose|jj: int|
+                                    0 <= jj < self.coins@.len()
+                                    && #[trigger] self.coins@[jj].purse == k.0
+                                    && self.coins@[jj].idx == k.1;
+                                assert(self.coins@[w].purse == p);
+                            }
+                        }
+                        // Combined with loop invariants, current spec_coins is
+                        // exactly initial_coins minus all keys with k.0 == p.
+                        assert(self.spec_coins@
+                            =~= initial_coins.remove_keys(
+                                Set::new(|k: (PurseId, u64)| k.0 == p)
+                            ));
+                    }
+                    return;
+                }
+                Some(idx) => {
+                    let ghost removed_entry = self.coins@[idx as int];
+                    let ghost removed_key = (removed_entry.purse, removed_entry.idx);
+                    proof {
+                        assert(self.spec_coins@.dom().contains(removed_key));
+                    }
+                    self.remove_coin_at(idx);
+                }
+            }
+        }
+    }
+
     /// Top-up: allocate `exp_seq.len()` fresh coins in purse `p`, one per
     /// exponent in `exp_seq` (in order). Each call to `add_coin` allocates the
     /// next available coin index, so the resulting coin keys are
