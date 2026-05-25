@@ -4928,6 +4928,54 @@ impl State {
         }
     }
 
+    /// Tracked top-up via entry: wraps [`Self::top_up_via_entry`] in
+    /// a `KTopUp` operation that starts in `Preparing` and immediately
+    /// advances to `Submitted` (the extrinsic creating the entry has
+    /// been broadcast to the chain). The op's later transitions
+    /// (`InBlock`, `Finalized`, `Waiting(ready_at)`, `Done`) fire as
+    /// chain notifications arrive — those are driven by the host via
+    /// the `mark_op_*` primitives.
+    ///
+    /// Quint analog: the combination of `startTopUp` + `opCommitTopUp`.
+    pub fn tracked_top_up_via_entry(
+        &mut self,
+        p: PurseId,
+        exponent: u8,
+        member_key: u64,
+        allocated_at: u64,
+        ready_at: u64,
+        ring_idx: u64,
+    ) -> (res: (OpHandle, (PurseId, u64)))
+        requires
+            old(self).invariant(),
+            old(self).purses().dom().contains(p),
+            old(self).purses()[p].next_entry_idx < u64::MAX,
+            old(self).next_handle < u64::MAX,
+        ensures
+            final(self).invariant(),
+            res.0 == old(self).next_handle,
+            final(self).operations().dom().contains(res.0),
+            final(self).operations()[res.0].status == OpStatus::Submitted,
+            final(self).operations()[res.0].kind == OpKind::TopUp,
+            final(self).operations()[res.0].purse == p,
+            res.1.0 == p,
+            res.1.1 == old(self).purses()[p].next_entry_idx,
+            final(self).entries().dom().contains(res.1),
+            final(self).entries()[res.1].on_chain == EntryOnChain::Waiting,
+            final(self).entries()[res.1].local == EntryLocal::LocalAvailable,
+    {
+        let handle = self.start_op(OpKind::TopUp, p);
+        let key = self.top_up_via_entry(
+            p, exponent, member_key, allocated_at, ready_at, ring_idx,
+        );
+        proof {
+            assert(self.operations()[handle].kind == OpKind::TopUp);
+            assert(self.operations()[handle].purse == p);
+        }
+        self.mark_op_submitted(handle);
+        (handle, key)
+    }
+
     /// Top-up via recycler entry (Quint `topUp`): allocate a fresh
     /// recycler entry of `exponent` in purse `p`, in the `Waiting` /
     /// `LocalAvailable` state. Caller supplies the chain-side
