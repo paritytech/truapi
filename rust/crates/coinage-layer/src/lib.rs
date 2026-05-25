@@ -648,6 +648,26 @@ pub open spec fn sum_avail_prefix(v: Seq<CoinRec>, p: PurseId, j: nat) -> nat
     }
 }
 
+/// Spec-only recursive sum: total spendable value across `v[0..j]`
+/// using the **real** Quint coin value `2^exp` (Quint `coinValue`).
+/// Companion to `sum_avail_prefix` (pilot scheme).
+pub open spec fn sum_avail_real_prefix(v: Seq<CoinRec>, p: PurseId, j: nat) -> nat
+    decreases j
+{
+    if j == 0 {
+        0
+    } else {
+        let prev = sum_avail_real_prefix(v, p, (j - 1) as nat);
+        if v[(j - 1) as int].purse == p
+            && v[(j - 1) as int].state == CoinState::Available
+        {
+            prev + coin_value_pow2(v[(j - 1) as int].exponent)
+        } else {
+            prev
+        }
+    }
+}
+
 /// Spec-only recursive sum: total pending entry value across `v[0..j]`
 /// among entries that belong to purse `p`, are `LocalAvailable`, and
 /// are either `Waiting` or `Missing` on-chain (Quint `pursePending`).
@@ -7671,6 +7691,66 @@ impl State {
             }
             if e.purse == p && is_local_avail && (is_waiting || is_missing) {
                 let value: u64 = (e.exponent as u64) + 1;
+                sum = sum + value;
+            }
+            j = j + 1;
+        }
+        sum
+    }
+
+    /// Sum of **real** `coin_value_pow2(exp) = 2^exp` across `Available`
+    /// coins in purse `p`. Companion to `sum_available_in` (pilot scheme).
+    /// Returned sum equals `sum_avail_real_prefix(self.coins@, p, len)`.
+    ///
+    /// Preconditions:
+    /// - Every coin in the state has `exponent <= MAX_EXPONENT` (= 30),
+    ///   so each coin value <= 2^30.
+    /// - Vec length bounded so the cumulative u64 sum (≤ len · 2^30)
+    ///   stays within u64::MAX.
+    pub fn sum_available_real_in(&self, p: PurseId) -> (sum: u64)
+        requires
+            self.invariant(),
+            forall|k: (PurseId, u64)|
+                #[trigger] self.coins().dom().contains(k)
+                ==> self.coins()[k].exponent <= MAX_EXPONENT,
+            self.coins@.len() <= (u64::MAX / 1073741824) as nat,
+        ensures
+            sum as nat == sum_avail_real_prefix(self.coins@, p, self.coins@.len() as nat),
+            sum as nat <= self.coins@.len() as nat * 1073741824,
+    {
+        let mut sum: u64 = 0;
+        let mut j: usize = 0;
+        while j < self.coins.len()
+            invariant
+                0 <= j <= self.coins.len(),
+                self.coins@.len() <= (u64::MAX / 1073741824) as nat,
+                sum as nat == sum_avail_real_prefix(self.coins@, p, j as nat),
+                sum as nat <= (j as nat) * 1073741824,
+                forall|k: (PurseId, u64)|
+                    #[trigger] self.coins().dom().contains(k)
+                    ==> self.coins()[k].exponent <= MAX_EXPONENT,
+                self.invariant(),
+            decreases self.coins.len() - j,
+        {
+            let is_available = matches!(self.coins[j].state, CoinState::Available);
+            proof {
+                // Per-step increment is at most 2^30, bounded by the
+                // global exponent constraint via invariant (l).
+                assert(self.spec_coins@.dom().contains(
+                    (self.coins@[j as int].purse, self.coins@[j as int].idx)
+                ));
+                let coin_key = (self.coins@[j as int].purse, self.coins@[j as int].idx);
+                assert(self.coins()[coin_key].exponent
+                    == self.coins@[j as int].exponent);
+                assert(self.coins()[coin_key].exponent <= MAX_EXPONENT);
+                assert(self.coins@[j as int].exponent <= MAX_EXPONENT);
+                lemma_pow2_at_30();
+                lemma_pow2_monotone(self.coins@[j as int].exponent as nat, 30);
+                assert(sum_avail_real_prefix(self.coins@, p, (j + 1) as nat)
+                    <= sum_avail_real_prefix(self.coins@, p, j as nat) + 1073741824);
+            }
+            if self.coins[j].purse == p && is_available {
+                let value: u64 = pow2_u64_exec(self.coins[j].exponent);
                 sum = sum + value;
             }
             j = j + 1;
