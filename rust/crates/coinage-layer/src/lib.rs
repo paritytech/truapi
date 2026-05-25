@@ -2047,6 +2047,44 @@ impl State {
     /// the temporal-gap problem of separately starting the op then
     /// locking the coin, where another concurrent call could observe
     /// the half-built state.
+    /// Atomic composite: start a new operation and lock `key`'s entry
+    /// for it. The entry must currently be `LocalAvailable`; on
+    /// return it is `LocalLockedFor(handle)`, and the operation is
+    /// in `Preparing`. Mirror of [`Self::start_op_locking_coin`] for
+    /// recycler-entry-bearing op flows (unload, external offload).
+    pub fn start_op_locking_entry(
+        &mut self,
+        kind: OpKind,
+        key: (PurseId, u64),
+    ) -> (handle: OpHandle)
+        requires
+            old(self).invariant(),
+            old(self).entries().dom().contains(key),
+            old(self).entries()[key].local == EntryLocal::LocalAvailable,
+            old(self).purses().dom().contains(key.0),
+            old(self).next_handle < u64::MAX,
+        ensures
+            final(self).invariant(),
+            handle == old(self).next_handle,
+            final(self).operations().dom().contains(handle),
+            final(self).operations()[handle].status == OpStatus::Preparing,
+            final(self).operations()[handle].kind == kind,
+            final(self).operations()[handle].purse == key.0,
+            final(self).entries().dom().contains(key),
+            final(self).entries()[key].local == EntryLocal::LocalLockedFor(handle),
+            final(self).entries()[key].on_chain == old(self).entries()[key].on_chain,
+            final(self).entries()[key].exponent == old(self).entries()[key].exponent,
+            final(self).next_handle == old(self).next_handle + 1,
+            final(self).next_age == old(self).next_age,
+    {
+        let handle = self.start_op(kind, key.0);
+        proof {
+            assert(self.entries()[key].local == EntryLocal::LocalAvailable);
+        }
+        self.lock_entry(key, handle);
+        handle
+    }
+
     pub fn start_op_locking_coin(
         &mut self,
         kind: OpKind,
@@ -3397,6 +3435,10 @@ impl State {
                 on_chain: old(self).entries()[key].on_chain,
                 local: EntryLocal::LocalLockedFor(handle),
             }),
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
     {
         self.set_entry_local(key, EntryLocal::LocalLockedFor(handle));
     }
