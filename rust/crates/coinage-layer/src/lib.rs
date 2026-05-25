@@ -1562,6 +1562,77 @@ impl State {
         }
     }
 
+    /// Select the first `Available` coin in purse `p` whose `exponent`
+    /// meets or exceeds `min_exponent`. Returns `None` if no such coin
+    /// exists.
+    pub fn select_coin(&self, p: PurseId, min_exponent: u8)
+        -> (res: Option<(PurseId, u64)>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some(key) =>
+                    self.coins().dom().contains(key)
+                    && key.0 == p
+                    && self.coins()[key].state == CoinState::Available
+                    && self.coins()[key].exponent >= min_exponent,
+                None =>
+                    forall|k: (PurseId, u64)|
+                        #[trigger] self.coins().dom().contains(k)
+                        && k.0 == p
+                        && self.coins()[k].state == CoinState::Available
+                        ==> self.coins()[k].exponent < min_exponent,
+            },
+    {
+        let mut j: usize = 0;
+        while j < self.coins.len()
+            invariant
+                0 <= j <= self.coins.len(),
+                self.invariant(),
+                forall|jj: int| 0 <= jj < j ==>
+                    (#[trigger] self.coins@[jj]).purse != p
+                    || self.coins@[jj].state != CoinState::Available
+                    || self.coins@[jj].exponent < min_exponent,
+            decreases self.coins.len() - j,
+        {
+            let is_avail = matches!(self.coins[j].state, CoinState::Available);
+            if self.coins[j].purse == p
+                && is_avail
+                && self.coins[j].exponent >= min_exponent
+            {
+                let key = (self.coins[j].purse, self.coins[j].idx);
+                proof {
+                    // (l) gives us key in dom and ghost matches Vec entry.
+                    assert(self.spec_coins@.dom().contains(key));
+                }
+                return Some(key);
+            }
+            j = j + 1;
+        }
+        // Not found in the Vec scan; lift to "no such ghost key" via (m).
+        proof {
+            assert forall|k: (PurseId, u64)|
+                #[trigger] self.coins().dom().contains(k)
+                && k.0 == p
+                && self.coins()[k].state == CoinState::Available
+                implies self.coins()[k].exponent < min_exponent
+            by {
+                // (m) gives a Vec witness w; the loop's "not found" fact then
+                // forces w to have either wrong purse, wrong state, or smaller
+                // exponent. The first two are ruled out by the ghost record's
+                // values (which match the Vec entry by (l)), leaving exponent.
+                let w = choose|jj: int|
+                    0 <= jj < self.coins@.len()
+                    && #[trigger] self.coins@[jj].purse == k.0
+                    && self.coins@[jj].idx == k.1;
+                assert(self.coins@[w].purse == p);
+                assert(self.coins@[w].state == self.coins()[k].state);
+                assert(self.coins@[w].exponent == self.coins()[k].exponent);
+            }
+        }
+        None
+    }
+
     /// Remove every coin in purse `p` (any state) from both the exec Vec
     /// and the ghost map. Purses themselves are not touched.
     pub fn purge_coins_of_purse(&mut self, p: PurseId)
