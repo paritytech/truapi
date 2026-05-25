@@ -126,14 +126,18 @@ pub enum OpKind {
     ExternalOffload,
 }
 
-/// Operation status (Quint `OpStatus`, design §5.5). The chain-related
-/// states (SSubmitted, SInBlock, SFinalized) are collapsed in the
-/// pilot since chain interaction isn't modeled — they're treated as a
-/// single "submitted" superstate.
+/// Operation status (Quint `OpStatus`, design §5.5). Mirrors the full
+/// Quint phase order Preparing → Submitted → InBlock → Finalized →
+/// (Waiting →)? Done, with `Failed` reachable from any pre-terminal
+/// state. The `Waiting(t)` arm carries a `u64` placeholder for the
+/// Quint `Time` payload (entry-ready timestamp).
 #[derive(PartialEq, Eq, Copy, Clone)]
 pub enum OpStatus {
     Preparing,
     Submitted,
+    InBlock,
+    Finalized,
+    Waiting(u64),
     Done,
     Failed,
 }
@@ -2130,6 +2134,135 @@ impl State {
                 && #[trigger] old_ops_vec[jj].handle == handle;
         }
         vstd::pervasive::unreached()
+    }
+
+    /// Operation lifecycle: `Preparing` → `Submitted`. Phase order
+    /// gate matching Quint `submitOp`.
+    pub fn mark_op_submitted(&mut self, handle: OpHandle)
+        requires
+            old(self).invariant(),
+            old(self).operations().dom().contains(handle),
+            old(self).operations()[handle].status == OpStatus::Preparing,
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).operations() == old(self).operations().insert(handle, OperationRec {
+                handle: old(self).operations()[handle].handle,
+                kind: old(self).operations()[handle].kind,
+                purse: old(self).operations()[handle].purse,
+                status: OpStatus::Submitted,
+            }),
+    {
+        self.set_op_status(handle, OpStatus::Submitted);
+    }
+
+    /// Operation lifecycle: `Submitted` → `InBlock`. Fires when the
+    /// extrinsic lands in a block.
+    pub fn mark_op_in_block(&mut self, handle: OpHandle)
+        requires
+            old(self).invariant(),
+            old(self).operations().dom().contains(handle),
+            old(self).operations()[handle].status == OpStatus::Submitted,
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).operations() == old(self).operations().insert(handle, OperationRec {
+                handle: old(self).operations()[handle].handle,
+                kind: old(self).operations()[handle].kind,
+                purse: old(self).operations()[handle].purse,
+                status: OpStatus::InBlock,
+            }),
+    {
+        self.set_op_status(handle, OpStatus::InBlock);
+    }
+
+    /// Operation lifecycle: `InBlock` → `Finalized`.
+    pub fn mark_op_finalized(&mut self, handle: OpHandle)
+        requires
+            old(self).invariant(),
+            old(self).operations().dom().contains(handle),
+            old(self).operations()[handle].status == OpStatus::InBlock,
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).operations() == old(self).operations().insert(handle, OperationRec {
+                handle: old(self).operations()[handle].handle,
+                kind: old(self).operations()[handle].kind,
+                purse: old(self).operations()[handle].purse,
+                status: OpStatus::Finalized,
+            }),
+    {
+        self.set_op_status(handle, OpStatus::Finalized);
+    }
+
+    /// Operation lifecycle: `Finalized` → `Waiting(ready_at)`. Used by
+    /// top-up: the op waits for a freshly-allocated entry to mature
+    /// before it can be marked `Done`.
+    pub fn mark_op_waiting(&mut self, handle: OpHandle, ready_at: u64)
+        requires
+            old(self).invariant(),
+            old(self).operations().dom().contains(handle),
+            old(self).operations()[handle].status == OpStatus::Finalized,
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).operations() == old(self).operations().insert(handle, OperationRec {
+                handle: old(self).operations()[handle].handle,
+                kind: old(self).operations()[handle].kind,
+                purse: old(self).operations()[handle].purse,
+                status: OpStatus::Waiting(ready_at),
+            }),
+    {
+        self.set_op_status(handle, OpStatus::Waiting(ready_at));
+    }
+
+    /// Operation lifecycle: `Finalized | Waiting(_)` → `Done`. Marks
+    /// the operation as successfully completed.
+    pub fn mark_op_done(&mut self, handle: OpHandle)
+        requires
+            old(self).invariant(),
+            old(self).operations().dom().contains(handle),
+            match old(self).operations()[handle].status {
+                OpStatus::Finalized => true,
+                OpStatus::Waiting(_) => true,
+                _ => false,
+            },
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).operations() == old(self).operations().insert(handle, OperationRec {
+                handle: old(self).operations()[handle].handle,
+                kind: old(self).operations()[handle].kind,
+                purse: old(self).operations()[handle].purse,
+                status: OpStatus::Done,
+            }),
+    {
+        self.set_op_status(handle, OpStatus::Done);
     }
 
     /// Coin lifecycle: `Pending` → `Available`. Called when chain
