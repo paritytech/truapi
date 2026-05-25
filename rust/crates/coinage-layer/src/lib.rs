@@ -4111,6 +4111,65 @@ impl State {
         (handle, result)
     }
 
+    /// Export a coin: the layer surrenders custody of a specific
+    /// `Available` coin (the host has handed its secret to an external
+    /// party). The coin transitions Available → PendingSpend → Spent;
+    /// no new coin is minted. Quint analog: `exportCoin`.
+    pub fn export_coin(&mut self, key: (PurseId, u64))
+        requires
+            old(self).invariant(),
+            old(self).coins().dom().contains(key),
+            old(self).coins()[key].state == CoinState::Available,
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins().dom().contains(key),
+            final(self).coins()[key].state == CoinState::Spent,
+            final(self).coins()[key].exponent == old(self).coins()[key].exponent,
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).spec_entries@ == old(self).spec_entries@,
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+    {
+        self.mark_coin_pending_spend(key);
+        self.mark_coin_spent(key);
+    }
+
+    /// Import a coin: an external (account, secret) pair becomes a
+    /// fresh `Available` coin in purse `p` carrying that account.
+    /// Quint analog: `importCoin`. The coin skips the Pending →
+    /// Available chain-observation gap (the host has already verified
+    /// the coin exists on-chain via the imported secret).
+    pub fn import_coin(&mut self, p: PurseId, exponent: u8, account: u64)
+        -> (key: (PurseId, u64))
+        requires
+            old(self).invariant(),
+            old(self).purses().dom().contains(p),
+            old(self).purses()[p].next_coin_idx < u64::MAX,
+            old(self).next_age < u64::MAX,
+        ensures
+            final(self).invariant(),
+            key.0 == p,
+            key.1 == old(self).purses()[p].next_coin_idx,
+            final(self).coins().dom().contains(key),
+            final(self).coins()[key].state == CoinState::Available,
+            final(self).coins()[key].exponent == exponent,
+            final(self).coins()[key].account == account,
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).spec_entries@ == old(self).spec_entries@,
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+    {
+        let key = self.add_coin_with_account(p, exponent, account);
+        self.mark_coin_observed(key);
+        key
+    }
+
     /// Rebalance: move one specific `Available` coin from purse `src` to
     /// purse `dst`. The source coin transitions Available → PendingSpend
     /// → Spent; a fresh `Available` coin with the same exponent is minted
