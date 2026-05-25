@@ -6908,7 +6908,26 @@ impl State {
                     && coin_value(self.coins()[k1].exponent)
                         + coin_value(self.coins()[k2].exponent)
                         == amount as nat,
-                None => true,
+                None =>
+                    // Sharp: no two distinct Vec indices satisfy the pair-sum
+                    // predicate. Combined with the dedup invariant (n), this
+                    // is equivalent to "no two distinct coin keys with the
+                    // pair-sum predicate".
+                    forall|i1: int, i2: int|
+                        0 <= i1 < self.coins@.len()
+                        && 0 <= i2 < self.coins@.len()
+                        && i1 != i2
+                        ==> {
+                            let c1 = #[trigger] self.coins@[i1];
+                            let c2 = #[trigger] self.coins@[i2];
+                            c1.purse != p
+                            || c1.state != CoinState::Available
+                            || c2.purse != p
+                            || c2.state != CoinState::Available
+                            || ((c1.exponent as nat) + 1
+                                    + (c2.exponent as nat) + 1
+                                != amount as nat)
+                        },
             },
     {
         let n = self.coins.len();
@@ -6918,6 +6937,18 @@ impl State {
                 0 <= i <= n,
                 n == self.coins.len(),
                 self.invariant(),
+                // No earlier outer index i1 < i forms a valid pair with any k.
+                forall|i1: int, i2: int|
+                    0 <= i1 < i as int && 0 <= i2 < n as int && i1 != i2 ==> {
+                        let c1 = #[trigger] self.coins@[i1];
+                        let c2 = #[trigger] self.coins@[i2];
+                        c1.purse != p
+                        || c1.state != CoinState::Available
+                        || c2.purse != p
+                        || c2.state != CoinState::Available
+                        || ((c1.exponent as nat) + 1 + (c2.exponent as nat) + 1
+                            != amount as nat)
+                    },
             decreases n - i,
         {
             let ci_avail = matches!(self.coins[i].state, CoinState::Available);
@@ -6935,6 +6966,29 @@ impl State {
                             self.coins@[i as int].state == CoinState::Available,
                             vi == (self.coins@[i as int].exponent as u64) + 1,
                             vi <= amount,
+                            // Same outer accumulator from before this inner loop.
+                            forall|i1: int, i2: int|
+                                0 <= i1 < i as int && 0 <= i2 < n as int
+                                && i1 != i2 ==> {
+                                    let c1 = #[trigger] self.coins@[i1];
+                                    let c2 = #[trigger] self.coins@[i2];
+                                    c1.purse != p
+                                    || c1.state != CoinState::Available
+                                    || c2.purse != p
+                                    || c2.state != CoinState::Available
+                                    || ((c1.exponent as nat) + 1
+                                            + (c2.exponent as nat) + 1
+                                        != amount as nat)
+                                },
+                            // Inner-loop accumulator: for all checked k2 < k,
+                            // the pair (i, k2) doesn't satisfy the predicate.
+                            forall|i2: int|
+                                0 <= i2 < k as int && i2 != i as int ==>
+                                (#[trigger] self.coins@[i2]).purse != p
+                                || self.coins@[i2].state != CoinState::Available
+                                || ((self.coins@[i as int].exponent as nat) + 1
+                                        + (self.coins@[i2].exponent as nat) + 1
+                                    != amount as nat),
                         decreases n - k,
                     {
                         if k != i {
@@ -6946,9 +7000,6 @@ impl State {
                                 proof {
                                     assert(self.spec_coins@.dom().contains(k1));
                                     assert(self.spec_coins@.dom().contains(k2));
-                                    // i != k means the Vec entries differ; by
-                                    // dedup invariant (n), their (purse, idx)
-                                    // tuples differ, so k1 != k2.
                                     assert(k1 != k2);
                                 }
                                 return Some((k1, k2));
@@ -6957,6 +7008,8 @@ impl State {
                         k = k + 1;
                     }
                 }
+                // If vi > amount, the pair-sum is also > amount and can't equal.
+                // The outer-loop accumulator extends by this fact for i.
             }
             i = i + 1;
         }
