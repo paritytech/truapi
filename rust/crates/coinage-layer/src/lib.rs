@@ -6424,6 +6424,88 @@ impl State {
         None
     }
 
+    /// Tier-3 (entry-supplemented cover, §6.3): find any pair of one
+    /// `Available` coin and one `Ready + LocalAvailable` entry in
+    /// purse `p` whose values sum exactly to `amount`.
+    ///
+    /// This is the simplest 1-coin + 1-entry case of the powerset-based
+    /// existsUnloadCover. Full tier-3 with arbitrary coin and entry
+    /// subsets remains task #88; this case unblocks the common
+    /// "single coin not enough but one mature entry tips it over"
+    /// pattern.
+    pub fn find_coin_entry_exact_cover(&self, p: PurseId, amount: u64)
+        -> (res: Option<((PurseId, u64), (PurseId, u64))>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some((coin_key, entry_key)) =>
+                    self.coins().dom().contains(coin_key)
+                    && self.entries().dom().contains(entry_key)
+                    && coin_key.0 == p
+                    && entry_key.0 == p
+                    && self.coins()[coin_key].state == CoinState::Available
+                    && self.entries()[entry_key].on_chain == EntryOnChain::Ready
+                    && self.entries()[entry_key].local == EntryLocal::LocalAvailable
+                    && coin_value(self.coins()[coin_key].exponent)
+                        + coin_value(self.entries()[entry_key].exponent)
+                        == amount as nat,
+                None => true,
+            },
+    {
+        let nc = self.coins.len();
+        let ne = self.entries.len();
+        let mut i: usize = 0;
+        while i < nc
+            invariant
+                0 <= i <= nc,
+                nc == self.coins.len(),
+                ne == self.entries.len(),
+                self.invariant(),
+            decreases nc - i,
+        {
+            let ci_avail = matches!(self.coins[i].state, CoinState::Available);
+            if self.coins[i].purse == p && ci_avail {
+                let vi: u64 = (self.coins[i].exponent as u64) + 1;
+                if vi <= amount {
+                    let mut k: usize = 0;
+                    while k < ne
+                        invariant
+                            0 <= k <= ne,
+                            nc == self.coins.len(),
+                            ne == self.entries.len(),
+                            i < nc,
+                            self.invariant(),
+                            self.coins@[i as int].purse == p,
+                            self.coins@[i as int].state == CoinState::Available,
+                            vi == (self.coins@[i as int].exponent as u64) + 1,
+                            vi <= amount,
+                        decreases ne - k,
+                    {
+                        let e = &self.entries[k];
+                        let is_ready = matches!(e.on_chain, EntryOnChain::Ready);
+                        let is_local_avail = matches!(e.local, EntryLocal::LocalAvailable);
+                        if e.purse == p && is_ready && is_local_avail {
+                            let ve: u64 = (e.exponent as u64) + 1;
+                            if vi + ve == amount {
+                                let ck = (self.coins[i].purse, self.coins[i].idx);
+                                let ek = (self.entries[k].purse, self.entries[k].idx);
+                                proof {
+                                    assert(self.spec_coins@.dom().contains(ck));
+                                    assert(self.spec_entries@.dom().contains(ek));
+                                }
+                                return Some((ck, ek));
+                            }
+                        }
+                        k = k + 1;
+                    }
+                }
+            }
+            i = i + 1;
+        }
+        None
+    }
+
     /// Tier-1 multi-coin (§6.3): find any pair of distinct `Available`
     /// coins in purse `p` whose values sum exactly to `amount`. Returns
     /// the two keys in Vec order, or `None` if no such pair exists.
