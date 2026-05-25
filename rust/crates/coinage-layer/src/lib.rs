@@ -2553,6 +2553,98 @@ impl State {
         vstd::pervasive::unreached()
     }
 
+    /// True iff `key` is currently in the coin map. O(n) scan; useful for
+    /// gap-limit recovery (Appendix C) which probes (purse, idx) tuples
+    /// without a precomputed index.
+    pub fn has_coin(&self, key: (PurseId, u64)) -> (b: bool)
+        requires
+            self.invariant(),
+        ensures
+            b == self.coins().dom().contains(key),
+    {
+        let mut j: usize = 0;
+        while j < self.coins.len()
+            invariant
+                0 <= j <= self.coins.len(),
+                self.invariant(),
+                forall|jj: int| 0 <= jj < j ==>
+                    (#[trigger] self.coins@[jj]).purse != key.0
+                    || self.coins@[jj].idx != key.1,
+            decreases self.coins.len() - j,
+        {
+            if self.coins[j].purse == key.0 && self.coins[j].idx == key.1 {
+                proof {
+                    assert(self.spec_coins@.dom().contains(
+                        (self.coins@[j as int].purse, self.coins@[j as int].idx)
+                    ));
+                }
+                return true;
+            }
+            j = j + 1;
+        }
+        // No Vec witness for `key`: by (m), key not in ghost dom.
+        proof {
+            if self.coins().dom().contains(key) {
+                let w = choose|jj: int|
+                    0 <= jj < self.coins@.len()
+                    && #[trigger] self.coins@[jj].purse == key.0
+                    && self.coins@[jj].idx == key.1;
+                assert(self.coins@[w].purse == key.0);
+            }
+        }
+        false
+    }
+
+    /// Gap-limit recovery scan (Appendix C). Probes coin indices
+    /// `0, 1, 2, …, max_idx` in purse `p`, returning each existing key.
+    /// Termination: after seeing `gap_limit` consecutive missing indices,
+    /// the scan stops early.
+    ///
+    /// **Pilot scope:** the contract guarantees soundness (every returned
+    /// key is in the coin map under purse `p`) but is *not* complete with
+    /// respect to "discovered all coins below `max_idx`". A coin at idx
+    /// `i` may be missed if a gap of length `gap_limit` precedes it.
+    /// Real recovery in the design relies on a high-enough gap_limit
+    /// (per RFC-6 derivation discipline) to make this safe in practice.
+    pub fn scan_with_gap_limit(&self, p: PurseId, gap_limit: u64, max_idx: u64)
+        -> (found: Vec<(PurseId, u64)>)
+        requires
+            self.invariant(),
+        ensures
+            // Each returned key is in the coin map under purse `p`.
+            forall|i: int| 0 <= i < found@.len() ==>
+                self.coins().dom().contains(#[trigger] found@[i])
+                && found@[i].0 == p,
+    {
+        let mut found: Vec<(PurseId, u64)> = Vec::new();
+        let mut i: u64 = 0;
+        let mut gap: u64 = 0;
+        loop
+            invariant
+                self.invariant(),
+                i <= max_idx + 1,
+                gap <= gap_limit,
+                forall|k: int| 0 <= k < found@.len() ==>
+                    self.coins().dom().contains(#[trigger] found@[k])
+                    && found@[k].0 == p,
+            decreases
+                if gap >= gap_limit || i > max_idx { 0int }
+                else { (max_idx - i) as int + 1 },
+        {
+            if i > max_idx { break; }
+            if gap >= gap_limit { break; }
+            if self.has_coin((p, i)) {
+                found.push((p, i));
+                gap = 0;
+            } else {
+                gap = gap + 1;
+            }
+            if i == u64::MAX { break; }
+            i = i + 1;
+        }
+        found
+    }
+
     /// Composite operation: `transfer(from, to, min_exp)` selects an
     /// `Available` coin in purse `from` with `exponent >= min_exp`, walks
     /// it through `PendingSpend → Spent` (simulating chain settlement),
