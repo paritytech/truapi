@@ -4111,6 +4111,77 @@ impl State {
         (handle, result)
     }
 
+    /// Tracked export: wraps [`Self::export_coin`] in a `KExport`
+    /// operation. Returns the op handle so the caller can correlate
+    /// later chain events to this op.
+    pub fn tracked_export_coin(&mut self, key: (PurseId, u64))
+        -> (handle: OpHandle)
+        requires
+            old(self).invariant(),
+            old(self).coins().dom().contains(key),
+            old(self).coins()[key].state == CoinState::Available,
+            old(self).next_handle < u64::MAX,
+        ensures
+            final(self).invariant(),
+            handle == old(self).next_handle,
+            final(self).operations().dom().contains(handle),
+            final(self).operations()[handle].status == OpStatus::Submitted,
+            final(self).operations()[handle].kind == OpKind::Export,
+            final(self).operations()[handle].purse == key.0,
+            final(self).coins().dom().contains(key),
+            final(self).coins()[key].state == CoinState::Spent,
+    {
+        let h = self.start_op(OpKind::Export, key.0);
+        proof {
+            assert(self.operations()[h].kind == OpKind::Export);
+            assert(self.operations()[h].purse == key.0);
+        }
+        self.export_coin(key);
+        proof {
+            assert(self.operations()[h].kind == OpKind::Export);
+            assert(self.operations()[h].purse == key.0);
+        }
+        self.mark_op_submitted(h);
+        h
+    }
+
+    /// Tracked import: wraps [`Self::import_coin`] in a `KImport`
+    /// operation. Returns `(handle, new_coin_key)`.
+    pub fn tracked_import_coin(&mut self, p: PurseId, exponent: u8, account: u64)
+        -> (res: (OpHandle, (PurseId, u64)))
+        requires
+            old(self).invariant(),
+            old(self).purses().dom().contains(p),
+            old(self).purses()[p].next_coin_idx < u64::MAX,
+            old(self).next_age < u64::MAX,
+            old(self).next_handle < u64::MAX,
+        ensures
+            final(self).invariant(),
+            res.0 == old(self).next_handle,
+            final(self).operations().dom().contains(res.0),
+            final(self).operations()[res.0].status == OpStatus::Submitted,
+            final(self).operations()[res.0].kind == OpKind::Import,
+            final(self).operations()[res.0].purse == p,
+            res.1.0 == p,
+            final(self).coins().dom().contains(res.1),
+            final(self).coins()[res.1].state == CoinState::Available,
+            final(self).coins()[res.1].exponent == exponent,
+            final(self).coins()[res.1].account == account,
+    {
+        let h = self.start_op(OpKind::Import, p);
+        proof {
+            assert(self.operations()[h].kind == OpKind::Import);
+            assert(self.operations()[h].purse == p);
+        }
+        let new_key = self.import_coin(p, exponent, account);
+        proof {
+            assert(self.operations()[h].kind == OpKind::Import);
+            assert(self.operations()[h].purse == p);
+        }
+        self.mark_op_submitted(h);
+        (h, new_key)
+    }
+
     /// Export a coin: the layer surrenders custody of a specific
     /// `Available` coin (the host has handed its secret to an external
     /// party). The coin transitions Available → PendingSpend → Spent;
