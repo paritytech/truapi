@@ -109,6 +109,25 @@ pub struct State {
     pub spec_coins: Ghost<Map<(PurseId, u64), CoinRec>>,
 }
 
+/// Spec-only recursive count: number of indices in `v[0..j]` whose
+/// coin is `Available` and belongs to purse `p`.
+pub open spec fn count_avail_prefix(v: Seq<CoinRec>, p: PurseId, j: nat) -> nat
+    decreases j
+{
+    if j == 0 {
+        0
+    } else {
+        let prev = count_avail_prefix(v, p, (j - 1) as nat);
+        if v[(j - 1) as int].purse == p
+            && v[(j - 1) as int].state == CoinState::Available
+        {
+            prev + 1
+        } else {
+            prev
+        }
+    }
+}
+
 impl State {
     /// Spec view of the purse map.
     pub open spec fn purses(&self) -> Map<PurseId, PurseRecSpec> {
@@ -1715,10 +1734,47 @@ impl State {
         }
     }
 
+    /// Count of `Available` coins in purse `p`. Scans the coin Vec; the
+    /// returned count equals `count_avail_prefix(self.coins@, p, len)`.
+    ///
+    /// **Pilot value scheme:** spendable is the *count* of Available coins,
+    /// not the sum of coin values. Real `coinValue(exp) = 2^exp` is deferred.
+    fn count_available_in(&self, p: PurseId) -> (count: u64)
+        requires
+            self.invariant(),
+        ensures
+            count as nat == count_avail_prefix(self.coins@, p, self.coins@.len() as nat),
+    {
+        let mut count: u64 = 0;
+        let mut j: usize = 0;
+        while j < self.coins.len()
+            invariant
+                0 <= j <= self.coins.len(),
+                count as nat == count_avail_prefix(self.coins@, p, j as nat),
+                count as nat <= j as nat,
+            decreases self.coins.len() - j,
+        {
+            let is_available = matches!(self.coins[j].state, CoinState::Available);
+            proof {
+                // count_avail_prefix(v, p, j+1) - count_avail_prefix(v, p, j) is
+                // either 0 or 1, so count <= (j+1) is preserved.
+                assert(count_avail_prefix(self.coins@, p, (j + 1) as nat)
+                    <= count_avail_prefix(self.coins@, p, j as nat) + 1);
+            }
+            if self.coins[j].purse == p && is_available {
+                count = count + 1;
+            }
+            j = j + 1;
+        }
+        count
+    }
+
     /// 6.1 `queryPurse` (Quint lines 603-612; design §8.1 `query_purse`).
     ///
-    /// Returns a synchronous snapshot. In the pilot scope (no coins/entries),
-    /// the three amount fields are always 0.
+    /// Returns a synchronous snapshot. `spendable` is the count of
+    /// `Available` coins in `p` (see `count_available_in`). `spendable_strict`
+    /// and `pending` remain pilot-stubbed at 0 — they correspond to recycler-
+    /// entry aggregations that don't exist in this pilot's state.
     pub fn query_purse(&self, p: PurseId) -> (info: Result<PurseInfo, Error>)
         requires
             self.invariant(),
@@ -1728,7 +1784,8 @@ impl State {
                     self.purses().dom().contains(p)
                     && i.id == p
                     && i.name@ == self.purses()[p].name
-                    && i.spendable == 0
+                    && i.spendable as nat
+                        == count_avail_prefix(self.coins@, p, self.coins@.len() as nat)
                     && i.spendable_strict == 0
                     && i.pending == 0,
                 Err(Error::PurseNotFound(q)) =>
@@ -1746,13 +1803,14 @@ impl State {
                 self.purses.len() - i,
         {
             if self.purses[i].id == p {
+                let spendable = self.count_available_in(p);
                 let rec = &self.purses[i];
                 let name_copy: Vec<u8> = rec.name.clone();
                 assert(name_copy@ == rec.name@);
                 return Ok(PurseInfo {
                     id: rec.id,
                     name: name_copy,
-                    spendable: 0,
+                    spendable,
                     spendable_strict: 0,
                     pending: 0,
                 });
