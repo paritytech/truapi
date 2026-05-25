@@ -4942,6 +4942,62 @@ impl State {
         }
     }
 
+    /// Check: does any *non-terminal* operation target purse `p`?
+    /// Returns `true` iff at least one operation has `purse == p` and a
+    /// status in {Preparing, Submitted, InBlock, Finalized, Waiting(_)}.
+    /// Useful for delete-purse readiness checks where terminal ops can
+    /// be ignored.
+    pub fn has_in_flight_op_for_purse(&self, p: PurseId) -> (res: bool)
+        requires
+            self.invariant(),
+        ensures
+            res == exists|h: OpHandle|
+                #[trigger] self.operations().dom().contains(h)
+                && self.operations()[h].purse == p
+                && !is_terminal_op_status(self.operations()[h].status),
+    {
+        let mut j: usize = 0;
+        while j < self.operations.len()
+            invariant
+                0 <= j <= self.operations.len(),
+                self.invariant(),
+                forall|jj: int| 0 <= jj < j ==>
+                    (#[trigger] self.operations@[jj]).purse != p
+                    || is_terminal_op_status(self.operations@[jj].status),
+            decreases self.operations.len() - j,
+        {
+            let op = &self.operations[j];
+            let is_terminal = match op.status {
+                OpStatus::Done => true,
+                OpStatus::Failed => true,
+                _ => false,
+            };
+            if op.purse == p && !is_terminal {
+                let h = op.handle;
+                proof {
+                    assert(self.spec_operations@.dom().contains(h));
+                    assert(self.operations()[h].purse == p);
+                    assert(!is_terminal_op_status(self.operations()[h].status));
+                }
+                return true;
+            }
+            j = j + 1;
+        }
+        proof {
+            assert forall|h: OpHandle|
+                #[trigger] self.operations().dom().contains(h)
+                && self.operations()[h].purse == p
+                implies is_terminal_op_status(self.operations()[h].status)
+            by {
+                let w = choose|jj: int|
+                    0 <= jj < self.operations@.len()
+                    && #[trigger] self.operations@[jj].handle == h;
+                assert(self.operations@[w].handle == h);
+            }
+        }
+        false
+    }
+
     /// Check: does any operation target purse `p`? Returns `true` iff
     /// at least one operation has `op.purse == p`. Useful as a pre-flight
     /// guard before `delete_purse`, which requires no targeting ops.
