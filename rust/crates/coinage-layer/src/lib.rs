@@ -4814,6 +4814,67 @@ impl State {
         }
     }
 
+    /// Top-up via recycler entry (Quint `topUp`): allocate a fresh
+    /// recycler entry of `exponent` in purse `p`, in the `Waiting` /
+    /// `LocalAvailable` state. Caller supplies the chain-side
+    /// bookkeeping (`member_key`, `allocated_at`, `ready_at`,
+    /// `ring_idx`) — these come from the host's chain abstraction
+    /// (e.g. derive `member_key` from the purse's anonymity-ring
+    /// secret, `ready_at = allocated_at + JitterMax`).
+    ///
+    /// This is the entry-side bottom-layer effect of the design §8.2
+    /// top-up — funds entering via a recycler ring rather than as
+    /// direct coins. Pair with `set_entry_on_chain` once the chain
+    /// confirms ring-membership floor → entry becomes `Ready`.
+    pub fn top_up_via_entry(
+        &mut self,
+        p: PurseId,
+        exponent: u8,
+        member_key: u64,
+        allocated_at: u64,
+        ready_at: u64,
+        ring_idx: u64,
+    ) -> (key: (PurseId, u64))
+        requires
+            old(self).invariant(),
+            old(self).purses().dom().contains(p),
+            old(self).purses()[p].next_entry_idx < u64::MAX,
+        ensures
+            final(self).invariant(),
+            key.0 == p,
+            key.1 == old(self).purses()[p].next_entry_idx,
+            final(self).entries().dom().contains(key),
+            final(self).entries()[key] == (EntryRec {
+                purse: p,
+                idx: key.1,
+                exponent,
+                on_chain: EntryOnChain::Waiting,
+                local: EntryLocal::LocalAvailable,
+                member_key,
+                allocated_at,
+                ready_at,
+                ring_idx,
+            }),
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+    {
+        let key = self.add_entry_with_meta(
+            p,
+            exponent,
+            EntryOnChain::Waiting,
+            EntryLocal::LocalAvailable,
+            member_key,
+            allocated_at,
+            ready_at,
+            ring_idx,
+        );
+        key
+    }
+
     /// Top-up: allocate `exp_seq.len()` fresh coins in purse `p`, one per
     /// exponent in `exp_seq` (in order). Each call to `add_coin` allocates the
     /// next available coin index, so the resulting coin keys are
