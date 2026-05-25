@@ -179,6 +179,22 @@ pub open spec fn coin_value(exp: u8) -> nat {
     (exp as nat) + 1
 }
 
+/// Recursive `2^exp` over `nat`. Spec-only; no exec implementation
+/// because saturating-`u64` arithmetic isn't yet wired up across the
+/// pilot.
+pub open spec fn pow2_nat(exp: nat) -> nat
+    decreases exp
+{
+    if exp == 0 { 1 } else { 2 * pow2_nat((exp - 1) as nat) }
+}
+
+/// Spec-only **real** coin value. Matches Quint's `coinValue(exp) =
+/// 2^exp`. Future work: switch exec arithmetic from linear `exp + 1`
+/// to this via saturating `u64` arithmetic (or `u128`/BigInt sums).
+pub open spec fn coin_value_pow2(exp: u8) -> nat {
+    pow2_nat(exp as nat)
+}
+
 /// Spec-only recursive sum: total spendable value across `v[0..j]`
 /// among coins that are `Available` and belong to purse `p`.
 pub open spec fn sum_avail_prefix(v: Seq<CoinRec>, p: PurseId, j: nat) -> nat
@@ -2128,6 +2144,75 @@ impl State {
         vstd::pervasive::unreached()
     }
 
+    /// Entry local lifecycle: `LocalAvailable` → `LocalLockedFor`.
+    /// Reserve an entry for an in-flight operation.
+    pub fn lock_entry(&mut self, key: (PurseId, u64))
+        requires
+            old(self).invariant(),
+            old(self).entries().dom().contains(key),
+            old(self).entries()[key].local == EntryLocal::LocalAvailable,
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).entries() == old(self).entries().insert(key, EntryRec {
+                purse: old(self).entries()[key].purse,
+                idx: old(self).entries()[key].idx,
+                exponent: old(self).entries()[key].exponent,
+                on_chain: old(self).entries()[key].on_chain,
+                local: EntryLocal::LocalLockedFor,
+            }),
+    {
+        self.set_entry_local(key, EntryLocal::LocalLockedFor);
+    }
+
+    /// Entry local lifecycle: `LocalLockedFor` → `LocalConsumed`.
+    /// Finalize an entry's consumption after settlement.
+    pub fn consume_entry(&mut self, key: (PurseId, u64))
+        requires
+            old(self).invariant(),
+            old(self).entries().dom().contains(key),
+            old(self).entries()[key].local == EntryLocal::LocalLockedFor,
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).entries() == old(self).entries().insert(key, EntryRec {
+                purse: old(self).entries()[key].purse,
+                idx: old(self).entries()[key].idx,
+                exponent: old(self).entries()[key].exponent,
+                on_chain: old(self).entries()[key].on_chain,
+                local: EntryLocal::LocalConsumed,
+            }),
+    {
+        self.set_entry_local(key, EntryLocal::LocalConsumed);
+    }
+
+    /// Entry local lifecycle: `LocalLockedFor` → `LocalAvailable`.
+    /// Release the entry's reservation when the in-flight operation cancels.
+    pub fn release_entry_lock(&mut self, key: (PurseId, u64))
+        requires
+            old(self).invariant(),
+            old(self).entries().dom().contains(key),
+            old(self).entries()[key].local == EntryLocal::LocalLockedFor,
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).entries() == old(self).entries().insert(key, EntryRec {
+                purse: old(self).entries()[key].purse,
+                idx: old(self).entries()[key].idx,
+                exponent: old(self).entries()[key].exponent,
+                on_chain: old(self).entries()[key].on_chain,
+                local: EntryLocal::LocalAvailable,
+            }),
+    {
+        self.set_entry_local(key, EntryLocal::LocalAvailable);
+    }
+
     /// Set a recycler entry's local-side state (Available → LockedFor →
     /// Consumed lifecycle). Mirror of `set_entry_on_chain` for the
     /// `local` field. Quint analog: `lockEntry`, `consumeEntry`.
@@ -2669,6 +2754,85 @@ impl State {
         found
     }
 
+    /// True iff `key` is currently in the entry map.
+    pub fn has_entry(&self, key: (PurseId, u64)) -> (b: bool)
+        requires
+            self.invariant(),
+        ensures
+            b == self.entries().dom().contains(key),
+    {
+        let mut j: usize = 0;
+        while j < self.entries.len()
+            invariant
+                0 <= j <= self.entries.len(),
+                self.invariant(),
+                forall|jj: int| 0 <= jj < j ==>
+                    (#[trigger] self.entries@[jj]).purse != key.0
+                    || self.entries@[jj].idx != key.1,
+            decreases self.entries.len() - j,
+        {
+            if self.entries[j].purse == key.0 && self.entries[j].idx == key.1 {
+                proof {
+                    assert(self.spec_entries@.dom().contains(
+                        (self.entries@[j as int].purse, self.entries@[j as int].idx)
+                    ));
+                }
+                return true;
+            }
+            j = j + 1;
+        }
+        proof {
+            if self.entries().dom().contains(key) {
+                let w = choose|jj: int|
+                    0 <= jj < self.entries@.len()
+                    && #[trigger] self.entries@[jj].purse == key.0
+                    && self.entries@[jj].idx == key.1;
+                assert(self.entries@[w].purse == key.0);
+            }
+        }
+        false
+    }
+
+    /// Gap-limit recovery scan for entries. Same shape as `scan_with_gap_limit`
+    /// but probing the entry map instead of the coin map.
+    pub fn scan_entries_with_gap_limit(&self, p: PurseId, gap_limit: u64, max_idx: u64)
+        -> (found: Vec<(PurseId, u64)>)
+        requires
+            self.invariant(),
+        ensures
+            forall|i: int| 0 <= i < found@.len() ==>
+                self.entries().dom().contains(#[trigger] found@[i])
+                && found@[i].0 == p,
+    {
+        let mut found: Vec<(PurseId, u64)> = Vec::new();
+        let mut i: u64 = 0;
+        let mut gap: u64 = 0;
+        loop
+            invariant
+                self.invariant(),
+                i <= max_idx + 1,
+                gap <= gap_limit,
+                forall|k: int| 0 <= k < found@.len() ==>
+                    self.entries().dom().contains(#[trigger] found@[k])
+                    && found@[k].0 == p,
+            decreases
+                if gap >= gap_limit || i > max_idx { 0int }
+                else { (max_idx - i) as int + 1 },
+        {
+            if i > max_idx { break; }
+            if gap >= gap_limit { break; }
+            if self.has_entry((p, i)) {
+                found.push((p, i));
+                gap = 0;
+            } else {
+                gap = gap + 1;
+            }
+            if i == u64::MAX { break; }
+            i = i + 1;
+        }
+        found
+    }
+
     /// Composite operation: `transfer(from, to, min_exp)` selects an
     /// `Available` coin in purse `from` with `exponent >= min_exp`, walks
     /// it through `PendingSpend → Spent` (simulating chain settlement),
@@ -2900,6 +3064,76 @@ impl State {
                 // forces w to have either wrong purse, wrong state, or smaller
                 // exponent. The first two are ruled out by the ghost record's
                 // values (which match the Vec entry by (l)), leaving exponent.
+                let w = choose|jj: int|
+                    0 <= jj < self.coins@.len()
+                    && #[trigger] self.coins@[jj].purse == k.0
+                    && self.coins@[jj].idx == k.1;
+                assert(self.coins@[w].purse == p);
+                assert(self.coins@[w].state == self.coins()[k].state);
+                assert(self.coins@[w].exponent == self.coins()[k].exponent);
+            }
+        }
+        None
+    }
+
+    /// Degenerate exact-cover: find an `Available` coin in purse `p` whose
+    /// `coin_value(exp)` equals `requested` exactly. Returns `None` if no
+    /// single coin matches.
+    ///
+    /// **Pilot scope:** Tier-1 exact-cover in the design (§6.3) considers
+    /// multi-coin subsets summing to `requested`. This single-coin form is
+    /// the simplest case. Multi-coin exact subset-sum (powerset enumeration
+    /// with lex-min disambiguation) is the natural extension; deferred.
+    pub fn find_exact_single_coin(&self, p: PurseId, requested: u64)
+        -> (res: Option<(PurseId, u64)>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some(key) =>
+                    self.coins().dom().contains(key)
+                    && key.0 == p
+                    && self.coins()[key].state == CoinState::Available
+                    && coin_value(self.coins()[key].exponent) == requested as nat,
+                None =>
+                    forall|k: (PurseId, u64)|
+                        #[trigger] self.coins().dom().contains(k)
+                        && k.0 == p
+                        && self.coins()[k].state == CoinState::Available
+                        ==> coin_value(self.coins()[k].exponent) != requested as nat,
+            },
+    {
+        let mut j: usize = 0;
+        while j < self.coins.len()
+            invariant
+                0 <= j <= self.coins.len(),
+                self.invariant(),
+                forall|jj: int| 0 <= jj < j ==>
+                    (#[trigger] self.coins@[jj]).purse != p
+                    || self.coins@[jj].state != CoinState::Available
+                    || coin_value(self.coins@[jj].exponent) != requested as nat,
+            decreases self.coins.len() - j,
+        {
+            let is_avail = matches!(self.coins[j].state, CoinState::Available);
+            let value: u64 = (self.coins[j].exponent as u64) + 1;
+            if self.coins[j].purse == p && is_avail && value == requested {
+                let key = (self.coins[j].purse, self.coins[j].idx);
+                proof {
+                    assert(self.spec_coins@.dom().contains(key));
+                }
+                return Some(key);
+            }
+            j = j + 1;
+        }
+        // None: lift Vec-scan "not found" to a universal claim over the ghost
+        // map via invariant (m), same as `select_coin`.
+        proof {
+            assert forall|k: (PurseId, u64)|
+                #[trigger] self.coins().dom().contains(k)
+                && k.0 == p
+                && self.coins()[k].state == CoinState::Available
+                implies coin_value(self.coins()[k].exponent) != requested as nat
+            by {
                 let w = choose|jj: int|
                     0 <= jj < self.coins@.len()
                     && #[trigger] self.coins@[jj].purse == k.0
