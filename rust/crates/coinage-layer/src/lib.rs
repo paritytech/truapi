@@ -4751,6 +4751,7 @@ impl State {
             let c = &self.coins[j];
             let is_spent = matches!(c.state, CoinState::Spent);
             if c.purse == p && !is_spent {
+                #[allow(unused_variables)]
                 let key = (c.purse, c.idx);
                 proof {
                     assert(self.spec_coins@.dom().contains(key));
