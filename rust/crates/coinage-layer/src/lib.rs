@@ -2038,6 +2038,36 @@ impl State {
         vstd::pervasive::unreached()
     }
 
+    /// Atomic composite: commit an op that's holding one locked coin.
+    /// Consumes the coin (`LockedFor → PendingSpend → Spent`) and
+    /// marks the op `Done`. Used by the commit path of transfer /
+    /// rebalance / export when the chain has finalized the spend.
+    pub fn commit_op_consuming_locked_coin(
+        &mut self,
+        handle: OpHandle,
+        key: (PurseId, u64),
+    )
+        requires
+            old(self).invariant(),
+            old(self).operations().dom().contains(handle),
+            old(self).operations()[handle].status == OpStatus::Finalized,
+            old(self).coins().dom().contains(key),
+            old(self).coins()[key].state == CoinState::LockedFor(handle),
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins().dom().contains(key),
+            final(self).coins()[key].state == CoinState::Spent,
+            final(self).operations().dom().contains(handle),
+            final(self).operations()[handle].status == OpStatus::Done,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+    {
+        self.commit_locked_coin(key);
+        self.mark_coin_spent(key);
+        self.mark_op_done(handle);
+    }
+
     /// Atomic composite: cancel an op that's holding one locked coin.
     /// Releases the coin back to `Available` and marks the op
     /// `Failed`. Inverse of [`Self::start_op_locking_coin`] (when the
