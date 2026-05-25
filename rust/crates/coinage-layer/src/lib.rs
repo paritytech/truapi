@@ -7947,6 +7947,87 @@ impl State {
         sum
     }
 
+    /// Real-value (2^exp) variant of [`Self::query_purse`]. Reports
+    /// `spendable`, `spendable_strict`, and `pending` using Quint's
+    /// production `coinValue = 2^exp` arithmetic via the
+    /// `sum_*_real_in` aggregations. Requires all exponents in state
+    /// to satisfy MAX_EXPONENT and the Vec sizes to fit cumulative
+    /// u64 sums.
+    pub fn query_purse_real(&self, p: PurseId) -> (info: Result<PurseInfo, Error>)
+        requires
+            self.invariant(),
+            forall|k: (PurseId, u64)|
+                #[trigger] self.coins().dom().contains(k)
+                ==> self.coins()[k].exponent <= MAX_EXPONENT,
+            forall|k: (PurseId, u64)|
+                #[trigger] self.entries().dom().contains(k)
+                ==> self.entries()[k].exponent <= MAX_EXPONENT,
+            self.coins@.len() <= (u64::MAX / 1073741824) as nat,
+            self.entries@.len() <= (u64::MAX / 1073741824) as nat,
+            (self.coins@.len() as nat + self.entries@.len() as nat)
+                <= (u64::MAX / 1073741824) as nat,
+        ensures
+            match info {
+                Ok(i) =>
+                    self.purses().dom().contains(p)
+                    && i.id == p
+                    && i.name@ == self.purses()[p].name
+                    && i.spendable as nat
+                        == sum_avail_real_prefix(self.coins@, p, self.coins@.len() as nat)
+                    && i.spendable_strict as nat
+                        == sum_avail_real_prefix(self.coins@, p, self.coins@.len() as nat)
+                            + sum_ready_real_prefix(self.entries@, p,
+                                                    self.entries@.len() as nat)
+                    && i.pending as nat
+                        == sum_pending_real_prefix(self.entries@, p,
+                                                   self.entries@.len() as nat),
+                Err(Error::PurseNotFound(q)) =>
+                    !self.purses().dom().contains(p) && q == p,
+                Err(_) => false,
+            },
+    {
+        let mut i: usize = 0;
+        while i < self.purses.len()
+            invariant
+                0 <= i <= self.purses.len(),
+                self.invariant(),
+                forall|k: (PurseId, u64)|
+                    #[trigger] self.coins().dom().contains(k)
+                    ==> self.coins()[k].exponent <= MAX_EXPONENT,
+                forall|k: (PurseId, u64)|
+                    #[trigger] self.entries().dom().contains(k)
+                    ==> self.entries()[k].exponent <= MAX_EXPONENT,
+                self.coins@.len() <= (u64::MAX / 1073741824) as nat,
+                self.entries@.len() <= (u64::MAX / 1073741824) as nat,
+                (self.coins@.len() as nat + self.entries@.len() as nat)
+                    <= (u64::MAX / 1073741824) as nat,
+                forall|j: int| 0 <= j < i ==> (#[trigger] self.purses@[j]).id != p,
+            decreases self.purses.len() - i,
+        {
+            if self.purses[i].id == p {
+                let spendable = self.sum_available_real_in(p);
+                let ready = self.sum_ready_real_in(p);
+                let pending = self.sum_pending_real_in(p);
+                proof {
+                    assert(spendable as nat <= self.coins@.len() as nat * 1073741824);
+                    assert(ready as nat <= self.entries@.len() as nat * 1073741824);
+                }
+                let rec = &self.purses[i];
+                let name_copy: Vec<u8> = rec.name.clone();
+                assert(name_copy@ == rec.name@);
+                return Ok(PurseInfo {
+                    id: rec.id,
+                    name: name_copy,
+                    spendable,
+                    spendable_strict: spendable + ready,
+                    pending,
+                });
+            }
+            i += 1;
+        }
+        Err(Error::PurseNotFound(p))
+    }
+
     /// 6.1 `queryPurse` (Quint lines 603-612; design §8.1 `query_purse`).
     ///
     /// Returns a synchronous snapshot:
