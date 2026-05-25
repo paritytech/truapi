@@ -1249,6 +1249,326 @@ impl State {
         vstd::pervasive::unreached()
     }
 
+    /// Internal: allocate a fresh recycler entry in purse `p` with the given
+    /// `exponent` and initial on-chain state. Mirrors `add_coin`'s structure
+    /// for the entries side of state. The entry's `idx` is the purse's
+    /// current `next_entry_idx`, after which the allocator is bumped.
+    pub fn add_entry(&mut self, p: PurseId, exponent: u8, on_chain: EntryOnChain)
+        -> (key: (PurseId, u64))
+        requires
+            old(self).invariant(),
+            old(self).purses().dom().contains(p),
+            old(self).purses()[p].next_entry_idx < u64::MAX,
+        ensures
+            final(self).invariant(),
+            key.0 == p,
+            key.1 == old(self).purses()[p].next_entry_idx,
+            !old(self).entries().dom().contains(key),
+            final(self).entries() == old(self).entries().insert(key, EntryRec {
+                purse: p,
+                idx: key.1,
+                exponent,
+                on_chain,
+            }),
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).purses().dom() =~= old(self).purses().dom(),
+            final(self).purses()[p].id == p,
+            final(self).purses()[p].name == old(self).purses()[p].name,
+            final(self).purses()[p].next_coin_idx
+                == old(self).purses()[p].next_coin_idx,
+            final(self).purses()[p].next_entry_idx
+                == old(self).purses()[p].next_entry_idx + 1,
+            forall|q: PurseId| q != p && #[trigger] old(self).purses().dom().contains(q)
+                ==> final(self).purses()[q] == old(self).purses()[q],
+    {
+        let ghost old_v = self.purses@;
+        let ghost old_m = self.spec_purses@;
+        let ghost old_entries = self.spec_entries@;
+        let ghost old_entries_vec = self.entries@;
+        let ghost old_coins = self.spec_coins@;
+        let ghost p_old_rec = old_m[p];
+
+        let mut i: usize = 0;
+        while i < self.purses.len()
+            invariant
+                0 <= i <= self.purses.len(),
+                self.invariant(),
+                self.purses@ == old_v,
+                self.spec_purses@ == old_m,
+                self.spec_coins@ == old_coins,
+                self.coins@ == old(self).coins@,
+                self.spec_entries@ == old_entries,
+                self.entries@ == old_entries_vec,
+                old_m == old(self).spec_purses@,
+                old_v == old(self).purses@,
+                old_entries == old(self).spec_entries@,
+                old_entries_vec == old(self).entries@,
+                old_coins == old(self).spec_coins@,
+                self.next_purse_id == old(self).next_purse_id,
+                old(self).purses().dom().contains(p),
+                p_old_rec == old_m[p],
+                p_old_rec.next_entry_idx < u64::MAX,
+                forall|j: int| 0 <= j < i ==> (#[trigger] self.purses@[j]).id != p,
+            decreases self.purses.len() - i,
+        {
+            if self.purses[i].id == p {
+                let ghost target_idx = i as int;
+                let cur_idx = self.purses[i].next_entry_idx;
+                let ghost old_p_rec_at_idx = old_v[target_idx]@;
+                self.purses[i].next_entry_idx = cur_idx + 1;
+
+                let key = (p, cur_idx);
+                let new_entry = EntryRec {
+                    purse: p,
+                    idx: cur_idx,
+                    exponent,
+                    on_chain,
+                };
+                self.entries.push(new_entry);
+
+                proof {
+                    let new_p_rec_spec = PurseRecSpec {
+                        id: p,
+                        name: old_p_rec_at_idx.name,
+                        next_coin_idx: old_p_rec_at_idx.next_coin_idx,
+                        next_entry_idx: (cur_idx + 1) as nat,
+                    };
+                    self.spec_purses = Ghost(self.spec_purses@.insert(p, new_p_rec_spec));
+                    self.spec_entries = Ghost(self.spec_entries@.insert(key, new_entry));
+
+                    let new_v = self.purses@;
+                    let new_m = self.spec_purses@;
+                    let new_entries = self.spec_entries@;
+
+                    // Purse-side post-state for (e-h).
+                    assert(new_v[target_idx].id == p);
+                    assert(new_v[target_idx].next_entry_idx == cur_idx + 1);
+                    assert(new_v[target_idx].next_coin_idx == old_v[target_idx].next_coin_idx);
+                    assert(new_v[target_idx].name == old_v[target_idx].name);
+                    assert forall|k: int| 0 <= k < new_v.len() && k != target_idx implies
+                        #[trigger] new_v[k] == old_v[k]
+                    by {}
+                    assert(old_v[target_idx].id == p);
+                    assert forall|k: int| 0 <= k < old_v.len() && k != target_idx implies
+                        (#[trigger] old_v[k]).id != p
+                    by {}
+                    assert(old_m.dom().contains(p));
+                    assert(new_m.dom() =~= old_m.dom());
+
+                    // New entry key is fresh: by (q) old, every entry's idx <
+                    // old_m[purse].next_entry_idx. For purse == p that's < cur_idx.
+                    assert forall|k: (PurseId, u64)| #[trigger] old_entries.dom().contains(k)
+                        implies k != key
+                    by {
+                        assert(k.1 < old_m[k.0].next_entry_idx);
+                        if k.0 == p {
+                            assert(k.1 < cur_idx);
+                        }
+                    }
+                    assert(!old_entries.dom().contains(key));
+
+                    // Purse-side (a-h) — re-prove as in add_coin.
+                    assert(self.next_purse_id != MAIN_PURSE);
+                    assert(new_m.dom().contains(MAIN_PURSE));
+                    assert forall|q: PurseId| #[trigger] new_m.dom().contains(q)
+                        implies new_m[q].id == q
+                    by { if q != p { assert(old_m.dom().contains(q)); } }
+                    assert forall|q: PurseId| #[trigger] new_m.dom().contains(q)
+                        implies q < self.next_purse_id
+                    by { assert(old_m.dom().contains(q)); }
+                    assert forall|k: int| 0 <= k < new_v.len() implies
+                        new_m.dom().contains(#[trigger] new_v[k].id)
+                    by {
+                        if k != target_idx {
+                            assert(new_v[k] == old_v[k]);
+                            assert(old_m.dom().contains(old_v[k].id));
+                        }
+                    }
+                    assert forall|k: int| 0 <= k < new_v.len() implies
+                        new_m[(#[trigger] new_v[k]).id] == new_v[k]@
+                    by {
+                        if k == target_idx {
+                            assert(new_v[k].id == p);
+                            assert(new_v[k]@ == new_p_rec_spec);
+                        } else {
+                            assert(new_v[k] == old_v[k]);
+                            assert(old_v[k].id != p);
+                            assert(old_m[old_v[k].id] == old_v[k]@);
+                        }
+                    }
+                    assert forall|q: PurseId| #[trigger] new_m.dom().contains(q)
+                        implies exists|k: int| 0 <= k < new_v.len() && #[trigger] new_v[k].id == q
+                    by {
+                        if q == p {
+                            let w = target_idx;
+                            assert(new_v[w].id == p);
+                        } else {
+                            assert(old_m.dom().contains(q));
+                            let w = choose|k: int| 0 <= k < old_v.len() && #[trigger] old_v[k].id == q;
+                            assert(w != target_idx);
+                            assert(new_v[w] == old_v[w]);
+                        }
+                    }
+                    assert forall|a: int, b: int|
+                        0 <= a < new_v.len() && 0 <= b < new_v.len()
+                        && #[trigger] new_v[a].id == #[trigger] new_v[b].id
+                        implies a == b
+                    by {
+                        if a == target_idx && b == target_idx {
+                        } else if a == target_idx {
+                            assert(new_v[b] == old_v[b]);
+                        } else if b == target_idx {
+                            assert(new_v[a] == old_v[a]);
+                        } else {
+                            assert(new_v[a] == old_v[a]);
+                            assert(new_v[b] == old_v[b]);
+                        }
+                    }
+
+                    // (i, j, k) coin-side unchanged since spec_coins and self.coins
+                    // are untouched. Only thing to re-prove for (k): for coin keys
+                    // with purse == p, new_m[p].next_coin_idx still equals old.
+                    assert forall|k: (PurseId, u64)| #[trigger] self.spec_coins@.dom().contains(k)
+                        implies k.1 < new_m[k.0].next_coin_idx
+                    by {
+                        assert(old_coins.dom().contains(k));
+                        assert(k.1 < old_m[k.0].next_coin_idx);
+                        if k.0 == p {
+                            assert(new_m[p].next_coin_idx == old_m[p].next_coin_idx);
+                        } else {
+                            assert(new_m[k.0] == old_m[k.0]);
+                        }
+                    }
+
+                    // (o) entry key consistency.
+                    assert forall|k: (PurseId, u64)| #[trigger] new_entries.dom().contains(k)
+                        implies new_entries[k].purse == k.0 && new_entries[k].idx == k.1
+                    by {
+                        if k != key { assert(old_entries.dom().contains(k)); }
+                    }
+
+                    // (p) entry refint.
+                    assert forall|k: (PurseId, u64)| #[trigger] new_entries.dom().contains(k)
+                        implies new_m.dom().contains(k.0)
+                    by {
+                        if k != key {
+                            assert(old_entries.dom().contains(k));
+                            assert(old_m.dom().contains(k.0));
+                        }
+                    }
+
+                    // (q) entry idx below next_entry_idx.
+                    assert forall|k: (PurseId, u64)| #[trigger] new_entries.dom().contains(k)
+                        implies k.1 < new_m[k.0].next_entry_idx
+                    by {
+                        if k == key {
+                            assert(new_m[p].next_entry_idx == cur_idx + 1);
+                        } else {
+                            assert(old_entries.dom().contains(k));
+                            assert(k.1 < old_m[k.0].next_entry_idx);
+                            if k.0 == p {
+                                assert(new_m[p].next_entry_idx == old_m[p].next_entry_idx + 1);
+                            } else {
+                                assert(new_m[k.0] == old_m[k.0]);
+                            }
+                        }
+                    }
+
+                    // (r, s, t) entry Vec ↔ ghost refinement post-push.
+                    let new_entries_vec = self.entries@;
+                    let last = old_entries_vec.len() as int;
+                    assert(new_entries_vec.len() == old_entries_vec.len() + 1);
+                    assert(new_entries_vec[last] == new_entry);
+                    assert forall|k: int| 0 <= k < old_entries_vec.len() implies
+                        new_entries_vec[k] == #[trigger] old_entries_vec[k]
+                    by {}
+                    // No old Vec entry collides with the new key.
+                    assert forall|jj: int| 0 <= jj < old_entries_vec.len() implies
+                        (#[trigger] old_entries_vec[jj]).purse != p
+                        || old_entries_vec[jj].idx < cur_idx
+                    by {
+                        let oe = old_entries_vec[jj];
+                        assert(old_entries.dom().contains((oe.purse, oe.idx)));
+                        if oe.purse == p {
+                            assert(old_m[p].next_entry_idx == cur_idx as nat);
+                        }
+                    }
+                    // (r)
+                    assert forall|jj: int| 0 <= jj < new_entries_vec.len() implies
+                        new_entries.dom().contains(
+                            (#[trigger] new_entries_vec[jj].purse, new_entries_vec[jj].idx)
+                        )
+                        && new_entries[(new_entries_vec[jj].purse, new_entries_vec[jj].idx)]
+                            == new_entries_vec[jj]
+                    by {
+                        if jj == last {
+                            assert(new_entries_vec[jj] == new_entry);
+                            assert(new_entries[key] == new_entry);
+                        } else {
+                            assert(new_entries_vec[jj] == old_entries_vec[jj]);
+                            let oe = old_entries_vec[jj];
+                            assert(old_entries.dom().contains((oe.purse, oe.idx)));
+                            assert((oe.purse, oe.idx) != key);
+                            assert(old_entries[(oe.purse, oe.idx)] == oe);
+                        }
+                    }
+                    // (s)
+                    assert forall|k: (PurseId, u64)| #[trigger] new_entries.dom().contains(k)
+                        implies exists|jj: int|
+                            0 <= jj < new_entries_vec.len()
+                            && #[trigger] new_entries_vec[jj].purse == k.0
+                            && new_entries_vec[jj].idx == k.1
+                    by {
+                        if k == key {
+                            let w = last;
+                            assert(new_entries_vec[w].purse == p);
+                            assert(new_entries_vec[w].idx == cur_idx);
+                        } else {
+                            assert(old_entries.dom().contains(k));
+                            let w = choose|jj: int|
+                                0 <= jj < old_entries_vec.len()
+                                && #[trigger] old_entries_vec[jj].purse == k.0
+                                && old_entries_vec[jj].idx == k.1;
+                            assert(new_entries_vec[w] == old_entries_vec[w]);
+                        }
+                    }
+                    // (t)
+                    assert forall|a: int, b: int|
+                        0 <= a < new_entries_vec.len() && 0 <= b < new_entries_vec.len()
+                        && (#[trigger] new_entries_vec[a]).purse
+                            == (#[trigger] new_entries_vec[b]).purse
+                        && new_entries_vec[a].idx == new_entries_vec[b].idx
+                        implies a == b
+                    by {
+                        if a == last && b == last {
+                        } else if a == last {
+                            assert(new_entries_vec[b] == old_entries_vec[b]);
+                            assert(new_entries_vec[a].purse == p);
+                            assert(new_entries_vec[a].idx == cur_idx);
+                        } else if b == last {
+                            assert(new_entries_vec[a] == old_entries_vec[a]);
+                            assert(new_entries_vec[b].purse == p);
+                            assert(new_entries_vec[b].idx == cur_idx);
+                        } else {
+                            assert(new_entries_vec[a] == old_entries_vec[a]);
+                            assert(new_entries_vec[b] == old_entries_vec[b]);
+                        }
+                    }
+                }
+                return key;
+            }
+            i += 1;
+        }
+        proof {
+            assert(old_m.dom().contains(p));
+            let w = choose|k: int| 0 <= k < old_v.len() && #[trigger] old_v[k].id == p;
+            assert(0 <= w < old_v.len());
+            assert(self.purses@[w].id != p);
+        }
+        vstd::pervasive::unreached()
+    }
+
     /// Coin lifecycle: `Available` → `PendingSpend`.
     pub fn mark_coin_pending_spend(&mut self, key: (PurseId, u64))
         requires
