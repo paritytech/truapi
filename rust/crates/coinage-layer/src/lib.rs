@@ -74,14 +74,17 @@ pub enum CoinState {
     Spent,
 }
 
-/// Coin record (Quint `CoinRec`, design §3.2).
-/// Pilot scope: `account`, `age`, `memberKey` are deferred.
+/// Coin record (Quint `CoinRec`, design §3.2). `age` is the monotonic
+/// allocation timestamp used by the §6.3 priority ordering — older
+/// coins (smaller `age`) outrank newer ones at equal exponent. Quint
+/// `account` and `memberKey` remain deferred.
 #[derive(Copy, Clone)]
 pub struct CoinRec {
     pub purse: PurseId,
     pub idx: u64,
     pub exponent: u8,
     pub state: CoinState,
+    pub age: u64,
 }
 
 /// Recycler entry on-chain state (Quint `EntryOnChain`, design §5.2).
@@ -218,6 +221,7 @@ pub struct State {
     pub operations: Vec<OperationRec>,
     pub next_purse_id: u64,
     pub next_handle: OpHandle,
+    pub next_age: u64,
     #[allow(dead_code)]
     pub spec_purses: Ghost<Map<PurseId, PurseRecSpec>>,
     #[allow(dead_code)]
@@ -478,6 +482,7 @@ impl State {
             operations,
             next_purse_id: 1,
             next_handle: 0,
+            next_age: 0,
             spec_purses: Ghost(Map::<PurseId, PurseRecSpec>::empty().insert(MAIN_PURSE, main_spec)),
             spec_coins: Ghost(Map::<(PurseId, u64), CoinRec>::empty()),
             spec_entries: Ghost(Map::<(PurseId, u64), EntryRec>::empty()),
@@ -896,6 +901,7 @@ impl State {
                 self.spec_operations@ == old_operations,
                 self.operations@ == old_operations_vec,
                 self.next_handle == old(self).next_handle,
+                self.next_age == old(self).next_age,
                 old_m == old(self).spec_purses@,
                 old_v == old(self).purses@,
                 old_coins == old(self).coins().remove_keys(
@@ -1121,16 +1127,18 @@ impl State {
     /// Internal: allocate a fresh coin in purse `p` with the given `exponent`.
     ///
     /// This is the elemental coin-creating primitive. Higher-level operations
-    /// (top-up, transfer, rebalance) decompose into one or more `add_coin` plus
-    /// updates to coin state (`account`, `age`, `state` fields not yet modeled
-    /// in this pilot). The coin's `idx` is the purse's current
-    /// `next_coin_idx`, after which the allocator is bumped.
-    #[allow(unused_variables)]
+    /// (top-up, transfer, rebalance) decompose into one or more `add_coin`
+    /// plus updates to coin state. The coin's `idx` is the purse's current
+    /// `next_coin_idx`, after which the per-purse allocator is bumped. The
+    /// coin's `age` is the state-global `next_age`, after which the global
+    /// allocator is bumped — this gives a total order on coin creation
+    /// suitable for the §6.3 priority ordering.
     pub fn add_coin(&mut self, p: PurseId, exponent: u8) -> (key: (PurseId, u64))
         requires
             old(self).invariant(),
             old(self).purses().dom().contains(p),
             old(self).purses()[p].next_coin_idx < u64::MAX,
+            old(self).next_age < u64::MAX,
         ensures
             final(self).invariant(),
             key.0 == p,
@@ -1141,7 +1149,9 @@ impl State {
                 idx: key.1,
                 exponent,
                 state: CoinState::Pending,
+                age: old(self).next_age,
             }),
+            final(self).next_age == old(self).next_age + 1,
             final(self).purses().dom() =~= old(self).purses().dom(),
             final(self).purses()[p].id == p,
             final(self).purses()[p].name == old(self).purses()[p].name,
@@ -1185,6 +1195,7 @@ impl State {
                 self.spec_operations@ == old_operations,
                 self.operations@ == old_operations_vec,
                 self.next_handle == old(self).next_handle,
+                self.next_age == old(self).next_age,
                 old_m == old(self).spec_purses@,
                 old_v == old(self).purses@,
                 old_coins == old(self).spec_coins@,
@@ -1197,17 +1208,21 @@ impl State {
                 old_operations == old(self).spec_operations@,
                 old_operations_vec == old(self).operations@,
                 self.next_purse_id == old(self).next_purse_id,
+                self.next_age == old(self).next_age,
                 old(self).purses().dom().contains(p),
                 p_old_rec == old_m[p],
                 p_old_rec.next_coin_idx < u64::MAX,
+                old(self).next_age < u64::MAX,
                 forall|j: int| 0 <= j < i ==> (#[trigger] self.purses@[j]).id != p,
             decreases self.purses.len() - i,
         {
             if self.purses[i].id == p {
                 let ghost target_idx = i as int;
                 let cur_idx = self.purses[i].next_coin_idx;
+                let cur_age = self.next_age;
                 let ghost old_p_rec_at_idx = old_v[target_idx]@;
                 self.purses[i].next_coin_idx = cur_idx + 1;
+                self.next_age = cur_age + 1;
 
                 let key = (p, cur_idx);
                 let new_coin = CoinRec {
@@ -1215,6 +1230,7 @@ impl State {
                     idx: cur_idx,
                     exponent,
                     state: CoinState::Pending,
+                    age: cur_age,
                 };
                 self.coins.push(new_coin);
 
@@ -1831,6 +1847,7 @@ impl State {
                 status: OpStatus::Preparing,
             }),
             final(self).next_handle == old(self).next_handle + 1,
+            final(self).next_age == old(self).next_age,
             // Other state untouched.
             final(self).purses() == old(self).purses(),
             final(self).purses@ == old(self).purses@,
@@ -1978,6 +1995,7 @@ impl State {
             final(self).entries() == old(self).entries(),
             final(self).entries@ == old(self).entries@,
             final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -2013,6 +2031,7 @@ impl State {
                 self.spec_operations@ == old_ops,
                 self.operations@ == old_ops_vec,
                 self.next_handle == old(self).next_handle,
+                self.next_age == old(self).next_age,
                 old_purses_vec == old(self).purses@,
                 old_spec_purses == old(self).spec_purses@,
                 old_spec_purses == old(self).purses(),
@@ -2163,6 +2182,7 @@ impl State {
             final(self).entries() == old(self).entries(),
             final(self).entries@ == old(self).entries@,
             final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -2188,6 +2208,7 @@ impl State {
             final(self).entries() == old(self).entries(),
             final(self).entries@ == old(self).entries@,
             final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -2212,6 +2233,7 @@ impl State {
             final(self).entries() == old(self).entries(),
             final(self).entries@ == old(self).entries@,
             final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -2238,6 +2260,7 @@ impl State {
             final(self).entries() == old(self).entries(),
             final(self).entries@ == old(self).entries@,
             final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -2267,6 +2290,7 @@ impl State {
             final(self).entries() == old(self).entries(),
             final(self).entries@ == old(self).entries@,
             final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -2301,6 +2325,7 @@ impl State {
             final(self).entries() == old(self).entries(),
             final(self).entries@ == old(self).entries@,
             final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -2326,6 +2351,7 @@ impl State {
                 purse: old(self).coins()[key].purse,
                 idx: old(self).coins()[key].idx,
                 exponent: old(self).coins()[key].exponent,
+                age: old(self).coins()[key].age,
                 state: CoinState::Available,
             }),
             final(self).entries() == old(self).entries(),
@@ -2334,6 +2360,7 @@ impl State {
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
     {
         self.transition_coin_state(key, CoinState::Available);
     }
@@ -2361,6 +2388,7 @@ impl State {
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
     {
         self.set_entry_local(key, EntryLocal::LocalAvailable);
     }
@@ -2379,6 +2407,7 @@ impl State {
                 purse: old(self).coins()[key].purse,
                 idx: old(self).coins()[key].idx,
                 exponent: old(self).coins()[key].exponent,
+                age: old(self).coins()[key].age,
                 state: CoinState::Available,
             }),
             final(self).entries() == old(self).entries(),
@@ -2387,6 +2416,7 @@ impl State {
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
     {
         self.transition_coin_state(key, CoinState::Available);
     }
@@ -2404,6 +2434,7 @@ impl State {
                 purse: old(self).coins()[key].purse,
                 idx: old(self).coins()[key].idx,
                 exponent: old(self).coins()[key].exponent,
+                age: old(self).coins()[key].age,
                 state: CoinState::PendingSpend,
             }),
             final(self).entries() == old(self).entries(),
@@ -2412,6 +2443,7 @@ impl State {
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
     {
         self.transition_coin_state(key, CoinState::PendingSpend);
     }
@@ -2429,6 +2461,7 @@ impl State {
                 purse: old(self).coins()[key].purse,
                 idx: old(self).coins()[key].idx,
                 exponent: old(self).coins()[key].exponent,
+                age: old(self).coins()[key].age,
                 state: CoinState::Spent,
             }),
             final(self).entries() == old(self).entries(),
@@ -2437,6 +2470,7 @@ impl State {
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
     {
         self.transition_coin_state(key, CoinState::Spent);
     }
@@ -2456,6 +2490,7 @@ impl State {
                 purse: old(self).coins()[key].purse,
                 idx: old(self).coins()[key].idx,
                 exponent: old(self).coins()[key].exponent,
+                age: old(self).coins()[key].age,
                 state: CoinState::Available,
             }),
             final(self).entries() == old(self).entries(),
@@ -2464,6 +2499,7 @@ impl State {
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
     {
         self.transition_coin_state(key, CoinState::Available);
     }
@@ -2483,6 +2519,7 @@ impl State {
                 purse: old(self).coins()[key].purse,
                 idx: old(self).coins()[key].idx,
                 exponent: old(self).coins()[key].exponent,
+                age: old(self).coins()[key].age,
                 state: CoinState::LockedFor(handle),
             }),
             final(self).entries() == old(self).entries(),
@@ -2491,6 +2528,7 @@ impl State {
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
     {
         self.transition_coin_state(key, CoinState::LockedFor(handle));
     }
@@ -2510,6 +2548,7 @@ impl State {
                 purse: old(self).coins()[key].purse,
                 idx: old(self).coins()[key].idx,
                 exponent: old(self).coins()[key].exponent,
+                age: old(self).coins()[key].age,
                 state: CoinState::Available,
             }),
             final(self).entries() == old(self).entries(),
@@ -2518,6 +2557,7 @@ impl State {
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
     {
         self.transition_coin_state(key, CoinState::Available);
     }
@@ -2537,6 +2577,7 @@ impl State {
                 purse: old(self).coins()[key].purse,
                 idx: old(self).coins()[key].idx,
                 exponent: old(self).coins()[key].exponent,
+                age: old(self).coins()[key].age,
                 state: CoinState::PendingSpend,
             }),
             final(self).entries() == old(self).entries(),
@@ -2545,6 +2586,7 @@ impl State {
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
     {
         self.transition_coin_state(key, CoinState::PendingSpend);
     }
@@ -2564,6 +2606,7 @@ impl State {
                 purse: old(self).coins()[key].purse,
                 idx: old(self).coins()[key].idx,
                 exponent: old(self).coins()[key].exponent,
+                age: old(self).coins()[key].age,
                 state: new_state,
             }),
             final(self).entries() == old(self).entries(),
@@ -2572,6 +2615,7 @@ impl State {
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
     {
         let ghost old_purses_vec = self.purses@;
         let ghost old_spec_purses = self.spec_purses@;
@@ -2592,6 +2636,7 @@ impl State {
                 self.spec_purses@ == old_spec_purses,
                 self.next_purse_id == old_next_purse_id,
                 self.next_handle == old(self).next_handle,
+                self.next_age == old(self).next_age,
                 self.spec_coins@ == old_coins,
                 self.coins@ == old_coins_vec,
                 self.spec_entries@ == old_entries,
@@ -2620,6 +2665,7 @@ impl State {
                     idx: old_coins[key].idx,
                     exponent: old_coins[key].exponent,
                     state: new_state,
+                    age: old_coins[key].age,
                 };
                 self.coins[j].state = new_state;
 
@@ -2794,6 +2840,7 @@ impl State {
                 self.spec_purses@ == old_spec_purses,
                 self.next_purse_id == old_next_purse_id,
                 self.next_handle == old(self).next_handle,
+                self.next_age == old(self).next_age,
                 self.spec_coins@ == old_coins,
                 self.coins@ == old_coins_vec,
                 self.spec_entries@ == old_entries,
@@ -3038,6 +3085,7 @@ impl State {
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
     {
         let ghost old_purses_vec = self.purses@;
         let ghost old_spec_purses = self.spec_purses@;
@@ -3058,6 +3106,7 @@ impl State {
                 self.spec_purses@ == old_spec_purses,
                 self.next_purse_id == old_next_purse_id,
                 self.next_handle == old(self).next_handle,
+                self.next_age == old(self).next_age,
                 self.spec_coins@ == old_coins,
                 self.coins@ == old_coins_vec,
                 self.spec_entries@ == old_entries,
@@ -3255,9 +3304,11 @@ impl State {
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
             ({
                 let removed = old(self).coins@[idx as int];
                 final(self).coins()
@@ -3665,6 +3716,7 @@ impl State {
             old(self).invariant(),
             old(self).purses().dom().contains(to),
             old(self).purses()[to].next_coin_idx < u64::MAX,
+            old(self).next_age < u64::MAX,
         ensures
             final(self).invariant(),
             final(self).operations() == old(self).operations(),
@@ -3676,10 +3728,12 @@ impl State {
                     new_key.0 == to
                     && final(self).coins().dom().contains(new_key)
                     && final(self).coins()[new_key].state == CoinState::Available
-                    && final(self).coins()[new_key].exponent >= min_exp,
+                    && final(self).coins()[new_key].exponent >= min_exp
+                    && final(self).next_age == old(self).next_age + 1,
                 None =>
                     // No Available coin in `from` met the threshold.
-                    forall|k: (PurseId, u64)|
+                    final(self).next_age == old(self).next_age
+                    && forall|k: (PurseId, u64)|
                         #[trigger] old(self).coins().dom().contains(k)
                         && k.0 == from
                         && old(self).coins()[k].state == CoinState::Available
@@ -3714,6 +3768,7 @@ impl State {
             old(self).purses().dom().contains(to),
             old(self).purses()[to].next_coin_idx < u64::MAX,
             old(self).next_handle < u64::MAX,
+            old(self).next_age < u64::MAX,
         ensures
             final(self).invariant(),
             res.0 == old(self).next_handle,
@@ -3770,6 +3825,7 @@ impl State {
             old(self).coins()[key].state == CoinState::Available,
             old(self).purses().dom().contains(dst),
             old(self).purses()[dst].next_coin_idx < u64::MAX,
+            old(self).next_age < u64::MAX,
         ensures
             final(self).invariant(),
             new_key.0 == dst,
@@ -3809,6 +3865,7 @@ impl State {
             old(self).purses().dom().contains(key.0),
             old(self).purses()[key.0].next_coin_idx as nat + new_exponents@.len()
                 <= u64::MAX as nat,
+            old(self).next_age as nat + new_exponents@.len() <= u64::MAX as nat,
         ensures
             final(self).invariant(),
             final(self).coins().dom().contains(key),
@@ -3853,6 +3910,7 @@ impl State {
             old(self).entries()[key].on_chain == EntryOnChain::Ready,
             old(self).purses().dom().contains(key.0),
             old(self).purses()[key.0].next_coin_idx < u64::MAX,
+            old(self).next_age < u64::MAX,
         ensures
             final(self).invariant(),
             // Source entry consumed.
@@ -4236,9 +4294,11 @@ impl State {
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
             final(self).coins() == old(self).coins().remove_keys(
                 Set::new(|k: (PurseId, u64)| k.0 == p)
             ),
@@ -4258,6 +4318,7 @@ impl State {
                 self.operations@ == old(self).operations@,
                 self.spec_operations@ == old(self).spec_operations@,
                 self.next_handle == old(self).next_handle,
+                self.next_age == old(self).next_age,
                 // Current spec_coins is a subset of initial that preserves all
                 // entries with purse != p.
                 forall|k: (PurseId, u64)| #[trigger] self.spec_coins@.dom().contains(k)
@@ -4356,6 +4417,7 @@ impl State {
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
             ({
                 let removed = old(self).entries@[idx as int];
                 final(self).entries()
@@ -4512,6 +4574,7 @@ impl State {
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
             final(self).entries() == old(self).entries().remove_keys(
                 Set::new(|k: (PurseId, u64)| k.0 == p)
             ),
@@ -4531,6 +4594,7 @@ impl State {
                 self.operations@ == old(self).operations@,
                 self.spec_operations@ == old(self).spec_operations@,
                 self.next_handle == old(self).next_handle,
+                self.next_age == old(self).next_age,
                 forall|k: (PurseId, u64)| #[trigger] self.spec_entries@.dom().contains(k)
                     ==> initial_entries.dom().contains(k)
                         && self.spec_entries@[k] == initial_entries[k],
@@ -4587,6 +4651,7 @@ impl State {
             old(self).invariant(),
             old(self).purses().dom().contains(p),
             old(self).purses()[p].next_coin_idx as nat + exp_seq@.len() <= u64::MAX as nat,
+            old(self).next_age as nat + exp_seq@.len() <= u64::MAX as nat,
         ensures
             final(self).invariant(),
             final(self).purses().dom() =~= old(self).purses().dom(),
@@ -4611,6 +4676,7 @@ impl State {
                 ].exponent == exp_seq@[j],
     {
         let ghost old_p_next = old(self).purses()[p].next_coin_idx;
+        let ghost old_next_age = old(self).next_age;
         let ghost old_purses_map = old(self).purses();
         let ghost old_coins_map = old(self).coins();
         let n = exp_seq.len();
@@ -4629,6 +4695,9 @@ impl State {
                 self.purses()[p].next_entry_idx == old_purses_map[p].next_entry_idx,
                 old_p_next == old_purses_map[p].next_coin_idx,
                 old_p_next as nat + n as nat <= u64::MAX as nat,
+                self.next_age == old_next_age + k as nat,
+                old_next_age == old(self).next_age,
+                old_next_age as nat + n as nat <= u64::MAX as nat,
                 forall|q: PurseId| q != p && #[trigger] old_purses_map.dom().contains(q)
                     ==> self.purses()[q] == old_purses_map[q],
                 forall|key: (PurseId, u64)| #[trigger] old_coins_map.dom().contains(key)
