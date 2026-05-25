@@ -4170,6 +4170,62 @@ impl State {
         vstd::pervasive::unreached()
     }
 
+    /// Count of `Available` coins in purse `p`. Used by maintenance
+    /// triggers — e.g. "if coin_count_available(p) > threshold, run
+    /// rebalance to consolidate into fewer larger coins".
+    pub fn coin_count_available(&self, p: PurseId) -> (count: usize)
+        requires
+            self.invariant(),
+        ensures
+            count <= self.coins@.len(),
+    {
+        let mut c: usize = 0;
+        let mut j: usize = 0;
+        while j < self.coins.len()
+            invariant
+                0 <= j <= self.coins.len(),
+                c <= j,
+                self.invariant(),
+            decreases self.coins.len() - j,
+        {
+            let is_avail = matches!(self.coins[j].state, CoinState::Available);
+            if self.coins[j].purse == p && is_avail {
+                c = c + 1;
+            }
+            j = j + 1;
+        }
+        c
+    }
+
+    /// Count of selectable entries (Ready + LocalAvailable) in purse
+    /// `p`. Used by maintenance triggers and §6.3 selection feasibility
+    /// checks.
+    pub fn entry_count_selectable(&self, p: PurseId) -> (count: usize)
+        requires
+            self.invariant(),
+        ensures
+            count <= self.entries@.len(),
+    {
+        let mut c: usize = 0;
+        let mut j: usize = 0;
+        while j < self.entries.len()
+            invariant
+                0 <= j <= self.entries.len(),
+                c <= j,
+                self.invariant(),
+            decreases self.entries.len() - j,
+        {
+            let e = &self.entries[j];
+            let is_ready = matches!(e.on_chain, EntryOnChain::Ready);
+            let is_local_avail = matches!(e.local, EntryLocal::LocalAvailable);
+            if e.purse == p && is_ready && is_local_avail {
+                c = c + 1;
+            }
+            j = j + 1;
+        }
+        c
+    }
+
     /// Synchronous read: state of the coin keyed `key`, or `None` if
     /// no such coin exists. Quint analog: `coins.get(key).state`.
     pub fn coin_state(&self, key: (PurseId, u64)) -> (res: Option<CoinState>)
