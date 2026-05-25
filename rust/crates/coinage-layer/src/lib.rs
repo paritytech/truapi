@@ -4747,6 +4747,46 @@ impl State {
         None
     }
 
+    /// Number of purses in the state.
+    pub fn total_purses(&self) -> (count: usize)
+        requires
+            self.invariant(),
+        ensures
+            count == self.purses@.len(),
+    {
+        self.purses.len()
+    }
+
+    /// Number of coins (across all states and purses) in the state.
+    pub fn total_coins(&self) -> (count: usize)
+        requires
+            self.invariant(),
+        ensures
+            count == self.coins@.len(),
+    {
+        self.coins.len()
+    }
+
+    /// Number of recycler entries (across all states and purses).
+    pub fn total_entries(&self) -> (count: usize)
+        requires
+            self.invariant(),
+        ensures
+            count == self.entries@.len(),
+    {
+        self.entries.len()
+    }
+
+    /// Number of operations (terminal or in-flight) in the state.
+    pub fn total_operations(&self) -> (count: usize)
+        requires
+            self.invariant(),
+        ensures
+            count == self.operations@.len(),
+    {
+        self.operations.len()
+    }
+
     /// Synchronous read: the `(kind, purse)` pair of the operation
     /// `handle`, or `None` if no such operation exists. Used to route
     /// chain events back to the right purse / op-kind handler.
