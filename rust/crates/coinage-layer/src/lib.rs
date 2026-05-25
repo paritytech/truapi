@@ -4554,6 +4554,51 @@ impl State {
         None
     }
 
+    /// Exec witness for [`classify_incoming_payment`]: scan the memo
+    /// list, count how many recipients map to a known local coin via
+    /// [`Self::find_coin_with_account`], and apply the §8.8
+    /// classification rule.
+    pub fn classify_incoming_payment_exec(&self, memos: &Vec<MemoEntry>)
+        -> (res: PaymentClassification)
+        requires
+            self.invariant(),
+            memos@.len() <= u64::MAX as nat,
+        ensures
+            res == classify_incoming_payment(memos@, self.coins()),
+    {
+        let n = memos.len();
+        let mut matched: u64 = 0;
+        let mut i: usize = 0;
+        while i < n
+            invariant
+                0 <= i <= n,
+                n == memos@.len(),
+                n <= u64::MAX as nat,
+                matched as nat <= i as nat,
+                self.invariant(),
+                matched as nat == count_matched_memos(memos@, self.coins(), i as nat),
+            decreases n - i,
+        {
+            let m = memos[i];
+            match self.find_coin_with_account(m.recipient_account) {
+                Some(_) => {
+                    matched = matched + 1;
+                }
+                None => {}
+            }
+            i = i + 1;
+        }
+        if n == 0 {
+            PaymentClassification::Unmatched
+        } else if matched == 0 {
+            PaymentClassification::Unmatched
+        } else if matched as usize == n {
+            PaymentClassification::Matched
+        } else {
+            PaymentClassification::Received
+        }
+    }
+
     /// Find any coin (of any state) whose `account` matches `target`.
     /// Returns `(purse, idx)` of the first match in Vec order, or
     /// `None`. Used by `classify_incoming_payment` to test whether a
