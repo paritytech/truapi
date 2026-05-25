@@ -366,6 +366,17 @@ pub open spec fn coin_priority_lt(a: CoinRec, b: CoinRec) -> bool {
         || (a.exponent == b.exponent && a.age == b.age && a.idx < b.idx)
 }
 
+/// Lexicographic priority comparison for two entries (Quint §6.3
+/// `entryOrderLT`). Returns true if `a` has *higher* priority than
+/// `b`. The rank tuple is `(MaxExp - exp, ring_idx, idx)` — bigger
+/// exponent wins, then smaller ring_idx, then smaller idx.
+pub open spec fn entry_priority_lt(a: EntryRec, b: EntryRec) -> bool {
+    a.exponent > b.exponent
+        || (a.exponent == b.exponent && a.ring_idx < b.ring_idx)
+        || (a.exponent == b.exponent && a.ring_idx == b.ring_idx
+            && a.idx < b.idx)
+}
+
 /// Spec-only recursive sum: total spendable value across `v[0..j]`
 /// among coins that are `Available` and belong to purse `p`.
 pub open spec fn sum_avail_prefix(v: Seq<CoinRec>, p: PurseId, j: nat) -> nat
@@ -4895,6 +4906,129 @@ impl State {
             }
         }
         None
+    }
+
+    /// Find the highest-priority selectable entry in purse `p` —
+    /// Ready on-chain, LocalAvailable locally — per the §6.3
+    /// `entryOrderLT` ordering. Returns `None` if no such entry
+    /// exists. Tiebreakers: ring_idx ascending, then idx ascending.
+    pub fn find_top_priority_entry(&self, p: PurseId)
+        -> (res: Option<(PurseId, u64)>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some(key) =>
+                    self.entries().dom().contains(key)
+                    && key.0 == p
+                    && self.entries()[key].on_chain == EntryOnChain::Ready
+                    && self.entries()[key].local == EntryLocal::LocalAvailable
+                    && forall|k: (PurseId, u64)|
+                        #[trigger] self.entries().dom().contains(k)
+                        && k.0 == p
+                        && self.entries()[k].on_chain == EntryOnChain::Ready
+                        && self.entries()[k].local == EntryLocal::LocalAvailable
+                        && k != key
+                        ==> entry_priority_lt(self.entries()[key], self.entries()[k])
+                            || self.entries()[key] == self.entries()[k],
+                None =>
+                    forall|k: (PurseId, u64)|
+                        #[trigger] self.entries().dom().contains(k)
+                        && k.0 == p
+                        ==> self.entries()[k].on_chain != EntryOnChain::Ready
+                            || self.entries()[k].local != EntryLocal::LocalAvailable,
+            },
+    {
+        let mut best: Option<usize> = None;
+        let mut j: usize = 0;
+        while j < self.entries.len()
+            invariant
+                0 <= j <= self.entries.len(),
+                self.invariant(),
+                match best {
+                    Some(bi) =>
+                        0 <= bi < j
+                        && self.entries@[bi as int].purse == p
+                        && self.entries@[bi as int].on_chain == EntryOnChain::Ready
+                        && self.entries@[bi as int].local == EntryLocal::LocalAvailable
+                        && forall|jj: int| 0 <= jj < j ==>
+                            #[trigger] self.entries@[jj].purse != p
+                            || self.entries@[jj].on_chain != EntryOnChain::Ready
+                            || self.entries@[jj].local != EntryLocal::LocalAvailable
+                            || entry_priority_lt(self.entries@[bi as int], self.entries@[jj])
+                            || self.entries@[bi as int] == self.entries@[jj],
+                    None =>
+                        forall|jj: int| 0 <= jj < j ==>
+                            (#[trigger] self.entries@[jj]).purse != p
+                            || self.entries@[jj].on_chain != EntryOnChain::Ready
+                            || self.entries@[jj].local != EntryLocal::LocalAvailable,
+                },
+            decreases self.entries.len() - j,
+        {
+            let e = &self.entries[j];
+            let is_ready = matches!(e.on_chain, EntryOnChain::Ready);
+            let is_local_avail = matches!(e.local, EntryLocal::LocalAvailable);
+            if e.purse == p && is_ready && is_local_avail {
+                match best {
+                    None => { best = Some(j); }
+                    Some(bi) => {
+                        let cur_better = self.entries[bi].exponent < e.exponent
+                            || (self.entries[bi].exponent == e.exponent
+                                && self.entries[bi].ring_idx > e.ring_idx)
+                            || (self.entries[bi].exponent == e.exponent
+                                && self.entries[bi].ring_idx == e.ring_idx
+                                && self.entries[bi].idx > e.idx);
+                        if cur_better {
+                            best = Some(j);
+                        }
+                    }
+                }
+            }
+            j = j + 1;
+        }
+        match best {
+            None => {
+                proof {
+                    assert forall|k: (PurseId, u64)|
+                        #[trigger] self.entries().dom().contains(k)
+                        && k.0 == p
+                        implies self.entries()[k].on_chain != EntryOnChain::Ready
+                            || self.entries()[k].local != EntryLocal::LocalAvailable
+                    by {
+                        let w = choose|jj: int|
+                            0 <= jj < self.entries@.len()
+                            && #[trigger] self.entries@[jj].purse == k.0
+                            && self.entries@[jj].idx == k.1;
+                        assert(self.entries@[w].purse == p);
+                        assert(self.entries@[w] == self.entries()[k]);
+                    }
+                }
+                None
+            }
+            Some(bi) => {
+                let key = (self.entries[bi].purse, self.entries[bi].idx);
+                proof {
+                    assert(self.spec_entries@.dom().contains(key));
+                    assert(self.entries()[key] == self.entries@[bi as int]);
+                    assert forall|k: (PurseId, u64)|
+                        #[trigger] self.entries().dom().contains(k)
+                        && k.0 == p
+                        && self.entries()[k].on_chain == EntryOnChain::Ready
+                        && self.entries()[k].local == EntryLocal::LocalAvailable
+                        && k != key
+                        implies entry_priority_lt(self.entries()[key], self.entries()[k])
+                            || self.entries()[key] == self.entries()[k]
+                    by {
+                        let w = choose|jj: int|
+                            0 <= jj < self.entries@.len()
+                            && #[trigger] self.entries@[jj].purse == k.0
+                            && self.entries@[jj].idx == k.1;
+                        assert(self.entries@[w] == self.entries()[k]);
+                    }
+                }
+                Some(key)
+            }
+        }
     }
 
     /// Find any recycler entry in purse `p` that is `Ready` on-chain and
