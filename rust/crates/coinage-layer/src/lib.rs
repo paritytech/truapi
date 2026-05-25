@@ -4170,6 +4170,96 @@ impl State {
         vstd::pervasive::unreached()
     }
 
+    /// Synchronous read: state of the coin keyed `key`, or `None` if
+    /// no such coin exists. Quint analog: `coins.get(key).state`.
+    pub fn coin_state(&self, key: (PurseId, u64)) -> (res: Option<CoinState>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some(s) =>
+                    self.coins().dom().contains(key)
+                    && s == self.coins()[key].state,
+                None => !self.coins().dom().contains(key),
+            },
+    {
+        let mut j: usize = 0;
+        while j < self.coins.len()
+            invariant
+                0 <= j <= self.coins.len(),
+                self.invariant(),
+                forall|jj: int| 0 <= jj < j ==>
+                    (#[trigger] self.coins@[jj]).purse != key.0
+                    || self.coins@[jj].idx != key.1,
+            decreases self.coins.len() - j,
+        {
+            if self.coins[j].purse == key.0 && self.coins[j].idx == key.1 {
+                proof {
+                    assert(self.spec_coins@.dom().contains(key));
+                }
+                return Some(self.coins[j].state);
+            }
+            j = j + 1;
+        }
+        proof {
+            assert forall|k: (PurseId, u64)|
+                #[trigger] self.coins().dom().contains(k)
+                implies k != key
+            by {
+                let w = choose|jj: int|
+                    0 <= jj < self.coins@.len()
+                    && #[trigger] self.coins@[jj].purse == k.0
+                    && self.coins@[jj].idx == k.1;
+                assert(self.coins@[w].purse == k.0);
+            }
+        }
+        None
+    }
+
+    /// Synchronous read: status of the operation `handle`, or `None`
+    /// if no such operation exists. Quint analog: `operations.get(h).status`.
+    pub fn op_status(&self, handle: OpHandle) -> (res: Option<OpStatus>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some(s) =>
+                    self.operations().dom().contains(handle)
+                    && s == self.operations()[handle].status,
+                None => !self.operations().dom().contains(handle),
+            },
+    {
+        let mut j: usize = 0;
+        while j < self.operations.len()
+            invariant
+                0 <= j <= self.operations.len(),
+                self.invariant(),
+                forall|jj: int| 0 <= jj < j ==>
+                    (#[trigger] self.operations@[jj]).handle != handle,
+            decreases self.operations.len() - j,
+        {
+            if self.operations[j].handle == handle {
+                proof {
+                    assert(self.spec_operations@.dom().contains(handle));
+                }
+                return Some(self.operations[j].status);
+            }
+            j = j + 1;
+        }
+        proof {
+            assert forall|h: OpHandle|
+                #[trigger] self.operations().dom().contains(h)
+                implies h != handle
+            by {
+                let w = choose|jj: int|
+                    0 <= jj < self.operations@.len()
+                    && #[trigger] self.operations@[jj].handle == h;
+                assert(self.operations@[w].handle == h);
+            }
+        }
+        None
+    }
+
     /// Internal: read the `exponent` of a coin known to exist by `key`.
     fn read_coin_exponent(&self, key: (PurseId, u64)) -> (exp: u8)
         requires
