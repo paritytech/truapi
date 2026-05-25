@@ -1489,6 +1489,203 @@ impl State {
         None
     }
 
+    /// Restore a chain-mirror coin record into local state. Reads
+    /// `chain_coins[j]` and inserts it into local `coins` (both the
+    /// exec Vec and the ghost map) under its `(purse, idx)` key.
+    /// The purse allocator is not touched: the slot must already be
+    /// allocated, i.e.
+    /// `chain_coins[j].idx < purses[chain_coins[j].purse].next_coin_idx`.
+    /// This is the "restore an old slot we lost track of" primitive
+    /// that composes with [`State::find_missing_chain_coin`] to form
+    /// the recovery scan body.
+    pub fn restore_chain_coin(&mut self, j: usize)
+        requires
+            old(self).invariant(),
+            j < old(self).chain_coins@.len(),
+            old(self).purses().dom().contains(
+                old(self).chain_coins@[j as int].purse
+            ),
+            !old(self).coins().dom().contains(
+                (old(self).chain_coins@[j as int].purse,
+                 old(self).chain_coins@[j as int].idx)
+            ),
+            old(self).chain_coins@[j as int].idx
+                < old(self).purses()[old(self).chain_coins@[j as int].purse]
+                      .next_coin_idx,
+        ensures
+            final(self).invariant(),
+            final(self).coins() == old(self).coins().insert(
+                (old(self).chain_coins@[j as int].purse,
+                 old(self).chain_coins@[j as int].idx),
+                old(self).chain_coins@[j as int],
+            ),
+            final(self).purses() == old(self).purses(),
+            final(self).purses@ == old(self).purses@,
+            final(self).spec_purses@ == old(self).spec_purses@,
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).spec_entries@ == old(self).spec_entries@,
+            final(self).operations() == old(self).operations(),
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+            final(self).next_purse_id == old(self).next_purse_id,
+            final(self).fee_balance == old(self).fee_balance,
+            final(self).next_extrinsic_id == old(self).next_extrinsic_id,
+            final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
+            final(self).tokens@ == old(self).tokens@,
+            final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
+    {
+        let rec = self.chain_coins[j];
+        let key = (rec.purse, rec.idx);
+
+        let ghost old_purses_vec = self.purses@;
+        let ghost old_spec_purses = self.spec_purses@;
+        let ghost old_coins = self.spec_coins@;
+        let ghost old_coins_vec = self.coins@;
+        let ghost old_entries = self.spec_entries@;
+        let ghost old_entries_vec = self.entries@;
+        let ghost old_spec_entries = self.spec_entries@;
+        let ghost old_operations = self.spec_operations@;
+        let ghost old_operations_vec = self.operations@;
+        let ghost old_events = self.events@;
+        let ghost old_tokens = self.tokens@;
+        let ghost old_chain_coins = self.chain_coins@;
+        let ghost old_chain_entries = self.chain_entries@;
+
+        self.coins.push(rec);
+        proof {
+            self.spec_coins = Ghost(self.spec_coins@.insert(key, rec));
+
+            let new_coins = self.spec_coins@;
+            let new_coins_vec = self.coins@;
+            let last = old_coins_vec.len() as int;
+
+            // Sibling-field stability (the ghost-field-mutation pattern).
+            assert(self.purses@ == old_purses_vec);
+            assert(self.spec_purses@ == old_spec_purses);
+            assert(self.entries@ == old_entries_vec);
+            assert(self.spec_entries@ == old_spec_entries);
+            assert(self.operations@ == old_operations_vec);
+            assert(self.spec_operations@ == old_operations);
+            assert(self.events@ == old_events);
+            assert(self.tokens@ == old_tokens);
+            assert(self.chain_coins@ == old_chain_coins);
+            assert(self.chain_entries@ == old_chain_entries);
+
+            // (i) coin key consistency.
+            assert forall|k: (PurseId, u64)| #[trigger] new_coins.dom().contains(k)
+                implies new_coins[k].purse == k.0 && new_coins[k].idx == k.1
+            by {
+                if k == key {
+                    assert(new_coins[k] == rec);
+                } else {
+                    assert(old_coins.dom().contains(k));
+                }
+            }
+
+            // (j) coin referential integrity.
+            assert forall|k: (PurseId, u64)| #[trigger] new_coins.dom().contains(k)
+                implies old_spec_purses.dom().contains(k.0)
+            by {
+                if k == key {
+                    assert(old(self).purses().dom().contains(rec.purse));
+                } else {
+                    assert(old_coins.dom().contains(k));
+                }
+            }
+
+            // (k) coin idx below purse's allocator. Unchanged purses.
+            assert forall|k: (PurseId, u64)| #[trigger] new_coins.dom().contains(k)
+                implies k.1 < old_spec_purses[k.0].next_coin_idx
+            by {
+                if k == key {
+                    // by precondition.
+                } else {
+                    assert(old_coins.dom().contains(k));
+                }
+            }
+
+            // Vec post-state.
+            assert(new_coins_vec.len() == old_coins_vec.len() + 1);
+            assert(new_coins_vec[last] == rec);
+            assert forall|k: int| 0 <= k < old_coins_vec.len() implies
+                new_coins_vec[k] == #[trigger] old_coins_vec[k]
+            by {}
+
+            // (l) exec Vec → ghost.
+            assert forall|jj: int| 0 <= jj < new_coins_vec.len() implies
+                new_coins.dom().contains(
+                    (#[trigger] new_coins_vec[jj].purse, new_coins_vec[jj].idx)
+                )
+                && new_coins[(new_coins_vec[jj].purse, new_coins_vec[jj].idx)]
+                    == new_coins_vec[jj]
+            by {
+                if jj == last {
+                    assert(new_coins_vec[jj] == rec);
+                    assert(new_coins[key] == rec);
+                } else {
+                    assert(new_coins_vec[jj] == old_coins_vec[jj]);
+                    let oc = old_coins_vec[jj];
+                    assert(old_coins.dom().contains((oc.purse, oc.idx)));
+                    assert((oc.purse, oc.idx) != key);
+                    assert(old_coins[(oc.purse, oc.idx)] == oc);
+                }
+            }
+
+            // (m) every dom key has a Vec witness.
+            assert forall|k: (PurseId, u64)| #[trigger] new_coins.dom().contains(k)
+                implies exists|jj: int|
+                    0 <= jj < new_coins_vec.len()
+                    && #[trigger] new_coins_vec[jj].purse == k.0
+                    && new_coins_vec[jj].idx == k.1
+            by {
+                if k == key {
+                    let w = last;
+                    assert(new_coins_vec[w].purse == rec.purse);
+                    assert(new_coins_vec[w].idx == rec.idx);
+                } else {
+                    assert(old_coins.dom().contains(k));
+                    let w = choose|jj: int|
+                        0 <= jj < old_coins_vec.len()
+                        && #[trigger] old_coins_vec[jj].purse == k.0
+                        && old_coins_vec[jj].idx == k.1;
+                    assert(new_coins_vec[w] == old_coins_vec[w]);
+                }
+            }
+
+            // (n) no duplicate (purse, idx) in Vec.
+            assert forall|a: int, b: int|
+                0 <= a < new_coins_vec.len() && 0 <= b < new_coins_vec.len()
+                && (#[trigger] new_coins_vec[a]).purse
+                    == (#[trigger] new_coins_vec[b]).purse
+                && new_coins_vec[a].idx == new_coins_vec[b].idx
+                implies a == b
+            by {
+                if a == last && b == last {
+                } else if a == last {
+                    assert(new_coins_vec[b] == old_coins_vec[b]);
+                    let oc = old_coins_vec[b];
+                    assert(old_coins.dom().contains((oc.purse, oc.idx)));
+                    assert((oc.purse, oc.idx) != key);
+                } else if b == last {
+                    assert(new_coins_vec[a] == old_coins_vec[a]);
+                    let oc = old_coins_vec[a];
+                    assert(old_coins.dom().contains((oc.purse, oc.idx)));
+                    assert((oc.purse, oc.idx) != key);
+                } else {
+                    assert(new_coins_vec[a] == old_coins_vec[a]);
+                    assert(new_coins_vec[b] == old_coins_vec[b]);
+                }
+            }
+        }
+    }
+
     /// Chain-side mirror: register that an entry exists on chain.
     /// Quint analog: `chainEntries' = chainEntries.put(...)`.
     pub fn chain_register_entry(&mut self, e: EntryRec)
