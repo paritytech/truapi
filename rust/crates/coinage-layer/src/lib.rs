@@ -2964,6 +2964,177 @@ impl State {
         self.set_op_status(handle, OpStatus::Failed);
     }
 
+    /// Find and release a single coin locked for `handle`. Returns the
+    /// released key, or `None` if no coin is currently `LockedFor(handle)`.
+    ///
+    /// Building block for bulk sweeps: callers loop until `None` to
+    /// drain all locks. Decomposes the bulk-sweep proof obligation
+    /// into one-step ghost map updates, which Verus discharges
+    /// directly via the underlying release_locked_coin contract.
+    pub fn release_one_coin_lock_for(&mut self, handle: OpHandle)
+        -> (res: Option<(PurseId, u64)>)
+        requires
+            old(self).invariant(),
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).spec_entries@ == old(self).spec_entries@,
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+            match res {
+                Some(key) =>
+                    old(self).coins().dom().contains(key)
+                    && old(self).coins()[key].state == CoinState::LockedFor(handle)
+                    && final(self).coins() ==
+                        old(self).coins().insert(key, CoinRec {
+                            purse: old(self).coins()[key].purse,
+                            idx: old(self).coins()[key].idx,
+                            exponent: old(self).coins()[key].exponent,
+                            age: old(self).coins()[key].age,
+                            account: old(self).coins()[key].account,
+                            state: CoinState::Available,
+                        }),
+                None =>
+                    final(self).coins() == old(self).coins()
+                    && final(self).coins@ == old(self).coins@
+                    && forall|k: (PurseId, u64)|
+                        #[trigger] old(self).coins().dom().contains(k)
+                        ==> old(self).coins()[k].state != CoinState::LockedFor(handle),
+            },
+    {
+        let mut j: usize = 0;
+        while j < self.coins.len()
+            invariant
+                0 <= j <= self.coins.len(),
+                self.invariant(),
+                self == old(self),
+                forall|jj: int| 0 <= jj < j ==>
+                    (#[trigger] self.coins@[jj]).state != CoinState::LockedFor(handle),
+            decreases self.coins.len() - j,
+        {
+            let needs_release = match self.coins[j].state {
+                CoinState::LockedFor(h) => h == handle,
+                _ => false,
+            };
+            if needs_release {
+                let key = (self.coins[j].purse, self.coins[j].idx);
+                proof {
+                    assert(self.spec_coins@.dom().contains(key));
+                    assert(self.coins()[key] == self.coins@[j as int]);
+                    assert(self.coins()[key].state == CoinState::LockedFor(handle));
+                }
+                self.release_locked_coin(key, handle);
+                return Some(key);
+            }
+            j = j + 1;
+        }
+        // No match: lift Vec-side bound to ghost map.
+        proof {
+            assert forall|k: (PurseId, u64)|
+                #[trigger] old(self).coins().dom().contains(k)
+                implies old(self).coins()[k].state != CoinState::LockedFor(handle)
+            by {
+                let w = choose|jj: int|
+                    0 <= jj < self.coins@.len()
+                    && #[trigger] self.coins@[jj].purse == k.0
+                    && self.coins@[jj].idx == k.1;
+                assert(self.coins@[w].state == self.coins()[k].state);
+            }
+        }
+        None
+    }
+
+    /// Find and release a single entry locally locked for `handle`.
+    /// Returns the released key, or `None` if no entry is currently
+    /// `LocalLockedFor(handle)`. Entry parallel of
+    /// [`Self::release_one_coin_lock_for`].
+    pub fn release_one_entry_lock_for(&mut self, handle: OpHandle)
+        -> (res: Option<(PurseId, u64)>)
+        requires
+            old(self).invariant(),
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+            match res {
+                Some(key) =>
+                    old(self).entries().dom().contains(key)
+                    && old(self).entries()[key].local
+                        == EntryLocal::LocalLockedFor(handle)
+                    && final(self).entries() ==
+                        old(self).entries().insert(key, EntryRec {
+                            purse: old(self).entries()[key].purse,
+                            idx: old(self).entries()[key].idx,
+                            exponent: old(self).entries()[key].exponent,
+                            member_key: old(self).entries()[key].member_key,
+                            allocated_at: old(self).entries()[key].allocated_at,
+                            ready_at: old(self).entries()[key].ready_at,
+                            ring_idx: old(self).entries()[key].ring_idx,
+                            on_chain: old(self).entries()[key].on_chain,
+                            local: EntryLocal::LocalAvailable,
+                        }),
+                None =>
+                    final(self).entries() == old(self).entries()
+                    && final(self).entries@ == old(self).entries@
+                    && forall|k: (PurseId, u64)|
+                        #[trigger] old(self).entries().dom().contains(k)
+                        ==> old(self).entries()[k].local
+                            != EntryLocal::LocalLockedFor(handle),
+            },
+    {
+        let mut j: usize = 0;
+        while j < self.entries.len()
+            invariant
+                0 <= j <= self.entries.len(),
+                self.invariant(),
+                self == old(self),
+                forall|jj: int| 0 <= jj < j ==>
+                    (#[trigger] self.entries@[jj]).local
+                        != EntryLocal::LocalLockedFor(handle),
+            decreases self.entries.len() - j,
+        {
+            let needs_release = match self.entries[j].local {
+                EntryLocal::LocalLockedFor(h) => h == handle,
+                _ => false,
+            };
+            if needs_release {
+                let key = (self.entries[j].purse, self.entries[j].idx);
+                proof {
+                    assert(self.spec_entries@.dom().contains(key));
+                    assert(self.entries()[key] == self.entries@[j as int]);
+                    assert(self.entries()[key].local
+                        == EntryLocal::LocalLockedFor(handle));
+                }
+                self.release_locked_entry(key, handle);
+                return Some(key);
+            }
+            j = j + 1;
+        }
+        proof {
+            assert forall|k: (PurseId, u64)|
+                #[trigger] old(self).entries().dom().contains(k)
+                implies old(self).entries()[k].local
+                    != EntryLocal::LocalLockedFor(handle)
+            by {
+                let w = choose|jj: int|
+                    0 <= jj < self.entries@.len()
+                    && #[trigger] self.entries@[jj].purse == k.0
+                    && self.entries@[jj].idx == k.1;
+                assert(self.entries@[w].local == self.entries()[k].local);
+            }
+        }
+        None
+    }
+
     /// Release a coin that's locked for `handle`, returning it to
     /// `Available`. Quint analog: the per-coin step of `cancelOp`'s
     /// `releasedCoins` fold.
