@@ -2061,6 +2061,131 @@ impl State {
         }
     }
 
+    /// Entry parallel of [`State::find_restorable_missing_chain_coin`].
+    /// Returns an index `j` such that `chain_entries[j]` is missing
+    /// locally, its purse exists, and its `idx` is below the purse's
+    /// `next_entry_idx` — satisfying exactly the preconditions of
+    /// [`State::restore_chain_entry`].
+    pub fn find_restorable_missing_chain_entry(&self) -> (res: Option<usize>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some(j) => {
+                    &&& 0 <= j < self.chain_entries@.len()
+                    &&& !self.entries().dom().contains(
+                            (self.chain_entries@[j as int].purse,
+                             self.chain_entries@[j as int].idx))
+                    &&& self.purses().dom().contains(
+                            self.chain_entries@[j as int].purse)
+                    &&& self.chain_entries@[j as int].idx
+                            < self.purses()[self.chain_entries@[j as int].purse]
+                                  .next_entry_idx
+                },
+                None => true,
+            },
+    {
+        let mut j: usize = 0;
+        while j < self.chain_entries.len()
+            invariant
+                0 <= j <= self.chain_entries.len(),
+                self.invariant(),
+            decreases self.chain_entries.len() - j,
+        {
+            let e = self.chain_entries[j];
+            let key = (e.purse, e.idx);
+            if self.entry_local_state(key).is_none() {
+                let mut i: usize = 0;
+                while i < self.purses.len()
+                    invariant
+                        0 <= i <= self.purses.len(),
+                        self.invariant(),
+                        j < self.chain_entries@.len(),
+                        e == self.chain_entries@[j as int],
+                        key == (e.purse, e.idx),
+                        !self.entries().dom().contains(key),
+                    decreases self.purses.len() - i,
+                {
+                    if self.purses[i].id == e.purse {
+                        let next_idx = self.purses[i].next_entry_idx;
+                        if e.idx < next_idx {
+                            proof {
+                                let m = self.spec_purses@;
+                                let v = self.purses@;
+                                let ee = self.chain_entries@[j as int];
+                                assert(ee == e);
+                                assert(0 <= i < v.len());
+                                assert(v[i as int].id == e.purse);
+                                assert(m.dom().contains(v[i as int].id));
+                                assert(m[v[i as int].id] == v[i as int]@);
+                                assert(m[e.purse] == v[i as int]@);
+                                assert(v[i as int].next_entry_idx == next_idx);
+                                assert(v[i as int]@.next_entry_idx == next_idx as nat);
+                                assert(m[e.purse].next_entry_idx == next_idx as nat);
+                                assert(m.dom().contains(e.purse));
+                                assert(self.purses().dom().contains(ee.purse));
+                                assert(ee.idx < self.purses()[ee.purse].next_entry_idx);
+                                assert(!self.entries().dom().contains((ee.purse, ee.idx)));
+                            }
+                            return Some(j);
+                        }
+                        break;
+                    }
+                    i = i + 1;
+                }
+            }
+            j = j + 1;
+        }
+        None
+    }
+
+    /// One step of the recovery scan. Looks for a restorable missing
+    /// chain coin; if found, restores it and returns the chain-coin
+    /// index that was processed. Returns `None` if no restorable
+    /// missing chain coin exists in the current state.
+    ///
+    /// Recovery callers drive this in a loop until it returns `None`
+    /// for both the coin and entry side, at which point the local
+    /// state has absorbed every chain record it can.
+    pub fn recover_scan_step_coin(&mut self) -> (res: Option<usize>)
+        requires
+            old(self).invariant(),
+        ensures
+            final(self).invariant(),
+            final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
+    {
+        let res = self.find_restorable_missing_chain_coin();
+        match res {
+            Some(j) => {
+                self.restore_chain_coin(j);
+                Some(j)
+            }
+            None => None,
+        }
+    }
+
+    /// Entry parallel of [`State::recover_scan_step_coin`]. Returns
+    /// the chain-entry index processed, or `None` if no restorable
+    /// missing chain entry exists.
+    pub fn recover_scan_step_entry(&mut self) -> (res: Option<usize>)
+        requires
+            old(self).invariant(),
+        ensures
+            final(self).invariant(),
+            final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
+    {
+        let res = self.find_restorable_missing_chain_entry();
+        match res {
+            Some(j) => {
+                self.restore_chain_entry(j);
+                Some(j)
+            }
+            None => None,
+        }
+    }
+
     /// Mint a new unload token (chain emit). Pushed to the tokens
     /// Vec with `consumed: false`. Quint analog: any `tokens' =
     /// tokens.put(...)` in a chain-mint step.
