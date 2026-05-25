@@ -1014,11 +1014,17 @@ impl State {
                 == old(self).purses()[p].next_entry_idx,
             forall|q: PurseId| q != p && #[trigger] old(self).purses().dom().contains(q)
                 ==> final(self).purses()[q] == old(self).purses()[q],
+            // Entries untouched.
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).spec_entries@ == old(self).spec_entries@,
     {
         let ghost old_v = self.purses@;
         let ghost old_m = self.spec_purses@;
         let ghost old_coins = self.spec_coins@;
         let ghost old_coins_vec = self.coins@;
+        let ghost old_entries = self.spec_entries@;
+        let ghost old_entries_vec = self.entries@;
         let ghost p_old_rec = old_m[p];
 
         let mut i: usize = 0;
@@ -1030,10 +1036,15 @@ impl State {
                 self.spec_purses@ == old_m,
                 self.spec_coins@ == old_coins,
                 self.coins@ == old_coins_vec,
+                self.spec_entries@ == old_entries,
+                self.entries@ == old_entries_vec,
                 old_m == old(self).spec_purses@,
                 old_v == old(self).purses@,
                 old_coins == old(self).spec_coins@,
                 old_coins_vec == old(self).coins@,
+                old_entries == old(self).spec_entries@,
+                old_entries == old(self).entries(),
+                old_entries_vec == old(self).entries@,
                 self.next_purse_id == old(self).next_purse_id,
                 old(self).purses().dom().contains(p),
                 p_old_rec == old_m[p],
@@ -1661,6 +1672,9 @@ impl State {
                 exponent: old(self).coins()[key].exponent,
                 state: CoinState::Available,
             }),
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).spec_entries@ == old(self).spec_entries@,
     {
         self.transition_coin_state(key, CoinState::Available);
     }
@@ -1680,6 +1694,9 @@ impl State {
                 exponent: old(self).coins()[key].exponent,
                 state: CoinState::PendingSpend,
             }),
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).spec_entries@ == old(self).spec_entries@,
     {
         self.transition_coin_state(key, CoinState::PendingSpend);
     }
@@ -1699,6 +1716,9 @@ impl State {
                 exponent: old(self).coins()[key].exponent,
                 state: CoinState::Spent,
             }),
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).spec_entries@ == old(self).spec_entries@,
     {
         self.transition_coin_state(key, CoinState::Spent);
     }
@@ -1720,12 +1740,17 @@ impl State {
                 exponent: old(self).coins()[key].exponent,
                 state: new_state,
             }),
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).spec_entries@ == old(self).spec_entries@,
     {
         let ghost old_purses_vec = self.purses@;
         let ghost old_spec_purses = self.spec_purses@;
         let ghost old_next_purse_id = self.next_purse_id;
         let ghost old_coins = self.spec_coins@;
         let ghost old_coins_vec = self.coins@;
+        let ghost old_entries = self.spec_entries@;
+        let ghost old_entries_vec = self.entries@;
 
         let mut j: usize = 0;
         while j < self.coins.len()
@@ -1737,10 +1762,15 @@ impl State {
                 self.next_purse_id == old_next_purse_id,
                 self.spec_coins@ == old_coins,
                 self.coins@ == old_coins_vec,
+                self.spec_entries@ == old_entries,
+                self.entries@ == old_entries_vec,
                 old_spec_purses == old(self).spec_purses@,
                 old_spec_purses == old(self).purses(),
                 old_coins == old(self).spec_coins@,
                 old_coins == old(self).coins(),
+                old_entries == old(self).spec_entries@,
+                old_entries == old(self).entries(),
+                old_entries_vec == old(self).entries@,
                 old_coins.dom().contains(key),
                 forall|jj: int| 0 <= jj < j ==>
                     (#[trigger] self.coins@[jj]).purse != key.0
@@ -2447,6 +2477,43 @@ impl State {
         }
     }
 
+    /// Internal: read the `exponent` of a recycler entry known to exist by `key`.
+    fn read_entry_exponent(&self, key: (PurseId, u64)) -> (exp: u8)
+        requires
+            self.invariant(),
+            self.entries().dom().contains(key),
+        ensures
+            exp == self.entries()[key].exponent,
+    {
+        let mut j: usize = 0;
+        while j < self.entries.len()
+            invariant
+                0 <= j <= self.entries.len(),
+                self.invariant(),
+                self.entries().dom().contains(key),
+                forall|jj: int| 0 <= jj < j ==>
+                    (#[trigger] self.entries@[jj]).purse != key.0
+                    || self.entries@[jj].idx != key.1,
+            decreases self.entries.len() - j,
+        {
+            if self.entries[j].purse == key.0 && self.entries[j].idx == key.1 {
+                proof {
+                    assert(self.spec_entries@[(self.entries@[j as int].purse, self.entries@[j as int].idx)]
+                        == self.entries@[j as int]);
+                }
+                return self.entries[j].exponent;
+            }
+            j = j + 1;
+        }
+        proof {
+            let w = choose|jj: int|
+                0 <= jj < self.entries@.len()
+                && #[trigger] self.entries@[jj].purse == key.0
+                && self.entries@[jj].idx == key.1;
+        }
+        vstd::pervasive::unreached()
+    }
+
     /// Internal: read the `exponent` of a coin known to exist by `key`.
     fn read_coin_exponent(&self, key: (PurseId, u64)) -> (exp: u8)
         requires
@@ -2612,6 +2679,50 @@ impl State {
             assert(pre_top_up_coins.dom().contains(key));
             assert(pre_top_up_coins[key].state == CoinState::Spent);
         }
+    }
+
+    /// Tier-3 unload: consume a `Ready` recycler entry to mint a fresh
+    /// `Available` coin in the same purse. The entry walks
+    /// `LocalAvailable → LocalLockedFor → LocalConsumed`; the new coin
+    /// walks `Pending → Available` via observation.
+    ///
+    /// Quint analog: the local-state effect of `startExternalOffload`
+    /// (without the external account / chain-side bookkeeping).
+    pub fn unload_via_entry(&mut self, key: (PurseId, u64)) -> (new_coin_key: (PurseId, u64))
+        requires
+            old(self).invariant(),
+            old(self).entries().dom().contains(key),
+            old(self).entries()[key].local == EntryLocal::LocalAvailable,
+            old(self).entries()[key].on_chain == EntryOnChain::Ready,
+            old(self).purses().dom().contains(key.0),
+            old(self).purses()[key.0].next_coin_idx < u64::MAX,
+        ensures
+            final(self).invariant(),
+            // Source entry consumed.
+            final(self).entries().dom().contains(key),
+            final(self).entries()[key].local == EntryLocal::LocalConsumed,
+            final(self).entries()[key].on_chain == EntryOnChain::Ready,
+            // New coin minted in the same purse, Available, with entry's exponent.
+            new_coin_key.0 == key.0,
+            new_coin_key.1 == old(self).purses()[key.0].next_coin_idx,
+            final(self).coins().dom().contains(new_coin_key),
+            final(self).coins()[new_coin_key].state == CoinState::Available,
+            final(self).coins()[new_coin_key].exponent == old(self).entries()[key].exponent,
+    {
+        let exp = self.read_entry_exponent(key);
+        self.set_entry_local(key, EntryLocal::LocalLockedFor);
+        self.set_entry_local(key, EntryLocal::LocalConsumed);
+        let ghost post_consume_entries = self.entries();
+        let new_key = self.add_coin(key.0, exp);
+        self.mark_coin_observed(new_key);
+        proof {
+            // add_coin and mark_coin_observed preserve entries (sibling-field
+            // stability). The entry's local==Consumed survives unchanged.
+            assert(self.entries() == post_consume_entries);
+            assert(post_consume_entries.dom().contains(key));
+            assert(post_consume_entries[key].local == EntryLocal::LocalConsumed);
+        }
+        new_key
     }
 
     /// Select the first `Available` coin in purse `p` whose `exponent`
