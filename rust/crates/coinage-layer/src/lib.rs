@@ -75,6 +75,30 @@ pub struct CoinRec {
     pub state: CoinState,
 }
 
+/// Recycler entry on-chain state (Quint `EntryOnChain`, design §5.2).
+/// The `OnDegraded` payload is omitted in the pilot (it carries a
+/// post-submission detection epoch in the design).
+#[derive(PartialEq, Eq, Copy, Clone)]
+pub enum EntryOnChain {
+    Missing,
+    Waiting,
+    Ready,
+    Degraded,
+}
+
+/// Recycler entry record (Quint `EntryRec`, design §3.3).
+///
+/// Pilot scope: `memberKey`, `allocatedAt`, `readyAt`, `ringIdx`,
+/// and the local lifecycle (`EntryLocal`) are deferred. Only the
+/// on-chain state is tracked.
+#[derive(Copy, Clone)]
+pub struct EntryRec {
+    pub purse: PurseId,
+    pub idx: u64,
+    pub exponent: u8,
+    pub on_chain: EntryOnChain,
+}
+
 /// Snapshot returned by `query_purse` (design §8.1 `PurseInfo`).
 /// Pilot scope: `spendable`, `spendable_strict`, `pending` are always 0
 /// (no coins/entries in state yet).
@@ -102,11 +126,14 @@ pub enum Error {
 pub struct State {
     pub purses: Vec<PurseRec>,
     pub coins: Vec<CoinRec>,
+    pub entries: Vec<EntryRec>,
     pub next_purse_id: u64,
     #[allow(dead_code)]
     pub spec_purses: Ghost<Map<PurseId, PurseRecSpec>>,
     #[allow(dead_code)]
     pub spec_coins: Ghost<Map<(PurseId, u64), CoinRec>>,
+    #[allow(dead_code)]
+    pub spec_entries: Ghost<Map<(PurseId, u64), EntryRec>>,
 }
 
 /// Spec-only recursive count: number of indices in `v[0..j]` whose
@@ -137,6 +164,11 @@ impl State {
     /// Spec view of the coin map.
     pub open spec fn coins(&self) -> Map<(PurseId, u64), CoinRec> {
         self.spec_coins@
+    }
+
+    /// Spec view of the recycler-entry map.
+    pub open spec fn entries(&self) -> Map<(PurseId, u64), EntryRec> {
+        self.spec_entries@
     }
 
     /// True iff some coin currently lives in purse `p`.
@@ -210,6 +242,37 @@ impl State {
               && (#[trigger] self.coins@[i]).purse == (#[trigger] self.coins@[j]).purse
               && self.coins@[i].idx == self.coins@[j].idx
               ==> i == j
+        // (o) entry key consistency.
+        &&& forall|k: (PurseId, u64)| #[trigger] self.spec_entries@.dom().contains(k)
+              ==> self.spec_entries@[k].purse == k.0
+                  && self.spec_entries@[k].idx == k.1
+        // (p) entry referential integrity: every entry's purse is in dom.
+        &&& forall|k: (PurseId, u64)| #[trigger] self.spec_entries@.dom().contains(k)
+              ==> m.dom().contains(k.0)
+        // (q) entry idx is below the owning purse's allocator.
+        &&& forall|k: (PurseId, u64)| #[trigger] self.spec_entries@.dom().contains(k)
+              ==> k.1 < m[k.0].next_entry_idx
+        // (r) exec entry Vec → ghost: every Vec entry's (purse, idx) is in dom
+        //     and matches the ghost record.
+        &&& forall|i: int| 0 <= i < self.entries@.len() ==>
+              #[trigger] self.spec_entries@.dom().contains(
+                  (self.entries@[i].purse, self.entries@[i].idx)
+              )
+        &&& forall|i: int| 0 <= i < self.entries@.len() ==>
+              self.spec_entries@[(#[trigger] self.entries@[i].purse, self.entries@[i].idx)]
+                == self.entries@[i]
+        // (s) ghost entry map → exec: every dom key has a Vec witness.
+        &&& forall|k: (PurseId, u64)| #[trigger] self.spec_entries@.dom().contains(k)
+              ==> exists|i: int|
+                    0 <= i < self.entries@.len()
+                    && #[trigger] self.entries@[i].purse == k.0
+                    && self.entries@[i].idx == k.1
+        // (t) no duplicate (purse, idx) keys in the entry Vec.
+        &&& forall|i: int, j: int|
+              0 <= i < self.entries@.len() && 0 <= j < self.entries@.len()
+              && (#[trigger] self.entries@[i]).purse == (#[trigger] self.entries@[j]).purse
+              && self.entries@[i].idx == self.entries@[j].idx
+              ==> i == j
     }
 
     /// Initialize the layer with only the main purse and an empty coin map.
@@ -235,12 +298,15 @@ impl State {
         let mut purses: Vec<PurseRec> = Vec::new();
         purses.push(main_rec);
         let coins: Vec<CoinRec> = Vec::new();
+        let entries: Vec<EntryRec> = Vec::new();
         let s = State {
             purses,
             coins,
+            entries,
             next_purse_id: 1,
             spec_purses: Ghost(Map::<PurseId, PurseRecSpec>::empty().insert(MAIN_PURSE, main_spec)),
             spec_coins: Ghost(Map::<(PurseId, u64), CoinRec>::empty()),
+            spec_entries: Ghost(Map::<(PurseId, u64), EntryRec>::empty()),
         };
         assert(s.purses@.len() == 1);
         assert(s.purses@[0].id == MAIN_PURSE);
@@ -585,6 +651,10 @@ impl State {
         requires
             old(self).invariant(),
             !old(self).has_live_coin_in(p),
+            // Stage 6a tightening: also no recycler entries in p. Relaxed
+            // once `purge_entries_of_purse` lands in stage 6c.
+            forall|k: (PurseId, u64)| #[trigger] old(self).entries().dom().contains(k)
+                ==> k.0 != p,
         ensures
             final(self).invariant(),
             match res {
@@ -623,6 +693,8 @@ impl State {
         let ghost old_m = self.spec_purses@;
         let ghost old_coins = self.spec_coins@;
         let ghost old_coins_vec = self.coins@;
+        let ghost old_entries = self.spec_entries@;
+        let ghost old_entries_vec = self.entries@;
 
         let mut i: usize = 0;
         while i < self.purses.len()
@@ -633,14 +705,19 @@ impl State {
                 self.spec_purses@ == old_m,
                 self.spec_coins@ == old_coins,
                 self.coins@ == old_coins_vec,
+                self.spec_entries@ == old_entries,
+                self.entries@ == old_entries_vec,
                 old_m == old(self).spec_purses@,
                 old_v == old(self).purses@,
                 old_coins == old(self).coins().remove_keys(
                     Set::new(|k: (PurseId, u64)| k.0 == p)
                 ),
+                old_entries == old(self).entries(),
+                old_entries_vec == old(self).entries@,
                 self.next_purse_id == old(self).next_purse_id,
                 p != MAIN_PURSE,
                 forall|k: (PurseId, u64)| #[trigger] old_coins.dom().contains(k) ==> k.0 != p,
+                forall|k: (PurseId, u64)| #[trigger] old_entries.dom().contains(k) ==> k.0 != p,
                 forall|j: int| 0 <= j < i ==> (#[trigger] self.purses@[j]).id != p,
             decreases self.purses.len() - i,
         {
@@ -791,6 +868,31 @@ impl State {
                         k.1 < new_m[k.0].next_coin_idx
                     by {
                         assert(old_coins.dom().contains(k));
+                        assert(k.0 != p);
+                        assert(new_m[k.0] == old_m[k.0]);
+                    }
+
+                    // Entries are entirely untouched in this branch; entry-side
+                    // invariant clauses (p, q, r, s, t) follow because no entry
+                    // has purse == p (precondition) and self.entries / self.spec_entries
+                    // are unchanged.
+                    assert(self.entries@ == old(self).entries@);
+                    assert(self.spec_entries@ == old(self).spec_entries@);
+                    assert forall|k: (PurseId, u64)|
+                        #[trigger] self.spec_entries@.dom().contains(k)
+                    implies
+                        new_m.dom().contains(k.0)
+                    by {
+                        assert(old(self).entries().dom().contains(k));
+                        assert(k.0 != p);
+                        assert(old_m.dom().contains(k.0));
+                    }
+                    assert forall|k: (PurseId, u64)|
+                        #[trigger] self.spec_entries@.dom().contains(k)
+                    implies
+                        k.1 < new_m[k.0].next_entry_idx
+                    by {
+                        assert(old(self).entries().dom().contains(k));
                         assert(k.0 != p);
                         assert(new_m[k.0] == old_m[k.0]);
                     }
@@ -1415,6 +1517,8 @@ impl State {
             final(self).purses() == old(self).purses(),
             final(self).purses@ == old(self).purses@,
             final(self).next_purse_id == old(self).next_purse_id,
+            final(self).entries@ == old(self).entries@,
+            final(self).spec_entries@ == old(self).spec_entries@,
             ({
                 let removed = old(self).coins@[idx as int];
                 final(self).coins()
@@ -1758,6 +1862,8 @@ impl State {
             final(self).purses() == old(self).purses(),
             final(self).purses@ == old(self).purses@,
             final(self).next_purse_id == old(self).next_purse_id,
+            final(self).entries@ == old(self).entries@,
+            final(self).spec_entries@ == old(self).spec_entries@,
             final(self).coins() == old(self).coins().remove_keys(
                 Set::new(|k: (PurseId, u64)| k.0 == p)
             ),
@@ -1772,6 +1878,8 @@ impl State {
                 self.purses() == old(self).purses(),
                 self.purses@ == old(self).purses@,
                 self.next_purse_id == old(self).next_purse_id,
+                self.entries@ == old(self).entries@,
+                self.spec_entries@ == old(self).spec_entries@,
                 // Current spec_coins is a subset of initial that preserves all
                 // entries with purse != p.
                 forall|k: (PurseId, u64)| #[trigger] self.spec_coins@.dom().contains(k)
