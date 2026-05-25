@@ -195,6 +195,49 @@ pub open spec fn coin_lock_handle(state: CoinState) -> Option<OpHandle> {
     }
 }
 
+/// Spec-only: count the number of Vec coins currently `LockedFor(handle)`
+/// within the prefix `v[0..j]`. Used as a decreases measure for
+/// bulk-sweep loops.
+pub open spec fn count_coin_locks_in_vec(
+    v: Seq<CoinRec>,
+    handle: OpHandle,
+    j: nat,
+) -> nat
+    decreases j
+{
+    if j == 0 {
+        0
+    } else {
+        let prev = count_coin_locks_in_vec(v, handle, (j - 1) as nat);
+        if v[(j - 1) as int].state == CoinState::LockedFor(handle) {
+            prev + 1
+        } else {
+            prev
+        }
+    }
+}
+
+/// Spec-only: count the number of Vec entries currently
+/// `LocalLockedFor(handle)` within the prefix `v[0..j]`.
+pub open spec fn count_entry_locks_in_vec(
+    v: Seq<EntryRec>,
+    handle: OpHandle,
+    j: nat,
+) -> nat
+    decreases j
+{
+    if j == 0 {
+        0
+    } else {
+        let prev = count_entry_locks_in_vec(v, handle, (j - 1) as nat);
+        if v[(j - 1) as int].local == EntryLocal::LocalLockedFor(handle) {
+            prev + 1
+        } else {
+            prev
+        }
+    }
+}
+
 /// Spec helper: extract the lock handle from an entry's local state,
 /// if any. Returns `Some(h)` for `LocalLockedFor(h)`, `None` otherwise.
 pub open spec fn entry_lock_handle(local: EntryLocal) -> Option<OpHandle> {
