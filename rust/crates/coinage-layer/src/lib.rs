@@ -4684,6 +4684,41 @@ impl State {
         c
     }
 
+    /// Read the **real** coin value for `key` using `2^exp` arithmetic
+    /// (Quint `coinValue`). Requires the coin's exponent to satisfy the
+    /// `MAX_EXPONENT` bound. Returns `None` if no such coin exists.
+    ///
+    /// Companion to the pilot-scheme aggregations (which use
+    /// `coin_value(exp) = exp + 1`) — this one reflects the production
+    /// scheme. Callers wiring up the real arithmetic switch can compose
+    /// this with their own sums; the existing per-purse aggregations
+    /// (sum_available_in etc.) still use the pilot scheme.
+    pub fn read_coin_value_real(&self, key: (PurseId, u64)) -> (res: Option<u64>)
+        requires
+            self.invariant(),
+            forall|k: (PurseId, u64)|
+                #[trigger] self.coins().dom().contains(k)
+                ==> self.coins()[k].exponent <= MAX_EXPONENT,
+        ensures
+            match res {
+                Some(v) =>
+                    self.coins().dom().contains(key)
+                    && v as nat == coin_value_pow2(self.coins()[key].exponent),
+                None => !self.coins().dom().contains(key),
+            },
+    {
+        match self.coin_record(key) {
+            Some(c) => {
+                proof {
+                    assert(self.coins()[key].exponent <= MAX_EXPONENT);
+                    assert(c.exponent == self.coins()[key].exponent);
+                }
+                Some(pow2_u64_exec(c.exponent))
+            }
+            None => None,
+        }
+    }
+
     /// Synchronous read: state of the coin keyed `key`, or `None` if
     /// no such coin exists. Quint analog: `coins.get(key).state`.
     pub fn coin_state(&self, key: (PurseId, u64)) -> (res: Option<CoinState>)
