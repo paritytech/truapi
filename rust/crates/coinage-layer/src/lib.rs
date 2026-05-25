@@ -3937,6 +3937,7 @@ impl State {
             old(self).operations()[handle].status == OpStatus::Finalized,
             old(self).coins().dom().contains(key),
             old(self).coins()[key].state == CoinState::LockedFor(handle),
+            old(self).events@.len() < u64::MAX as nat,
         ensures
             final(self).invariant(),
             final(self).purses() == old(self).purses(),
@@ -3948,7 +3949,10 @@ impl State {
             final(self).next_age == old(self).next_age,
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
-            final(self).events@ == old(self).events@,
+            final(self).events@ == old(self).events@.push(Event::CoinSpent {
+                purse: key.0,
+                exponent: old(self).coins()[key].exponent,
+            }),
             final(self).paid_ring_membership == old(self).paid_ring_membership,
             final(self).total_in == old(self).total_in,
             final(self).total_out == old(self).total_out,
@@ -4642,36 +4646,6 @@ impl State {
         let exp = self.read_entry_exponent(key);
         self.consume_entry(key);
         self.emit_event(Event::EntryConsumed {
-            purse: key.0,
-            exponent: exp,
-        });
-    }
-
-    /// Variant of [`Self::mark_coin_spent`] that emits `CoinSpent`.
-    pub fn mark_coin_spent_with_event(&mut self, key: (PurseId, u64))
-        requires
-            old(self).invariant(),
-            old(self).coins().dom().contains(key),
-            old(self).coins()[key].state == CoinState::PendingSpend,
-            old(self).events@.len() < u64::MAX as nat,
-        ensures
-            final(self).invariant(),
-            final(self).coins().dom().contains(key),
-            final(self).coins()[key].state == CoinState::Spent,
-            final(self).events@ == old(self).events@.push(Event::CoinSpent {
-                purse: key.0,
-                exponent: old(self).coins()[key].exponent,
-            }),
-            final(self).purses() == old(self).purses(),
-            final(self).entries() == old(self).entries(),
-            final(self).entries@ == old(self).entries@,
-            final(self).operations@ == old(self).operations@,
-            final(self).next_handle == old(self).next_handle,
-            final(self).next_age == old(self).next_age,
-    {
-        let exp = self.read_coin_exponent(key);
-        self.mark_coin_spent(key);
-        self.emit_event(Event::CoinSpent {
             purse: key.0,
             exponent: exp,
         });
@@ -5434,6 +5408,7 @@ impl State {
             old(self).invariant(),
             old(self).coins().dom().contains(key),
             old(self).coins()[key].state == CoinState::PendingSpend,
+            old(self).events@.len() < u64::MAX as nat,
         ensures
             final(self).invariant(),
             final(self).purses() == old(self).purses(),
@@ -5454,7 +5429,10 @@ impl State {
             final(self).next_age == old(self).next_age,
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
-            final(self).events@ == old(self).events@,
+            final(self).events@ == old(self).events@.push(Event::CoinSpent {
+                purse: key.0,
+                exponent: old(self).coins()[key].exponent,
+            }),
             final(self).paid_ring_membership == old(self).paid_ring_membership,
             final(self).total_in == old(self).total_in,
             final(self).total_out == old(self).total_out,
@@ -5462,7 +5440,12 @@ impl State {
             final(self).chain_coins@ == old(self).chain_coins@,
             final(self).chain_entries@ == old(self).chain_entries@,
     {
+        let exp = self.read_coin_exponent(key);
         self.transition_coin_state(key, CoinState::Spent);
+        self.emit_event(Event::CoinSpent {
+            purse: key.0,
+            exponent: exp,
+        });
     }
 
     /// Coin lifecycle: `PendingSpend` → `Available`. Called when an
@@ -7884,7 +7867,7 @@ impl State {
             old(self).purses().dom().contains(to),
             old(self).purses()[to].next_coin_idx < u64::MAX,
             old(self).next_age < u64::MAX,
-            old(self).events@.len() < u64::MAX as nat,
+            old(self).events@.len() + 2 <= u64::MAX as nat,
         ensures
             final(self).invariant(),
             final(self).operations() == old(self).operations(),
@@ -7937,7 +7920,7 @@ impl State {
             old(self).purses()[to].next_coin_idx < u64::MAX,
             old(self).next_handle < u64::MAX,
             old(self).next_age < u64::MAX,
-            old(self).events@.len() < u64::MAX as nat,
+            old(self).events@.len() + 2 <= u64::MAX as nat,
         ensures
             final(self).invariant(),
             res.0 == old(self).next_handle,
@@ -7986,6 +7969,7 @@ impl State {
             old(self).coins().dom().contains(key),
             old(self).coins()[key].state == CoinState::Available,
             old(self).next_handle < u64::MAX,
+            old(self).events@.len() < u64::MAX as nat,
         ensures
             final(self).invariant(),
             handle == old(self).next_handle,
@@ -8057,6 +8041,7 @@ impl State {
             old(self).invariant(),
             old(self).coins().dom().contains(key),
             old(self).coins()[key].state == CoinState::Available,
+            old(self).events@.len() < u64::MAX as nat,
         ensures
             final(self).invariant(),
             final(self).purses() == old(self).purses(),
@@ -8072,7 +8057,10 @@ impl State {
             final(self).next_age == old(self).next_age,
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
-            final(self).events@ == old(self).events@,
+            final(self).events@ == old(self).events@.push(Event::CoinSpent {
+                purse: key.0,
+                exponent: old(self).coins()[key].exponent,
+            }),
             final(self).paid_ring_membership == old(self).paid_ring_membership,
             final(self).total_in == old(self).total_in,
             final(self).total_out == old(self).total_out,
@@ -8135,7 +8123,7 @@ impl State {
             old(self).coins()[key].state == CoinState::Available,
             old(self).purses().dom().contains(dst),
             old(self).purses()[dst].next_coin_idx < u64::MAX,
-            old(self).events@.len() < u64::MAX as nat,
+            old(self).events@.len() + 2 <= u64::MAX as nat,
             old(self).next_age < u64::MAX,
         ensures
             final(self).invariant(),
@@ -8180,7 +8168,7 @@ impl State {
             old(self).purses()[dst].next_coin_idx < u64::MAX,
             old(self).next_age < u64::MAX,
             old(self).next_handle < u64::MAX,
-            old(self).events@.len() < u64::MAX as nat,
+            old(self).events@.len() + 2 <= u64::MAX as nat,
         ensures
             final(self).invariant(),
             res.0 == old(self).next_handle,
@@ -8224,6 +8212,7 @@ impl State {
                 <= u64::MAX as nat,
             old(self).next_age as nat + new_exponents@.len() <= u64::MAX as nat,
             old(self).next_handle < u64::MAX,
+            old(self).events@.len() < u64::MAX as nat,
         ensures
             final(self).invariant(),
             handle == old(self).next_handle,
@@ -8271,6 +8260,7 @@ impl State {
             old(self).purses()[key.0].next_coin_idx as nat + new_exponents@.len()
                 <= u64::MAX as nat,
             old(self).next_age as nat + new_exponents@.len() <= u64::MAX as nat,
+            old(self).events@.len() < u64::MAX as nat,
         ensures
             final(self).invariant(),
             final(self).coins().dom().contains(key),
