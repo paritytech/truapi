@@ -1562,6 +1562,87 @@ impl State {
         }
     }
 
+    /// Internal: read the `exponent` of a coin known to exist by `key`.
+    fn read_coin_exponent(&self, key: (PurseId, u64)) -> (exp: u8)
+        requires
+            self.invariant(),
+            self.coins().dom().contains(key),
+        ensures
+            exp == self.coins()[key].exponent,
+    {
+        let mut j: usize = 0;
+        while j < self.coins.len()
+            invariant
+                0 <= j <= self.coins.len(),
+                self.invariant(),
+                self.coins().dom().contains(key),
+                forall|jj: int| 0 <= jj < j ==>
+                    (#[trigger] self.coins@[jj]).purse != key.0
+                    || self.coins@[jj].idx != key.1,
+            decreases self.coins.len() - j,
+        {
+            if self.coins[j].purse == key.0 && self.coins[j].idx == key.1 {
+                proof {
+                    // (l) gives us that self.coins@[j] matches the ghost record at this key.
+                    assert(self.spec_coins@[(self.coins@[j as int].purse, self.coins@[j as int].idx)]
+                        == self.coins@[j as int]);
+                }
+                return self.coins[j].exponent;
+            }
+            j = j + 1;
+        }
+        // Unreachable: precondition + (m) guarantee a Vec witness.
+        proof {
+            let w = choose|jj: int|
+                0 <= jj < self.coins@.len()
+                && #[trigger] self.coins@[jj].purse == key.0
+                && self.coins@[jj].idx == key.1;
+        }
+        vstd::pervasive::unreached()
+    }
+
+    /// Composite operation: `transfer(from, to, min_exp)` selects an
+    /// `Available` coin in purse `from` with `exponent >= min_exp`, walks
+    /// it through `PendingSpend → Spent` (simulating chain settlement),
+    /// then mints a fresh coin in purse `to` with the same exponent.
+    ///
+    /// Returns the new coin's `(to, idx)` key, or `None` if no suitable
+    /// coin was available in `from`.
+    pub fn transfer(&mut self, from: PurseId, to: PurseId, min_exp: u8)
+        -> (res: Option<(PurseId, u64)>)
+        requires
+            old(self).invariant(),
+            old(self).purses().dom().contains(to),
+            old(self).purses()[to].next_coin_idx < u64::MAX,
+        ensures
+            final(self).invariant(),
+            match res {
+                Some(new_key) =>
+                    new_key.0 == to
+                    && final(self).coins().dom().contains(new_key)
+                    && final(self).coins()[new_key].state == CoinState::Available
+                    && final(self).coins()[new_key].exponent >= min_exp,
+                None =>
+                    // No Available coin in `from` met the threshold.
+                    forall|k: (PurseId, u64)|
+                        #[trigger] old(self).coins().dom().contains(k)
+                        && k.0 == from
+                        && old(self).coins()[k].state == CoinState::Available
+                        ==> old(self).coins()[k].exponent < min_exp,
+            },
+    {
+        match self.select_coin(from, min_exp) {
+            None => None,
+            Some(key) => {
+                let exp = self.read_coin_exponent(key);
+                self.mark_coin_pending_spend(key);
+                self.mark_coin_spent(key);
+                let new_key = self.add_coin(to, exp);
+                Some(new_key)
+            }
+        }
+    }
+
     /// Select the first `Available` coin in purse `p` whose `exponent`
     /// meets or exceeds `min_exponent`. Returns `None` if no such coin
     /// exists.
