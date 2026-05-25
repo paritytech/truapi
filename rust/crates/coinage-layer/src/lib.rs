@@ -53,13 +53,25 @@ impl PurseRec {
     }
 }
 
+/// Coin lifecycle state (Quint `CoinState`).
+///   * `Available` — coin can be selected for an outbound operation.
+///   * `PendingSpend` — coin has been chosen by an in-flight operation.
+///   * `Spent` — coin is terminally consumed; counts neither for selection
+///     nor as "live" for purse-deletion purposes.
+#[derive(PartialEq, Eq)]
+pub enum CoinState {
+    Available,
+    PendingSpend,
+    Spent,
+}
+
 /// Coin record (Quint `CoinRec`, design §3.2).
-/// Pilot scope: only the fields needed to express referential integrity
-/// against purses are modeled. `account`, `age`, `state` are deferred.
+/// Pilot scope: `account` and `age` are deferred.
 pub struct CoinRec {
     pub purse: PurseId,
     pub idx: u64,
     pub exponent: u8,
+    pub state: CoinState,
 }
 
 /// Snapshot returned by `query_purse` (design §8.1 `PurseInfo`).
@@ -112,6 +124,14 @@ impl State {
     /// True iff some coin currently lives in purse `p`.
     pub open spec fn has_coin_in(&self, p: PurseId) -> bool {
         exists|k: (PurseId, u64)| #[trigger] self.coins().dom().contains(k) && k.0 == p
+    }
+
+    /// True iff some *live* (non-`Spent`) coin currently lives in purse `p`.
+    pub open spec fn has_live_coin_in(&self, p: PurseId) -> bool {
+        exists|k: (PurseId, u64)|
+            #[trigger] self.coins().dom().contains(k)
+                && k.0 == p
+                && self.coins()[k].state != CoinState::Spent
     }
 
     /// Whether the allocator can still mint a fresh `PurseId`.
@@ -523,22 +543,27 @@ impl State {
     pub fn delete_purse(&mut self, p: PurseId) -> (res: Result<(), Error>)
         requires
             old(self).invariant(),
-            forall|k: (PurseId, u64)| #[trigger] old(self).coins().dom().contains(k) ==> k.0 != p,
+            !old(self).has_live_coin_in(p),
         ensures
             final(self).invariant(),
             match res {
                 Ok(()) =>
                     old(self).purses().dom().contains(p)
                     && p != MAIN_PURSE
-                    && final(self).purses() == old(self).purses().remove(p),
+                    && final(self).purses() == old(self).purses().remove(p)
+                    && final(self).coins() == old(self).coins().remove_keys(
+                        Set::new(|k: (PurseId, u64)| k.0 == p)
+                    ),
                 Err(Error::CannotDeleteMainPurse) =>
                     p == MAIN_PURSE
-                    && final(self).purses() == old(self).purses(),
+                    && final(self).purses() == old(self).purses()
+                    && final(self).coins() == old(self).coins(),
                 Err(Error::PurseNotFound(q)) =>
                     p != MAIN_PURSE
                     && !old(self).purses().dom().contains(p)
                     && q == p
-                    && final(self).purses() == old(self).purses(),
+                    && final(self).purses() == old(self).purses()
+                    && final(self).coins() == old(self).coins(),
             },
     {
         if p == MAIN_PURSE {
@@ -562,7 +587,7 @@ impl State {
                 old_coins == old(self).spec_coins@,
                 self.next_purse_id == old(self).next_purse_id,
                 p != MAIN_PURSE,
-                forall|k: (PurseId, u64)| #[trigger] old(self).coins().dom().contains(k) ==> k.0 != p,
+                !old(self).has_live_coin_in(p),
                 forall|j: int| 0 <= j < i ==> (#[trigger] self.purses@[j]).id != p,
             decreases self.purses.len() - i,
         {
@@ -571,9 +596,15 @@ impl State {
                 let _removed = self.purses.swap_remove(i);
                 proof {
                     self.spec_purses = Ghost(self.spec_purses@.remove(p));
+                    self.spec_coins = Ghost(
+                        self.spec_coins@.remove_keys(
+                            Set::new(|k: (PurseId, u64)| k.0 == p)
+                        )
+                    );
 
                     let new_v = self.purses@;
                     let new_m = self.spec_purses@;
+                    let new_coins_map = self.spec_coins@;
                     let last_idx = old_v.len() - 1;
 
                     // Vec contents after swap_remove:
@@ -689,18 +720,45 @@ impl State {
                         }
                     }
 
-                    // (j) coin referential integrity preserved: every coin's
-                    // purse is != p (by the no-coin-in-p precondition) and was
-                    // in old_m.dom, so it remains in new_m.dom == old_m \ {p}.
-                    assert(self.spec_coins@ == old_coins);
-                    assert(old_coins == old(self).spec_coins@);
+                    // After the coin-map filter, no remaining coin has purse == p,
+                    // so every surviving coin's purse is in new_m.dom == old_m \ {p}.
                     assert(old(self).coins() == old_coins);
-                    assert forall|k: (PurseId, u64)| #[trigger] self.spec_coins@.dom().contains(k)
-                        implies new_m.dom().contains(k.0)
+                    assert forall|k: (PurseId, u64)|
+                        #[trigger] new_coins_map.dom().contains(k)
+                    implies
+                        k.0 != p
+                        && old_coins.dom().contains(k)
+                        && new_coins_map[k] == old_coins[k]
+                    by {}
+
+                    // (i) coin key consistency — preserved (records unchanged).
+                    assert forall|k: (PurseId, u64)|
+                        #[trigger] new_coins_map.dom().contains(k)
+                    implies
+                        new_coins_map[k].purse == k.0 && new_coins_map[k].idx == k.1
                     by {
-                        assert(old(self).coins().dom().contains(k));
-                        assert(k.0 != p);
+                        assert(old_coins.dom().contains(k));
+                    }
+
+                    // (j) coin referential integrity — purse != p ⇒ still in dom.
+                    assert forall|k: (PurseId, u64)|
+                        #[trigger] new_coins_map.dom().contains(k)
+                    implies
+                        new_m.dom().contains(k.0)
+                    by {
+                        assert(old_coins.dom().contains(k));
                         assert(old_m.dom().contains(k.0));
+                    }
+
+                    // (k) coin idx below allocator — purses unchanged for non-p.
+                    assert forall|k: (PurseId, u64)|
+                        #[trigger] new_coins_map.dom().contains(k)
+                    implies
+                        k.1 < new_m[k.0].next_coin_idx
+                    by {
+                        assert(old_coins.dom().contains(k));
+                        assert(k.1 < old_m[k.0].next_coin_idx);
+                        assert(new_m[k.0] == old_m[k.0]);
                     }
                 }
                 return Ok(());
@@ -740,6 +798,7 @@ impl State {
                 purse: p,
                 idx: key.1,
                 exponent,
+                state: CoinState::Available,
             }),
             final(self).purses().dom() =~= old(self).purses().dom(),
             final(self).purses()[p].id == p,
@@ -785,6 +844,7 @@ impl State {
                     purse: p,
                     idx: cur_idx,
                     exponent,
+                    state: CoinState::Available,
                 };
 
                 proof {
@@ -960,6 +1020,219 @@ impl State {
             assert(self.purses@[w].id != p);
         }
         vstd::pervasive::unreached()
+    }
+
+    /// Coin lifecycle: `Available` → `PendingSpend`.
+    ///
+    /// Called when a coin is selected by an in-flight operation. Stage-5
+    /// (with exec coin storage) will mutate the actual record; here only
+    /// the ghost state advances.
+    #[allow(unused_variables)]
+    pub fn mark_coin_pending_spend(&mut self, key: (PurseId, u64))
+        requires
+            old(self).invariant(),
+            old(self).coins().dom().contains(key),
+            old(self).coins()[key].state == CoinState::Available,
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins().insert(key, CoinRec {
+                purse: old(self).coins()[key].purse,
+                idx: old(self).coins()[key].idx,
+                exponent: old(self).coins()[key].exponent,
+                state: CoinState::PendingSpend,
+            }),
+    {
+        let ghost old_purses_vec = self.purses@;
+        let ghost old_spec_purses = self.spec_purses@;
+        let ghost old_next_purse_id = self.next_purse_id;
+        let ghost old_coins = self.spec_coins@;
+        proof {
+            let updated = CoinRec {
+                purse: old_coins[key].purse,
+                idx: old_coins[key].idx,
+                exponent: old_coins[key].exponent,
+                state: CoinState::PendingSpend,
+            };
+            assert(old_coins[key].purse == key.0);
+            assert(old_coins[key].idx == key.1);
+            self.spec_coins = Ghost(self.spec_coins@.insert(key, updated));
+            assert(self.purses@ == old_purses_vec);
+            assert(self.spec_purses@ == old_spec_purses);
+            assert(self.next_purse_id == old_next_purse_id);
+            assert forall|k: (PurseId, u64)| #[trigger] self.spec_coins@.dom().contains(k)
+                implies self.spec_coins@[k].purse == k.0 && self.spec_coins@[k].idx == k.1
+            by {
+                if k != key {
+                    assert(old_coins.dom().contains(k));
+                }
+            }
+            assert forall|k: (PurseId, u64)| #[trigger] self.spec_coins@.dom().contains(k)
+                implies self.spec_purses@.dom().contains(k.0)
+            by {
+                assert(old_coins.dom().contains(k));
+            }
+            assert forall|k: (PurseId, u64)| #[trigger] self.spec_coins@.dom().contains(k)
+                implies k.1 < self.spec_purses@[k.0].next_coin_idx
+            by {
+                assert(old_coins.dom().contains(k));
+            }
+        }
+    }
+
+    /// Coin lifecycle: `PendingSpend` → `Spent`.
+    ///
+    /// Called when the in-flight operation finalizes on chain. The coin is
+    /// terminally consumed and no longer "live" for purse-deletion purposes.
+    #[allow(unused_variables)]
+    pub fn mark_coin_spent(&mut self, key: (PurseId, u64))
+        requires
+            old(self).invariant(),
+            old(self).coins().dom().contains(key),
+            old(self).coins()[key].state == CoinState::PendingSpend,
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins().insert(key, CoinRec {
+                purse: old(self).coins()[key].purse,
+                idx: old(self).coins()[key].idx,
+                exponent: old(self).coins()[key].exponent,
+                state: CoinState::Spent,
+            }),
+    {
+        let ghost old_purses_vec = self.purses@;
+        let ghost old_spec_purses = self.spec_purses@;
+        let ghost old_next_purse_id = self.next_purse_id;
+        let ghost old_coins = self.spec_coins@;
+        proof {
+            let updated = CoinRec {
+                purse: old_coins[key].purse,
+                idx: old_coins[key].idx,
+                exponent: old_coins[key].exponent,
+                state: CoinState::Spent,
+            };
+            assert(old_coins[key].purse == key.0);
+            assert(old_coins[key].idx == key.1);
+            self.spec_coins = Ghost(self.spec_coins@.insert(key, updated));
+            assert(self.purses@ == old_purses_vec);
+            assert(self.spec_purses@ == old_spec_purses);
+            assert(self.next_purse_id == old_next_purse_id);
+            assert forall|k: (PurseId, u64)| #[trigger] self.spec_coins@.dom().contains(k)
+                implies self.spec_coins@[k].purse == k.0 && self.spec_coins@[k].idx == k.1
+            by {
+                if k != key {
+                    assert(old_coins.dom().contains(k));
+                }
+            }
+            assert forall|k: (PurseId, u64)| #[trigger] self.spec_coins@.dom().contains(k)
+                implies self.spec_purses@.dom().contains(k.0)
+            by {
+                assert(old_coins.dom().contains(k));
+            }
+            assert forall|k: (PurseId, u64)| #[trigger] self.spec_coins@.dom().contains(k)
+                implies k.1 < self.spec_purses@[k.0].next_coin_idx
+            by {
+                assert(old_coins.dom().contains(k));
+            }
+        }
+    }
+
+    /// Top-up: allocate `exp_seq.len()` fresh coins in purse `p`, one per
+    /// exponent in `exp_seq` (in order). Each call to `add_coin` allocates the
+    /// next available coin index, so the resulting coin keys are
+    /// `(p, old_next_coin_idx)`, `(p, old_next_coin_idx + 1)`, …
+    ///
+    /// This is the design §8.2 top-up reduced to its bottom-layer effect:
+    /// produce a batch of new coins under the purse's namespace. The chain
+    /// interaction, fee handling, and `FundingOrigin` plumbing are deferred.
+    pub fn top_up_purse(&mut self, p: PurseId, exp_seq: Vec<u8>)
+        requires
+            old(self).invariant(),
+            old(self).purses().dom().contains(p),
+            old(self).purses()[p].next_coin_idx as nat + exp_seq@.len() <= u64::MAX as nat,
+        ensures
+            final(self).invariant(),
+            final(self).purses().dom() =~= old(self).purses().dom(),
+            final(self).purses()[p].next_coin_idx
+                == old(self).purses()[p].next_coin_idx + exp_seq@.len(),
+            final(self).purses()[p].id == p,
+            final(self).purses()[p].name == old(self).purses()[p].name,
+            final(self).purses()[p].next_entry_idx == old(self).purses()[p].next_entry_idx,
+            forall|q: PurseId| q != p && #[trigger] old(self).purses().dom().contains(q)
+                ==> final(self).purses()[q] == old(self).purses()[q],
+            // Existing coins preserved.
+            forall|k: (PurseId, u64)| #[trigger] old(self).coins().dom().contains(k)
+                ==> final(self).coins().dom().contains(k)
+                    && final(self).coins()[k] == old(self).coins()[k],
+            // New coin keys are in the dom; record fields match the request.
+            forall|j: int| 0 <= j < exp_seq@.len() ==>
+                #[trigger] final(self).coins().dom().contains(
+                    (p, (old(self).purses()[p].next_coin_idx + j) as u64)
+                )
+                && final(self).coins()[
+                    (p, (old(self).purses()[p].next_coin_idx + j) as u64)
+                ].exponent == exp_seq@[j],
+    {
+        let ghost old_p_next = old(self).purses()[p].next_coin_idx;
+        let ghost old_purses_map = old(self).purses();
+        let ghost old_coins_map = old(self).coins();
+        let n = exp_seq.len();
+
+        let mut k: usize = 0;
+        while k < n
+            invariant
+                0 <= k <= n,
+                n == exp_seq@.len(),
+                self.invariant(),
+                self.purses().dom() =~= old_purses_map.dom(),
+                old_purses_map.dom().contains(p),
+                self.purses()[p].next_coin_idx == old_p_next + k as nat,
+                self.purses()[p].id == p,
+                self.purses()[p].name == old_purses_map[p].name,
+                self.purses()[p].next_entry_idx == old_purses_map[p].next_entry_idx,
+                old_p_next == old_purses_map[p].next_coin_idx,
+                old_p_next as nat + n as nat <= u64::MAX as nat,
+                forall|q: PurseId| q != p && #[trigger] old_purses_map.dom().contains(q)
+                    ==> self.purses()[q] == old_purses_map[q],
+                forall|key: (PurseId, u64)| #[trigger] old_coins_map.dom().contains(key)
+                    ==> self.coins().dom().contains(key)
+                        && self.coins()[key] == old_coins_map[key],
+                forall|j: int| 0 <= j < k as int ==>
+                    #[trigger] self.coins().dom().contains((p, (old_p_next + j) as u64))
+                    && self.coins()[(p, (old_p_next + j) as u64)].exponent == exp_seq@[j],
+            decreases n - k,
+        {
+            let exp = exp_seq[k];
+            let ghost prev_next_coin_idx = self.purses()[p].next_coin_idx;
+            let ghost pre_coins = self.coins();
+            assert(prev_next_coin_idx == old_p_next + k as nat);
+            assert(prev_next_coin_idx < u64::MAX);
+            #[allow(unused_variables)]
+            let new_key = self.add_coin(p, exp);
+            proof {
+                assert(new_key == (p, (old_p_next + k as nat) as u64));
+                // Forall j in [0, k+1), the expected key is in coins.dom.
+                // j == k is the just-added coin; j < k is an existing coin
+                // that survives `insert(new_key, _)` since keys differ.
+                assert forall|j: int| 0 <= j < (k + 1) as int implies
+                    #[trigger] self.coins().dom().contains((p, (old_p_next + j) as u64))
+                    && self.coins()[(p, (old_p_next + j) as u64)].exponent == exp_seq@[j]
+                by {
+                    let nk = (p, (old_p_next + j) as u64);
+                    if j == k as int {
+                        assert(nk == new_key);
+                        assert(self.coins()[new_key].exponent == exp);
+                        assert(exp == exp_seq@[k as int]);
+                    } else {
+                        assert(j < k as int);
+                        assert(pre_coins.dom().contains(nk));
+                        assert(pre_coins[nk].exponent == exp_seq@[j]);
+                        assert(nk.1 != new_key.1);
+                    }
+                }
+            }
+            k += 1;
+        }
     }
 
     /// 6.1 `queryPurse` (Quint lines 603-612; design §8.1 `query_purse`).
