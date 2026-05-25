@@ -3723,6 +3723,77 @@ impl State {
         vstd::pervasive::unreached()
     }
 
+    /// Variant of [`Self::top_up_via_entry`] that emits an
+    /// `EntryAllocated` event when the recycler entry is minted.
+    pub fn top_up_via_entry_with_event(
+        &mut self,
+        p: PurseId,
+        exponent: u8,
+        member_key: u64,
+        allocated_at: u64,
+        ready_at: u64,
+        ring_idx: u64,
+    ) -> (key: (PurseId, u64))
+        requires
+            old(self).invariant(),
+            old(self).purses().dom().contains(p),
+            old(self).purses()[p].next_entry_idx < u64::MAX,
+            old(self).events@.len() < u64::MAX as nat,
+        ensures
+            final(self).invariant(),
+            key.0 == p,
+            key.1 == old(self).purses()[p].next_entry_idx,
+            final(self).entries().dom().contains(key),
+            final(self).entries()[key].on_chain == EntryOnChain::Waiting,
+            final(self).entries()[key].local == EntryLocal::LocalAvailable,
+            final(self).events@ == old(self).events@.push(Event::EntryAllocated {
+                purse: p,
+                exponent,
+            }),
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).operations@ == old(self).operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+    {
+        let key = self.top_up_via_entry(
+            p, exponent, member_key, allocated_at, ready_at, ring_idx,
+        );
+        self.emit_event(Event::EntryAllocated { purse: p, exponent });
+        key
+    }
+
+    /// Variant of [`Self::consume_entry`] that emits `EntryConsumed`.
+    pub fn consume_entry_with_event(&mut self, key: (PurseId, u64))
+        requires
+            old(self).invariant(),
+            old(self).entries().dom().contains(key),
+            exists|h: OpHandle| old(self).entries()[key].local
+                == EntryLocal::LocalLockedFor(h),
+            old(self).events@.len() < u64::MAX as nat,
+        ensures
+            final(self).invariant(),
+            final(self).entries().dom().contains(key),
+            final(self).entries()[key].local == EntryLocal::LocalConsumed,
+            final(self).events@ == old(self).events@.push(Event::EntryConsumed {
+                purse: key.0,
+                exponent: old(self).entries()[key].exponent,
+            }),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).operations@ == old(self).operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+    {
+        let exp = self.read_entry_exponent(key);
+        self.consume_entry(key);
+        self.emit_event(Event::EntryConsumed {
+            purse: key.0,
+            exponent: exp,
+        });
+    }
+
     /// Variant of [`Self::mark_coin_observed`] that emits `CoinAvailable`.
     pub fn mark_coin_observed_with_event(&mut self, key: (PurseId, u64))
         requires
