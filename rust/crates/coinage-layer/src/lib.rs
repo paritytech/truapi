@@ -1489,6 +1489,107 @@ impl State {
         None
     }
 
+    /// Chain-side mirror: register that an entry exists on chain.
+    /// Quint analog: `chainEntries' = chainEntries.put(...)`.
+    pub fn chain_register_entry(&mut self, e: EntryRec)
+        requires
+            old(self).invariant(),
+            old(self).chain_entries@.len() < u64::MAX as nat,
+        ensures
+            final(self).invariant(),
+            final(self).chain_entries@ == old(self).chain_entries@.push(e),
+            final(self).purses() == old(self).purses(),
+            final(self).purses@ == old(self).purses@,
+            final(self).spec_purses@ == old(self).spec_purses@,
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).spec_coins@ == old(self).spec_coins@,
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).spec_entries@ == old(self).spec_entries@,
+            final(self).operations() == old(self).operations(),
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+            final(self).next_purse_id == old(self).next_purse_id,
+            final(self).fee_balance == old(self).fee_balance,
+            final(self).next_extrinsic_id == old(self).next_extrinsic_id,
+            final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
+            final(self).tokens@ == old(self).tokens@,
+            final(self).chain_coins@ == old(self).chain_coins@,
+    {
+        let ghost old_purses_vec = self.purses@;
+        let ghost old_spec_purses = self.spec_purses@;
+        let ghost old_coins_vec = self.coins@;
+        let ghost old_spec_coins = self.spec_coins@;
+        let ghost old_entries_vec = self.entries@;
+        let ghost old_spec_entries = self.spec_entries@;
+        let ghost old_operations_vec = self.operations@;
+        let ghost old_spec_operations = self.spec_operations@;
+        let ghost old_events = self.events@;
+        let ghost old_tokens = self.tokens@;
+        let ghost old_chain_coins = self.chain_coins@;
+        self.chain_entries.push(e);
+        proof {
+            assert(self.purses@ == old_purses_vec);
+            assert(self.spec_purses@ == old_spec_purses);
+            assert(self.coins@ == old_coins_vec);
+            assert(self.spec_coins@ == old_spec_coins);
+            assert(self.entries@ == old_entries_vec);
+            assert(self.spec_entries@ == old_spec_entries);
+            assert(self.operations@ == old_operations_vec);
+            assert(self.spec_operations@ == old_spec_operations);
+            assert(self.events@ == old_events);
+            assert(self.tokens@ == old_tokens);
+            assert(self.chain_coins@ == old_chain_coins);
+        }
+    }
+
+    /// Number of chain-entry records.
+    pub fn chain_entry_count(&self) -> (n: usize)
+        requires self.invariant(),
+        ensures n == self.chain_entries@.len(),
+    {
+        self.chain_entries.len()
+    }
+
+    /// Find a chain entry whose (purse, idx) is not present in local
+    /// `entries`. Entry parallel of `find_missing_chain_coin`.
+    pub fn find_missing_chain_entry(&self) -> (res: Option<usize>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some(j) =>
+                    0 <= j < self.chain_entries@.len()
+                    && !self.entries().dom().contains(
+                        (self.chain_entries@[j as int].purse,
+                         self.chain_entries@[j as int].idx)
+                    ),
+                None => true,
+            },
+    {
+        let mut j: usize = 0;
+        while j < self.chain_entries.len()
+            invariant
+                0 <= j <= self.chain_entries.len(),
+                self.invariant(),
+            decreases self.chain_entries.len() - j,
+        {
+            let e = &self.chain_entries[j];
+            let key = (e.purse, e.idx);
+            if self.entry_local_state(key).is_none() {
+                return Some(j);
+            }
+            j = j + 1;
+        }
+        None
+    }
+
     /// Mint a new unload token (chain emit). Pushed to the tokens
     /// Vec with `consumed: false`. Quint analog: any `tokens' =
     /// tokens.put(...)` in a chain-mint step.
