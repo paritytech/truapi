@@ -4216,6 +4216,102 @@ impl State {
         None
     }
 
+    /// Synchronous read: local state of the entry keyed `key`, or
+    /// `None` if no such entry exists. Quint analog:
+    /// `entries.get(key).local`.
+    pub fn entry_local_state(&self, key: (PurseId, u64))
+        -> (res: Option<EntryLocal>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some(s) =>
+                    self.entries().dom().contains(key)
+                    && s == self.entries()[key].local,
+                None => !self.entries().dom().contains(key),
+            },
+    {
+        let mut j: usize = 0;
+        while j < self.entries.len()
+            invariant
+                0 <= j <= self.entries.len(),
+                self.invariant(),
+                forall|jj: int| 0 <= jj < j ==>
+                    (#[trigger] self.entries@[jj]).purse != key.0
+                    || self.entries@[jj].idx != key.1,
+            decreases self.entries.len() - j,
+        {
+            if self.entries[j].purse == key.0 && self.entries[j].idx == key.1 {
+                proof {
+                    assert(self.spec_entries@.dom().contains(key));
+                }
+                return Some(self.entries[j].local);
+            }
+            j = j + 1;
+        }
+        proof {
+            assert forall|k: (PurseId, u64)|
+                #[trigger] self.entries().dom().contains(k)
+                implies k != key
+            by {
+                let w = choose|jj: int|
+                    0 <= jj < self.entries@.len()
+                    && #[trigger] self.entries@[jj].purse == k.0
+                    && self.entries@[jj].idx == k.1;
+                assert(self.entries@[w].purse == k.0);
+            }
+        }
+        None
+    }
+
+    /// Synchronous read: on-chain state of the entry keyed `key`, or
+    /// `None` if no such entry exists. Quint analog:
+    /// `entries.get(key).onChain`.
+    pub fn entry_on_chain_state(&self, key: (PurseId, u64))
+        -> (res: Option<EntryOnChain>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some(s) =>
+                    self.entries().dom().contains(key)
+                    && s == self.entries()[key].on_chain,
+                None => !self.entries().dom().contains(key),
+            },
+    {
+        let mut j: usize = 0;
+        while j < self.entries.len()
+            invariant
+                0 <= j <= self.entries.len(),
+                self.invariant(),
+                forall|jj: int| 0 <= jj < j ==>
+                    (#[trigger] self.entries@[jj]).purse != key.0
+                    || self.entries@[jj].idx != key.1,
+            decreases self.entries.len() - j,
+        {
+            if self.entries[j].purse == key.0 && self.entries[j].idx == key.1 {
+                proof {
+                    assert(self.spec_entries@.dom().contains(key));
+                }
+                return Some(self.entries[j].on_chain);
+            }
+            j = j + 1;
+        }
+        proof {
+            assert forall|k: (PurseId, u64)|
+                #[trigger] self.entries().dom().contains(k)
+                implies k != key
+            by {
+                let w = choose|jj: int|
+                    0 <= jj < self.entries@.len()
+                    && #[trigger] self.entries@[jj].purse == k.0
+                    && self.entries@[jj].idx == k.1;
+                assert(self.entries@[w].purse == k.0);
+            }
+        }
+        None
+    }
+
     /// Synchronous read: status of the operation `handle`, or `None`
     /// if no such operation exists. Quint analog: `operations.get(h).status`.
     pub fn op_status(&self, handle: OpHandle) -> (res: Option<OpStatus>)
