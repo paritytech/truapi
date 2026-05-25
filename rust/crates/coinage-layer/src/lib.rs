@@ -2478,6 +2478,12 @@ impl State {
             final(self).entries() == old(self).entries(),
             final(self).entries@ == old(self).entries@,
             final(self).next_purse_id == old(self).next_purse_id,
+            // lock_refint preservation: operations.dom strictly grows
+            // (adds `handle`), and coins/entries are untouched. Every
+            // existing edge in refint still points into the larger ops set.
+            lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
+                ==> lock_refint(final(self).coins(), final(self).entries(),
+                                final(self).operations()),
     {
         let ghost old_ops = self.spec_operations@;
         let ghost old_ops_vec = self.operations@;
@@ -2985,6 +2991,9 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
+                ==> lock_refint(final(self).coins(), final(self).entries(),
+                                final(self).operations()),
     {
         self.transition_coin_state(key, CoinState::Available);
     }
@@ -3018,6 +3027,9 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
+                ==> lock_refint(final(self).coins(), final(self).entries(),
+                                final(self).operations()),
     {
         self.set_entry_local(key, EntryLocal::LocalAvailable);
     }
@@ -3201,6 +3213,11 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            // lock_refint preservation: removing a LockedFor edge can
+            // never break refint (no new dangling references).
+            lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
+                ==> lock_refint(final(self).coins(), final(self).entries(),
+                                final(self).operations()),
     {
         self.transition_coin_state(key, CoinState::Available);
     }
@@ -3231,6 +3248,10 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            // lock_refint preservation: removing a LockedFor edge.
+            lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
+                ==> lock_refint(final(self).coins(), final(self).entries(),
+                                final(self).operations()),
     {
         self.transition_coin_state(key, CoinState::PendingSpend);
     }
@@ -3730,6 +3751,11 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            // lock_refint preservation: same conditional shape as lock_coin.
+            (lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
+                && old(self).operations().dom().contains(handle))
+                ==> lock_refint(final(self).coins(), final(self).entries(),
+                                final(self).operations()),
     {
         self.set_entry_local(key, EntryLocal::LocalLockedFor(handle));
     }
@@ -3761,6 +3787,9 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
+                ==> lock_refint(final(self).coins(), final(self).entries(),
+                                final(self).operations()),
     {
         self.set_entry_local(key, EntryLocal::LocalConsumed);
     }
