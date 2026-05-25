@@ -503,6 +503,15 @@ pub struct State {
     /// trails. Every state-mutating op declares its emissions in its
     /// postcondition.
     pub events: Vec<Event>,
+    /// Quint `paidRingMembership`. Total amount paid for anonymity-ring
+    /// membership fees — accumulated as top-ups land.
+    pub paid_ring_membership: u64,
+    /// Quint `totalIn`. Total amount of funds that have entered the
+    /// system (top-ups, imports). Monotonically non-decreasing.
+    pub total_in: u64,
+    /// Quint `totalOut`. Total amount of funds that have exited the
+    /// system (transfers out, exports). Monotonically non-decreasing.
+    pub total_out: u64,
     #[allow(dead_code)]
     pub spec_purses: Ghost<Map<PurseId, PurseRecSpec>>,
     #[allow(dead_code)]
@@ -999,6 +1008,9 @@ impl State {
             fee_balance: 0,
             next_extrinsic_id: 0,
             events: Vec::new(),
+            paid_ring_membership: 0,
+            total_in: 0,
+            total_out: 0,
             spec_purses: Ghost(Map::<PurseId, PurseRecSpec>::empty().insert(MAIN_PURSE, main_spec)),
             spec_coins: Ghost(Map::<(PurseId, u64), CoinRec>::empty()),
             spec_entries: Ghost(Map::<(PurseId, u64), EntryRec>::empty()),
@@ -1343,6 +1355,130 @@ impl State {
     ///   - `Ok(())` if the purse is removed.
     ///   - `Err(CannotDeleteMainPurse)` if `p == MAIN_PURSE`; state unchanged.
     ///   - `Err(PurseNotFound(p))` if `p` is not a known purse; state unchanged.
+    /// Increment `total_in` by `amount` (Quint accumulator advance on
+    /// inflow: top-up, import).
+    pub fn add_total_in(&mut self, amount: u64)
+        requires
+            old(self).invariant(),
+            old(self).total_in <= u64::MAX - amount,
+        ensures
+            final(self).invariant(),
+            final(self).total_in == old(self).total_in + amount,
+            final(self).purses() == old(self).purses(),
+            final(self).purses@ == old(self).purses@,
+            final(self).spec_purses@ == old(self).spec_purses@,
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).spec_coins@ == old(self).spec_coins@,
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).spec_entries@ == old(self).spec_entries@,
+            final(self).operations() == old(self).operations(),
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+            final(self).next_purse_id == old(self).next_purse_id,
+            final(self).fee_balance == old(self).fee_balance,
+            final(self).next_extrinsic_id == old(self).next_extrinsic_id,
+            final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_out == old(self).total_out,
+    {
+        let ghost old_purses_vec = self.purses@;
+        let ghost old_spec_purses = self.spec_purses@;
+        let ghost old_coins_vec = self.coins@;
+        let ghost old_spec_coins = self.spec_coins@;
+        let ghost old_entries_vec = self.entries@;
+        let ghost old_spec_entries = self.spec_entries@;
+        let ghost old_operations_vec = self.operations@;
+        let ghost old_spec_operations = self.spec_operations@;
+        let ghost old_events = self.events@;
+        self.total_in = self.total_in + amount;
+        proof {
+            assert(self.purses@ == old_purses_vec);
+            assert(self.spec_purses@ == old_spec_purses);
+            assert(self.coins@ == old_coins_vec);
+            assert(self.spec_coins@ == old_spec_coins);
+            assert(self.entries@ == old_entries_vec);
+            assert(self.spec_entries@ == old_spec_entries);
+            assert(self.operations@ == old_operations_vec);
+            assert(self.spec_operations@ == old_spec_operations);
+            assert(self.events@ == old_events);
+        }
+    }
+
+    /// Increment `total_out` by `amount` (Quint accumulator advance on
+    /// outflow: export, cross-host transfer-out).
+    pub fn add_total_out(&mut self, amount: u64)
+        requires
+            old(self).invariant(),
+            old(self).total_out <= u64::MAX - amount,
+        ensures
+            final(self).invariant(),
+            final(self).total_out == old(self).total_out + amount,
+            final(self).purses() == old(self).purses(),
+            final(self).purses@ == old(self).purses@,
+            final(self).spec_purses@ == old(self).spec_purses@,
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).spec_coins@ == old(self).spec_coins@,
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).spec_entries@ == old(self).spec_entries@,
+            final(self).operations() == old(self).operations(),
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+            final(self).next_purse_id == old(self).next_purse_id,
+            final(self).fee_balance == old(self).fee_balance,
+            final(self).next_extrinsic_id == old(self).next_extrinsic_id,
+            final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+    {
+        let ghost old_purses_vec = self.purses@;
+        let ghost old_spec_purses = self.spec_purses@;
+        let ghost old_coins_vec = self.coins@;
+        let ghost old_spec_coins = self.spec_coins@;
+        let ghost old_entries_vec = self.entries@;
+        let ghost old_spec_entries = self.spec_entries@;
+        let ghost old_operations_vec = self.operations@;
+        let ghost old_spec_operations = self.spec_operations@;
+        let ghost old_events = self.events@;
+        self.total_out = self.total_out + amount;
+        proof {
+            assert(self.purses@ == old_purses_vec);
+            assert(self.spec_purses@ == old_spec_purses);
+            assert(self.coins@ == old_coins_vec);
+            assert(self.spec_coins@ == old_spec_coins);
+            assert(self.entries@ == old_entries_vec);
+            assert(self.spec_entries@ == old_spec_entries);
+            assert(self.operations@ == old_operations_vec);
+            assert(self.spec_operations@ == old_spec_operations);
+            assert(self.events@ == old_events);
+        }
+    }
+
+    /// Read total_in.
+    pub fn read_total_in(&self) -> (v: u64)
+        requires self.invariant(),
+        ensures v == self.total_in,
+    { self.total_in }
+
+    /// Read total_out.
+    pub fn read_total_out(&self) -> (v: u64)
+        requires self.invariant(),
+        ensures v == self.total_out,
+    { self.total_out }
+
+    /// Read paid_ring_membership.
+    pub fn read_paid_ring_membership(&self) -> (v: u64)
+        requires self.invariant(),
+        ensures v == self.paid_ring_membership,
+    { self.paid_ring_membership }
+
     /// Append an event to the layer event stream. Quint analog: any
     /// `events' = events.append(e)` clause. Callers compose this with
     /// state-mutating ops to declare emissions (note: the existing
@@ -1717,6 +1853,9 @@ impl State {
                 self.fee_balance == old(self).fee_balance,
                 self.next_extrinsic_id == old(self).next_extrinsic_id,
                 self.events@ == old(self).events@,
+                self.paid_ring_membership == old(self).paid_ring_membership,
+                self.total_in == old(self).total_in,
+                self.total_out == old(self).total_out,
                 old_m == old(self).spec_purses@,
                 old_v == old(self).purses@,
                 old_coins == old(self).coins().remove_keys(
@@ -2016,6 +2155,9 @@ impl State {
                 self.fee_balance == old(self).fee_balance,
                 self.next_extrinsic_id == old(self).next_extrinsic_id,
                 self.events@ == old(self).events@,
+                self.paid_ring_membership == old(self).paid_ring_membership,
+                self.total_in == old(self).total_in,
+                self.total_out == old(self).total_out,
                 old_m == old(self).spec_purses@,
                 old_v == old(self).purses@,
                 old_coins == old(self).spec_coins@,
@@ -2032,6 +2174,9 @@ impl State {
                 self.fee_balance == old(self).fee_balance,
                 self.next_extrinsic_id == old(self).next_extrinsic_id,
                 self.events@ == old(self).events@,
+                self.paid_ring_membership == old(self).paid_ring_membership,
+                self.total_in == old(self).total_in,
+                self.total_out == old(self).total_out,
                 old(self).purses().dom().contains(p),
                 p_old_rec == old_m[p],
                 p_old_rec.next_coin_idx < u64::MAX,
@@ -2418,6 +2563,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
     {
         let ghost old_v = self.purses@;
         let ghost old_m = self.spec_purses@;
@@ -2448,6 +2596,9 @@ impl State {
                 self.fee_balance == old(self).fee_balance,
                 self.next_extrinsic_id == old(self).next_extrinsic_id,
                 self.events@ == old(self).events@,
+                self.paid_ring_membership == old(self).paid_ring_membership,
+                self.total_in == old(self).total_in,
+                self.total_out == old(self).total_out,
                 old_m == old(self).spec_purses@,
                 old_v == old(self).purses@,
                 old_entries == old(self).spec_entries@,
@@ -2751,6 +2902,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
     {
         self.consume_entry(key);
         self.mark_op_done(handle);
@@ -2783,6 +2937,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
     {
         self.commit_locked_coin(key);
         self.mark_coin_spent(key);
@@ -2821,6 +2978,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
     {
         self.release_locked_coin(key, handle);
         self.set_op_failed(handle);
@@ -2857,6 +3017,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
     {
         self.release_locked_entry(key, handle);
         self.set_op_failed(handle);
@@ -2903,6 +3066,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
     {
         let handle = self.start_op(kind, key.0);
         proof {
@@ -2938,6 +3104,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
     {
         let handle = self.start_op(kind, key.0);
         proof {
@@ -2997,6 +3166,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
     {
         self.add_entry_with_meta(p, exponent, on_chain, local, 0, 0, 0, 0)
     }
@@ -3025,6 +3197,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
             // Other state untouched.
             final(self).purses() == old(self).purses(),
             final(self).purses@ == old(self).purses@,
@@ -3182,6 +3357,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -3221,6 +3399,9 @@ impl State {
                 self.fee_balance == old(self).fee_balance,
                 self.next_extrinsic_id == old(self).next_extrinsic_id,
                 self.events@ == old(self).events@,
+                self.paid_ring_membership == old(self).paid_ring_membership,
+                self.total_in == old(self).total_in,
+                self.total_out == old(self).total_out,
                 old_purses_vec == old(self).purses@,
                 old_spec_purses == old(self).spec_purses@,
                 old_spec_purses == old(self).purses(),
@@ -3375,6 +3556,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -3404,6 +3588,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -3432,6 +3619,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -3462,6 +3652,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -3495,6 +3688,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -3533,6 +3729,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -3567,6 +3766,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
             match res {
                 Some(key) =>
                     old(self).coins().dom().contains(key)
@@ -3650,6 +3852,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
             match res {
                 Some(key) =>
                     old(self).entries().dom().contains(key)
@@ -3750,6 +3955,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
             final(self).coins@.len() == old(self).coins@.len(),
             lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
                 ==> lock_refint(final(self).coins(), final(self).entries(),
@@ -3790,6 +3998,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
             final(self).entries@.len() == old(self).entries@.len(),
             lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
                 ==> lock_refint(final(self).coins(), final(self).entries(),
@@ -3826,6 +4037,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
     {
         self.transition_coin_state(key, CoinState::Available);
     }
@@ -3857,6 +4071,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
     {
         self.transition_coin_state(key, CoinState::PendingSpend);
     }
@@ -3888,6 +4105,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
     {
         self.transition_coin_state(key, CoinState::Spent);
     }
@@ -3921,6 +4141,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
     {
         self.transition_coin_state(key, CoinState::Available);
     }
@@ -3954,6 +4177,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
             // lock_refint preservation: if the old state satisfied
             // refint AND the handle is a known op, the new state still
             // satisfies refint (the only new LockedFor edge references h,
@@ -3995,6 +4221,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
             final(self).coins@.len() == old(self).coins@.len(),
             // lock_refint preservation: removing a LockedFor edge can
             // never break refint (no new dangling references).
@@ -4034,6 +4263,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
             final(self).coins@.len() == old(self).coins@.len(),
             // lock_refint preservation: removing a LockedFor edge.
             lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
@@ -4072,6 +4304,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
             final(self).coins@.len() == old(self).coins@.len(),
     {
         let ghost old_purses_vec = self.purses@;
@@ -4097,6 +4332,9 @@ impl State {
                 self.fee_balance == old(self).fee_balance,
                 self.next_extrinsic_id == old(self).next_extrinsic_id,
                 self.events@ == old(self).events@,
+                self.paid_ring_membership == old(self).paid_ring_membership,
+                self.total_in == old(self).total_in,
+                self.total_out == old(self).total_out,
                 self.spec_coins@ == old_coins,
                 self.coins@ == old_coins_vec,
                 self.spec_entries@ == old_entries,
@@ -4296,6 +4534,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
     {
         let ghost old_purses_vec = self.purses@;
         let ghost old_spec_purses = self.spec_purses@;
@@ -4320,6 +4561,9 @@ impl State {
                 self.fee_balance == old(self).fee_balance,
                 self.next_extrinsic_id == old(self).next_extrinsic_id,
                 self.events@ == old(self).events@,
+                self.paid_ring_membership == old(self).paid_ring_membership,
+                self.total_in == old(self).total_in,
+                self.total_out == old(self).total_out,
                 self.spec_coins@ == old_coins,
                 self.coins@ == old_coins_vec,
                 self.spec_entries@ == old_entries,
@@ -4502,6 +4746,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
     {
         self.set_entry_on_chain(key, EntryOnChain::Ready);
     }
@@ -4530,6 +4777,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
     {
         self.set_entry_on_chain(key, EntryOnChain::Missing);
     }
@@ -4564,6 +4814,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
             // lock_refint preservation: same conditional shape as lock_coin.
             (lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
                 && old(self).operations().dom().contains(handle))
@@ -4603,6 +4856,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
             final(self).entries@.len() == old(self).entries@.len(),
             lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
                 ==> lock_refint(final(self).coins(), final(self).entries(),
@@ -4668,6 +4924,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
             final(self).entries@.len() == old(self).entries@.len(),
     {
         let ghost old_purses_vec = self.purses@;
@@ -4693,6 +4952,9 @@ impl State {
                 self.fee_balance == old(self).fee_balance,
                 self.next_extrinsic_id == old(self).next_extrinsic_id,
                 self.events@ == old(self).events@,
+                self.paid_ring_membership == old(self).paid_ring_membership,
+                self.total_in == old(self).total_in,
+                self.total_out == old(self).total_out,
                 self.spec_coins@ == old_coins,
                 self.coins@ == old_coins_vec,
                 self.spec_entries@ == old_entries,
@@ -4898,6 +5160,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
@@ -4905,6 +5170,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
             ({
                 let removed = old(self).coins@[idx as int];
                 final(self).coins()
@@ -6367,6 +6635,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
     {
         self.mark_coin_pending_spend(key);
         self.mark_coin_spent(key);
@@ -7663,6 +7934,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
@@ -7670,6 +7944,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
             final(self).coins() == old(self).coins().remove_keys(
                 Set::new(|k: (PurseId, u64)| k.0 == p)
             ),
@@ -7693,6 +7970,9 @@ impl State {
                 self.fee_balance == old(self).fee_balance,
                 self.next_extrinsic_id == old(self).next_extrinsic_id,
                 self.events@ == old(self).events@,
+                self.paid_ring_membership == old(self).paid_ring_membership,
+                self.total_in == old(self).total_in,
+                self.total_out == old(self).total_out,
                 // Current spec_coins is a subset of initial that preserves all
                 // entries with purse != p.
                 forall|k: (PurseId, u64)| #[trigger] self.spec_coins@.dom().contains(k)
@@ -7795,6 +8075,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
             ({
                 let removed = old(self).entries@[idx as int];
                 final(self).entries()
@@ -7955,6 +8238,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
             final(self).entries() == old(self).entries().remove_keys(
                 Set::new(|k: (PurseId, u64)| k.0 == p)
             ),
@@ -7978,6 +8264,9 @@ impl State {
                 self.fee_balance == old(self).fee_balance,
                 self.next_extrinsic_id == old(self).next_extrinsic_id,
                 self.events@ == old(self).events@,
+                self.paid_ring_membership == old(self).paid_ring_membership,
+                self.total_in == old(self).total_in,
+                self.total_out == old(self).total_out,
                 forall|k: (PurseId, u64)| #[trigger] self.spec_entries@.dom().contains(k)
                     ==> initial_entries.dom().contains(k)
                         && self.spec_entries@[k] == initial_entries[k],
@@ -8119,6 +8408,9 @@ impl State {
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
             final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
     {
         let key = self.add_entry_with_meta(
             p,
