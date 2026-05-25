@@ -565,11 +565,7 @@ impl State {
     pub fn delete_purse(&mut self, p: PurseId) -> (res: Result<(), Error>)
         requires
             old(self).invariant(),
-            // Temporarily tightened (stage 5a): no coin at all in p. The
-            // `!has_live_coin_in` form is restored once `purge_coins_of_purse`
-            // is composed into the body in stage 5e.
-            forall|k: (PurseId, u64)| #[trigger] old(self).coins().dom().contains(k)
-                ==> k.0 != p,
+            !old(self).has_live_coin_in(p),
         ensures
             final(self).invariant(),
             match res {
@@ -577,7 +573,9 @@ impl State {
                     old(self).purses().dom().contains(p)
                     && p != MAIN_PURSE
                     && final(self).purses() == old(self).purses().remove(p)
-                    && final(self).coins() == old(self).coins(),
+                    && final(self).coins() == old(self).coins().remove_keys(
+                        Set::new(|k: (PurseId, u64)| k.0 == p)
+                    ),
                 Err(Error::CannotDeleteMainPurse) =>
                     p == MAIN_PURSE
                     && final(self).purses() == old(self).purses()
@@ -587,20 +585,25 @@ impl State {
                     && !old(self).purses().dom().contains(p)
                     && q == p
                     && final(self).purses() == old(self).purses()
-                    && final(self).coins() == old(self).coins(),
+                    && final(self).coins() == old(self).coins().remove_keys(
+                        Set::new(|k: (PurseId, u64)| k.0 == p)
+                    ),
             },
     {
         if p == MAIN_PURSE {
             return Err(Error::CannotDeleteMainPurse);
         }
 
+        // Purge any coins belonging to p (any state). The contract's
+        // `!has_live_coin_in(p)` precondition allows Spent coins to remain;
+        // they're removed here. If p isn't a known purse, invariant (j) ⇒
+        // no coin has purse == p anyway, so this is a no-op for the coin map.
+        self.purge_coins_of_purse(p);
+
         let ghost old_v = self.purses@;
         let ghost old_m = self.spec_purses@;
         let ghost old_coins = self.spec_coins@;
         let ghost old_coins_vec = self.coins@;
-        proof {
-            assert(old_coins == old(self).coins());
-        }
 
         let mut i: usize = 0;
         while i < self.purses.len()
@@ -613,13 +616,12 @@ impl State {
                 self.coins@ == old_coins_vec,
                 old_m == old(self).spec_purses@,
                 old_v == old(self).purses@,
-                old_coins == old(self).spec_coins@,
-                old_coins == old(self).coins(),
-                old_coins_vec == old(self).coins@,
+                old_coins == old(self).coins().remove_keys(
+                    Set::new(|k: (PurseId, u64)| k.0 == p)
+                ),
                 self.next_purse_id == old(self).next_purse_id,
                 p != MAIN_PURSE,
-                forall|k: (PurseId, u64)|
-                    #[trigger] old(self).coins().dom().contains(k) ==> k.0 != p,
+                forall|k: (PurseId, u64)| #[trigger] old_coins.dom().contains(k) ==> k.0 != p,
                 forall|j: int| 0 <= j < i ==> (#[trigger] self.purses@[j]).id != p,
             decreases self.purses.len() - i,
         {
@@ -748,18 +750,17 @@ impl State {
                         }
                     }
 
-                    // Coins are unchanged in stage 5a; the precondition forbids
-                    // any coin in p, so removing p from the purse map preserves
-                    // (j): every coin's purse was != p, and remains in new dom.
+                    // Coins are unchanged in this branch (purge happened pre-loop).
+                    // Post-purge no coin in p remains, so removing p from
+                    // purse map preserves (j): every coin's purse != p.
                     assert(self.spec_coins@ == old_coins);
                     assert(self.coins@ == old_coins_vec);
-                    assert(old_coins == old(self).coins());
                     assert forall|k: (PurseId, u64)|
                         #[trigger] new_coins_map.dom().contains(k)
                     implies
                         new_m.dom().contains(k.0)
                     by {
-                        assert(old(self).coins().dom().contains(k));
+                        assert(old_coins.dom().contains(k));
                         assert(k.0 != p);
                         assert(old_m.dom().contains(k.0));
                     }
@@ -770,7 +771,7 @@ impl State {
                     implies
                         k.1 < new_m[k.0].next_coin_idx
                     by {
-                        assert(old(self).coins().dom().contains(k));
+                        assert(old_coins.dom().contains(k));
                         assert(k.0 != p);
                         assert(new_m[k.0] == old_m[k.0]);
                     }
@@ -1393,6 +1394,8 @@ impl State {
         ensures
             final(self).invariant(),
             final(self).purses() == old(self).purses(),
+            final(self).purses@ == old(self).purses@,
+            final(self).next_purse_id == old(self).next_purse_id,
             ({
                 let removed = old(self).coins@[idx as int];
                 final(self).coins()
@@ -1548,6 +1551,8 @@ impl State {
         ensures
             final(self).invariant(),
             final(self).purses() == old(self).purses(),
+            final(self).purses@ == old(self).purses@,
+            final(self).next_purse_id == old(self).next_purse_id,
             final(self).coins() == old(self).coins().remove_keys(
                 Set::new(|k: (PurseId, u64)| k.0 == p)
             ),
@@ -1560,6 +1565,8 @@ impl State {
             invariant
                 self.invariant(),
                 self.purses() == old(self).purses(),
+                self.purses@ == old(self).purses@,
+                self.next_purse_id == old(self).next_purse_id,
                 // Current spec_coins is a subset of initial that preserves all
                 // entries with purse != p.
                 forall|k: (PurseId, u64)| #[trigger] self.spec_coins@.dom().contains(k)
