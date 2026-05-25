@@ -3723,6 +3723,104 @@ impl State {
         vstd::pervasive::unreached()
     }
 
+    /// Variant of [`Self::mark_op_submitted`] that also appends an
+    /// `OperationProgress { Submitted }` event to the event stream.
+    pub fn mark_op_submitted_with_event(&mut self, handle: OpHandle)
+        requires
+            old(self).invariant(),
+            old(self).operations().dom().contains(handle),
+            old(self).operations()[handle].status == OpStatus::Preparing,
+            old(self).events@.len() < u64::MAX as nat,
+        ensures
+            final(self).invariant(),
+            final(self).operations()[handle].status == OpStatus::Submitted,
+            final(self).events@ == old(self).events@.push(Event::OperationProgress {
+                handle,
+                status: OpStatus::Submitted,
+            }),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+    {
+        self.mark_op_submitted(handle);
+        self.emit_event(Event::OperationProgress {
+            handle,
+            status: OpStatus::Submitted,
+        });
+    }
+
+    /// Variant of [`Self::mark_op_done`] that also appends an
+    /// `OperationCompleted { Done }` event to the event stream.
+    pub fn mark_op_done_with_event(&mut self, handle: OpHandle)
+        requires
+            old(self).invariant(),
+            old(self).operations().dom().contains(handle),
+            match old(self).operations()[handle].status {
+                OpStatus::Finalized => true,
+                OpStatus::Waiting(_) => true,
+                _ => false,
+            },
+            old(self).events@.len() < u64::MAX as nat,
+        ensures
+            final(self).invariant(),
+            final(self).operations()[handle].status == OpStatus::Done,
+            final(self).events@ == old(self).events@.push(Event::OperationCompleted {
+                handle,
+                status: OpStatus::Done,
+            }),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+    {
+        self.mark_op_done(handle);
+        self.emit_event(Event::OperationCompleted {
+            handle,
+            status: OpStatus::Done,
+        });
+    }
+
+    /// Variant of [`Self::set_op_failed`] that also appends an
+    /// `OperationCompleted { Failed }` event to the event stream.
+    pub fn set_op_failed_with_event(&mut self, handle: OpHandle)
+        requires
+            old(self).invariant(),
+            old(self).operations().dom().contains(handle),
+            match old(self).operations()[handle].status {
+                OpStatus::Preparing => true,
+                OpStatus::Waiting(_) => true,
+                _ => false,
+            },
+            old(self).events@.len() < u64::MAX as nat,
+        ensures
+            final(self).invariant(),
+            final(self).operations()[handle].status == OpStatus::Failed,
+            final(self).events@ == old(self).events@.push(Event::OperationCompleted {
+                handle,
+                status: OpStatus::Failed,
+            }),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+    {
+        self.set_op_failed(handle);
+        self.emit_event(Event::OperationCompleted {
+            handle,
+            status: OpStatus::Failed,
+        });
+    }
+
     /// Operation lifecycle: `Preparing` → `Submitted`. Phase order
     /// gate matching Quint `submitOp`.
     pub fn mark_op_submitted(&mut self, handle: OpHandle)
