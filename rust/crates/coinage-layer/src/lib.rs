@@ -4079,6 +4079,7 @@ impl State {
             old(self).entries()[key].local == EntryLocal::LocalAvailable,
             old(self).purses().dom().contains(key.0),
             old(self).next_handle < u64::MAX,
+            old(self).events@.len() < u64::MAX as nat,
         ensures
             final(self).invariant(),
             handle == old(self).next_handle,
@@ -4094,7 +4095,11 @@ impl State {
             final(self).next_age == old(self).next_age,
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
-            final(self).events@ == old(self).events@,
+            final(self).events@ == old(self).events@.push(Event::OperationStarted {
+                handle,
+                kind,
+                purse: key.0,
+            }),
             final(self).paid_ring_membership == old(self).paid_ring_membership,
             final(self).total_in == old(self).total_in,
             final(self).total_out == old(self).total_out,
@@ -4121,6 +4126,7 @@ impl State {
             old(self).coins()[key].state == CoinState::Available,
             old(self).purses().dom().contains(key.0),
             old(self).next_handle < u64::MAX,
+            old(self).events@.len() < u64::MAX as nat,
         ensures
             final(self).invariant(),
             handle == old(self).next_handle,
@@ -4135,7 +4141,11 @@ impl State {
             final(self).next_age == old(self).next_age,
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
-            final(self).events@ == old(self).events@,
+            final(self).events@ == old(self).events@.push(Event::OperationStarted {
+                handle,
+                kind,
+                purse: key.0,
+            }),
             final(self).paid_ring_membership == old(self).paid_ring_membership,
             final(self).total_in == old(self).total_in,
             final(self).total_out == old(self).total_out,
@@ -4220,6 +4230,7 @@ impl State {
             old(self).invariant(),
             old(self).purses().dom().contains(purse),
             old(self).next_handle < u64::MAX,
+            old(self).events@.len() < u64::MAX as nat,
         ensures
             final(self).invariant(),
             handle == old(self).next_handle,
@@ -4234,7 +4245,11 @@ impl State {
             final(self).next_age == old(self).next_age,
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
-            final(self).events@ == old(self).events@,
+            final(self).events@ == old(self).events@.push(Event::OperationStarted {
+                handle,
+                kind,
+                purse,
+            }),
             final(self).paid_ring_membership == old(self).paid_ring_membership,
             final(self).total_in == old(self).total_in,
             final(self).total_out == old(self).total_out,
@@ -4376,6 +4391,7 @@ impl State {
                 }
             }
         }
+        self.emit_event(Event::OperationStarted { handle, kind, purse });
         handle
     }
 
@@ -4585,39 +4601,6 @@ impl State {
     }
 
 
-    /// Variant of [`Self::start_op`] that also appends an
-    /// `OperationStarted` event to the event stream.
-    pub fn start_op_with_event(&mut self, kind: OpKind, purse: PurseId)
-        -> (handle: OpHandle)
-        requires
-            old(self).invariant(),
-            old(self).purses().dom().contains(purse),
-            old(self).next_handle < u64::MAX,
-            old(self).events@.len() < u64::MAX as nat,
-        ensures
-            final(self).invariant(),
-            handle == old(self).next_handle,
-            final(self).operations().dom().contains(handle),
-            final(self).operations()[handle].status == OpStatus::Preparing,
-            final(self).operations()[handle].kind == kind,
-            final(self).operations()[handle].purse == purse,
-            final(self).events@ == old(self).events@.push(Event::OperationStarted {
-                handle,
-                kind,
-                purse,
-            }),
-            final(self).purses() == old(self).purses(),
-            final(self).coins() == old(self).coins(),
-            final(self).coins@ == old(self).coins@,
-            final(self).entries() == old(self).entries(),
-            final(self).entries@ == old(self).entries@,
-            final(self).next_handle == old(self).next_handle + 1,
-            final(self).next_age == old(self).next_age,
-    {
-        let handle = self.start_op(kind, purse);
-        self.emit_event(Event::OperationStarted { handle, kind, purse });
-        handle
-    }
 
     /// Variant of [`Self::mark_op_submitted`] that also appends an
     /// `OperationProgress { Submitted }` event to the event stream.
@@ -7841,7 +7824,7 @@ impl State {
             old(self).purses()[to].next_coin_idx < u64::MAX,
             old(self).next_handle < u64::MAX,
             old(self).next_age < u64::MAX,
-            old(self).events@.len() + 2 <= u64::MAX as nat,
+            old(self).events@.len() + 3 <= u64::MAX as nat,
         ensures
             final(self).invariant(),
             res.0 == old(self).next_handle,
@@ -7890,7 +7873,7 @@ impl State {
             old(self).coins().dom().contains(key),
             old(self).coins()[key].state == CoinState::Available,
             old(self).next_handle < u64::MAX,
-            old(self).events@.len() < u64::MAX as nat,
+            old(self).events@.len() + 2 <= u64::MAX as nat,
         ensures
             final(self).invariant(),
             handle == old(self).next_handle,
@@ -7925,7 +7908,7 @@ impl State {
             old(self).purses()[p].next_coin_idx < u64::MAX,
             old(self).next_age < u64::MAX,
             old(self).next_handle < u64::MAX,
-            old(self).events@.len() < u64::MAX as nat,
+            old(self).events@.len() + 2 <= u64::MAX as nat,
         ensures
             final(self).invariant(),
             res.0 == old(self).next_handle,
@@ -8089,7 +8072,7 @@ impl State {
             old(self).purses()[dst].next_coin_idx < u64::MAX,
             old(self).next_age < u64::MAX,
             old(self).next_handle < u64::MAX,
-            old(self).events@.len() + 2 <= u64::MAX as nat,
+            old(self).events@.len() + 3 <= u64::MAX as nat,
         ensures
             final(self).invariant(),
             res.0 == old(self).next_handle,
@@ -8133,7 +8116,7 @@ impl State {
                 <= u64::MAX as nat,
             old(self).next_age as nat + new_exponents@.len() <= u64::MAX as nat,
             old(self).next_handle < u64::MAX,
-            old(self).events@.len() < u64::MAX as nat,
+            old(self).events@.len() + 2 <= u64::MAX as nat,
         ensures
             final(self).invariant(),
             handle == old(self).next_handle,
@@ -8236,7 +8219,7 @@ impl State {
             old(self).purses()[key.0].next_coin_idx < u64::MAX,
             old(self).next_age < u64::MAX,
             old(self).next_handle < u64::MAX,
-            old(self).events@.len() < u64::MAX as nat,
+            old(self).events@.len() + 2 <= u64::MAX as nat,
         ensures
             final(self).invariant(),
             res.0 == old(self).next_handle,
@@ -9708,7 +9691,7 @@ impl State {
             old(self).purses().dom().contains(p),
             old(self).purses()[p].next_entry_idx < u64::MAX,
             old(self).next_handle < u64::MAX,
-            old(self).events@.len() < u64::MAX as nat,
+            old(self).events@.len() + 2 <= u64::MAX as nat,
         ensures
             final(self).invariant(),
             res.0 == old(self).next_handle,
