@@ -4923,6 +4923,47 @@ impl State {
         }
     }
 
+    /// Result-returning variant of `entry_record`.
+    pub fn query_entry_record(&self, key: (PurseId, u64))
+        -> (res: Result<EntryRec, Error>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Ok(e) =>
+                    self.entries().dom().contains(key)
+                    && e == self.entries()[key],
+                Err(_) => !self.entries().dom().contains(key),
+            },
+    {
+        match self.entry_record(key) {
+            Some(e) => Ok(e),
+            None => Err(Error::Internal(Vec::new())),
+        }
+    }
+
+    /// Result-returning variant of `op_meta`.
+    pub fn query_op_meta(&self, handle: OpHandle)
+        -> (res: Result<(OpKind, PurseId), Error>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Ok((k, p)) =>
+                    self.operations().dom().contains(handle)
+                    && k == self.operations()[handle].kind
+                    && p == self.operations()[handle].purse,
+                Err(Error::OperationNotFound(h)) =>
+                    !self.operations().dom().contains(handle) && h == handle,
+                Err(_) => false,
+            },
+    {
+        match self.op_meta(handle) {
+            Some(m) => Ok(m),
+            None => Err(Error::OperationNotFound(handle)),
+        }
+    }
+
     /// Synchronous read: the `(kind, purse)` pair of the operation
     /// `handle`, or `None` if no such operation exists. Used to route
     /// chain events back to the right purse / op-kind handler.
