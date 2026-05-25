@@ -295,18 +295,139 @@ pub fn mark_coin_pending_spend(&mut self, key: (PurseId, u64))
 
 ## 13. Proof economy reality check
 
-For the coinage-layer pilot (9 operations, 11 invariant clauses):
+For the coinage-layer pilot (15 operations, 14 invariant clauses):
 
 | | Lines |
 |---|---|
-| Executable code | ~80 |
-| Spec / contracts | ~140 |
-| Proof blocks (assert-forall, ghost captures) | ~600 |
+| Executable code | ~250 |
+| Spec / contracts | ~280 |
+| Proof blocks (assert-forall, ghost captures) | ~1,600 |
 
-Roughly **6:1 proof-to-exec ratio** for strong contracts. Each new operation adds ~50 lines of exec + ~120 lines of proof. The cost is converging because the invariant is stable; once the patterns above are in muscle memory, the marginal cost per op is bounded.
+Roughly **6.4:1 proof-to-exec ratio** for primitive operations. Per-op marginal cost converged to ~120 proof lines once the invariant stabilized.
 
-## 14. When to stop and ship
+**Composite operations cost zero proof.** `transfer` decomposes into `select_coin` + `read_coin_exponent` + `mark_coin_pending_spend` + `mark_coin_spent` + `add_coin`. Verus chains the contracts mechanically: each call's `ensures` discharges the next call's `requires`. The transfer body is ~10 exec lines with no `proof { }` block. This is the actual payoff of writing strong primitive contracts.
 
-Decision rule: **if a proof block exceeds ~150 lines for a single operation, the operation is probably trying to do too much.** Decompose it into smaller primitives that each fit the standard pattern.
+## 14. When to stop and ship — decomposition rule
 
-Real-world example: `delete_purse` with an inner Vec-filter loop for coin removal blew past 200 lines of proof attempting to maintain Vec ↔ ghost refinement through the filter. The right move was to decompose: separate `delete_purse_record` (just removes the purse from purses) from `purge_coins_of_purse` (filters the coin Vec), and prove each independently. (This decomposition is queued as stage-5 work and is not in the pilot.)
+**If a proof block exceeds ~150 lines for a single operation, the operation is trying to do too much.** Decompose into smaller primitives whose contracts compose.
+
+Worked example from the pilot: `delete_purse` initially tried to inline-filter the coin Vec while removing the purse, with one giant proof block. It blew past 200 proof lines without discharging. The fix was to split:
+
+1. `find_coin_with_purse(p) -> Option<usize>` — ~30 proof lines.
+2. `remove_coin_at(idx)` — one `swap_remove` + ghost `remove`, ~150 proof lines.
+3. `purge_coins_of_purse(p)` — loops `find` + `remove_at`, ~50 proof lines because each call's contract carries the heavy lifting.
+4. `delete_purse(p)` — calls `purge_coins_of_purse(p)` then does the existing purse removal, ~5 added proof lines.
+
+Total: ~235 proof lines split across 4 functions, vs. the original ~250+ that wouldn't discharge as one block. **Smaller proofs are not just easier to write — they're easier for SMT.**
+
+## 15. Sibling-field stability is part of the contract
+
+A method that mutates only one ghost field still has to *declare* the others unchanged, not just leave them alone. The pattern that bites you:
+
+```rust
+// Contract that LOOKS fine but isn't enough:
+fn purge_coins_of_purse(&mut self, p: PurseId)
+    ensures
+        final(self).invariant(),
+        final(self).purses() == old(self).purses(),  // spec map view
+        final(self).coins() == old(self).coins().remove_keys(...),
+{
+    /* body that only mutates self.coins / self.spec_coins */
+}
+```
+
+A caller that needs to continue using `self.purses@` (the Vec, not just the spec view) or `self.next_purse_id` after this call will hit unprovable loop invariants because Verus can't deduce those fields are unchanged from the contract alone. Add:
+
+```rust
+ensures
+    final(self).purses@ == old(self).purses@,        // exec Vec
+    final(self).next_purse_id == old(self).next_purse_id,
+```
+
+Even if the body trivially preserves them. Verus operates from contracts, not bodies. Forgetting this rule costs ~3 iterations of "wait, this should be obvious" debugging.
+
+## 16. Composition pattern: chaining primitives without proof blocks
+
+When a composite operation's body is purely sequential calls to primitives with strong contracts, the verification effort drops to zero. Recipe:
+
+```rust
+pub fn transfer(&mut self, from: PurseId, to: PurseId, min_exp: u8)
+    -> (res: Option<(PurseId, u64)>)
+    requires
+        old(self).invariant(),
+        old(self).purses().dom().contains(to),
+        old(self).purses()[to].next_coin_idx < u64::MAX,
+    ensures
+        final(self).invariant(),
+        /* result-shape clauses derived from primitives' postconditions */
+{
+    match self.select_coin(from, min_exp) {
+        None => None,
+        Some(key) => {
+            let exp = self.read_coin_exponent(key);
+            self.mark_coin_pending_spend(key);
+            self.mark_coin_spent(key);
+            let new_key = self.add_coin(to, exp);
+            Some(new_key)
+        }
+    }
+}
+```
+
+No `proof { }` blocks. The chain works because:
+- `select_coin`'s `Some(key)` postcondition gives us `coins.dom.contains(key)`, `coins[key].state == Available`, `coins[key].exponent >= min_exp`.
+- These satisfy `read_coin_exponent`'s `requires coins.dom.contains(key)`.
+- And `mark_coin_pending_spend`'s `requires ... && state == Available`.
+- After the mark, state is `PendingSpend`, matching `mark_coin_spent`'s precondition.
+- After both marks, the purse-side state (`purses().dom`, `purses[to].next_coin_idx`) is unchanged (sibling-field stability — §15), so `add_coin`'s preconditions still hold.
+
+**The cost of writing strong primitive contracts is paid once. Every composite operation built on those primitives is essentially free.**
+
+## 17. Recursive spec functions for aggregations
+
+For aggregations over a sequence (counts, sums), define a recursive spec function over a prefix:
+
+```rust
+pub open spec fn count_avail_prefix(v: Seq<CoinRec>, p: PurseId, j: nat) -> nat
+    decreases j
+{
+    if j == 0 {
+        0
+    } else {
+        let prev = count_avail_prefix(v, p, (j - 1) as nat);
+        if v[(j - 1) as int].purse == p
+            && v[(j - 1) as int].state == CoinState::Available
+        {
+            prev + 1
+        } else {
+            prev
+        }
+    }
+}
+```
+
+Exec implementation iterates and accumulates; loop invariant is `count == count_avail_prefix(v, p, j as nat)`. The proof that `count + 1` doesn't overflow uses an inline `assert`:
+
+```rust
+assert(count_avail_prefix(self.coins@, p, (j + 1) as nat)
+    <= count_avail_prefix(self.coins@, p, j as nat) + 1);
+```
+
+Verus discharges this by unfolding `count_avail_prefix`'s definition. From the invariant `count <= j`, combined with `j < self.coins.len() <= u64::MAX` (from precondition), `count + 1 <= u64::MAX`. No overflow.
+
+This pattern generalizes to any "scan and accumulate" aggregator. Avoids the complexity of folding over a `Set` or `Map` and gets a clean Verus-friendly recursive definition.
+
+## 18. Enum equality in exec code
+
+If your enum derives `PartialEq` (the typical Rust convention), Verus rejects `state == CoinState::Available` in exec code because `PartialEq::eq` is declared outside the `verus!` macro. Use `matches!` instead:
+
+```rust
+// Doesn't verify:
+if self.coins[j].state == CoinState::Available { ... }
+
+// Verifies:
+let is_avail = matches!(self.coins[j].state, CoinState::Available);
+if is_avail { ... }
+```
+
+In spec contexts, enum equality works natively (`state == CoinState::Available` is fine inside `ensures` and assertions). The exec/spec distinction here is non-obvious but trivial once known.
