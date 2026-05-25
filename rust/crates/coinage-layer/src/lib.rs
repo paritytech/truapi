@@ -123,10 +123,32 @@ pub struct PurseInfo {
     pub pending: u64,
 }
 
-/// Layer error enum. Pilot subset of design §10.
+/// Layer error enum (design §10). String payloads are modeled as
+/// `Vec<u8>` for Verus-compat; `ExtrinsicHash` is a `u64` placeholder.
+/// `OperationHandle` is a `u64` placeholder.
 pub enum Error {
+    // Pre-submission
     PurseNotFound(PurseId),
+    OperationNotFound(u64),
     CannotDeleteMainPurse,
+    PurseHasInFlightOperations,
+    OutputsDoNotSumToAmount,
+    InsufficientFunds { requested: u64, available: u64 },
+    InsufficientExternalFunds,
+    NoReadyEntries { requested: u64, available_when_ready: u64 },
+    NoUnloadToken,
+    BadCoinSecret,
+    // Post-submission / chain
+    SnipedCoin,
+    ChainRejected { extrinsic_hash: u64, reason: Vec<u8> },
+    // Lifecycle
+    Cancelled,
+    InterruptedPreSubmission,
+    // Internal
+    StorageError(Vec<u8>),
+    SubscriptionError(Vec<u8>),
+    RecoveryFailed(Vec<u8>),
+    Internal(Vec<u8>),
 }
 
 /// Layer state. Pilot scope: purses only.
@@ -504,7 +526,7 @@ impl State {
                     !old(self).purses().dom().contains(p)
                     && q == p
                     && final(self).purses() == old(self).purses(),
-                Err(Error::CannotDeleteMainPurse) => false,
+                Err(_) => false,
             },
     {
         let ghost old_v = self.purses@;
@@ -701,6 +723,7 @@ impl State {
                     && final(self).entries() == old(self).entries().remove_keys(
                         Set::new(|k: (PurseId, u64)| k.0 == p)
                     ),
+                Err(_) => false,
             },
     {
         if p == MAIN_PURSE {
@@ -3087,7 +3110,7 @@ impl State {
                     && i.pending == 0,
                 Err(Error::PurseNotFound(q)) =>
                     !self.purses().dom().contains(p) && q == p,
-                Err(Error::CannotDeleteMainPurse) => false,
+                Err(_) => false,
             },
     {
         let mut i: usize = 0;
