@@ -3606,7 +3606,8 @@ impl State {
     ///
     /// Quint analog: the local-state effect of `startExternalOffload`
     /// (without the external account / chain-side bookkeeping).
-    pub fn unload_via_entry(&mut self, key: (PurseId, u64)) -> (new_coin_key: (PurseId, u64))
+    pub fn unload_via_entry(&mut self, key: (PurseId, u64), handle: OpHandle)
+        -> (new_coin_key: (PurseId, u64))
         requires
             old(self).invariant(),
             old(self).entries().dom().contains(key),
@@ -3628,10 +3629,7 @@ impl State {
             final(self).coins()[new_coin_key].exponent == old(self).entries()[key].exponent,
     {
         let exp = self.read_entry_exponent(key);
-        // For the pilot, unload_via_entry doesn't yet thread an OpHandle.
-        // Use handle = 0 as a placeholder; the handle becomes meaningful
-        // once unload is wired through `tracked_*` composite operations.
-        self.set_entry_local(key, EntryLocal::LocalLockedFor(0));
+        self.set_entry_local(key, EntryLocal::LocalLockedFor(handle));
         self.set_entry_local(key, EntryLocal::LocalConsumed);
         let ghost post_consume_entries = self.entries();
         let new_key = self.add_coin(key.0, exp);
