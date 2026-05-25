@@ -3314,6 +3314,107 @@ impl State {
         }
     }
 
+    /// Reserve: allocate `exp_seq.len()` fresh recycler entries in purse `p`,
+    /// one per exponent in `exp_seq` (in order). Mirror of `top_up_purse` for
+    /// the entry side. New entries start in `(on_chain=Waiting,
+    /// local=LocalAvailable)`.
+    pub fn reserve_entries(&mut self, p: PurseId, exp_seq: Vec<u8>)
+        requires
+            old(self).invariant(),
+            old(self).purses().dom().contains(p),
+            old(self).purses()[p].next_entry_idx as nat + exp_seq@.len() <= u64::MAX as nat,
+        ensures
+            final(self).invariant(),
+            final(self).purses().dom() =~= old(self).purses().dom(),
+            final(self).purses()[p].next_entry_idx
+                == old(self).purses()[p].next_entry_idx + exp_seq@.len(),
+            final(self).purses()[p].id == p,
+            final(self).purses()[p].name == old(self).purses()[p].name,
+            final(self).purses()[p].next_coin_idx == old(self).purses()[p].next_coin_idx,
+            forall|q: PurseId| q != p && #[trigger] old(self).purses().dom().contains(q)
+                ==> final(self).purses()[q] == old(self).purses()[q],
+            // Coins entirely untouched.
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            // Existing entries preserved.
+            forall|k: (PurseId, u64)| #[trigger] old(self).entries().dom().contains(k)
+                ==> final(self).entries().dom().contains(k)
+                    && final(self).entries()[k] == old(self).entries()[k],
+            // New entry keys are in the dom; record fields match the request.
+            forall|j: int| 0 <= j < exp_seq@.len() ==>
+                #[trigger] final(self).entries().dom().contains(
+                    (p, (old(self).purses()[p].next_entry_idx + j) as u64)
+                )
+                && final(self).entries()[
+                    (p, (old(self).purses()[p].next_entry_idx + j) as u64)
+                ].exponent == exp_seq@[j],
+    {
+        let ghost old_p_next = old(self).purses()[p].next_entry_idx;
+        let ghost old_purses_map = old(self).purses();
+        let ghost old_entries_map = old(self).entries();
+        let n = exp_seq.len();
+
+        let mut k: usize = 0;
+        while k < n
+            invariant
+                0 <= k <= n,
+                n == exp_seq@.len(),
+                self.invariant(),
+                self.purses().dom() =~= old_purses_map.dom(),
+                old_purses_map.dom().contains(p),
+                self.purses()[p].next_entry_idx == old_p_next + k as nat,
+                self.purses()[p].id == p,
+                self.purses()[p].name == old_purses_map[p].name,
+                self.purses()[p].next_coin_idx == old_purses_map[p].next_coin_idx,
+                old_p_next == old_purses_map[p].next_entry_idx,
+                old_p_next as nat + n as nat <= u64::MAX as nat,
+                forall|q: PurseId| q != p && #[trigger] old_purses_map.dom().contains(q)
+                    ==> self.purses()[q] == old_purses_map[q],
+                self.coins() == old(self).coins(),
+                self.coins@ == old(self).coins@,
+                forall|key: (PurseId, u64)| #[trigger] old_entries_map.dom().contains(key)
+                    ==> self.entries().dom().contains(key)
+                        && self.entries()[key] == old_entries_map[key],
+                forall|j: int| 0 <= j < k as int ==>
+                    #[trigger] self.entries().dom().contains((p, (old_p_next + j) as u64))
+                    && self.entries()[(p, (old_p_next + j) as u64)].exponent == exp_seq@[j],
+            decreases n - k,
+        {
+            let exp = exp_seq[k];
+            let ghost prev_next_entry_idx = self.purses()[p].next_entry_idx;
+            let ghost pre_entries = self.entries();
+            assert(prev_next_entry_idx == old_p_next + k as nat);
+            assert(prev_next_entry_idx < u64::MAX);
+            #[allow(unused_variables)]
+            let new_key = self.add_entry(
+                p,
+                exp,
+                EntryOnChain::Waiting,
+                EntryLocal::LocalAvailable,
+            );
+            proof {
+                assert(new_key == (p, (old_p_next + k as nat) as u64));
+                assert forall|j: int| 0 <= j < (k + 1) as int implies
+                    #[trigger] self.entries().dom().contains((p, (old_p_next + j) as u64))
+                    && self.entries()[(p, (old_p_next + j) as u64)].exponent == exp_seq@[j]
+                by {
+                    let nk = (p, (old_p_next + j) as u64);
+                    if j == k as int {
+                        assert(nk == new_key);
+                        assert(self.entries()[new_key].exponent == exp);
+                        assert(exp == exp_seq@[k as int]);
+                    } else {
+                        assert(j < k as int);
+                        assert(pre_entries.dom().contains(nk));
+                        assert(pre_entries[nk].exponent == exp_seq@[j]);
+                        assert(nk.1 != new_key.1);
+                    }
+                }
+            }
+            k += 1;
+        }
+    }
+
     /// Sum of `coin_value(exp)` across `Available` coins in purse `p`.
     /// Scans the coin Vec; returned sum equals `sum_avail_prefix(self.coins@,
     /// p, len)`.
