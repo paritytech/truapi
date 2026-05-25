@@ -149,19 +149,27 @@ pub struct State {
     pub spec_entries: Ghost<Map<(PurseId, u64), EntryRec>>,
 }
 
-/// Spec-only recursive count: number of indices in `v[0..j]` whose
-/// coin is `Available` and belongs to purse `p`.
-pub open spec fn count_avail_prefix(v: Seq<CoinRec>, p: PurseId, j: nat) -> nat
+/// Spec-only coin value. **Pilot scheme: `coin_value(exp) = exp + 1`**
+/// — linear, monotone in `exp`, no overflow under any realistic `Vec`
+/// size. Real semantics is `2^exp` (Quint `coinValue`), deferred until
+/// saturating-arithmetic specs land.
+pub open spec fn coin_value(exp: u8) -> nat {
+    (exp as nat) + 1
+}
+
+/// Spec-only recursive sum: total spendable value across `v[0..j]`
+/// among coins that are `Available` and belong to purse `p`.
+pub open spec fn sum_avail_prefix(v: Seq<CoinRec>, p: PurseId, j: nat) -> nat
     decreases j
 {
     if j == 0 {
         0
     } else {
-        let prev = count_avail_prefix(v, p, (j - 1) as nat);
+        let prev = sum_avail_prefix(v, p, (j - 1) as nat);
         if v[(j - 1) as int].purse == p
             && v[(j - 1) as int].state == CoinState::Available
         {
-            prev + 1
+            prev + coin_value(v[(j - 1) as int].exponent)
         } else {
             prev
         }
@@ -3014,50 +3022,59 @@ impl State {
         }
     }
 
-    /// Count of `Available` coins in purse `p`. Scans the coin Vec; the
-    /// returned count equals `count_avail_prefix(self.coins@, p, len)`.
+    /// Sum of `coin_value(exp)` across `Available` coins in purse `p`.
+    /// Scans the coin Vec; returned sum equals `sum_avail_prefix(self.coins@,
+    /// p, len)`.
     ///
-    /// **Pilot value scheme:** spendable is the *count* of Available coins,
-    /// not the sum of coin values. Real `coinValue(exp) = 2^exp` is deferred.
-    fn count_available_in(&self, p: PurseId) -> (count: u64)
+    /// **Pilot value scheme:** `coin_value(exp) = exp + 1` (linear). Real
+    /// `coinValue(exp) = 2^exp` is deferred. Precondition bounds Vec size to
+    /// keep the cumulative `u64` sum safe.
+    fn sum_available_in(&self, p: PurseId) -> (sum: u64)
         requires
             self.invariant(),
+            // With coin_value(exp) <= 256, sum is bounded by len * 256.
+            // Bound Vec length to ensure no u64 overflow.
+            self.coins@.len() <= (u64::MAX / 256) as nat,
         ensures
-            count as nat == count_avail_prefix(self.coins@, p, self.coins@.len() as nat),
+            sum as nat == sum_avail_prefix(self.coins@, p, self.coins@.len() as nat),
     {
-        let mut count: u64 = 0;
+        let mut sum: u64 = 0;
         let mut j: usize = 0;
         while j < self.coins.len()
             invariant
                 0 <= j <= self.coins.len(),
-                count as nat == count_avail_prefix(self.coins@, p, j as nat),
-                count as nat <= j as nat,
+                self.coins@.len() <= (u64::MAX / 256) as nat,
+                sum as nat == sum_avail_prefix(self.coins@, p, j as nat),
+                sum as nat <= (j as nat) * 256,
             decreases self.coins.len() - j,
         {
             let is_available = matches!(self.coins[j].state, CoinState::Available);
             proof {
-                // count_avail_prefix(v, p, j+1) - count_avail_prefix(v, p, j) is
-                // either 0 or 1, so count <= (j+1) is preserved.
-                assert(count_avail_prefix(self.coins@, p, (j + 1) as nat)
-                    <= count_avail_prefix(self.coins@, p, j as nat) + 1);
+                // Per-step increment is at most coin_value(_) <= 256, so the
+                // monotone bound `sum_avail_prefix(_, _, j+1) <= (j+1) * 256`
+                // is preserved.
+                assert(sum_avail_prefix(self.coins@, p, (j + 1) as nat)
+                    <= sum_avail_prefix(self.coins@, p, j as nat) + 256);
             }
             if self.coins[j].purse == p && is_available {
-                count = count + 1;
+                let value: u64 = (self.coins[j].exponent as u64) + 1;
+                sum = sum + value;
             }
             j = j + 1;
         }
-        count
+        sum
     }
 
     /// 6.1 `queryPurse` (Quint lines 603-612; design §8.1 `query_purse`).
     ///
-    /// Returns a synchronous snapshot. `spendable` is the count of
-    /// `Available` coins in `p` (see `count_available_in`). `spendable_strict`
+    /// Returns a synchronous snapshot. `spendable` is the sum of
+    /// `coin_value(exp)` over `Available` coins in `p`. `spendable_strict`
     /// and `pending` remain pilot-stubbed at 0 — they correspond to recycler-
     /// entry aggregations that don't exist in this pilot's state.
     pub fn query_purse(&self, p: PurseId) -> (info: Result<PurseInfo, Error>)
         requires
             self.invariant(),
+            self.coins@.len() <= (u64::MAX / 256) as nat,
         ensures
             match info {
                 Ok(i) =>
@@ -3065,7 +3082,7 @@ impl State {
                     && i.id == p
                     && i.name@ == self.purses()[p].name
                     && i.spendable as nat
-                        == count_avail_prefix(self.coins@, p, self.coins@.len() as nat)
+                        == sum_avail_prefix(self.coins@, p, self.coins@.len() as nat)
                     && i.spendable_strict == 0
                     && i.pending == 0,
                 Err(Error::PurseNotFound(q)) =>
@@ -3078,12 +3095,13 @@ impl State {
             invariant
                 0 <= i <= self.purses.len(),
                 self.invariant(),
+                self.coins@.len() <= (u64::MAX / 256) as nat,
                 forall|j: int| 0 <= j < i ==> (#[trigger] self.purses@[j]).id != p,
             decreases
                 self.purses.len() - i,
         {
             if self.purses[i].id == p {
-                let spendable = self.count_available_in(p);
+                let spendable = self.sum_available_in(p);
                 let rec = &self.purses[i];
                 let name_copy: Vec<u8> = rec.name.clone();
                 assert(name_copy@ == rec.name@);
