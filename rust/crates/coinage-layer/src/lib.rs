@@ -134,7 +134,10 @@ pub struct EntryRec {
     pub ring_idx: u64,
 }
 
-/// Operation kind (Quint `OpKind`, design §3.4). Pilot subset.
+/// Operation kind (Quint `OpKind`, design §3.4). Each kind drives a
+/// distinct top-level operation flavor; `OpStatus` then walks every
+/// kind through the same lifecycle (Preparing → Submitted → InBlock →
+/// Finalized → Done | Failed).
 #[derive(PartialEq, Eq, Copy, Clone)]
 pub enum OpKind {
     Transfer,
@@ -142,6 +145,10 @@ pub enum OpKind {
     Rebalance,
     DeletePurse,
     ExternalOffload,
+    Export,
+    Import,
+    Maintenance,
+    Recover,
 }
 
 /// Operation status (Quint `OpStatus`, design §5.5). Mirrors the full
