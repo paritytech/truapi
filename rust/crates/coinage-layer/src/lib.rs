@@ -4745,6 +4745,35 @@ impl State {
         c
     }
 
+    /// Read the **real** entry value for `key` (Quint `coinValue` over
+    /// the entry's exponent). Entry parallel of
+    /// [`Self::read_coin_value_real`].
+    pub fn read_entry_value_real(&self, key: (PurseId, u64)) -> (res: Option<u64>)
+        requires
+            self.invariant(),
+            forall|k: (PurseId, u64)|
+                #[trigger] self.entries().dom().contains(k)
+                ==> self.entries()[k].exponent <= MAX_EXPONENT,
+        ensures
+            match res {
+                Some(v) =>
+                    self.entries().dom().contains(key)
+                    && v as nat == coin_value_pow2(self.entries()[key].exponent),
+                None => !self.entries().dom().contains(key),
+            },
+    {
+        match self.entry_record(key) {
+            Some(e) => {
+                proof {
+                    assert(self.entries()[key].exponent <= MAX_EXPONENT);
+                    assert(e.exponent == self.entries()[key].exponent);
+                }
+                Some(pow2_u64_exec(e.exponent))
+            }
+            None => None,
+        }
+    }
+
     /// Read the **real** coin value for `key` using `2^exp` arithmetic
     /// (Quint `coinValue`). Requires the coin's exponent to satisfy the
     /// `MAX_EXPONENT` bound. Returns `None` if no such coin exists.
