@@ -4484,6 +4484,71 @@ impl State {
         vstd::pervasive::unreached()
     }
 
+    /// Count of coins currently `LockedFor(handle)` across the whole
+    /// state. Useful for diagnostics ("how much is reserved by this
+    /// in-flight op?") and for callers driving bulk-sweep loops
+    /// host-side.
+    pub fn coin_count_for_handle(&self, handle: OpHandle) -> (count: usize)
+        requires
+            self.invariant(),
+        ensures
+            count as nat == count_coin_locks_in_vec(self.coins@, handle, self.coins@.len() as nat),
+            count <= self.coins@.len(),
+    {
+        let mut c: usize = 0;
+        let mut j: usize = 0;
+        while j < self.coins.len()
+            invariant
+                0 <= j <= self.coins.len(),
+                c <= j,
+                self.invariant(),
+                c as nat == count_coin_locks_in_vec(self.coins@, handle, j as nat),
+            decreases self.coins.len() - j,
+        {
+            let is_locked_for = match self.coins[j].state {
+                CoinState::LockedFor(h) => h == handle,
+                _ => false,
+            };
+            if is_locked_for {
+                c = c + 1;
+            }
+            j = j + 1;
+        }
+        c
+    }
+
+    /// Count of entries currently `LocalLockedFor(handle)` across the
+    /// whole state. Mirror of `coin_count_for_handle` for the entry
+    /// side.
+    pub fn entry_count_for_handle(&self, handle: OpHandle) -> (count: usize)
+        requires
+            self.invariant(),
+        ensures
+            count as nat == count_entry_locks_in_vec(self.entries@, handle, self.entries@.len() as nat),
+            count <= self.entries@.len(),
+    {
+        let mut c: usize = 0;
+        let mut j: usize = 0;
+        while j < self.entries.len()
+            invariant
+                0 <= j <= self.entries.len(),
+                c <= j,
+                self.invariant(),
+                c as nat == count_entry_locks_in_vec(self.entries@, handle, j as nat),
+            decreases self.entries.len() - j,
+        {
+            let is_locked_for = match self.entries[j].local {
+                EntryLocal::LocalLockedFor(h) => h == handle,
+                _ => false,
+            };
+            if is_locked_for {
+                c = c + 1;
+            }
+            j = j + 1;
+        }
+        c
+    }
+
     /// Count of `Available` coins in purse `p`. Used by maintenance
     /// triggers — e.g. "if coin_count_available(p) > threshold, run
     /// rebalance to consolidate into fewer larger coins".
