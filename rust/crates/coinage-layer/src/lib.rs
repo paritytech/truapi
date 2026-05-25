@@ -4257,6 +4257,74 @@ impl State {
         None
     }
 
+    /// Find any recycler entry in purse `p` that is `Ready` on-chain and
+    /// `LocalAvailable` locally — i.e., selectable for unload or
+    /// transfer-via-entry. Returns the first match in Vec order, or
+    /// `None` if no such entry exists.
+    ///
+    /// Quint analog: a witness for `selectableEntriesIn(p, false)` —
+    /// the strict (non-degraded) form of the §6.3 entry selectability
+    /// predicate.
+    pub fn find_entry_ready(&self, p: PurseId) -> (res: Option<(PurseId, u64)>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some(key) =>
+                    self.entries().dom().contains(key)
+                    && key.0 == p
+                    && self.entries()[key].on_chain == EntryOnChain::Ready
+                    && self.entries()[key].local == EntryLocal::LocalAvailable,
+                None =>
+                    forall|k: (PurseId, u64)|
+                        #[trigger] self.entries().dom().contains(k)
+                        && k.0 == p
+                        ==> self.entries()[k].on_chain != EntryOnChain::Ready
+                            || self.entries()[k].local != EntryLocal::LocalAvailable,
+            },
+    {
+        let mut j: usize = 0;
+        while j < self.entries.len()
+            invariant
+                0 <= j <= self.entries.len(),
+                self.invariant(),
+                forall|jj: int| 0 <= jj < j ==>
+                    (#[trigger] self.entries@[jj]).purse != p
+                    || self.entries@[jj].on_chain != EntryOnChain::Ready
+                    || self.entries@[jj].local != EntryLocal::LocalAvailable,
+            decreases self.entries.len() - j,
+        {
+            let e = &self.entries[j];
+            let is_ready = matches!(e.on_chain, EntryOnChain::Ready);
+            let is_local_avail = matches!(e.local, EntryLocal::LocalAvailable);
+            if e.purse == p && is_ready && is_local_avail {
+                let key = (e.purse, e.idx);
+                proof {
+                    assert(self.spec_entries@.dom().contains(key));
+                }
+                return Some(key);
+            }
+            j = j + 1;
+        }
+        proof {
+            assert forall|k: (PurseId, u64)|
+                #[trigger] self.entries().dom().contains(k)
+                && k.0 == p
+                implies self.entries()[k].on_chain != EntryOnChain::Ready
+                    || self.entries()[k].local != EntryLocal::LocalAvailable
+            by {
+                let w = choose|jj: int|
+                    0 <= jj < self.entries@.len()
+                    && #[trigger] self.entries@[jj].purse == k.0
+                    && self.entries@[jj].idx == k.1;
+                assert(self.entries@[w].purse == p);
+                assert(self.entries@[w].on_chain == self.entries()[k].on_chain);
+                assert(self.entries@[w].local == self.entries()[k].local);
+            }
+        }
+        None
+    }
+
     /// Tier-2 (split cover, §6.3): find any `Available` coin in purse `p`
     /// whose `coin_value(exp)` strictly exceeds `amount`. Such a coin can
     /// be split into two coins of strictly smaller exponent (one of which
