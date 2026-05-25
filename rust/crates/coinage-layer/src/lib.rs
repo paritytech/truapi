@@ -2911,6 +2911,7 @@ impl State {
     /// Release a coin that's locked for `handle`, returning it to
     /// `Available`. Quint analog: the per-coin step of `cancelOp`'s
     /// `releasedCoins` fold.
+    #[allow(unused_variables)]
     pub fn release_locked_coin(&mut self, key: (PurseId, u64), handle: OpHandle)
         requires
             old(self).invariant(),
@@ -2941,6 +2942,7 @@ impl State {
     /// Release an entry that's locally locked for `handle`, returning
     /// it to `LocalAvailable`. Quint analog: per-entry step of
     /// `cancelOp`'s `releasedEntries` fold.
+    #[allow(unused_variables)]
     pub fn release_locked_entry(&mut self, key: (PurseId, u64), handle: OpHandle)
         requires
             old(self).invariant(),
