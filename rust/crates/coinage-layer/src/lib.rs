@@ -213,24 +213,26 @@ pub struct State {
 
 /// Spec-only coin value. **Pilot scheme: `coin_value(exp) = exp + 1`**
 /// — linear, monotone in `exp`, no overflow under any realistic `Vec`
-/// size. Real semantics is `2^exp` (Quint `coinValue`), deferred until
-/// saturating-arithmetic specs land.
+/// size. Real semantics is `2^exp` (Quint `coinValue`); the spec for
+/// that is `coin_value_pow2` below, kept parallel so the protocol's
+/// design-faithful value model is documented even while the exec
+/// arithmetic uses the pilot scheme. Switching exec to real `2^exp`
+/// requires bounded-exponent invariants + saturating-`u64` (or `u128`)
+/// arithmetic plumbing; tracked as a dedicated future stage.
 pub open spec fn coin_value(exp: u8) -> nat {
     (exp as nat) + 1
 }
 
-/// Recursive `2^exp` over `nat`. Spec-only; no exec implementation
-/// because saturating-`u64` arithmetic isn't yet wired up across the
-/// pilot.
+/// Recursive `2^exp` over `nat`. Used by `coin_value_pow2`.
 pub open spec fn pow2_nat(exp: nat) -> nat
     decreases exp
 {
     if exp == 0 { 1 } else { 2 * pow2_nat((exp - 1) as nat) }
 }
 
-/// Spec-only **real** coin value. Matches Quint's `coinValue(exp) =
-/// 2^exp`. Future work: switch exec arithmetic from linear `exp + 1`
-/// to this via saturating `u64` arithmetic (or `u128`/BigInt sums).
+/// Spec-only **real** coin value (Quint `coinValue`). `2^exp` per the
+/// design. Available as a parallel definition; not yet wired to the
+/// exec arithmetic.
 pub open spec fn coin_value_pow2(exp: u8) -> nat {
     pow2_nat(exp as nat)
 }
