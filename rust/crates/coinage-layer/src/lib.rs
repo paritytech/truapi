@@ -292,6 +292,29 @@ pub open spec fn sum_avail_prefix(v: Seq<CoinRec>, p: PurseId, j: nat) -> nat
     }
 }
 
+/// Spec-only recursive sum: total pending entry value across `v[0..j]`
+/// among entries that belong to purse `p`, are `LocalAvailable`, and
+/// are either `Waiting` or `Missing` on-chain (Quint `pursePending`).
+pub open spec fn sum_pending_prefix(v: Seq<EntryRec>, p: PurseId, j: nat) -> nat
+    decreases j
+{
+    if j == 0 {
+        0
+    } else {
+        let prev = sum_pending_prefix(v, p, (j - 1) as nat);
+        let e = v[(j - 1) as int];
+        if e.purse == p
+            && e.local == EntryLocal::LocalAvailable
+            && (e.on_chain == EntryOnChain::Waiting
+                || e.on_chain == EntryOnChain::Missing)
+        {
+            prev + coin_value(e.exponent)
+        } else {
+            prev
+        }
+    }
+}
+
 /// Spec-only sum of coin values across a sequence of keys, looked up
 /// in the coin map. Used to describe selection results.
 pub open spec fn sum_of_coin_values(
@@ -5147,6 +5170,46 @@ impl State {
         }
     }
 
+    /// Sum of `coin_value(exp)` across entries in purse `p` that are
+    /// LocalAvailable and on-chain in {Waiting, Missing} — i.e. pending
+    /// recycler-floor confirmation. Quint analog: `pursePending(p)`.
+    ///
+    /// Pilot value scheme: `coin_value(exp) = exp + 1`. Precondition
+    /// bounds Vec size to keep cumulative `u64` sum safe.
+    fn sum_pending_in(&self, p: PurseId) -> (sum: u64)
+        requires
+            self.invariant(),
+            self.entries@.len() <= (u64::MAX / 256) as nat,
+        ensures
+            sum as nat == sum_pending_prefix(self.entries@, p, self.entries@.len() as nat),
+    {
+        let mut sum: u64 = 0;
+        let mut j: usize = 0;
+        while j < self.entries.len()
+            invariant
+                0 <= j <= self.entries.len(),
+                self.entries@.len() <= (u64::MAX / 256) as nat,
+                sum as nat == sum_pending_prefix(self.entries@, p, j as nat),
+                sum as nat <= (j as nat) * 256,
+            decreases self.entries.len() - j,
+        {
+            let e = &self.entries[j];
+            let is_local_avail = matches!(e.local, EntryLocal::LocalAvailable);
+            let is_waiting = matches!(e.on_chain, EntryOnChain::Waiting);
+            let is_missing = matches!(e.on_chain, EntryOnChain::Missing);
+            proof {
+                assert(sum_pending_prefix(self.entries@, p, (j + 1) as nat)
+                    <= sum_pending_prefix(self.entries@, p, j as nat) + 256);
+            }
+            if e.purse == p && is_local_avail && (is_waiting || is_missing) {
+                let value: u64 = (e.exponent as u64) + 1;
+                sum = sum + value;
+            }
+            j = j + 1;
+        }
+        sum
+    }
+
     /// Sum of `coin_value(exp)` across `Available` coins in purse `p`.
     /// Scans the coin Vec; returned sum equals `sum_avail_prefix(self.coins@,
     /// p, len)`.
@@ -5193,13 +5256,16 @@ impl State {
     /// 6.1 `queryPurse` (Quint lines 603-612; design §8.1 `query_purse`).
     ///
     /// Returns a synchronous snapshot. `spendable` is the sum of
-    /// `coin_value(exp)` over `Available` coins in `p`. `spendable_strict`
-    /// and `pending` remain pilot-stubbed at 0 — they correspond to recycler-
-    /// entry aggregations that don't exist in this pilot's state.
+    /// `coin_value(exp)` over `Available` coins in `p`. `pending` is
+    /// the sum of `coin_value(exp)` over LocalAvailable entries in `p`
+    /// whose on-chain state is Waiting or Missing. `spendable_strict`
+    /// remains pilot-stubbed at 0 (it would include Ready entries —
+    /// currently no exec accounts for those toward strict-spendable).
     pub fn query_purse(&self, p: PurseId) -> (info: Result<PurseInfo, Error>)
         requires
             self.invariant(),
             self.coins@.len() <= (u64::MAX / 256) as nat,
+            self.entries@.len() <= (u64::MAX / 256) as nat,
         ensures
             match info {
                 Ok(i) =>
@@ -5209,7 +5275,9 @@ impl State {
                     && i.spendable as nat
                         == sum_avail_prefix(self.coins@, p, self.coins@.len() as nat)
                     && i.spendable_strict == 0
-                    && i.pending == 0,
+                    && i.pending as nat
+                        == sum_pending_prefix(self.entries@, p,
+                                              self.entries@.len() as nat),
                 Err(Error::PurseNotFound(q)) =>
                     !self.purses().dom().contains(p) && q == p,
                 Err(_) => false,
@@ -5221,12 +5289,14 @@ impl State {
                 0 <= i <= self.purses.len(),
                 self.invariant(),
                 self.coins@.len() <= (u64::MAX / 256) as nat,
+                self.entries@.len() <= (u64::MAX / 256) as nat,
                 forall|j: int| 0 <= j < i ==> (#[trigger] self.purses@[j]).id != p,
             decreases
                 self.purses.len() - i,
         {
             if self.purses[i].id == p {
                 let spendable = self.sum_available_in(p);
+                let pending = self.sum_pending_in(p);
                 let rec = &self.purses[i];
                 let name_copy: Vec<u8> = rec.name.clone();
                 assert(name_copy@ == rec.name@);
@@ -5235,7 +5305,7 @@ impl State {
                     name: name_copy,
                     spendable,
                     spendable_strict: 0,
-                    pending: 0,
+                    pending,
                 });
             }
             i += 1;
