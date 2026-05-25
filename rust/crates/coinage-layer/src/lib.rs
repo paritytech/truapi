@@ -153,6 +153,18 @@ pub struct OperationRec {
     pub status: OpStatus,
 }
 
+/// Single-coin selection result (§6.3 single-coin tier-1 / tier-2 cases).
+/// `Exact` is the design's tier-1 single-coin form (coin value matches
+/// the requested amount). `Split` is the tier-2 form (coin value
+/// strictly exceeds the amount; caller must split the coin and emit
+/// change). Multi-coin tier-1 selections and tier-3 entry-supplemented
+/// selections will be carried by separate variants when their exec
+/// paths land.
+pub enum CoinSelection {
+    Exact { coin: (PurseId, u64) },
+    Split { coin: (PurseId, u64) },
+}
+
 /// Snapshot returned by `query_purse` (design §8.1 `PurseInfo`).
 /// Pilot scope: `spendable`, `spendable_strict`, `pending` are always 0
 /// (no coins/entries in state yet).
@@ -4009,6 +4021,117 @@ impl State {
             }
         }
         None
+    }
+
+    /// Tier-2 (split cover, §6.3): find any `Available` coin in purse `p`
+    /// whose `coin_value(exp)` strictly exceeds `amount`. Such a coin can
+    /// be split into two coins of strictly smaller exponent (one of which
+    /// covers `amount`); the remainder becomes change. Returns the first
+    /// matching coin in Vec order, or `None` if none exists.
+    ///
+    /// Quint analog: the witness for `existsSplitCover(p, amount)`.
+    pub fn find_split_cover_coin(&self, p: PurseId, amount: u64)
+        -> (res: Option<(PurseId, u64)>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some(key) =>
+                    self.coins().dom().contains(key)
+                    && key.0 == p
+                    && self.coins()[key].state == CoinState::Available
+                    && coin_value(self.coins()[key].exponent) > amount as nat,
+                None =>
+                    forall|k: (PurseId, u64)|
+                        #[trigger] self.coins().dom().contains(k)
+                        && k.0 == p
+                        && self.coins()[k].state == CoinState::Available
+                        ==> coin_value(self.coins()[k].exponent) <= amount as nat,
+            },
+    {
+        let mut j: usize = 0;
+        while j < self.coins.len()
+            invariant
+                0 <= j <= self.coins.len(),
+                self.invariant(),
+                forall|jj: int| 0 <= jj < j ==>
+                    (#[trigger] self.coins@[jj]).purse != p
+                    || self.coins@[jj].state != CoinState::Available
+                    || coin_value(self.coins@[jj].exponent) <= amount as nat,
+            decreases self.coins.len() - j,
+        {
+            let is_avail = matches!(self.coins[j].state, CoinState::Available);
+            let value: u64 = (self.coins[j].exponent as u64) + 1;
+            if self.coins[j].purse == p && is_avail && value > amount {
+                let key = (self.coins[j].purse, self.coins[j].idx);
+                proof {
+                    assert(self.spec_coins@.dom().contains(key));
+                }
+                return Some(key);
+            }
+            j = j + 1;
+        }
+        proof {
+            assert forall|k: (PurseId, u64)|
+                #[trigger] self.coins().dom().contains(k)
+                && k.0 == p
+                && self.coins()[k].state == CoinState::Available
+                implies coin_value(self.coins()[k].exponent) <= amount as nat
+            by {
+                let w = choose|jj: int|
+                    0 <= jj < self.coins@.len()
+                    && #[trigger] self.coins@[jj].purse == k.0
+                    && self.coins@[jj].idx == k.1;
+                assert(self.coins@[w].purse == p);
+                assert(self.coins@[w].state == self.coins()[k].state);
+                assert(self.coins@[w].exponent == self.coins()[k].exponent);
+            }
+        }
+        None
+    }
+
+    /// Composite single-coin selector (§6.3 tier-1 + tier-2, single-coin
+    /// case). Tries the exact-cover branch first (Quint
+    /// `existsExactCover`'s single-coin witness), then falls back to the
+    /// split-cover branch (Quint `existsSplitCover`'s witness). Returns
+    /// `None` only when no single `Available` coin in `p` has value at
+    /// least `amount`.
+    ///
+    /// Multi-coin exact subset-sum (Quint
+    /// `selectExactCoverDeterministic`) and tier-3 entry-supplemented
+    /// cover are not yet wired in; their dedicated exec implementations
+    /// will compose with this in later phases.
+    pub fn select_single_coin_cover(&self, p: PurseId, amount: u64)
+        -> (res: Option<CoinSelection>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some(CoinSelection::Exact { coin: key }) =>
+                    self.coins().dom().contains(key)
+                    && key.0 == p
+                    && self.coins()[key].state == CoinState::Available
+                    && coin_value(self.coins()[key].exponent) == amount as nat,
+                Some(CoinSelection::Split { coin: key }) =>
+                    self.coins().dom().contains(key)
+                    && key.0 == p
+                    && self.coins()[key].state == CoinState::Available
+                    && coin_value(self.coins()[key].exponent) > amount as nat,
+                None =>
+                    forall|k: (PurseId, u64)|
+                        #[trigger] self.coins().dom().contains(k)
+                        && k.0 == p
+                        && self.coins()[k].state == CoinState::Available
+                        ==> coin_value(self.coins()[k].exponent) < amount as nat,
+            },
+    {
+        match self.find_exact_single_coin(p, amount) {
+            Some(key) => Some(CoinSelection::Exact { coin: key }),
+            None => match self.find_split_cover_coin(p, amount) {
+                Some(key) => Some(CoinSelection::Split { coin: key }),
+                None => None,
+            },
+        }
     }
 
     /// Greedy multi-coin selection. Scans `Available` coins in purse `p` in
