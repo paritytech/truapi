@@ -3898,7 +3898,7 @@ impl State {
             old(self).operations()[handle].status == OpStatus::Finalized,
             old(self).entries().dom().contains(key),
             old(self).entries()[key].local == EntryLocal::LocalLockedFor(handle),
-            old(self).events@.len() < u64::MAX as nat,
+            old(self).events@.len() + 2 <= u64::MAX as nat,
         ensures
             final(self).invariant(),
             final(self).purses() == old(self).purses(),
@@ -3911,10 +3911,15 @@ impl State {
             final(self).next_age == old(self).next_age,
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
-            final(self).events@ == old(self).events@.push(Event::EntryConsumed {
-                purse: key.0,
-                exponent: old(self).entries()[key].exponent,
-            }),
+            final(self).events@ == old(self).events@
+                .push(Event::EntryConsumed {
+                    purse: key.0,
+                    exponent: old(self).entries()[key].exponent,
+                })
+                .push(Event::OperationCompleted {
+                    handle,
+                    status: OpStatus::Done,
+                }),
             final(self).paid_ring_membership == old(self).paid_ring_membership,
             final(self).total_in == old(self).total_in,
             final(self).total_out == old(self).total_out,
@@ -3941,7 +3946,7 @@ impl State {
             old(self).operations()[handle].status == OpStatus::Finalized,
             old(self).coins().dom().contains(key),
             old(self).coins()[key].state == CoinState::LockedFor(handle),
-            old(self).events@.len() < u64::MAX as nat,
+            old(self).events@.len() + 2 <= u64::MAX as nat,
         ensures
             final(self).invariant(),
             final(self).purses() == old(self).purses(),
@@ -3953,10 +3958,15 @@ impl State {
             final(self).next_age == old(self).next_age,
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
-            final(self).events@ == old(self).events@.push(Event::CoinSpent {
-                purse: key.0,
-                exponent: old(self).coins()[key].exponent,
-            }),
+            final(self).events@ == old(self).events@
+                .push(Event::CoinSpent {
+                    purse: key.0,
+                    exponent: old(self).coins()[key].exponent,
+                })
+                .push(Event::OperationCompleted {
+                    handle,
+                    status: OpStatus::Done,
+                }),
             final(self).paid_ring_membership == old(self).paid_ring_membership,
             final(self).total_in == old(self).total_in,
             final(self).total_out == old(self).total_out,
@@ -3989,6 +3999,7 @@ impl State {
             },
             old(self).coins().dom().contains(key),
             old(self).coins()[key].state == CoinState::LockedFor(handle),
+            old(self).events@.len() < u64::MAX as nat,
         ensures
             final(self).invariant(),
             final(self).purses() == old(self).purses(),
@@ -4000,7 +4011,10 @@ impl State {
             final(self).next_age == old(self).next_age,
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
-            final(self).events@ == old(self).events@,
+            final(self).events@ == old(self).events@.push(Event::OperationCompleted {
+                handle,
+                status: OpStatus::Failed,
+            }),
             final(self).paid_ring_membership == old(self).paid_ring_membership,
             final(self).total_in == old(self).total_in,
             final(self).total_out == old(self).total_out,
@@ -4030,6 +4044,7 @@ impl State {
             },
             old(self).entries().dom().contains(key),
             old(self).entries()[key].local == EntryLocal::LocalLockedFor(handle),
+            old(self).events@.len() < u64::MAX as nat,
         ensures
             final(self).invariant(),
             final(self).purses() == old(self).purses(),
@@ -4042,7 +4057,10 @@ impl State {
             final(self).next_age == old(self).next_age,
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
-            final(self).events@ == old(self).events@,
+            final(self).events@ == old(self).events@.push(Event::OperationCompleted {
+                handle,
+                status: OpStatus::Failed,
+            }),
             final(self).paid_ring_membership == old(self).paid_ring_membership,
             final(self).total_in == old(self).total_in,
             final(self).total_out == old(self).total_out,
@@ -4602,74 +4620,6 @@ impl State {
 
 
 
-    /// Variant of [`Self::mark_op_done`] that also appends an
-    /// `OperationCompleted { Done }` event to the event stream.
-    pub fn mark_op_done_with_event(&mut self, handle: OpHandle)
-        requires
-            old(self).invariant(),
-            old(self).operations().dom().contains(handle),
-            match old(self).operations()[handle].status {
-                OpStatus::Finalized => true,
-                OpStatus::Waiting(_) => true,
-                _ => false,
-            },
-            old(self).events@.len() < u64::MAX as nat,
-        ensures
-            final(self).invariant(),
-            final(self).operations()[handle].status == OpStatus::Done,
-            final(self).events@ == old(self).events@.push(Event::OperationCompleted {
-                handle,
-                status: OpStatus::Done,
-            }),
-            final(self).purses() == old(self).purses(),
-            final(self).coins() == old(self).coins(),
-            final(self).coins@ == old(self).coins@,
-            final(self).entries() == old(self).entries(),
-            final(self).entries@ == old(self).entries@,
-            final(self).next_handle == old(self).next_handle,
-            final(self).next_age == old(self).next_age,
-    {
-        self.mark_op_done(handle);
-        self.emit_event(Event::OperationCompleted {
-            handle,
-            status: OpStatus::Done,
-        });
-    }
-
-    /// Variant of [`Self::set_op_failed`] that also appends an
-    /// `OperationCompleted { Failed }` event to the event stream.
-    pub fn set_op_failed_with_event(&mut self, handle: OpHandle)
-        requires
-            old(self).invariant(),
-            old(self).operations().dom().contains(handle),
-            match old(self).operations()[handle].status {
-                OpStatus::Preparing => true,
-                OpStatus::Waiting(_) => true,
-                _ => false,
-            },
-            old(self).events@.len() < u64::MAX as nat,
-        ensures
-            final(self).invariant(),
-            final(self).operations()[handle].status == OpStatus::Failed,
-            final(self).events@ == old(self).events@.push(Event::OperationCompleted {
-                handle,
-                status: OpStatus::Failed,
-            }),
-            final(self).purses() == old(self).purses(),
-            final(self).coins() == old(self).coins(),
-            final(self).coins@ == old(self).coins@,
-            final(self).entries() == old(self).entries(),
-            final(self).entries@ == old(self).entries@,
-            final(self).next_handle == old(self).next_handle,
-            final(self).next_age == old(self).next_age,
-    {
-        self.set_op_failed(handle);
-        self.emit_event(Event::OperationCompleted {
-            handle,
-            status: OpStatus::Failed,
-        });
-    }
-
     /// Operation lifecycle: `Preparing` → `Submitted`. Phase order
     /// gate matching Quint `submitOp`.
     pub fn mark_op_submitted(&mut self, handle: OpHandle)
@@ -4829,6 +4779,7 @@ impl State {
                 OpStatus::Waiting(_) => true,
                 _ => false,
             },
+            old(self).events@.len() < u64::MAX as nat,
         ensures
             final(self).invariant(),
             final(self).purses() == old(self).purses(),
@@ -4840,7 +4791,10 @@ impl State {
             final(self).next_age == old(self).next_age,
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
-            final(self).events@ == old(self).events@,
+            final(self).events@ == old(self).events@.push(Event::OperationCompleted {
+                handle,
+                status: OpStatus::Done,
+            }),
             final(self).paid_ring_membership == old(self).paid_ring_membership,
             final(self).total_in == old(self).total_in,
             final(self).total_out == old(self).total_out,
@@ -4855,6 +4809,10 @@ impl State {
             }),
     {
         self.set_op_status(handle, OpStatus::Done);
+        self.emit_event(Event::OperationCompleted {
+            handle,
+            status: OpStatus::Done,
+        });
     }
 
     /// Operation lifecycle: any cancellable status (`Preparing`,
@@ -4873,6 +4831,7 @@ impl State {
                 OpStatus::Waiting(_) => true,
                 _ => false,
             },
+            old(self).events@.len() < u64::MAX as nat,
         ensures
             final(self).invariant(),
             final(self).purses() == old(self).purses(),
@@ -4884,7 +4843,10 @@ impl State {
             final(self).next_age == old(self).next_age,
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
-            final(self).events@ == old(self).events@,
+            final(self).events@ == old(self).events@.push(Event::OperationCompleted {
+                handle,
+                status: OpStatus::Failed,
+            }),
             final(self).paid_ring_membership == old(self).paid_ring_membership,
             final(self).total_in == old(self).total_in,
             final(self).total_out == old(self).total_out,
@@ -4899,6 +4861,10 @@ impl State {
             }),
     {
         self.set_op_status(handle, OpStatus::Failed);
+        self.emit_event(Event::OperationCompleted {
+            handle,
+            status: OpStatus::Failed,
+        });
     }
 
     /// Find and release a single coin locked for `handle`. Returns the
