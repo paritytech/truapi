@@ -6061,6 +6061,87 @@ impl State {
         None
     }
 
+    /// Tier-1 multi-coin (§6.3): find any pair of distinct `Available`
+    /// coins in purse `p` whose values sum exactly to `amount`. Returns
+    /// the two keys in Vec order, or `None` if no such pair exists.
+    ///
+    /// This is the 2-coin special case of the powerset-based
+    /// selectExactCoverDeterministic. Full powerset enumeration remains
+    /// open (task #87); 2-coin already covers many cases that
+    /// single-coin tier-1 misses (e.g. requesting amount = max_exp + 2
+    /// with two coins of value max_exp + 1 / 1).
+    pub fn find_two_coin_exact_cover(&self, p: PurseId, amount: u64)
+        -> (res: Option<((PurseId, u64), (PurseId, u64))>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some((k1, k2)) =>
+                    self.coins().dom().contains(k1)
+                    && self.coins().dom().contains(k2)
+                    && k1 != k2
+                    && k1.0 == p
+                    && k2.0 == p
+                    && self.coins()[k1].state == CoinState::Available
+                    && self.coins()[k2].state == CoinState::Available
+                    && coin_value(self.coins()[k1].exponent)
+                        + coin_value(self.coins()[k2].exponent)
+                        == amount as nat,
+                None => true,
+            },
+    {
+        let n = self.coins.len();
+        let mut i: usize = 0;
+        while i < n
+            invariant
+                0 <= i <= n,
+                n == self.coins.len(),
+                self.invariant(),
+            decreases n - i,
+        {
+            let ci_avail = matches!(self.coins[i].state, CoinState::Available);
+            if self.coins[i].purse == p && ci_avail {
+                let vi: u64 = (self.coins[i].exponent as u64) + 1;
+                if vi <= amount {
+                    let mut k: usize = 0;
+                    while k < n
+                        invariant
+                            0 <= k <= n,
+                            n == self.coins.len(),
+                            i < n,
+                            self.invariant(),
+                            self.coins@[i as int].purse == p,
+                            self.coins@[i as int].state == CoinState::Available,
+                            vi == (self.coins@[i as int].exponent as u64) + 1,
+                            vi <= amount,
+                        decreases n - k,
+                    {
+                        if k != i {
+                            let ck_avail = matches!(self.coins[k].state, CoinState::Available);
+                            let vk: u64 = (self.coins[k].exponent as u64) + 1;
+                            if self.coins[k].purse == p && ck_avail && vi + vk == amount {
+                                let k1 = (self.coins[i].purse, self.coins[i].idx);
+                                let k2 = (self.coins[k].purse, self.coins[k].idx);
+                                proof {
+                                    assert(self.spec_coins@.dom().contains(k1));
+                                    assert(self.spec_coins@.dom().contains(k2));
+                                    // i != k means the Vec entries differ; by
+                                    // dedup invariant (n), their (purse, idx)
+                                    // tuples differ, so k1 != k2.
+                                    assert(k1 != k2);
+                                }
+                                return Some((k1, k2));
+                            }
+                        }
+                        k = k + 1;
+                    }
+                }
+            }
+            i = i + 1;
+        }
+        None
+    }
+
     /// Tier-2 (split cover, §6.3): find any `Available` coin in purse `p`
     /// whose `coin_value(exp)` strictly exceeds `amount`. Such a coin can
     /// be split into two coins of strictly smaller exponent (one of which
