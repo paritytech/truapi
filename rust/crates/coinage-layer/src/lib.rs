@@ -54,12 +54,15 @@ impl PurseRec {
 }
 
 /// Coin lifecycle state (Quint `CoinState`).
-///   * `Available` — coin can be selected for an outbound operation.
+///   * `Pending` — coin has been allocated but is not yet observed as
+///     existing on chain. Cannot be selected.
+///   * `Available` — observed on chain; eligible for selection.
 ///   * `PendingSpend` — coin has been chosen by an in-flight operation.
 ///   * `Spent` — coin is terminally consumed; counts neither for selection
 ///     nor as "live" for purse-deletion purposes.
 #[derive(PartialEq, Eq, Copy, Clone)]
 pub enum CoinState {
+    Pending,
     Available,
     PendingSpend,
     Spent,
@@ -937,7 +940,7 @@ impl State {
                 purse: p,
                 idx: key.1,
                 exponent,
-                state: CoinState::Available,
+                state: CoinState::Pending,
             }),
             final(self).purses().dom() =~= old(self).purses().dom(),
             final(self).purses()[p].id == p,
@@ -986,7 +989,7 @@ impl State {
                     purse: p,
                     idx: cur_idx,
                     exponent,
-                    state: CoinState::Available,
+                    state: CoinState::Pending,
                 };
                 self.coins.push(new_coin);
 
@@ -1570,6 +1573,26 @@ impl State {
             assert(self.purses@[w].id != p);
         }
         vstd::pervasive::unreached()
+    }
+
+    /// Coin lifecycle: `Pending` → `Available`. Called when chain
+    /// observation confirms the coin exists on-chain.
+    pub fn mark_coin_observed(&mut self, key: (PurseId, u64))
+        requires
+            old(self).invariant(),
+            old(self).coins().dom().contains(key),
+            old(self).coins()[key].state == CoinState::Pending,
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins().insert(key, CoinRec {
+                purse: old(self).coins()[key].purse,
+                idx: old(self).coins()[key].idx,
+                exponent: old(self).coins()[key].exponent,
+                state: CoinState::Available,
+            }),
+    {
+        self.transition_coin_state(key, CoinState::Available);
     }
 
     /// Coin lifecycle: `Available` → `PendingSpend`.
@@ -2248,6 +2271,7 @@ impl State {
                 self.mark_coin_pending_spend(key);
                 self.mark_coin_spent(key);
                 let new_key = self.add_coin(to, exp);
+                self.mark_coin_observed(new_key);
                 Some(new_key)
             }
         }
@@ -2284,7 +2308,9 @@ impl State {
         let exp = self.read_coin_exponent(key);
         self.mark_coin_pending_spend(key);
         self.mark_coin_spent(key);
-        self.add_coin(dst, exp)
+        let new_key = self.add_coin(dst, exp);
+        self.mark_coin_observed(new_key);
+        new_key
     }
 
     /// Select the first `Available` coin in purse `p` whose `exponent`
