@@ -252,12 +252,59 @@ quint run docs/specs/coinage-layer.qnt --invariant=safety --max-samples=2000 --m
 - Selection ordering (§6.3) and gap-limit recovery (Appendix C) have specific Quint encodings — see `selectExactCoverDeterministic`, `gapLimitScanCoins`, `coinOrderLT` for reference.
 - Derivation: hard junctions only, `//coinage//coin//<P>//<PAGE>//<I>` and `//coinage//ring-vrf//<P>//<PAGE>//<I>`, page=0 for now.
 
-## 12. Continuing the work after compact
+## 12. Verus pilot — actual status (2026-05-25)
 
-To resume after `/compact`:
-1. Read this file (`docs/specs/COINAGE-LAYER-WORK-NOTES.md`).
-2. Read `docs/design/coinage-layer.md` (current design).
-3. Read `docs/specs/coinage-layer.qnt` (current spec — 3726 lines).
-4. Verify baseline: `quint typecheck docs/specs/coinage-layer.qnt && quint run docs/specs/coinage-layer.qnt --invariant=safety --max-samples=2000 --max-steps=40`.
-5. Proceed to Verus pilot (§11 above).
-6. If user wants to first commit task 1/2/3 work, do that — uncommitted at the time of compact.
+Pilot landed at `rust/crates/coinage-layer/`, four commits on `add-coinage-design`:
+- `1289ee2` — purse-lifecycle primitives (init, create_purse, query_purse) with ghost-map state
+- `19166cd` — rename_purse, delete_purse (local-only), coin referential-integrity invariant
+- `8788b76` — add_coin + coin-idx invariant (k)
+- `b86141c` — top_up_purse + CoinState lifecycle (Available / PendingSpend / Spent)
+
+`cargo verus verify`: **15 verified, 0 errors**. `cargo build --workspace`: clean.
+
+### Operations verified
+
+| Op | Contract |
+|---|---|
+| `init()` | dom = {MAIN_PURSE}, coins = ∅ |
+| `create_purse(name)` | fresh id; `insert(new_id, new_rec)` |
+| `rename_purse(p, name)` | dom unchanged; name field updated; others preserved field-by-field |
+| `delete_purse(p)` | requires `!has_live_coin_in(p)`; `purses == old.remove(p)`; `coins == old.coins().remove_keys({k: k.0 == p})` |
+| `query_purse(p)` | id+name match ghost; PurseNotFound otherwise; amounts stubbed at 0 |
+| `add_coin(p, exp)` | allocates `(p, next_coin_idx)`; state = Available; bumps allocator |
+| `top_up_purse(p, exp_seq)` | loops add_coin; `n` consecutive new coins, each with matching exponent |
+| `mark_coin_pending_spend(key)` | Available → PendingSpend |
+| `mark_coin_spent(key)` | PendingSpend → Spent |
+
+### Invariant clauses (a–k)
+
+(a) `next_purse_id != MAIN_PURSE`. (b) `MAIN_PURSE ∈ dom`. (c) `forall p ∈ dom. m[p].id == p`. (d) `forall p ∈ dom. p < next_purse_id`. (e–h) purse Vec ↔ ghost-map refinement (forward, reverse, no duplicates). (i) coin key consistency (`coins[k].purse == k.0 && coins[k].idx == k.1`). (j) coin referential integrity (`coins[k].purse ∈ purses.dom`). (k) coin idx below the owning purse's allocator.
+
+### Pilot scope honesty
+
+The pilot deliberately stops short of:
+- **Exec coin storage.** `spec_coins` is `Ghost<Map<...>>` only — there is no `Vec<CoinRec>` exec backing. Consequently:
+  - `mark_coin_*` operations advance ghost state only; the actual record never moves at runtime.
+  - `query_purse.spendable` / `spendable_strict` / `pending` are hard-stubbed at 0; we cannot scan coins for aggregation.
+  - A coin selection primitive cannot be implemented as exec.
+- **Coin value semantics.** Quint's `coinValue(exp) = 2^exp` is not modeled; coin value would default to a pilot-scheme (count, or `exp`-as-value) in stage 5.
+- **Ages, accounts.** `CoinRec.account: Account`, `CoinRec.age: Age` deferred.
+- **Entries / unload tokens / operations / chain mirror.** Not in pilot.
+
+Adding exec coin storage was attempted and reverted — the proof discharge for `delete_purse`'s coin-Vec filter loop (rebuilding a filtered Vec while maintaining the `(l)(m)(n)` refinement invariants) blew up beyond reasonable time-box. Approach for stage 5: introduce `coins: Vec<CoinRec>`, add invariant clauses (l-n) symmetric to (e-h), update each existing op individually (`add_coin` push, `mark_*` index-mut, `delete_purse` filter-rebuild), commit each as its own increment to keep proof drift bounded.
+
+### Proof-engineering patterns crystallized
+
+See `docs/specs/VERUS-BY-EXAMPLE.md` for the actual patterns. Three reusable techniques:
+1. **Pre-state ghost capture trio** — `let ghost old_v = self.purses@; old_m = self.spec_purses@; old_coins = self.spec_coins@;` at function entry. Required to bridge `old(self).X` to the loop-invariant scope, and to re-assert sibling-field equality after mutating only one field.
+2. **Per-clause `assert forall ... by { ... }` blocks** — after each state mutation, prove each invariant clause separately with explicit branches for the changed index vs. unchanged ones. ~80 lines of proof per non-trivial state-mutating op.
+3. **Trigger choice** — when quantifying over keys/indices, prefer triggers that *already appear in the conclusion* (e.g. `Map::dom().contains(_)`, `Set::contains(_)`) over bound-variable-only triggers (e.g. `seq@[j]`). The dom-contains form fires naturally whenever Verus talks about the relevant key.
+
+## 13. Continuing the work
+
+To resume:
+1. Read this file.
+2. `cargo verus verify` in `rust/crates/coinage-layer/` — confirm 15 verified, 0 errors.
+3. Pick a next move from §12 "Pilot scope honesty" deferred list — most natural is stage 5 (exec coin Vec).
+
+`docs/design/coinage-layer.md` and `docs/specs/coinage-layer.qnt` remain authoritative — the Verus pilot should track them, never the reverse.
