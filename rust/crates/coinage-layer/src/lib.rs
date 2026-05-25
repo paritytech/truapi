@@ -492,6 +492,8 @@ pub struct State {
     pub next_purse_id: u64,
     pub next_handle: OpHandle,
     pub next_age: u64,
+    /// Quint `feeAccountBalance`. Reservoir of pre-paid chain-fee funds.
+    pub fee_balance: u64,
     #[allow(dead_code)]
     pub spec_purses: Ghost<Map<PurseId, PurseRecSpec>>,
     #[allow(dead_code)]
@@ -526,6 +528,14 @@ pub open spec fn pow2_nat(exp: nat) -> nat
 /// exec arithmetic.
 pub open spec fn coin_value_pow2(exp: u8) -> nat {
     pow2_nat(exp as nat)
+}
+
+/// Quint `FeeMode`. The layer picks automatically: prepaid if the fee
+/// account has funds, from-output otherwise.
+#[derive(PartialEq, Eq, Copy, Clone)]
+pub enum FeeMode {
+    Prepaid,
+    FromOutput,
 }
 
 /// Spec-only lemma: `pow2_nat` is monotone (non-decreasing). Proved by
@@ -962,6 +972,7 @@ impl State {
             next_purse_id: 1,
             next_handle: 0,
             next_age: 0,
+            fee_balance: 0,
             spec_purses: Ghost(Map::<PurseId, PurseRecSpec>::empty().insert(MAIN_PURSE, main_spec)),
             spec_coins: Ghost(Map::<(PurseId, u64), CoinRec>::empty()),
             spec_entries: Ghost(Map::<(PurseId, u64), EntryRec>::empty()),
@@ -1306,6 +1317,141 @@ impl State {
     ///   - `Ok(())` if the purse is removed.
     ///   - `Err(CannotDeleteMainPurse)` if `p == MAIN_PURSE`; state unchanged.
     ///   - `Err(PurseNotFound(p))` if `p` is not a known purse; state unchanged.
+    /// Top up the fee-account reservoir. Quint `topUpFeeAccount`.
+    pub fn top_up_fee_account(&mut self, amount: u64)
+        requires
+            old(self).invariant(),
+            old(self).fee_balance <= u64::MAX - amount,
+        ensures
+            final(self).invariant(),
+            final(self).fee_balance == old(self).fee_balance + amount,
+            final(self).purses() == old(self).purses(),
+            final(self).purses@ == old(self).purses@,
+            final(self).spec_purses@ == old(self).spec_purses@,
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).spec_coins@ == old(self).spec_coins@,
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).spec_entries@ == old(self).spec_entries@,
+            final(self).operations() == old(self).operations(),
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+            final(self).next_purse_id == old(self).next_purse_id,
+    {
+        let ghost old_purses_vec = self.purses@;
+        let ghost old_spec_purses = self.spec_purses@;
+        let ghost old_coins_vec = self.coins@;
+        let ghost old_spec_coins = self.spec_coins@;
+        let ghost old_entries_vec = self.entries@;
+        let ghost old_spec_entries = self.spec_entries@;
+        let ghost old_operations_vec = self.operations@;
+        let ghost old_spec_operations = self.spec_operations@;
+        self.fee_balance = self.fee_balance + amount;
+        proof {
+            assert(self.purses@ == old_purses_vec);
+            assert(self.spec_purses@ == old_spec_purses);
+            assert(self.coins@ == old_coins_vec);
+            assert(self.spec_coins@ == old_spec_coins);
+            assert(self.entries@ == old_entries_vec);
+            assert(self.spec_entries@ == old_spec_entries);
+            assert(self.operations@ == old_operations_vec);
+            assert(self.spec_operations@ == old_spec_operations);
+        }
+    }
+
+    /// Spend from the fee-account reservoir.
+    pub fn deduct_fee(&mut self, amount: u64) -> (res: Result<(), Error>)
+        requires
+            old(self).invariant(),
+        ensures
+            final(self).invariant(),
+            match res {
+                Ok(()) =>
+                    old(self).fee_balance >= amount
+                    && final(self).fee_balance == old(self).fee_balance - amount,
+                Err(Error::InsufficientFunds { requested, available }) =>
+                    old(self).fee_balance < amount
+                    && requested == amount
+                    && available == old(self).fee_balance
+                    && final(self).fee_balance == old(self).fee_balance,
+                Err(_) => false,
+            },
+            final(self).purses() == old(self).purses(),
+            final(self).purses@ == old(self).purses@,
+            final(self).spec_purses@ == old(self).spec_purses@,
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).spec_coins@ == old(self).spec_coins@,
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).spec_entries@ == old(self).spec_entries@,
+            final(self).operations() == old(self).operations(),
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+            final(self).next_purse_id == old(self).next_purse_id,
+    {
+        let ghost old_purses_vec = self.purses@;
+        let ghost old_spec_purses = self.spec_purses@;
+        let ghost old_coins_vec = self.coins@;
+        let ghost old_spec_coins = self.spec_coins@;
+        let ghost old_entries_vec = self.entries@;
+        let ghost old_spec_entries = self.spec_entries@;
+        let ghost old_operations_vec = self.operations@;
+        let ghost old_spec_operations = self.spec_operations@;
+        let res = if self.fee_balance >= amount {
+            self.fee_balance = self.fee_balance - amount;
+            Ok(())
+        } else {
+            Err(Error::InsufficientFunds {
+                requested: amount,
+                available: self.fee_balance,
+            })
+        };
+        proof {
+            assert(self.purses@ == old_purses_vec);
+            assert(self.spec_purses@ == old_spec_purses);
+            assert(self.coins@ == old_coins_vec);
+            assert(self.spec_coins@ == old_spec_coins);
+            assert(self.entries@ == old_entries_vec);
+            assert(self.spec_entries@ == old_spec_entries);
+            assert(self.operations@ == old_operations_vec);
+            assert(self.spec_operations@ == old_spec_operations);
+        }
+        res
+    }
+
+    /// Synchronous read of the fee-account balance.
+    pub fn read_fee_balance(&self) -> (b: u64)
+        requires
+            self.invariant(),
+        ensures
+            b == self.fee_balance,
+    {
+        self.fee_balance
+    }
+
+    /// Auto-pick a `FeeMode` based on the current reservoir.
+    pub fn select_fee_mode(&self, fee: u64) -> (mode: FeeMode)
+        requires
+            self.invariant(),
+        ensures
+            match mode {
+                FeeMode::Prepaid => self.fee_balance >= fee,
+                FeeMode::FromOutput => self.fee_balance < fee,
+            },
+    {
+        if self.fee_balance >= fee {
+            FeeMode::Prepaid
+        } else {
+            FeeMode::FromOutput
+        }
+    }
+
     /// Safe variant of [`Self::delete_purse`]: runs the safety checks
     /// first and returns a typed error if the purse can't be removed,
     /// rather than tripping a hard precondition. Composes with the
@@ -1419,6 +1565,7 @@ impl State {
                 self.operations@ == old_operations_vec,
                 self.next_handle == old(self).next_handle,
                 self.next_age == old(self).next_age,
+                self.fee_balance == old(self).fee_balance,
                 old_m == old(self).spec_purses@,
                 old_v == old(self).purses@,
                 old_coins == old(self).coins().remove_keys(
@@ -1715,6 +1862,7 @@ impl State {
                 self.operations@ == old_operations_vec,
                 self.next_handle == old(self).next_handle,
                 self.next_age == old(self).next_age,
+                self.fee_balance == old(self).fee_balance,
                 old_m == old(self).spec_purses@,
                 old_v == old(self).purses@,
                 old_coins == old(self).spec_coins@,
@@ -1728,6 +1876,7 @@ impl State {
                 old_operations_vec == old(self).operations@,
                 self.next_purse_id == old(self).next_purse_id,
                 self.next_age == old(self).next_age,
+                self.fee_balance == old(self).fee_balance,
                 old(self).purses().dom().contains(p),
                 p_old_rec == old_m[p],
                 p_old_rec.next_coin_idx < u64::MAX,
@@ -2111,6 +2260,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
     {
         let ghost old_v = self.purses@;
         let ghost old_m = self.spec_purses@;
@@ -2138,6 +2288,7 @@ impl State {
                 old_operations_vec == old(self).operations@,
                 self.next_handle == old(self).next_handle,
                 self.next_age == old(self).next_age,
+                self.fee_balance == old(self).fee_balance,
                 old_m == old(self).spec_purses@,
                 old_v == old(self).purses@,
                 old_entries == old(self).spec_entries@,
@@ -2438,6 +2589,7 @@ impl State {
             final(self).operations()[handle].status == OpStatus::Done,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
     {
         self.consume_entry(key);
         self.mark_op_done(handle);
@@ -2467,6 +2619,7 @@ impl State {
             final(self).operations()[handle].status == OpStatus::Done,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
     {
         self.commit_locked_coin(key);
         self.mark_coin_spent(key);
@@ -2502,6 +2655,7 @@ impl State {
             final(self).operations()[handle].status == OpStatus::Failed,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
     {
         self.release_locked_coin(key, handle);
         self.set_op_failed(handle);
@@ -2535,6 +2689,7 @@ impl State {
             final(self).operations()[handle].status == OpStatus::Failed,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
     {
         self.release_locked_entry(key, handle);
         self.set_op_failed(handle);
@@ -2578,6 +2733,7 @@ impl State {
             final(self).entries()[key].exponent == old(self).entries()[key].exponent,
             final(self).next_handle == old(self).next_handle + 1,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
     {
         let handle = self.start_op(kind, key.0);
         proof {
@@ -2610,6 +2766,7 @@ impl State {
             final(self).coins()[key].exponent == old(self).coins()[key].exponent,
             final(self).next_handle == old(self).next_handle + 1,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
     {
         let handle = self.start_op(kind, key.0);
         proof {
@@ -2666,6 +2823,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
     {
         self.add_entry_with_meta(p, exponent, on_chain, local, 0, 0, 0, 0)
     }
@@ -2691,6 +2849,7 @@ impl State {
             }),
             final(self).next_handle == old(self).next_handle + 1,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
             // Other state untouched.
             final(self).purses() == old(self).purses(),
             final(self).purses@ == old(self).purses@,
@@ -2845,6 +3004,7 @@ impl State {
             final(self).entries@ == old(self).entries@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -2881,6 +3041,7 @@ impl State {
                 self.operations@ == old_ops_vec,
                 self.next_handle == old(self).next_handle,
                 self.next_age == old(self).next_age,
+                self.fee_balance == old(self).fee_balance,
                 old_purses_vec == old(self).purses@,
                 old_spec_purses == old(self).spec_purses@,
                 old_spec_purses == old(self).purses(),
@@ -3032,6 +3193,7 @@ impl State {
             final(self).entries@ == old(self).entries@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -3058,6 +3220,7 @@ impl State {
             final(self).entries@ == old(self).entries@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -3083,6 +3246,7 @@ impl State {
             final(self).entries@ == old(self).entries@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -3110,6 +3274,7 @@ impl State {
             final(self).entries@ == old(self).entries@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -3140,6 +3305,7 @@ impl State {
             final(self).entries@ == old(self).entries@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -3175,6 +3341,7 @@ impl State {
             final(self).entries@ == old(self).entries@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -3206,6 +3373,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
             match res {
                 Some(key) =>
                     old(self).coins().dom().contains(key)
@@ -3286,6 +3454,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
             match res {
                 Some(key) =>
                     old(self).entries().dom().contains(key)
@@ -3383,6 +3552,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
             final(self).coins@.len() == old(self).coins@.len(),
             lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
                 ==> lock_refint(final(self).coins(), final(self).entries(),
@@ -3420,6 +3590,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
             final(self).entries@.len() == old(self).entries@.len(),
             lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
                 ==> lock_refint(final(self).coins(), final(self).entries(),
@@ -3453,6 +3624,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
     {
         self.transition_coin_state(key, CoinState::Available);
     }
@@ -3481,6 +3653,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
     {
         self.transition_coin_state(key, CoinState::PendingSpend);
     }
@@ -3509,6 +3682,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
     {
         self.transition_coin_state(key, CoinState::Spent);
     }
@@ -3539,6 +3713,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
     {
         self.transition_coin_state(key, CoinState::Available);
     }
@@ -3569,6 +3744,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
             // lock_refint preservation: if the old state satisfied
             // refint AND the handle is a known op, the new state still
             // satisfies refint (the only new LockedFor edge references h,
@@ -3607,6 +3783,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
             final(self).coins@.len() == old(self).coins@.len(),
             // lock_refint preservation: removing a LockedFor edge can
             // never break refint (no new dangling references).
@@ -3643,6 +3820,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
             final(self).coins@.len() == old(self).coins@.len(),
             // lock_refint preservation: removing a LockedFor edge.
             lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
@@ -3678,6 +3856,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
             final(self).coins@.len() == old(self).coins@.len(),
     {
         let ghost old_purses_vec = self.purses@;
@@ -3700,6 +3879,7 @@ impl State {
                 self.next_purse_id == old_next_purse_id,
                 self.next_handle == old(self).next_handle,
                 self.next_age == old(self).next_age,
+                self.fee_balance == old(self).fee_balance,
                 self.spec_coins@ == old_coins,
                 self.coins@ == old_coins_vec,
                 self.spec_entries@ == old_entries,
@@ -3896,6 +4076,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
     {
         let ghost old_purses_vec = self.purses@;
         let ghost old_spec_purses = self.spec_purses@;
@@ -3917,6 +4098,7 @@ impl State {
                 self.next_purse_id == old_next_purse_id,
                 self.next_handle == old(self).next_handle,
                 self.next_age == old(self).next_age,
+                self.fee_balance == old(self).fee_balance,
                 self.spec_coins@ == old_coins,
                 self.coins@ == old_coins_vec,
                 self.spec_entries@ == old_entries,
@@ -4096,6 +4278,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
     {
         self.set_entry_on_chain(key, EntryOnChain::Ready);
     }
@@ -4121,6 +4304,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
     {
         self.set_entry_on_chain(key, EntryOnChain::Missing);
     }
@@ -4152,6 +4336,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
             // lock_refint preservation: same conditional shape as lock_coin.
             (lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
                 && old(self).operations().dom().contains(handle))
@@ -4188,6 +4373,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
             final(self).entries@.len() == old(self).entries@.len(),
             lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
                 ==> lock_refint(final(self).coins(), final(self).entries(),
@@ -4250,6 +4436,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
             final(self).entries@.len() == old(self).entries@.len(),
     {
         let ghost old_purses_vec = self.purses@;
@@ -4272,6 +4459,7 @@ impl State {
                 self.next_purse_id == old_next_purse_id,
                 self.next_handle == old(self).next_handle,
                 self.next_age == old(self).next_age,
+                self.fee_balance == old(self).fee_balance,
                 self.spec_coins@ == old_coins,
                 self.coins@ == old_coins_vec,
                 self.spec_entries@ == old_entries,
@@ -4474,10 +4662,12 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
             ({
                 let removed = old(self).coins@[idx as int];
                 final(self).coins()
@@ -5937,6 +6127,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
     {
         self.mark_coin_pending_spend(key);
         self.mark_coin_spent(key);
@@ -7230,10 +7421,12 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
             final(self).coins() == old(self).coins().remove_keys(
                 Set::new(|k: (PurseId, u64)| k.0 == p)
             ),
@@ -7254,6 +7447,7 @@ impl State {
                 self.spec_operations@ == old(self).spec_operations@,
                 self.next_handle == old(self).next_handle,
                 self.next_age == old(self).next_age,
+                self.fee_balance == old(self).fee_balance,
                 // Current spec_coins is a subset of initial that preserves all
                 // entries with purse != p.
                 forall|k: (PurseId, u64)| #[trigger] self.spec_coins@.dom().contains(k)
@@ -7353,6 +7547,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
             ({
                 let removed = old(self).entries@[idx as int];
                 final(self).entries()
@@ -7510,6 +7705,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
             final(self).entries() == old(self).entries().remove_keys(
                 Set::new(|k: (PurseId, u64)| k.0 == p)
             ),
@@ -7530,6 +7726,7 @@ impl State {
                 self.spec_operations@ == old(self).spec_operations@,
                 self.next_handle == old(self).next_handle,
                 self.next_age == old(self).next_age,
+                self.fee_balance == old(self).fee_balance,
                 forall|k: (PurseId, u64)| #[trigger] self.spec_entries@.dom().contains(k)
                     ==> initial_entries.dom().contains(k)
                         && self.spec_entries@[k] == initial_entries[k],
@@ -7668,6 +7865,7 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
     {
         let key = self.add_entry_with_meta(
             p,
