@@ -26,13 +26,14 @@ pub trait Chain: Send + Sync {
     /// Follow the chain head and receive block events.
     ///
     /// ```ts
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    ///
     /// import { from, take } from "rxjs";
     ///
     /// from(
     ///   truapi.chain.followHeadSubscribe({
     ///     request: {
-    ///       genesisHash:
-    ///         "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///       genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///       withRuntime: false,
     ///     },
     ///   }),
@@ -56,12 +57,13 @@ pub trait Chain: Send + Sync {
     /// Fetch a block header.
     ///
     /// ```ts
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    ///
     /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
     /// const result = await firstValueFrom(
     ///   withChainHeadFollow({
-    ///     genesisHash:
-    ///       "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///   }).pipe(
     ///     mergeMap(({ genesisHash, followSubscriptionId, hash }) =>
     ///       truapi.chain.getHeadHeader({ genesisHash, followSubscriptionId, hash }),
@@ -85,12 +87,13 @@ pub trait Chain: Send + Sync {
     /// Fetch a block body.
     ///
     /// ```ts
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    ///
     /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
     /// const result = await firstValueFrom(
     ///   withChainHeadFollow({
-    ///     genesisHash:
-    ///       "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///   }).pipe(
     ///     mergeMap(({ genesisHash, followSubscriptionId, hash }) =>
     ///       truapi.chain.getHeadBody({ genesisHash, followSubscriptionId, hash }),
@@ -114,12 +117,13 @@ pub trait Chain: Send + Sync {
     /// Query runtime storage at a specific block.
     ///
     /// ```ts
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    ///
     /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
     /// const result = await firstValueFrom(
     ///   withChainHeadFollow({
-    ///     genesisHash:
-    ///       "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///   }).pipe(
     ///     mergeMap(({ genesisHash, followSubscriptionId, hash }) =>
     ///       truapi.chain.getHeadStorage({
@@ -148,12 +152,13 @@ pub trait Chain: Send + Sync {
     /// Invoke a runtime call at a specific block.
     ///
     /// ```ts
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    ///
     /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
     /// const result = await firstValueFrom(
     ///   withChainHeadFollow({
-    ///     genesisHash:
-    ///       "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///     withRuntime: true,
     ///   }).pipe(
     ///     mergeMap(({ genesisHash, followSubscriptionId, hash }) =>
@@ -184,12 +189,13 @@ pub trait Chain: Send + Sync {
     /// Release pinned blocks.
     ///
     /// ```ts
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    ///
     /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
     /// const result = await firstValueFrom(
     ///   withChainHeadFollow({
-    ///     genesisHash:
-    ///       "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///   }).pipe(
     ///     mergeMap(({ genesisHash, followSubscriptionId, hash }) =>
     ///       truapi.chain.unpinHead({
@@ -217,12 +223,13 @@ pub trait Chain: Send + Sync {
     /// Continue a paused chain-head operation.
     ///
     /// ```ts
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    ///
     /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
     /// const result = await firstValueFrom(
     ///   withChainHeadFollow({
-    ///     genesisHash:
-    ///       "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///   }).pipe(
     ///     mergeMap(({ genesisHash, followSubscriptionId }) =>
     ///       truapi.chain.continueHead({
@@ -250,12 +257,13 @@ pub trait Chain: Send + Sync {
     /// Stop a chain-head operation.
     ///
     /// ```ts
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    ///
     /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
     /// const result = await firstValueFrom(
     ///   withChainHeadFollow({
-    ///     genesisHash:
-    ///       "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///   }).pipe(
     ///     mergeMap(({ genesisHash, followSubscriptionId }) =>
     ///       truapi.chain.stopHeadOperation({
@@ -284,8 +292,10 @@ pub trait Chain: Send + Sync {
     /// Fetch the canonical genesis hash for a chain.
     ///
     /// ```ts
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    ///
     /// const result = await truapi.chain.getSpecGenesisHash({
-    ///   genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     /// });
     /// result.match(
     ///   (value) => console.log(value),
@@ -305,8 +315,10 @@ pub trait Chain: Send + Sync {
     /// Fetch the display name of a chain.
     ///
     /// ```ts
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    ///
     /// const result = await truapi.chain.getSpecChainName({
-    ///   genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     /// });
     /// result.match(
     ///   (value) => console.log(value),
@@ -325,8 +337,10 @@ pub trait Chain: Send + Sync {
     /// Fetch the JSON-encoded properties of a chain.
     ///
     /// ```ts
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    ///
     /// const result = await truapi.chain.getSpecProperties({
-    ///   genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     /// });
     /// result.match(
     ///   (value) => console.log(value),
@@ -345,8 +359,10 @@ pub trait Chain: Send + Sync {
     /// Broadcast a signed transaction.
     ///
     /// ```ts
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    ///
     /// const result = await truapi.chain.broadcastTransaction({
-    ///   genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///   transaction: "0x",
     /// });
     /// result.match(
@@ -369,8 +385,10 @@ pub trait Chain: Send + Sync {
     /// Stop a transaction broadcast.
     ///
     /// ```ts
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    ///
     /// const result = await truapi.chain.stopTransaction({
-    ///   genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///   operationId: "op-id",
     /// });
     /// result.match(
