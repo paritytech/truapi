@@ -4679,6 +4679,48 @@ impl State {
         (handle, new_key)
     }
 
+    /// Tracked split: wraps [`Self::split_coin`] in a `KMaintenance`
+    /// operation. Returns the op handle. Used when the host wants the
+    /// chain to settle the split before the new coins are committed.
+    pub fn tracked_split_coin(
+        &mut self,
+        key: (PurseId, u64),
+        new_exponents: Vec<u8>,
+    ) -> (handle: OpHandle)
+        requires
+            old(self).invariant(),
+            old(self).coins().dom().contains(key),
+            old(self).coins()[key].state == CoinState::Available,
+            old(self).purses().dom().contains(key.0),
+            old(self).purses()[key.0].next_coin_idx as nat + new_exponents@.len()
+                <= u64::MAX as nat,
+            old(self).next_age as nat + new_exponents@.len() <= u64::MAX as nat,
+            old(self).next_handle < u64::MAX,
+        ensures
+            final(self).invariant(),
+            handle == old(self).next_handle,
+            final(self).operations().dom().contains(handle),
+            final(self).operations()[handle].status == OpStatus::Submitted,
+            final(self).operations()[handle].kind == OpKind::Maintenance,
+            final(self).operations()[handle].purse == key.0,
+            final(self).coins().dom().contains(key),
+            final(self).coins()[key].state == CoinState::Spent,
+    {
+        let h = self.start_op(OpKind::Maintenance, key.0);
+        proof {
+            assert(self.operations()[h].kind == OpKind::Maintenance);
+            assert(self.operations()[h].purse == key.0);
+            assert(self.coins()[key].state == CoinState::Available);
+        }
+        self.split_coin(key, new_exponents);
+        proof {
+            assert(self.operations()[h].kind == OpKind::Maintenance);
+            assert(self.operations()[h].purse == key.0);
+        }
+        self.mark_op_submitted(h);
+        h
+    }
+
     /// Split a single `Available` coin into a batch of fresh coins in the
     /// same purse, one per element of `new_exponents`. Quint analog: the
     /// Tier-2 split step of three-tier selection.
@@ -4715,6 +4757,13 @@ impl State {
                 && final(self).coins()[
                     (key.0, (old(self).purses()[key.0].next_coin_idx + j) as u64)
                 ].exponent == new_exponents@[j],
+            final(self).operations() == old(self).operations(),
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).spec_entries@ == old(self).spec_entries@,
     {
         self.mark_coin_pending_spend(key);
         self.mark_coin_spent(key);
@@ -6070,11 +6119,25 @@ impl State {
                 && final(self).coins()[
                     (p, (old(self).purses()[p].next_coin_idx + j) as u64)
                 ].exponent == exp_seq@[j],
+            final(self).operations() == old(self).operations(),
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).spec_entries@ == old(self).spec_entries@,
     {
         let ghost old_p_next = old(self).purses()[p].next_coin_idx;
         let ghost old_next_age = old(self).next_age;
         let ghost old_purses_map = old(self).purses();
         let ghost old_coins_map = old(self).coins();
+        let ghost old_operations_map = old(self).operations();
+        let ghost old_operations_vec = old(self).operations@;
+        let ghost old_spec_operations = old(self).spec_operations@;
+        let ghost old_entries_map = old(self).entries();
+        let ghost old_entries_vec = old(self).entries@;
+        let ghost old_spec_entries = old(self).spec_entries@;
+        let ghost old_next_handle = old(self).next_handle;
         let n = exp_seq.len();
 
         let mut k: usize = 0;
@@ -6094,6 +6157,20 @@ impl State {
                 self.next_age == old_next_age + k as nat,
                 old_next_age == old(self).next_age,
                 old_next_age as nat + n as nat <= u64::MAX as nat,
+                self.operations() == old_operations_map,
+                self.operations@ == old_operations_vec,
+                self.spec_operations@ == old_spec_operations,
+                self.next_handle == old_next_handle,
+                self.entries() == old_entries_map,
+                self.entries@ == old_entries_vec,
+                self.spec_entries@ == old_spec_entries,
+                old_operations_map == old(self).operations(),
+                old_operations_vec == old(self).operations@,
+                old_spec_operations == old(self).spec_operations@,
+                old_next_handle == old(self).next_handle,
+                old_entries_map == old(self).entries(),
+                old_entries_vec == old(self).entries@,
+                old_spec_entries == old(self).spec_entries@,
                 forall|q: PurseId| q != p && #[trigger] old_purses_map.dom().contains(q)
                     ==> self.purses()[q] == old_purses_map[q],
                 forall|key: (PurseId, u64)| #[trigger] old_coins_map.dom().contains(key)
