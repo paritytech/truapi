@@ -1796,6 +1796,189 @@ impl State {
         vstd::pervasive::unreached()
     }
 
+    /// Promote a recycler entry's on-chain state (e.g. Waiting → Ready
+    /// when chain notifications confirm anonymity-floor membership).
+    /// Quint analog: `chainPromoteToReady`, `chainPromoteToDegraded`.
+    pub fn set_entry_on_chain(&mut self, key: (PurseId, u64), new_state: EntryOnChain)
+        requires
+            old(self).invariant(),
+            old(self).entries().dom().contains(key),
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).entries() == old(self).entries().insert(key, EntryRec {
+                purse: old(self).entries()[key].purse,
+                idx: old(self).entries()[key].idx,
+                exponent: old(self).entries()[key].exponent,
+                on_chain: new_state,
+            }),
+    {
+        let ghost old_purses_vec = self.purses@;
+        let ghost old_spec_purses = self.spec_purses@;
+        let ghost old_next_purse_id = self.next_purse_id;
+        let ghost old_coins = self.spec_coins@;
+        let ghost old_coins_vec = self.coins@;
+        let ghost old_entries = self.spec_entries@;
+        let ghost old_entries_vec = self.entries@;
+
+        let mut j: usize = 0;
+        while j < self.entries.len()
+            invariant
+                0 <= j <= self.entries.len(),
+                self.invariant(),
+                self.purses@ == old_purses_vec,
+                self.spec_purses@ == old_spec_purses,
+                self.next_purse_id == old_next_purse_id,
+                self.spec_coins@ == old_coins,
+                self.coins@ == old_coins_vec,
+                self.spec_entries@ == old_entries,
+                self.entries@ == old_entries_vec,
+                old_spec_purses == old(self).spec_purses@,
+                old_spec_purses == old(self).purses(),
+                old_coins == old(self).spec_coins@,
+                old_coins == old(self).coins(),
+                old_coins_vec == old(self).coins@,
+                old_entries == old(self).spec_entries@,
+                old_entries == old(self).entries(),
+                old_entries_vec == old(self).entries@,
+                old_entries.dom().contains(key),
+                forall|jj: int| 0 <= jj < j ==>
+                    (#[trigger] self.entries@[jj]).purse != key.0
+                    || self.entries@[jj].idx != key.1,
+            decreases self.entries.len() - j,
+        {
+            if self.entries[j].purse == key.0 && self.entries[j].idx == key.1 {
+                let ghost target_idx = j as int;
+                let ghost updated = EntryRec {
+                    purse: old_entries[key].purse,
+                    idx: old_entries[key].idx,
+                    exponent: old_entries[key].exponent,
+                    on_chain: new_state,
+                };
+                self.entries[j].on_chain = new_state;
+
+                proof {
+                    assert(old_entries[key].purse == key.0);
+                    assert(old_entries[key].idx == key.1);
+                    self.spec_entries = Ghost(self.spec_entries@.insert(key, updated));
+
+                    let new_entries_vec = self.entries@;
+                    let new_entries = self.spec_entries@;
+
+                    assert(self.purses@ == old_purses_vec);
+                    assert(self.spec_purses@ == old_spec_purses);
+                    assert(self.next_purse_id == old_next_purse_id);
+                    assert(self.coins@ == old_coins_vec);
+                    assert(self.spec_coins@ == old_coins);
+
+                    assert(new_entries_vec[target_idx].purse == key.0);
+                    assert(new_entries_vec[target_idx].idx == key.1);
+                    assert(new_entries_vec[target_idx].exponent
+                        == old_entries_vec[target_idx].exponent);
+                    assert(new_entries_vec[target_idx].on_chain == new_state);
+                    assert forall|k: int|
+                        0 <= k < new_entries_vec.len() && k != target_idx implies
+                        #[trigger] new_entries_vec[k] == old_entries_vec[k]
+                    by {}
+                    assert(old_entries_vec[target_idx].purse == key.0);
+                    assert(old_entries_vec[target_idx].idx == key.1);
+                    assert forall|kk: int|
+                        0 <= kk < old_entries_vec.len() && kk != target_idx implies
+                        (#[trigger] old_entries_vec[kk]).purse != key.0
+                        || old_entries_vec[kk].idx != key.1
+                    by {}
+
+                    // (o) entry key consistency.
+                    assert forall|kk: (PurseId, u64)| #[trigger] new_entries.dom().contains(kk)
+                        implies new_entries[kk].purse == kk.0 && new_entries[kk].idx == kk.1
+                    by { if kk != key { assert(old_entries.dom().contains(kk)); } }
+
+                    // (p) entry referential integrity.
+                    assert forall|kk: (PurseId, u64)| #[trigger] new_entries.dom().contains(kk)
+                        implies self.spec_purses@.dom().contains(kk.0)
+                    by { assert(old_entries.dom().contains(kk)); }
+
+                    // (q) entry idx below allocator.
+                    assert forall|kk: (PurseId, u64)| #[trigger] new_entries.dom().contains(kk)
+                        implies kk.1 < self.spec_purses@[kk.0].next_entry_idx
+                    by { assert(old_entries.dom().contains(kk)); }
+
+                    // (r) Vec → ghost
+                    assert forall|jj: int| 0 <= jj < new_entries_vec.len() implies
+                        new_entries.dom().contains(
+                            (#[trigger] new_entries_vec[jj].purse, new_entries_vec[jj].idx)
+                        )
+                        && new_entries[(new_entries_vec[jj].purse, new_entries_vec[jj].idx)]
+                            == new_entries_vec[jj]
+                    by {
+                        if jj == target_idx {
+                            assert(new_entries[key] == updated);
+                            assert(updated == new_entries_vec[target_idx]);
+                        } else {
+                            assert(new_entries_vec[jj] == old_entries_vec[jj]);
+                            let oe = old_entries_vec[jj];
+                            assert(old_entries.dom().contains((oe.purse, oe.idx)));
+                            assert((oe.purse, oe.idx) != key);
+                            assert(old_entries[(oe.purse, oe.idx)] == oe);
+                        }
+                    }
+
+                    // (s) ghost → Vec
+                    assert forall|kk: (PurseId, u64)| #[trigger] new_entries.dom().contains(kk)
+                        implies exists|jj: int|
+                            0 <= jj < new_entries_vec.len()
+                            && #[trigger] new_entries_vec[jj].purse == kk.0
+                            && new_entries_vec[jj].idx == kk.1
+                    by {
+                        if kk == key {
+                            let w = target_idx;
+                            assert(new_entries_vec[w].purse == kk.0);
+                            assert(new_entries_vec[w].idx == kk.1);
+                        } else {
+                            assert(old_entries.dom().contains(kk));
+                            let w = choose|jj: int|
+                                0 <= jj < old_entries_vec.len()
+                                && #[trigger] old_entries_vec[jj].purse == kk.0
+                                && old_entries_vec[jj].idx == kk.1;
+                            assert(new_entries_vec[w] == old_entries_vec[w]);
+                        }
+                    }
+
+                    // (t) no duplicates.
+                    assert forall|a: int, b: int|
+                        0 <= a < new_entries_vec.len() && 0 <= b < new_entries_vec.len()
+                        && (#[trigger] new_entries_vec[a]).purse
+                            == (#[trigger] new_entries_vec[b]).purse
+                        && new_entries_vec[a].idx == new_entries_vec[b].idx
+                        implies a == b
+                    by {
+                        if a == target_idx && b == target_idx {
+                        } else if a == target_idx {
+                            assert(new_entries_vec[b] == old_entries_vec[b]);
+                        } else if b == target_idx {
+                            assert(new_entries_vec[a] == old_entries_vec[a]);
+                        } else {
+                            assert(new_entries_vec[a] == old_entries_vec[a]);
+                            assert(new_entries_vec[b] == old_entries_vec[b]);
+                        }
+                    }
+                }
+                return;
+            }
+            j += 1;
+        }
+        proof {
+            assert(old_entries.dom().contains(key));
+            let w = choose|jj: int|
+                0 <= jj < old_entries_vec.len()
+                && #[trigger] old_entries_vec[jj].purse == key.0
+                && old_entries_vec[jj].idx == key.1;
+        }
+        vstd::pervasive::unreached()
+    }
+
     /// Internal: scan the coin Vec for the first entry with `purse == p`.
     /// Returns its index, or `None` if no such coin remains.
     fn find_coin_with_purse(&self, p: PurseId) -> (res: Option<usize>)
