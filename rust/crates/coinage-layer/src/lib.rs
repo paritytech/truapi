@@ -3723,6 +3723,99 @@ impl State {
         vstd::pervasive::unreached()
     }
 
+    /// Variant of [`Self::mark_coin_observed`] that emits `CoinAvailable`.
+    pub fn mark_coin_observed_with_event(&mut self, key: (PurseId, u64))
+        requires
+            old(self).invariant(),
+            old(self).coins().dom().contains(key),
+            old(self).coins()[key].state == CoinState::Pending,
+            old(self).events@.len() < u64::MAX as nat,
+        ensures
+            final(self).invariant(),
+            final(self).coins().dom().contains(key),
+            final(self).coins()[key].state == CoinState::Available,
+            final(self).events@ == old(self).events@.push(Event::CoinAvailable {
+                purse: key.0,
+                exponent: old(self).coins()[key].exponent,
+            }),
+            final(self).purses() == old(self).purses(),
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).operations@ == old(self).operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+    {
+        let exp = self.read_coin_exponent(key);
+        self.mark_coin_observed(key);
+        self.emit_event(Event::CoinAvailable {
+            purse: key.0,
+            exponent: exp,
+        });
+    }
+
+    /// Variant of [`Self::mark_coin_spent`] that emits `CoinSpent`.
+    pub fn mark_coin_spent_with_event(&mut self, key: (PurseId, u64))
+        requires
+            old(self).invariant(),
+            old(self).coins().dom().contains(key),
+            old(self).coins()[key].state == CoinState::PendingSpend,
+            old(self).events@.len() < u64::MAX as nat,
+        ensures
+            final(self).invariant(),
+            final(self).coins().dom().contains(key),
+            final(self).coins()[key].state == CoinState::Spent,
+            final(self).events@ == old(self).events@.push(Event::CoinSpent {
+                purse: key.0,
+                exponent: old(self).coins()[key].exponent,
+            }),
+            final(self).purses() == old(self).purses(),
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).operations@ == old(self).operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+    {
+        let exp = self.read_coin_exponent(key);
+        self.mark_coin_spent(key);
+        self.emit_event(Event::CoinSpent {
+            purse: key.0,
+            exponent: exp,
+        });
+    }
+
+    /// Variant of [`Self::mark_entry_ready`] that emits
+    /// `EntryReadinessChanged { Ready }`.
+    pub fn mark_entry_ready_with_event(&mut self, key: (PurseId, u64))
+        requires
+            old(self).invariant(),
+            old(self).entries().dom().contains(key),
+            old(self).entries()[key].on_chain == EntryOnChain::Waiting,
+            old(self).events@.len() < u64::MAX as nat,
+        ensures
+            final(self).invariant(),
+            final(self).entries().dom().contains(key),
+            final(self).entries()[key].on_chain == EntryOnChain::Ready,
+            final(self).events@ == old(self).events@.push(Event::EntryReadinessChanged {
+                purse: key.0,
+                exponent: old(self).entries()[key].exponent,
+                new_state: EntryOnChain::Ready,
+            }),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).operations@ == old(self).operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+    {
+        let exp = self.read_entry_exponent(key);
+        self.mark_entry_ready(key);
+        self.emit_event(Event::EntryReadinessChanged {
+            purse: key.0,
+            exponent: exp,
+            new_state: EntryOnChain::Ready,
+        });
+    }
+
     /// Variant of [`Self::start_op`] that also appends an
     /// `OperationStarted` event to the event stream.
     pub fn start_op_with_event(&mut self, kind: OpKind, purse: PurseId)
