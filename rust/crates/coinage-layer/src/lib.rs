@@ -112,6 +112,42 @@ pub struct EntryRec {
     pub local: EntryLocal,
 }
 
+/// Stable operation handle (Quint `OpHandle`). `u64` for the pilot.
+pub type OpHandle = u64;
+
+/// Operation kind (Quint `OpKind`, design §3.4). Pilot subset.
+#[derive(PartialEq, Eq, Copy, Clone)]
+pub enum OpKind {
+    Transfer,
+    TopUp,
+    Rebalance,
+    DeletePurse,
+    ExternalOffload,
+}
+
+/// Operation status (Quint `OpStatus`, design §5.5). The chain-related
+/// states (SSubmitted, SInBlock, SFinalized) are collapsed in the
+/// pilot since chain interaction isn't modeled — they're treated as a
+/// single "submitted" superstate.
+#[derive(PartialEq, Eq, Copy, Clone)]
+pub enum OpStatus {
+    Preparing,
+    Submitted,
+    Done,
+    Failed,
+}
+
+/// Operation record (Quint `OperationRec`). Pilot scope: handle, kind,
+/// status, owning purse. The Quint record also carries `lockedCoins`
+/// and `lockedEntries` sets — deferred until cross-state locking lands.
+#[derive(Copy, Clone)]
+pub struct OperationRec {
+    pub handle: OpHandle,
+    pub kind: OpKind,
+    pub purse: PurseId,
+    pub status: OpStatus,
+}
+
 /// Snapshot returned by `query_purse` (design §8.1 `PurseInfo`).
 /// Pilot scope: `spendable`, `spendable_strict`, `pending` are always 0
 /// (no coins/entries in state yet).
@@ -162,13 +198,17 @@ pub struct State {
     pub purses: Vec<PurseRec>,
     pub coins: Vec<CoinRec>,
     pub entries: Vec<EntryRec>,
+    pub operations: Vec<OperationRec>,
     pub next_purse_id: u64,
+    pub next_handle: OpHandle,
     #[allow(dead_code)]
     pub spec_purses: Ghost<Map<PurseId, PurseRecSpec>>,
     #[allow(dead_code)]
     pub spec_coins: Ghost<Map<(PurseId, u64), CoinRec>>,
     #[allow(dead_code)]
     pub spec_entries: Ghost<Map<(PurseId, u64), EntryRec>>,
+    #[allow(dead_code)]
+    pub spec_operations: Ghost<Map<OpHandle, OperationRec>>,
 }
 
 /// Spec-only coin value. **Pilot scheme: `coin_value(exp) = exp + 1`**
@@ -250,6 +290,11 @@ impl State {
     /// Spec view of the recycler-entry map.
     pub open spec fn entries(&self) -> Map<(PurseId, u64), EntryRec> {
         self.spec_entries@
+    }
+
+    /// Spec view of the operations map.
+    pub open spec fn operations(&self) -> Map<OpHandle, OperationRec> {
+        self.spec_operations@
     }
 
     /// True iff some coin currently lives in purse `p`.
@@ -354,6 +399,32 @@ impl State {
               && (#[trigger] self.entries@[i]).purse == (#[trigger] self.entries@[j]).purse
               && self.entries@[i].idx == self.entries@[j].idx
               ==> i == j
+        // (u) operation key consistency: spec_operations[h].handle == h.
+        &&& forall|h: OpHandle| #[trigger] self.spec_operations@.dom().contains(h)
+              ==> self.spec_operations@[h].handle == h
+        // (v) handle below allocator.
+        &&& forall|h: OpHandle| #[trigger] self.spec_operations@.dom().contains(h)
+              ==> h < self.next_handle
+        // (w) operation refint to purses.
+        &&& forall|h: OpHandle| #[trigger] self.spec_operations@.dom().contains(h)
+              ==> m.dom().contains(self.spec_operations@[h].purse)
+        // (x) exec operations Vec → ghost.
+        &&& forall|i: int| 0 <= i < self.operations@.len() ==>
+              #[trigger] self.spec_operations@.dom().contains(self.operations@[i].handle)
+        &&& forall|i: int| 0 <= i < self.operations@.len() ==>
+              self.spec_operations@[(#[trigger] self.operations@[i]).handle]
+                == self.operations@[i]
+        // (y) ghost → exec.
+        &&& forall|h: OpHandle| #[trigger] self.spec_operations@.dom().contains(h)
+              ==> exists|i: int|
+                    0 <= i < self.operations@.len()
+                    && #[trigger] self.operations@[i].handle == h
+        // (z) no duplicate handles in operations Vec.
+        &&& forall|i: int, j: int|
+              0 <= i < self.operations@.len() && 0 <= j < self.operations@.len()
+              && (#[trigger] self.operations@[i]).handle
+                  == (#[trigger] self.operations@[j]).handle
+              ==> i == j
     }
 
     /// Initialize the layer with only the main purse and an empty coin map.
@@ -380,14 +451,18 @@ impl State {
         purses.push(main_rec);
         let coins: Vec<CoinRec> = Vec::new();
         let entries: Vec<EntryRec> = Vec::new();
+        let operations: Vec<OperationRec> = Vec::new();
         let s = State {
             purses,
             coins,
             entries,
+            operations,
             next_purse_id: 1,
+            next_handle: 0,
             spec_purses: Ghost(Map::<PurseId, PurseRecSpec>::empty().insert(MAIN_PURSE, main_spec)),
             spec_coins: Ghost(Map::<(PurseId, u64), CoinRec>::empty()),
             spec_entries: Ghost(Map::<(PurseId, u64), EntryRec>::empty()),
+            spec_operations: Ghost(Map::<OpHandle, OperationRec>::empty()),
         };
         assert(s.purses@.len() == 1);
         assert(s.purses@[0].id == MAIN_PURSE);
@@ -732,6 +807,9 @@ impl State {
         requires
             old(self).invariant(),
             !old(self).has_live_coin_in(p),
+            // No operation targets purse p (operations subsystem refint).
+            forall|h: OpHandle| #[trigger] old(self).operations().dom().contains(h)
+                ==> old(self).operations()[h].purse != p,
         ensures
             final(self).invariant(),
             match res {
@@ -780,6 +858,8 @@ impl State {
         let ghost old_coins_vec = self.coins@;
         let ghost old_entries = self.spec_entries@;
         let ghost old_entries_vec = self.entries@;
+        let ghost old_operations = self.spec_operations@;
+        let ghost old_operations_vec = self.operations@;
 
         let mut i: usize = 0;
         while i < self.purses.len()
@@ -792,6 +872,11 @@ impl State {
                 self.coins@ == old_coins_vec,
                 self.spec_entries@ == old_entries,
                 self.entries@ == old_entries_vec,
+                self.spec_operations@ == old_operations,
+                self.operations@ == old_operations_vec,
+                self.spec_operations@ == old_operations,
+                self.operations@ == old_operations_vec,
+                self.next_handle == old(self).next_handle,
                 old_m == old(self).spec_purses@,
                 old_v == old(self).purses@,
                 old_coins == old(self).coins().remove_keys(
@@ -800,10 +885,13 @@ impl State {
                 old_entries == old(self).entries().remove_keys(
                     Set::new(|k: (PurseId, u64)| k.0 == p)
                 ),
+                old_operations == old(self).operations(),
                 self.next_purse_id == old(self).next_purse_id,
                 p != MAIN_PURSE,
                 forall|k: (PurseId, u64)| #[trigger] old_coins.dom().contains(k) ==> k.0 != p,
                 forall|k: (PurseId, u64)| #[trigger] old_entries.dom().contains(k) ==> k.0 != p,
+                forall|h: OpHandle| #[trigger] old_operations.dom().contains(h)
+                    ==> old_operations[h].purse != p,
                 forall|j: int| 0 <= j < i ==> (#[trigger] self.purses@[j]).id != p,
             decreases self.purses.len() - i,
         {
@@ -981,6 +1069,20 @@ impl State {
                         assert(k.0 != p);
                         assert(new_m[k.0] == old_m[k.0]);
                     }
+
+                    // Operations-side: spec_operations untouched; no op's
+                    // purse equals p (loop invariant), so refint to new
+                    // purses dom holds.
+                    assert(self.spec_operations@ == old_operations);
+                    assert forall|h: OpHandle|
+                        #[trigger] self.spec_operations@.dom().contains(h)
+                    implies
+                        new_m.dom().contains(self.spec_operations@[h].purse)
+                    by {
+                        assert(old_operations.dom().contains(h));
+                        assert(old_operations[h].purse != p);
+                        assert(old_m.dom().contains(old_operations[h].purse));
+                    }
                 }
                 return Ok(());
             }
@@ -1034,6 +1136,9 @@ impl State {
             final(self).entries() == old(self).entries(),
             final(self).entries@ == old(self).entries@,
             final(self).spec_entries@ == old(self).spec_entries@,
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
     {
         let ghost old_v = self.purses@;
         let ghost old_m = self.spec_purses@;
@@ -1041,6 +1146,8 @@ impl State {
         let ghost old_coins_vec = self.coins@;
         let ghost old_entries = self.spec_entries@;
         let ghost old_entries_vec = self.entries@;
+        let ghost old_operations = self.spec_operations@;
+        let ghost old_operations_vec = self.operations@;
         let ghost p_old_rec = old_m[p];
 
         let mut i: usize = 0;
@@ -1054,6 +1161,11 @@ impl State {
                 self.coins@ == old_coins_vec,
                 self.spec_entries@ == old_entries,
                 self.entries@ == old_entries_vec,
+                self.spec_operations@ == old_operations,
+                self.operations@ == old_operations_vec,
+                self.spec_operations@ == old_operations,
+                self.operations@ == old_operations_vec,
+                self.next_handle == old(self).next_handle,
                 old_m == old(self).spec_purses@,
                 old_v == old(self).purses@,
                 old_coins == old(self).spec_coins@,
@@ -1061,6 +1173,10 @@ impl State {
                 old_entries == old(self).spec_entries@,
                 old_entries == old(self).entries(),
                 old_entries_vec == old(self).entries@,
+                old_operations == old(self).spec_operations@,
+                old_operations_vec == old(self).operations@,
+                old_operations == old(self).spec_operations@,
+                old_operations_vec == old(self).operations@,
                 self.next_purse_id == old(self).next_purse_id,
                 old(self).purses().dom().contains(p),
                 p_old_rec == old_m[p],
@@ -1388,6 +1504,8 @@ impl State {
         let ghost old_m = self.spec_purses@;
         let ghost old_entries = self.spec_entries@;
         let ghost old_entries_vec = self.entries@;
+        let ghost old_operations = self.spec_operations@;
+        let ghost old_operations_vec = self.operations@;
         let ghost old_coins = self.spec_coins@;
         let ghost p_old_rec = old_m[p];
 
@@ -1402,6 +1520,8 @@ impl State {
                 self.coins@ == old(self).coins@,
                 self.spec_entries@ == old_entries,
                 self.entries@ == old_entries_vec,
+                self.spec_operations@ == old_operations,
+                self.operations@ == old_operations_vec,
                 old_m == old(self).spec_purses@,
                 old_v == old(self).purses@,
                 old_entries == old(self).spec_entries@,
@@ -1672,6 +1792,343 @@ impl State {
         vstd::pervasive::unreached()
     }
 
+    /// Start a new operation in the `Preparing` state. Allocates a fresh
+    /// `OpHandle` from the layer's allocator. Quint analog: the local-
+    /// state effect of starting any operation kind (the chain interaction
+    /// is deferred to `transition_op_status`).
+    pub fn start_op(&mut self, kind: OpKind, purse: PurseId) -> (handle: OpHandle)
+        requires
+            old(self).invariant(),
+            old(self).purses().dom().contains(purse),
+            old(self).next_handle < u64::MAX,
+        ensures
+            final(self).invariant(),
+            handle == old(self).next_handle,
+            !old(self).operations().dom().contains(handle),
+            final(self).operations() == old(self).operations().insert(handle, OperationRec {
+                handle,
+                kind,
+                purse,
+                status: OpStatus::Preparing,
+            }),
+            final(self).next_handle == old(self).next_handle + 1,
+            // Other state untouched.
+            final(self).purses() == old(self).purses(),
+            final(self).purses@ == old(self).purses@,
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).next_purse_id == old(self).next_purse_id,
+    {
+        let ghost old_ops = self.spec_operations@;
+        let ghost old_ops_vec = self.operations@;
+        let ghost old_m = self.spec_purses@;
+        let handle = self.next_handle;
+        let new_op = OperationRec {
+            handle,
+            kind,
+            purse,
+            status: OpStatus::Preparing,
+        };
+        // Each existing operation's handle is strictly less than the new one
+        // by old invariant (v).
+        proof {
+            assert forall|i: int| 0 <= i < old_ops_vec.len() implies
+                #[trigger] old_ops_vec[i].handle < handle
+            by {
+                assert(old_ops.dom().contains(old_ops_vec[i].handle));
+            }
+        }
+        self.operations.push(new_op);
+        proof {
+            self.spec_operations = Ghost(self.spec_operations@.insert(handle, new_op));
+        }
+        self.next_handle = handle + 1;
+
+        proof {
+            // Purses / coins / entries are entirely untouched.
+            assert(self.purses@ == old(self).purses@);
+            assert(self.spec_purses@ == old_m);
+            assert(self.coins@ == old(self).coins@);
+            assert(self.spec_coins@ == old(self).spec_coins@);
+            assert(self.entries@ == old(self).entries@);
+            assert(self.spec_entries@ == old(self).spec_entries@);
+            assert(self.next_purse_id == old(self).next_purse_id);
+
+            let new_ops = self.spec_operations@;
+            let new_ops_vec = self.operations@;
+            let last = old_ops_vec.len() as int;
+            assert(new_ops_vec.len() == old_ops_vec.len() + 1);
+            assert(new_ops_vec[last] == new_op);
+            assert forall|i: int| 0 <= i < old_ops_vec.len() implies
+                #[trigger] new_ops_vec[i] == old_ops_vec[i]
+            by {}
+
+            // (u) key consistency.
+            assert forall|h: OpHandle| #[trigger] new_ops.dom().contains(h)
+                implies new_ops[h].handle == h
+            by {
+                if h != handle { assert(old_ops.dom().contains(h)); }
+            }
+            // (v) handle below allocator.
+            assert forall|h: OpHandle| #[trigger] new_ops.dom().contains(h)
+                implies h < self.next_handle
+            by {
+                if h != handle { assert(old_ops.dom().contains(h)); }
+            }
+            // (w) refint.
+            assert forall|h: OpHandle| #[trigger] new_ops.dom().contains(h)
+                implies self.spec_purses@.dom().contains(new_ops[h].purse)
+            by {
+                if h == handle {
+                    assert(new_ops[handle].purse == purse);
+                } else {
+                    assert(old_ops.dom().contains(h));
+                }
+            }
+            // (x) Vec → ghost.
+            assert forall|i: int| 0 <= i < new_ops_vec.len() implies
+                new_ops.dom().contains((#[trigger] new_ops_vec[i]).handle)
+                && new_ops[new_ops_vec[i].handle] == new_ops_vec[i]
+            by {
+                if i == last {
+                    assert(new_ops_vec[i] == new_op);
+                    assert(new_ops[handle] == new_op);
+                } else {
+                    assert(new_ops_vec[i] == old_ops_vec[i]);
+                    assert(old_ops.dom().contains(old_ops_vec[i].handle));
+                    assert(old_ops_vec[i].handle != handle);
+                    assert(old_ops[old_ops_vec[i].handle] == old_ops_vec[i]);
+                }
+            }
+            // (y) ghost → Vec.
+            assert forall|h: OpHandle| #[trigger] new_ops.dom().contains(h)
+                implies exists|i: int|
+                    0 <= i < new_ops_vec.len()
+                    && #[trigger] new_ops_vec[i].handle == h
+            by {
+                if h == handle {
+                    let w = last;
+                    assert(new_ops_vec[w].handle == handle);
+                } else {
+                    assert(old_ops.dom().contains(h));
+                    let w = choose|i: int|
+                        0 <= i < old_ops_vec.len()
+                        && #[trigger] old_ops_vec[i].handle == h;
+                    assert(new_ops_vec[w] == old_ops_vec[w]);
+                }
+            }
+            // (z) no duplicates.
+            assert forall|a: int, b: int|
+                0 <= a < new_ops_vec.len() && 0 <= b < new_ops_vec.len()
+                && (#[trigger] new_ops_vec[a]).handle
+                    == (#[trigger] new_ops_vec[b]).handle
+                implies a == b
+            by {
+                if a == last && b == last {
+                } else if a == last {
+                    assert(new_ops_vec[b] == old_ops_vec[b]);
+                    assert(new_ops_vec[a].handle == handle);
+                    assert(old_ops_vec[b].handle < handle);
+                } else if b == last {
+                    assert(new_ops_vec[a] == old_ops_vec[a]);
+                    assert(new_ops_vec[b].handle == handle);
+                    assert(old_ops_vec[a].handle < handle);
+                } else {
+                    assert(new_ops_vec[a] == old_ops_vec[a]);
+                    assert(new_ops_vec[b] == old_ops_vec[b]);
+                }
+            }
+        }
+        handle
+    }
+
+    /// Transition the operation identified by `handle` to a new status.
+    /// Mirror of `set_entry_on_chain` for operations. Used by named
+    /// wrappers (`mark_op_submitted`, `mark_op_done`, `mark_op_failed`).
+    pub fn set_op_status(&mut self, handle: OpHandle, new_status: OpStatus)
+        requires
+            old(self).invariant(),
+            old(self).operations().dom().contains(handle),
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).operations() == old(self).operations().insert(handle, OperationRec {
+                handle: old(self).operations()[handle].handle,
+                kind: old(self).operations()[handle].kind,
+                purse: old(self).operations()[handle].purse,
+                status: new_status,
+            }),
+    {
+        let ghost old_purses_vec = self.purses@;
+        let ghost old_spec_purses = self.spec_purses@;
+        let ghost old_coins = self.spec_coins@;
+        let ghost old_coins_vec = self.coins@;
+        let ghost old_entries = self.spec_entries@;
+        let ghost old_entries_vec = self.entries@;
+        let ghost old_operations = self.spec_operations@;
+        let ghost old_operations_vec = self.operations@;
+        let ghost old_ops = self.spec_operations@;
+        let ghost old_ops_vec = self.operations@;
+
+        let mut j: usize = 0;
+        while j < self.operations.len()
+            invariant
+                0 <= j <= self.operations.len(),
+                self.invariant(),
+                self.purses@ == old_purses_vec,
+                self.spec_purses@ == old_spec_purses,
+                self.next_purse_id == old(self).next_purse_id,
+                self.spec_coins@ == old_coins,
+                self.coins@ == old_coins_vec,
+                self.spec_entries@ == old_entries,
+                self.entries@ == old_entries_vec,
+                self.spec_operations@ == old_operations,
+                self.operations@ == old_operations_vec,
+                self.spec_operations@ == old_ops,
+                self.operations@ == old_ops_vec,
+                self.next_handle == old(self).next_handle,
+                old_purses_vec == old(self).purses@,
+                old_spec_purses == old(self).spec_purses@,
+                old_spec_purses == old(self).purses(),
+                old_coins == old(self).spec_coins@,
+                old_coins == old(self).coins(),
+                old_coins_vec == old(self).coins@,
+                old_entries == old(self).spec_entries@,
+                old_entries == old(self).entries(),
+                old_entries_vec == old(self).entries@,
+                old_operations == old(self).spec_operations@,
+                old_operations_vec == old(self).operations@,
+                old_ops == old(self).spec_operations@,
+                old_ops == old(self).operations(),
+                old_ops.dom().contains(handle),
+                forall|jj: int| 0 <= jj < j ==>
+                    (#[trigger] self.operations@[jj]).handle != handle,
+            decreases self.operations.len() - j,
+        {
+            if self.operations[j].handle == handle {
+                let ghost target_idx = j as int;
+                let ghost updated = OperationRec {
+                    handle: old_ops[handle].handle,
+                    kind: old_ops[handle].kind,
+                    purse: old_ops[handle].purse,
+                    status: new_status,
+                };
+                self.operations[j].status = new_status;
+
+                proof {
+                    assert(old_ops[handle].handle == handle);
+                    self.spec_operations = Ghost(self.spec_operations@.insert(handle, updated));
+
+                    let new_ops_vec = self.operations@;
+                    let new_ops = self.spec_operations@;
+
+                    assert(new_ops_vec[target_idx].handle == handle);
+                    assert(new_ops_vec[target_idx].kind == old_ops_vec[target_idx].kind);
+                    assert(new_ops_vec[target_idx].purse == old_ops_vec[target_idx].purse);
+                    assert(new_ops_vec[target_idx].status == new_status);
+                    assert forall|k: int|
+                        0 <= k < new_ops_vec.len() && k != target_idx implies
+                        #[trigger] new_ops_vec[k] == old_ops_vec[k]
+                    by {}
+                    assert(old_ops_vec[target_idx].handle == handle);
+                    assert forall|kk: int|
+                        0 <= kk < old_ops_vec.len() && kk != target_idx implies
+                        (#[trigger] old_ops_vec[kk]).handle != handle
+                    by {}
+
+                    // (u) handle consistency.
+                    assert forall|h: OpHandle| #[trigger] new_ops.dom().contains(h)
+                        implies new_ops[h].handle == h
+                    by { if h != handle { assert(old_ops.dom().contains(h)); } }
+                    // (v) handle bound.
+                    assert forall|h: OpHandle| #[trigger] new_ops.dom().contains(h)
+                        implies h < self.next_handle
+                    by { assert(old_ops.dom().contains(h)); }
+                    // (w) refint.
+                    assert forall|h: OpHandle| #[trigger] new_ops.dom().contains(h)
+                        implies self.spec_purses@.dom().contains(new_ops[h].purse)
+                    by {
+                        if h != handle { assert(old_ops.dom().contains(h)); }
+                    }
+                    // (x) Vec → ghost.
+                    assert forall|i: int| 0 <= i < new_ops_vec.len() implies
+                        new_ops.dom().contains((#[trigger] new_ops_vec[i]).handle)
+                        && new_ops[new_ops_vec[i].handle] == new_ops_vec[i]
+                    by {
+                        if i == target_idx {
+                            assert(new_ops[handle] == updated);
+                            assert(updated == new_ops_vec[target_idx]);
+                        } else {
+                            assert(new_ops_vec[i] == old_ops_vec[i]);
+                            let oo = old_ops_vec[i];
+                            assert(old_ops.dom().contains(oo.handle));
+                            assert(oo.handle != handle);
+                            assert(old_ops[oo.handle] == oo);
+                        }
+                    }
+                    // (y) ghost → Vec.
+                    assert forall|h: OpHandle| #[trigger] new_ops.dom().contains(h)
+                        implies exists|i: int|
+                            0 <= i < new_ops_vec.len()
+                            && #[trigger] new_ops_vec[i].handle == h
+                    by {
+                        if h == handle {
+                            let w = target_idx;
+                            assert(new_ops_vec[w].handle == h);
+                        } else {
+                            assert(old_ops.dom().contains(h));
+                            let w = choose|i: int|
+                                0 <= i < old_ops_vec.len()
+                                && #[trigger] old_ops_vec[i].handle == h;
+                            assert(new_ops_vec[w] == old_ops_vec[w]);
+                        }
+                    }
+                    // (z) no duplicates.
+                    assert forall|a: int, b: int|
+                        0 <= a < new_ops_vec.len() && 0 <= b < new_ops_vec.len()
+                        && (#[trigger] new_ops_vec[a]).handle
+                            == (#[trigger] new_ops_vec[b]).handle
+                        implies a == b
+                    by {
+                        if a == target_idx && b == target_idx {
+                        } else if a == target_idx {
+                            assert(new_ops_vec[b] == old_ops_vec[b]);
+                        } else if b == target_idx {
+                            assert(new_ops_vec[a] == old_ops_vec[a]);
+                        } else {
+                            assert(new_ops_vec[a] == old_ops_vec[a]);
+                            assert(new_ops_vec[b] == old_ops_vec[b]);
+                        }
+                    }
+
+                    // Purses / coins / entries entirely unchanged.
+                    assert(self.purses@ == old(self).purses@);
+                    assert(self.spec_purses@ == old(self).spec_purses@);
+                    assert(self.coins@ == old(self).coins@);
+                    assert(self.spec_coins@ == old(self).spec_coins@);
+                    assert(self.entries@ == old(self).entries@);
+                    assert(self.spec_entries@ == old(self).spec_entries@);
+                }
+                return;
+            }
+            j += 1;
+        }
+        proof {
+            assert(old_ops.dom().contains(handle));
+            let w = choose|jj: int|
+                0 <= jj < old_ops_vec.len()
+                && #[trigger] old_ops_vec[jj].handle == handle;
+        }
+        vstd::pervasive::unreached()
+    }
+
     /// Coin lifecycle: `Pending` → `Available`. Called when chain
     /// observation confirms the coin exists on-chain.
     pub fn mark_coin_observed(&mut self, key: (PurseId, u64))
@@ -1691,6 +2148,9 @@ impl State {
             final(self).entries() == old(self).entries(),
             final(self).entries@ == old(self).entries@,
             final(self).spec_entries@ == old(self).spec_entries@,
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
     {
         self.transition_coin_state(key, CoinState::Available);
     }
@@ -1713,6 +2173,9 @@ impl State {
             final(self).entries() == old(self).entries(),
             final(self).entries@ == old(self).entries@,
             final(self).spec_entries@ == old(self).spec_entries@,
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
     {
         self.transition_coin_state(key, CoinState::PendingSpend);
     }
@@ -1735,6 +2198,9 @@ impl State {
             final(self).entries() == old(self).entries(),
             final(self).entries@ == old(self).entries@,
             final(self).spec_entries@ == old(self).spec_entries@,
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
     {
         self.transition_coin_state(key, CoinState::Spent);
     }
@@ -1759,6 +2225,9 @@ impl State {
             final(self).entries() == old(self).entries(),
             final(self).entries@ == old(self).entries@,
             final(self).spec_entries@ == old(self).spec_entries@,
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
     {
         self.transition_coin_state(key, CoinState::Available);
     }
@@ -1783,6 +2252,9 @@ impl State {
             final(self).entries() == old(self).entries(),
             final(self).entries@ == old(self).entries@,
             final(self).spec_entries@ == old(self).spec_entries@,
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
     {
         let ghost old_purses_vec = self.purses@;
         let ghost old_spec_purses = self.spec_purses@;
@@ -1791,6 +2263,8 @@ impl State {
         let ghost old_coins_vec = self.coins@;
         let ghost old_entries = self.spec_entries@;
         let ghost old_entries_vec = self.entries@;
+        let ghost old_operations = self.spec_operations@;
+        let ghost old_operations_vec = self.operations@;
 
         let mut j: usize = 0;
         while j < self.coins.len()
@@ -1800,10 +2274,13 @@ impl State {
                 self.purses@ == old_purses_vec,
                 self.spec_purses@ == old_spec_purses,
                 self.next_purse_id == old_next_purse_id,
+                self.next_handle == old(self).next_handle,
                 self.spec_coins@ == old_coins,
                 self.coins@ == old_coins_vec,
                 self.spec_entries@ == old_entries,
                 self.entries@ == old_entries_vec,
+                self.spec_operations@ == old_operations,
+                self.operations@ == old_operations_vec,
                 old_spec_purses == old(self).spec_purses@,
                 old_spec_purses == old(self).purses(),
                 old_coins == old(self).spec_coins@,
@@ -1811,6 +2288,8 @@ impl State {
                 old_entries == old(self).spec_entries@,
                 old_entries == old(self).entries(),
                 old_entries_vec == old(self).entries@,
+                old_operations == old(self).spec_operations@,
+                old_operations_vec == old(self).operations@,
                 old_coins.dom().contains(key),
                 forall|jj: int| 0 <= jj < j ==>
                     (#[trigger] self.coins@[jj]).purse != key.0
@@ -1986,6 +2465,8 @@ impl State {
         let ghost old_coins_vec = self.coins@;
         let ghost old_entries = self.spec_entries@;
         let ghost old_entries_vec = self.entries@;
+        let ghost old_operations = self.spec_operations@;
+        let ghost old_operations_vec = self.operations@;
 
         let mut j: usize = 0;
         while j < self.entries.len()
@@ -1999,6 +2480,8 @@ impl State {
                 self.coins@ == old_coins_vec,
                 self.spec_entries@ == old_entries,
                 self.entries@ == old_entries_vec,
+                self.spec_operations@ == old_operations,
+                self.operations@ == old_operations_vec,
                 old_spec_purses == old(self).spec_purses@,
                 old_spec_purses == old(self).purses(),
                 old_coins == old(self).spec_coins@,
@@ -2007,6 +2490,8 @@ impl State {
                 old_entries == old(self).spec_entries@,
                 old_entries == old(self).entries(),
                 old_entries_vec == old(self).entries@,
+                old_operations == old(self).spec_operations@,
+                old_operations_vec == old(self).operations@,
                 old_entries.dom().contains(key),
                 forall|jj: int| 0 <= jj < j ==>
                     (#[trigger] self.entries@[jj]).purse != key.0
@@ -2240,6 +2725,8 @@ impl State {
         let ghost old_coins_vec = self.coins@;
         let ghost old_entries = self.spec_entries@;
         let ghost old_entries_vec = self.entries@;
+        let ghost old_operations = self.spec_operations@;
+        let ghost old_operations_vec = self.operations@;
 
         let mut j: usize = 0;
         while j < self.entries.len()
@@ -2253,6 +2740,8 @@ impl State {
                 self.coins@ == old_coins_vec,
                 self.spec_entries@ == old_entries,
                 self.entries@ == old_entries_vec,
+                self.spec_operations@ == old_operations,
+                self.operations@ == old_operations_vec,
                 old_spec_purses == old(self).spec_purses@,
                 old_spec_purses == old(self).purses(),
                 old_coins == old(self).spec_coins@,
@@ -2261,6 +2750,8 @@ impl State {
                 old_entries == old(self).spec_entries@,
                 old_entries == old(self).entries(),
                 old_entries_vec == old(self).entries@,
+                old_operations == old(self).spec_operations@,
+                old_operations_vec == old(self).operations@,
                 old_entries.dom().contains(key),
                 forall|jj: int| 0 <= jj < j ==>
                     (#[trigger] self.entries@[jj]).purse != key.0
@@ -2439,6 +2930,12 @@ impl State {
             final(self).next_purse_id == old(self).next_purse_id,
             final(self).entries@ == old(self).entries@,
             final(self).spec_entries@ == old(self).spec_entries@,
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
             ({
                 let removed = old(self).coins@[idx as int];
                 final(self).coins()
@@ -2848,6 +3345,10 @@ impl State {
             old(self).purses()[to].next_coin_idx < u64::MAX,
         ensures
             final(self).invariant(),
+            final(self).operations() == old(self).operations(),
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
             match res {
                 Some(new_key) =>
                     new_key.0 == to
@@ -2874,6 +3375,59 @@ impl State {
                 Some(new_key)
             }
         }
+    }
+
+    /// Tracked transfer: same effect as `transfer`, but wrapped in an
+    /// operation handle so the upper layer can correlate the transfer
+    /// with chain confirmation, cancellation, and status streams.
+    ///
+    /// Lifecycle: an operation record is created in `Preparing`, walked
+    /// through `Submitted`, and ends in `Done` (on Some) or `Failed`
+    /// (on None — no Available coin met the threshold).
+    pub fn tracked_transfer(&mut self, from: PurseId, to: PurseId, min_exp: u8)
+        -> (res: (OpHandle, Option<(PurseId, u64)>))
+        requires
+            old(self).invariant(),
+            old(self).purses().dom().contains(from),
+            old(self).purses().dom().contains(to),
+            old(self).purses()[to].next_coin_idx < u64::MAX,
+            old(self).next_handle < u64::MAX,
+        ensures
+            final(self).invariant(),
+            res.0 == old(self).next_handle,
+            final(self).operations().dom().contains(res.0),
+            // Op ended in Done if Some, Failed if None.
+            match res.1 {
+                Some(_) => final(self).operations()[res.0].status == OpStatus::Done,
+                None => final(self).operations()[res.0].status == OpStatus::Failed,
+            },
+            final(self).operations()[res.0].kind == OpKind::Transfer,
+            final(self).operations()[res.0].purse == from,
+    {
+        let handle = self.start_op(OpKind::Transfer, from);
+        proof {
+            assert(self.operations()[handle].kind == OpKind::Transfer);
+            assert(self.operations()[handle].purse == from);
+        }
+        self.set_op_status(handle, OpStatus::Submitted);
+        proof {
+            assert(self.operations()[handle].kind == OpKind::Transfer);
+            assert(self.operations()[handle].purse == from);
+        }
+        let result = self.transfer(from, to, min_exp);
+        proof {
+            assert(self.operations()[handle].kind == OpKind::Transfer);
+            assert(self.operations()[handle].purse == from);
+        }
+        match result {
+            Some(_) => self.set_op_status(handle, OpStatus::Done),
+            None => self.set_op_status(handle, OpStatus::Failed),
+        }
+        proof {
+            assert(self.operations()[handle].kind == OpKind::Transfer);
+            assert(self.operations()[handle].purse == from);
+        }
+        (handle, result)
     }
 
     /// Rebalance: move one specific `Available` coin from purse `src` to
@@ -3245,6 +3799,12 @@ impl State {
             final(self).next_purse_id == old(self).next_purse_id,
             final(self).entries@ == old(self).entries@,
             final(self).spec_entries@ == old(self).spec_entries@,
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
             final(self).coins() == old(self).coins().remove_keys(
                 Set::new(|k: (PurseId, u64)| k.0 == p)
             ),
@@ -3261,6 +3821,9 @@ impl State {
                 self.next_purse_id == old(self).next_purse_id,
                 self.entries@ == old(self).entries@,
                 self.spec_entries@ == old(self).spec_entries@,
+                self.operations@ == old(self).operations@,
+                self.spec_operations@ == old(self).spec_operations@,
+                self.next_handle == old(self).next_handle,
                 // Current spec_coins is a subset of initial that preserves all
                 // entries with purse != p.
                 forall|k: (PurseId, u64)| #[trigger] self.spec_coins@.dom().contains(k)
@@ -3356,6 +3919,9 @@ impl State {
             final(self).next_purse_id == old(self).next_purse_id,
             final(self).coins@ == old(self).coins@,
             final(self).spec_coins@ == old(self).spec_coins@,
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
             ({
                 let removed = old(self).entries@[idx as int];
                 final(self).entries()
@@ -3370,6 +3936,8 @@ impl State {
         let ghost old_coins_vec = self.coins@;
         let ghost old_entries = self.spec_entries@;
         let ghost old_entries_vec = self.entries@;
+        let ghost old_operations = self.spec_operations@;
+        let ghost old_operations_vec = self.operations@;
         let ghost target_idx = idx as int;
         let ghost removed_e = old_entries_vec[target_idx];
         let ghost removed_key = (removed_e.purse, removed_e.idx);
@@ -3507,6 +4075,9 @@ impl State {
             final(self).next_purse_id == old(self).next_purse_id,
             final(self).coins@ == old(self).coins@,
             final(self).spec_coins@ == old(self).spec_coins@,
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
             final(self).entries() == old(self).entries().remove_keys(
                 Set::new(|k: (PurseId, u64)| k.0 == p)
             ),
@@ -3523,6 +4094,9 @@ impl State {
                 self.next_purse_id == old(self).next_purse_id,
                 self.coins@ == old(self).coins@,
                 self.spec_coins@ == old(self).spec_coins@,
+                self.operations@ == old(self).operations@,
+                self.spec_operations@ == old(self).spec_operations@,
+                self.next_handle == old(self).next_handle,
                 forall|k: (PurseId, u64)| #[trigger] self.spec_entries@.dom().contains(k)
                     ==> initial_entries.dom().contains(k)
                         && self.spec_entries@[k] == initial_entries[k],
