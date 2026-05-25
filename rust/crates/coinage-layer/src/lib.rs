@@ -76,8 +76,11 @@ pub enum CoinState {
 
 /// Coin record (Quint `CoinRec`, design §3.2). `age` is the monotonic
 /// allocation timestamp used by the §6.3 priority ordering — older
-/// coins (smaller `age`) outrank newer ones at equal exponent. Quint
-/// `account` and `memberKey` remain deferred.
+/// coins (smaller `age`) outrank newer ones at equal exponent.
+/// `account` is the chain-account identifier the coin lives under.
+/// In this pilot it is a `u64` placeholder set to 0 on allocation;
+/// account-aware operations (top-up funding origin, transfer destination)
+/// will populate it once the chain abstraction lands.
 #[derive(Copy, Clone)]
 pub struct CoinRec {
     pub purse: PurseId,
@@ -85,6 +88,7 @@ pub struct CoinRec {
     pub exponent: u8,
     pub state: CoinState,
     pub age: u64,
+    pub account: u64,
 }
 
 /// Recycler entry on-chain state (Quint `EntryOnChain`, design §5.2).
@@ -108,8 +112,15 @@ pub enum EntryLocal {
 
 /// Recycler entry record (Quint `EntryRec`, design §3.3).
 ///
-/// Pilot scope: `memberKey`, `allocatedAt`, `readyAt`, `ringIdx` are
-/// deferred. On-chain and local lifecycle states are both tracked.
+/// Recycler entry record (Quint `EntryRec`, design §5.2). Carries the
+/// chain-side bookkeeping fields needed by the §6.3 selection ordering
+/// and the §8 lifecycle:
+/// - `member_key` — ring-membership identifier (`u64` placeholder).
+/// - `allocated_at` — block height when the entry was reserved.
+/// - `ready_at` — block height when the anonymity floor was reached.
+/// - `ring_idx` — index within the anonymity ring; used as the
+///   tiebreaker between equal-exponent entries by §6.3
+///   `entryPriorityRank`.
 #[derive(Copy, Clone)]
 pub struct EntryRec {
     pub purse: PurseId,
@@ -117,6 +128,10 @@ pub struct EntryRec {
     pub exponent: u8,
     pub on_chain: EntryOnChain,
     pub local: EntryLocal,
+    pub member_key: u64,
+    pub allocated_at: u64,
+    pub ready_at: u64,
+    pub ring_idx: u64,
 }
 
 /// Operation kind (Quint `OpKind`, design §3.4). Pilot subset.
@@ -1150,6 +1165,7 @@ impl State {
                 exponent,
                 state: CoinState::Pending,
                 age: old(self).next_age,
+                account: 0,
             }),
             final(self).next_age == old(self).next_age + 1,
             final(self).purses().dom() =~= old(self).purses().dom(),
@@ -1231,6 +1247,7 @@ impl State {
                     exponent,
                     state: CoinState::Pending,
                     age: cur_age,
+                    account: 0,
                 };
                 self.coins.push(new_coin);
 
@@ -1522,6 +1539,10 @@ impl State {
                 exponent,
                 on_chain,
                 local,
+                member_key: 0,
+                allocated_at: 0,
+                ready_at: 0,
+                ring_idx: 0,
             }),
             final(self).coins() == old(self).coins(),
             final(self).coins@ == old(self).coins@,
@@ -1582,6 +1603,10 @@ impl State {
                     exponent,
                     on_chain,
                     local,
+                    member_key: 0,
+                    allocated_at: 0,
+                    ready_at: 0,
+                    ring_idx: 0,
                 };
                 self.entries.push(new_entry);
 
@@ -2352,6 +2377,7 @@ impl State {
                 idx: old(self).coins()[key].idx,
                 exponent: old(self).coins()[key].exponent,
                 age: old(self).coins()[key].age,
+                account: old(self).coins()[key].account,
                 state: CoinState::Available,
             }),
             final(self).entries() == old(self).entries(),
@@ -2382,6 +2408,10 @@ impl State {
                 purse: old(self).entries()[key].purse,
                 idx: old(self).entries()[key].idx,
                 exponent: old(self).entries()[key].exponent,
+                member_key: old(self).entries()[key].member_key,
+                allocated_at: old(self).entries()[key].allocated_at,
+                ready_at: old(self).entries()[key].ready_at,
+                ring_idx: old(self).entries()[key].ring_idx,
                 local: EntryLocal::LocalAvailable,
                 on_chain: old(self).entries()[key].on_chain,
             }),
@@ -2408,6 +2438,7 @@ impl State {
                 idx: old(self).coins()[key].idx,
                 exponent: old(self).coins()[key].exponent,
                 age: old(self).coins()[key].age,
+                account: old(self).coins()[key].account,
                 state: CoinState::Available,
             }),
             final(self).entries() == old(self).entries(),
@@ -2435,6 +2466,7 @@ impl State {
                 idx: old(self).coins()[key].idx,
                 exponent: old(self).coins()[key].exponent,
                 age: old(self).coins()[key].age,
+                account: old(self).coins()[key].account,
                 state: CoinState::PendingSpend,
             }),
             final(self).entries() == old(self).entries(),
@@ -2462,6 +2494,7 @@ impl State {
                 idx: old(self).coins()[key].idx,
                 exponent: old(self).coins()[key].exponent,
                 age: old(self).coins()[key].age,
+                account: old(self).coins()[key].account,
                 state: CoinState::Spent,
             }),
             final(self).entries() == old(self).entries(),
@@ -2491,6 +2524,7 @@ impl State {
                 idx: old(self).coins()[key].idx,
                 exponent: old(self).coins()[key].exponent,
                 age: old(self).coins()[key].age,
+                account: old(self).coins()[key].account,
                 state: CoinState::Available,
             }),
             final(self).entries() == old(self).entries(),
@@ -2520,6 +2554,7 @@ impl State {
                 idx: old(self).coins()[key].idx,
                 exponent: old(self).coins()[key].exponent,
                 age: old(self).coins()[key].age,
+                account: old(self).coins()[key].account,
                 state: CoinState::LockedFor(handle),
             }),
             final(self).entries() == old(self).entries(),
@@ -2549,6 +2584,7 @@ impl State {
                 idx: old(self).coins()[key].idx,
                 exponent: old(self).coins()[key].exponent,
                 age: old(self).coins()[key].age,
+                account: old(self).coins()[key].account,
                 state: CoinState::Available,
             }),
             final(self).entries() == old(self).entries(),
@@ -2578,6 +2614,7 @@ impl State {
                 idx: old(self).coins()[key].idx,
                 exponent: old(self).coins()[key].exponent,
                 age: old(self).coins()[key].age,
+                account: old(self).coins()[key].account,
                 state: CoinState::PendingSpend,
             }),
             final(self).entries() == old(self).entries(),
@@ -2607,6 +2644,7 @@ impl State {
                 idx: old(self).coins()[key].idx,
                 exponent: old(self).coins()[key].exponent,
                 age: old(self).coins()[key].age,
+                account: old(self).coins()[key].account,
                 state: new_state,
             }),
             final(self).entries() == old(self).entries(),
@@ -2666,6 +2704,7 @@ impl State {
                     exponent: old_coins[key].exponent,
                     state: new_state,
                     age: old_coins[key].age,
+                    account: old_coins[key].account,
                 };
                 self.coins[j].state = new_state;
 
@@ -2817,6 +2856,10 @@ impl State {
                 purse: old(self).entries()[key].purse,
                 idx: old(self).entries()[key].idx,
                 exponent: old(self).entries()[key].exponent,
+                member_key: old(self).entries()[key].member_key,
+                allocated_at: old(self).entries()[key].allocated_at,
+                ready_at: old(self).entries()[key].ready_at,
+                ring_idx: old(self).entries()[key].ring_idx,
                 on_chain: new_state,
                 local: old(self).entries()[key].local,
             }),
@@ -2871,6 +2914,10 @@ impl State {
                     exponent: old_entries[key].exponent,
                     on_chain: new_state,
                     local: old_entries[key].local,
+                    member_key: old_entries[key].member_key,
+                    allocated_at: old_entries[key].allocated_at,
+                    ready_at: old_entries[key].ready_at,
+                    ring_idx: old_entries[key].ring_idx,
                 };
                 self.entries[j].on_chain = new_state;
 
@@ -3010,6 +3057,10 @@ impl State {
                 purse: old(self).entries()[key].purse,
                 idx: old(self).entries()[key].idx,
                 exponent: old(self).entries()[key].exponent,
+                member_key: old(self).entries()[key].member_key,
+                allocated_at: old(self).entries()[key].allocated_at,
+                ready_at: old(self).entries()[key].ready_at,
+                ring_idx: old(self).entries()[key].ring_idx,
                 on_chain: old(self).entries()[key].on_chain,
                 local: EntryLocal::LocalLockedFor(handle),
             }),
@@ -3033,6 +3084,10 @@ impl State {
                 purse: old(self).entries()[key].purse,
                 idx: old(self).entries()[key].idx,
                 exponent: old(self).entries()[key].exponent,
+                member_key: old(self).entries()[key].member_key,
+                allocated_at: old(self).entries()[key].allocated_at,
+                ready_at: old(self).entries()[key].ready_at,
+                ring_idx: old(self).entries()[key].ring_idx,
                 on_chain: old(self).entries()[key].on_chain,
                 local: EntryLocal::LocalConsumed,
             }),
@@ -3056,6 +3111,10 @@ impl State {
                 purse: old(self).entries()[key].purse,
                 idx: old(self).entries()[key].idx,
                 exponent: old(self).entries()[key].exponent,
+                member_key: old(self).entries()[key].member_key,
+                allocated_at: old(self).entries()[key].allocated_at,
+                ready_at: old(self).entries()[key].ready_at,
+                ring_idx: old(self).entries()[key].ring_idx,
                 on_chain: old(self).entries()[key].on_chain,
                 local: EntryLocal::LocalAvailable,
             }),
@@ -3079,6 +3138,10 @@ impl State {
                 purse: old(self).entries()[key].purse,
                 idx: old(self).entries()[key].idx,
                 exponent: old(self).entries()[key].exponent,
+                member_key: old(self).entries()[key].member_key,
+                allocated_at: old(self).entries()[key].allocated_at,
+                ready_at: old(self).entries()[key].ready_at,
+                ring_idx: old(self).entries()[key].ring_idx,
                 on_chain: old(self).entries()[key].on_chain,
                 local: new_state,
             }),
@@ -3137,6 +3200,10 @@ impl State {
                     exponent: old_entries[key].exponent,
                     on_chain: old_entries[key].on_chain,
                     local: new_state,
+                    member_key: old_entries[key].member_key,
+                    allocated_at: old_entries[key].allocated_at,
+                    ready_at: old_entries[key].ready_at,
+                    ring_idx: old_entries[key].ring_idx,
                 };
                 self.entries[j].local = new_state;
 
