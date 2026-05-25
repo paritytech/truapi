@@ -4602,36 +4602,6 @@ impl State {
 
 
 
-    /// Variant of [`Self::mark_op_submitted`] that also appends an
-    /// `OperationProgress { Submitted }` event to the event stream.
-    pub fn mark_op_submitted_with_event(&mut self, handle: OpHandle)
-        requires
-            old(self).invariant(),
-            old(self).operations().dom().contains(handle),
-            old(self).operations()[handle].status == OpStatus::Preparing,
-            old(self).events@.len() < u64::MAX as nat,
-        ensures
-            final(self).invariant(),
-            final(self).operations()[handle].status == OpStatus::Submitted,
-            final(self).events@ == old(self).events@.push(Event::OperationProgress {
-                handle,
-                status: OpStatus::Submitted,
-            }),
-            final(self).purses() == old(self).purses(),
-            final(self).coins() == old(self).coins(),
-            final(self).coins@ == old(self).coins@,
-            final(self).entries() == old(self).entries(),
-            final(self).entries@ == old(self).entries@,
-            final(self).next_handle == old(self).next_handle,
-            final(self).next_age == old(self).next_age,
-    {
-        self.mark_op_submitted(handle);
-        self.emit_event(Event::OperationProgress {
-            handle,
-            status: OpStatus::Submitted,
-        });
-    }
-
     /// Variant of [`Self::mark_op_done`] that also appends an
     /// `OperationCompleted { Done }` event to the event stream.
     pub fn mark_op_done_with_event(&mut self, handle: OpHandle)
@@ -4707,6 +4677,7 @@ impl State {
             old(self).invariant(),
             old(self).operations().dom().contains(handle),
             old(self).operations()[handle].status == OpStatus::Preparing,
+            old(self).events@.len() < u64::MAX as nat,
         ensures
             final(self).invariant(),
             final(self).purses() == old(self).purses(),
@@ -4718,7 +4689,10 @@ impl State {
             final(self).next_age == old(self).next_age,
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
-            final(self).events@ == old(self).events@,
+            final(self).events@ == old(self).events@.push(Event::OperationProgress {
+                handle,
+                status: OpStatus::Submitted,
+            }),
             final(self).paid_ring_membership == old(self).paid_ring_membership,
             final(self).total_in == old(self).total_in,
             final(self).total_out == old(self).total_out,
@@ -4733,6 +4707,10 @@ impl State {
             }),
     {
         self.set_op_status(handle, OpStatus::Submitted);
+        self.emit_event(Event::OperationProgress {
+            handle,
+            status: OpStatus::Submitted,
+        });
     }
 
     /// Operation lifecycle: `Submitted` → `InBlock`. Fires when the
@@ -7873,7 +7851,7 @@ impl State {
             old(self).coins().dom().contains(key),
             old(self).coins()[key].state == CoinState::Available,
             old(self).next_handle < u64::MAX,
-            old(self).events@.len() + 2 <= u64::MAX as nat,
+            old(self).events@.len() + 3 <= u64::MAX as nat,
         ensures
             final(self).invariant(),
             handle == old(self).next_handle,
@@ -7908,7 +7886,7 @@ impl State {
             old(self).purses()[p].next_coin_idx < u64::MAX,
             old(self).next_age < u64::MAX,
             old(self).next_handle < u64::MAX,
-            old(self).events@.len() + 2 <= u64::MAX as nat,
+            old(self).events@.len() + 3 <= u64::MAX as nat,
         ensures
             final(self).invariant(),
             res.0 == old(self).next_handle,
@@ -8003,6 +7981,7 @@ impl State {
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
+            final(self).events@.len() == old(self).events@.len() + 1,
     {
         let key = self.add_coin_with_account(p, exponent, account);
         self.mark_coin_observed(key);
@@ -8042,6 +8021,7 @@ impl State {
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
+            final(self).events@.len() == old(self).events@.len() + 2,
     {
         let exp = self.read_coin_exponent(key);
         self.mark_coin_pending_spend(key);
@@ -8072,7 +8052,7 @@ impl State {
             old(self).purses()[dst].next_coin_idx < u64::MAX,
             old(self).next_age < u64::MAX,
             old(self).next_handle < u64::MAX,
-            old(self).events@.len() + 3 <= u64::MAX as nat,
+            old(self).events@.len() + 4 <= u64::MAX as nat,
         ensures
             final(self).invariant(),
             res.0 == old(self).next_handle,
@@ -8116,7 +8096,7 @@ impl State {
                 <= u64::MAX as nat,
             old(self).next_age as nat + new_exponents@.len() <= u64::MAX as nat,
             old(self).next_handle < u64::MAX,
-            old(self).events@.len() + 2 <= u64::MAX as nat,
+            old(self).events@.len() + 3 <= u64::MAX as nat,
         ensures
             final(self).invariant(),
             handle == old(self).next_handle,
@@ -8186,6 +8166,7 @@ impl State {
             final(self).entries() == old(self).entries(),
             final(self).entries@ == old(self).entries@,
             final(self).spec_entries@ == old(self).spec_entries@,
+            final(self).events@.len() == old(self).events@.len() + 1,
     {
         self.mark_coin_pending_spend(key);
         self.mark_coin_spent(key);
@@ -8219,7 +8200,7 @@ impl State {
             old(self).purses()[key.0].next_coin_idx < u64::MAX,
             old(self).next_age < u64::MAX,
             old(self).next_handle < u64::MAX,
-            old(self).events@.len() + 2 <= u64::MAX as nat,
+            old(self).events@.len() + 3 <= u64::MAX as nat,
         ensures
             final(self).invariant(),
             res.0 == old(self).next_handle,
@@ -8281,6 +8262,7 @@ impl State {
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
+            final(self).events@.len() == old(self).events@.len() + 1,
     {
         let exp = self.read_entry_exponent(key);
         self.set_entry_local(key, EntryLocal::LocalLockedFor(handle));
@@ -9691,7 +9673,7 @@ impl State {
             old(self).purses().dom().contains(p),
             old(self).purses()[p].next_entry_idx < u64::MAX,
             old(self).next_handle < u64::MAX,
-            old(self).events@.len() + 2 <= u64::MAX as nat,
+            old(self).events@.len() + 3 <= u64::MAX as nat,
         ensures
             final(self).invariant(),
             res.0 == old(self).next_handle,
@@ -9838,6 +9820,7 @@ impl State {
             final(self).entries() == old(self).entries(),
             final(self).entries@ == old(self).entries@,
             final(self).spec_entries@ == old(self).spec_entries@,
+            final(self).events@ == old(self).events@,
     {
         let ghost old_p_next = old(self).purses()[p].next_coin_idx;
         let ghost old_next_age = old(self).next_age;
@@ -9850,6 +9833,7 @@ impl State {
         let ghost old_entries_vec = old(self).entries@;
         let ghost old_spec_entries = old(self).spec_entries@;
         let ghost old_next_handle = old(self).next_handle;
+        let ghost old_events = old(self).events@;
         let n = exp_seq.len();
 
         let mut k: usize = 0;
@@ -9858,6 +9842,7 @@ impl State {
                 0 <= k <= n,
                 n == exp_seq@.len(),
                 self.invariant(),
+                self.events@ == old_events,
                 self.purses().dom() =~= old_purses_map.dom(),
                 old_purses_map.dom().contains(p),
                 self.purses()[p].next_coin_idx == old_p_next + k as nat,
