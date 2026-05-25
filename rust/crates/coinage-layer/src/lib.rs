@@ -528,6 +528,25 @@ pub open spec fn coin_value_pow2(exp: u8) -> nat {
     pow2_nat(exp as nat)
 }
 
+/// Spec-only lemma: `pow2_nat` is monotone (non-decreasing). Proved by
+/// straightforward induction on the exponent.
+pub proof fn lemma_pow2_monotone(e1: nat, e2: nat)
+    requires
+        e1 <= e2,
+    ensures
+        pow2_nat(e1) <= pow2_nat(e2),
+    decreases e2,
+{
+    if e2 == 0 {
+        // e1 == 0 too; trivially equal.
+    } else if e1 == e2 {
+        // trivial
+    } else {
+        lemma_pow2_monotone(e1, (e2 - 1) as nat);
+    }
+}
+
+
 /// Lexicographic priority comparison for two coins (Quint §6.3
 /// `coinOrderLT`). Returns true if `a` has *higher* priority than `b`
 /// (smaller rank tuple). The rank tuple is `(MaxExp - exp, MaxAge - age,
