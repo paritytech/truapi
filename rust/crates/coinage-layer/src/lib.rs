@@ -2265,6 +2265,94 @@ impl State {
         self.set_op_status(handle, OpStatus::Done);
     }
 
+    /// Operation lifecycle: any cancellable status (`Preparing`,
+    /// `Waiting(_)`) → `Failed`. Quint analog: `cancelOp`'s status
+    /// transition. The caller is responsible for releasing locks via
+    /// [`Self::release_locked_coin`] / [`Self::release_locked_entry`]
+    /// before or after invoking this; the bulk-sweep is not bundled
+    /// here because the cross-state refint invariant that would let
+    /// us prove "no LockedFor(h) remains" is not yet in the model.
+    pub fn set_op_failed(&mut self, handle: OpHandle)
+        requires
+            old(self).invariant(),
+            old(self).operations().dom().contains(handle),
+            match old(self).operations()[handle].status {
+                OpStatus::Preparing => true,
+                OpStatus::Waiting(_) => true,
+                _ => false,
+            },
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).operations() == old(self).operations().insert(handle, OperationRec {
+                handle: old(self).operations()[handle].handle,
+                kind: old(self).operations()[handle].kind,
+                purse: old(self).operations()[handle].purse,
+                status: OpStatus::Failed,
+            }),
+    {
+        self.set_op_status(handle, OpStatus::Failed);
+    }
+
+    /// Release a coin that's locked for `handle`, returning it to
+    /// `Available`. Quint analog: the per-coin step of `cancelOp`'s
+    /// `releasedCoins` fold.
+    pub fn release_locked_coin(&mut self, key: (PurseId, u64), handle: OpHandle)
+        requires
+            old(self).invariant(),
+            old(self).coins().dom().contains(key),
+            old(self).coins()[key].state == CoinState::LockedFor(handle),
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins().insert(key, CoinRec {
+                purse: old(self).coins()[key].purse,
+                idx: old(self).coins()[key].idx,
+                exponent: old(self).coins()[key].exponent,
+                state: CoinState::Available,
+            }),
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).spec_entries@ == old(self).spec_entries@,
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+    {
+        self.transition_coin_state(key, CoinState::Available);
+    }
+
+    /// Release an entry that's locally locked for `handle`, returning
+    /// it to `LocalAvailable`. Quint analog: per-entry step of
+    /// `cancelOp`'s `releasedEntries` fold.
+    pub fn release_locked_entry(&mut self, key: (PurseId, u64), handle: OpHandle)
+        requires
+            old(self).invariant(),
+            old(self).entries().dom().contains(key),
+            old(self).entries()[key].local == EntryLocal::LocalLockedFor(handle),
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins(),
+            final(self).coins@ == old(self).coins@,
+            final(self).entries() == old(self).entries().insert(key, EntryRec {
+                purse: old(self).entries()[key].purse,
+                idx: old(self).entries()[key].idx,
+                exponent: old(self).entries()[key].exponent,
+                local: EntryLocal::LocalAvailable,
+                on_chain: old(self).entries()[key].on_chain,
+            }),
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+    {
+        self.set_entry_local(key, EntryLocal::LocalAvailable);
+    }
+
     /// Coin lifecycle: `Pending` → `Available`. Called when chain
     /// observation confirms the coin exists on-chain.
     pub fn mark_coin_observed(&mut self, key: (PurseId, u64))
@@ -2693,6 +2781,7 @@ impl State {
                 self.purses@ == old_purses_vec,
                 self.spec_purses@ == old_spec_purses,
                 self.next_purse_id == old_next_purse_id,
+                self.next_handle == old(self).next_handle,
                 self.spec_coins@ == old_coins,
                 self.coins@ == old_coins_vec,
                 self.spec_entries@ == old_entries,
@@ -2934,6 +3023,9 @@ impl State {
                 on_chain: old(self).entries()[key].on_chain,
                 local: new_state,
             }),
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
     {
         let ghost old_purses_vec = self.purses@;
         let ghost old_spec_purses = self.spec_purses@;
@@ -2953,6 +3045,7 @@ impl State {
                 self.purses@ == old_purses_vec,
                 self.spec_purses@ == old_spec_purses,
                 self.next_purse_id == old_next_purse_id,
+                self.next_handle == old(self).next_handle,
                 self.spec_coins@ == old_coins,
                 self.coins@ == old_coins_vec,
                 self.spec_entries@ == old_entries,
