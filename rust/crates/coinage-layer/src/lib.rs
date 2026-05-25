@@ -4554,6 +4554,58 @@ impl State {
         None
     }
 
+    /// Find any coin (of any state) whose `account` matches `target`.
+    /// Returns `(purse, idx)` of the first match in Vec order, or
+    /// `None`. Used by `classify_incoming_payment` to test whether a
+    /// memo's `recipient_account` is known locally.
+    pub fn find_coin_with_account(&self, target: u64)
+        -> (res: Option<(PurseId, u64)>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some(key) =>
+                    self.coins().dom().contains(key)
+                    && self.coins()[key].account == target,
+                None =>
+                    forall|k: (PurseId, u64)|
+                        #[trigger] self.coins().dom().contains(k)
+                        ==> self.coins()[k].account != target,
+            },
+    {
+        let mut j: usize = 0;
+        while j < self.coins.len()
+            invariant
+                0 <= j <= self.coins.len(),
+                self.invariant(),
+                forall|jj: int| 0 <= jj < j ==>
+                    (#[trigger] self.coins@[jj]).account != target,
+            decreases self.coins.len() - j,
+        {
+            if self.coins[j].account == target {
+                let key = (self.coins[j].purse, self.coins[j].idx);
+                proof {
+                    assert(self.spec_coins@.dom().contains(key));
+                }
+                return Some(key);
+            }
+            j = j + 1;
+        }
+        proof {
+            assert forall|k: (PurseId, u64)|
+                #[trigger] self.coins().dom().contains(k)
+                implies self.coins()[k].account != target
+            by {
+                let w = choose|jj: int|
+                    0 <= jj < self.coins@.len()
+                    && #[trigger] self.coins@[jj].purse == k.0
+                    && self.coins@[jj].idx == k.1;
+                assert(self.coins@[w].account == self.coins()[k].account);
+            }
+        }
+        None
+    }
+
     /// Tier-2 (split cover, §6.3): find any `Available` coin in purse `p`
     /// whose `coin_value(exp)` strictly exceeds `amount`. Such a coin can
     /// be split into two coins of strictly smaller exponent (one of which
