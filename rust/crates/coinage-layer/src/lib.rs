@@ -134,6 +134,37 @@ pub struct EntryRec {
     pub ring_idx: u64,
 }
 
+/// True iff `status` is a terminal op state (no further transitions
+/// follow). Quint `isTerminal`.
+pub open spec fn is_terminal_op_status(status: OpStatus) -> bool {
+    match status {
+        OpStatus::Done => true,
+        OpStatus::Failed => true,
+        _ => false,
+    }
+}
+
+/// True iff an op in `status` can transition to `Failed` via
+/// `set_op_failed`. Mirrors the Quint `isCancellable` predicate.
+pub open spec fn is_cancellable_op_status(status: OpStatus) -> bool {
+    match status {
+        OpStatus::Preparing => true,
+        OpStatus::Waiting(_) => true,
+        _ => false,
+    }
+}
+
+/// True iff `status` is a mid-flight chain state (extrinsic in transit
+/// or just landed). Quint `isMid`.
+pub open spec fn is_mid_op_status(status: OpStatus) -> bool {
+    match status {
+        OpStatus::Submitted => true,
+        OpStatus::InBlock => true,
+        OpStatus::Finalized => true,
+        _ => false,
+    }
+}
+
 /// Operation kind (Quint `OpKind`, design §3.4). Each kind drives a
 /// distinct top-level operation flavor; `OpStatus` then walks every
 /// kind through the same lifecycle (Preparing → Submitted → InBlock →
