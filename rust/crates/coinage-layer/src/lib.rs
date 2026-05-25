@@ -4942,6 +4942,50 @@ impl State {
         }
     }
 
+    /// Check: does any operation target purse `p`? Returns `true` iff
+    /// at least one operation has `op.purse == p`. Useful as a pre-flight
+    /// guard before `delete_purse`, which requires no targeting ops.
+    pub fn has_op_targeting_purse(&self, p: PurseId) -> (res: bool)
+        requires
+            self.invariant(),
+        ensures
+            res == exists|h: OpHandle|
+                #[trigger] self.operations().dom().contains(h)
+                && self.operations()[h].purse == p,
+    {
+        let mut j: usize = 0;
+        while j < self.operations.len()
+            invariant
+                0 <= j <= self.operations.len(),
+                self.invariant(),
+                forall|jj: int| 0 <= jj < j ==>
+                    (#[trigger] self.operations@[jj]).purse != p,
+            decreases self.operations.len() - j,
+        {
+            if self.operations[j].purse == p {
+                let h = self.operations[j].handle;
+                proof {
+                    assert(self.spec_operations@.dom().contains(h));
+                    assert(self.operations()[h].purse == p);
+                }
+                return true;
+            }
+            j = j + 1;
+        }
+        proof {
+            assert forall|h: OpHandle|
+                #[trigger] self.operations().dom().contains(h)
+                implies self.operations()[h].purse != p
+            by {
+                let w = choose|jj: int|
+                    0 <= jj < self.operations@.len()
+                    && #[trigger] self.operations@[jj].handle == h;
+                assert(self.operations@[w].handle == h);
+            }
+        }
+        false
+    }
+
     /// Result-returning variant of `op_meta`.
     pub fn query_op_meta(&self, handle: OpHandle)
         -> (res: Result<(OpKind, PurseId), Error>)
