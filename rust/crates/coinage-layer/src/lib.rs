@@ -4651,39 +4651,6 @@ impl State {
         });
     }
 
-    /// Variant of [`Self::mark_entry_ready`] that emits
-    /// `EntryReadinessChanged { Ready }`.
-    pub fn mark_entry_ready_with_event(&mut self, key: (PurseId, u64))
-        requires
-            old(self).invariant(),
-            old(self).entries().dom().contains(key),
-            old(self).entries()[key].on_chain == EntryOnChain::Waiting,
-            old(self).events@.len() < u64::MAX as nat,
-        ensures
-            final(self).invariant(),
-            final(self).entries().dom().contains(key),
-            final(self).entries()[key].on_chain == EntryOnChain::Ready,
-            final(self).events@ == old(self).events@.push(Event::EntryReadinessChanged {
-                purse: key.0,
-                exponent: old(self).entries()[key].exponent,
-                new_state: EntryOnChain::Ready,
-            }),
-            final(self).purses() == old(self).purses(),
-            final(self).coins() == old(self).coins(),
-            final(self).coins@ == old(self).coins@,
-            final(self).operations@ == old(self).operations@,
-            final(self).next_handle == old(self).next_handle,
-            final(self).next_age == old(self).next_age,
-    {
-        let exp = self.read_entry_exponent(key);
-        self.mark_entry_ready(key);
-        self.emit_event(Event::EntryReadinessChanged {
-            purse: key.0,
-            exponent: exp,
-            new_state: EntryOnChain::Ready,
-        });
-    }
-
     /// Variant of [`Self::start_op`] that also appends an
     /// `OperationStarted` event to the event stream.
     pub fn start_op_with_event(&mut self, kind: OpKind, purse: PurseId)
@@ -6090,6 +6057,7 @@ impl State {
             old(self).invariant(),
             old(self).entries().dom().contains(key),
             old(self).entries()[key].on_chain == EntryOnChain::Waiting,
+            old(self).events@.len() < u64::MAX as nat,
         ensures
             final(self).invariant(),
             final(self).purses() == old(self).purses(),
@@ -6105,7 +6073,11 @@ impl State {
             final(self).next_age == old(self).next_age,
             final(self).fee_balance == old(self).fee_balance,
             final(self).next_extrinsic_id == old(self).next_extrinsic_id,
-            final(self).events@ == old(self).events@,
+            final(self).events@ == old(self).events@.push(Event::EntryReadinessChanged {
+                purse: key.0,
+                exponent: old(self).entries()[key].exponent,
+                new_state: EntryOnChain::Ready,
+            }),
             final(self).paid_ring_membership == old(self).paid_ring_membership,
             final(self).total_in == old(self).total_in,
             final(self).total_out == old(self).total_out,
@@ -6113,7 +6085,13 @@ impl State {
             final(self).chain_coins@ == old(self).chain_coins@,
             final(self).chain_entries@ == old(self).chain_entries@,
     {
+        let exp = self.read_entry_exponent(key);
         self.set_entry_on_chain(key, EntryOnChain::Ready);
+        self.emit_event(Event::EntryReadinessChanged {
+            purse: key.0,
+            exponent: exp,
+            new_state: EntryOnChain::Ready,
+        });
     }
 
     /// Anonymity-floor regression: entry's on-chain state degrades
