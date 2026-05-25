@@ -5688,6 +5688,40 @@ impl State {
         false
     }
 
+    /// Autonomous maintenance trigger: scan purses, return the first
+    /// one whose `Available` coin count strictly exceeds `threshold`.
+    /// Returns `None` if no purse is over-fragmented. Quint analog:
+    /// maintenance scheduler that decides which purse to consolidate next.
+    pub fn find_purse_needing_maintenance(&self, threshold: usize)
+        -> (res: Option<PurseId>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some(p) => self.purses().dom().contains(p),
+                None => true,
+            },
+    {
+        let mut i: usize = 0;
+        while i < self.purses.len()
+            invariant
+                0 <= i <= self.purses.len(),
+                self.invariant(),
+            decreases self.purses.len() - i,
+        {
+            let pid = self.purses[i].id;
+            let count = self.coin_count_available(pid);
+            if count > threshold {
+                proof {
+                    assert(self.spec_purses@.dom().contains(pid));
+                }
+                return Some(pid);
+            }
+            i = i + 1;
+        }
+        None
+    }
+
     /// Count of operations currently in-flight (non-terminal status).
     pub fn op_count_in_flight(&self) -> (count: usize)
         requires
