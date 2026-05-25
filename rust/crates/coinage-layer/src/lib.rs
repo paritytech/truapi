@@ -4057,6 +4057,10 @@ impl State {
             final(self).coins()[new_key].exponent == old(self).coins()[key].exponent,
             final(self).coins().dom().contains(key),
             final(self).coins()[key].state == CoinState::Spent,
+            final(self).operations() == old(self).operations(),
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
     {
         let exp = self.read_coin_exponent(key);
         self.mark_coin_pending_spend(key);
@@ -4064,6 +4068,53 @@ impl State {
         let new_key = self.add_coin(dst, exp);
         self.mark_coin_observed(new_key);
         new_key
+    }
+
+    /// Tracked rebalance: wraps [`Self::rebalance`] in a `KRebalance`
+    /// operation. Allocates the op handle, runs the rebalance (src
+    /// coin → spent, dst coin minted), advances the op to `Submitted`.
+    /// Returns `(handle, new_coin_key)` so the caller can correlate
+    /// later chain events to this op.
+    pub fn tracked_rebalance(
+        &mut self,
+        src: PurseId,
+        dst: PurseId,
+        key: (PurseId, u64),
+    ) -> (res: (OpHandle, (PurseId, u64)))
+        requires
+            old(self).invariant(),
+            src != dst,
+            key.0 == src,
+            old(self).coins().dom().contains(key),
+            old(self).coins()[key].state == CoinState::Available,
+            old(self).purses().dom().contains(dst),
+            old(self).purses()[dst].next_coin_idx < u64::MAX,
+            old(self).next_age < u64::MAX,
+            old(self).next_handle < u64::MAX,
+        ensures
+            final(self).invariant(),
+            res.0 == old(self).next_handle,
+            final(self).operations().dom().contains(res.0),
+            final(self).operations()[res.0].status == OpStatus::Submitted,
+            final(self).operations()[res.0].kind == OpKind::Rebalance,
+            final(self).operations()[res.0].purse == src,
+            res.1.0 == dst,
+            final(self).coins().dom().contains(res.1),
+            final(self).coins()[res.1].state == CoinState::Available,
+            final(self).coins()[res.1].exponent == old(self).coins()[key].exponent,
+    {
+        let handle = self.start_op(OpKind::Rebalance, src);
+        proof {
+            assert(self.operations()[handle].kind == OpKind::Rebalance);
+            assert(self.operations()[handle].purse == src);
+        }
+        let new_key = self.rebalance(src, dst, key);
+        proof {
+            assert(self.operations()[handle].kind == OpKind::Rebalance);
+            assert(self.operations()[handle].purse == src);
+        }
+        self.mark_op_submitted(handle);
+        (handle, new_key)
     }
 
     /// Split a single `Available` coin into a batch of fresh coins in the
