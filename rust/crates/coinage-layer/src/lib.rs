@@ -52,6 +52,29 @@ pub type PurseId = u64;
 /// Reserved identifier of the main purse (Quint `MAIN_PURSE`).
 pub const MAIN_PURSE: PurseId = 0;
 
+/// Maximum coin exponent (Quint `MaxExponent`). The pilot scheme
+/// `coin_value(exp) = exp + 1` requires no specific upper bound, but
+/// the Quint spec caps exponents at this value to keep the design's
+/// `2^exp` arithmetic in u64. Callers should reject creation requests
+/// with `exponent > MAX_EXPONENT`.
+pub const MAX_EXPONENT: u8 = 30;
+
+/// Anonymity-floor jitter window (Quint `JitterMax`). After a top-up
+/// entry is allocated, the chain takes between 0 and `JITTER_MAX`
+/// blocks before it can be promoted to `Ready`. Hosts use this to
+/// compute `ready_at = allocated_at + JITTER_MAX`.
+pub const JITTER_MAX: u64 = 16;
+
+/// Gap-limit batch size for recovery scans (Quint `BatchSize`). A
+/// recovery scan iterates through coin/entry indices in batches of
+/// this many slots; if every slot in `GAP_LIMIT` consecutive batches
+/// is empty, the scan terminates.
+pub const RECOVERY_BATCH_SIZE: u64 = 8;
+
+/// Number of consecutive empty batches that terminate a recovery scan
+/// (Quint `GapLimit`).
+pub const RECOVERY_GAP_LIMIT: u64 = 4;
+
 /// Executable purse record (mirrors Quint `PurseRec`, spec lines 89-94).
 pub struct PurseRec {
     pub id: PurseId,
