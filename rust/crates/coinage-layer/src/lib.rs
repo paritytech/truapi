@@ -4879,6 +4879,50 @@ impl State {
         self.operations.len()
     }
 
+    /// Result-returning variant of `op_status`. Returns
+    /// `Err(OperationNotFound(handle))` when the op handle is unknown
+    /// — the surface a host's RPC layer typically needs.
+    pub fn query_op_status(&self, handle: OpHandle) -> (res: Result<OpStatus, Error>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Ok(s) =>
+                    self.operations().dom().contains(handle)
+                    && s == self.operations()[handle].status,
+                Err(Error::OperationNotFound(h)) =>
+                    !self.operations().dom().contains(handle) && h == handle,
+                Err(_) => false,
+            },
+    {
+        match self.op_status(handle) {
+            Some(s) => Ok(s),
+            None => Err(Error::OperationNotFound(handle)),
+        }
+    }
+
+    /// Result-returning variant of `coin_record`. Errors with
+    /// `Internal` when the coin doesn't exist (callers that want a
+    /// distinguishing error variant should match on `None` from
+    /// `coin_record` directly).
+    pub fn query_coin_record(&self, key: (PurseId, u64))
+        -> (res: Result<CoinRec, Error>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Ok(c) =>
+                    self.coins().dom().contains(key)
+                    && c == self.coins()[key],
+                Err(_) => !self.coins().dom().contains(key),
+            },
+    {
+        match self.coin_record(key) {
+            Some(c) => Ok(c),
+            None => Err(Error::Internal(Vec::new())),
+        }
+    }
+
     /// Synchronous read: the `(kind, purse)` pair of the operation
     /// `handle`, or `None` if no such operation exists. Used to route
     /// chain events back to the right purse / op-kind handler.
