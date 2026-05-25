@@ -57,13 +57,19 @@ impl PurseRec {
 ///   * `Pending` — coin has been allocated but is not yet observed as
 ///     existing on chain. Cannot be selected.
 ///   * `Available` — observed on chain; eligible for selection.
+///   * `LockedFor(handle)` — coin has been reserved by operation `handle`;
+///     can be released back to `Available` (cancel) or advanced to
+///     `PendingSpend` (commit).
 ///   * `PendingSpend` — coin has been chosen by an in-flight operation.
 ///   * `Spent` — coin is terminally consumed; counts neither for selection
 ///     nor as "live" for purse-deletion purposes.
+pub type OpHandle = u64;
+
 #[derive(PartialEq, Eq, Copy, Clone)]
 pub enum CoinState {
     Pending,
     Available,
+    LockedFor(OpHandle),
     PendingSpend,
     Spent,
 }
@@ -111,9 +117,6 @@ pub struct EntryRec {
     pub on_chain: EntryOnChain,
     pub local: EntryLocal,
 }
-
-/// Stable operation handle (Quint `OpHandle`). `u64` for the pilot.
-pub type OpHandle = u64;
 
 /// Operation kind (Quint `OpKind`, design §3.4). Pilot subset.
 #[derive(PartialEq, Eq, Copy, Clone)]
@@ -2232,6 +2235,87 @@ impl State {
             final(self).next_handle == old(self).next_handle,
     {
         self.transition_coin_state(key, CoinState::Available);
+    }
+
+    /// Coin lifecycle: `Available` → `LockedFor(handle)`. Reserves the
+    /// coin for the operation identified by `handle`. Reversible via
+    /// `unlock_coin`; commits to spending via `commit_locked_coin`.
+    pub fn lock_coin(&mut self, key: (PurseId, u64), handle: OpHandle)
+        requires
+            old(self).invariant(),
+            old(self).coins().dom().contains(key),
+            old(self).coins()[key].state == CoinState::Available,
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins().insert(key, CoinRec {
+                purse: old(self).coins()[key].purse,
+                idx: old(self).coins()[key].idx,
+                exponent: old(self).coins()[key].exponent,
+                state: CoinState::LockedFor(handle),
+            }),
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).spec_entries@ == old(self).spec_entries@,
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+    {
+        self.transition_coin_state(key, CoinState::LockedFor(handle));
+    }
+
+    /// Coin lifecycle: `LockedFor(_)` → `Available`. Releases the
+    /// reservation. Used when the operation that locked this coin
+    /// cancels before submission.
+    pub fn unlock_coin(&mut self, key: (PurseId, u64))
+        requires
+            old(self).invariant(),
+            old(self).coins().dom().contains(key),
+            exists|h: OpHandle| old(self).coins()[key].state == CoinState::LockedFor(h),
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins().insert(key, CoinRec {
+                purse: old(self).coins()[key].purse,
+                idx: old(self).coins()[key].idx,
+                exponent: old(self).coins()[key].exponent,
+                state: CoinState::Available,
+            }),
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).spec_entries@ == old(self).spec_entries@,
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+    {
+        self.transition_coin_state(key, CoinState::Available);
+    }
+
+    /// Coin lifecycle: `LockedFor(_)` → `PendingSpend`. Commits a locked
+    /// coin to its operation's spend pipeline (i.e., the operation has
+    /// been submitted and is now in flight).
+    pub fn commit_locked_coin(&mut self, key: (PurseId, u64))
+        requires
+            old(self).invariant(),
+            old(self).coins().dom().contains(key),
+            exists|h: OpHandle| old(self).coins()[key].state == CoinState::LockedFor(h),
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins().insert(key, CoinRec {
+                purse: old(self).coins()[key].purse,
+                idx: old(self).coins()[key].idx,
+                exponent: old(self).coins()[key].exponent,
+                state: CoinState::PendingSpend,
+            }),
+            final(self).entries() == old(self).entries(),
+            final(self).entries@ == old(self).entries@,
+            final(self).spec_entries@ == old(self).spec_entries@,
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+    {
+        self.transition_coin_state(key, CoinState::PendingSpend);
     }
 
     /// Internal: locate the coin keyed `key` in the exec Vec and rewrite its
