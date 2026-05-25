@@ -4689,6 +4689,36 @@ impl State {
         c
     }
 
+    /// Count of operations currently in-flight (non-terminal status).
+    pub fn op_count_in_flight(&self) -> (count: usize)
+        requires
+            self.invariant(),
+        ensures
+            count <= self.operations@.len(),
+    {
+        let mut c: usize = 0;
+        let mut j: usize = 0;
+        while j < self.operations.len()
+            invariant
+                0 <= j <= self.operations.len(),
+                c <= j,
+                self.invariant(),
+            decreases self.operations.len() - j,
+        {
+            let op = &self.operations[j];
+            let is_terminal = match op.status {
+                OpStatus::Done => true,
+                OpStatus::Failed => true,
+                _ => false,
+            };
+            if !is_terminal {
+                c = c + 1;
+            }
+            j = j + 1;
+        }
+        c
+    }
+
     /// Count of all coins (any state) in purse `p`. Useful diagnostic
     /// for "how cluttered is this purse?". Distinguish from
     /// coin_count_available which excludes locked/spent/pending.
