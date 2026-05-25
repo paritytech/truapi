@@ -520,6 +520,8 @@ pub struct State {
     /// gap-limit recovery scan to rebuild local `coins` after partial
     /// state loss. The chain side acts as the source of truth.
     pub chain_coins: Vec<CoinRec>,
+    /// Quint `chainEntries`. Mirror of on-chain entry state.
+    pub chain_entries: Vec<EntryRec>,
     #[allow(dead_code)]
     pub spec_purses: Ghost<Map<PurseId, PurseRecSpec>>,
     #[allow(dead_code)]
@@ -1040,6 +1042,7 @@ impl State {
             total_out: 0,
             tokens: Vec::new(),
             chain_coins: Vec::new(),
+            chain_entries: Vec::new(),
             spec_purses: Ghost(Map::<PurseId, PurseRecSpec>::empty().insert(MAIN_PURSE, main_spec)),
             spec_coins: Ghost(Map::<(PurseId, u64), CoinRec>::empty()),
             spec_entries: Ghost(Map::<(PurseId, u64), EntryRec>::empty()),
@@ -1663,6 +1666,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         let ghost old_purses_vec = self.purses@;
         let ghost old_spec_purses = self.spec_purses@;
@@ -2137,6 +2141,7 @@ impl State {
                 self.total_out == old(self).total_out,
                 self.tokens@ == old(self).tokens@,
                 self.chain_coins@ == old(self).chain_coins@,
+                self.chain_entries@ == old(self).chain_entries@,
                 old_m == old(self).spec_purses@,
                 old_v == old(self).purses@,
                 old_coins == old(self).coins().remove_keys(
@@ -2441,6 +2446,7 @@ impl State {
                 self.total_out == old(self).total_out,
                 self.tokens@ == old(self).tokens@,
                 self.chain_coins@ == old(self).chain_coins@,
+                self.chain_entries@ == old(self).chain_entries@,
                 old_m == old(self).spec_purses@,
                 old_v == old(self).purses@,
                 old_coins == old(self).spec_coins@,
@@ -2462,6 +2468,7 @@ impl State {
                 self.total_out == old(self).total_out,
                 self.tokens@ == old(self).tokens@,
                 self.chain_coins@ == old(self).chain_coins@,
+                self.chain_entries@ == old(self).chain_entries@,
                 old(self).purses().dom().contains(p),
                 p_old_rec == old_m[p],
                 p_old_rec.next_coin_idx < u64::MAX,
@@ -2853,6 +2860,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         let ghost old_v = self.purses@;
         let ghost old_m = self.spec_purses@;
@@ -2888,6 +2896,7 @@ impl State {
                 self.total_out == old(self).total_out,
                 self.tokens@ == old(self).tokens@,
                 self.chain_coins@ == old(self).chain_coins@,
+                self.chain_entries@ == old(self).chain_entries@,
                 old_m == old(self).spec_purses@,
                 old_v == old(self).purses@,
                 old_entries == old(self).spec_entries@,
@@ -3196,6 +3205,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         self.consume_entry(key);
         self.mark_op_done(handle);
@@ -3233,6 +3243,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         self.commit_locked_coin(key);
         self.mark_coin_spent(key);
@@ -3276,6 +3287,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         self.release_locked_coin(key, handle);
         self.set_op_failed(handle);
@@ -3317,6 +3329,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         self.release_locked_entry(key, handle);
         self.set_op_failed(handle);
@@ -3368,6 +3381,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         let handle = self.start_op(kind, key.0);
         proof {
@@ -3408,6 +3422,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         let handle = self.start_op(kind, key.0);
         proof {
@@ -3472,6 +3487,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         self.add_entry_with_meta(p, exponent, on_chain, local, 0, 0, 0, 0)
     }
@@ -3505,6 +3521,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             // Other state untouched.
             final(self).purses() == old(self).purses(),
             final(self).purses@ == old(self).purses@,
@@ -3667,6 +3684,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -3711,6 +3729,7 @@ impl State {
                 self.total_out == old(self).total_out,
                 self.tokens@ == old(self).tokens@,
                 self.chain_coins@ == old(self).chain_coins@,
+                self.chain_entries@ == old(self).chain_entries@,
                 old_purses_vec == old(self).purses@,
                 old_spec_purses == old(self).spec_purses@,
                 old_spec_purses == old(self).purses(),
@@ -4166,6 +4185,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -4200,6 +4220,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -4233,6 +4254,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -4268,6 +4290,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -4306,6 +4329,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -4349,6 +4373,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             final(self).operations() == old(self).operations().insert(handle, OperationRec {
                 handle: old(self).operations()[handle].handle,
                 kind: old(self).operations()[handle].kind,
@@ -4388,6 +4413,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             match res {
                 Some(key) =>
                     old(self).coins().dom().contains(key)
@@ -4476,6 +4502,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             match res {
                 Some(key) =>
                     old(self).entries().dom().contains(key)
@@ -4581,6 +4608,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             final(self).coins@.len() == old(self).coins@.len(),
             lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
                 ==> lock_refint(final(self).coins(), final(self).entries(),
@@ -4626,6 +4654,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             final(self).entries@.len() == old(self).entries@.len(),
             lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
                 ==> lock_refint(final(self).coins(), final(self).entries(),
@@ -4667,6 +4696,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         self.transition_coin_state(key, CoinState::Available);
     }
@@ -4703,6 +4733,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         self.transition_coin_state(key, CoinState::PendingSpend);
     }
@@ -4739,6 +4770,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         self.transition_coin_state(key, CoinState::Spent);
     }
@@ -4777,6 +4809,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         self.transition_coin_state(key, CoinState::Available);
     }
@@ -4815,6 +4848,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             // lock_refint preservation: if the old state satisfied
             // refint AND the handle is a known op, the new state still
             // satisfies refint (the only new LockedFor edge references h,
@@ -4861,6 +4895,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             final(self).coins@.len() == old(self).coins@.len(),
             // lock_refint preservation: removing a LockedFor edge can
             // never break refint (no new dangling references).
@@ -4905,6 +4940,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             final(self).coins@.len() == old(self).coins@.len(),
             // lock_refint preservation: removing a LockedFor edge.
             lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
@@ -4948,6 +4984,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             final(self).coins@.len() == old(self).coins@.len(),
     {
         let ghost old_purses_vec = self.purses@;
@@ -4978,6 +5015,7 @@ impl State {
                 self.total_out == old(self).total_out,
                 self.tokens@ == old(self).tokens@,
                 self.chain_coins@ == old(self).chain_coins@,
+                self.chain_entries@ == old(self).chain_entries@,
                 self.spec_coins@ == old_coins,
                 self.coins@ == old_coins_vec,
                 self.spec_entries@ == old_entries,
@@ -5182,6 +5220,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         let ghost old_purses_vec = self.purses@;
         let ghost old_spec_purses = self.spec_purses@;
@@ -5211,6 +5250,7 @@ impl State {
                 self.total_out == old(self).total_out,
                 self.tokens@ == old(self).tokens@,
                 self.chain_coins@ == old(self).chain_coins@,
+                self.chain_entries@ == old(self).chain_entries@,
                 self.spec_coins@ == old_coins,
                 self.coins@ == old_coins_vec,
                 self.spec_entries@ == old_entries,
@@ -5398,6 +5438,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         self.set_entry_on_chain(key, EntryOnChain::Ready);
     }
@@ -5431,6 +5472,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         self.set_entry_on_chain(key, EntryOnChain::Missing);
     }
@@ -5470,6 +5512,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             // lock_refint preservation: same conditional shape as lock_coin.
             (lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
                 && old(self).operations().dom().contains(handle))
@@ -5514,6 +5557,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             final(self).entries@.len() == old(self).entries@.len(),
             lock_refint(old(self).coins(), old(self).entries(), old(self).operations())
                 ==> lock_refint(final(self).coins(), final(self).entries(),
@@ -5584,6 +5628,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             final(self).entries@.len() == old(self).entries@.len(),
     {
         let ghost old_purses_vec = self.purses@;
@@ -5614,6 +5659,7 @@ impl State {
                 self.total_out == old(self).total_out,
                 self.tokens@ == old(self).tokens@,
                 self.chain_coins@ == old(self).chain_coins@,
+                self.chain_entries@ == old(self).chain_entries@,
                 self.spec_coins@ == old_coins,
                 self.coins@ == old_coins_vec,
                 self.spec_entries@ == old_entries,
@@ -5824,6 +5870,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
@@ -5836,6 +5883,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             ({
                 let removed = old(self).coins@[idx as int];
                 final(self).coins()
@@ -7337,6 +7385,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         self.mark_coin_pending_spend(key);
         self.mark_coin_spent(key);
@@ -8638,6 +8687,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
@@ -8650,6 +8700,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             final(self).coins() == old(self).coins().remove_keys(
                 Set::new(|k: (PurseId, u64)| k.0 == p)
             ),
@@ -8678,6 +8729,7 @@ impl State {
                 self.total_out == old(self).total_out,
                 self.tokens@ == old(self).tokens@,
                 self.chain_coins@ == old(self).chain_coins@,
+                self.chain_entries@ == old(self).chain_entries@,
                 // Current spec_coins is a subset of initial that preserves all
                 // entries with purse != p.
                 forall|k: (PurseId, u64)| #[trigger] self.spec_coins@.dom().contains(k)
@@ -8785,6 +8837,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             ({
                 let removed = old(self).entries@[idx as int];
                 final(self).entries()
@@ -8950,6 +9003,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             final(self).entries() == old(self).entries().remove_keys(
                 Set::new(|k: (PurseId, u64)| k.0 == p)
             ),
@@ -8978,6 +9032,7 @@ impl State {
                 self.total_out == old(self).total_out,
                 self.tokens@ == old(self).tokens@,
                 self.chain_coins@ == old(self).chain_coins@,
+                self.chain_entries@ == old(self).chain_entries@,
                 forall|k: (PurseId, u64)| #[trigger] self.spec_entries@.dom().contains(k)
                     ==> initial_entries.dom().contains(k)
                         && self.spec_entries@[k] == initial_entries[k],
@@ -9124,6 +9179,7 @@ impl State {
             final(self).total_out == old(self).total_out,
             final(self).tokens@ == old(self).tokens@,
             final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         let key = self.add_entry_with_meta(
             p,
