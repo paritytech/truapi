@@ -557,6 +557,18 @@ pub proof fn lemma_pow2_at_30()
     reveal_with_fuel(pow2_nat, 31);
 }
 
+/// Executable real coin value (Quint `coinValue`): `2^exp` for
+/// `exp <= MAX_EXPONENT`. Thin convenience wrapper over
+/// [`pow2_u64_exec`] that matches the `coin_value_pow2` spec fn.
+pub fn coin_value_pow2_exec(exp: u8) -> (res: u64)
+    requires
+        exp <= MAX_EXPONENT,
+    ensures
+        res as nat == coin_value_pow2(exp),
+{
+    pow2_u64_exec(exp)
+}
+
 /// Executable `2^exp` for `exp <= MAX_EXPONENT` (= 30). Returns the
 /// real Quint `coinValue` for that exponent. Verus-verified
 /// overflow-safe: `MAX_EXPONENT = 30 ⇒ 2^30 < u64::MAX`.
