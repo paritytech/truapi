@@ -2038,6 +2038,73 @@ impl State {
         vstd::pervasive::unreached()
     }
 
+    /// Atomic composite: cancel an op that's holding one locked coin.
+    /// Releases the coin back to `Available` and marks the op
+    /// `Failed`. Inverse of [`Self::start_op_locking_coin`] (when the
+    /// op was started and the lock holds but the op hasn't progressed
+    /// beyond `Preparing` / `Waiting(_)`).
+    pub fn cancel_op_releasing_coin(
+        &mut self,
+        handle: OpHandle,
+        key: (PurseId, u64),
+    )
+        requires
+            old(self).invariant(),
+            old(self).operations().dom().contains(handle),
+            match old(self).operations()[handle].status {
+                OpStatus::Preparing => true,
+                OpStatus::Waiting(_) => true,
+                _ => false,
+            },
+            old(self).coins().dom().contains(key),
+            old(self).coins()[key].state == CoinState::LockedFor(handle),
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins().dom().contains(key),
+            final(self).coins()[key].state == CoinState::Available,
+            final(self).operations().dom().contains(handle),
+            final(self).operations()[handle].status == OpStatus::Failed,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+    {
+        self.release_locked_coin(key, handle);
+        self.set_op_failed(handle);
+    }
+
+    /// Atomic composite: cancel an op that's holding one locked entry.
+    /// Releases the entry back to `LocalAvailable` and marks the op
+    /// `Failed`. Inverse of [`Self::start_op_locking_entry`].
+    pub fn cancel_op_releasing_entry(
+        &mut self,
+        handle: OpHandle,
+        key: (PurseId, u64),
+    )
+        requires
+            old(self).invariant(),
+            old(self).operations().dom().contains(handle),
+            match old(self).operations()[handle].status {
+                OpStatus::Preparing => true,
+                OpStatus::Waiting(_) => true,
+                _ => false,
+            },
+            old(self).entries().dom().contains(key),
+            old(self).entries()[key].local == EntryLocal::LocalLockedFor(handle),
+        ensures
+            final(self).invariant(),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins(),
+            final(self).entries().dom().contains(key),
+            final(self).entries()[key].local == EntryLocal::LocalAvailable,
+            final(self).operations().dom().contains(handle),
+            final(self).operations()[handle].status == OpStatus::Failed,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+    {
+        self.release_locked_entry(key, handle);
+        self.set_op_failed(handle);
+    }
+
     /// Atomic composite: start a new operation and lock `key`'s coin
     /// for it. The coin must currently be `Available`; on return it
     /// is `LockedFor(handle)`, and the operation is in `Preparing`.
