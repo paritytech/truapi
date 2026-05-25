@@ -38,7 +38,7 @@ pub enum HostDevicePermissionRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, Display)]
 pub enum RemotePermission {
     /// Outbound HTTP/WebSocket access to a set of domains.
-    #[display("access to {}", DisplayDomains(domains))]
+    #[display("access to {}", domains.join(", "))]
     Remote {
         /// Domain patterns requested by the product.
         domains: Vec<String>,
@@ -55,25 +55,6 @@ pub enum RemotePermission {
     /// Submitting statements on behalf of the user via `remote_statement_store_submit`.
     #[display("submit statements")]
     StatementSubmit,
-}
-
-struct DisplayDomains<'a>(&'a [String]);
-
-impl fmt::Display for DisplayDomains<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.0.is_empty() {
-            return f.write_str("(no domains)");
-        }
-        let mut sorted: Vec<&str> = self.0.iter().map(String::as_str).collect();
-        sorted.sort();
-        for (i, domain) in sorted.iter().enumerate() {
-            if i > 0 {
-                f.write_str(", ")?;
-            }
-            f.write_str(domain)?;
-        }
-        Ok(())
-    }
 }
 
 /// Batched remote-permission request (RFC 0002).
