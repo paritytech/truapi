@@ -1306,6 +1306,44 @@ impl State {
     ///   - `Ok(())` if the purse is removed.
     ///   - `Err(CannotDeleteMainPurse)` if `p == MAIN_PURSE`; state unchanged.
     ///   - `Err(PurseNotFound(p))` if `p` is not a known purse; state unchanged.
+    /// Safe variant of [`Self::delete_purse`]: runs the safety checks
+    /// first and returns a typed error if the purse can't be removed,
+    /// rather than tripping a hard precondition. Composes with the
+    /// existing exec pre-flight guards (`check_has_live_coin_in`,
+    /// `has_op_targeting_purse`).
+    ///
+    /// Errors surface (in the order checked):
+    ///   - PurseHasInFlightOperations — at least one op targets `p`.
+    ///   - InsufficientFunds — `p` still has at least one live coin.
+    ///   - Then anything delete_purse itself can return.
+    pub fn delete_purse_safe(&mut self, p: PurseId) -> (res: Result<(), Error>)
+        requires
+            old(self).invariant(),
+        ensures
+            final(self).invariant(),
+            match res {
+                Ok(()) =>
+                    !old(self).has_live_coin_in(p)
+                    && (forall|h: OpHandle|
+                        #[trigger] old(self).operations().dom().contains(h)
+                        ==> old(self).operations()[h].purse != p)
+                    && old(self).purses().dom().contains(p)
+                    && p != MAIN_PURSE,
+                Err(_) => true,
+            },
+    {
+        if self.has_op_targeting_purse(p) {
+            return Err(Error::PurseHasInFlightOperations);
+        }
+        if self.check_has_live_coin_in(p) {
+            return Err(Error::InsufficientFunds {
+                requested: 0,
+                available: 0,
+            });
+        }
+        self.delete_purse(p)
+    }
+
     pub fn delete_purse(&mut self, p: PurseId) -> (res: Result<(), Error>)
         requires
             old(self).invariant(),
