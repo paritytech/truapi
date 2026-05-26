@@ -3192,6 +3192,14 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).events@ == old(self).events@,
+            final(self).fee_balance == old(self).fee_balance,
+            final(self).next_extrinsic_id == old(self).next_extrinsic_id,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
+            final(self).tokens@ == old(self).tokens@,
+            final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         let ghost old_v = self.purses@;
         let ghost old_m = self.spec_purses@;
@@ -14025,6 +14033,101 @@ proof fn lemma_restore_chain_entry_refines(pre: State, post: State, rec: EntryRe
     let post_view = quint_view(post);
     let step_view = quint_step_restore_chain_entry(quint_view(pre), rec);
     assert(post_view.entries =~= step_view.entries);
+}
+
+/// Quint analog: insert a fresh coin and bump the owning purse's
+/// `next_coin_idx`. Quint does NOT model `next_age` (it's a Verus-only
+/// allocator); only `purses` and `coins` are in the shadow.
+pub open spec fn quint_step_add_coin_with_account(
+    pre: QuintViewState,
+    p: PurseId,
+    exponent: u8,
+    account: u64,
+    next_age: u64,
+    new_idx: u64,
+) -> QuintViewState
+    recommends
+        pre.purses.dom().contains(p),
+        pre.purses[p].next_coin_idx == new_idx as nat,
+        (new_idx as nat) < u64::MAX as nat,
+{
+    let key = (p, new_idx);
+    QuintViewState {
+        coins: pre.coins.insert(key, CoinRec {
+            purse: p,
+            idx: new_idx,
+            exponent,
+            state: CoinState::Pending,
+            age: next_age,
+            account,
+        }),
+        purses: pre.purses.insert(p, PurseRecSpec {
+            id: pre.purses[p].id,
+            name: pre.purses[p].name,
+            next_coin_idx: pre.purses[p].next_coin_idx + 1,
+            next_entry_idx: pre.purses[p].next_entry_idx,
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_add_coin_with_account_refines(
+    pre: State,
+    post: State,
+    p: PurseId,
+    exponent: u8,
+    account: u64,
+    new_idx: u64,
+)
+    requires
+        pre.invariant(),
+        pre.purses().dom().contains(p),
+        pre.purses()[p].next_coin_idx == new_idx as nat,
+        (new_idx as nat) < u64::MAX as nat,
+        pre.next_age < u64::MAX,
+        exponent <= MAX_EXPONENT,
+        post.invariant(),
+        post.coins() == pre.coins().insert(
+            (p, new_idx),
+            CoinRec {
+                purse: p,
+                idx: new_idx,
+                exponent,
+                state: CoinState::Pending,
+                age: pre.next_age,
+                account,
+            },
+        ),
+        post.purses().dom() =~= pre.purses().dom(),
+        post.purses()[p].id == p,
+        post.purses()[p].name == pre.purses()[p].name,
+        post.purses()[p].next_coin_idx == pre.purses()[p].next_coin_idx + 1,
+        post.purses()[p].next_entry_idx == pre.purses()[p].next_entry_idx,
+        forall|q: PurseId| q != p && #[trigger] pre.purses().dom().contains(q)
+            ==> post.purses()[q] == pre.purses()[q],
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_add_coin_with_account(
+            quint_view(pre), p, exponent, account, pre.next_age, new_idx,
+        ),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_add_coin_with_account(
+        quint_view(pre), p, exponent, account, pre.next_age, new_idx,
+    );
+    assert(post_view.coins =~= step_view.coins);
+    assert(post_view.purses =~= step_view.purses);
 }
 
 /// Quint analog: `purses' = purses.put(new_id, {id, name, 0, 0})`.
