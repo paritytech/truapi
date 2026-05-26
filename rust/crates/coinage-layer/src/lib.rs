@@ -13146,12 +13146,83 @@ proof fn lemma_add_total_out_refines(pre: State, post: State, amount: u64)
 {
 }
 
+/// Quint analog: `operations' = operations.put(handle, {handle, kind,
+/// purse, status: Preparing})`, `nextHandle' = nextHandle + 1`,
+/// `events' = events.append(EOperationStarted{handle, kind, purse})`.
+/// Allocator-bumping primitive — three fields change.
+pub open spec fn quint_step_start_op(
+    pre: QuintViewState,
+    kind: OpKind,
+    purse: PurseId,
+) -> QuintViewState
+    recommends pre.next_handle < u64::MAX,
+{
+    let handle = pre.next_handle;
+    QuintViewState {
+        operations: pre.operations.insert(handle, OperationRec {
+            handle,
+            kind,
+            purse,
+            status: OpStatus::Preparing,
+        }),
+        next_handle: (pre.next_handle + 1) as u64,
+        events: pre.events.push(Event::OperationStarted { handle, kind, purse }),
+        ..pre
+    }
+}
+
+proof fn lemma_start_op_refines(
+    pre: State,
+    post: State,
+    kind: OpKind,
+    purse: PurseId,
+    handle: OpHandle,
+)
+    requires
+        pre.invariant(),
+        pre.purses().dom().contains(purse),
+        pre.next_handle < u64::MAX,
+        pre.events@.len() < u64::MAX as nat,
+        handle == pre.next_handle,
+        post.operations() == pre.operations().insert(handle, OperationRec {
+            handle,
+            kind,
+            purse,
+            status: OpStatus::Preparing,
+        }),
+        post.next_handle == pre.next_handle + 1,
+        post.events@ == pre.events@.push(Event::OperationStarted { handle, kind, purse }),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_start_op(quint_view(pre), kind, purse),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_start_op(quint_view(pre), kind, purse);
+    assert(post_view.operations =~= step_view.operations);
+    assert(post_view.events =~= step_view.events);
+}
+
 // ==========================================================================
 // Findings from the refinement attempt — primitives whose contracts are
 // too loose to refine without strengthening:
 //
 // - `create_purse`: postcondition mentions only `purses()`. Misses
 //   `coins/entries/operations/events/.../chain_coins/chain_entries` preservation.
+// - `add_coin_with_account` / `add_entry_with_meta`: pre-cascade contracts.
+//   Cover most preservation but miss `next_extrinsic_id`, `total_in`,
+//   `total_out`, `fee_balance`, `paid_ring_membership`, `tokens@`,
+//   `chain_coins@`, `chain_entries@`. The implementations DO preserve these
+//   (their bodies don't touch them), but the contracts don't say so.
 // - `top_up_fee_account`, `deduct_fee`: contracts mention `fee_balance`
 //   but omit `events`, `total_*`, `tokens`, `chain_*`, `paid_ring_membership`
 //   preservation.
