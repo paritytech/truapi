@@ -13581,6 +13581,169 @@ proof fn lemma_release_locked_entry_refines(
     assert(post_view.entries =~= step_view.entries);
 }
 
+/// Quint analog: `entries' = entries.set(key, {..on_chain = new_state..})`.
+pub open spec fn quint_step_set_entry_on_chain(
+    pre: QuintViewState,
+    key: (PurseId, u64),
+    new_state: EntryOnChain,
+) -> QuintViewState
+    recommends
+        pre.entries.dom().contains(key),
+{
+    QuintViewState {
+        entries: pre.entries.insert(key, EntryRec {
+            on_chain: new_state,
+            ..pre.entries[key]
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_set_entry_on_chain_refines(
+    pre: State,
+    post: State,
+    key: (PurseId, u64),
+    new_state: EntryOnChain,
+)
+    requires
+        pre.invariant(),
+        pre.entries().dom().contains(key),
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries().insert(key, EntryRec {
+            on_chain: new_state,
+            ..pre.entries()[key]
+        }),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_set_entry_on_chain(quint_view(pre), key, new_state),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_set_entry_on_chain(quint_view(pre), key, new_state);
+    assert(post_view.entries =~= step_view.entries);
+}
+
+/// Quint analog: `entries' = entries.set(key, {..local = new_state..})`.
+pub open spec fn quint_step_set_entry_local(
+    pre: QuintViewState,
+    key: (PurseId, u64),
+    new_state: EntryLocal,
+) -> QuintViewState
+    recommends
+        pre.entries.dom().contains(key),
+{
+    QuintViewState {
+        entries: pre.entries.insert(key, EntryRec {
+            local: new_state,
+            ..pre.entries[key]
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_set_entry_local_refines(
+    pre: State,
+    post: State,
+    key: (PurseId, u64),
+    new_state: EntryLocal,
+)
+    requires
+        pre.invariant(),
+        pre.entries().dom().contains(key),
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries().insert(key, EntryRec {
+            local: new_state,
+            ..pre.entries()[key]
+        }),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_set_entry_local(quint_view(pre), key, new_state),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_set_entry_local(quint_view(pre), key, new_state);
+    assert(post_view.entries =~= step_view.entries);
+}
+
+/// Quint analog: `operations' = operations.set(handle, {..status = new_status..})`.
+pub open spec fn quint_step_set_op_status(
+    pre: QuintViewState,
+    handle: OpHandle,
+    new_status: OpStatus,
+) -> QuintViewState
+    recommends
+        pre.operations.dom().contains(handle),
+{
+    QuintViewState {
+        operations: pre.operations.insert(handle, OperationRec {
+            handle: pre.operations[handle].handle,
+            kind: pre.operations[handle].kind,
+            purse: pre.operations[handle].purse,
+            status: new_status,
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_set_op_status_refines(
+    pre: State,
+    post: State,
+    handle: OpHandle,
+    new_status: OpStatus,
+)
+    requires
+        pre.invariant(),
+        pre.operations().dom().contains(handle),
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations().insert(handle, OperationRec {
+            handle: pre.operations()[handle].handle,
+            kind: pre.operations()[handle].kind,
+            purse: pre.operations()[handle].purse,
+            status: new_status,
+        }),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_set_op_status(quint_view(pre), handle, new_status),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_set_op_status(quint_view(pre), handle, new_status);
+    assert(post_view.operations =~= step_view.operations);
+}
+
 /// Quint analog: `purses' = purses.put(new_id, {id, name, 0, 0})`.
 /// Note: Quint createPurse also emits `EPurseCreated`; the Verus
 /// implementation deliberately doesn't (the pilot scheme treats purse
