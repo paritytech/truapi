@@ -3628,6 +3628,14 @@ impl State {
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
             final(self).events@ == old(self).events@,
+            final(self).fee_balance == old(self).fee_balance,
+            final(self).next_extrinsic_id == old(self).next_extrinsic_id,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
+            final(self).tokens@ == old(self).tokens@,
+            final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         self.add_coin_with_account(p, exponent, 0)
     }
@@ -14840,6 +14848,155 @@ proof fn lemma_release_entry_lock_refines(pre: State, post: State, key: (PurseId
     let post_view = quint_view(post);
     let step_view = quint_step_release_entry_lock(quint_view(pre), key);
     assert(post_view.entries =~= step_view.entries);
+}
+
+/// Quint analog: thin wrapper over `add_coin_with_account` with
+/// `account = 0`.
+pub open spec fn quint_step_add_coin(
+    pre: QuintViewState,
+    p: PurseId,
+    exponent: u8,
+    next_age: u64,
+    new_idx: u64,
+) -> QuintViewState
+    recommends
+        pre.purses.dom().contains(p),
+        pre.purses[p].next_coin_idx == new_idx as nat,
+        (new_idx as nat) < u64::MAX as nat,
+{
+    quint_step_add_coin_with_account(pre, p, exponent, 0, next_age, new_idx)
+}
+
+proof fn lemma_add_coin_refines(
+    pre: State,
+    post: State,
+    p: PurseId,
+    exponent: u8,
+    new_idx: u64,
+)
+    requires
+        pre.invariant(),
+        pre.purses().dom().contains(p),
+        pre.purses()[p].next_coin_idx == new_idx as nat,
+        (new_idx as nat) < u64::MAX as nat,
+        pre.next_age < u64::MAX,
+        exponent <= MAX_EXPONENT,
+        post.invariant(),
+        post.coins() == pre.coins().insert(
+            (p, new_idx),
+            CoinRec {
+                purse: p,
+                idx: new_idx,
+                exponent,
+                state: CoinState::Pending,
+                age: pre.next_age,
+                account: 0,
+            },
+        ),
+        post.purses().dom() =~= pre.purses().dom(),
+        post.purses()[p].id == p,
+        post.purses()[p].name == pre.purses()[p].name,
+        post.purses()[p].next_coin_idx == pre.purses()[p].next_coin_idx + 1,
+        post.purses()[p].next_entry_idx == pre.purses()[p].next_entry_idx,
+        forall|q: PurseId| q != p && #[trigger] pre.purses().dom().contains(q)
+            ==> post.purses()[q] == pre.purses()[q],
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_add_coin(
+            quint_view(pre), p, exponent, pre.next_age, new_idx,
+        ),
+{
+    lemma_add_coin_with_account_refines(pre, post, p, exponent, 0, new_idx);
+}
+
+/// Quint analog: thin wrapper over `add_entry_with_meta` with zero
+/// placeholders for the four chain-side metadata fields.
+pub open spec fn quint_step_add_entry(
+    pre: QuintViewState,
+    p: PurseId,
+    exponent: u8,
+    on_chain: EntryOnChain,
+    local: EntryLocal,
+    new_idx: u64,
+) -> QuintViewState
+    recommends
+        pre.purses.dom().contains(p),
+        pre.purses[p].next_entry_idx == new_idx as nat,
+        (new_idx as nat) < u64::MAX as nat,
+{
+    quint_step_add_entry_with_meta(
+        pre, p, exponent, on_chain, local, 0, 0, 0, 0, new_idx,
+    )
+}
+
+proof fn lemma_add_entry_refines(
+    pre: State,
+    post: State,
+    p: PurseId,
+    exponent: u8,
+    on_chain: EntryOnChain,
+    local: EntryLocal,
+    new_idx: u64,
+)
+    requires
+        pre.invariant(),
+        pre.purses().dom().contains(p),
+        pre.purses()[p].next_entry_idx == new_idx as nat,
+        (new_idx as nat) < u64::MAX as nat,
+        exponent <= MAX_EXPONENT,
+        post.invariant(),
+        post.entries() == pre.entries().insert(
+            (p, new_idx),
+            EntryRec {
+                purse: p,
+                idx: new_idx,
+                exponent,
+                on_chain,
+                local,
+                member_key: 0,
+                allocated_at: 0,
+                ready_at: 0,
+                ring_idx: 0,
+            },
+        ),
+        post.coins() == pre.coins(),
+        post.purses().dom() =~= pre.purses().dom(),
+        post.purses()[p].id == p,
+        post.purses()[p].name == pre.purses()[p].name,
+        post.purses()[p].next_coin_idx == pre.purses()[p].next_coin_idx,
+        post.purses()[p].next_entry_idx == pre.purses()[p].next_entry_idx + 1,
+        forall|q: PurseId| q != p && #[trigger] pre.purses().dom().contains(q)
+            ==> post.purses()[q] == pre.purses()[q],
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_add_entry(
+            quint_view(pre), p, exponent, on_chain, local, new_idx,
+        ),
+{
+    lemma_add_entry_with_meta_refines(
+        pre, post, p, exponent, on_chain, local, 0, 0, 0, 0, new_idx,
+    );
 }
 
 /// Quint analog: `purses' = purses.put(new_id, {id, name, 0, 0})`.
