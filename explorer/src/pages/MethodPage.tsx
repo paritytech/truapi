@@ -21,6 +21,20 @@ export default function MethodPage() {
 
   const { service, method } = found;
   const prefix = `/v/${version.id}`;
+  const typeName = (id: string | undefined) =>
+    id ? (version.types.find((t) => t.id === id)?.name ?? "") : "";
+  const requestTypeName = typeName(method.requestType);
+  const requestDescription =
+    method.requestDescription && method.requestDescription !== requestTypeName
+      ? method.requestDescription
+      : null;
+  const responseName = typeName(method.responseType);
+  const errorName = typeName(method.errorType);
+  const responseShape = method.responseType
+    ? errorName
+      ? `Result(${responseName}, ${errorName})`
+      : responseName
+    : null;
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -63,83 +77,42 @@ export default function MethodPage() {
               {productFunction(service, method)}
             </code>
           </div>
-          {method.signature && (
-            <div className="px-5 py-3 flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4">
-              <span className="text-sm text-slate-400 sm:w-36 shrink-0 pt-0.5">
-                Signature
-              </span>
-              <div className="min-w-0 flex-1">
-                <CodeBlock code={method.signature} />
-              </div>
+          <div className="px-5 py-3 flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4">
+            <span className="text-sm text-slate-400 sm:w-36 shrink-0 pt-0.5">
+              {method.type === "subscription" ? "Start payload" : "Request"}
+            </span>
+            <div className="min-w-0 flex-1">
+              {requestTypeName ? (
+                <TypeString
+                  text={requestTypeName}
+                  versionId={version.id}
+                  types={version.types}
+                />
+              ) : (
+                <code className="text-sm font-mono text-slate-400">void</code>
+              )}
+              {requestDescription && (
+                <p className="text-sm text-slate-400 mt-1">
+                  {requestDescription}
+                </p>
+              )}
             </div>
-          )}
-          {method.docUrl && (
+          </div>
+          {responseShape && (
             <div className="px-5 py-3 flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4">
               <span className="text-sm text-slate-400 sm:w-36 shrink-0 pt-0.5">
-                Docs
+                {method.type === "subscription" ? "Receive payload" : "Response"}
               </span>
-              <a
-                href={method.docUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="text-sm font-mono text-sky-400 hover:text-sky-300 hover:underline underline-offset-2 transition-colors break-all"
-              >
-                {method.docUrl}
-              </a>
+              <TypeString
+                text={responseShape}
+                versionId={version.id}
+                types={version.types}
+              />
             </div>
           )}
         </div>
       </div>
 
-      {method.requestType && (
-        <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl overflow-hidden mb-6 card-hover animate-slide-up">
-          <div className="border-b border-slate-700/40 px-5 py-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-white font-display">
-              {method.type === "subscription" ? "Start Payload" : "Request"}
-            </h2>
-            <TypeString
-              text={method.requestType}
-              versionId={version.id}
-              types={version.types}
-            />
-          </div>
-          {method.requestDescription && (
-            <div className="px-5 py-3 text-sm text-slate-300">
-              {method.requestDescription}
-            </div>
-          )}
-        </div>
-      )}
-
-      {method.responseType && (
-        <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl overflow-hidden mb-6 card-hover animate-slide-up">
-          <div className="border-b border-slate-700/40 px-5 py-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-white font-display">
-              {method.type === "subscription" ? "Receive Payload" : "Response"}
-            </h2>
-            <TypeString
-              text={method.responseType}
-              versionId={version.id}
-              types={version.types}
-            />
-          </div>
-        </div>
-      )}
-
-      {method.errorType && (
-        <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl overflow-hidden mb-6 card-hover animate-slide-up">
-          <div className="border-b border-slate-700/40 px-5 py-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-white font-display">
-              Error
-            </h2>
-            <TypeString
-              text={method.errorType}
-              versionId={version.id}
-              types={version.types}
-            />
-          </div>
-        </div>
-      )}
 
       {method.exampleSource && (
         <div className="mb-8 animate-slide-up">

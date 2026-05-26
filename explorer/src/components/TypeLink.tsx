@@ -20,17 +20,17 @@ export function TypeString({
   types,
   className = "",
 }: TypeStringProps) {
-  const sortedIds = useMemo(
+  const sortedNames = useMemo(
     () =>
       types
-        .map((t) => t.id)
-        .filter((id) => id.length > 1)
+        .map((t) => t.name)
+        .filter((name) => name.length > 1)
         .sort((a, b) => b.length - a.length),
     [types],
   );
-  const idToName = useMemo(() => {
+  const nameToId = useMemo(() => {
     const map: Record<string, string> = {};
-    for (const t of types) map[t.id] = t.name;
+    for (const t of types) map[t.name] = t.id;
     return map;
   }, [types]);
 
@@ -40,20 +40,20 @@ export function TypeString({
 
     while (remaining.length > 0) {
       let earliestIndex = Infinity;
-      let earliestType = "";
+      let earliestName = "";
 
-      for (const id of sortedIds) {
-        const idx = remaining.indexOf(id);
+      for (const name of sortedNames) {
+        const idx = remaining.indexOf(name);
         if (idx === -1 || idx >= earliestIndex) continue;
         const before = idx > 0 ? remaining[idx - 1] : "";
-        const after = remaining[idx + id.length];
+        const after = remaining[idx + name.length];
         if (before && /[a-zA-Z0-9_]/.test(before)) continue;
         if (after && /[a-zA-Z0-9_]/.test(after)) continue;
         earliestIndex = idx;
-        earliestType = id;
+        earliestName = name;
       }
 
-      if (earliestType && earliestIndex < Infinity) {
+      if (earliestName && earliestIndex < Infinity) {
         if (earliestIndex > 0) {
           result.push({
             text: remaining.slice(0, earliestIndex),
@@ -61,10 +61,10 @@ export function TypeString({
           });
         }
         result.push({
-          text: idToName[earliestType] ?? earliestType,
-          typeId: earliestType,
+          text: earliestName,
+          typeId: nameToId[earliestName] ?? null,
         });
-        remaining = remaining.slice(earliestIndex + earliestType.length);
+        remaining = remaining.slice(earliestIndex + earliestName.length);
       } else {
         result.push({ text: remaining, typeId: null });
         break;
@@ -72,7 +72,7 @@ export function TypeString({
     }
 
     return result;
-  }, [text, sortedIds, idToName]);
+  }, [text, sortedNames, nameToId]);
 
   return (
     <span className={`font-mono text-sm ${className}`}>
