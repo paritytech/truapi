@@ -1,5 +1,3 @@
-use core::fmt;
-
 use derive_more::Display;
 use parity_scale_codec::{Decode, Encode};
 
@@ -59,27 +57,13 @@ pub enum RemotePermission {
 
 /// Batched remote-permission request (RFC 0002).
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, Display)]
-#[display("{}", DisplayPermissions(permissions))]
+#[display(
+    "{}",
+    permissions.iter().map(ToString::to_string).collect::<Vec<_>>().join("; ")
+)]
 pub struct RemotePermissionRequest {
     /// Permissions requested by the product.
     pub permissions: Vec<RemotePermission>,
-}
-
-struct DisplayPermissions<'a>(&'a [RemotePermission]);
-
-impl fmt::Display for DisplayPermissions<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.0.is_empty() {
-            return f.write_str("(empty)");
-        }
-        for (i, permission) in self.0.iter().enumerate() {
-            if i > 0 {
-                f.write_str("; ")?;
-            }
-            write!(f, "{permission}")?;
-        }
-        Ok(())
-    }
 }
 
 /// Outcome of a device-permission request.
