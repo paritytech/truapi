@@ -25,6 +25,8 @@ For larger changes that need cross-team discussion, use the RFC process:
 4. Open a PR using the **rfc** template (`?template=rfc.md`) and add the `rfc` and `proposal` labels
 5. The PR will be auto-added to the project board for tracking and review
 
+If you use Claude Code, the [`rfc`](.claude/skills/rfc/SKILL.md) skill is highly recommended for drafting RFCs — invoke it with `/rfc` to turn your notes into a well-structured document that follows the template above.
+
 ## Design Documents
 
 Canonical design documentation lives in `docs/design/`. To propose updates or add new design docs:
