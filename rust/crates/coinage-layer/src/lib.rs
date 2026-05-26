@@ -8720,12 +8720,76 @@ impl State {
         ensures
             final(self).invariant(),
             handle == old(self).next_handle,
-            final(self).operations().dom().contains(handle),
-            final(self).operations()[handle].status == OpStatus::Submitted,
-            final(self).operations()[handle].kind == OpKind::Maintenance,
-            final(self).operations()[handle].purse == key.0,
-            final(self).coins().dom().contains(key),
-            final(self).coins()[key].state == CoinState::Spent,
+            !old(self).operations().dom().contains(handle),
+            final(self).operations() == old(self).operations().insert(handle, OperationRec {
+                handle,
+                kind: OpKind::Maintenance,
+                purse: key.0,
+                status: OpStatus::Submitted,
+            }),
+            final(self).coins()[key] == (CoinRec {
+                purse: old(self).coins()[key].purse,
+                idx: old(self).coins()[key].idx,
+                exponent: old(self).coins()[key].exponent,
+                age: old(self).coins()[key].age,
+                account: old(self).coins()[key].account,
+                state: CoinState::Spent,
+            }),
+            forall|j: int| 0 <= j < new_exponents@.len() ==>
+                #[trigger] final(self).coins()[
+                    (key.0, (old(self).purses()[key.0].next_coin_idx + j) as u64)
+                ] == (CoinRec {
+                    purse: key.0,
+                    idx: (old(self).purses()[key.0].next_coin_idx + j) as u64,
+                    exponent: new_exponents@[j],
+                    state: CoinState::Pending,
+                    age: (old(self).next_age + j) as u64,
+                    account: 0,
+                }),
+            final(self).coins().dom() =~= old(self).coins().dom().union(
+                Set::new(|k: (PurseId, u64)|
+                    k.0 == key.0
+                    && (old(self).purses()[key.0].next_coin_idx as int) <= (k.1 as int)
+                    && (k.1 as int) < (old(self).purses()[key.0].next_coin_idx as int)
+                                       + new_exponents@.len() as int)
+            ),
+            forall|k: (PurseId, u64)| #[trigger] old(self).coins().dom().contains(k)
+                && k != key
+                ==> final(self).coins()[k] == old(self).coins()[k],
+            final(self).purses().dom() =~= old(self).purses().dom(),
+            final(self).purses()[key.0].id == key.0,
+            final(self).purses()[key.0].name == old(self).purses()[key.0].name,
+            final(self).purses()[key.0].next_coin_idx
+                == old(self).purses()[key.0].next_coin_idx + new_exponents@.len(),
+            final(self).purses()[key.0].next_entry_idx
+                == old(self).purses()[key.0].next_entry_idx,
+            forall|q: PurseId| q != key.0 && #[trigger] old(self).purses().dom().contains(q)
+                ==> final(self).purses()[q] == old(self).purses()[q],
+            final(self).next_age == old(self).next_age + new_exponents@.len(),
+            final(self).next_handle == old(self).next_handle + 1,
+            final(self).entries() == old(self).entries(),
+            final(self).fee_balance == old(self).fee_balance,
+            final(self).next_extrinsic_id == old(self).next_extrinsic_id,
+            final(self).events@ == old(self).events@
+                .push(Event::OperationStarted {
+                    handle,
+                    kind: OpKind::Maintenance,
+                    purse: key.0,
+                })
+                .push(Event::CoinSpent {
+                    purse: key.0,
+                    exponent: old(self).coins()[key].exponent,
+                })
+                .push(Event::OperationProgress {
+                    handle,
+                    status: OpStatus::Submitted,
+                }),
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
+            final(self).tokens@ == old(self).tokens@,
+            final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         let h = self.start_op(OpKind::Maintenance, key.0);
         proof {
@@ -8769,18 +8833,50 @@ impl State {
                 (#[trigger] new_exponents@[j]) <= MAX_EXPONENT,
         ensures
             final(self).invariant(),
-            final(self).coins().dom().contains(key),
-            final(self).coins()[key].state == CoinState::Spent,
+            // Source coin: same key, state flipped to Spent, other fields preserved.
+            final(self).coins()[key] == (CoinRec {
+                purse: old(self).coins()[key].purse,
+                idx: old(self).coins()[key].idx,
+                exponent: old(self).coins()[key].exponent,
+                age: old(self).coins()[key].age,
+                account: old(self).coins()[key].account,
+                state: CoinState::Spent,
+            }),
+            // New coins: full records matching the bulk-mint pattern.
+            forall|j: int| 0 <= j < new_exponents@.len() ==>
+                #[trigger] final(self).coins()[
+                    (key.0, (old(self).purses()[key.0].next_coin_idx + j) as u64)
+                ] == (CoinRec {
+                    purse: key.0,
+                    idx: (old(self).purses()[key.0].next_coin_idx + j) as u64,
+                    exponent: new_exponents@[j],
+                    state: CoinState::Pending,
+                    age: (old(self).next_age + j) as u64,
+                    account: 0,
+                }),
+            // Coins domain: old keys (each preserving its old record, except
+            // for `key` which is now Spent) plus the new contiguous range.
+            final(self).coins().dom() =~= old(self).coins().dom().union(
+                Set::new(|k: (PurseId, u64)|
+                    k.0 == key.0
+                    && (old(self).purses()[key.0].next_coin_idx as int) <= (k.1 as int)
+                    && (k.1 as int) < (old(self).purses()[key.0].next_coin_idx as int)
+                                       + new_exponents@.len() as int)
+            ),
+            forall|k: (PurseId, u64)| #[trigger] old(self).coins().dom().contains(k)
+                && k != key
+                ==> final(self).coins()[k] == old(self).coins()[k],
+            // Purses: only key.0's next_coin_idx advances.
+            final(self).purses().dom() =~= old(self).purses().dom(),
+            final(self).purses()[key.0].id == key.0,
+            final(self).purses()[key.0].name == old(self).purses()[key.0].name,
             final(self).purses()[key.0].next_coin_idx
                 == old(self).purses()[key.0].next_coin_idx + new_exponents@.len(),
-            // Each new coin key sits at sequential next_coin_idx slots.
-            forall|j: int| 0 <= j < new_exponents@.len() ==>
-                #[trigger] final(self).coins().dom().contains(
-                    (key.0, (old(self).purses()[key.0].next_coin_idx + j) as u64)
-                )
-                && final(self).coins()[
-                    (key.0, (old(self).purses()[key.0].next_coin_idx + j) as u64)
-                ].exponent == new_exponents@[j],
+            final(self).purses()[key.0].next_entry_idx
+                == old(self).purses()[key.0].next_entry_idx,
+            forall|q: PurseId| q != key.0 && #[trigger] old(self).purses().dom().contains(q)
+                ==> final(self).purses()[q] == old(self).purses()[q],
+            final(self).next_age == old(self).next_age + new_exponents@.len(),
             final(self).operations() == old(self).operations(),
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
@@ -8788,8 +8884,20 @@ impl State {
             final(self).entries() == old(self).entries(),
             final(self).entries@ == old(self).entries@,
             final(self).spec_entries@ == old(self).spec_entries@,
-            final(self).events@.len() == old(self).events@.len() + 1,
+            final(self).events@ == old(self).events@.push(Event::CoinSpent {
+                purse: key.0,
+                exponent: old(self).coins()[key].exponent,
+            }),
+            final(self).fee_balance == old(self).fee_balance,
+            final(self).next_extrinsic_id == old(self).next_extrinsic_id,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
+            final(self).tokens@ == old(self).tokens@,
+            final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
+        let ghost old_coins = self.coins();
         self.mark_coin_pending_spend(key);
         self.mark_coin_spent(key);
         let ghost pre_top_up_coins = self.coins();
@@ -8800,6 +8908,16 @@ impl State {
             // its Spent state.
             assert(pre_top_up_coins.dom().contains(key));
             assert(pre_top_up_coins[key].state == CoinState::Spent);
+            // For every old key k != key: the two mark_coin_* calls preserve
+            // it (they only insert at `key`), and top_up_purse preserves all
+            // existing keys.
+            assert forall|k: (PurseId, u64)| #[trigger] old_coins.dom().contains(k)
+                && k != key
+                implies self.coins()[k] == old_coins[k]
+            by {
+                assert(pre_top_up_coins.dom().contains(k));
+                assert(pre_top_up_coins[k] == old_coins[k]);
+            }
         }
     }
 
@@ -18387,6 +18505,367 @@ proof fn lemma_reserve_entries_refines(
         }
     }
     assert(post_view.entries =~= step_view.entries);
+}
+
+/// Quint analog: spend the source coin at `key`, then bulk-mint
+/// `new_exponents.len()` Pending coins in the same purse. The two
+/// mark_coin_* intermediate state transitions are hidden in the
+/// composite delta.
+pub open spec fn quint_step_split_coin(
+    pre: QuintViewState,
+    key: (PurseId, u64),
+    new_exponents: Seq<u8>,
+    base_idx: u64,
+    base_age: u64,
+) -> QuintViewState
+    recommends
+        pre.coins.dom().contains(key),
+        pre.coins[key].state == CoinState::Available,
+        pre.purses.dom().contains(key.0),
+        pre.purses[key.0].next_coin_idx == base_idx as nat,
+        (base_idx as nat) + new_exponents.len() <= u64::MAX as nat,
+        (base_age as nat) + new_exponents.len() <= u64::MAX as nat,
+{
+    let p = key.0;
+    let exp = pre.coins[key].exponent;
+    QuintViewState {
+        coins: Map::new(
+            |k: (PurseId, u64)|
+                pre.coins.dom().contains(k)
+                || (k.0 == p
+                    && (base_idx as int) <= (k.1 as int)
+                    && (k.1 as int) < (base_idx as int) + new_exponents.len() as int),
+            |k: (PurseId, u64)|
+                if k == key {
+                    CoinRec {
+                        purse: pre.coins[key].purse,
+                        idx: pre.coins[key].idx,
+                        exponent: exp,
+                        age: pre.coins[key].age,
+                        account: pre.coins[key].account,
+                        state: CoinState::Spent,
+                    }
+                } else if pre.coins.dom().contains(k) {
+                    pre.coins[k]
+                } else {
+                    let j = (k.1 as int) - (base_idx as int);
+                    CoinRec {
+                        purse: p,
+                        idx: k.1,
+                        exponent: new_exponents[j],
+                        state: CoinState::Pending,
+                        age: ((base_age as int) + j) as u64,
+                        account: 0,
+                    }
+                }
+        ),
+        purses: pre.purses.insert(p, PurseRecSpec {
+            id: pre.purses[p].id,
+            name: pre.purses[p].name,
+            next_coin_idx: pre.purses[p].next_coin_idx + new_exponents.len(),
+            next_entry_idx: pre.purses[p].next_entry_idx,
+        }),
+        events: pre.events.push(Event::CoinSpent {
+            purse: p,
+            exponent: exp,
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_split_coin_refines(
+    pre: State,
+    post: State,
+    key: (PurseId, u64),
+    new_exponents: Seq<u8>,
+    base_idx: u64,
+    base_age: u64,
+)
+    requires
+        pre.invariant(),
+        pre.coins().dom().contains(key),
+        pre.coins()[key].state == CoinState::Available,
+        pre.purses().dom().contains(key.0),
+        pre.purses()[key.0].next_coin_idx == base_idx as nat,
+        pre.next_age == base_age,
+        (base_idx as nat) + new_exponents.len() <= u64::MAX as nat,
+        (base_age as nat) + new_exponents.len() <= u64::MAX as nat,
+        pre.events@.len() < u64::MAX as nat,
+        forall|j: int| 0 <= j < new_exponents.len() ==>
+            (#[trigger] new_exponents[j]) <= MAX_EXPONENT,
+        post.invariant(),
+        post.coins()[key] == (CoinRec {
+            purse: pre.coins()[key].purse,
+            idx: pre.coins()[key].idx,
+            exponent: pre.coins()[key].exponent,
+            age: pre.coins()[key].age,
+            account: pre.coins()[key].account,
+            state: CoinState::Spent,
+        }),
+        forall|j: int| 0 <= j < new_exponents.len() ==>
+            #[trigger] post.coins()[(key.0, (base_idx + j) as u64)]
+                == (CoinRec {
+                    purse: key.0,
+                    idx: (base_idx + j) as u64,
+                    exponent: new_exponents[j],
+                    state: CoinState::Pending,
+                    age: (base_age + j) as u64,
+                    account: 0,
+                }),
+        post.coins().dom() =~= pre.coins().dom().union(
+            Set::new(|k: (PurseId, u64)|
+                k.0 == key.0
+                && (base_idx as int) <= (k.1 as int)
+                && (k.1 as int) < (base_idx as int) + new_exponents.len() as int)
+        ),
+        forall|k: (PurseId, u64)| #[trigger] pre.coins().dom().contains(k)
+            && k != key
+            ==> post.coins()[k] == pre.coins()[k],
+        post.purses().dom() =~= pre.purses().dom(),
+        post.purses()[key.0].id == key.0,
+        post.purses()[key.0].name == pre.purses()[key.0].name,
+        post.purses()[key.0].next_coin_idx
+            == pre.purses()[key.0].next_coin_idx + new_exponents.len(),
+        post.purses()[key.0].next_entry_idx == pre.purses()[key.0].next_entry_idx,
+        forall|q: PurseId| q != key.0 && #[trigger] pre.purses().dom().contains(q)
+            ==> post.purses()[q] == pre.purses()[q],
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@.push(Event::CoinSpent {
+            purse: key.0,
+            exponent: pre.coins()[key].exponent,
+        }),
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_split_coin(
+            quint_view(pre), key, new_exponents, base_idx, base_age,
+        ),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_split_coin(
+        quint_view(pre), key, new_exponents, base_idx, base_age,
+    );
+    assert(post_view.purses =~= step_view.purses);
+    assert(post_view.events =~= step_view.events);
+    assert forall|k: (PurseId, u64)| post_view.coins.dom().contains(k)
+        implies #[trigger] post_view.coins[k] == step_view.coins[k]
+    by {
+        if k == key {
+            // Both maps put Spent record at key.
+        } else if pre.coins().dom().contains(k) {
+            assert(post_view.coins[k] == pre.coins()[k]);
+            assert(step_view.coins[k] == pre.coins()[k]);
+        } else {
+            let j = (k.1 as int) - (base_idx as int);
+            assert(0 <= j < new_exponents.len());
+            assert(k == (key.0, (base_idx + j) as u64));
+        }
+    }
+    assert(post_view.coins =~= step_view.coins);
+}
+
+/// Quint analog: `start_op(Maintenance, key.0) ; split_coin(key,
+/// new_exponents) ; mark_op_submitted(handle)`. Composes the bulk-mint
+/// step with op lifecycle.
+pub open spec fn quint_step_tracked_split_coin(
+    pre: QuintViewState,
+    key: (PurseId, u64),
+    new_exponents: Seq<u8>,
+    base_idx: u64,
+    base_age: u64,
+) -> QuintViewState
+    recommends
+        pre.coins.dom().contains(key),
+        pre.coins[key].state == CoinState::Available,
+        pre.purses.dom().contains(key.0),
+        pre.purses[key.0].next_coin_idx == base_idx as nat,
+        (base_idx as nat) + new_exponents.len() <= u64::MAX as nat,
+        (base_age as nat) + new_exponents.len() <= u64::MAX as nat,
+        pre.next_handle < u64::MAX,
+{
+    let p = key.0;
+    let handle = pre.next_handle;
+    let exp = pre.coins[key].exponent;
+    QuintViewState {
+        operations: pre.operations.insert(handle, OperationRec {
+            handle,
+            kind: OpKind::Maintenance,
+            purse: p,
+            status: OpStatus::Submitted,
+        }),
+        coins: Map::new(
+            |k: (PurseId, u64)|
+                pre.coins.dom().contains(k)
+                || (k.0 == p
+                    && (base_idx as int) <= (k.1 as int)
+                    && (k.1 as int) < (base_idx as int) + new_exponents.len() as int),
+            |k: (PurseId, u64)|
+                if k == key {
+                    CoinRec {
+                        purse: pre.coins[key].purse,
+                        idx: pre.coins[key].idx,
+                        exponent: exp,
+                        age: pre.coins[key].age,
+                        account: pre.coins[key].account,
+                        state: CoinState::Spent,
+                    }
+                } else if pre.coins.dom().contains(k) {
+                    pre.coins[k]
+                } else {
+                    let j = (k.1 as int) - (base_idx as int);
+                    CoinRec {
+                        purse: p,
+                        idx: k.1,
+                        exponent: new_exponents[j],
+                        state: CoinState::Pending,
+                        age: ((base_age as int) + j) as u64,
+                        account: 0,
+                    }
+                }
+        ),
+        purses: pre.purses.insert(p, PurseRecSpec {
+            id: pre.purses[p].id,
+            name: pre.purses[p].name,
+            next_coin_idx: pre.purses[p].next_coin_idx + new_exponents.len(),
+            next_entry_idx: pre.purses[p].next_entry_idx,
+        }),
+        next_handle: (pre.next_handle + 1) as u64,
+        events: pre.events
+            .push(Event::OperationStarted {
+                handle,
+                kind: OpKind::Maintenance,
+                purse: p,
+            })
+            .push(Event::CoinSpent { purse: p, exponent: exp })
+            .push(Event::OperationProgress {
+                handle,
+                status: OpStatus::Submitted,
+            }),
+        ..pre
+    }
+}
+
+proof fn lemma_tracked_split_coin_refines(
+    pre: State,
+    post: State,
+    key: (PurseId, u64),
+    new_exponents: Seq<u8>,
+    base_idx: u64,
+    base_age: u64,
+)
+    requires
+        pre.invariant(),
+        pre.coins().dom().contains(key),
+        pre.coins()[key].state == CoinState::Available,
+        pre.purses().dom().contains(key.0),
+        pre.purses()[key.0].next_coin_idx == base_idx as nat,
+        pre.next_age == base_age,
+        (base_idx as nat) + new_exponents.len() <= u64::MAX as nat,
+        (base_age as nat) + new_exponents.len() <= u64::MAX as nat,
+        pre.next_handle < u64::MAX,
+        pre.events@.len() + 3 <= u64::MAX as nat,
+        forall|j: int| 0 <= j < new_exponents.len() ==>
+            (#[trigger] new_exponents[j]) <= MAX_EXPONENT,
+        post.invariant(),
+        post.coins()[key] == (CoinRec {
+            purse: pre.coins()[key].purse,
+            idx: pre.coins()[key].idx,
+            exponent: pre.coins()[key].exponent,
+            age: pre.coins()[key].age,
+            account: pre.coins()[key].account,
+            state: CoinState::Spent,
+        }),
+        forall|j: int| 0 <= j < new_exponents.len() ==>
+            #[trigger] post.coins()[(key.0, (base_idx + j) as u64)]
+                == (CoinRec {
+                    purse: key.0,
+                    idx: (base_idx + j) as u64,
+                    exponent: new_exponents[j],
+                    state: CoinState::Pending,
+                    age: (base_age + j) as u64,
+                    account: 0,
+                }),
+        post.coins().dom() =~= pre.coins().dom().union(
+            Set::new(|k: (PurseId, u64)|
+                k.0 == key.0
+                && (base_idx as int) <= (k.1 as int)
+                && (k.1 as int) < (base_idx as int) + new_exponents.len() as int)
+        ),
+        forall|k: (PurseId, u64)| #[trigger] pre.coins().dom().contains(k)
+            && k != key
+            ==> post.coins()[k] == pre.coins()[k],
+        post.purses().dom() =~= pre.purses().dom(),
+        post.purses()[key.0].id == key.0,
+        post.purses()[key.0].name == pre.purses()[key.0].name,
+        post.purses()[key.0].next_coin_idx
+            == pre.purses()[key.0].next_coin_idx + new_exponents.len(),
+        post.purses()[key.0].next_entry_idx == pre.purses()[key.0].next_entry_idx,
+        forall|q: PurseId| q != key.0 && #[trigger] pre.purses().dom().contains(q)
+            ==> post.purses()[q] == pre.purses()[q],
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations().insert(pre.next_handle, OperationRec {
+            handle: pre.next_handle,
+            kind: OpKind::Maintenance,
+            purse: key.0,
+            status: OpStatus::Submitted,
+        }),
+        post.events@ == pre.events@
+            .push(Event::OperationStarted {
+                handle: pre.next_handle,
+                kind: OpKind::Maintenance,
+                purse: key.0,
+            })
+            .push(Event::CoinSpent {
+                purse: key.0,
+                exponent: pre.coins()[key].exponent,
+            })
+            .push(Event::OperationProgress {
+                handle: pre.next_handle,
+                status: OpStatus::Submitted,
+            }),
+        post.next_handle == pre.next_handle + 1,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_tracked_split_coin(
+            quint_view(pre), key, new_exponents, base_idx, base_age,
+        ),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_tracked_split_coin(
+        quint_view(pre), key, new_exponents, base_idx, base_age,
+    );
+    assert(post_view.purses =~= step_view.purses);
+    assert(post_view.operations =~= step_view.operations);
+    assert(post_view.events =~= step_view.events);
+    assert forall|k: (PurseId, u64)| post_view.coins.dom().contains(k)
+        implies #[trigger] post_view.coins[k] == step_view.coins[k]
+    by {
+        if k == key {
+        } else if pre.coins().dom().contains(k) {
+            assert(post_view.coins[k] == pre.coins()[k]);
+            assert(step_view.coins[k] == pre.coins()[k]);
+        } else {
+            let j = (k.1 as int) - (base_idx as int);
+            assert(0 <= j < new_exponents.len());
+            assert(k == (key.0, (base_idx + j) as u64));
+        }
+    }
+    assert(post_view.coins =~= step_view.coins);
 }
 
 /// Quint analog: `purses' = purses.put(new_id, {id, name, 0, 0})`.
