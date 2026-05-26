@@ -1,17 +1,23 @@
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Compact, Decode, Encode, OptionBool};
+
+/// A size/dimension value (logical pixels) used across the custom renderer.
+///
+/// Encoded as a SCALE `Compact<u64>`: the common small values cost a single
+/// byte on the wire instead of eight.
+pub type Size = Compact<u64>;
 
 /// CSS-like dimensions: (top, end, bottom, start).
 /// Bottom defaults to top, start defaults to end when `None`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub struct Dimensions {
     /// Top dimension.
-    pub top: u64,
+    pub top: Size,
     /// End dimension.
-    pub end: u64,
+    pub end: Size,
     /// Bottom dimension. Defaults to top when absent.
-    pub bottom: Option<u64>,
+    pub bottom: Option<Size>,
     /// Start dimension. Defaults to end when absent.
-    pub start: Option<u64>,
+    pub start: Option<Size>,
 }
 
 /// Text typography presets.
@@ -93,7 +99,7 @@ pub enum Shape {
     /// Border radius value.
     Rounded {
         /// Border radius.
-        radius: u64,
+        radius: Size,
     },
     /// Circular shape.
     Circle,
@@ -103,7 +109,7 @@ pub enum Shape {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub struct BorderStyle {
     /// Border width.
-    pub width: u64,
+    pub width: Size,
     /// Border color.
     pub color: ColorToken,
     /// Border shape.
@@ -133,22 +139,22 @@ pub enum Modifier {
     /// Fixed height.
     Height {
         /// Fixed height.
-        height: u64,
+        height: Size,
     },
     /// Fixed width.
     Width {
         /// Fixed width.
-        width: u64,
+        width: Size,
     },
     /// Minimum width.
     MinWidth {
         /// Minimum width.
-        width: u64,
+        width: Size,
     },
     /// Minimum height.
     MinHeight {
         /// Minimum height.
-        height: u64,
+        height: Size,
     },
     /// Fill available width.
     FillWidth {
@@ -203,19 +209,27 @@ pub struct ButtonProps {
     pub text: String,
     /// Button style variant.
     pub variant: Option<ButtonVariant>,
+    /// Whether the button is enabled. Absent leaves the default to the host.
+    pub enabled: OptionBool,
+    /// Whether the button shows a loading state. Absent leaves the default to the host.
+    pub loading: OptionBool,
     /// Action identifier triggered on click.
-    pub click_action: String,
+    pub click_action: Option<String>,
 }
 
 /// Properties for a [`CustomRendererNode::TextField`].
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct TextFieldProps {
+    /// Current text value.
+    pub text: String,
     /// Placeholder text.
     pub placeholder: Option<String>,
-    /// Initial value.
-    pub initial_value: Option<String>,
-    /// Action identifier triggered on submit.
-    pub submit_action: String,
+    /// Field label.
+    pub label: Option<String>,
+    /// Whether the field is enabled. Absent leaves the default to the host.
+    pub enabled: OptionBool,
+    /// Action identifier triggered when the value changes.
+    pub value_change_action: Option<String>,
 }
 
 /// A component in the custom renderer UI tree, combining modifiers, typed props,

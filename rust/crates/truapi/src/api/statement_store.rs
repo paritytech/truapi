@@ -82,7 +82,7 @@ pub trait StatementStore: Send + Sync {
     ///   (error) => console.error(error),
     /// );
     /// ```
-    #[wire(request_id = 132)]
+    #[wire(request_id = 126)]
     async fn create_proof_authorized(
         &self,
         _cx: &CallContext,

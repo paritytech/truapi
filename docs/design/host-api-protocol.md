@@ -24,7 +24,6 @@ created: 2026-03-13
 - Renamed `DevicePermissionRequest` to `DevicePermission` for consistency (RFC-0002).
 - Extended `DevicePermission` with new variants: `Notifications`, `NFC`, `Clipboard`, `OpenUrl`, `Biometrics`.
 - Replaced `RemotePermission` variants `ExternalRequest(str)` and `TransactionSubmit` with `Remote(Vec<String>)`, `WebRTC`, `ChainSubmit`, `PreimageSubmit`, and `StatementSubmit`.
-- Changed `remote_permission` argument from a single `RemotePermission` to `Vec<RemotePermission>` to allow batched requests in one prompt.
 - Documented permission lifecycle: decisions are prompted once and persisted indefinitely, surviving app restarts.
 - Documented implicit permission triggering for `remote_chain_transaction_broadcast` (ChainSubmit), `remote_preimage_submit` (PreimageSubmit), and `remote_statement_store_submit` (StatementSubmit).
 - Changed `remote_statement_store_subscribe` start payload from `Vec<Topic>` to `TopicFilter` (RFC-0008).
@@ -112,7 +111,7 @@ fn host_device_permission(
 ) -> Result<bool, GenericErr>;
 
 fn remote_permission(
-  permissions: Vec<RemotePermission>
+  permission: RemotePermission
 ) -> Result<bool, GenericErr>;
 
 // Storage
@@ -159,13 +158,19 @@ fn host_get_legacy_accounts() -> Result<Vec<Account>, RequestCredentialsErr>;
 // Signing
 
 fn host_create_transaction(
-  accountId: ProductAccountId,
-  payload: VersionedTxPayload
+  signer: ProductAccountId,
+  genesisHash: [u8; 32],
+  callData: Vec<u8>,
+  extensions: Vec<TxPayloadExtensionV1>,
+  txExtVersion: u8
 ) -> Result<Vec<u8>, CreateTransactionErr>;
 
 fn host_create_transaction_with_legacy_account(
-  accountId: AccountId,
-  payload: VersionedTxPayload
+  signer: AccountId,
+  genesisHash: [u8; 32],
+  callData: Vec<u8>,
+  extensions: Vec<TxPayloadExtensionV1>,
+  txExtVersion: u8
 ) -> Result<Vec<u8>, CreateTransactionErr>;
 
 fn host_sign_raw(
@@ -547,7 +552,7 @@ Each call requests a single device permission. Batching is not supported for dev
 
 #### Remote permissions request
 
-Products can request remote permissions to access network resources or submit data to chains. Remote permissions can be batched: a single call declares all of a product's needs and results in one user prompt.
+Products can request remote permissions to access network resources or submit data to chains. Each call requests a single remote permission and results in one user prompt; a product with several needs issues one call per permission.
 
 ```rust
 enum RemotePermission {
@@ -569,11 +574,11 @@ enum RemotePermission {
 }
 
 fn remote_permission(
-  permissions: Vec<RemotePermission>
+  permission: RemotePermission
 ) -> Result<bool, GenericErr>;
 ```
 
-`true` means all requested permissions were granted. `false` means the user denied at least one; the Host MAY persist partial grants. Products that need to know which specific permissions were denied should call `remote_permission` with individual entries.
+`true` means the requested permission was granted; `false` means the user denied it.
 
 ### Permission Lifecycle
 
@@ -582,7 +587,7 @@ fn remote_permission(
 3. **Subsequent requests** — All subsequent calls for the same permission resolve immediately without prompting.
 4. **Revocation** — Out of scope for this version. Hosts MAY provide a settings UI; the protocol does not define a revocation notification to the product.
 
-Products MAY request permissions lazily (on first use) or upfront during initialization. Requesting upfront is recommended when the product can predict its needs, as it batches consent into a single moment.
+Products MAY request permissions lazily (on first use) or upfront during initialization. Requesting upfront is recommended when the product can predict its needs, as it surfaces consent before the product starts doing work.
 
 ### Implicit Permission Triggering
 
@@ -748,32 +753,20 @@ struct TxPayloadExtensionV1 {
   additional_signed: Vec<u8>
 }
 
-struct TxPayloadContext {
-  metadata: Vec<u8>,
-  token_symbol: str,
-  token_decimals: u32,
-  best_block_height: u32
-}
-
-struct TxPayloadV1 {
-  signer: Option<str>,
+fn host_create_transaction(
+  signer: ProductAccountId,
+  genesis_hash: [u8; 32],
   call_data: Vec<u8>,
   extensions: Vec<TxPayloadExtensionV1>,
-  tx_ext_version: u8,
-  context: TxPayloadContext
-}
-
-enum VersionedTxPayload {
-  V1(TxPayloadV1)
-}
-
-fn host_create_transaction(
-  account_id: ProductAccountId,
-  payload: VersionedTxPayload
+  tx_ext_version: u8
 ) -> Result<Vec<u8>, CreateTransactionErr>;
 
 fn host_create_transaction_with_legacy_account(
-  payload: VersionedTxPayload
+  signer: AccountId,
+  genesis_hash: [u8; 32],
+  call_data: Vec<u8>,
+  extensions: Vec<TxPayloadExtensionV1>,
+  tx_ext_version: u8
 ) -> Result<Vec<u8>, CreateTransactionErr>;
 ```
 
@@ -1516,21 +1509,21 @@ To support callbacks, we introduced actions. Actions are unique plain-text ident
 #### Interface
 
 ```rust
-type Size = Compact<u32>;
+type Size = Compact<u64>;
 
 struct Dimensions(
-  Compact<u32>, // y if length=2 or top if length>2
-  Compact<u32>, // x or right if length=4
-  Option<Compact<u32>>, // bottom if length=3 or left if length=4
-  Option<Compact<u32>> // bottom
+  Size, // y if length=2 or top if length>2
+  Size, // x or right if length=4
+  Option<Size>, // bottom if length=3 or left if length=4
+  Option<Size> // bottom
 );
 
 enum TypographyStyle {
-  TitleXL,
-  Headline,
-  BodyM,
-  BodyS,
-  Caption
+  HeadlineLarge,
+  TitleMediumRegular,
+  BodyLargeRegular,
+  BodyMediumRegular,
+  BodySmallRegular
 }
 
 enum ButtonVariant {
@@ -1540,15 +1533,15 @@ enum ButtonVariant {
 }
 
 enum ColorToken {
-  TextPrimary,
-  TextSecondary,
-  TextTertiary,
-  BackgroundPrimary,
-  BackgroundSecondary,
-  BackgroundTertiary,
-  Success,
-  Error,
-  Warning
+  FgPrimary,
+  FgSecondary,
+  FgTertiary,
+  BgSurfaceMain,
+  BgSurfaceContainer,
+  BgSurfaceNested,
+  FgSuccess,
+  FgError,
+  FgWarning
 }
 
 enum ContentAlignment {
@@ -1585,12 +1578,12 @@ enum Arrangement {
 }
 
 enum Shape {
-  Rounded(Compact<u32>),
+  Rounded(Size),
   Circle
 }
 
 struct BorderStyle {
-  width: Compact<u32>,
+  width: Size,
   color: ColorToken,
   shape: Option<Shape>
 }
@@ -1605,10 +1598,10 @@ enum Modifier {
   Padding(Dimensions),
   Background(Background),
   Border(BorderStyle),
-  Height(Compact<u32>),
-  Width(Compact<u32>),
-  MinWidth(Compact<u32>),
-  MinHeight(Compact<u32>),
+  Height(Size),
+  Width(Size),
+  MinWidth(Size),
+  MinHeight(Size),
   FillWidth(bool),
   FillHeight(bool)
 }
@@ -1641,8 +1634,8 @@ struct TextProps {
 struct ButtonProps {
   text: str,
   variant: Option<ButtonVariant>,
-  enabled: Option<bool>,
-  loading: Option<bool>,
+  enabled: OptionBool,
+  loading: OptionBool,
   click_action: Option<str>
 }
 
@@ -1650,7 +1643,7 @@ struct TextFieldProps {
   text: str,
   placeholder: Option<str>,
   label: Option<str>,
-  enabled: Option<bool>,
+  enabled: OptionBool,
   value_change_action: Option<str>
 }
 

@@ -37,7 +37,7 @@ pub trait CoinPayment: Send + Sync {
     ///   return result.value.purse;
     /// }
     /// ```
-    #[wire(request_id = 136)]
+    #[wire(request_id = 130)]
     async fn create_purse(
         &self,
         _cx: &CallContext,
@@ -67,7 +67,7 @@ pub trait CoinPayment: Send + Sync {
     ///   return result.value;
     /// }
     /// ```
-    #[wire(request_id = 138)]
+    #[wire(request_id = 132)]
     async fn query_purse(
         &self,
         _cx: &CallContext,
@@ -99,7 +99,7 @@ pub trait CoinPayment: Send + Sync {
     ///     });
     /// }
     /// ```
-    #[wire(start_id = 140)]
+    #[wire(start_id = 134)]
     async fn rebalance_purse(
         &self,
         _cx: &CallContext,
@@ -134,7 +134,7 @@ pub trait CoinPayment: Send + Sync {
     ///     });
     /// }
     /// ```
-    #[wire(start_id = 144)]
+    #[wire(start_id = 138)]
     async fn delete_purse(
         &self,
         _cx: &CallContext,
@@ -163,7 +163,7 @@ pub trait CoinPayment: Send + Sync {
     ///   return result.value.receivable;
     /// }
     /// ```
-    #[wire(request_id = 148)]
+    #[wire(request_id = 142)]
     async fn create_receivable(
         &self,
         _cx: &CallContext,
@@ -194,7 +194,7 @@ pub trait CoinPayment: Send + Sync {
     ///   return result.value.cheque;
     /// }
     /// ```
-    #[wire(request_id = 150)]
+    #[wire(request_id = 144)]
     async fn create_cheque(
         &self,
         _cx: &CallContext,
@@ -226,7 +226,7 @@ pub trait CoinPayment: Send + Sync {
     ///     });
     /// }
     /// ```
-    #[wire(start_id = 152)]
+    #[wire(start_id = 146)]
     async fn deposit(
         &self,
         _cx: &CallContext,
@@ -261,7 +261,7 @@ pub trait CoinPayment: Send + Sync {
     ///     });
     /// }
     /// ```
-    #[wire(start_id = 156)]
+    #[wire(start_id = 150)]
     async fn refund(
         &self,
         _cx: &CallContext,
@@ -296,7 +296,7 @@ pub trait CoinPayment: Send + Sync {
     ///     });
     /// }
     /// ```
-    #[wire(start_id = 160)]
+    #[wire(start_id = 154)]
     async fn listen_for_payment(
         &self,
         _cx: &CallContext,

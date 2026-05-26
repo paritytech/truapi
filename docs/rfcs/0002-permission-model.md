@@ -5,6 +5,9 @@ owner: "@johnthecat"
 
 # RFC 0002 — Permission Model for Host API
 
+> **NOTE (2026-05-26): `remote_permission` reverted to a single permission.**
+> This RFC below specifies batched remote-permission requests (`remote_permission` taking a `Vec<RemotePermission>`). That part has been rolled back: `remote_permission` again accepts a single `RemotePermission`. After the initial implementation it became clear that the batched API is hard to justify to the end user — a single prompt covering several distinct grants produces bad UX (the user cannot reason about or selectively approve what they are consenting to). The rest of this RFC (device permissions, lifecycle, persistence, implicit triggering) still stands; only the batching of remote permissions is reverted.
+
 ## Summary
 
 The Host API currently has two underdefined permission calls — `host_device_permission` and `remote_permission` — that lack coverage for several device capabilities (NFC, Clipboard, OpenUrl, Biometrics), do not support batched remote-permission requests, and have no specified lifecycle for when prompts occur or how decisions are persisted. This RFC defines the complete set of device and remote permissions, updates the `remote_permission` signature to accept a batch, specifies that permission decisions are prompted once and then stored permanently, and establishes that business methods (`host_sign_raw`, `host_sign_payload`, `host_create_transaction`, `host_create_transaction_with_non_product_account`, `remote_statement_store_submit`, `remote_preimage_submit`, `remote_chain_transaction_broadcast`) implicitly trigger permission prompts if permission has not yet been granted.

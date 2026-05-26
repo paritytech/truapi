@@ -45,7 +45,7 @@ pub trait Chain: Send + Sync {
     ///     complete: () => console.log("completed"),
     ///   });
     /// ```
-    #[wire(start_id = 76)]
+    #[wire(start_id = 70)]
     async fn follow_head_subscribe(
         &self,
         _cx: &CallContext,
@@ -75,7 +75,7 @@ pub trait Chain: Send + Sync {
     ///   (error) => console.error(error),
     /// );
     /// ```
-    #[wire(request_id = 80)]
+    #[wire(request_id = 74)]
     async fn get_head_header(
         &self,
         _cx: &CallContext,
@@ -105,7 +105,7 @@ pub trait Chain: Send + Sync {
     ///   (error) => console.error(error),
     /// );
     /// ```
-    #[wire(request_id = 82)]
+    #[wire(request_id = 76)]
     async fn get_head_body(
         &self,
         _cx: &CallContext,
@@ -140,7 +140,7 @@ pub trait Chain: Send + Sync {
     ///   (error) => console.error(error),
     /// );
     /// ```
-    #[wire(request_id = 84)]
+    #[wire(request_id = 78)]
     async fn get_head_storage(
         &self,
         _cx: &CallContext,
@@ -177,7 +177,7 @@ pub trait Chain: Send + Sync {
     ///   (error) => console.error(error),
     /// );
     /// ```
-    #[wire(request_id = 86)]
+    #[wire(request_id = 80)]
     async fn call_head(
         &self,
         _cx: &CallContext,
@@ -211,7 +211,7 @@ pub trait Chain: Send + Sync {
     ///   (error) => console.error(error),
     /// );
     /// ```
-    #[wire(request_id = 88)]
+    #[wire(request_id = 82)]
     async fn unpin_head(
         &self,
         _cx: &CallContext,
@@ -245,7 +245,7 @@ pub trait Chain: Send + Sync {
     ///   (error) => console.error(error),
     /// );
     /// ```
-    #[wire(request_id = 90)]
+    #[wire(request_id = 84)]
     async fn continue_head(
         &self,
         _cx: &CallContext,
@@ -279,7 +279,7 @@ pub trait Chain: Send + Sync {
     ///   (error) => console.error(error),
     /// );
     /// ```
-    #[wire(request_id = 92)]
+    #[wire(request_id = 86)]
     async fn stop_head_operation(
         &self,
         _cx: &CallContext,
@@ -302,7 +302,7 @@ pub trait Chain: Send + Sync {
     ///   (error) => console.error(error),
     /// );
     /// ```
-    #[wire(request_id = 94)]
+    #[wire(request_id = 88)]
     async fn get_spec_genesis_hash(
         &self,
         _cx: &CallContext,
@@ -325,7 +325,7 @@ pub trait Chain: Send + Sync {
     ///   (error) => console.error(error),
     /// );
     /// ```
-    #[wire(request_id = 96)]
+    #[wire(request_id = 90)]
     async fn get_spec_chain_name(
         &self,
         _cx: &CallContext,
@@ -347,7 +347,7 @@ pub trait Chain: Send + Sync {
     ///   (error) => console.error(error),
     /// );
     /// ```
-    #[wire(request_id = 98)]
+    #[wire(request_id = 92)]
     async fn get_spec_properties(
         &self,
         _cx: &CallContext,
@@ -370,7 +370,7 @@ pub trait Chain: Send + Sync {
     ///   (error) => console.error(error),
     /// );
     /// ```
-    #[wire(request_id = 100)]
+    #[wire(request_id = 94)]
     async fn broadcast_transaction(
         &self,
         _cx: &CallContext,
@@ -396,7 +396,7 @@ pub trait Chain: Send + Sync {
     ///   (error) => console.error(error),
     /// );
     /// ```
-    #[wire(request_id = 102)]
+    #[wire(request_id = 96)]
     async fn stop_transaction(
         &self,
         _cx: &CallContext,

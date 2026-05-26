@@ -25,7 +25,7 @@ pub trait Payment: Send + Sync {
     ///     complete: () => console.log("completed"),
     ///   });
     /// ```
-    #[wire(start_id = 118)]
+    #[wire(start_id = 112)]
     async fn balance_subscribe(
         &self,
         _cx: &CallContext,
@@ -49,7 +49,7 @@ pub trait Payment: Send + Sync {
     ///   (error) => console.error(error),
     /// );
     /// ```
-    #[wire(request_id = 124)]
+    #[wire(request_id = 118)]
     async fn request(
         &self,
         _cx: &CallContext,
@@ -73,7 +73,7 @@ pub trait Payment: Send + Sync {
     ///     complete: () => console.log("completed"),
     ///   });
     /// ```
-    #[wire(start_id = 126)]
+    #[wire(start_id = 120)]
     async fn status_subscribe(
         &self,
         _cx: &CallContext,
@@ -97,7 +97,7 @@ pub trait Payment: Send + Sync {
     ///   (error) => console.error(error),
     /// );
     /// ```
-    #[wire(request_id = 122)]
+    #[wire(request_id = 116)]
     async fn top_up(
         &self,
         _cx: &CallContext,

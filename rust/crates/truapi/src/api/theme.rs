@@ -19,7 +19,7 @@ pub trait Theme: Send + Sync {
     ///     complete: () => console.log("completed"),
     ///   });
     /// ```
-    #[wire(start_id = 104)]
+    #[wire(start_id = 98)]
     async fn subscribe(&self, _cx: &CallContext) -> Subscription<HostThemeSubscribeItem> {
         Subscription::empty()
     }

@@ -1,13 +1,11 @@
 use parity_scale_codec::{Decode, Encode};
 
-use super::ProductAccountId;
+use super::{AccountId, ProductAccountId, TxPayloadExtensionV1};
 
 /// Full Substrate extrinsic signing payload with all fields needed for signature
 /// generation.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct HostSignPayloadRequest {
-    /// Product account that will sign this payload.
-    pub account: ProductAccountId,
+pub struct HostSignPayloadData {
     /// Reference block hash.
     pub block_hash: Vec<u8>,
     /// Reference block number.
@@ -38,6 +36,15 @@ pub struct HostSignPayloadRequest {
     pub mode: Option<u32>,
     /// Request signed transaction back.
     pub with_signed_transaction: Option<bool>,
+}
+
+/// Request to sign an extrinsic payload with a product account.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostSignPayloadRequest {
+    /// Product account that will sign this payload.
+    pub account: ProductAccountId,
+    /// The extrinsic payload to sign.
+    pub payload: HostSignPayloadData,
 }
 
 /// Raw data to sign -- either binary bytes or a string message.
@@ -104,7 +111,7 @@ pub struct HostSignPayloadWithLegacyAccountRequest {
     /// Signer address (SS58 or hex) of the legacy account.
     pub signer: String,
     /// The extrinsic payload to sign.
-    pub payload: HostSignPayloadRequest,
+    pub payload: HostSignPayloadData,
 }
 
 /// Response containing a created transaction.
@@ -112,6 +119,23 @@ pub struct HostSignPayloadWithLegacyAccountRequest {
 pub struct HostCreateTransactionResponse {
     /// SCALE-encoded signed transaction.
     pub transaction: Vec<u8>,
+}
+
+/// Request to create (sign) a transaction with a legacy account.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostCreateTransactionWithLegacyAccountRequest {
+    /// Legacy account (32-byte public key) that will sign the transaction.
+    pub signer: AccountId,
+    /// Chain identifier where the transaction will be executed.
+    pub genesis_hash: [u8; 32],
+    /// SCALE-encoded Call (module indicator + function indicator + params).
+    pub call_data: Vec<u8>,
+    /// Transaction extensions supplied by the caller (order irrelevant); the
+    /// host MAY infer missing ones.
+    pub extensions: Vec<TxPayloadExtensionV1>,
+    /// Transaction extension version: 0 for Extrinsic V4, the runtime-supported
+    /// version for V5.
+    pub tx_ext_version: u8,
 }
 
 /// Response containing a transaction created with a non-product account.

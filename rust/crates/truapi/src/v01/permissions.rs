@@ -55,15 +55,15 @@ pub enum RemotePermission {
     StatementSubmit,
 }
 
-/// Batched remote-permission request (RFC 0002).
+/// remote-permission request (RFC 0002).
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, Display)]
 #[display(
     "{}",
     permissions.iter().map(ToString::to_string).collect::<Vec<_>>().join("; ")
 )]
 pub struct RemotePermissionRequest {
-    /// Permissions requested by the product.
-    pub permissions: Vec<RemotePermission>,
+    /// Permission requested by the product.
+    pub permission: RemotePermission,
 }
 
 /// Outcome of a device-permission request.
@@ -73,8 +73,7 @@ pub struct HostDevicePermissionResponse {
     pub granted: bool,
 }
 
-/// Outcome of a remote-permission batch request. The decision applies to the
-/// whole batch.
+/// Outcome of a remote-permission request.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct RemotePermissionResponse {
     /// Whether the permission was granted.
