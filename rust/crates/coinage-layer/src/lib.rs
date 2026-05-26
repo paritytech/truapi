@@ -998,6 +998,22 @@ impl State {
               && (#[trigger] self.operations@[i]).handle
                   == (#[trigger] self.operations@[j]).handle
               ==> i == j
+        // (aa) every coin's exponent is bounded by MAX_EXPONENT. Foundation
+        //      for real `2^exp` arithmetic safety (pow2_u64_exec(exp) doesn't
+        //      overflow u64 only when exp <= 30 = MAX_EXPONENT).
+        &&& forall|k: (PurseId, u64)| #[trigger] self.spec_coins@.dom().contains(k)
+              ==> self.spec_coins@[k].exponent <= MAX_EXPONENT
+        // (ab) every entry's exponent is bounded by MAX_EXPONENT.
+        &&& forall|k: (PurseId, u64)| #[trigger] self.spec_entries@.dom().contains(k)
+              ==> self.spec_entries@[k].exponent <= MAX_EXPONENT
+        // (ac) every chain-mirror coin's exponent is bounded too. This lets
+        //      restore_chain_coin reconstruct local state without losing the
+        //      exponent bound.
+        &&& forall|i: int| 0 <= i < self.chain_coins@.len()
+              ==> (#[trigger] self.chain_coins@[i]).exponent <= MAX_EXPONENT
+        // (ad) every chain-mirror entry's exponent is bounded.
+        &&& forall|i: int| 0 <= i < self.chain_entries@.len()
+              ==> (#[trigger] self.chain_entries@[i]).exponent <= MAX_EXPONENT
     }
 
     /// Initialize the layer with only the main purse and an empty coin map.
@@ -1395,6 +1411,7 @@ impl State {
         requires
             old(self).invariant(),
             old(self).chain_coins@.len() < u64::MAX as nat,
+            c.exponent <= MAX_EXPONENT,
         ensures
             final(self).invariant(),
             final(self).chain_coins@ == old(self).chain_coins@.push(c),
@@ -1775,6 +1792,7 @@ impl State {
         requires
             old(self).invariant(),
             old(self).chain_entries@.len() < u64::MAX as nat,
+            e.exponent <= MAX_EXPONENT,
         ensures
             final(self).invariant(),
             final(self).chain_entries@ == old(self).chain_entries@.push(e),
@@ -3089,6 +3107,7 @@ impl State {
             old(self).purses().dom().contains(p),
             old(self).purses()[p].next_coin_idx < u64::MAX,
             old(self).next_age < u64::MAX,
+            exponent <= MAX_EXPONENT,
         ensures
             final(self).invariant(),
             key.0 == p,
@@ -3136,6 +3155,7 @@ impl State {
             invariant
                 0 <= i <= self.purses.len(),
                 self.invariant(),
+                exponent <= MAX_EXPONENT,
                 self.purses@ == old_v,
                 self.spec_purses@ == old_m,
                 self.spec_coins@ == old_coins,
@@ -3451,6 +3471,25 @@ impl State {
                             assert(new_coins_vec[b] == old_coins_vec[b]);
                         }
                     }
+
+                    // (aa) every coin's exponent <= MAX_EXPONENT.
+                    assert(new_coin.exponent == exponent);
+                    assert(exponent <= MAX_EXPONENT);
+                    assert forall|kk: (PurseId, u64)| #[trigger] new_coins.dom().contains(kk)
+                        implies new_coins[kk].exponent <= MAX_EXPONENT
+                    by {
+                        if kk == key {
+                            assert(new_coins[kk] == new_coin);
+                        } else {
+                            // kk is in old_coins (since new_coins = insert(key, _) and kk != key)
+                            assert(old_coins.dom().contains(kk));
+                            // Map::insert axiom: insert(k, v)[k'] == m[k'] for k' != k
+                            assert(new_coins[kk] == old_coins[kk]);
+                            // old (aa) gives the bound on old_coins[kk]
+                            assert(old_coins[kk].exponent <= MAX_EXPONENT);
+                            assert(new_coins[kk].exponent == old_coins[kk].exponent);
+                        }
+                    }
                 }
                 return key;
             }
@@ -3477,6 +3516,7 @@ impl State {
             old(self).purses().dom().contains(p),
             old(self).purses()[p].next_coin_idx < u64::MAX,
             old(self).next_age < u64::MAX,
+            exponent <= MAX_EXPONENT,
         ensures
             final(self).invariant(),
             key.0 == p,
@@ -3532,6 +3572,7 @@ impl State {
             old(self).invariant(),
             old(self).purses().dom().contains(p),
             old(self).purses()[p].next_entry_idx < u64::MAX,
+            exponent <= MAX_EXPONENT,
         ensures
             final(self).invariant(),
             key.0 == p,
@@ -3587,6 +3628,7 @@ impl State {
             invariant
                 0 <= i <= self.purses.len(),
                 self.invariant(),
+                exponent <= MAX_EXPONENT,
                 self.purses@ == old_v,
                 self.spec_purses@ == old_m,
                 self.spec_coins@ == old_coins,
@@ -3866,6 +3908,20 @@ impl State {
                         } else {
                             assert(new_entries_vec[a] == old_entries_vec[a]);
                             assert(new_entries_vec[b] == old_entries_vec[b]);
+                        }
+                    }
+
+                    // (ab) every entry's exponent <= MAX_EXPONENT.
+                    assert forall|kk: (PurseId, u64)| #[trigger] new_entries.dom().contains(kk)
+                        implies new_entries[kk].exponent <= MAX_EXPONENT
+                    by {
+                        if kk == key {
+                            assert(new_entries[key] == new_entry);
+                            assert(new_entry.exponent == exponent);
+                        } else {
+                            assert(old_entries.dom().contains(kk));
+                            assert(new_entries[kk] == old_entries[kk]);
+                            assert(old_entries[kk].exponent <= MAX_EXPONENT);
                         }
                     }
                 }
@@ -4193,6 +4249,7 @@ impl State {
     ) -> (key: (PurseId, u64))
         requires
             old(self).invariant(),
+            exponent <= MAX_EXPONENT,
             old(self).purses().dom().contains(p),
             old(self).purses()[p].next_entry_idx < u64::MAX,
         ensures
@@ -7853,6 +7910,7 @@ impl State {
             old(self).next_age < u64::MAX,
             old(self).next_handle < u64::MAX,
             old(self).events@.len() + 3 <= u64::MAX as nat,
+            exponent <= MAX_EXPONENT,
         ensures
             final(self).invariant(),
             res.0 == old(self).next_handle,
@@ -7933,6 +7991,7 @@ impl State {
             old(self).purses()[p].next_coin_idx < u64::MAX,
             old(self).next_age < u64::MAX,
             old(self).events@.len() < u64::MAX as nat,
+            exponent <= MAX_EXPONENT,
         ensures
             final(self).invariant(),
             key.0 == p,
@@ -8063,6 +8122,8 @@ impl State {
             old(self).next_age as nat + new_exponents@.len() <= u64::MAX as nat,
             old(self).next_handle < u64::MAX,
             old(self).events@.len() + 3 <= u64::MAX as nat,
+            forall|j: int| 0 <= j < new_exponents@.len() ==>
+                (#[trigger] new_exponents@[j]) <= MAX_EXPONENT,
         ensures
             final(self).invariant(),
             handle == old(self).next_handle,
@@ -8111,6 +8172,8 @@ impl State {
                 <= u64::MAX as nat,
             old(self).next_age as nat + new_exponents@.len() <= u64::MAX as nat,
             old(self).events@.len() < u64::MAX as nat,
+            forall|j: int| 0 <= j < new_exponents@.len() ==>
+                (#[trigger] new_exponents@[j]) <= MAX_EXPONENT,
         ensures
             final(self).invariant(),
             final(self).coins().dom().contains(key),
@@ -9640,6 +9703,7 @@ impl State {
             old(self).purses()[p].next_entry_idx < u64::MAX,
             old(self).next_handle < u64::MAX,
             old(self).events@.len() + 3 <= u64::MAX as nat,
+            exponent <= MAX_EXPONENT,
         ensures
             final(self).invariant(),
             res.0 == old(self).next_handle,
@@ -9691,6 +9755,7 @@ impl State {
             old(self).purses().dom().contains(p),
             old(self).purses()[p].next_entry_idx < u64::MAX,
             old(self).events@.len() < u64::MAX as nat,
+            exponent <= MAX_EXPONENT,
         ensures
             final(self).invariant(),
             key.0 == p,
@@ -9757,6 +9822,8 @@ impl State {
             old(self).purses().dom().contains(p),
             old(self).purses()[p].next_coin_idx as nat + exp_seq@.len() <= u64::MAX as nat,
             old(self).next_age as nat + exp_seq@.len() <= u64::MAX as nat,
+            forall|j: int| 0 <= j < exp_seq@.len() ==>
+                (#[trigger] exp_seq@[j]) <= MAX_EXPONENT,
         ensures
             final(self).invariant(),
             final(self).purses().dom() =~= old(self).purses().dom(),
@@ -9809,6 +9876,8 @@ impl State {
                 n == exp_seq@.len(),
                 self.invariant(),
                 self.events@ == old_events,
+                forall|j: int| 0 <= j < exp_seq@.len() ==>
+                    (#[trigger] exp_seq@[j]) <= MAX_EXPONENT,
                 self.purses().dom() =~= old_purses_map.dom(),
                 old_purses_map.dom().contains(p),
                 self.purses()[p].next_coin_idx == old_p_next + k as nat,
@@ -9886,6 +9955,8 @@ impl State {
             old(self).invariant(),
             old(self).purses().dom().contains(p),
             old(self).purses()[p].next_entry_idx as nat + exp_seq@.len() <= u64::MAX as nat,
+            forall|j: int| 0 <= j < exp_seq@.len() ==>
+                (#[trigger] exp_seq@[j]) <= MAX_EXPONENT,
         ensures
             final(self).invariant(),
             final(self).purses().dom() =~= old(self).purses().dom(),
@@ -9923,6 +9994,8 @@ impl State {
                 0 <= k <= n,
                 n == exp_seq@.len(),
                 self.invariant(),
+                forall|j: int| 0 <= j < exp_seq@.len() ==>
+                    (#[trigger] exp_seq@[j]) <= MAX_EXPONENT,
                 self.purses().dom() =~= old_purses_map.dom(),
                 old_purses_map.dom().contains(p),
                 self.purses()[p].next_entry_idx == old_p_next + k as nat,
