@@ -12380,25 +12380,30 @@ impl State {
 // any structural friction.
 // ==========================================================================
 
-/// Spec-only shadow of the Quint state machine's variables, restricted
-/// to a subset for the PoC. The full Quint state has 23 vars; here we
-/// model 4 of the most informative ones: `purses`, `coins`, `entries`,
-/// `events`.
+/// Spec-only shadow of the Quint state machine's variables — covers
+/// all 13 vars that the Verus pilot models. Quint vars not in scope of
+/// the pilot (below the chain-abstraction boundary or derived) remain
+/// excluded: `rings`, `now`, `receipts`, `opRequested`, `opExternalized`,
+/// `nextRingIdx`, `nextAccount`, `nextMemberKey`.
 ///
-/// Quint vars deliberately excluded from this PoC shadow:
-/// - `rings`, `now`, `receipts`, `opRequested`, `opExternalized`,
-///   `nextRingIdx`, `nextAccount`, `nextMemberKey` — not modeled by
-///   the Verus pilot (below the chain-abstraction boundary or derived).
-/// - `operations`, `next_handle`, `next_extrinsic_id`, `total_in`,
-///   `total_out`, `fee_account_balance`, `tokens`, `chain_coins`,
-///   `chain_entries`, `paid_ring_membership` — modeled by the Verus
-///   pilot but omitted from this PoC shadow for brevity; a full
-///   refinement would extend `QuintViewState` to cover them.
+/// Verus-only state (`next_purse_id`, `next_age`) is similarly excluded
+/// — these are local allocators the Quint spec doesn't use (Quint
+/// addresses purses and coins directly by id).
 pub ghost struct QuintViewState {
     pub purses: Map<PurseId, PurseRecSpec>,
     pub coins: Map<(PurseId, u64), CoinRec>,
     pub entries: Map<(PurseId, u64), EntryRec>,
+    pub operations: Map<OpHandle, OperationRec>,
     pub events: Seq<Event>,
+    pub next_handle: u64,
+    pub next_extrinsic_id: u64,
+    pub total_in: u64,
+    pub total_out: u64,
+    pub fee_balance: u64,
+    pub paid_ring_membership: u64,
+    pub tokens: Seq<UnloadToken>,
+    pub chain_coins: Seq<CoinRec>,
+    pub chain_entries: Seq<EntryRec>,
 }
 
 /// Refinement map: extract the Quint-shaped view from a Verus `State`.
@@ -12410,7 +12415,17 @@ pub open spec fn quint_view(s: State) -> QuintViewState {
         purses: s.purses(),
         coins: s.coins(),
         entries: s.entries(),
+        operations: s.operations(),
         events: s.events@,
+        next_handle: s.next_handle,
+        next_extrinsic_id: s.next_extrinsic_id,
+        total_in: s.total_in,
+        total_out: s.total_out,
+        fee_balance: s.fee_balance,
+        paid_ring_membership: s.paid_ring_membership,
+        tokens: s.tokens@,
+        chain_coins: s.chain_coins@,
+        chain_entries: s.chain_entries@,
     }
 }
 
@@ -12438,7 +12453,17 @@ pub open spec fn quint_init_view() -> QuintViewState {
         }),
         coins: Map::<(PurseId, u64), CoinRec>::empty(),
         entries: Map::<(PurseId, u64), EntryRec>::empty(),
+        operations: Map::<OpHandle, OperationRec>::empty(),
         events: Seq::empty(),
+        next_handle: 0,
+        next_extrinsic_id: 0,
+        total_in: 0,
+        total_out: 0,
+        fee_balance: 0,
+        paid_ring_membership: 0,
+        tokens: Seq::empty(),
+        chain_coins: Seq::empty(),
+        chain_entries: Seq::empty(),
     }
 }
 
@@ -12462,15 +12487,29 @@ proof fn lemma_init_refines(s: State)
         }),
         s.coins().dom() =~= Set::<(PurseId, u64)>::empty(),
         s.entries().dom() =~= Set::<(PurseId, u64)>::empty(),
+        s.operations().dom() =~= Set::<OpHandle>::empty(),
         s.events@ =~= Seq::<Event>::empty(),
+        s.next_handle == 0,
+        s.next_extrinsic_id == 0,
+        s.total_in == 0,
+        s.total_out == 0,
+        s.fee_balance == 0,
+        s.paid_ring_membership == 0,
+        s.tokens@ =~= Seq::<UnloadToken>::empty(),
+        s.chain_coins@ =~= Seq::<CoinRec>::empty(),
+        s.chain_entries@ =~= Seq::<EntryRec>::empty(),
     ensures
         quint_view(s) == quint_init_view(),
 {
-    // Discharged by extensional equality on the four shadow fields.
+    // Discharged by extensional equality across all shadow fields.
     assert(quint_view(s).purses =~= quint_init_view().purses);
     assert(quint_view(s).coins =~= quint_init_view().coins);
     assert(quint_view(s).entries =~= quint_init_view().entries);
+    assert(quint_view(s).operations =~= quint_init_view().operations);
     assert(quint_view(s).events =~= quint_init_view().events);
+    assert(quint_view(s).tokens =~= quint_init_view().tokens);
+    assert(quint_view(s).chain_coins =~= quint_init_view().chain_coins);
+    assert(quint_view(s).chain_entries =~= quint_init_view().chain_entries);
 }
 
 /// Spec encoding of Quint's effect on `QuintViewState` when
@@ -12486,7 +12525,6 @@ pub open spec fn quint_step_mark_coin_observed(
         pre.coins[key].state == CoinState::Pending,
 {
     QuintViewState {
-        purses: pre.purses,
         coins: pre.coins.insert(key, CoinRec {
             purse: pre.coins[key].purse,
             idx: pre.coins[key].idx,
@@ -12495,11 +12533,11 @@ pub open spec fn quint_step_mark_coin_observed(
             account: pre.coins[key].account,
             state: CoinState::Available,
         }),
-        entries: pre.entries,
         events: pre.events.push(Event::CoinAvailable {
             purse: key.0,
             exponent: pre.coins[key].exponent,
         }),
+        ..pre
     }
 }
 
@@ -12531,57 +12569,279 @@ proof fn lemma_mark_coin_observed_refines(pre: State, post: State, key: (PurseId
             state: CoinState::Available,
         }),
         post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
         post.events@ == pre.events@.push(Event::CoinAvailable {
             purse: key.0,
             exponent: pre.coins()[key].exponent,
         }),
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
     ensures
         quint_view(post) == quint_step_mark_coin_observed(quint_view(pre), key),
 {
-    // Both sides project the same Map<.,.>.insert(key, _) on coins,
-    // and the same Seq.push(_) on events. Discharged by extensional
-    // equality on the four shadow fields.
-    assert(quint_view(post).purses =~= quint_step_mark_coin_observed(quint_view(pre), key).purses);
-    assert(quint_view(post).coins =~= quint_step_mark_coin_observed(quint_view(pre), key).coins);
-    assert(quint_view(post).entries =~= quint_step_mark_coin_observed(quint_view(pre), key).entries);
-    assert(quint_view(post).events =~= quint_step_mark_coin_observed(quint_view(pre), key).events);
+    let post_view = quint_view(post);
+    let step_view = quint_step_mark_coin_observed(quint_view(pre), key);
+    assert(post_view.purses =~= step_view.purses);
+    assert(post_view.coins =~= step_view.coins);
+    assert(post_view.entries =~= step_view.entries);
+    assert(post_view.operations =~= step_view.operations);
+    assert(post_view.events =~= step_view.events);
+    assert(post_view.tokens =~= step_view.tokens);
+    assert(post_view.chain_coins =~= step_view.chain_coins);
+    assert(post_view.chain_entries =~= step_view.chain_entries);
 }
 
 /// Spec encoding of Quint's effect on `QuintViewState` when
 /// `chain_register_coin` fires. The chain emits a new coin record into
-/// the chain mirror; local `purses`/`coins`/`entries` are untouched.
-/// (Out of PoC shadow scope — chain_coins isn't in QuintViewState — so
-/// the step is the identity at this level. Including the spec for
-/// completeness of the methodology.)
+/// the chain mirror; local state is untouched.
 pub open spec fn quint_step_chain_register_coin(
     pre: QuintViewState,
-    _c: CoinRec,
+    c: CoinRec,
 ) -> QuintViewState {
-    pre
+    QuintViewState {
+        chain_coins: pre.chain_coins.push(c),
+        ..pre
+    }
 }
 
-/// **Refinement lemma (chain_register_coin step)**: the chain-register
-/// transition is the identity at the level of the PoC shadow (it only
-/// touches `chain_coins`, which isn't shadowed here). A full refinement
-/// would extend QuintViewState to include `chain_coins` and prove the
-/// push correspondence.
+/// **Refinement lemma (chain_register_coin step)**: the chain-emit
+/// transition appends to `chain_coins` and leaves everything else
+/// untouched.
 proof fn lemma_chain_register_coin_refines(pre: State, post: State, c: CoinRec)
     requires
         pre.invariant(),
         pre.chain_coins@.len() < u64::MAX as nat,
         c.exponent <= MAX_EXPONENT,
-        // chain_register_coin's preservation postconditions:
         post.purses() == pre.purses(),
         post.coins() == pre.coins(),
         post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
         post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@.push(c),
+        post.chain_entries@ == pre.chain_entries@,
     ensures
         quint_view(post) == quint_step_chain_register_coin(quint_view(pre), c),
 {
-    assert(quint_view(post).purses =~= quint_view(pre).purses);
-    assert(quint_view(post).coins =~= quint_view(pre).coins);
-    assert(quint_view(post).entries =~= quint_view(pre).entries);
-    assert(quint_view(post).events =~= quint_view(pre).events);
+    let post_view = quint_view(post);
+    let step_view = quint_step_chain_register_coin(quint_view(pre), c);
+    assert(post_view.chain_coins =~= step_view.chain_coins);
+}
+
+/// Quint analog: `coins' = coins.set(key, {..with state = Spent..})`,
+/// `events' = events.append(ECoinSpent{purse, exp})`.
+pub open spec fn quint_step_mark_coin_spent(
+    pre: QuintViewState,
+    key: (PurseId, u64),
+) -> QuintViewState
+    recommends
+        pre.coins.dom().contains(key),
+        pre.coins[key].state == CoinState::PendingSpend,
+{
+    QuintViewState {
+        coins: pre.coins.insert(key, CoinRec {
+            purse: pre.coins[key].purse,
+            idx: pre.coins[key].idx,
+            exponent: pre.coins[key].exponent,
+            age: pre.coins[key].age,
+            account: pre.coins[key].account,
+            state: CoinState::Spent,
+        }),
+        events: pre.events.push(Event::CoinSpent {
+            purse: key.0,
+            exponent: pre.coins[key].exponent,
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_mark_coin_spent_refines(pre: State, post: State, key: (PurseId, u64))
+    requires
+        pre.invariant(),
+        pre.coins().dom().contains(key),
+        pre.coins()[key].state == CoinState::PendingSpend,
+        pre.events@.len() < u64::MAX as nat,
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins().insert(key, CoinRec {
+            purse: pre.coins()[key].purse,
+            idx: pre.coins()[key].idx,
+            exponent: pre.coins()[key].exponent,
+            age: pre.coins()[key].age,
+            account: pre.coins()[key].account,
+            state: CoinState::Spent,
+        }),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@.push(Event::CoinSpent {
+            purse: key.0,
+            exponent: pre.coins()[key].exponent,
+        }),
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_mark_coin_spent(quint_view(pre), key),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_mark_coin_spent(quint_view(pre), key);
+    assert(post_view.coins =~= step_view.coins);
+    assert(post_view.events =~= step_view.events);
+}
+
+/// Quint analog: `entries' = entries.set(key, {..on_chain = Ready..})`,
+/// `events' = events.append(EEntryReadinessChanged{purse, exp, new_state})`.
+pub open spec fn quint_step_mark_entry_ready(
+    pre: QuintViewState,
+    key: (PurseId, u64),
+) -> QuintViewState
+    recommends
+        pre.entries.dom().contains(key),
+        pre.entries[key].on_chain == EntryOnChain::Waiting,
+{
+    QuintViewState {
+        entries: pre.entries.insert(key, EntryRec {
+            on_chain: EntryOnChain::Ready,
+            ..pre.entries[key]
+        }),
+        events: pre.events.push(Event::EntryReadinessChanged {
+            purse: key.0,
+            exponent: pre.entries[key].exponent,
+            new_state: EntryOnChain::Ready,
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_mark_entry_ready_refines(pre: State, post: State, key: (PurseId, u64))
+    requires
+        pre.invariant(),
+        pre.entries().dom().contains(key),
+        pre.entries()[key].on_chain == EntryOnChain::Waiting,
+        pre.events@.len() < u64::MAX as nat,
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries().insert(key, EntryRec {
+            on_chain: EntryOnChain::Ready,
+            ..pre.entries()[key]
+        }),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@.push(Event::EntryReadinessChanged {
+            purse: key.0,
+            exponent: pre.entries()[key].exponent,
+            new_state: EntryOnChain::Ready,
+        }),
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_mark_entry_ready(quint_view(pre), key),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_mark_entry_ready(quint_view(pre), key);
+    assert(post_view.entries =~= step_view.entries);
+    assert(post_view.events =~= step_view.events);
+}
+
+/// Quint analog: `chain_entries' = chain_entries.append(e)`.
+pub open spec fn quint_step_chain_register_entry(
+    pre: QuintViewState,
+    e: EntryRec,
+) -> QuintViewState {
+    QuintViewState {
+        chain_entries: pre.chain_entries.push(e),
+        ..pre
+    }
+}
+
+proof fn lemma_chain_register_entry_refines(pre: State, post: State, e: EntryRec)
+    requires
+        pre.invariant(),
+        pre.chain_entries@.len() < u64::MAX as nat,
+        e.exponent <= MAX_EXPONENT,
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@.push(e),
+    ensures
+        quint_view(post) == quint_step_chain_register_entry(quint_view(pre), e),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_chain_register_entry(quint_view(pre), e);
+    assert(post_view.chain_entries =~= step_view.chain_entries);
+}
+
+/// Quint analog: `events' = events.append(e)`.
+pub open spec fn quint_step_emit_event(
+    pre: QuintViewState,
+    e: Event,
+) -> QuintViewState {
+    QuintViewState {
+        events: pre.events.push(e),
+        ..pre
+    }
+}
+
+proof fn lemma_emit_event_refines(pre: State, post: State, e: Event)
+    requires
+        pre.invariant(),
+        pre.events@.len() < u64::MAX as nat,
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@.push(e),
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_emit_event(quint_view(pre), e),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_emit_event(quint_view(pre), e);
+    assert(post_view.events =~= step_view.events);
 }
 
 } // verus!
