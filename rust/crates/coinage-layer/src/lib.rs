@@ -4133,10 +4133,16 @@ impl State {
             final(self).invariant(),
             final(self).purses() == old(self).purses(),
             final(self).coins() == old(self).coins(),
-            final(self).entries().dom().contains(key),
-            final(self).entries()[key].local == EntryLocal::LocalConsumed,
-            final(self).operations().dom().contains(handle),
-            final(self).operations()[handle].status == OpStatus::Done,
+            final(self).entries() == old(self).entries().insert(key, EntryRec {
+                local: EntryLocal::LocalConsumed,
+                ..old(self).entries()[key]
+            }),
+            final(self).operations() == old(self).operations().insert(handle, OperationRec {
+                handle: old(self).operations()[handle].handle,
+                kind: old(self).operations()[handle].kind,
+                purse: old(self).operations()[handle].purse,
+                status: OpStatus::Done,
+            }),
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
             final(self).fee_balance == old(self).fee_balance,
@@ -4180,10 +4186,21 @@ impl State {
         ensures
             final(self).invariant(),
             final(self).purses() == old(self).purses(),
-            final(self).coins().dom().contains(key),
-            final(self).coins()[key].state == CoinState::Spent,
-            final(self).operations().dom().contains(handle),
-            final(self).operations()[handle].status == OpStatus::Done,
+            final(self).entries() == old(self).entries(),
+            final(self).coins() == old(self).coins().insert(key, CoinRec {
+                purse: old(self).coins()[key].purse,
+                idx: old(self).coins()[key].idx,
+                exponent: old(self).coins()[key].exponent,
+                age: old(self).coins()[key].age,
+                account: old(self).coins()[key].account,
+                state: CoinState::Spent,
+            }),
+            final(self).operations() == old(self).operations().insert(handle, OperationRec {
+                handle: old(self).operations()[handle].handle,
+                kind: old(self).operations()[handle].kind,
+                purse: old(self).operations()[handle].purse,
+                status: OpStatus::Done,
+            }),
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
             final(self).fee_balance == old(self).fee_balance,
@@ -15812,6 +15829,205 @@ proof fn lemma_start_op_locking_entry_refines(
     let post_view = quint_view(post);
     let step_view = quint_step_start_op_locking_entry(quint_view(pre), kind, key);
     assert(post_view.entries =~= step_view.entries);
+    assert(post_view.operations =~= step_view.operations);
+    assert(post_view.events =~= step_view.events);
+}
+
+/// Quint analog: `consume_entry(key) ; mark_op_done(handle)`. Two
+/// refinement steps; the coin map is unchanged.
+pub open spec fn quint_step_commit_op_consuming_locked_entry(
+    pre: QuintViewState,
+    handle: OpHandle,
+    key: (PurseId, u64),
+) -> QuintViewState
+    recommends
+        pre.entries.dom().contains(key),
+        pre.entries[key].local == EntryLocal::LocalLockedFor(handle),
+        pre.operations.dom().contains(handle),
+        pre.operations[handle].status == OpStatus::Finalized,
+{
+    QuintViewState {
+        entries: pre.entries.insert(key, EntryRec {
+            local: EntryLocal::LocalConsumed,
+            ..pre.entries[key]
+        }),
+        operations: pre.operations.insert(handle, OperationRec {
+            handle: pre.operations[handle].handle,
+            kind: pre.operations[handle].kind,
+            purse: pre.operations[handle].purse,
+            status: OpStatus::Done,
+        }),
+        events: pre.events
+            .push(Event::EntryConsumed {
+                purse: key.0,
+                exponent: pre.entries[key].exponent,
+            })
+            .push(Event::OperationCompleted {
+                handle,
+                status: OpStatus::Done,
+            }),
+        ..pre
+    }
+}
+
+proof fn lemma_commit_op_consuming_locked_entry_refines(
+    pre: State,
+    post: State,
+    handle: OpHandle,
+    key: (PurseId, u64),
+)
+    requires
+        pre.invariant(),
+        pre.operations().dom().contains(handle),
+        pre.operations()[handle].status == OpStatus::Finalized,
+        pre.entries().dom().contains(key),
+        pre.entries()[key].local == EntryLocal::LocalLockedFor(handle),
+        pre.events@.len() + 2 <= u64::MAX as nat,
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries().insert(key, EntryRec {
+            local: EntryLocal::LocalConsumed,
+            ..pre.entries()[key]
+        }),
+        post.operations() == pre.operations().insert(handle, OperationRec {
+            handle: pre.operations()[handle].handle,
+            kind: pre.operations()[handle].kind,
+            purse: pre.operations()[handle].purse,
+            status: OpStatus::Done,
+        }),
+        post.events@ == pre.events@
+            .push(Event::EntryConsumed {
+                purse: key.0,
+                exponent: pre.entries()[key].exponent,
+            })
+            .push(Event::OperationCompleted {
+                handle,
+                status: OpStatus::Done,
+            }),
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_commit_op_consuming_locked_entry(
+            quint_view(pre), handle, key,
+        ),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_commit_op_consuming_locked_entry(
+        quint_view(pre), handle, key,
+    );
+    assert(post_view.entries =~= step_view.entries);
+    assert(post_view.operations =~= step_view.operations);
+    assert(post_view.events =~= step_view.events);
+}
+
+/// Quint analog: `commit_locked_coin(key) ; mark_coin_spent(key) ;
+/// mark_op_done(handle)`. Three refinement steps composed; the
+/// intermediate PendingSpend state is invisible in the composite delta.
+pub open spec fn quint_step_commit_op_consuming_locked_coin(
+    pre: QuintViewState,
+    handle: OpHandle,
+    key: (PurseId, u64),
+) -> QuintViewState
+    recommends
+        pre.coins.dom().contains(key),
+        pre.coins[key].state == CoinState::LockedFor(handle),
+        pre.operations.dom().contains(handle),
+        pre.operations[handle].status == OpStatus::Finalized,
+{
+    QuintViewState {
+        coins: pre.coins.insert(key, CoinRec {
+            purse: pre.coins[key].purse,
+            idx: pre.coins[key].idx,
+            exponent: pre.coins[key].exponent,
+            age: pre.coins[key].age,
+            account: pre.coins[key].account,
+            state: CoinState::Spent,
+        }),
+        operations: pre.operations.insert(handle, OperationRec {
+            handle: pre.operations[handle].handle,
+            kind: pre.operations[handle].kind,
+            purse: pre.operations[handle].purse,
+            status: OpStatus::Done,
+        }),
+        events: pre.events
+            .push(Event::CoinSpent {
+                purse: key.0,
+                exponent: pre.coins[key].exponent,
+            })
+            .push(Event::OperationCompleted {
+                handle,
+                status: OpStatus::Done,
+            }),
+        ..pre
+    }
+}
+
+proof fn lemma_commit_op_consuming_locked_coin_refines(
+    pre: State,
+    post: State,
+    handle: OpHandle,
+    key: (PurseId, u64),
+)
+    requires
+        pre.invariant(),
+        pre.operations().dom().contains(handle),
+        pre.operations()[handle].status == OpStatus::Finalized,
+        pre.coins().dom().contains(key),
+        pre.coins()[key].state == CoinState::LockedFor(handle),
+        pre.events@.len() + 2 <= u64::MAX as nat,
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.entries() == pre.entries(),
+        post.coins() == pre.coins().insert(key, CoinRec {
+            purse: pre.coins()[key].purse,
+            idx: pre.coins()[key].idx,
+            exponent: pre.coins()[key].exponent,
+            age: pre.coins()[key].age,
+            account: pre.coins()[key].account,
+            state: CoinState::Spent,
+        }),
+        post.operations() == pre.operations().insert(handle, OperationRec {
+            handle: pre.operations()[handle].handle,
+            kind: pre.operations()[handle].kind,
+            purse: pre.operations()[handle].purse,
+            status: OpStatus::Done,
+        }),
+        post.events@ == pre.events@
+            .push(Event::CoinSpent {
+                purse: key.0,
+                exponent: pre.coins()[key].exponent,
+            })
+            .push(Event::OperationCompleted {
+                handle,
+                status: OpStatus::Done,
+            }),
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_commit_op_consuming_locked_coin(
+            quint_view(pre), handle, key,
+        ),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_commit_op_consuming_locked_coin(
+        quint_view(pre), handle, key,
+    );
+    assert(post_view.coins =~= step_view.coins);
     assert(post_view.operations =~= step_view.operations);
     assert(post_view.events =~= step_view.events);
 }
