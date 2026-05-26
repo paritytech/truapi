@@ -4348,14 +4348,19 @@ impl State {
         ensures
             final(self).invariant(),
             handle == old(self).next_handle,
-            final(self).operations().dom().contains(handle),
-            final(self).operations()[handle].status == OpStatus::Preparing,
-            final(self).operations()[handle].kind == kind,
-            final(self).operations()[handle].purse == key.0,
-            final(self).entries().dom().contains(key),
-            final(self).entries()[key].local == EntryLocal::LocalLockedFor(handle),
-            final(self).entries()[key].on_chain == old(self).entries()[key].on_chain,
-            final(self).entries()[key].exponent == old(self).entries()[key].exponent,
+            !old(self).operations().dom().contains(handle),
+            final(self).operations() == old(self).operations().insert(handle, OperationRec {
+                handle,
+                kind,
+                purse: key.0,
+                status: OpStatus::Preparing,
+            }),
+            final(self).entries() == old(self).entries().insert(key, EntryRec {
+                local: EntryLocal::LocalLockedFor(handle),
+                ..old(self).entries()[key]
+            }),
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins(),
             final(self).next_handle == old(self).next_handle + 1,
             final(self).next_age == old(self).next_age,
             final(self).fee_balance == old(self).fee_balance,
@@ -4395,13 +4400,23 @@ impl State {
         ensures
             final(self).invariant(),
             handle == old(self).next_handle,
-            final(self).operations().dom().contains(handle),
-            final(self).operations()[handle].status == OpStatus::Preparing,
-            final(self).operations()[handle].kind == kind,
-            final(self).operations()[handle].purse == key.0,
-            final(self).coins().dom().contains(key),
-            final(self).coins()[key].state == CoinState::LockedFor(handle),
-            final(self).coins()[key].exponent == old(self).coins()[key].exponent,
+            !old(self).operations().dom().contains(handle),
+            final(self).operations() == old(self).operations().insert(handle, OperationRec {
+                handle,
+                kind,
+                purse: key.0,
+                status: OpStatus::Preparing,
+            }),
+            final(self).coins() == old(self).coins().insert(key, CoinRec {
+                purse: old(self).coins()[key].purse,
+                idx: old(self).coins()[key].idx,
+                exponent: old(self).coins()[key].exponent,
+                age: old(self).coins()[key].age,
+                account: old(self).coins()[key].account,
+                state: CoinState::LockedFor(handle),
+            }),
+            final(self).purses() == old(self).purses(),
+            final(self).entries() == old(self).entries(),
             final(self).next_handle == old(self).next_handle + 1,
             final(self).next_age == old(self).next_age,
             final(self).fee_balance == old(self).fee_balance,
@@ -15619,6 +15634,183 @@ proof fn lemma_cancel_op_releasing_entry_refines(
 {
     let post_view = quint_view(post);
     let step_view = quint_step_cancel_op_releasing_entry(quint_view(pre), handle, key);
+    assert(post_view.entries =~= step_view.entries);
+    assert(post_view.operations =~= step_view.operations);
+    assert(post_view.events =~= step_view.events);
+}
+
+/// Quint analog: `start_op(kind, key.0) ; lock_coin(key, handle)`.
+/// Composes two refinement steps with `handle = pre.next_handle`.
+pub open spec fn quint_step_start_op_locking_coin(
+    pre: QuintViewState,
+    kind: OpKind,
+    key: (PurseId, u64),
+) -> QuintViewState
+    recommends
+        pre.coins.dom().contains(key),
+        pre.coins[key].state == CoinState::Available,
+        pre.purses.dom().contains(key.0),
+        pre.next_handle < u64::MAX,
+{
+    let handle = pre.next_handle;
+    QuintViewState {
+        operations: pre.operations.insert(handle, OperationRec {
+            handle,
+            kind,
+            purse: key.0,
+            status: OpStatus::Preparing,
+        }),
+        coins: pre.coins.insert(key, CoinRec {
+            purse: pre.coins[key].purse,
+            idx: pre.coins[key].idx,
+            exponent: pre.coins[key].exponent,
+            age: pre.coins[key].age,
+            account: pre.coins[key].account,
+            state: CoinState::LockedFor(handle),
+        }),
+        next_handle: (pre.next_handle + 1) as u64,
+        events: pre.events.push(Event::OperationStarted {
+            handle,
+            kind,
+            purse: key.0,
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_start_op_locking_coin_refines(
+    pre: State,
+    post: State,
+    kind: OpKind,
+    key: (PurseId, u64),
+)
+    requires
+        pre.invariant(),
+        pre.coins().dom().contains(key),
+        pre.coins()[key].state == CoinState::Available,
+        pre.purses().dom().contains(key.0),
+        pre.next_handle < u64::MAX,
+        pre.events@.len() < u64::MAX as nat,
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.entries() == pre.entries(),
+        post.coins() == pre.coins().insert(key, CoinRec {
+            purse: pre.coins()[key].purse,
+            idx: pre.coins()[key].idx,
+            exponent: pre.coins()[key].exponent,
+            age: pre.coins()[key].age,
+            account: pre.coins()[key].account,
+            state: CoinState::LockedFor(pre.next_handle),
+        }),
+        post.operations() == pre.operations().insert(pre.next_handle, OperationRec {
+            handle: pre.next_handle,
+            kind,
+            purse: key.0,
+            status: OpStatus::Preparing,
+        }),
+        post.events@ == pre.events@.push(Event::OperationStarted {
+            handle: pre.next_handle,
+            kind,
+            purse: key.0,
+        }),
+        post.next_handle == pre.next_handle + 1,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_start_op_locking_coin(quint_view(pre), kind, key),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_start_op_locking_coin(quint_view(pre), kind, key);
+    assert(post_view.coins =~= step_view.coins);
+    assert(post_view.operations =~= step_view.operations);
+    assert(post_view.events =~= step_view.events);
+}
+
+/// Entry parallel of [`quint_step_start_op_locking_coin`].
+pub open spec fn quint_step_start_op_locking_entry(
+    pre: QuintViewState,
+    kind: OpKind,
+    key: (PurseId, u64),
+) -> QuintViewState
+    recommends
+        pre.entries.dom().contains(key),
+        pre.entries[key].local == EntryLocal::LocalAvailable,
+        pre.purses.dom().contains(key.0),
+        pre.next_handle < u64::MAX,
+{
+    let handle = pre.next_handle;
+    QuintViewState {
+        operations: pre.operations.insert(handle, OperationRec {
+            handle,
+            kind,
+            purse: key.0,
+            status: OpStatus::Preparing,
+        }),
+        entries: pre.entries.insert(key, EntryRec {
+            local: EntryLocal::LocalLockedFor(handle),
+            ..pre.entries[key]
+        }),
+        next_handle: (pre.next_handle + 1) as u64,
+        events: pre.events.push(Event::OperationStarted {
+            handle,
+            kind,
+            purse: key.0,
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_start_op_locking_entry_refines(
+    pre: State,
+    post: State,
+    kind: OpKind,
+    key: (PurseId, u64),
+)
+    requires
+        pre.invariant(),
+        pre.entries().dom().contains(key),
+        pre.entries()[key].local == EntryLocal::LocalAvailable,
+        pre.purses().dom().contains(key.0),
+        pre.next_handle < u64::MAX,
+        pre.events@.len() < u64::MAX as nat,
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries().insert(key, EntryRec {
+            local: EntryLocal::LocalLockedFor(pre.next_handle),
+            ..pre.entries()[key]
+        }),
+        post.operations() == pre.operations().insert(pre.next_handle, OperationRec {
+            handle: pre.next_handle,
+            kind,
+            purse: key.0,
+            status: OpStatus::Preparing,
+        }),
+        post.events@ == pre.events@.push(Event::OperationStarted {
+            handle: pre.next_handle,
+            kind,
+            purse: key.0,
+        }),
+        post.next_handle == pre.next_handle + 1,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_start_op_locking_entry(quint_view(pre), kind, key),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_start_op_locking_entry(quint_view(pre), kind, key);
     assert(post_view.entries =~= step_view.entries);
     assert(post_view.operations =~= step_view.operations);
     assert(post_view.events =~= step_view.events);
