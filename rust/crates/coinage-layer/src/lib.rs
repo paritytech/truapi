@@ -1111,6 +1111,7 @@ impl State {
         ensures
             final(self).invariant(),
             new_id != MAIN_PURSE,
+            new_id == old(self).next_purse_id,
             !old(self).purses().dom().contains(new_id),
             final(self).purses() == old(self).purses().insert(new_id, PurseRecSpec {
                 id: new_id,
@@ -1118,6 +1119,22 @@ impl State {
                 next_coin_idx: 0,
                 next_entry_idx: 0,
             }),
+            final(self).next_purse_id == old(self).next_purse_id + 1,
+            // All other state preserved.
+            final(self).coins() == old(self).coins(),
+            final(self).entries() == old(self).entries(),
+            final(self).operations() == old(self).operations(),
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
+            final(self).next_extrinsic_id == old(self).next_extrinsic_id,
+            final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
+            final(self).tokens@ == old(self).tokens@,
+            final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         let new_id = self.next_purse_id;
         let ghost old_v = self.purses@;
@@ -13212,12 +13229,75 @@ proof fn lemma_start_op_refines(
     assert(post_view.events =~= step_view.events);
 }
 
+/// Quint analog: `purses' = purses.put(new_id, {id, name, 0, 0})`.
+/// Note: Quint createPurse also emits `EPurseCreated`; the Verus
+/// implementation deliberately doesn't (the pilot scheme treats purse
+/// creation as silent). This refinement lemma covers the state delta;
+/// the event divergence is a known correspondence gap, not a bug.
+pub open spec fn quint_step_create_purse(
+    pre: QuintViewState,
+    new_id: PurseId,
+    name: Seq<u8>,
+) -> QuintViewState
+    recommends
+        !pre.purses.dom().contains(new_id),
+        new_id != MAIN_PURSE,
+{
+    QuintViewState {
+        purses: pre.purses.insert(new_id, PurseRecSpec {
+            id: new_id,
+            name,
+            next_coin_idx: 0,
+            next_entry_idx: 0,
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_create_purse_refines(
+    pre: State,
+    post: State,
+    name: Seq<u8>,
+    new_id: PurseId,
+)
+    requires
+        pre.invariant(),
+        pre.has_create_capacity(),
+        new_id != MAIN_PURSE,
+        !pre.purses().dom().contains(new_id),
+        post.purses() == pre.purses().insert(new_id, PurseRecSpec {
+            id: new_id,
+            name,
+            next_coin_idx: 0,
+            next_entry_idx: 0,
+        }),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_create_purse(quint_view(pre), new_id, name),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_create_purse(quint_view(pre), new_id, name);
+    assert(post_view.purses =~= step_view.purses);
+}
+
 // ==========================================================================
 // Findings from the refinement attempt — primitives whose contracts are
 // too loose to refine without strengthening:
 //
-// - `create_purse`: postcondition mentions only `purses()`. Misses
-//   `coins/entries/operations/events/.../chain_coins/chain_entries` preservation.
+// - ~~`create_purse`~~: contract strengthened with full preservation
+//   clauses; refined via lemma_create_purse_refines above.
 // - `add_coin_with_account` / `add_entry_with_meta`: pre-cascade contracts.
 //   Cover most preservation but miss `next_extrinsic_id`, `total_in`,
 //   `total_out`, `fee_balance`, `paid_ring_membership`, `tokens@`,
