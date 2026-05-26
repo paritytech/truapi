@@ -8140,14 +8140,96 @@ impl State {
         ensures
             final(self).invariant(),
             res.0 == old(self).next_handle,
-            final(self).operations().dom().contains(res.0),
-            // Op ended in Done if Some, Failed if None.
+            !old(self).operations().dom().contains(res.0),
+            final(self).next_handle == old(self).next_handle + 1,
+            final(self).entries() == old(self).entries(),
+            final(self).fee_balance == old(self).fee_balance,
+            final(self).next_extrinsic_id == old(self).next_extrinsic_id,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
+            final(self).tokens@ == old(self).tokens@,
+            final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             match res.1 {
-                Some(_) => final(self).operations()[res.0].status == OpStatus::Done,
-                None => final(self).operations()[res.0].status == OpStatus::Failed,
+                Some(new_key) =>
+                    new_key.0 == to
+                    && new_key.1 == old(self).purses()[to].next_coin_idx
+                    && final(self).next_age == old(self).next_age + 1
+                    && final(self).operations() == old(self).operations().insert(res.0, OperationRec {
+                        handle: res.0,
+                        kind: OpKind::Transfer,
+                        purse: from,
+                        status: OpStatus::Done,
+                    })
+                    && final(self).purses().dom() =~= old(self).purses().dom()
+                    && final(self).purses()[to].id == to
+                    && final(self).purses()[to].name == old(self).purses()[to].name
+                    && final(self).purses()[to].next_coin_idx
+                        == old(self).purses()[to].next_coin_idx + 1
+                    && final(self).purses()[to].next_entry_idx
+                        == old(self).purses()[to].next_entry_idx
+                    && (forall|q: PurseId| q != to
+                        && #[trigger] old(self).purses().dom().contains(q)
+                        ==> final(self).purses()[q] == old(self).purses()[q])
+                    && (exists|src_key: (PurseId, u64)|
+                        #[trigger] old(self).coins().dom().contains(src_key)
+                        && src_key.0 == from
+                        && old(self).coins()[src_key].state == CoinState::Available
+                        && old(self).coins()[src_key].exponent >= min_exp
+                        && final(self).coins() == old(self).coins()
+                            .insert(src_key, CoinRec {
+                                purse: old(self).coins()[src_key].purse,
+                                idx: old(self).coins()[src_key].idx,
+                                exponent: old(self).coins()[src_key].exponent,
+                                age: old(self).coins()[src_key].age,
+                                account: old(self).coins()[src_key].account,
+                                state: CoinState::Spent,
+                            })
+                            .insert(new_key, CoinRec {
+                                purse: to,
+                                idx: new_key.1,
+                                exponent: old(self).coins()[src_key].exponent,
+                                state: CoinState::Available,
+                                age: old(self).next_age,
+                                account: 0,
+                            })
+                        && final(self).events@ == old(self).events@
+                            .push(Event::OperationStarted {
+                                handle: res.0,
+                                kind: OpKind::Transfer,
+                                purse: from,
+                            })
+                            .push(Event::CoinSpent {
+                                purse: from,
+                                exponent: old(self).coins()[src_key].exponent,
+                            })
+                            .push(Event::CoinAvailable {
+                                purse: to,
+                                exponent: old(self).coins()[src_key].exponent,
+                            })),
+                None =>
+                    final(self).next_age == old(self).next_age
+                    && final(self).operations() == old(self).operations().insert(res.0, OperationRec {
+                        handle: res.0,
+                        kind: OpKind::Transfer,
+                        purse: from,
+                        status: OpStatus::Failed,
+                    })
+                    && final(self).purses() == old(self).purses()
+                    && final(self).coins() == old(self).coins()
+                    && final(self).events@ == old(self).events@
+                        .push(Event::OperationStarted {
+                            handle: res.0,
+                            kind: OpKind::Transfer,
+                            purse: from,
+                        })
+                    && (forall|k: (PurseId, u64)|
+                        #[trigger] old(self).coins().dom().contains(k)
+                        && k.0 == from
+                        && old(self).coins()[k].state == CoinState::Available
+                        ==> old(self).coins()[k].exponent < min_exp),
             },
-            final(self).operations()[res.0].kind == OpKind::Transfer,
-            final(self).operations()[res.0].purse == from,
     {
         let handle = self.start_op(OpKind::Transfer, from);
         proof {
@@ -17425,6 +17507,230 @@ proof fn lemma_tracked_rebalance_refines(
     );
     assert(post_view.coins =~= step_view.coins);
     assert(post_view.purses =~= step_view.purses);
+    assert(post_view.operations =~= step_view.operations);
+    assert(post_view.events =~= step_view.events);
+}
+
+/// Quint analog (Some branch): `start_op(Transfer, from) ;
+/// transfer(from, to, min_exp) ; mark_op_done(handle)`. Refinement
+/// witnesses the existentially-chosen `src_key`.
+pub open spec fn quint_step_tracked_transfer_some(
+    pre: QuintViewState,
+    from: PurseId,
+    to: PurseId,
+    src_key: (PurseId, u64),
+    next_age: u64,
+    new_idx: u64,
+) -> QuintViewState
+    recommends
+        pre.coins.dom().contains(src_key),
+        src_key.0 == from,
+        pre.coins[src_key].state == CoinState::Available,
+        pre.purses.dom().contains(to),
+        pre.purses[to].next_coin_idx == new_idx as nat,
+        (new_idx as nat) < u64::MAX as nat,
+        pre.next_handle < u64::MAX,
+{
+    let handle = pre.next_handle;
+    let exp = pre.coins[src_key].exponent;
+    let new_key = (to, new_idx);
+    QuintViewState {
+        operations: pre.operations.insert(handle, OperationRec {
+            handle,
+            kind: OpKind::Transfer,
+            purse: from,
+            status: OpStatus::Done,
+        }),
+        coins: pre.coins
+            .insert(src_key, CoinRec {
+                purse: pre.coins[src_key].purse,
+                idx: pre.coins[src_key].idx,
+                exponent: exp,
+                age: pre.coins[src_key].age,
+                account: pre.coins[src_key].account,
+                state: CoinState::Spent,
+            })
+            .insert(new_key, CoinRec {
+                purse: to,
+                idx: new_idx,
+                exponent: exp,
+                state: CoinState::Available,
+                age: next_age,
+                account: 0,
+            }),
+        purses: pre.purses.insert(to, PurseRecSpec {
+            id: pre.purses[to].id,
+            name: pre.purses[to].name,
+            next_coin_idx: pre.purses[to].next_coin_idx + 1,
+            next_entry_idx: pre.purses[to].next_entry_idx,
+        }),
+        next_handle: (pre.next_handle + 1) as u64,
+        events: pre.events
+            .push(Event::OperationStarted {
+                handle,
+                kind: OpKind::Transfer,
+                purse: from,
+            })
+            .push(Event::CoinSpent { purse: from, exponent: exp })
+            .push(Event::CoinAvailable { purse: to, exponent: exp }),
+        ..pre
+    }
+}
+
+proof fn lemma_tracked_transfer_some_refines(
+    pre: State,
+    post: State,
+    from: PurseId,
+    to: PurseId,
+    src_key: (PurseId, u64),
+    new_idx: u64,
+)
+    requires
+        pre.invariant(),
+        pre.coins().dom().contains(src_key),
+        src_key.0 == from,
+        pre.coins()[src_key].state == CoinState::Available,
+        pre.purses().dom().contains(to),
+        pre.purses()[to].next_coin_idx == new_idx as nat,
+        (new_idx as nat) < u64::MAX as nat,
+        pre.next_age < u64::MAX,
+        pre.next_handle < u64::MAX,
+        pre.events@.len() + 3 <= u64::MAX as nat,
+        post.invariant(),
+        post.coins() == pre.coins()
+            .insert(src_key, CoinRec {
+                purse: pre.coins()[src_key].purse,
+                idx: pre.coins()[src_key].idx,
+                exponent: pre.coins()[src_key].exponent,
+                age: pre.coins()[src_key].age,
+                account: pre.coins()[src_key].account,
+                state: CoinState::Spent,
+            })
+            .insert((to, new_idx), CoinRec {
+                purse: to,
+                idx: new_idx,
+                exponent: pre.coins()[src_key].exponent,
+                state: CoinState::Available,
+                age: pre.next_age,
+                account: 0,
+            }),
+        post.purses().dom() =~= pre.purses().dom(),
+        post.purses()[to].id == to,
+        post.purses()[to].name == pre.purses()[to].name,
+        post.purses()[to].next_coin_idx == pre.purses()[to].next_coin_idx + 1,
+        post.purses()[to].next_entry_idx == pre.purses()[to].next_entry_idx,
+        forall|q: PurseId| q != to && #[trigger] pre.purses().dom().contains(q)
+            ==> post.purses()[q] == pre.purses()[q],
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations().insert(pre.next_handle, OperationRec {
+            handle: pre.next_handle,
+            kind: OpKind::Transfer,
+            purse: from,
+            status: OpStatus::Done,
+        }),
+        post.events@ == pre.events@
+            .push(Event::OperationStarted {
+                handle: pre.next_handle,
+                kind: OpKind::Transfer,
+                purse: from,
+            })
+            .push(Event::CoinSpent {
+                purse: from,
+                exponent: pre.coins()[src_key].exponent,
+            })
+            .push(Event::CoinAvailable {
+                purse: to,
+                exponent: pre.coins()[src_key].exponent,
+            }),
+        post.next_handle == pre.next_handle + 1,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_tracked_transfer_some(
+            quint_view(pre), from, to, src_key, pre.next_age, new_idx,
+        ),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_tracked_transfer_some(
+        quint_view(pre), from, to, src_key, pre.next_age, new_idx,
+    );
+    assert(post_view.coins =~= step_view.coins);
+    assert(post_view.purses =~= step_view.purses);
+    assert(post_view.operations =~= step_view.operations);
+    assert(post_view.events =~= step_view.events);
+}
+
+/// Quint analog (None branch): `start_op(Transfer, from) ;
+/// set_op_failed-equivalent`. No coin moves.
+pub open spec fn quint_step_tracked_transfer_none(
+    pre: QuintViewState,
+    from: PurseId,
+) -> QuintViewState
+    recommends
+        pre.next_handle < u64::MAX,
+{
+    let handle = pre.next_handle;
+    QuintViewState {
+        operations: pre.operations.insert(handle, OperationRec {
+            handle,
+            kind: OpKind::Transfer,
+            purse: from,
+            status: OpStatus::Failed,
+        }),
+        next_handle: (pre.next_handle + 1) as u64,
+        events: pre.events.push(Event::OperationStarted {
+            handle,
+            kind: OpKind::Transfer,
+            purse: from,
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_tracked_transfer_none_refines(
+    pre: State,
+    post: State,
+    from: PurseId,
+)
+    requires
+        pre.invariant(),
+        pre.next_handle < u64::MAX,
+        pre.events@.len() < u64::MAX as nat,
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations().insert(pre.next_handle, OperationRec {
+            handle: pre.next_handle,
+            kind: OpKind::Transfer,
+            purse: from,
+            status: OpStatus::Failed,
+        }),
+        post.events@ == pre.events@.push(Event::OperationStarted {
+            handle: pre.next_handle,
+            kind: OpKind::Transfer,
+            purse: from,
+        }),
+        post.next_handle == pre.next_handle + 1,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_tracked_transfer_none(quint_view(pre), from),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_tracked_transfer_none(quint_view(pre), from);
     assert(post_view.operations =~= step_view.operations);
     assert(post_view.events =~= step_view.events);
 }
