@@ -8826,14 +8826,60 @@ impl State {
         ensures
             final(self).invariant(),
             res.0 == old(self).next_handle,
-            final(self).operations().dom().contains(res.0),
-            final(self).operations()[res.0].status == OpStatus::Submitted,
-            final(self).operations()[res.0].kind == OpKind::ExternalOffload,
-            final(self).operations()[res.0].purse == key.0,
+            !old(self).operations().dom().contains(res.0),
             res.1.0 == key.0,
-            final(self).coins().dom().contains(res.1),
-            final(self).coins()[res.1].state == CoinState::Available,
-            final(self).coins()[res.1].exponent == old(self).entries()[key].exponent,
+            res.1.1 == old(self).purses()[key.0].next_coin_idx,
+            final(self).operations() == old(self).operations().insert(res.0, OperationRec {
+                handle: res.0,
+                kind: OpKind::ExternalOffload,
+                purse: key.0,
+                status: OpStatus::Submitted,
+            }),
+            final(self).entries() == old(self).entries().insert(key, EntryRec {
+                local: EntryLocal::LocalConsumed,
+                ..old(self).entries()[key]
+            }),
+            final(self).coins() == old(self).coins().insert(res.1, CoinRec {
+                purse: key.0,
+                idx: res.1.1,
+                exponent: old(self).entries()[key].exponent,
+                state: CoinState::Available,
+                age: old(self).next_age,
+                account: 0,
+            }),
+            final(self).purses().dom() =~= old(self).purses().dom(),
+            final(self).purses()[key.0].id == key.0,
+            final(self).purses()[key.0].name == old(self).purses()[key.0].name,
+            final(self).purses()[key.0].next_coin_idx
+                == old(self).purses()[key.0].next_coin_idx + 1,
+            final(self).purses()[key.0].next_entry_idx
+                == old(self).purses()[key.0].next_entry_idx,
+            forall|q: PurseId| q != key.0 && #[trigger] old(self).purses().dom().contains(q)
+                ==> final(self).purses()[q] == old(self).purses()[q],
+            final(self).next_age == old(self).next_age + 1,
+            final(self).next_handle == old(self).next_handle + 1,
+            final(self).fee_balance == old(self).fee_balance,
+            final(self).next_extrinsic_id == old(self).next_extrinsic_id,
+            final(self).events@ == old(self).events@
+                .push(Event::OperationStarted {
+                    handle: res.0,
+                    kind: OpKind::ExternalOffload,
+                    purse: key.0,
+                })
+                .push(Event::CoinAvailable {
+                    purse: key.0,
+                    exponent: old(self).entries()[key].exponent,
+                })
+                .push(Event::OperationProgress {
+                    handle: res.0,
+                    status: OpStatus::Submitted,
+                }),
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
+            final(self).tokens@ == old(self).tokens@,
+            final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         let handle = self.start_op(OpKind::ExternalOffload, key.0);
         proof {
@@ -17731,6 +17777,150 @@ proof fn lemma_tracked_transfer_none_refines(
 {
     let post_view = quint_view(post);
     let step_view = quint_step_tracked_transfer_none(quint_view(pre), from);
+    assert(post_view.operations =~= step_view.operations);
+    assert(post_view.events =~= step_view.events);
+}
+
+/// Quint analog: `start_op(ExternalOffload, p) ; unload_via_entry(key,
+/// handle) ; mark_op_submitted(handle)`. Three refinement steps composed.
+pub open spec fn quint_step_tracked_unload_via_entry(
+    pre: QuintViewState,
+    key: (PurseId, u64),
+    next_age: u64,
+    new_idx: u64,
+) -> QuintViewState
+    recommends
+        pre.entries.dom().contains(key),
+        pre.entries[key].local == EntryLocal::LocalAvailable,
+        pre.entries[key].on_chain == EntryOnChain::Ready,
+        pre.purses.dom().contains(key.0),
+        pre.purses[key.0].next_coin_idx == new_idx as nat,
+        (new_idx as nat) < u64::MAX as nat,
+        pre.next_handle < u64::MAX,
+{
+    let p = key.0;
+    let handle = pre.next_handle;
+    let exp = pre.entries[key].exponent;
+    let new_coin_key = (p, new_idx);
+    QuintViewState {
+        operations: pre.operations.insert(handle, OperationRec {
+            handle,
+            kind: OpKind::ExternalOffload,
+            purse: p,
+            status: OpStatus::Submitted,
+        }),
+        entries: pre.entries.insert(key, EntryRec {
+            local: EntryLocal::LocalConsumed,
+            ..pre.entries[key]
+        }),
+        coins: pre.coins.insert(new_coin_key, CoinRec {
+            purse: p,
+            idx: new_idx,
+            exponent: exp,
+            state: CoinState::Available,
+            age: next_age,
+            account: 0,
+        }),
+        purses: pre.purses.insert(p, PurseRecSpec {
+            id: pre.purses[p].id,
+            name: pre.purses[p].name,
+            next_coin_idx: pre.purses[p].next_coin_idx + 1,
+            next_entry_idx: pre.purses[p].next_entry_idx,
+        }),
+        next_handle: (pre.next_handle + 1) as u64,
+        events: pre.events
+            .push(Event::OperationStarted {
+                handle,
+                kind: OpKind::ExternalOffload,
+                purse: p,
+            })
+            .push(Event::CoinAvailable { purse: p, exponent: exp })
+            .push(Event::OperationProgress {
+                handle,
+                status: OpStatus::Submitted,
+            }),
+        ..pre
+    }
+}
+
+proof fn lemma_tracked_unload_via_entry_refines(
+    pre: State,
+    post: State,
+    key: (PurseId, u64),
+    new_idx: u64,
+)
+    requires
+        pre.invariant(),
+        pre.entries().dom().contains(key),
+        pre.entries()[key].local == EntryLocal::LocalAvailable,
+        pre.entries()[key].on_chain == EntryOnChain::Ready,
+        pre.purses().dom().contains(key.0),
+        pre.purses()[key.0].next_coin_idx == new_idx as nat,
+        (new_idx as nat) < u64::MAX as nat,
+        pre.next_age < u64::MAX,
+        pre.next_handle < u64::MAX,
+        pre.events@.len() + 3 <= u64::MAX as nat,
+        post.invariant(),
+        post.entries() == pre.entries().insert(key, EntryRec {
+            local: EntryLocal::LocalConsumed,
+            ..pre.entries()[key]
+        }),
+        post.coins() == pre.coins().insert((key.0, new_idx), CoinRec {
+            purse: key.0,
+            idx: new_idx,
+            exponent: pre.entries()[key].exponent,
+            state: CoinState::Available,
+            age: pre.next_age,
+            account: 0,
+        }),
+        post.purses().dom() =~= pre.purses().dom(),
+        post.purses()[key.0].id == key.0,
+        post.purses()[key.0].name == pre.purses()[key.0].name,
+        post.purses()[key.0].next_coin_idx == pre.purses()[key.0].next_coin_idx + 1,
+        post.purses()[key.0].next_entry_idx == pre.purses()[key.0].next_entry_idx,
+        forall|q: PurseId| q != key.0 && #[trigger] pre.purses().dom().contains(q)
+            ==> post.purses()[q] == pre.purses()[q],
+        post.operations() == pre.operations().insert(pre.next_handle, OperationRec {
+            handle: pre.next_handle,
+            kind: OpKind::ExternalOffload,
+            purse: key.0,
+            status: OpStatus::Submitted,
+        }),
+        post.events@ == pre.events@
+            .push(Event::OperationStarted {
+                handle: pre.next_handle,
+                kind: OpKind::ExternalOffload,
+                purse: key.0,
+            })
+            .push(Event::CoinAvailable {
+                purse: key.0,
+                exponent: pre.entries()[key].exponent,
+            })
+            .push(Event::OperationProgress {
+                handle: pre.next_handle,
+                status: OpStatus::Submitted,
+            }),
+        post.next_handle == pre.next_handle + 1,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_tracked_unload_via_entry(
+            quint_view(pre), key, pre.next_age, new_idx,
+        ),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_tracked_unload_via_entry(
+        quint_view(pre), key, pre.next_age, new_idx,
+    );
+    assert(post_view.entries =~= step_view.entries);
+    assert(post_view.coins =~= step_view.coins);
+    assert(post_view.purses =~= step_view.purses);
     assert(post_view.operations =~= step_view.operations);
     assert(post_view.events =~= step_view.events);
 }
