@@ -12658,6 +12658,120 @@ proof fn lemma_chain_register_coin_refines(pre: State, post: State, c: CoinRec)
     assert(post_view.chain_coins =~= step_view.chain_coins);
 }
 
+/// Quint analog: `coins' = coins.set(key, {..with state = PendingSpend..})`.
+pub open spec fn quint_step_mark_coin_pending_spend(
+    pre: QuintViewState,
+    key: (PurseId, u64),
+) -> QuintViewState
+    recommends
+        pre.coins.dom().contains(key),
+        pre.coins[key].state == CoinState::Available,
+{
+    QuintViewState {
+        coins: pre.coins.insert(key, CoinRec {
+            purse: pre.coins[key].purse,
+            idx: pre.coins[key].idx,
+            exponent: pre.coins[key].exponent,
+            age: pre.coins[key].age,
+            account: pre.coins[key].account,
+            state: CoinState::PendingSpend,
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_mark_coin_pending_spend_refines(pre: State, post: State, key: (PurseId, u64))
+    requires
+        pre.invariant(),
+        pre.coins().dom().contains(key),
+        pre.coins()[key].state == CoinState::Available,
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins().insert(key, CoinRec {
+            purse: pre.coins()[key].purse,
+            idx: pre.coins()[key].idx,
+            exponent: pre.coins()[key].exponent,
+            age: pre.coins()[key].age,
+            account: pre.coins()[key].account,
+            state: CoinState::PendingSpend,
+        }),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_mark_coin_pending_spend(quint_view(pre), key),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_mark_coin_pending_spend(quint_view(pre), key);
+    assert(post_view.coins =~= step_view.coins);
+}
+
+/// Quint analog: `coins' = coins.set(key, {..with state = Available..})`.
+pub open spec fn quint_step_reverse_pending_spend(
+    pre: QuintViewState,
+    key: (PurseId, u64),
+) -> QuintViewState
+    recommends
+        pre.coins.dom().contains(key),
+        pre.coins[key].state == CoinState::PendingSpend,
+{
+    QuintViewState {
+        coins: pre.coins.insert(key, CoinRec {
+            purse: pre.coins[key].purse,
+            idx: pre.coins[key].idx,
+            exponent: pre.coins[key].exponent,
+            age: pre.coins[key].age,
+            account: pre.coins[key].account,
+            state: CoinState::Available,
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_reverse_pending_spend_refines(pre: State, post: State, key: (PurseId, u64))
+    requires
+        pre.invariant(),
+        pre.coins().dom().contains(key),
+        pre.coins()[key].state == CoinState::PendingSpend,
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins().insert(key, CoinRec {
+            purse: pre.coins()[key].purse,
+            idx: pre.coins()[key].idx,
+            exponent: pre.coins()[key].exponent,
+            age: pre.coins()[key].age,
+            account: pre.coins()[key].account,
+            state: CoinState::Available,
+        }),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_reverse_pending_spend(quint_view(pre), key),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_reverse_pending_spend(quint_view(pre), key);
+    assert(post_view.coins =~= step_view.coins);
+}
+
 /// Quint analog: `coins' = coins.set(key, {..with state = Spent..})`,
 /// `events' = events.append(ECoinSpent{purse, exp})`.
 pub open spec fn quint_step_mark_coin_spent(
