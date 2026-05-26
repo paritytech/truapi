@@ -60,7 +60,7 @@ fn generate_explorer_types_code(api: &ApiDefinition, target_version: u32) -> Res
 
         let id = name_to_kebab_id(&public_name);
         let category = data_type_category(&ty.module_path);
-        let definition = data_type_definition(ty, &public_name, &emit_versions, &aliases)?;
+        let definition = data_type_definition(ty, &public_name, &emit_versions)?;
         let description = split_playground_docs(ty.docs.as_deref())?.description;
         let (fields, variants) = data_type_fields_variants(ty);
 
@@ -179,7 +179,6 @@ fn data_type_definition(
     ty: &TypeDef,
     public_name: &str,
     emit_versions: &HashMap<String, BTreeSet<u32>>,
-    aliases: &BTreeMap<String, String>,
 ) -> Result<String> {
     let generic_decl = generic_param_declaration(&ty.generic_params);
     let mut out = String::new();
@@ -238,7 +237,6 @@ fn data_type_definition(
             }
         }
     }
-    let _ = aliases;
     Ok(out.trim_end().to_string())
 }
 

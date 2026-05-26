@@ -89,9 +89,11 @@ import type { VersionEntry } from "./data-types.js";
 
 export type { VersionEntry } from "./data-types.js";
 
-/// Version string declared in \`js/packages/truapi/package.json\` at codegen
-/// time. Mirrors the \`truapi\` crate version. Used by the explorer to render
-/// the \`main\` selector label as \`main (x.y.z)\`.
+/**
+ * Version string declared in \`js/packages/truapi/package.json\` at codegen
+ * time. Mirrors the \`truapi\` crate version. Used by the explorer to render
+ * the \`main\` selector label as \`main (x.y.z)\`.
+ */
 export const packageVersion = ${JSON.stringify(packageVersion)};
 
 export const versions: VersionEntry[] = [
