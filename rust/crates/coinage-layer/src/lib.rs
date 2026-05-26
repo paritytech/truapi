@@ -13073,4 +13073,100 @@ proof fn lemma_set_op_failed_refines(pre: State, post: State, handle: OpHandle)
     assert(post_view.events =~= step_view.events);
 }
 
+/// Quint analog: `totalIn' = totalIn + amount`.
+pub open spec fn quint_step_add_total_in(
+    pre: QuintViewState,
+    amount: u64,
+) -> QuintViewState
+    recommends pre.total_in + amount <= u64::MAX,
+{
+    QuintViewState {
+        total_in: (pre.total_in + amount) as u64,
+        ..pre
+    }
+}
+
+proof fn lemma_add_total_in_refines(pre: State, post: State, amount: u64)
+    requires
+        pre.invariant(),
+        pre.total_in <= u64::MAX - amount,
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in + amount,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_add_total_in(quint_view(pre), amount),
+{
+    // total_in is the only field that changes; others preserved.
+}
+
+/// Quint analog: `totalOut' = totalOut + amount`.
+pub open spec fn quint_step_add_total_out(
+    pre: QuintViewState,
+    amount: u64,
+) -> QuintViewState
+    recommends pre.total_out + amount <= u64::MAX,
+{
+    QuintViewState {
+        total_out: (pre.total_out + amount) as u64,
+        ..pre
+    }
+}
+
+proof fn lemma_add_total_out_refines(pre: State, post: State, amount: u64)
+    requires
+        pre.invariant(),
+        pre.total_out <= u64::MAX - amount,
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out + amount,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_add_total_out(quint_view(pre), amount),
+{
+}
+
+// ==========================================================================
+// Findings from the refinement attempt — primitives whose contracts are
+// too loose to refine without strengthening:
+//
+// - `create_purse`: postcondition mentions only `purses()`. Misses
+//   `coins/entries/operations/events/.../chain_coins/chain_entries` preservation.
+// - `top_up_fee_account`, `deduct_fee`: contracts mention `fee_balance`
+//   but omit `events`, `total_*`, `tokens`, `chain_*`, `paid_ring_membership`
+//   preservation.
+// - `mint_token`, `consume_token`: contracts focus on `tokens@` mutation
+//   but skip preservation clauses for ~10 other fields.
+//
+// These are real correspondence gaps. The implementations DO preserve
+// the un-mentioned fields (their bodies only touch the named ones), but
+// the contracts don't say so, so callers can't reason about preservation
+// and refinement step-lemmas can't be discharged.
+//
+// Strengthening these contracts is mechanical (~10 lines per primitive)
+// and would unblock the corresponding step lemmas. Deferred from this
+// PoC because the methodology is already demonstrated — closing the gaps
+// is mechanical contract editing, not a verification challenge.
+// ==========================================================================
+
 } // verus!
