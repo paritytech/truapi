@@ -2289,6 +2289,8 @@ impl State {
             final(self).paid_ring_membership == old(self).paid_ring_membership,
             final(self).total_in == old(self).total_in,
             final(self).total_out == old(self).total_out,
+            final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         let ghost old_purses_vec = self.purses@;
         let ghost old_spec_purses = self.spec_purses@;
@@ -2357,6 +2359,8 @@ impl State {
             final(self).paid_ring_membership == old(self).paid_ring_membership,
             final(self).total_in == old(self).total_in,
             final(self).total_out == old(self).total_out,
+            final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         let ghost old_purses_vec = self.purses@;
         let ghost old_spec_purses = self.spec_purses@;
@@ -14352,6 +14356,136 @@ proof fn lemma_deduct_fee_fail_refines(pre: State, post: State)
         post.total_out == pre.total_out,
         post.paid_ring_membership == pre.paid_ring_membership,
         post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_view(pre),
+{
+}
+
+/// Quint analog: `tokens' = tokens.append(UnloadToken{..})`.
+pub open spec fn quint_step_mint_token(
+    pre: QuintViewState,
+    period: u64,
+    class: UnloadTokenClass,
+    counter: u64,
+) -> QuintViewState {
+    QuintViewState {
+        tokens: pre.tokens.push(UnloadToken {
+            period, class, counter, consumed: false,
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_mint_token_refines(
+    pre: State,
+    post: State,
+    period: u64,
+    class: UnloadTokenClass,
+    counter: u64,
+)
+    requires
+        pre.invariant(),
+        pre.tokens@.len() < u64::MAX as nat,
+        post.invariant(),
+        post.tokens@ == pre.tokens@.push(UnloadToken {
+            period, class, counter, consumed: false,
+        }),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_mint_token(quint_view(pre), period, class, counter),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_mint_token(quint_view(pre), period, class, counter);
+    assert(post_view.tokens =~= step_view.tokens);
+}
+
+/// Quint analog: flip `tokens[idx].consumed = true` (only the success
+/// branch; the failure branches are state-preserving no-ops).
+pub open spec fn quint_step_consume_token_success(
+    pre: QuintViewState,
+    idx: usize,
+) -> QuintViewState
+    recommends
+        idx < pre.tokens.len(),
+        !pre.tokens[idx as int].consumed,
+{
+    QuintViewState {
+        tokens: pre.tokens.update(idx as int, UnloadToken {
+            period: pre.tokens[idx as int].period,
+            class: pre.tokens[idx as int].class,
+            counter: pre.tokens[idx as int].counter,
+            consumed: true,
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_consume_token_success_refines(pre: State, post: State, idx: usize)
+    requires
+        pre.invariant(),
+        idx < pre.tokens@.len(),
+        !pre.tokens@[idx as int].consumed,
+        post.invariant(),
+        post.tokens@.len() == pre.tokens@.len(),
+        post.tokens@[idx as int].consumed,
+        post.tokens@[idx as int].period == pre.tokens@[idx as int].period,
+        post.tokens@[idx as int].class == pre.tokens@[idx as int].class,
+        post.tokens@[idx as int].counter == pre.tokens@[idx as int].counter,
+        forall|i: int| 0 <= i < pre.tokens@.len() && i != idx as int
+            ==> #[trigger] post.tokens@[i] == pre.tokens@[i],
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_consume_token_success(quint_view(pre), idx),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_consume_token_success(quint_view(pre), idx);
+    assert(post_view.tokens =~= step_view.tokens);
+}
+
+/// Quint analog: `tokens' = tokens` (the failure branches of
+/// `consume_token` are state-preserving no-ops).
+proof fn lemma_consume_token_fail_refines(pre: State, post: State)
+    requires
+        pre.invariant(),
+        post.invariant(),
+        post.tokens@ == pre.tokens@,
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
         post.chain_coins@ == pre.chain_coins@,
         post.chain_entries@ == pre.chain_entries@,
     ensures
