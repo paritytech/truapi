@@ -4,6 +4,7 @@ import { findMethod, productFunction } from "../data/registry";
 import PatternBadge from "../components/PatternBadge";
 import CodeBlock from "../components/CodeBlock";
 import { TypeString } from "../components/TypeLink";
+import { MarkdownText } from "../components/MarkdownText";
 
 /** Detail page for a single method. */
 export default function MethodPage() {
@@ -34,9 +35,11 @@ export default function MethodPage() {
   const responseName = typeName(method.responseType);
   const errorName = typeName(method.errorType);
   const responseShape = method.responseType
-    ? errorName
-      ? `Result(${responseName}, ${errorName})`
-      : responseName
+    ? method.type === "subscription"
+      ? `Stream<${responseName}>`
+      : errorName
+        ? `Result(${responseName}, ${errorName})`
+        : responseName
     : null;
 
   return (
@@ -61,7 +64,12 @@ export default function MethodPage() {
           <PatternBadge kind={method.type} />
         </div>
         {method.description && (
-          <p className="text-slate-300 leading-relaxed">{method.description}</p>
+          <MarkdownText
+            text={method.description}
+            versionId={version.id}
+            types={version.types}
+            className="text-slate-300"
+          />
         )}
       </div>
 
@@ -82,7 +90,7 @@ export default function MethodPage() {
           </div>
           <div className="px-5 py-3 flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4">
             <span className="text-sm text-slate-400 sm:w-36 shrink-0 pt-0.5">
-              {method.type === "subscription" ? "Start payload" : "Request"}
+              Request
             </span>
             <div className="min-w-0 flex-1">
               {requestTypeName ? (
@@ -95,16 +103,19 @@ export default function MethodPage() {
                 <code className="text-sm font-mono text-slate-400">void</code>
               )}
               {requestDescription && (
-                <p className="text-sm text-slate-400 mt-1">
-                  {requestDescription}
-                </p>
+                <MarkdownText
+                  text={requestDescription}
+                  versionId={version.id}
+                  types={version.types}
+                  className="text-sm text-slate-400 mt-1"
+                />
               )}
             </div>
           </div>
           {responseShape && (
             <div className="px-5 py-3 flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-4">
               <span className="text-sm text-slate-400 sm:w-36 shrink-0 pt-0.5">
-                {method.type === "subscription" ? "Receive payload" : "Response"}
+                Response
               </span>
               <TypeString
                 text={responseShape}

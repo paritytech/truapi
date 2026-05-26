@@ -27,7 +27,7 @@ export default function PatternBadge({ kind }: PatternBadgeProps) {
   const c = config[kind];
   return (
     <span
-      className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium border ${c.bg} ${c.border} ${c.text}`}
+      className={`inline-flex items-center shrink-0 whitespace-nowrap px-2.5 py-1 rounded-full text-xs font-medium border ${c.bg} ${c.border} ${c.text}`}
     >
       {c.label}
     </span>

@@ -2,6 +2,7 @@ import { Link, useOutletContext } from "react-router-dom";
 import type { VersionEntry } from "../data/types";
 import { methodsByKind, productFunction, totalMethods } from "../data/registry";
 import PatternBadge from "../components/PatternBadge";
+import { MarkdownText } from "../components/MarkdownText";
 
 /** Landing page: per-version stats and service cards. */
 export default function OverviewPage() {
@@ -86,13 +87,16 @@ export default function OverviewPage() {
                     className="flex items-start justify-between gap-3 py-2 group"
                   >
                     <div className="min-w-0">
-                      <div className="font-mono text-sm text-slate-200 group-hover:text-white transition-colors truncate">
+                      <div className="font-mono text-sm text-slate-200 group-hover:text-white transition-colors break-all">
                         {productFunction(service, method)}
                       </div>
                       {method.description && (
-                        <div className="text-xs text-slate-400 mt-0.5 truncate">
-                          {method.description}
-                        </div>
+                        <MarkdownText
+                          text={method.description}
+                          versionId={version.id}
+                          types={version.types}
+                          className="text-xs text-slate-400 mt-0.5"
+                        />
                       )}
                     </div>
                     <PatternBadge kind={method.type} />
