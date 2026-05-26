@@ -6071,10 +6071,10 @@ impl State {
             final(self).purses() == old(self).purses(),
             final(self).coins() == old(self).coins(),
             final(self).coins@ == old(self).coins@,
-            final(self).entries().dom().contains(key),
-            final(self).entries()[key].on_chain == EntryOnChain::Missing,
-            final(self).entries()[key].local == old(self).entries()[key].local,
-            final(self).entries()[key].exponent == old(self).entries()[key].exponent,
+            final(self).entries() == old(self).entries().insert(key, EntryRec {
+                on_chain: EntryOnChain::Missing,
+                ..old(self).entries()[key]
+            }),
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
@@ -13742,6 +13742,159 @@ proof fn lemma_set_op_status_refines(
     let post_view = quint_view(post);
     let step_view = quint_step_set_op_status(quint_view(pre), handle, new_status);
     assert(post_view.operations =~= step_view.operations);
+}
+
+/// Quint analog: `operations' = operations.set(handle, {..status = InBlock..})`.
+pub open spec fn quint_step_mark_op_in_block(
+    pre: QuintViewState,
+    handle: OpHandle,
+) -> QuintViewState
+    recommends
+        pre.operations.dom().contains(handle),
+        pre.operations[handle].status == OpStatus::Submitted,
+{
+    QuintViewState {
+        operations: pre.operations.insert(handle, OperationRec {
+            handle: pre.operations[handle].handle,
+            kind: pre.operations[handle].kind,
+            purse: pre.operations[handle].purse,
+            status: OpStatus::InBlock,
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_mark_op_in_block_refines(pre: State, post: State, handle: OpHandle)
+    requires
+        pre.invariant(),
+        pre.operations().dom().contains(handle),
+        pre.operations()[handle].status == OpStatus::Submitted,
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations().insert(handle, OperationRec {
+            handle: pre.operations()[handle].handle,
+            kind: pre.operations()[handle].kind,
+            purse: pre.operations()[handle].purse,
+            status: OpStatus::InBlock,
+        }),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_mark_op_in_block(quint_view(pre), handle),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_mark_op_in_block(quint_view(pre), handle);
+    assert(post_view.operations =~= step_view.operations);
+}
+
+/// Quint analog: `operations' = operations.set(handle, {..status = Finalized..})`.
+pub open spec fn quint_step_mark_op_finalized(
+    pre: QuintViewState,
+    handle: OpHandle,
+) -> QuintViewState
+    recommends
+        pre.operations.dom().contains(handle),
+        pre.operations[handle].status == OpStatus::InBlock,
+{
+    QuintViewState {
+        operations: pre.operations.insert(handle, OperationRec {
+            handle: pre.operations[handle].handle,
+            kind: pre.operations[handle].kind,
+            purse: pre.operations[handle].purse,
+            status: OpStatus::Finalized,
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_mark_op_finalized_refines(pre: State, post: State, handle: OpHandle)
+    requires
+        pre.invariant(),
+        pre.operations().dom().contains(handle),
+        pre.operations()[handle].status == OpStatus::InBlock,
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations().insert(handle, OperationRec {
+            handle: pre.operations()[handle].handle,
+            kind: pre.operations()[handle].kind,
+            purse: pre.operations()[handle].purse,
+            status: OpStatus::Finalized,
+        }),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_mark_op_finalized(quint_view(pre), handle),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_mark_op_finalized(quint_view(pre), handle);
+    assert(post_view.operations =~= step_view.operations);
+}
+
+/// Quint analog: `entries' = entries.set(key, {..on_chain = Missing..})`.
+pub open spec fn quint_step_mark_entry_missing(
+    pre: QuintViewState,
+    key: (PurseId, u64),
+) -> QuintViewState
+    recommends
+        pre.entries.dom().contains(key),
+{
+    QuintViewState {
+        entries: pre.entries.insert(key, EntryRec {
+            on_chain: EntryOnChain::Missing,
+            ..pre.entries[key]
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_mark_entry_missing_refines(pre: State, post: State, key: (PurseId, u64))
+    requires
+        pre.invariant(),
+        pre.entries().dom().contains(key),
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries().insert(key, EntryRec {
+            on_chain: EntryOnChain::Missing,
+            ..pre.entries()[key]
+        }),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_mark_entry_missing(quint_view(pre), key),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_mark_entry_missing(quint_view(pre), key);
+    assert(post_view.entries =~= step_view.entries);
 }
 
 /// Quint analog: `purses' = purses.put(new_id, {id, name, 0, 0})`.
