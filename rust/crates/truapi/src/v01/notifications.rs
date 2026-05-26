@@ -144,3 +144,45 @@ pub enum HostPushSetRulesError {
     /// Catch-all.
     Unknown { reason: String },
 }
+
+/// Structured announcement content rendered on the device. Plaintext —
+/// announcements are authenticity-only, not confidential.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct PushBroadcastContent {
+    /// Notification title.
+    pub title: String,
+    /// Notification body.
+    pub body: String,
+    /// Route or URL to open on tap.
+    pub deeplink: Option<String>,
+}
+
+/// Request to publish an announcement to subscribers via the interim direct
+/// transport. The host signs the announcement with the calling product's
+/// account and submits it directly to the push backend; the product supplies
+/// only the topics and content.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostPushBroadcastRequest {
+    /// Topics to publish on; matched against subscriber rules with the caller
+    /// as signer.
+    pub topics: Vec<Topic>,
+    /// Announcement content carried to the device.
+    pub content: PushBroadcastContent,
+}
+
+/// Result of a successful [`HostPushBroadcastRequest`].
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostPushBroadcastResponse {
+    /// Blake2b-256 hash of the signed broadcast, for dedup and audit.
+    pub message_hash: [u8; 32],
+}
+
+/// Failure modes for [`HostPushBroadcastRequest`].
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum HostPushBroadcastError {
+    /// The notification system is currently unavailable; nothing was published.
+    /// The product MAY retry later.
+    NotificationSystemUnavailable(String),
+    /// Catch-all.
+    Unknown { reason: String },
+}

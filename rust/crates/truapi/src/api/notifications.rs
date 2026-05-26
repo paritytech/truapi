@@ -2,6 +2,7 @@
 
 use crate::versioned::notifications::{
     HostPushAddRulesError, HostPushAddRulesRequest, HostPushAddRulesResponse,
+    HostPushBroadcastError, HostPushBroadcastRequest, HostPushBroadcastResponse,
     HostPushListRulesError, HostPushListRulesRequest, HostPushListRulesResponse,
     HostPushNotificationCancelError, HostPushNotificationCancelRequest,
     HostPushNotificationCancelResponse, HostPushNotificationError, HostPushNotificationRequest,
@@ -153,4 +154,28 @@ pub trait Notifications: Send + Sync {
         cx: &CallContext,
         request: HostPushSetRulesRequest,
     ) -> Result<HostPushSetRulesResponse, CallError<HostPushSetRulesError>>;
+
+    /// Publish an announcement to subscribers. Interim distribution that does
+    /// not use the Statement Store as the distribution layer, while preserving
+    /// the broadcaster's authenticity: the host signs the announcement with the
+    /// calling product's account and submits it directly to the push backend,
+    /// which verifies the signature and fans out using the same `(signer,
+    /// topic)` rule matching.
+    ///
+    /// ```ts
+    /// const result = await truapi.notifications.pushBroadcast({
+    ///   topics: ["0x00"],
+    ///   content: { title: "Web3 Summit", body: "Keynote moved to Hall A" },
+    /// });
+    /// result.match(
+    ///   (value) => console.log(value.matched),
+    ///   (error) => console.error(error),
+    /// );
+    /// ```
+    #[wire(request_id = 172)]
+    async fn push_broadcast(
+        &self,
+        cx: &CallContext,
+        request: HostPushBroadcastRequest,
+    ) -> Result<HostPushBroadcastResponse, CallError<HostPushBroadcastError>>;
 }
