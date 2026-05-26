@@ -1287,6 +1287,22 @@ impl State {
                     && final(self).purses() == old(self).purses(),
                 Err(_) => false,
             },
+            final(self).coins() == old(self).coins(),
+            final(self).entries() == old(self).entries(),
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+            final(self).next_purse_id == old(self).next_purse_id,
+            final(self).fee_balance == old(self).fee_balance,
+            final(self).next_extrinsic_id == old(self).next_extrinsic_id,
+            final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
+            final(self).tokens@ == old(self).tokens@,
+            final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         let ghost old_v = self.purses@;
         let ghost old_m = self.spec_purses@;
@@ -1303,6 +1319,21 @@ impl State {
                 old_v == old(self).purses@,
                 name_seq == name@,
                 self.next_purse_id == old(self).next_purse_id,
+                self.coins() == old(self).coins(),
+                self.entries() == old(self).entries(),
+                self.operations@ == old(self).operations@,
+                self.spec_operations@ == old(self).spec_operations@,
+                self.next_handle == old(self).next_handle,
+                self.next_age == old(self).next_age,
+                self.fee_balance == old(self).fee_balance,
+                self.next_extrinsic_id == old(self).next_extrinsic_id,
+                self.events@ == old(self).events@,
+                self.paid_ring_membership == old(self).paid_ring_membership,
+                self.total_in == old(self).total_in,
+                self.total_out == old(self).total_out,
+                self.tokens@ == old(self).tokens@,
+                self.chain_coins@ == old(self).chain_coins@,
+                self.chain_entries@ == old(self).chain_entries@,
                 forall|j: int| 0 <= j < i ==> (#[trigger] self.purses@[j]).id != p,
             decreases self.purses.len() - i,
         {
@@ -14997,6 +15028,91 @@ proof fn lemma_add_entry_refines(
     lemma_add_entry_with_meta_refines(
         pre, post, p, exponent, on_chain, local, 0, 0, 0, 0, new_idx,
     );
+}
+
+/// Quint analog: `purses' = purses.set(p, {..name = name..})`. Only
+/// fires on the success branch — the PurseNotFound branch refines as
+/// a state-preserving no-op.
+pub open spec fn quint_step_rename_purse_success(
+    pre: QuintViewState,
+    p: PurseId,
+    name: Seq<u8>,
+) -> QuintViewState
+    recommends
+        pre.purses.dom().contains(p),
+{
+    QuintViewState {
+        purses: pre.purses.insert(p, PurseRecSpec {
+            id: pre.purses[p].id,
+            name,
+            next_coin_idx: pre.purses[p].next_coin_idx,
+            next_entry_idx: pre.purses[p].next_entry_idx,
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_rename_purse_success_refines(
+    pre: State,
+    post: State,
+    p: PurseId,
+    name: Seq<u8>,
+)
+    requires
+        pre.invariant(),
+        pre.purses().dom().contains(p),
+        post.invariant(),
+        post.purses().dom() =~= pre.purses().dom(),
+        post.purses()[p].id == p,
+        post.purses()[p].name == name,
+        post.purses()[p].next_coin_idx == pre.purses()[p].next_coin_idx,
+        post.purses()[p].next_entry_idx == pre.purses()[p].next_entry_idx,
+        forall|q: PurseId| q != p && #[trigger] pre.purses().dom().contains(q)
+            ==> post.purses()[q] == pre.purses()[q],
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_rename_purse_success(quint_view(pre), p, name),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_rename_purse_success(quint_view(pre), p, name);
+    assert(post_view.purses =~= step_view.purses);
+}
+
+/// Quint analog: `purses' = purses` (the PurseNotFound branch of
+/// `rename_purse` is a state-preserving no-op).
+proof fn lemma_rename_purse_fail_refines(pre: State, post: State)
+    requires
+        pre.invariant(),
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_view(pre),
+{
 }
 
 /// Quint analog: `purses' = purses.put(new_id, {id, name, 0, 0})`.
