@@ -449,6 +449,23 @@ pub enum SubsetSumCover {
     Four((PurseId, u64), (PurseId, u64), (PurseId, u64), (PurseId, u64)),
 }
 
+/// Result of a tier-3 entry-supplemented cover search. Carries either
+/// a pure-coin subset, a pure-entry subset, or a mixed coin+entry
+/// subset whose values sum exactly to the requested amount. Returned
+/// by [`State::find_tier3_cover_up_to_3`].
+///
+/// Naming convention: `CkEm` denotes k coins and m entries.
+pub enum Tier3Cover {
+    C1((PurseId, u64)),
+    E1((PurseId, u64)),
+    C2((PurseId, u64), (PurseId, u64)),
+    C1E1((PurseId, u64), (PurseId, u64)),
+    E2((PurseId, u64), (PurseId, u64)),
+    C3((PurseId, u64), (PurseId, u64), (PurseId, u64)),
+    C2E1((PurseId, u64), (PurseId, u64), (PurseId, u64)),
+    C1E2((PurseId, u64), (PurseId, u64), (PurseId, u64)),
+}
+
 /// Snapshot returned by `query_purse` (design §8.1 `PurseInfo`).
 /// Pilot scope: `spendable`, `spendable_strict`, `pending` are always 0
 /// (no coins/entries in state yet).
@@ -9716,6 +9733,264 @@ impl State {
             i = i + 1;
         }
         None
+    }
+
+    /// Composite tier-3 entry-supplemented cover (§6.3) search up to
+    /// total subset size 3. Tries 1-coin, 1-entry, 2-coin, 1-coin+1-entry,
+    /// 2-entry, 3-coin, 2-coin+1-entry, 1-coin+2-entry in order and
+    /// returns the first hit as a tagged enum (Tier3Cover). The `None`
+    /// branch carries the conjoined sharp postconditions from all 8
+    /// underlying primitives — no subset of total size 1, 2, or 3
+    /// (any coin/entry split) in the purse sums to `amount`.
+    ///
+    /// Closes the practical slice of task #88. The remaining open piece
+    /// — arbitrary-size powerset over the coin/entry product space —
+    /// would extend coverage to larger subsets at the cost of new spec
+    /// scaffolding. Sizes 1, 2, 3 cover the realistic cases.
+    pub fn find_tier3_cover_up_to_3(&self, p: PurseId, amount: u64)
+        -> (res: Option<Tier3Cover>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some(Tier3Cover::C1(k)) =>
+                    self.coins().dom().contains(k)
+                    && k.0 == p
+                    && self.coins()[k].state == CoinState::Available
+                    && coin_value(self.coins()[k].exponent) == amount as nat,
+                Some(Tier3Cover::E1(k)) =>
+                    self.entries().dom().contains(k)
+                    && k.0 == p
+                    && self.entries()[k].on_chain == EntryOnChain::Ready
+                    && self.entries()[k].local == EntryLocal::LocalAvailable
+                    && coin_value(self.entries()[k].exponent) == amount as nat,
+                Some(Tier3Cover::C2(k1, k2)) =>
+                    self.coins().dom().contains(k1)
+                    && self.coins().dom().contains(k2)
+                    && k1 != k2 && k1.0 == p && k2.0 == p
+                    && self.coins()[k1].state == CoinState::Available
+                    && self.coins()[k2].state == CoinState::Available
+                    && coin_value(self.coins()[k1].exponent)
+                        + coin_value(self.coins()[k2].exponent)
+                        == amount as nat,
+                Some(Tier3Cover::C1E1(ck, ek)) =>
+                    self.coins().dom().contains(ck)
+                    && self.entries().dom().contains(ek)
+                    && ck.0 == p && ek.0 == p
+                    && self.coins()[ck].state == CoinState::Available
+                    && self.entries()[ek].on_chain == EntryOnChain::Ready
+                    && self.entries()[ek].local == EntryLocal::LocalAvailable
+                    && coin_value(self.coins()[ck].exponent)
+                        + coin_value(self.entries()[ek].exponent)
+                        == amount as nat,
+                Some(Tier3Cover::E2(k1, k2)) =>
+                    self.entries().dom().contains(k1)
+                    && self.entries().dom().contains(k2)
+                    && k1 != k2 && k1.0 == p && k2.0 == p
+                    && self.entries()[k1].on_chain == EntryOnChain::Ready
+                    && self.entries()[k1].local == EntryLocal::LocalAvailable
+                    && self.entries()[k2].on_chain == EntryOnChain::Ready
+                    && self.entries()[k2].local == EntryLocal::LocalAvailable
+                    && coin_value(self.entries()[k1].exponent)
+                        + coin_value(self.entries()[k2].exponent)
+                        == amount as nat,
+                Some(Tier3Cover::C3(k1, k2, k3)) =>
+                    self.coins().dom().contains(k1)
+                    && self.coins().dom().contains(k2)
+                    && self.coins().dom().contains(k3)
+                    && k1 != k2 && k1 != k3 && k2 != k3
+                    && k1.0 == p && k2.0 == p && k3.0 == p
+                    && self.coins()[k1].state == CoinState::Available
+                    && self.coins()[k2].state == CoinState::Available
+                    && self.coins()[k3].state == CoinState::Available
+                    && coin_value(self.coins()[k1].exponent)
+                        + coin_value(self.coins()[k2].exponent)
+                        + coin_value(self.coins()[k3].exponent)
+                        == amount as nat,
+                Some(Tier3Cover::C2E1(c1, c2, e)) =>
+                    self.coins().dom().contains(c1)
+                    && self.coins().dom().contains(c2)
+                    && self.entries().dom().contains(e)
+                    && c1 != c2
+                    && c1.0 == p && c2.0 == p && e.0 == p
+                    && self.coins()[c1].state == CoinState::Available
+                    && self.coins()[c2].state == CoinState::Available
+                    && self.entries()[e].on_chain == EntryOnChain::Ready
+                    && self.entries()[e].local == EntryLocal::LocalAvailable
+                    && coin_value(self.coins()[c1].exponent)
+                        + coin_value(self.coins()[c2].exponent)
+                        + coin_value(self.entries()[e].exponent)
+                        == amount as nat,
+                Some(Tier3Cover::C1E2(c, e1, e2)) =>
+                    self.coins().dom().contains(c)
+                    && self.entries().dom().contains(e1)
+                    && self.entries().dom().contains(e2)
+                    && e1 != e2
+                    && c.0 == p && e1.0 == p && e2.0 == p
+                    && self.coins()[c].state == CoinState::Available
+                    && self.entries()[e1].on_chain == EntryOnChain::Ready
+                    && self.entries()[e1].local == EntryLocal::LocalAvailable
+                    && self.entries()[e2].on_chain == EntryOnChain::Ready
+                    && self.entries()[e2].local == EntryLocal::LocalAvailable
+                    && coin_value(self.coins()[c].exponent)
+                        + coin_value(self.entries()[e1].exponent)
+                        + coin_value(self.entries()[e2].exponent)
+                        == amount as nat,
+                None => {
+                    // Conjoined sharp Nones from all 8 underlying primitives.
+                    &&& forall|k: (PurseId, u64)|
+                            #[trigger] self.coins().dom().contains(k)
+                            && k.0 == p
+                            && self.coins()[k].state == CoinState::Available
+                            ==> coin_value(self.coins()[k].exponent) != amount as nat
+                    &&& forall|k: (PurseId, u64)|
+                            #[trigger] self.entries().dom().contains(k)
+                            && k.0 == p
+                            && self.entries()[k].on_chain == EntryOnChain::Ready
+                            && self.entries()[k].local == EntryLocal::LocalAvailable
+                            ==> coin_value(self.entries()[k].exponent) != amount as nat
+                    &&& forall|i1: int, i2: int|
+                            0 <= i1 < self.coins@.len()
+                            && 0 <= i2 < self.coins@.len()
+                            && i1 != i2
+                            ==> {
+                                let c1 = #[trigger] self.coins@[i1];
+                                let c2 = #[trigger] self.coins@[i2];
+                                c1.purse != p
+                                || c1.state != CoinState::Available
+                                || c2.purse != p
+                                || c2.state != CoinState::Available
+                                || (coin_value(c1.exponent) + coin_value(c2.exponent)
+                                    != amount as nat)
+                            }
+                    &&& forall|i: int, k: int|
+                            0 <= i < self.coins@.len()
+                            && 0 <= k < self.entries@.len()
+                            ==> {
+                                let c = #[trigger] self.coins@[i];
+                                let e = #[trigger] self.entries@[k];
+                                c.purse != p
+                                || c.state != CoinState::Available
+                                || e.purse != p
+                                || e.on_chain != EntryOnChain::Ready
+                                || e.local != EntryLocal::LocalAvailable
+                                || (coin_value(c.exponent) + coin_value(e.exponent)
+                                    != amount as nat)
+                            }
+                    &&& forall|i1: int, i2: int|
+                            0 <= i1 < self.entries@.len()
+                            && 0 <= i2 < self.entries@.len()
+                            && i1 != i2
+                            ==> {
+                                let e1 = #[trigger] self.entries@[i1];
+                                let e2 = #[trigger] self.entries@[i2];
+                                e1.purse != p
+                                || e1.on_chain != EntryOnChain::Ready
+                                || e1.local != EntryLocal::LocalAvailable
+                                || e2.purse != p
+                                || e2.on_chain != EntryOnChain::Ready
+                                || e2.local != EntryLocal::LocalAvailable
+                                || (coin_value(e1.exponent) + coin_value(e2.exponent)
+                                    != amount as nat)
+                            }
+                    &&& forall|i1: int, i2: int, i3: int|
+                            0 <= i1 < self.coins@.len()
+                            && 0 <= i2 < self.coins@.len()
+                            && 0 <= i3 < self.coins@.len()
+                            && i1 != i2 && i1 != i3 && i2 != i3
+                            ==> {
+                                let c1 = #[trigger] self.coins@[i1];
+                                let c2 = #[trigger] self.coins@[i2];
+                                let c3 = #[trigger] self.coins@[i3];
+                                c1.purse != p
+                                || c1.state != CoinState::Available
+                                || c2.purse != p
+                                || c2.state != CoinState::Available
+                                || c3.purse != p
+                                || c3.state != CoinState::Available
+                                || (coin_value(c1.exponent)
+                                        + coin_value(c2.exponent)
+                                        + coin_value(c3.exponent)
+                                    != amount as nat)
+                            }
+                    &&& forall|i1: int, i2: int, k: int|
+                            0 <= i1 < self.coins@.len()
+                            && 0 <= i2 < self.coins@.len()
+                            && 0 <= k < self.entries@.len()
+                            && i1 != i2
+                            ==> {
+                                let c1 = #[trigger] self.coins@[i1];
+                                let c2 = #[trigger] self.coins@[i2];
+                                let e = #[trigger] self.entries@[k];
+                                c1.purse != p
+                                || c1.state != CoinState::Available
+                                || c2.purse != p
+                                || c2.state != CoinState::Available
+                                || e.purse != p
+                                || e.on_chain != EntryOnChain::Ready
+                                || e.local != EntryLocal::LocalAvailable
+                                || (coin_value(c1.exponent)
+                                        + coin_value(c2.exponent)
+                                        + coin_value(e.exponent)
+                                    != amount as nat)
+                            }
+                    &&& forall|i: int, k1: int, k2: int|
+                            0 <= i < self.coins@.len()
+                            && 0 <= k1 < self.entries@.len()
+                            && 0 <= k2 < self.entries@.len()
+                            && k1 != k2
+                            ==> {
+                                let c = #[trigger] self.coins@[i];
+                                let e1 = #[trigger] self.entries@[k1];
+                                let e2 = #[trigger] self.entries@[k2];
+                                c.purse != p
+                                || c.state != CoinState::Available
+                                || e1.purse != p
+                                || e1.on_chain != EntryOnChain::Ready
+                                || e1.local != EntryLocal::LocalAvailable
+                                || e2.purse != p
+                                || e2.on_chain != EntryOnChain::Ready
+                                || e2.local != EntryLocal::LocalAvailable
+                                || (coin_value(c.exponent)
+                                        + coin_value(e1.exponent)
+                                        + coin_value(e2.exponent)
+                                    != amount as nat)
+                            }
+                },
+            },
+    {
+        match self.find_exact_single_coin(p, amount) {
+            Some(k) => return Some(Tier3Cover::C1(k)),
+            None => {}
+        }
+        match self.find_exact_single_entry(p, amount) {
+            Some(k) => return Some(Tier3Cover::E1(k)),
+            None => {}
+        }
+        match self.find_two_coin_exact_cover(p, amount) {
+            Some((k1, k2)) => return Some(Tier3Cover::C2(k1, k2)),
+            None => {}
+        }
+        match self.find_coin_entry_exact_cover(p, amount) {
+            Some((ck, ek)) => return Some(Tier3Cover::C1E1(ck, ek)),
+            None => {}
+        }
+        match self.find_two_entry_exact_cover(p, amount) {
+            Some((k1, k2)) => return Some(Tier3Cover::E2(k1, k2)),
+            None => {}
+        }
+        match self.find_three_coin_exact_cover(p, amount) {
+            Some((k1, k2, k3)) => return Some(Tier3Cover::C3(k1, k2, k3)),
+            None => {}
+        }
+        match self.find_two_coin_one_entry_cover(p, amount) {
+            Some((c1, c2, e)) => return Some(Tier3Cover::C2E1(c1, c2, e)),
+            None => {}
+        }
+        match self.find_one_coin_two_entry_cover(p, amount) {
+            Some((c, e1, e2)) => Some(Tier3Cover::C1E2(c, e1, e2)),
+            None => None,
+        }
     }
 
     /// Tier-1 multi-coin (§6.3): find any pair of distinct `Available`
