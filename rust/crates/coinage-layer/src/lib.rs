@@ -8566,22 +8566,46 @@ impl State {
             old(self).events@.len() < u64::MAX as nat,
         ensures
             final(self).invariant(),
-            // Source entry consumed.
-            final(self).entries().dom().contains(key),
-            final(self).entries()[key].local == EntryLocal::LocalConsumed,
-            final(self).entries()[key].on_chain == EntryOnChain::Ready,
-            // New coin minted in the same purse, Available, with entry's exponent.
             new_coin_key.0 == key.0,
             new_coin_key.1 == old(self).purses()[key.0].next_coin_idx,
-            final(self).coins().dom().contains(new_coin_key),
-            final(self).coins()[new_coin_key].state == CoinState::Available,
-            final(self).coins()[new_coin_key].exponent == old(self).entries()[key].exponent,
-            // Operations untouched: this is a state-mutating but op-agnostic primitive.
+            final(self).entries() == old(self).entries().insert(key, EntryRec {
+                local: EntryLocal::LocalConsumed,
+                ..old(self).entries()[key]
+            }),
+            final(self).coins() == old(self).coins().insert(new_coin_key, CoinRec {
+                purse: key.0,
+                idx: new_coin_key.1,
+                exponent: old(self).entries()[key].exponent,
+                state: CoinState::Available,
+                age: old(self).next_age,
+                account: 0,
+            }),
+            final(self).purses().dom() =~= old(self).purses().dom(),
+            final(self).purses()[key.0].id == key.0,
+            final(self).purses()[key.0].name == old(self).purses()[key.0].name,
+            final(self).purses()[key.0].next_coin_idx
+                == old(self).purses()[key.0].next_coin_idx + 1,
+            final(self).purses()[key.0].next_entry_idx
+                == old(self).purses()[key.0].next_entry_idx,
+            forall|q: PurseId| q != key.0 && #[trigger] old(self).purses().dom().contains(q)
+                ==> final(self).purses()[q] == old(self).purses()[q],
+            final(self).next_age == old(self).next_age + 1,
             final(self).operations() == old(self).operations(),
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
-            final(self).events@.len() == old(self).events@.len() + 1,
+            final(self).events@ == old(self).events@.push(Event::CoinAvailable {
+                purse: key.0,
+                exponent: old(self).entries()[key].exponent,
+            }),
+            final(self).fee_balance == old(self).fee_balance,
+            final(self).next_extrinsic_id == old(self).next_extrinsic_id,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
+            final(self).tokens@ == old(self).tokens@,
+            final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         let exp = self.read_entry_exponent(key);
         self.set_entry_local(key, EntryLocal::LocalLockedFor(handle));
@@ -16382,6 +16406,118 @@ proof fn lemma_delete_purse_notfound_refines(pre: State, post: State, p: PurseId
     let step_view = quint_step_delete_purse_notfound(quint_view(pre), p);
     assert(post_view.coins =~= step_view.coins);
     assert(post_view.entries =~= step_view.entries);
+}
+
+/// Quint analog: `set_entry_local(key, LocalLockedFor) ; set_entry_local
+/// (key, LocalConsumed) ; add_coin(purse, exp) ; mark_coin_observed(new)`.
+/// The intermediate `LocalLockedFor` state is hidden in the composite.
+pub open spec fn quint_step_unload_via_entry(
+    pre: QuintViewState,
+    key: (PurseId, u64),
+    next_age: u64,
+    new_idx: u64,
+) -> QuintViewState
+    recommends
+        pre.entries.dom().contains(key),
+        pre.entries[key].local == EntryLocal::LocalAvailable,
+        pre.entries[key].on_chain == EntryOnChain::Ready,
+        pre.purses.dom().contains(key.0),
+        pre.purses[key.0].next_coin_idx == new_idx as nat,
+        (new_idx as nat) < u64::MAX as nat,
+{
+    let p = key.0;
+    let exp = pre.entries[key].exponent;
+    let new_coin_key = (p, new_idx);
+    QuintViewState {
+        entries: pre.entries.insert(key, EntryRec {
+            local: EntryLocal::LocalConsumed,
+            ..pre.entries[key]
+        }),
+        coins: pre.coins.insert(new_coin_key, CoinRec {
+            purse: p,
+            idx: new_idx,
+            exponent: exp,
+            state: CoinState::Available,
+            age: next_age,
+            account: 0,
+        }),
+        purses: pre.purses.insert(p, PurseRecSpec {
+            id: pre.purses[p].id,
+            name: pre.purses[p].name,
+            next_coin_idx: pre.purses[p].next_coin_idx + 1,
+            next_entry_idx: pre.purses[p].next_entry_idx,
+        }),
+        events: pre.events.push(Event::CoinAvailable {
+            purse: p,
+            exponent: exp,
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_unload_via_entry_refines(
+    pre: State,
+    post: State,
+    key: (PurseId, u64),
+    new_idx: u64,
+)
+    requires
+        pre.invariant(),
+        pre.entries().dom().contains(key),
+        pre.entries()[key].local == EntryLocal::LocalAvailable,
+        pre.entries()[key].on_chain == EntryOnChain::Ready,
+        pre.purses().dom().contains(key.0),
+        pre.purses()[key.0].next_coin_idx == new_idx as nat,
+        (new_idx as nat) < u64::MAX as nat,
+        pre.next_age < u64::MAX,
+        pre.events@.len() < u64::MAX as nat,
+        post.invariant(),
+        post.entries() == pre.entries().insert(key, EntryRec {
+            local: EntryLocal::LocalConsumed,
+            ..pre.entries()[key]
+        }),
+        post.coins() == pre.coins().insert((key.0, new_idx), CoinRec {
+            purse: key.0,
+            idx: new_idx,
+            exponent: pre.entries()[key].exponent,
+            state: CoinState::Available,
+            age: pre.next_age,
+            account: 0,
+        }),
+        post.purses().dom() =~= pre.purses().dom(),
+        post.purses()[key.0].id == key.0,
+        post.purses()[key.0].name == pre.purses()[key.0].name,
+        post.purses()[key.0].next_coin_idx == pre.purses()[key.0].next_coin_idx + 1,
+        post.purses()[key.0].next_entry_idx == pre.purses()[key.0].next_entry_idx,
+        forall|q: PurseId| q != key.0 && #[trigger] pre.purses().dom().contains(q)
+            ==> post.purses()[q] == pre.purses()[q],
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@.push(Event::CoinAvailable {
+            purse: key.0,
+            exponent: pre.entries()[key].exponent,
+        }),
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_unload_via_entry(
+            quint_view(pre), key, pre.next_age, new_idx,
+        ),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_unload_via_entry(
+        quint_view(pre), key, pre.next_age, new_idx,
+    );
+    assert(post_view.entries =~= step_view.entries);
+    assert(post_view.coins =~= step_view.coins);
+    assert(post_view.purses =~= step_view.purses);
+    assert(post_view.events =~= step_view.events);
 }
 
 /// Quint analog: `purses' = purses.put(new_id, {id, name, 0, 0})`.
