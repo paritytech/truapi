@@ -4,6 +4,7 @@ import { Menu, Search } from "lucide-react";
 import { findVersion, versions } from "./data/registry";
 import Sidebar from "./components/Sidebar";
 import SearchModal from "./components/SearchModal";
+import ErrorBoundary from "./components/ErrorBoundary";
 import OverviewPage from "./pages/OverviewPage";
 import MethodPage from "./pages/MethodPage";
 import TypesPage from "./pages/TypesPage";
@@ -71,7 +72,9 @@ function VersionLayout() {
         </div>
 
         <div className="px-4 py-6 lg:px-8 lg:py-8">
-          <Outlet context={{ version }} />
+          <ErrorBoundary>
+            <Outlet context={{ version }} />
+          </ErrorBoundary>
         </div>
       </main>
 
