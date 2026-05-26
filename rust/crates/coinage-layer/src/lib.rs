@@ -12271,15 +12271,57 @@ impl State {
         ensures
             final(self).invariant(),
             res.0 == old(self).next_handle,
-            final(self).operations().dom().contains(res.0),
-            final(self).operations()[res.0].status == OpStatus::Submitted,
-            final(self).operations()[res.0].kind == OpKind::TopUp,
-            final(self).operations()[res.0].purse == p,
+            !old(self).operations().dom().contains(res.0),
             res.1.0 == p,
             res.1.1 == old(self).purses()[p].next_entry_idx,
-            final(self).entries().dom().contains(res.1),
-            final(self).entries()[res.1].on_chain == EntryOnChain::Waiting,
-            final(self).entries()[res.1].local == EntryLocal::LocalAvailable,
+            final(self).operations() == old(self).operations().insert(res.0, OperationRec {
+                handle: res.0,
+                kind: OpKind::TopUp,
+                purse: p,
+                status: OpStatus::Submitted,
+            }),
+            final(self).entries() == old(self).entries().insert(res.1, EntryRec {
+                purse: p,
+                idx: res.1.1,
+                exponent,
+                on_chain: EntryOnChain::Waiting,
+                local: EntryLocal::LocalAvailable,
+                member_key,
+                allocated_at,
+                ready_at,
+                ring_idx,
+            }),
+            final(self).coins() == old(self).coins(),
+            final(self).purses().dom() =~= old(self).purses().dom(),
+            final(self).purses()[p].id == p,
+            final(self).purses()[p].name == old(self).purses()[p].name,
+            final(self).purses()[p].next_coin_idx
+                == old(self).purses()[p].next_coin_idx,
+            final(self).purses()[p].next_entry_idx
+                == old(self).purses()[p].next_entry_idx + 1,
+            forall|q: PurseId| q != p && #[trigger] old(self).purses().dom().contains(q)
+                ==> final(self).purses()[q] == old(self).purses()[q],
+            final(self).next_age == old(self).next_age,
+            final(self).next_handle == old(self).next_handle + 1,
+            final(self).fee_balance == old(self).fee_balance,
+            final(self).next_extrinsic_id == old(self).next_extrinsic_id,
+            final(self).events@ == old(self).events@
+                .push(Event::OperationStarted {
+                    handle: res.0,
+                    kind: OpKind::TopUp,
+                    purse: p,
+                })
+                .push(Event::EntryAllocated { purse: p, exponent })
+                .push(Event::OperationProgress {
+                    handle: res.0,
+                    status: OpStatus::Submitted,
+                }),
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
+            final(self).tokens@ == old(self).tokens@,
+            final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         let handle = self.start_op(OpKind::TopUp, p);
         let key = self.top_up_via_entry(
@@ -18866,6 +18908,149 @@ proof fn lemma_tracked_split_coin_refines(
         }
     }
     assert(post_view.coins =~= step_view.coins);
+}
+
+/// Quint analog: `start_op(TopUp, p) ; top_up_via_entry(p, ...) ;
+/// mark_op_submitted(handle)`. Three refinement steps composed.
+pub open spec fn quint_step_tracked_top_up_via_entry(
+    pre: QuintViewState,
+    p: PurseId,
+    exponent: u8,
+    member_key: u64,
+    allocated_at: u64,
+    ready_at: u64,
+    ring_idx: u64,
+    new_idx: u64,
+) -> QuintViewState
+    recommends
+        pre.purses.dom().contains(p),
+        pre.purses[p].next_entry_idx == new_idx as nat,
+        (new_idx as nat) < u64::MAX as nat,
+        pre.next_handle < u64::MAX,
+{
+    let handle = pre.next_handle;
+    let new_entry_key = (p, new_idx);
+    QuintViewState {
+        operations: pre.operations.insert(handle, OperationRec {
+            handle,
+            kind: OpKind::TopUp,
+            purse: p,
+            status: OpStatus::Submitted,
+        }),
+        entries: pre.entries.insert(new_entry_key, EntryRec {
+            purse: p,
+            idx: new_idx,
+            exponent,
+            on_chain: EntryOnChain::Waiting,
+            local: EntryLocal::LocalAvailable,
+            member_key,
+            allocated_at,
+            ready_at,
+            ring_idx,
+        }),
+        purses: pre.purses.insert(p, PurseRecSpec {
+            id: pre.purses[p].id,
+            name: pre.purses[p].name,
+            next_coin_idx: pre.purses[p].next_coin_idx,
+            next_entry_idx: pre.purses[p].next_entry_idx + 1,
+        }),
+        next_handle: (pre.next_handle + 1) as u64,
+        events: pre.events
+            .push(Event::OperationStarted {
+                handle,
+                kind: OpKind::TopUp,
+                purse: p,
+            })
+            .push(Event::EntryAllocated { purse: p, exponent })
+            .push(Event::OperationProgress {
+                handle,
+                status: OpStatus::Submitted,
+            }),
+        ..pre
+    }
+}
+
+proof fn lemma_tracked_top_up_via_entry_refines(
+    pre: State,
+    post: State,
+    p: PurseId,
+    exponent: u8,
+    member_key: u64,
+    allocated_at: u64,
+    ready_at: u64,
+    ring_idx: u64,
+    new_idx: u64,
+)
+    requires
+        pre.invariant(),
+        pre.purses().dom().contains(p),
+        pre.purses()[p].next_entry_idx == new_idx as nat,
+        (new_idx as nat) < u64::MAX as nat,
+        pre.next_handle < u64::MAX,
+        pre.events@.len() + 3 <= u64::MAX as nat,
+        exponent <= MAX_EXPONENT,
+        post.invariant(),
+        post.entries() == pre.entries().insert((p, new_idx), EntryRec {
+            purse: p,
+            idx: new_idx,
+            exponent,
+            on_chain: EntryOnChain::Waiting,
+            local: EntryLocal::LocalAvailable,
+            member_key,
+            allocated_at,
+            ready_at,
+            ring_idx,
+        }),
+        post.coins() == pre.coins(),
+        post.purses().dom() =~= pre.purses().dom(),
+        post.purses()[p].id == p,
+        post.purses()[p].name == pre.purses()[p].name,
+        post.purses()[p].next_coin_idx == pre.purses()[p].next_coin_idx,
+        post.purses()[p].next_entry_idx == pre.purses()[p].next_entry_idx + 1,
+        forall|q: PurseId| q != p && #[trigger] pre.purses().dom().contains(q)
+            ==> post.purses()[q] == pre.purses()[q],
+        post.operations() == pre.operations().insert(pre.next_handle, OperationRec {
+            handle: pre.next_handle,
+            kind: OpKind::TopUp,
+            purse: p,
+            status: OpStatus::Submitted,
+        }),
+        post.events@ == pre.events@
+            .push(Event::OperationStarted {
+                handle: pre.next_handle,
+                kind: OpKind::TopUp,
+                purse: p,
+            })
+            .push(Event::EntryAllocated { purse: p, exponent })
+            .push(Event::OperationProgress {
+                handle: pre.next_handle,
+                status: OpStatus::Submitted,
+            }),
+        post.next_age == pre.next_age,
+        post.next_handle == pre.next_handle + 1,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_tracked_top_up_via_entry(
+            quint_view(pre), p, exponent,
+            member_key, allocated_at, ready_at, ring_idx, new_idx,
+        ),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_tracked_top_up_via_entry(
+        quint_view(pre), p, exponent,
+        member_key, allocated_at, ready_at, ring_idx, new_idx,
+    );
+    assert(post_view.entries =~= step_view.entries);
+    assert(post_view.purses =~= step_view.purses);
+    assert(post_view.operations =~= step_view.operations);
+    assert(post_view.events =~= step_view.events);
 }
 
 /// Quint analog: `purses' = purses.put(new_id, {id, name, 0, 0})`.
