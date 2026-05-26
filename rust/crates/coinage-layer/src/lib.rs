@@ -15295,6 +15295,133 @@ proof fn lemma_recover_scan_step_entry_none_refines(pre: State, post: State)
 {
 }
 
+/// Some-branch refinement of `release_one_coin_lock_for`: refines as
+/// `quint_step_release_locked_coin` at the returned key.
+proof fn lemma_release_one_coin_lock_for_some_refines(
+    pre: State,
+    post: State,
+    handle: OpHandle,
+    key: (PurseId, u64),
+)
+    requires
+        pre.invariant(),
+        pre.coins().dom().contains(key),
+        pre.coins()[key].state == CoinState::LockedFor(handle),
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins().insert(key, CoinRec {
+            purse: pre.coins()[key].purse,
+            idx: pre.coins()[key].idx,
+            exponent: pre.coins()[key].exponent,
+            age: pre.coins()[key].age,
+            account: pre.coins()[key].account,
+            state: CoinState::Available,
+        }),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_release_locked_coin(
+            quint_view(pre), key, handle,
+        ),
+{
+    lemma_release_locked_coin_refines(pre, post, key, handle);
+}
+
+/// None-branch refinement: state-preserving no-op.
+proof fn lemma_release_one_coin_lock_for_none_refines(pre: State, post: State)
+    requires
+        pre.invariant(),
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_view(pre),
+{
+}
+
+/// Entry parallel: Some branch refines as `quint_step_release_locked_entry`.
+proof fn lemma_release_one_entry_lock_for_some_refines(
+    pre: State,
+    post: State,
+    handle: OpHandle,
+    key: (PurseId, u64),
+)
+    requires
+        pre.invariant(),
+        pre.entries().dom().contains(key),
+        pre.entries()[key].local == EntryLocal::LocalLockedFor(handle),
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries().insert(key, EntryRec {
+            local: EntryLocal::LocalAvailable,
+            ..pre.entries()[key]
+        }),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_release_locked_entry(
+            quint_view(pre), key, handle,
+        ),
+{
+    lemma_release_locked_entry_refines(pre, post, key, handle);
+}
+
+/// Entry parallel: None branch refines as a no-op.
+proof fn lemma_release_one_entry_lock_for_none_refines(pre: State, post: State)
+    requires
+        pre.invariant(),
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_view(pre),
+{
+}
+
 /// Quint analog: `purses' = purses.put(new_id, {id, name, 0, 0})`.
 /// Note: Quint createPurse also emits `EPurseCreated`; the Verus
 /// implementation deliberately doesn't (the pilot scheme treats purse
