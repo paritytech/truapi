@@ -8180,9 +8180,14 @@ impl State {
         ensures
             final(self).invariant(),
             final(self).purses() == old(self).purses(),
-            final(self).coins().dom().contains(key),
-            final(self).coins()[key].state == CoinState::Spent,
-            final(self).coins()[key].exponent == old(self).coins()[key].exponent,
+            final(self).coins() == old(self).coins().insert(key, CoinRec {
+                purse: old(self).coins()[key].purse,
+                idx: old(self).coins()[key].idx,
+                exponent: old(self).coins()[key].exponent,
+                age: old(self).coins()[key].age,
+                account: old(self).coins()[key].account,
+                state: CoinState::Spent,
+            }),
             final(self).entries() == old(self).entries(),
             final(self).entries@ == old(self).entries@,
             final(self).spec_entries@ == old(self).spec_entries@,
@@ -8225,17 +8230,42 @@ impl State {
             final(self).invariant(),
             key.0 == p,
             key.1 == old(self).purses()[p].next_coin_idx,
-            final(self).coins().dom().contains(key),
-            final(self).coins()[key].state == CoinState::Available,
-            final(self).coins()[key].exponent == exponent,
-            final(self).coins()[key].account == account,
+            final(self).coins() == old(self).coins().insert(key, CoinRec {
+                purse: p,
+                idx: key.1,
+                exponent,
+                state: CoinState::Available,
+                age: old(self).next_age,
+                account,
+            }),
+            final(self).next_age == old(self).next_age + 1,
+            final(self).purses().dom() =~= old(self).purses().dom(),
+            final(self).purses()[p].id == p,
+            final(self).purses()[p].name == old(self).purses()[p].name,
+            final(self).purses()[p].next_coin_idx
+                == old(self).purses()[p].next_coin_idx + 1,
+            final(self).purses()[p].next_entry_idx
+                == old(self).purses()[p].next_entry_idx,
+            forall|q: PurseId| q != p && #[trigger] old(self).purses().dom().contains(q)
+                ==> final(self).purses()[q] == old(self).purses()[q],
             final(self).entries() == old(self).entries(),
             final(self).entries@ == old(self).entries@,
             final(self).spec_entries@ == old(self).spec_entries@,
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
-            final(self).events@.len() == old(self).events@.len() + 1,
+            final(self).events@ == old(self).events@.push(Event::CoinAvailable {
+                purse: p,
+                exponent,
+            }),
+            final(self).fee_balance == old(self).fee_balance,
+            final(self).next_extrinsic_id == old(self).next_extrinsic_id,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
+            final(self).tokens@ == old(self).tokens@,
+            final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         let key = self.add_coin_with_account(p, exponent, account);
         self.mark_coin_observed(key);
@@ -16029,6 +16059,172 @@ proof fn lemma_commit_op_consuming_locked_coin_refines(
     );
     assert(post_view.coins =~= step_view.coins);
     assert(post_view.operations =~= step_view.operations);
+    assert(post_view.events =~= step_view.events);
+}
+
+/// Quint analog: `mark_coin_pending_spend(key) ; mark_coin_spent(key)`.
+/// The intermediate `PendingSpend` state is hidden in the composite.
+pub open spec fn quint_step_export_coin(
+    pre: QuintViewState,
+    key: (PurseId, u64),
+) -> QuintViewState
+    recommends
+        pre.coins.dom().contains(key),
+        pre.coins[key].state == CoinState::Available,
+{
+    QuintViewState {
+        coins: pre.coins.insert(key, CoinRec {
+            purse: pre.coins[key].purse,
+            idx: pre.coins[key].idx,
+            exponent: pre.coins[key].exponent,
+            age: pre.coins[key].age,
+            account: pre.coins[key].account,
+            state: CoinState::Spent,
+        }),
+        events: pre.events.push(Event::CoinSpent {
+            purse: key.0,
+            exponent: pre.coins[key].exponent,
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_export_coin_refines(pre: State, post: State, key: (PurseId, u64))
+    requires
+        pre.invariant(),
+        pre.coins().dom().contains(key),
+        pre.coins()[key].state == CoinState::Available,
+        pre.events@.len() < u64::MAX as nat,
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins().insert(key, CoinRec {
+            purse: pre.coins()[key].purse,
+            idx: pre.coins()[key].idx,
+            exponent: pre.coins()[key].exponent,
+            age: pre.coins()[key].age,
+            account: pre.coins()[key].account,
+            state: CoinState::Spent,
+        }),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@.push(Event::CoinSpent {
+            purse: key.0,
+            exponent: pre.coins()[key].exponent,
+        }),
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_export_coin(quint_view(pre), key),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_export_coin(quint_view(pre), key);
+    assert(post_view.coins =~= step_view.coins);
+    assert(post_view.events =~= step_view.events);
+}
+
+/// Quint analog: `add_coin_with_account(p, exp, account) ;
+/// mark_coin_observed(key)`. The intermediate `Pending` state is
+/// hidden in the composite — the coin emerges directly as Available
+/// with a CoinAvailable event.
+pub open spec fn quint_step_import_coin(
+    pre: QuintViewState,
+    p: PurseId,
+    exponent: u8,
+    account: u64,
+    next_age: u64,
+    new_idx: u64,
+) -> QuintViewState
+    recommends
+        pre.purses.dom().contains(p),
+        pre.purses[p].next_coin_idx == new_idx as nat,
+        (new_idx as nat) < u64::MAX as nat,
+{
+    let key = (p, new_idx);
+    QuintViewState {
+        coins: pre.coins.insert(key, CoinRec {
+            purse: p,
+            idx: new_idx,
+            exponent,
+            state: CoinState::Available,
+            age: next_age,
+            account,
+        }),
+        purses: pre.purses.insert(p, PurseRecSpec {
+            id: pre.purses[p].id,
+            name: pre.purses[p].name,
+            next_coin_idx: pre.purses[p].next_coin_idx + 1,
+            next_entry_idx: pre.purses[p].next_entry_idx,
+        }),
+        events: pre.events.push(Event::CoinAvailable { purse: p, exponent }),
+        ..pre
+    }
+}
+
+proof fn lemma_import_coin_refines(
+    pre: State,
+    post: State,
+    p: PurseId,
+    exponent: u8,
+    account: u64,
+    new_idx: u64,
+)
+    requires
+        pre.invariant(),
+        pre.purses().dom().contains(p),
+        pre.purses()[p].next_coin_idx == new_idx as nat,
+        (new_idx as nat) < u64::MAX as nat,
+        pre.next_age < u64::MAX,
+        pre.events@.len() < u64::MAX as nat,
+        exponent <= MAX_EXPONENT,
+        post.invariant(),
+        post.coins() == pre.coins().insert(
+            (p, new_idx),
+            CoinRec {
+                purse: p,
+                idx: new_idx,
+                exponent,
+                state: CoinState::Available,
+                age: pre.next_age,
+                account,
+            },
+        ),
+        post.purses().dom() =~= pre.purses().dom(),
+        post.purses()[p].id == p,
+        post.purses()[p].name == pre.purses()[p].name,
+        post.purses()[p].next_coin_idx == pre.purses()[p].next_coin_idx + 1,
+        post.purses()[p].next_entry_idx == pre.purses()[p].next_entry_idx,
+        forall|q: PurseId| q != p && #[trigger] pre.purses().dom().contains(q)
+            ==> post.purses()[q] == pre.purses()[q],
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@.push(Event::CoinAvailable { purse: p, exponent }),
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_import_coin(
+            quint_view(pre), p, exponent, account, pre.next_age, new_idx,
+        ),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_import_coin(
+        quint_view(pre), p, exponent, account, pre.next_age, new_idx,
+    );
+    assert(post_view.coins =~= step_view.coins);
+    assert(post_view.purses =~= step_view.purses);
     assert(post_view.events =~= step_view.events);
 }
 
