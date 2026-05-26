@@ -1,0 +1,84 @@
+name: Number RFC
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/rfcs/**'
+
+permissions:
+  contents: write
+
+jobs:
+  number-rfc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Find unnumbered RFCs and assign numbers
+        run: |
+          cd docs/rfcs
+
+          # Collect unnumbered RFC files (not _index.md, not template, not already numbered)
+          UNNUMBERED=()
+          for f in *.md; do
+            case "$f" in
+              _index.md|[0-9][0-9][0-9][0-9]-*) continue ;;
+              *) UNNUMBERED+=("$f") ;;
+            esac
+          done
+
+          if [ ${#UNNUMBERED[@]} -eq 0 ]; then
+            echo "No unnumbered RFCs found."
+            exit 0
+          fi
+
+          # Determine the highest existing number
+          MAX=0
+          for f in [0-9][0-9][0-9][0-9]-*.md; do
+            [ -e "$f" ] || continue
+            NUM=$(echo "$f" | grep -oE '^[0-9]+' | sed 's/^0*//')
+            [ "${NUM:-0}" -gt "$MAX" ] && MAX="$NUM"
+          done
+
+          for DRAFT in "${UNNUMBERED[@]}"; do
+            MAX=$((MAX + 1))
+            PADDED=$(printf '%04d' "$MAX")
+            SLUG="${DRAFT%.md}"
+            NEW_NAME="${PADDED}-${SLUG}.md"
+
+            echo "Numbering: $DRAFT -> $NEW_NAME (RFC $PADDED)"
+
+            # Rename the file
+            git mv "$DRAFT" "$NEW_NAME"
+
+            # Update the heading: "# RFC — Title" or "# Title" -> "# RFC NNNN — Title"
+            sed -i -E "s/^# RFC — /# RFC ${PADDED} — /" "$NEW_NAME"
+            sed -i -E "s/^# RFC [0-9]+ — /# RFC ${PADDED} — /" "$NEW_NAME"
+
+            # Extract title from frontmatter
+            TITLE=$(grep -m1 '^title:' "$NEW_NAME" | sed 's/^title: *"//;s/" *$//')
+            # Extract owner from frontmatter
+            OWNER=$(grep -m1 '^owner:' "$NEW_NAME" | sed 's/^owner: *"//;s/" *$//')
+            # Extract status from frontmatter (default to accepted on merge)
+            STATUS=$(grep -m1 '^status:' "$NEW_NAME" | sed 's/^status: *//;s/ *$//')
+            STATUS="${STATUS:-accepted}"
+
+            # Append row to _index.md
+            printf '| %s   | [%s](%s) | %-18s | %-13s | |\n' \
+              "$PADDED" "$TITLE" "$NEW_NAME" "$STATUS" "$OWNER" >> _index.md
+          done
+
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --cached --quiet && git diff --quiet; then
+            echo "Nothing to commit."
+            exit 0
+          fi
+          git add docs/rfcs/
+          git commit -m "Assign RFC number to newly merged RFC(s)"
+          git push
