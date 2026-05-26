@@ -34,7 +34,14 @@ function compareSemverDesc(a, b) {
   for (let i = 0; i < 3; i++) {
     if (pa[i] !== pb[i]) return pb[i] - pa[i];
   }
-  return (pa[3] || "").localeCompare(pb[3] || "");
+  // Semver: a version without a pre-release outranks one with a pre-release;
+  // among pre-releases, lexically higher wins (rc > beta > alpha).
+  const preA = pa[3] || null;
+  const preB = pb[3] || null;
+  if (preA === null && preB === null) return 0;
+  if (preA === null) return -1;
+  if (preB === null) return 1;
+  return preB.localeCompare(preA);
 }
 
 const pkg = JSON.parse(readFileSync(resolve(PKG_ROOT, "package.json"), "utf8"));
@@ -46,10 +53,16 @@ const snapshotIds = existsSync(SNAPSHOTS_DIR)
       .map((d) => d.name)
       .filter((name) => {
         const dir = resolve(SNAPSHOTS_DIR, name);
-        return (
-          existsSync(resolve(dir, "services.ts")) &&
-          existsSync(resolve(dir, "types.ts"))
-        );
+        const hasServices = existsSync(resolve(dir, "services.ts"));
+        const hasTypes = existsSync(resolve(dir, "types.ts"));
+        if (hasServices && hasTypes) return true;
+        if (hasServices || hasTypes) {
+          console.warn(
+            `regen-explorer-versions: skipping incomplete snapshot ${dir} ` +
+              `(missing ${hasServices ? "types.ts" : "services.ts"})`,
+          );
+        }
+        return false;
       })
       .sort(compareSemverDesc)
   : [];

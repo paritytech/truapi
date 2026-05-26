@@ -18,6 +18,12 @@ async function loadVersions(): Promise<VersionEntry[]> {
 }
 
 export const versions: VersionEntry[] = await loadVersions();
+if (versions.length === 0) {
+  // Invariant: `loadVersions` always returns at least `fallbackVersions[0]`.
+  // If this ever fires, the registry is corrupted and the explorer is unsafe
+  // to render.
+  throw new Error("explorer: versions registry is empty");
+}
 
 /** Convert "FooBar" or "snake_case" or "kebab-case" to camelCase. */
 export function toCamel(name: string): string {

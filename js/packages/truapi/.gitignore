@@ -4,3 +4,4 @@ dist/
 src/generated/
 src/playground/codegen/
 src/explorer/codegen/*.ts
+src/explorer/versions.ts

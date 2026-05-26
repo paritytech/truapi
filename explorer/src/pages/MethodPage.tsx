@@ -21,8 +21,11 @@ export default function MethodPage() {
 
   const { service, method } = found;
   const prefix = `/v/${version.id}`;
+  // Fall back to the raw id when the type isn't in the active version's list
+  // (codegen drift defense). An unlinked id is still readable; an empty
+  // string would produce `Result(, Err)` in the response row.
   const typeName = (id: string | undefined) =>
-    id ? (version.types.find((t) => t.id === id)?.name ?? "") : "";
+    id ? (version.types.find((t) => t.id === id)?.name ?? id) : "";
   const requestTypeName = typeName(method.requestType);
   const requestDescription =
     method.requestDescription && method.requestDescription !== requestTypeName

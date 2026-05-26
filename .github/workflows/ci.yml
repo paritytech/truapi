@@ -147,7 +147,7 @@ jobs:
 
       - name: Install explorer deps
         working-directory: explorer
-        run: npm install --no-audit --no-fund
+        run: npm ci
 
       - name: Lint
         working-directory: explorer

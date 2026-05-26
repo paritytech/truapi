@@ -54,7 +54,7 @@ jobs:
 
       - name: Install explorer dependencies
         working-directory: explorer
-        run: npm install --no-audit --no-fund
+        run: npm ci
 
       - name: Build explorer (static export)
         working-directory: explorer

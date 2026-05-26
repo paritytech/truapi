@@ -34,9 +34,19 @@ fn generate_explorer_types_code(api: &ApiDefinition, target_version: u32) -> Res
     )
     .unwrap();
 
+    // When a versioned alias (e.g. `V01HostFoo` → `HostFoo`) and an
+    // unversioned competitor (`HostFoo`) both exist, the alias represents the
+    // *selected* surface for the target wire version. Skip any unversioned
+    // type whose name collides with an aliased public name unless the
+    // unversioned type itself is the chosen alias source.
+    let aliased_public_names: BTreeSet<&String> = aliases.values().collect();
     let mut entries: Vec<DataTypeEntry> = Vec::new();
     for ty in &api.types {
         if detect_versioned_wrapper(ty).is_some() {
+            continue;
+        }
+        let is_aliased_source = aliases.contains_key(&ty.name);
+        if !is_aliased_source && aliased_public_names.contains(&ty.name) {
             continue;
         }
         let public_name = if let Some(alias) = aliases.get(&ty.name) {

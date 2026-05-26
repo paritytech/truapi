@@ -17,6 +17,13 @@
 # Usage:
 #   scripts/snapshot-version.sh           # refuse if snapshot dir exists
 #   scripts/snapshot-version.sh --force   # overwrite existing snapshot
+#   scripts/snapshot-version.sh --wire-version V<N>
+#                                          # pin to a specific wire version
+#
+# The wire version defaults to the highest the current trait surface
+# exposes. Run the script while the crate is still at the package version
+# you want to archive; back-filling an older version after the trait
+# surface has moved on requires `--wire-version` to pin the right surface.
 
 set -euo pipefail
 
@@ -24,15 +31,24 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 FORCE=0
-for arg in "$@"; do
-  case "$arg" in
-    --force) FORCE=1 ;;
+WIRE_VERSION=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --force) FORCE=1; shift ;;
+    --wire-version)
+      WIRE_VERSION="${2:-}"
+      if [ -z "$WIRE_VERSION" ]; then
+        echo "snapshot-version: --wire-version requires a value" >&2
+        exit 2
+      fi
+      shift 2
+      ;;
     -h|--help)
-      sed -n '2,20p' "$0"
+      sed -n '2,28p' "$0"
       exit 0
       ;;
     *)
-      echo "snapshot-version: unknown argument: $arg" >&2
+      echo "snapshot-version: unknown argument: $1" >&2
       exit 2
       ;;
   esac
@@ -55,13 +71,18 @@ trap 'rm -rf "$TMP_DIR"' EXIT
 
 cargo +nightly rustdoc -p truapi -- -Z unstable-options --output-format json >/dev/null
 
-cargo run --quiet -p truapi-codegen -- \
-  --input target/doc/truapi.json \
-  --output "$TMP_DIR/generated" \
-  --playground-output "$TMP_DIR/playground" \
-  --explorer-output "$TMP_DIR/explorer" \
-  --strip-examples \
+codegen_args=(
+  --input target/doc/truapi.json
+  --output "$TMP_DIR/generated"
+  --playground-output "$TMP_DIR/playground"
+  --explorer-output "$TMP_DIR/explorer"
+  --strip-examples
   --codec-version 1
+)
+if [ -n "$WIRE_VERSION" ]; then
+  codegen_args+=(--client-version "$WIRE_VERSION")
+fi
+cargo run --quiet -p truapi-codegen -- "${codegen_args[@]}"
 
 mkdir -p "$SNAPSHOT_DIR"
 cp "$TMP_DIR/playground/codegen/services.ts" "$SNAPSHOT_DIR/services.ts"
@@ -69,9 +90,11 @@ cp "$TMP_DIR/explorer/codegen/types.ts"      "$SNAPSHOT_DIR/types.ts"
 
 # Snapshot files import from their local directory, not from the live
 # `../../../playground/...` path the playground codegen emits.
-sed -i "s|from '../services-types.js'|from '../../../../playground/services-types.js'|" \
+# `perl -pi -e` is portable between GNU sed (Linux) and BSD sed (macOS),
+# which differ on `-i`'s backup-extension argument.
+perl -pi -e "s|from '../services-types.js'|from '../../../../playground/services-types.js'|" \
   "$SNAPSHOT_DIR/services.ts"
-sed -i "s|from '../data-types.js'|from '../../../data-types.js'|" \
+perl -pi -e "s|from '../data-types.js'|from '../../../data-types.js'|" \
   "$SNAPSHOT_DIR/types.ts"
 
 node "$ROOT/scripts/regen-explorer-versions.mjs"
