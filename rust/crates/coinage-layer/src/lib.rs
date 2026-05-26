@@ -541,7 +541,7 @@ pub struct State {
 /// requires bounded-exponent invariants + saturating-`u64` (or `u128`)
 /// arithmetic plumbing; tracked as a dedicated future stage.
 pub open spec fn coin_value(exp: u8) -> nat {
-    (exp as nat) + 1
+    pow2_nat(exp as nat)
 }
 
 /// Recursive `2^exp` over `nat`. Used by `coin_value_pow2`.
@@ -654,6 +654,7 @@ pub fn pow2_u64_exec(exp: u8) -> (res: u64)
         exp <= MAX_EXPONENT,
     ensures
         res as nat == pow2_nat(exp as nat),
+        res <= 1073741824u64,
 {
     let mut result: u64 = 1;
     let mut k: u8 = 0;
@@ -8419,7 +8420,13 @@ impl State {
             decreases self.coins.len() - j,
         {
             let is_avail = matches!(self.coins[j].state, CoinState::Available);
-            let value: u64 = (self.coins[j].exponent as u64) + 1;
+            proof {
+                let coin_key = (self.coins@[j as int].purse, self.coins@[j as int].idx);
+                assert(self.spec_coins@.dom().contains(coin_key));
+                assert(self.spec_coins@[coin_key] == self.coins@[j as int]);
+                assert(self.coins@[j as int].exponent <= MAX_EXPONENT);
+            }
+            let value: u64 = pow2_u64_exec(self.coins[j].exponent);
             if self.coins[j].purse == p && is_avail && value == requested {
                 let key = (self.coins[j].purse, self.coins[j].idx);
                 proof {
@@ -8894,7 +8901,13 @@ impl State {
         {
             let ci_avail = matches!(self.coins[i].state, CoinState::Available);
             if self.coins[i].purse == p && ci_avail {
-                let vi: u64 = (self.coins[i].exponent as u64) + 1;
+                proof {
+                    let coin_key = (self.coins@[i as int].purse, self.coins@[i as int].idx);
+                    assert(self.spec_coins@.dom().contains(coin_key));
+                    assert(self.spec_coins@[coin_key] == self.coins@[i as int]);
+                    assert(self.coins@[i as int].exponent <= MAX_EXPONENT);
+                }
+                let vi: u64 = pow2_u64_exec(self.coins[i].exponent);
                 if vi <= amount {
                     let mut k: usize = 0;
                     while k < ne
@@ -8906,7 +8919,8 @@ impl State {
                             self.invariant(),
                             self.coins@[i as int].purse == p,
                             self.coins@[i as int].state == CoinState::Available,
-                            vi == (self.coins@[i as int].exponent as u64) + 1,
+                            vi as nat == coin_value(self.coins@[i as int].exponent),
+                            vi <= 1073741824u64,
                             vi <= amount,
                         decreases ne - k,
                     {
@@ -8914,7 +8928,14 @@ impl State {
                         let is_ready = matches!(e.on_chain, EntryOnChain::Ready);
                         let is_local_avail = matches!(e.local, EntryLocal::LocalAvailable);
                         if e.purse == p && is_ready && is_local_avail {
-                            let ve: u64 = (e.exponent as u64) + 1;
+                            proof {
+                                let entry_key = (self.entries@[k as int].purse,
+                                                 self.entries@[k as int].idx);
+                                assert(self.spec_entries@.dom().contains(entry_key));
+                                assert(self.spec_entries@[entry_key] == self.entries@[k as int]);
+                                assert(self.entries@[k as int].exponent <= MAX_EXPONENT);
+                            }
+                            let ve: u64 = pow2_u64_exec(e.exponent);
                             if vi + ve == amount {
                                 let ck = (self.coins[i].purse, self.coins[i].idx);
                                 let ek = (self.entries[k].purse, self.entries[k].idx);
@@ -8976,8 +8997,7 @@ impl State {
                             || c1.state != CoinState::Available
                             || c2.purse != p
                             || c2.state != CoinState::Available
-                            || ((c1.exponent as nat) + 1
-                                    + (c2.exponent as nat) + 1
+                            || (coin_value(c1.exponent) + coin_value(c2.exponent)
                                 != amount as nat)
                         },
             },
@@ -8998,14 +9018,20 @@ impl State {
                         || c1.state != CoinState::Available
                         || c2.purse != p
                         || c2.state != CoinState::Available
-                        || ((c1.exponent as nat) + 1 + (c2.exponent as nat) + 1
+                        || (coin_value(c1.exponent) + coin_value(c2.exponent)
                             != amount as nat)
                     },
             decreases n - i,
         {
             let ci_avail = matches!(self.coins[i].state, CoinState::Available);
             if self.coins[i].purse == p && ci_avail {
-                let vi: u64 = (self.coins[i].exponent as u64) + 1;
+                proof {
+                    let coin_key = (self.coins@[i as int].purse, self.coins@[i as int].idx);
+                    assert(self.spec_coins@.dom().contains(coin_key));
+                    assert(self.spec_coins@[coin_key] == self.coins@[i as int]);
+                    assert(self.coins@[i as int].exponent <= MAX_EXPONENT);
+                }
+                let vi: u64 = pow2_u64_exec(self.coins[i].exponent);
                 if vi <= amount {
                     let mut k: usize = 0;
                     while k < n
@@ -9016,7 +9042,8 @@ impl State {
                             self.invariant(),
                             self.coins@[i as int].purse == p,
                             self.coins@[i as int].state == CoinState::Available,
-                            vi == (self.coins@[i as int].exponent as u64) + 1,
+                            vi as nat == coin_value(self.coins@[i as int].exponent),
+                            vi <= 1073741824u64,
                             vi <= amount,
                             // Same outer accumulator from before this inner loop.
                             forall|i1: int, i2: int|
@@ -9028,8 +9055,7 @@ impl State {
                                     || c1.state != CoinState::Available
                                     || c2.purse != p
                                     || c2.state != CoinState::Available
-                                    || ((c1.exponent as nat) + 1
-                                            + (c2.exponent as nat) + 1
+                                    || (coin_value(c1.exponent) + coin_value(c2.exponent)
                                         != amount as nat)
                                 },
                             // Inner-loop accumulator: for all checked k2 < k,
@@ -9038,14 +9064,21 @@ impl State {
                                 0 <= i2 < k as int && i2 != i as int ==>
                                 (#[trigger] self.coins@[i2]).purse != p
                                 || self.coins@[i2].state != CoinState::Available
-                                || ((self.coins@[i as int].exponent as nat) + 1
-                                        + (self.coins@[i2].exponent as nat) + 1
+                                || (coin_value(self.coins@[i as int].exponent)
+                                        + coin_value(self.coins@[i2].exponent)
                                     != amount as nat),
                         decreases n - k,
                     {
                         if k != i {
                             let ck_avail = matches!(self.coins[k].state, CoinState::Available);
-                            let vk: u64 = (self.coins[k].exponent as u64) + 1;
+                            proof {
+                                let coin_key = (self.coins@[k as int].purse,
+                                                self.coins@[k as int].idx);
+                                assert(self.spec_coins@.dom().contains(coin_key));
+                                assert(self.spec_coins@[coin_key] == self.coins@[k as int]);
+                                assert(self.coins@[k as int].exponent <= MAX_EXPONENT);
+                            }
+                            let vk: u64 = pow2_u64_exec(self.coins[k].exponent);
                             if self.coins[k].purse == p && ck_avail && vi + vk == amount {
                                 let k1 = (self.coins[i].purse, self.coins[i].idx);
                                 let k2 = (self.coins[k].purse, self.coins[k].idx);
@@ -9106,7 +9139,13 @@ impl State {
             decreases self.coins.len() - j,
         {
             let is_avail = matches!(self.coins[j].state, CoinState::Available);
-            let value: u64 = (self.coins[j].exponent as u64) + 1;
+            proof {
+                let coin_key = (self.coins@[j as int].purse, self.coins@[j as int].idx);
+                assert(self.spec_coins@.dom().contains(coin_key));
+                assert(self.spec_coins@[coin_key] == self.coins@[j as int]);
+                assert(self.coins@[j as int].exponent <= MAX_EXPONENT);
+            }
+            let value: u64 = pow2_u64_exec(self.coins[j].exponent);
             if self.coins[j].purse == p && is_avail && value > amount {
                 let key = (self.coins[j].purse, self.coins[j].idx);
                 proof {
@@ -9193,10 +9232,10 @@ impl State {
         -> (res: Option<Vec<(PurseId, u64)>>)
         requires
             self.invariant(),
-            self.coins@.len() <= (u64::MAX / 256) as nat,
+            self.coins@.len() <= (u64::MAX / 1073741824) as nat,
             // Bound `requested` so `accumulated + value` doesn't overflow when
-            // `accumulated < requested` and `value <= 256`.
-            requested <= u64::MAX - 256,
+            // `accumulated < requested` and `value <= 2^30`.
+            requested <= u64::MAX - 1073741824,
             requested >= 1,
         ensures
             match res {
@@ -9219,8 +9258,8 @@ impl State {
             invariant
                 0 <= j <= self.coins.len(),
                 self.invariant(),
-                self.coins@.len() <= (u64::MAX / 256) as nat,
-                requested <= u64::MAX - 256,
+                self.coins@.len() <= (u64::MAX / 1073741824) as nat,
+                requested <= u64::MAX - 1073741824,
                 accumulated < requested,
                 accumulated as nat == sum_avail_prefix(self.coins@, p, j as nat),
                 accumulated as nat == sum_of_coin_values(self.coins(), selected@),
@@ -9233,17 +9272,30 @@ impl State {
             let is_avail = matches!(self.coins[j].state, CoinState::Available);
             proof {
                 // Bound the per-step delta for cumulative overflow safety.
+                // Per-step coin value is at most coin_value(MAX_EXPONENT) = 2^30.
+                let coin_key = (self.coins@[j as int].purse, self.coins@[j as int].idx);
+                assert(self.spec_coins@.dom().contains(coin_key));
+                assert(self.spec_coins@[coin_key] == self.coins@[j as int]);
+                assert(self.coins@[j as int].exponent <= MAX_EXPONENT);
+                lemma_pow2_at_30();
+                lemma_pow2_monotone(self.coins@[j as int].exponent as nat,
+                                    MAX_EXPONENT as nat);
                 assert(sum_avail_prefix(self.coins@, p, (j + 1) as nat)
-                    <= sum_avail_prefix(self.coins@, p, j as nat) + 256);
+                    <= sum_avail_prefix(self.coins@, p, j as nat) + 1073741824);
             }
             if self.coins[j].purse == p && is_avail {
                 let key = (self.coins[j].purse, self.coins[j].idx);
-                let value: u64 = (self.coins[j].exponent as u64) + 1;
+                proof {
+                    assert(self.spec_coins@.dom().contains(key));
+                    assert(self.spec_coins@[key] == self.coins@[j as int]);
+                    assert(self.coins@[j as int].exponent <= MAX_EXPONENT);
+                }
+                let value: u64 = pow2_u64_exec(self.coins[j].exponent);
                 let ghost selected_before = selected@;
                 selected.push(key);
-                assert(value <= 256);
+                assert(value <= 1073741824);
                 assert(accumulated < requested);
-                assert(requested <= u64::MAX - 256);
+                assert(requested <= u64::MAX - 1073741824);
                 accumulated = accumulated + value;
                 proof {
                     // (l) gives ghost-map record matches Vec entry.
@@ -10057,30 +10109,39 @@ impl State {
     fn sum_ready_in(&self, p: PurseId) -> (sum: u64)
         requires
             self.invariant(),
-            self.entries@.len() <= (u64::MAX / 256) as nat,
+            self.entries@.len() <= (u64::MAX / 1073741824) as nat,
         ensures
             sum as nat == sum_ready_prefix(self.entries@, p, self.entries@.len() as nat),
-            sum as nat <= self.entries@.len() as nat * 256,
+            sum as nat <= self.entries@.len() as nat * 1073741824,
     {
         let mut sum: u64 = 0;
         let mut j: usize = 0;
         while j < self.entries.len()
             invariant
                 0 <= j <= self.entries.len(),
-                self.entries@.len() <= (u64::MAX / 256) as nat,
+                self.entries@.len() <= (u64::MAX / 1073741824) as nat,
+                self.invariant(),
                 sum as nat == sum_ready_prefix(self.entries@, p, j as nat),
-                sum as nat <= (j as nat) * 256,
+                sum as nat <= (j as nat) * 1073741824,
             decreases self.entries.len() - j,
         {
             let e = &self.entries[j];
             let is_local_avail = matches!(e.local, EntryLocal::LocalAvailable);
             let is_ready = matches!(e.on_chain, EntryOnChain::Ready);
             proof {
+                let entry_key = (self.entries@[j as int].purse,
+                                 self.entries@[j as int].idx);
+                assert(self.spec_entries@.dom().contains(entry_key));
+                assert(self.spec_entries@[entry_key] == self.entries@[j as int]);
+                assert(self.entries@[j as int].exponent <= MAX_EXPONENT);
+                lemma_pow2_at_30();
+                lemma_pow2_monotone(self.entries@[j as int].exponent as nat,
+                                    MAX_EXPONENT as nat);
                 assert(sum_ready_prefix(self.entries@, p, (j + 1) as nat)
-                    <= sum_ready_prefix(self.entries@, p, j as nat) + 256);
+                    <= sum_ready_prefix(self.entries@, p, j as nat) + 1073741824);
             }
             if e.purse == p && is_local_avail && is_ready {
-                let value: u64 = (e.exponent as u64) + 1;
+                let value: u64 = pow2_u64_exec(e.exponent);
                 sum = sum + value;
             }
             j = j + 1;
@@ -10091,13 +10152,10 @@ impl State {
     /// Sum of `coin_value(exp)` across entries in purse `p` that are
     /// LocalAvailable and on-chain in {Waiting, Missing} — i.e. pending
     /// recycler-floor confirmation. Quint analog: `pursePending(p)`.
-    ///
-    /// Pilot value scheme: `coin_value(exp) = exp + 1`. Precondition
-    /// bounds Vec size to keep cumulative `u64` sum safe.
     fn sum_pending_in(&self, p: PurseId) -> (sum: u64)
         requires
             self.invariant(),
-            self.entries@.len() <= (u64::MAX / 256) as nat,
+            self.entries@.len() <= (u64::MAX / 1073741824) as nat,
         ensures
             sum as nat == sum_pending_prefix(self.entries@, p, self.entries@.len() as nat),
     {
@@ -10106,9 +10164,10 @@ impl State {
         while j < self.entries.len()
             invariant
                 0 <= j <= self.entries.len(),
-                self.entries@.len() <= (u64::MAX / 256) as nat,
+                self.entries@.len() <= (u64::MAX / 1073741824) as nat,
+                self.invariant(),
                 sum as nat == sum_pending_prefix(self.entries@, p, j as nat),
-                sum as nat <= (j as nat) * 256,
+                sum as nat <= (j as nat) * 1073741824,
             decreases self.entries.len() - j,
         {
             let e = &self.entries[j];
@@ -10116,11 +10175,19 @@ impl State {
             let is_waiting = matches!(e.on_chain, EntryOnChain::Waiting);
             let is_missing = matches!(e.on_chain, EntryOnChain::Missing);
             proof {
+                let entry_key = (self.entries@[j as int].purse,
+                                 self.entries@[j as int].idx);
+                assert(self.spec_entries@.dom().contains(entry_key));
+                assert(self.spec_entries@[entry_key] == self.entries@[j as int]);
+                assert(self.entries@[j as int].exponent <= MAX_EXPONENT);
+                lemma_pow2_at_30();
+                lemma_pow2_monotone(self.entries@[j as int].exponent as nat,
+                                    MAX_EXPONENT as nat);
                 assert(sum_pending_prefix(self.entries@, p, (j + 1) as nat)
-                    <= sum_pending_prefix(self.entries@, p, j as nat) + 256);
+                    <= sum_pending_prefix(self.entries@, p, j as nat) + 1073741824);
             }
             if e.purse == p && is_local_avail && (is_waiting || is_missing) {
-                let value: u64 = (e.exponent as u64) + 1;
+                let value: u64 = pow2_u64_exec(e.exponent);
                 sum = sum + value;
             }
             j = j + 1;
@@ -10302,33 +10369,41 @@ impl State {
     fn sum_available_in(&self, p: PurseId) -> (sum: u64)
         requires
             self.invariant(),
-            // With coin_value(exp) <= 256, sum is bounded by len * 256.
+            // With coin_value(exp) <= 2^30, sum is bounded by len * 2^30.
             // Bound Vec length to ensure no u64 overflow.
-            self.coins@.len() <= (u64::MAX / 256) as nat,
+            self.coins@.len() <= (u64::MAX / 1073741824) as nat,
         ensures
             sum as nat == sum_avail_prefix(self.coins@, p, self.coins@.len() as nat),
-            sum as nat <= self.coins@.len() as nat * 256,
+            sum as nat <= self.coins@.len() as nat * 1073741824,
     {
         let mut sum: u64 = 0;
         let mut j: usize = 0;
         while j < self.coins.len()
             invariant
                 0 <= j <= self.coins.len(),
-                self.coins@.len() <= (u64::MAX / 256) as nat,
+                self.coins@.len() <= (u64::MAX / 1073741824) as nat,
+                self.invariant(),
                 sum as nat == sum_avail_prefix(self.coins@, p, j as nat),
-                sum as nat <= (j as nat) * 256,
+                sum as nat <= (j as nat) * 1073741824,
             decreases self.coins.len() - j,
         {
             let is_available = matches!(self.coins[j].state, CoinState::Available);
             proof {
-                // Per-step increment is at most coin_value(_) <= 256, so the
-                // monotone bound `sum_avail_prefix(_, _, j+1) <= (j+1) * 256`
+                let coin_key = (self.coins@[j as int].purse, self.coins@[j as int].idx);
+                assert(self.spec_coins@.dom().contains(coin_key));
+                assert(self.spec_coins@[coin_key] == self.coins@[j as int]);
+                assert(self.coins@[j as int].exponent <= MAX_EXPONENT);
+                lemma_pow2_at_30();
+                lemma_pow2_monotone(self.coins@[j as int].exponent as nat,
+                                    MAX_EXPONENT as nat);
+                // Per-step increment is at most coin_value(_) <= 2^30, so the
+                // monotone bound `sum_avail_prefix(_, _, j+1) <= (j+1) * 2^30`
                 // is preserved.
                 assert(sum_avail_prefix(self.coins@, p, (j + 1) as nat)
-                    <= sum_avail_prefix(self.coins@, p, j as nat) + 256);
+                    <= sum_avail_prefix(self.coins@, p, j as nat) + 1073741824);
             }
             if self.coins[j].purse == p && is_available {
-                let value: u64 = (self.coins[j].exponent as u64) + 1;
+                let value: u64 = pow2_u64_exec(self.coins[j].exponent);
                 sum = sum + value;
             }
             j = j + 1;
@@ -10467,11 +10542,11 @@ impl State {
     pub fn query_purse(&self, p: PurseId) -> (info: Result<PurseInfo, Error>)
         requires
             self.invariant(),
-            self.coins@.len() <= (u64::MAX / 256) as nat,
-            self.entries@.len() <= (u64::MAX / 256) as nat,
+            self.coins@.len() <= (u64::MAX / 1073741824) as nat,
+            self.entries@.len() <= (u64::MAX / 1073741824) as nat,
             // spendable + ready_entries must fit in u64.
             (self.coins@.len() as nat + self.entries@.len() as nat)
-                <= (u64::MAX / 256) as nat,
+                <= (u64::MAX / 1073741824) as nat,
         ensures
             match info {
                 Ok(i) =>
@@ -10497,10 +10572,10 @@ impl State {
             invariant
                 0 <= i <= self.purses.len(),
                 self.invariant(),
-                self.coins@.len() <= (u64::MAX / 256) as nat,
-                self.entries@.len() <= (u64::MAX / 256) as nat,
+                self.coins@.len() <= (u64::MAX / 1073741824) as nat,
+                self.entries@.len() <= (u64::MAX / 1073741824) as nat,
                 (self.coins@.len() as nat + self.entries@.len() as nat)
-                    <= (u64::MAX / 256) as nat,
+                    <= (u64::MAX / 1073741824) as nat,
                 forall|j: int| 0 <= j < i ==> (#[trigger] self.purses@[j]).id != p,
             decreases
                 self.purses.len() - i,
@@ -10510,11 +10585,11 @@ impl State {
                 let ready = self.sum_ready_in(p);
                 let pending = self.sum_pending_in(p);
                 proof {
-                    // sum_avail_prefix is bounded by len * 256; same for ready.
+                    // sum_avail_prefix is bounded by len * 2^30; same for ready.
                     // Together they fit in u64 because (coins.len + entries.len)
-                    // <= u64::MAX/256 was given by the precondition.
-                    assert(spendable as nat <= self.coins@.len() as nat * 256);
-                    assert(ready as nat <= self.entries@.len() as nat * 256);
+                    // <= u64::MAX/2^30 was given by the precondition.
+                    assert(spendable as nat <= self.coins@.len() as nat * 1073741824);
+                    assert(ready as nat <= self.entries@.len() as nat * 1073741824);
                 }
                 let rec = &self.purses[i];
                 let name_copy: Vec<u8> = rec.name.clone();
