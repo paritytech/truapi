@@ -1,11 +1,11 @@
 use parity_scale_codec::{Decode, Encode};
 
-/// Full Substrate extrinsic signing payload with all fields needed for signature
-/// generation.
+use super::ProductAccountId;
+
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostSignPayloadRequest {
-    /// Signer address (SS58 or hex).
-    pub address: String,
+    /// Product account that will sign this payload.
+    pub account: ProductAccountId,
     /// Reference block hash.
     pub block_hash: Vec<u8>,
     /// Reference block number.
@@ -38,31 +38,26 @@ pub struct HostSignPayloadRequest {
     pub with_signed_transaction: Option<bool>,
 }
 
-/// Raw data to sign -- either binary bytes or a string message.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum RawPayload {
-    /// Raw binary data to sign.
     Bytes {
         /// Raw binary payload bytes.
         bytes: Vec<u8>,
     },
-    /// String message to sign.
     Payload {
         /// String payload to sign.
         payload: String,
     },
 }
 
-/// A raw signing request pairing an address with raw data.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostSignRawRequest {
-    /// Signer address.
-    pub address: String,
-    /// The data to sign.
-    pub data: RawPayload,
+    /// Product account that will sign this payload.
+    pub account: ProductAccountId,
+    /// The payload to sign.
+    pub payload: RawPayload,
 }
 
-/// Result of a signing operation.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostSignPayloadResponse {
     /// The cryptographic signature.
@@ -71,34 +66,42 @@ pub struct HostSignPayloadResponse {
     pub signed_transaction: Option<Vec<u8>>,
 }
 
-/// Signing operation error.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum HostSignPayloadError {
-    /// Payload could not be deserialized.
     FailedToDecode,
-    /// User rejected signing.
     Rejected,
-    /// Not authenticated.
     PermissionDenied,
-    /// Catch-all.
     Unknown { reason: String },
 }
 
-/// Response containing a created transaction.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostSignRawWithLegacyAccountRequest {
+    /// Signer address (SS58 or hex) of the legacy account.
+    pub signer: String,
+    /// The data to sign.
+    pub payload: RawPayload,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostSignPayloadWithLegacyAccountRequest {
+    /// Signer address (SS58 or hex) of the legacy account.
+    pub signer: String,
+    /// The extrinsic payload to sign.
+    pub payload: HostSignPayloadRequest,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostCreateTransactionResponse {
     /// SCALE-encoded signed transaction.
     pub transaction: Vec<u8>,
 }
 
-/// Request to create a transaction with a non-product account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostCreateTransactionWithLegacyAccountRequest {
     /// Versioned transaction payload to sign.
     pub payload: super::VersionedTxPayload,
 }
 
-/// Response containing a transaction created with a non-product account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostCreateTransactionWithLegacyAccountResponse {
     /// SCALE-encoded signed transaction.

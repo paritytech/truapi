@@ -17,7 +17,7 @@ The chain below is also automated:
   the repo with Claude Code; each is a small, command-first runbook.
 - **CI workflow** `.github/workflows/ci.yml` runs the same chain on every
   PR. The static jobs (`rust`, `codegen-drift`, `ts-client`,
-  `playground`, `explorer`) are fast; the `e2e` job builds dotli and
+  `playground`) are fast; the `e2e` job builds dotli and
   drives the playground inside its iframe via Playwright (specs in
   `playground/tests/e2e/`). Failed e2e runs upload the Playwright HTML
   report as an artifact.
@@ -75,7 +75,7 @@ codegen and macro crates depend on `truapi`.
 
 ## 2. Regenerate the TypeScript client (only if Rust trait surface changed)
 
-`scripts/codegen.sh` rebuilds `js/packages/truapi/src/generated/`
+`scripts/codegen.sh` rebuilds the ignored generated TS under `js/packages/truapi/src/generated/`
 (`client.ts`, `types.ts`, `wire-table.ts`) from the rustdoc JSON of
 `truapi`. Skip this step if your change is purely Rust-internal (e.g.
 versioned wrapper conversion logic that doesn't change rustdoc output) or
@@ -91,9 +91,8 @@ nightly toolchain or broken intra-doc links will fail it. Fix doc links
 that the rustdoc step warns about — they break codegen and look worse
 in published docs.
 
-After regenerating, commit the regenerated files alongside the Rust
-changes. `git diff js/packages/truapi/src/generated/` should match the
-shape of the Rust diff (e.g. new methods → new client stubs).
+After regenerating, rebuild the package or run the package tests so the
+ignored outputs are exercised.
 
 ## 3. `@parity/truapi` build + smoke tests
 
@@ -206,7 +205,7 @@ iframe via `window.parent` and uses the iframe `postMessage` provider.
    and click **Subscribe**. You should immediately see one or more
    pushed events; clicking **Unsubscribe** must stop them. This proves
    the `_start` / `_receive` / `_stop` lifecycle.
-4. For chain methods, open `Chain Interaction → remote_chain_head_follow`
+4. For chain methods, open `Chain Interaction → remote_chain_head_follow_subscribe`
    and subscribe. The bridge auto-detects dependent methods (header,
    body, storage, call, unpin, continue, stop_operation) and opens an
    ephemeral follow when `followSubscriptionId` is empty — exercising
@@ -293,8 +292,7 @@ A change is end-to-end-verified locally when all of:
 
 - [ ] `cargo build/test/clippy --workspace --all-targets --all-features` clean
 - [ ] `cargo +nightly fmt --check` clean
-- [ ] `./scripts/codegen.sh` clean (only if Rust surface changed) and
-      `js/packages/truapi/src/generated/` checked in
+- [ ] `./scripts/codegen.sh` clean (only if Rust surface changed)
 - [ ] `npm run build && npm test` in `js/packages/truapi/` clean
 - [ ] `yarn build && yarn lint` in `playground/` clean (after a fresh
       `rm -rf node_modules && yarn install` if step 2 ran)

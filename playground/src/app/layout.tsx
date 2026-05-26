@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Instrument_Serif, Geist, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
+import packageJson from "../../package.json";
 
 const serif = Instrument_Serif({
   subsets: ["latin"],
@@ -25,7 +26,7 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "TrUAPI Playground V0.2",
+  title: `TrUAPI Playground v${packageJson.version}`,
   description: "Interactive playground for testing the TrUAPI API",
 };
 

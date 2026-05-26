@@ -22,8 +22,14 @@ jobs:
         with:
           node-version: 22
 
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - uses: Swatinem/rust-cache@v2
+
       - name: Build @parity/truapi
-        run: npm ci --prefix js/packages/truapi && npm run build --prefix js/packages/truapi
+        run: npm ci && ./scripts/codegen.sh
 
       - name: Install playground dependencies
         working-directory: playground

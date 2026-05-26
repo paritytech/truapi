@@ -1,4 +1,10 @@
-import { getMethodBinding, stringify } from "./host-api-bridge";
+import {
+  runExample,
+  type LogEntry,
+  type RunSubscription,
+} from "./example-runner";
+import { stringify } from "./host-api-bridge";
+import { getClient } from "./transport";
 import type { MethodInfo, ServiceInfo } from "./services";
 
 export const AUTO_TEST_ID = "__auto_test__";
@@ -12,198 +18,152 @@ export interface TestEntry {
 }
 
 export const EXCLUDED_METHODS = new Set([
-  "TrUAPI Calls/host_navigate_to",
-  "TrUAPI Calls/host_push_notification",
-  "Permissions/host_device_permission",
-  "Permissions/remote_permission",
-  "Signing/host_sign_payload",
-  "Signing/host_sign_raw",
-  "Signing/host_create_transaction",
-  "Signing/host_create_transaction_with_legacy_account",
-  "Account Management/host_account_get_alias",
+  "System/navigate_to",
+  "Permissions/request_device_permission",
+  "Permissions/request_remote_permission",
+  "Resource Allocation/request",
+  "Signing/sign_payload",
+  "Signing/sign_raw",
+  "Signing/sign_raw_with_legacy_account",
+  "Signing/sign_payload_with_legacy_account",
+  "Signing/create_transaction",
+  "Signing/create_transaction_with_legacy_account",
+  "Account/get_account_alias",
 ]);
 
-const UNARY_TIMEOUT_MS = 2_000;
+const UNARY_TIMEOUT_MS = 4_000;
 const SIGNING_TIMEOUT_MS = 30_000;
 const SUBSCRIPTION_TIMEOUT_MS = 6_000;
 
 const CONCURRENCY = 6;
-// Each chain-head method depends on a live follow subscription on the host
-// side; running the service serially avoids fanning out concurrent follows.
-const SERIAL_SERVICES = new Set(["Chain Interaction"]);
-
-const STATEMENT_STORE_SERVICE = "Statement Store";
-const STATEMENT_CREATE_PROOF_METHOD = "remote_statement_store_create_proof";
-const STATEMENT_SUBMIT_ID = "Statement Store/remote_statement_store_submit";
-
-function parseRequest(method: MethodInfo): unknown {
-  if (method.noParams) return null;
-  try {
-    return JSON.parse(method.defaultRequest ?? "{}");
-  } catch {
-    return null;
-  }
-}
-
-async function testUnary(
-  call: (req: unknown) => Promise<{ ok: boolean; data: unknown }>,
-  req: unknown,
-  timeoutMs: number,
-): Promise<{ result: "pass" | "fail"; output: string }> {
-  try {
-    const result = await Promise.race([
-      call(req),
-      new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error(`timed out after ${timeoutMs / 1000}s`)),
-          timeoutMs,
-        ),
-      ),
-    ]);
-    return {
-      result: result.ok ? "pass" : "fail",
-      output: stringify(result.data) ?? "null",
-    };
-  } catch (e) {
-    return {
-      result: "fail",
-      output: e instanceof Error ? e.message : String(e),
-    };
-  }
-}
-
-async function testSubscription(
-  subscribe: (
-    req: unknown,
-    onEvent: (data: unknown) => void,
-    onEnd: (error?: Error) => void,
-  ) => { unsubscribe: () => void },
-  req: unknown,
-): Promise<{ result: "pass" | "fail"; output: string }> {
-  return new Promise((resolve) => {
-    let settled = false;
-    let sub: { unsubscribe: () => void } | null = null;
-
-    const settle = (result: "pass" | "fail", output: string) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      try {
-        sub?.unsubscribe();
-      } catch {
-        /* benign */
-      }
-      resolve({ result, output });
-    };
-
-    const timeout = setTimeout(
-      () =>
-        settle("fail", `timed out after ${SUBSCRIPTION_TIMEOUT_MS / 1000}s`),
-      SUBSCRIPTION_TIMEOUT_MS,
-    );
-
-    sub = subscribe(
-      req,
-      (event) => settle("pass", stringify(event) ?? "null"),
-      (error) =>
-        settle("fail", error ? error.message : "stream ended without events"),
-    );
-  });
-}
-
-// remote_statement_store_submit needs a real proof to verify; the default
-// request only carries a placeholder. Generate one via create_proof using its
-// default request, round-tripping through stringify+parse so any Uint8Array
-// fields arrive at the bridge as { bytes: "0x..." } envelopes.
-async function fetchStatementProof(services: ServiceInfo[]): Promise<unknown> {
-  const proofMethod = services
-    .find((s) => s.name === STATEMENT_STORE_SERVICE)
-    ?.methods.find((m) => m.name === STATEMENT_CREATE_PROOF_METHOD);
-  if (!proofMethod) return undefined;
-
-  const binding = getMethodBinding(
-    STATEMENT_STORE_SERVICE,
-    STATEMENT_CREATE_PROOF_METHOD,
-  );
-  if (!binding || binding.isStream) return undefined;
-
-  const result = await binding.call(parseRequest(proofMethod));
-  if (!result.ok) return undefined;
-
-  return JSON.parse(stringify(result.data));
-}
+// Chain examples open ephemeral follow subscriptions inline. Running the
+// service serially avoids spawning many concurrent follow streams.
+const SERIAL_SERVICES = new Set(["Chain"]);
+const LONG_TIMEOUT_METHODS = new Set([
+  "Resource Allocation/request",
+  "Signing/sign_payload",
+  "Signing/sign_raw",
+  "Signing/sign_raw_with_legacy_account",
+  "Signing/sign_payload_with_legacy_account",
+  "Signing/create_transaction",
+  "Signing/create_transaction_with_legacy_account",
+]);
 
 type RunOneOpts = {
-  services: ServiceInfo[];
   serviceName: string;
   method: MethodInfo;
   onUpdate: (id: string, entry: TestEntry) => void;
   excludeSet: Set<string>;
   signal?: AbortSignal;
-  requestOverride?: string;
+  sourceOverride?: string;
 };
 
 async function runOne({
-  services,
   serviceName,
   method,
   onUpdate,
   excludeSet,
   signal,
-  requestOverride,
+  sourceOverride,
 }: RunOneOpts): Promise<void> {
   if (signal?.aborted) return;
-
   const id = `${serviceName}/${method.name}`;
 
   if (excludeSet.has(id)) {
     onUpdate(id, { status: "skipped" });
     return;
   }
-
-  const binding = getMethodBinding(serviceName, method.name);
-  if (!binding) {
+  if (!method.exampleSource) {
     onUpdate(id, { status: "skipped" });
     return;
   }
 
   onUpdate(id, { status: "running" });
 
-  let req: unknown;
-  if (requestOverride !== undefined) {
-    try {
-      req = JSON.parse(requestOverride);
-    } catch (e) {
+  const source = sourceOverride ?? method.exampleSource;
+  const logs: LogEntry[] = [];
+  const onLog = (entry: LogEntry) => logs.push(entry);
+  const timeoutMs = LONG_TIMEOUT_METHODS.has(id)
+    ? SIGNING_TIMEOUT_MS
+    : UNARY_TIMEOUT_MS;
+
+  try {
+    const run = await runExample({
+      source,
+      kind: method.type,
+      client: getClient(),
+      onLog,
+    });
+
+    if (run.kind === "unary") {
+      const value = await Promise.race([
+        run.promise,
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error(`timed out after ${timeoutMs / 1000}s`)),
+            timeoutMs,
+          ),
+        ),
+      ]);
       onUpdate(id, {
-        status: "fail",
-        request: requestOverride,
-        output: `Invalid JSON: ${e instanceof Error ? e.message : String(e)}`,
+        status: "pass",
+        request: source,
+        output: stringify(value) ?? "null",
       });
-      return;
+    } else {
+      await runSubscription(id, source, run.subscription, logs, onUpdate);
     }
-  } else {
-    req = parseRequest(method);
-    if (id === STATEMENT_SUBMIT_ID) {
-      const proof = await fetchStatementProof(services);
-      if (
-        proof !== undefined &&
-        typeof req === "object" &&
-        req !== null &&
-        !Array.isArray(req)
-      ) {
-        req = { ...req, proof };
-      }
-    }
+  } catch (err) {
+    onUpdate(id, {
+      status: "fail",
+      request: source,
+      output: err instanceof Error ? err.message : String(err),
+    });
   }
+}
 
-  const timeoutMs =
-    serviceName === "Signing" ? SIGNING_TIMEOUT_MS : UNARY_TIMEOUT_MS;
-  const requestStr = stringify(req);
-  const { result, output } = binding.isStream
-    ? await testSubscription(binding.subscribe, req)
-    : await testUnary(binding.call, req, timeoutMs);
+async function runSubscription(
+  id: string,
+  source: string,
+  sub: RunSubscription,
+  logs: LogEntry[],
+  onUpdate: (id: string, entry: TestEntry) => void,
+): Promise<void> {
+  await new Promise<void>((resolve) => {
+    const deadline = setTimeout(() => {
+      try {
+        sub.unsubscribe();
+      } catch {
+        /* benign */
+      }
+      const text = logs.map((l) => l.text).join("\n");
+      if (logs.length > 0) {
+        onUpdate(id, { status: "pass", request: source, output: text });
+      } else {
+        onUpdate(id, {
+          status: "fail",
+          request: source,
+          output: `subscription delivered no events in ${SUBSCRIPTION_TIMEOUT_MS / 1000}s`,
+        });
+      }
+      resolve();
+    }, SUBSCRIPTION_TIMEOUT_MS);
 
-  onUpdate(id, { status: result, request: requestStr, output });
+    const interval = setInterval(() => {
+      if (logs.length > 0) {
+        clearInterval(interval);
+        clearTimeout(deadline);
+        try {
+          sub.unsubscribe();
+        } catch {
+          /* benign */
+        }
+        const text = logs.map((l) => l.text).join("\n");
+        onUpdate(id, { status: "pass", request: source, output: text });
+        resolve();
+      }
+    }, 50);
+  });
 }
 
 export async function runSingleTest(
@@ -211,19 +171,17 @@ export async function runSingleTest(
   serviceName: string,
   methodName: string,
   onUpdate: (id: string, entry: TestEntry) => void,
-  requestOverride?: string,
+  sourceOverride?: string,
 ): Promise<void> {
-  const svc = services.find((s) => s.name === serviceName);
-  const method = svc?.methods.find((m) => m.name === methodName);
+  const svc = services.find((s: ServiceInfo) => s.name === serviceName);
+  const method = svc?.methods.find((m: MethodInfo) => m.name === methodName);
   if (!svc || !method) return;
-  // Empty exclude set so a manual retry overrides the disruptive-method filter.
   await runOne({
-    services,
     serviceName,
     method,
     onUpdate,
     excludeSet: new Set(),
-    requestOverride,
+    sourceOverride,
   });
 }
 
@@ -233,8 +191,6 @@ export async function runAutoTests(
   signal?: AbortSignal,
   excludeSet: Set<string> = EXCLUDED_METHODS,
 ): Promise<void> {
-  // Build the task list. Serial services bundle their methods into a single
-  // sequential task; other services contribute one task per method.
   const tasks: Array<() => Promise<void>> = [];
   for (const svc of services) {
     if (SERIAL_SERVICES.has(svc.name)) {
@@ -242,7 +198,6 @@ export async function runAutoTests(
         for (const m of svc.methods) {
           if (signal?.aborted) return;
           await runOne({
-            services,
             serviceName: svc.name,
             method: m,
             onUpdate,
@@ -255,7 +210,6 @@ export async function runAutoTests(
       for (const m of svc.methods) {
         tasks.push(() =>
           runOne({
-            services,
             serviceName: svc.name,
             method: m,
             onUpdate,
@@ -267,8 +221,6 @@ export async function runAutoTests(
     }
   }
 
-  // Bounded-concurrency worker pool: each worker pulls the next task off the
-  // shared cursor until they're exhausted or the run is aborted.
   let cursor = 0;
   const workerCount = Math.min(CONCURRENCY, tasks.length);
   await Promise.all(

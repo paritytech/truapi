@@ -4,7 +4,7 @@ import { createTransport } from "../src/client.ts";
 import { indexedTaggedUnion, Result, str, _void } from "../src/scale.ts";
 import {
   createClient,
-  SubscriptionInterruptedError,
+  SubscriptionError,
 } from "../src/generated/client.ts";
 import * as T from "../src/generated/types.ts";
 import * as W from "../src/generated/wire-table.ts";
@@ -62,6 +62,13 @@ function handshakeResponsePayload(value) {
   }).enc({ tag: "V1", value });
 }
 
+// Unit-only enums expose a string union on the public API while preserving the
+// same single-byte SCALE discriminant encoding.
+{
+  assert.equal(toHex(T.HostDevicePermissionRequest.enc("Camera")), "01");
+  assert.equal(T.HostDevicePermissionRequest.dec(new Uint8Array([1])), "Camera");
+}
+
 // Generated methods pass inner values and encode the selected wire wrapper
 // before handing bytes to the transport.
 {
@@ -76,7 +83,7 @@ function handshakeResponsePayload(value) {
     },
   };
 
-  void client.accountManagement.accountGet(request);
+  void client.account.getAccount(request);
 
   const expectedPayload = T.VersionedHostAccountGetRequest.enc({
     tag: "V1",
@@ -90,7 +97,7 @@ function handshakeResponsePayload(value) {
   expectedFrame.set(expectedPayload, str.enc("p:1").length + 1);
 
   assert.equal(toHex(fixture.sent[0]), toHex(expectedFrame));
-  assert.equal(transport.truapiVersion, 2);
+  assert.equal(transport.truapiVersion, 1);
   assert.equal(transport.codecVersion, 1);
 }
 
@@ -101,7 +108,7 @@ function handshakeResponsePayload(value) {
   const transport = createTransport(fixture.provider);
   const client = createClient(transport);
 
-  void client.trUApiCalls.handshake();
+  void client.system.handshake();
 
   const expectedPayload = T.VersionedHostHandshakeRequest.enc({
     tag: "V1",
@@ -123,12 +130,12 @@ function handshakeResponsePayload(value) {
   const transport = createTransport(fixture.provider);
   const client = createClient(transport);
 
-  const response = client.trUApiCalls.handshake();
+  const response = client.system.handshake();
   const frame = unwrap(
     encodeWireMessage({
       requestId: "p:1",
       payload: {
-        id: W.HOST_HANDSHAKE.response,
+        id: W.SYSTEM_HANDSHAKE.response,
         value: handshakeResponsePayload({ success: true, value: undefined }),
       },
     }),
@@ -153,7 +160,7 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: "h:1",
       payload: {
-        id: W.HOST_HANDSHAKE.request,
+        id: W.SYSTEM_HANDSHAKE.request,
         value: requestPayload,
       },
     }),
@@ -169,7 +176,7 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: "h:1",
       payload: {
-        id: W.HOST_HANDSHAKE.response,
+        id: W.SYSTEM_HANDSHAKE.response,
         value: expectedResponsePayload,
       },
     }),
@@ -187,8 +194,8 @@ function handshakeResponsePayload(value) {
   const client = createClient(transport);
   const events = [];
 
-  const sub = client.accountManagement
-    .accountConnectionStatusSubscribe()
+  const sub = client.account
+    .connectionStatusSubscribe()
     .subscribe({
       next: (value) => events.push(value),
     });
@@ -197,10 +204,10 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: sub.subscriptionId,
       payload: {
-        id: W.HOST_ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.receive,
+        id: W.ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.receive,
         value: T.VersionedHostAccountConnectionStatusSubscribeItem.enc({
           tag: "V1",
-          value: { tag: "Connected", value: undefined },
+          value: "Connected",
         }),
       },
     }),
@@ -208,7 +215,7 @@ function handshakeResponsePayload(value) {
   );
   fixture.receive(frame);
 
-  assert.deepEqual(events, [{ tag: "Connected", value: undefined }]);
+  assert.deepEqual(events, ["Connected"]);
 }
 
 // Interrupt frames are payloadless terminators and complete the observable.
@@ -218,8 +225,8 @@ function handshakeResponsePayload(value) {
   const client = createClient(transport);
   const completions = [];
 
-  const sub = client.accountManagement
-    .accountConnectionStatusSubscribe()
+  const sub = client.account
+    .connectionStatusSubscribe()
     .subscribe({
       complete: (...args) => completions.push(args),
     });
@@ -228,7 +235,7 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: sub.subscriptionId,
       payload: {
-        id: W.HOST_ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.interrupt,
+        id: W.ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.interrupt,
         value: _void.enc(undefined),
       },
     }),
@@ -248,19 +255,19 @@ function handshakeResponsePayload(value) {
   const completions = [];
   const errors = [];
 
-  const sub = client.payment.paymentBalanceSubscribe().subscribe({
-    complete: () => completions.push(true),
-    error: (error) => errors.push(error),
-  });
+  const sub = client.payment.balanceSubscribe({ request: {} }).subscribe({
+      complete: () => completions.push(true),
+      error: (error) => errors.push(error),
+    });
 
   const reason = { tag: "PermissionDenied", value: undefined };
   const frame = unwrap(
     encodeWireMessage({
       requestId: sub.subscriptionId,
       payload: {
-        id: W.HOST_PAYMENT_BALANCE_SUBSCRIBE.interrupt,
+        id: W.PAYMENT_BALANCE_SUBSCRIBE.interrupt,
         value: T.VersionedHostPaymentBalanceSubscribeError.enc({
-          tag: "V2",
+          tag: "V1",
           value: reason,
         }),
       },
@@ -271,9 +278,46 @@ function handshakeResponsePayload(value) {
 
   assert.deepEqual(completions, []);
   assert.equal(errors.length, 1);
-  assert.ok(errors[0] instanceof SubscriptionInterruptedError);
+  assert.ok(errors[0] instanceof SubscriptionError);
   assert.deepEqual(errors[0].reason, reason);
   assert.equal(fixture.sent.length, 1);
+}
+
+// CoinPayment subscriptions use the same typed interrupt envelope for RFC0017
+// resolvable status streams.
+{
+  const fixture = providerFixture();
+  const transport = createTransport(fixture.provider);
+  const client = createClient(transport);
+  const errors = [];
+
+  const sub = client.coinPayment
+    .rebalancePurse({
+      request: { from: 1, to: 2, amount: 1000 },
+    })
+    .subscribe({
+      error: (error) => errors.push(error),
+    });
+
+  const reason = "Denied";
+  const frame = unwrap(
+    encodeWireMessage({
+      requestId: sub.subscriptionId,
+      payload: {
+        id: W.COIN_PAYMENT_REBALANCE_PURSE.interrupt,
+        value: T.VersionedHostCoinPaymentRebalancePurseError.enc({
+          tag: "V1",
+          value: reason,
+        }),
+      },
+    }),
+    "encode typed coin payment interrupt",
+  );
+  fixture.receive(frame);
+
+  assert.equal(errors.length, 1);
+  assert.ok(errors[0] instanceof SubscriptionError);
+  assert.deepEqual(errors[0].reason, reason);
 }
 
 // Malformed receive payloads are terminal observable errors. The generated
@@ -285,8 +329,8 @@ function handshakeResponsePayload(value) {
   const events = [];
   const errors = [];
 
-  const sub = client.accountManagement
-    .accountConnectionStatusSubscribe()
+  const sub = client.account
+    .connectionStatusSubscribe()
     .subscribe({
       next: (value) => events.push(value),
       error: (error) => errors.push(error),
@@ -296,7 +340,7 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: sub.subscriptionId,
       payload: {
-        id: W.HOST_ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.receive,
+        id: W.ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.receive,
         value: _void.enc(undefined),
       },
     }),
@@ -306,13 +350,14 @@ function handshakeResponsePayload(value) {
 
   assert.deepEqual(events, []);
   assert.equal(errors.length, 1);
-  assert.ok(errors[0] instanceof Error);
+  assert.ok(errors[0] instanceof SubscriptionError);
+  assert.equal(errors[0].reason, undefined);
   assert.equal(fixture.sent.length, 2);
   const expectedStop = unwrap(
     encodeWireMessage({
       requestId: sub.subscriptionId,
       payload: {
-        id: W.HOST_ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.stop,
+        id: W.ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.stop,
         value: _void.enc(undefined),
       },
     }),
@@ -324,10 +369,10 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: sub.subscriptionId,
       payload: {
-        id: W.HOST_ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.receive,
+        id: W.ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.receive,
         value: T.VersionedHostAccountConnectionStatusSubscribeItem.enc({
           tag: "V1",
-          value: { tag: "Connected", value: undefined },
+          value: "Connected",
         }),
       },
     }),
@@ -347,8 +392,8 @@ function handshakeResponsePayload(value) {
   const completions = [];
   const errors = [];
 
-  const sub = client.accountManagement
-    .accountConnectionStatusSubscribe()
+  const sub = client.account
+    .connectionStatusSubscribe()
     .subscribe({
       complete: () => completions.push(true),
       error: (error) => errors.push(error),
@@ -359,7 +404,7 @@ function handshakeResponsePayload(value) {
     encodeWireMessage({
       requestId: sub.subscriptionId,
       payload: {
-        id: W.HOST_ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.stop,
+        id: W.ACCOUNT_CONNECTION_STATUS_SUBSCRIBE.stop,
         value: _void.enc(undefined),
       },
     }),
@@ -377,14 +422,18 @@ function handshakeResponsePayload(value) {
   const client = createClient(transport);
   const errors = [];
 
-  client.accountManagement.accountConnectionStatusSubscribe().subscribe({
+  client.account.connectionStatusSubscribe().subscribe({
     error: (error) => errors.push(error),
   });
 
-  fixture.close(new Error("provider closed"));
+  const providerError = new Error("provider closed");
+  fixture.close(providerError);
 
   assert.equal(errors.length, 1);
+  assert.ok(errors[0] instanceof SubscriptionError);
   assert.equal(errors[0].message, "provider closed");
+  assert.equal(errors[0].reason, undefined);
+  assert.equal(errors[0].cause, providerError);
 }
 
 console.log("transport version wrapping tests passed");

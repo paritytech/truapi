@@ -1,4 +1,4 @@
-//! Unified [`ChainInteraction`] trait.
+//! Unified [`Chain`] trait.
 
 use crate::versioned::chain::{
     RemoteChainHeadBodyError, RemoteChainHeadBodyRequest, RemoteChainHeadBodyResponse,
@@ -21,38 +21,31 @@ use crate::versioned::chain::{
 use crate::wire;
 use crate::{CallContext, CallError, Subscription};
 
-/// Chain head and transaction interactions.
-///
-/// Default methods return [`CallError::HostFailure`] with an `unavailable`
-/// reason. Hosts override only the methods they can actually service.
-#[async_trait::async_trait]
-pub trait ChainInteraction: Send + Sync {
+/// Chain interaction methods.
+pub trait Chain: Send + Sync {
     /// Follow the chain head and receive block events.
     ///
-    /// ```truapi-client-example
-    /// import {
-    ///   type Client,
-    ///   type Subscription,
-    ///   type RemoteChainHeadFollowItem,
-    /// } from "@parity/truapi";
+    /// ```ts
+    /// import { from, take } from "rxjs";
     ///
-    /// export function followChainHead(truapi: Client): Subscription {
-    ///   return truapi.chainInteraction
-    ///     .chainHeadFollow({
-    ///       request: {
-    ///         genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///         withRuntime: false,
-    ///       },
-    ///     })
-    ///     .subscribe({
-    ///       next: (item: RemoteChainHeadFollowItem) => console.log(item),
-    ///       error: (error: Error) => console.error(error),
-    ///       complete: () => console.log("completed"),
-    ///     });
-    /// }
+    /// from(
+    ///   truapi.chain.followHeadSubscribe({
+    ///     request: {
+    ///       genesisHash:
+    ///         "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///       withRuntime: false,
+    ///     },
+    ///   }),
+    /// )
+    ///   .pipe(take(3))
+    ///   .subscribe({
+    ///     next: (item) => console.log(item),
+    ///     error: (error) => console.error(error),
+    ///     complete: () => console.log("completed"),
+    ///   });
     /// ```
     #[wire(start_id = 76)]
-    async fn remote_chain_head_follow(
+    async fn follow_head_subscribe(
         &self,
         _cx: &CallContext,
         _request: RemoteChainHeadFollowRequest,
@@ -62,27 +55,26 @@ pub trait ChainInteraction: Send + Sync {
 
     /// Fetch a block header.
     ///
-    /// ```truapi-client-example
-    /// import {
-    ///   type Client,
-    ///   type RemoteChainHeadHeaderResponse,
-    /// } from "@parity/truapi";
+    /// ```ts
+    /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
-    /// export async function getChainHeadHeader(
-    ///   truapi: Client,
-    /// ): Promise<RemoteChainHeadHeaderResponse> {
-    ///   const result = await truapi.chainInteraction.chainHeadHeader({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     followSubscriptionId: "",
-    ///     hash: "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await firstValueFrom(
+    ///   withChainHeadFollow({
+    ///     genesisHash:
+    ///       "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///   }).pipe(
+    ///     mergeMap(({ genesisHash, followSubscriptionId, hash }) =>
+    ///       truapi.chain.getHeadHeader({ genesisHash, followSubscriptionId, hash }),
+    ///     ),
+    ///   ),
+    /// );
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 80)]
-    async fn remote_chain_head_header(
+    async fn get_head_header(
         &self,
         _cx: &CallContext,
         _request: RemoteChainHeadHeaderRequest,
@@ -92,27 +84,26 @@ pub trait ChainInteraction: Send + Sync {
 
     /// Fetch a block body.
     ///
-    /// ```truapi-client-example
-    /// import {
-    ///   type Client,
-    ///   type RemoteChainHeadBodyResponse,
-    /// } from "@parity/truapi";
+    /// ```ts
+    /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
-    /// export async function getChainHeadBody(
-    ///   truapi: Client,
-    /// ): Promise<RemoteChainHeadBodyResponse> {
-    ///   const result = await truapi.chainInteraction.chainHeadBody({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     followSubscriptionId: "",
-    ///     hash: "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await firstValueFrom(
+    ///   withChainHeadFollow({
+    ///     genesisHash:
+    ///       "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///   }).pipe(
+    ///     mergeMap(({ genesisHash, followSubscriptionId, hash }) =>
+    ///       truapi.chain.getHeadBody({ genesisHash, followSubscriptionId, hash }),
+    ///     ),
+    ///   ),
+    /// );
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 82)]
-    async fn remote_chain_head_body(
+    async fn get_head_body(
         &self,
         _cx: &CallContext,
         _request: RemoteChainHeadBodyRequest,
@@ -122,33 +113,31 @@ pub trait ChainInteraction: Send + Sync {
 
     /// Query runtime storage at a specific block.
     ///
-    /// ```truapi-client-example
-    /// import {
-    ///   type Client,
-    ///   type RemoteChainHeadStorageResponse,
-    /// } from "@parity/truapi";
+    /// ```ts
+    /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
-    /// export async function getChainHeadStorage(
-    ///   truapi: Client,
-    /// ): Promise<RemoteChainHeadStorageResponse> {
-    ///   const result = await truapi.chainInteraction.chainHeadStorage({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     followSubscriptionId: "",
-    ///     hash: "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///     items: [
-    ///       {
-    ///         key: "0x26aa394eea5630e07c48ae0c9558cef7",
-    ///         queryType: { tag: "Value", value: undefined },
-    ///       },
-    ///     ],
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await firstValueFrom(
+    ///   withChainHeadFollow({
+    ///     genesisHash:
+    ///       "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///   }).pipe(
+    ///     mergeMap(({ genesisHash, followSubscriptionId, hash }) =>
+    ///       truapi.chain.getHeadStorage({
+    ///         genesisHash,
+    ///         followSubscriptionId,
+    ///         hash,
+    ///         items: [{ key: "0x26aa394eea5630e07c48ae0c9558cef7", queryType: "Value" }],
+    ///       }),
+    ///     ),
+    ///   ),
+    /// );
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 84)]
-    async fn remote_chain_head_storage(
+    async fn get_head_storage(
         &self,
         _cx: &CallContext,
         _request: RemoteChainHeadStorageRequest,
@@ -158,29 +147,33 @@ pub trait ChainInteraction: Send + Sync {
 
     /// Invoke a runtime call at a specific block.
     ///
-    /// ```truapi-client-example
-    /// import {
-    ///   type Client,
-    ///   type RemoteChainHeadCallResponse,
-    /// } from "@parity/truapi";
+    /// ```ts
+    /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
-    /// export async function callChainHeadRuntime(
-    ///   truapi: Client,
-    /// ): Promise<RemoteChainHeadCallResponse> {
-    ///   const result = await truapi.chainInteraction.chainHeadCall({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     followSubscriptionId: "",
-    ///     hash: "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///     function: "Core_version",
-    ///     callParameters: "0x",
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await firstValueFrom(
+    ///   withChainHeadFollow({
+    ///     genesisHash:
+    ///       "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///     withRuntime: true,
+    ///   }).pipe(
+    ///     mergeMap(({ genesisHash, followSubscriptionId, hash }) =>
+    ///       truapi.chain.callHead({
+    ///         genesisHash,
+    ///         followSubscriptionId,
+    ///         hash,
+    ///         function: "Core_version",
+    ///         callParameters: "0x",
+    ///       }),
+    ///     ),
+    ///   ),
+    /// );
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 86)]
-    async fn remote_chain_head_call(
+    async fn call_head(
         &self,
         _cx: &CallContext,
         _request: RemoteChainHeadCallRequest,
@@ -190,23 +183,30 @@ pub trait ChainInteraction: Send + Sync {
 
     /// Release pinned blocks.
     ///
-    /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// ```ts
+    /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
-    /// export async function unpinChainHead(truapi: Client): Promise<void> {
-    ///   const result = await truapi.chainInteraction.chainHeadUnpin({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     followSubscriptionId: "",
-    ///     hashes: [
-    ///       "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///     ],
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    /// }
+    /// const result = await firstValueFrom(
+    ///   withChainHeadFollow({
+    ///     genesisHash:
+    ///       "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///   }).pipe(
+    ///     mergeMap(({ genesisHash, followSubscriptionId, hash }) =>
+    ///       truapi.chain.unpinHead({
+    ///         genesisHash,
+    ///         followSubscriptionId,
+    ///         hashes: [hash],
+    ///       }),
+    ///     ),
+    ///   ),
+    /// );
+    /// result.match(
+    ///   () => console.log("ok"),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 88)]
-    async fn remote_chain_head_unpin(
+    async fn unpin_head(
         &self,
         _cx: &CallContext,
         _request: RemoteChainHeadUnpinRequest,
@@ -216,23 +216,30 @@ pub trait ChainInteraction: Send + Sync {
 
     /// Continue a paused chain-head operation.
     ///
-    /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// ```ts
+    /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
-    /// export async function continueChainHeadOperation(
-    ///   truapi: Client,
-    /// ): Promise<void> {
-    ///   const result = await truapi.chainInteraction.chainHeadContinue({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     followSubscriptionId: "",
-    ///     operationId: "op-id",
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    /// }
+    /// const result = await firstValueFrom(
+    ///   withChainHeadFollow({
+    ///     genesisHash:
+    ///       "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///   }).pipe(
+    ///     mergeMap(({ genesisHash, followSubscriptionId }) =>
+    ///       truapi.chain.continueHead({
+    ///         genesisHash,
+    ///         followSubscriptionId,
+    ///         operationId: "op-id",
+    ///       }),
+    ///     ),
+    ///   ),
+    /// );
+    /// result.match(
+    ///   () => console.log("ok"),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 90)]
-    async fn remote_chain_head_continue(
+    async fn continue_head(
         &self,
         _cx: &CallContext,
         _request: RemoteChainHeadContinueRequest,
@@ -242,23 +249,30 @@ pub trait ChainInteraction: Send + Sync {
 
     /// Stop a chain-head operation.
     ///
-    /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
+    /// ```ts
+    /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
-    /// export async function stopChainHeadOperation(
-    ///   truapi: Client,
-    /// ): Promise<void> {
-    ///   const result = await truapi.chainInteraction.chainHeadStopOperation({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     followSubscriptionId: "",
-    ///     operationId: "op-id",
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    /// }
+    /// const result = await firstValueFrom(
+    ///   withChainHeadFollow({
+    ///     genesisHash:
+    ///       "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///   }).pipe(
+    ///     mergeMap(({ genesisHash, followSubscriptionId }) =>
+    ///       truapi.chain.stopHeadOperation({
+    ///         genesisHash,
+    ///         followSubscriptionId,
+    ///         operationId: "op-id",
+    ///       }),
+    ///     ),
+    ///   ),
+    /// );
+    /// result.match(
+    ///   () => console.log("ok"),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 92)]
-    async fn remote_chain_head_stop_operation(
+    async fn stop_head_operation(
         &self,
         _cx: &CallContext,
         _request: RemoteChainHeadStopOperationRequest,
@@ -269,25 +283,17 @@ pub trait ChainInteraction: Send + Sync {
 
     /// Fetch the canonical genesis hash for a chain.
     ///
-    /// ```truapi-client-example
-    /// import {
-    ///   type Client,
-    ///   type RemoteChainSpecGenesisHashResponse,
-    /// } from "@parity/truapi";
-    ///
-    /// export async function getChainGenesisHash(
-    ///   truapi: Client,
-    /// ): Promise<RemoteChainSpecGenesisHashResponse> {
-    ///   const result = await truapi.chainInteraction.chainSpecGenesisHash({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// ```ts
+    /// const result = await truapi.chain.getSpecGenesisHash({
+    ///   genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    /// });
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 94)]
-    async fn remote_chain_spec_genesis_hash(
+    async fn get_spec_genesis_hash(
         &self,
         _cx: &CallContext,
         _request: RemoteChainSpecGenesisHashRequest,
@@ -298,25 +304,17 @@ pub trait ChainInteraction: Send + Sync {
 
     /// Fetch the display name of a chain.
     ///
-    /// ```truapi-client-example
-    /// import {
-    ///   type Client,
-    ///   type RemoteChainSpecChainNameResponse,
-    /// } from "@parity/truapi";
-    ///
-    /// export async function getChainName(
-    ///   truapi: Client,
-    /// ): Promise<RemoteChainSpecChainNameResponse> {
-    ///   const result = await truapi.chainInteraction.chainSpecChainName({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// ```ts
+    /// const result = await truapi.chain.getSpecChainName({
+    ///   genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    /// });
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 96)]
-    async fn remote_chain_spec_chain_name(
+    async fn get_spec_chain_name(
         &self,
         _cx: &CallContext,
         _request: RemoteChainSpecChainNameRequest,
@@ -326,25 +324,17 @@ pub trait ChainInteraction: Send + Sync {
 
     /// Fetch the JSON-encoded properties of a chain.
     ///
-    /// ```truapi-client-example
-    /// import {
-    ///   type Client,
-    ///   type RemoteChainSpecPropertiesResponse,
-    /// } from "@parity/truapi";
-    ///
-    /// export async function getChainProperties(
-    ///   truapi: Client,
-    /// ): Promise<RemoteChainSpecPropertiesResponse> {
-    ///   const result = await truapi.chainInteraction.chainSpecProperties({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// ```ts
+    /// const result = await truapi.chain.getSpecProperties({
+    ///   genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    /// });
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 98)]
-    async fn remote_chain_spec_properties(
+    async fn get_spec_properties(
         &self,
         _cx: &CallContext,
         _request: RemoteChainSpecPropertiesRequest,
@@ -354,26 +344,18 @@ pub trait ChainInteraction: Send + Sync {
 
     /// Broadcast a signed transaction.
     ///
-    /// ```truapi-client-example
-    /// import {
-    ///   type Client,
-    ///   type RemoteChainTransactionBroadcastResponse,
-    /// } from "@parity/truapi";
-    ///
-    /// export async function broadcastTransaction(
-    ///   truapi: Client,
-    /// ): Promise<RemoteChainTransactionBroadcastResponse> {
-    ///   const result = await truapi.chainInteraction.chainTransactionBroadcast({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     transaction: "0x",
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// ```ts
+    /// const result = await truapi.chain.broadcastTransaction({
+    ///   genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///   transaction: "0x",
+    /// });
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 100)]
-    async fn remote_chain_transaction_broadcast(
+    async fn broadcast_transaction(
         &self,
         _cx: &CallContext,
         _request: RemoteChainTransactionBroadcastRequest,
@@ -386,22 +368,18 @@ pub trait ChainInteraction: Send + Sync {
 
     /// Stop a transaction broadcast.
     ///
-    /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
-    ///
-    /// export async function stopTransactionBroadcast(
-    ///   truapi: Client,
-    /// ): Promise<void> {
-    ///   const result = await truapi.chainInteraction.chainTransactionStop({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     operationId: "op-id",
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    /// }
+    /// ```ts
+    /// const result = await truapi.chain.stopTransaction({
+    ///   genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///   operationId: "op-id",
+    /// });
+    /// result.match(
+    ///   () => console.log("ok"),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 102)]
-    async fn remote_chain_transaction_stop(
+    async fn stop_transaction(
         &self,
         _cx: &CallContext,
         _request: RemoteChainTransactionStopRequest,

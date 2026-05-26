@@ -1,23 +1,21 @@
-//! TrUAPI trait and type definitions for the dotli product SDK.
+//! TrUAPI trait and type definitions for the host product SDK.
 //!
-//! This crate provides two protocol versions as separate modules:
-//!
-//! - [`v01`] -- Protocol v0.1 (stable).
-//! - [`v02`] -- Protocol v0.2.
+//! Concrete wire types live in per-version modules (currently [`v01`]).
+//! Versioned envelopes are in [`versioned`].
 
 #![forbid(unsafe_code)]
+#![allow(async_fn_in_trait)]
 
 use std::convert::Infallible;
 use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};
 
 use futures::Stream;
 
 pub mod api;
 pub mod v01;
-pub mod v02;
 pub mod versioned;
 
 pub use truapi_macros::wire;

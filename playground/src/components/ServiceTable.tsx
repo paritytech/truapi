@@ -1,7 +1,10 @@
-import type { ServiceInfo } from "@/src/lib/services";
-import { isMethodSupported } from "@/src/lib/host-api-bridge";
+import type { MethodInfo, ServiceInfo } from "@/src/lib/services";
 import type { TestEntry } from "@/src/lib/auto-test";
 import { AUTO_TEST_ID } from "@/src/lib/auto-test";
+
+function hasExample(method: MethodInfo): boolean {
+  return !!method.exampleSource;
+}
 
 const KIND_LABEL: Record<string, string> = {
   unary: "Req / Res",
@@ -82,8 +85,8 @@ export function ServiceTable({
                 <span className="service__count">{svc.methods.length}</span>
               </div>
               <div>
-                {svc.methods.map((m) => {
-                  const supported = isMethodSupported(svc.name, m.name);
+                {svc.methods.map((m: MethodInfo) => {
+                  const supported = hasExample(m);
                   const isActive =
                     activeMethod?.service === svc.name &&
                     activeMethod?.method === m.name;

@@ -1,20 +1,25 @@
 {
   "name": "truapi",
   "private": true,
+  "workspaces": [
+    "js/packages/*"
+  ],
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "build": "npm run build --prefix js/packages/truapi && npm run build --prefix explorer && cd playground && yarn build",
-    "build:explorer": "npm run build --prefix explorer",
+    "build": "npm run build --prefix js/packages/truapi && cd playground && yarn build",
     "codegen": "./scripts/codegen.sh",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "format:check": "prettier --check \"**/*.{ts,tsx,md}\"",
-    "typecheck": "npm run typecheck --prefix js/packages/truapi && npm run lint --prefix explorer && cd playground && npx tsc --noEmit --noUnusedLocals --noUnusedParameters",
+    "typecheck": "npm run typecheck --prefix js/packages/truapi && cd playground && npx tsc --noEmit --noUnusedLocals --noUnusedParameters",
     "test": "cargo test --workspace && npm test --prefix js/packages/truapi",
-    "lint": "npm run format:check && npm run typecheck"
+    "lint": "npm run format:check && npm run typecheck",
+    "changeset": "changeset",
+    "version-packages": "changeset version && node scripts/sync-cargo-version.mjs"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.28.1",
     "prettier": "^3.8.3"
   }
 }

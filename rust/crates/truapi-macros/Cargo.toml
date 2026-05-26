@@ -1,7 +1,7 @@
 [package]
 name = "truapi-macros"
 version = "0.1.0"
-edition = "2021"
+edition.workspace = true
 description = "Proc-macros for TrUAPI trait annotations (wire ids)"
 
 [lib]

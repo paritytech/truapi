@@ -1,6 +1,6 @@
 # truapi
 
-*Source of truth for the TrUAPI protocol: shared traits, versioned types, and the wire dispatch table.*
+_Source of truth for the TrUAPI protocol: shared traits, versioned types, and the wire dispatch table._
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](../../../LICENSE)
 
@@ -20,19 +20,21 @@ The TypeScript client and the host dispatcher are both generated from this crate
 
 The crate has two layers:
 
-1. **Protocol types** under `v01` and `v02`.
+1. **Protocol types** under `v01`.
 2. **Unified host contract** under `api`, where each method takes a `CallContext`, a versioned request type, and returns a versioned response with `CallError<D>` or a `Subscription<T>`.
 
 Wire ids are part of the public protocol after F1: existing ids are append-only. Do not renumber or reuse them. The generated Rust dispatcher and the generated TypeScript wire table must stay byte-compatible with deployed products.
 
 ## Key modules
 
-| Module | Role |
-| ------ | ---- |
-| `v02` | Current protocol-facing types. |
-| `versioned` | Request, response, and subscription item wrappers for the unified trait surface. |
-| `api` | Unified domain traits (`AccountManagement`, `ChainInteraction`, `Chat`, ...) and the composed `TrUApi` trait. |
-| `failure` | Framework-level `CallError<D>` and lifecycle context types. |
+| Module      | Role                                                                                     |
+| ----------- | ---------------------------------------------------------------------------------------- |
+| `v01`       | Current protocol-facing types.                                                           |
+| `versioned` | Request, response, and subscription item wrappers for the unified trait surface.         |
+| `api`       | Unified domain traits (`Account`, `Chain`, `Chat`, ...) and the composed `TrUApi` trait. |
+
+Framework-level helpers (`CallError<D>`, `CallContext`, `Subscription<T>`,
+`CancellationToken`) live at the crate root.
 
 ## Example
 
@@ -40,31 +42,31 @@ Implement one or more of the unified sub-traits. `TrUApi` is a blanket trait ove
 
 ```rust
 use truapi::{CallContext, CallError, Subscription};
-use truapi::api::{AccountManagement, TrUApi};
+use truapi::api::{Account, TrUApi};
 use truapi::versioned::account::{
     HostAccountConnectionStatusSubscribeItem,
     HostAccountGetError,
     HostAccountGetRequest,
     HostAccountGetResponse,
 };
-use truapi::v01::Account;
+use truapi::v01::{self, ProductAccount};
 
 struct MyHost;
 
-#[async_trait::async_trait]
-impl AccountManagement for MyHost {
-    async fn host_account_get(
+impl Account for MyHost {
+    async fn get_account(
         &self,
         _cx: &CallContext,
         _request: HostAccountGetRequest,
     ) -> Result<HostAccountGetResponse, CallError<HostAccountGetError>> {
-        Ok(HostAccountGetResponse::V1(Account {
-            public_key: Vec::new(),
-            name: None,
+        Ok(HostAccountGetResponse::V1(v01::HostAccountGetResponse {
+            account: ProductAccount {
+                public_key: Vec::new(),
+            },
         }))
     }
 
-    async fn host_account_connection_status_subscribe(
+    async fn connection_status_subscribe(
         &self,
         _cx: &CallContext,
     ) -> Subscription<HostAccountConnectionStatusSubscribeItem> {

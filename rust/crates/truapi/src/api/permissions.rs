@@ -7,31 +7,19 @@ use crate::versioned::permissions::{
 use crate::wire;
 use crate::{CallContext, CallError};
 
-/// Device and remote permission prompts.
-#[async_trait::async_trait]
+/// Permission request methods.
 pub trait Permissions: Send + Sync {
     /// Request a device-capability permission from the user.
     ///
-    /// ```truapi-client-example
-    /// import {
-    ///   type Client,
-    ///   type HostDevicePermissionResponse,
-    /// } from "@parity/truapi";
-    ///
-    /// export async function requestCameraPermission(
-    ///   truapi: Client,
-    /// ): Promise<HostDevicePermissionResponse> {
-    ///   const result = await truapi.permissions.devicePermission({
-    ///     tag: "Camera",
-    ///     value: undefined,
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// ```ts
+    /// const result = await truapi.permissions.requestDevicePermission("Camera");
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 8)]
-    async fn host_device_permission(
+    async fn request_device_permission(
         &self,
         cx: &CallContext,
         request: HostDevicePermissionRequest,
@@ -39,25 +27,17 @@ pub trait Permissions: Send + Sync {
 
     /// Request one or more remote-operation permissions.
     ///
-    /// ```truapi-client-example
-    /// import {
-    ///   type Client,
-    ///   type RemotePermissionResponse,
-    /// } from "@parity/truapi";
-    ///
-    /// export async function requestRemotePermission(
-    ///   truapi: Client,
-    /// ): Promise<RemotePermissionResponse> {
-    ///   const result = await truapi.permissions.permission({
-    ///     permissions: [{ tag: "Remote", value: { domains: ["api.example.com"] } }],
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// ```ts
+    /// const result = await truapi.permissions.requestRemotePermission({
+    ///   permissions: [{ tag: "Remote", value: { domains: ["api.example.com"] } }],
+    /// });
+    /// result.match(
+    ///   (value) => console.log(value),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 10)]
-    async fn remote_permission(
+    async fn request_remote_permission(
         &self,
         cx: &CallContext,
         request: RemotePermissionRequest,

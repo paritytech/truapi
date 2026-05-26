@@ -10,13 +10,24 @@ pub struct ProductAccountId {
     pub derivation_index: u32,
 }
 
-/// An account with its public key and optional display name.
+/// A user-imported (legacy) account: public key plus an optional user-chosen
+/// display name.
+///
+/// Returned by [`HostGetLegacyAccountsResponse`]. Distinct from
+/// [`ProductAccount`], which is protocol-derived and never carries a label.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct Account {
+pub struct LegacyAccount {
     /// The account public key (variable-length bytes).
     pub public_key: Vec<u8>,
-    /// Optional human-readable display name.
+    /// Optional user-chosen display name.
     pub name: Option<String>,
+}
+
+/// A product account: public key only, no display name.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct ProductAccount {
+    /// The account public key (variable-length bytes).
+    pub public_key: Vec<u8>,
 }
 
 /// A privacy-preserving alias derived via ring VRF, bound to a specific context.
@@ -64,6 +75,31 @@ pub enum HostAccountConnectionStatusSubscribeItem {
     Connected,
 }
 
+/// Result of a login request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+pub enum HostRequestLoginResponse {
+    /// User successfully authenticated.
+    Success,
+    /// User is already authenticated — no action was taken.
+    AlreadyConnected,
+    /// User dismissed/rejected the login UI.
+    Rejected,
+}
+
+/// Request to present the host login flow.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostRequestLoginRequest {
+    /// Optional human-readable reason shown in the login UI.
+    pub reason: Option<String>,
+}
+
+/// Login request error.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum HostRequestLoginError {
+    /// Catch-all.
+    Unknown { reason: String },
+}
+
 /// Error returned when credential/account requests fail.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum HostAccountGetError {
@@ -98,8 +134,26 @@ pub struct HostAccountGetRequest {
 /// Response containing a product-scoped account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostAccountGetResponse {
-    /// Retrieved account.
-    pub account: Account,
+    /// Retrieved product account.
+    pub account: ProductAccount,
+}
+
+/// The user's primary DotNS account identity.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostGetUserIdResponse {
+    /// The user's primary DotNS username.
+    pub primary_username: String,
+}
+
+/// Error from [`crate::api::Account::get_user_id`].
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum HostGetUserIdError {
+    /// User denied the identity disclosure request.
+    PermissionDenied,
+    /// User is not logged in.
+    NotConnected,
+    /// Catch-all.
+    Unknown { reason: String },
 }
 
 /// Request to retrieve a contextual alias for a product account.
@@ -116,9 +170,9 @@ pub struct HostAccountCreateProofResponse {
     pub proof: Vec<u8>,
 }
 
-/// Response containing all non-product accounts owned by the user.
+/// Response containing all legacy (user-imported) accounts owned by the user.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostGetLegacyAccountsResponse {
-    /// Non-product accounts.
-    pub accounts: Vec<Account>,
+    /// Legacy accounts.
+    pub accounts: Vec<LegacyAccount>,
 }

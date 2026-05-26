@@ -26,21 +26,35 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./playground/services": {
-      "types": "./dist/playground/services.d.ts",
-      "import": "./dist/playground/services.js"
+    "./scale": {
+      "types": "./dist/scale.d.ts",
+      "import": "./dist/scale.js"
     },
-    "./explorer/registry": {
-      "types": "./dist/explorer/registry.d.ts",
-      "import": "./dist/explorer/registry.js"
+    "./wire-table": {
+      "types": "./dist/generated/wire-table.d.ts",
+      "import": "./dist/generated/wire-table.js"
+    },
+    "./playground/services": {
+      "types": "./dist/playground/codegen/services.d.ts",
+      "import": "./dist/playground/codegen/services.js"
+    },
+    "./playground/services-types": {
+      "types": "./dist/playground/services-types.d.ts",
+      "import": "./dist/playground/services-types.js"
+    },
+    "./playground/codegen/truapi-dts": {
+      "types": "./dist/playground/codegen/truapi-dts.d.ts",
+      "import": "./dist/playground/codegen/truapi-dts.js"
     }
   },
   "scripts": {
+    "ensure-generated": "./scripts/ensure-generated.sh",
     "build": "tsc",
+    "prebuild": "npm run ensure-generated",
     "prepare": "npm run build",
-    "codegen": "cargo run -p truapi-codegen -- --input ../../../target/doc/truapi.json --output src/generated",
-    "typecheck": "npm run build && npm run typecheck:examples",
-    "typecheck:examples": "tsc -p tsconfig.examples.json",
+    "codegen": "cargo run -p truapi-codegen -- --input ../../../target/doc/truapi.json --output src/generated --playground-output src/playground",
+    "typecheck": "npm run build",
+    "pretest": "npm run ensure-generated",
     "test": "for f in test/*.test.mjs; do echo \"=== $f ===\" && bun \"$f\" || exit 1; done"
   },
   "devDependencies": {
