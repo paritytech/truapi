@@ -12308,6 +12308,36 @@ impl State {
             final(self).entries@ == old(self).entries@,
             final(self).spec_entries@ == old(self).spec_entries@,
             final(self).events@ == old(self).events@,
+            final(self).next_age == old(self).next_age + exp_seq@.len(),
+            final(self).fee_balance == old(self).fee_balance,
+            final(self).next_extrinsic_id == old(self).next_extrinsic_id,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
+            final(self).tokens@ == old(self).tokens@,
+            final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
+            // Domain-equality form: every key in the final coins map is
+            // either an old key (with its old record) or one of the new
+            // (p, old_next + j) keys (with its exp_seq[j] record).
+            final(self).coins().dom() =~= old(self).coins().dom().union(
+                Set::new(|k: (PurseId, u64)|
+                    k.0 == p
+                    && (old(self).purses()[p].next_coin_idx as int) <= (k.1 as int)
+                    && (k.1 as int) < (old(self).purses()[p].next_coin_idx as int)
+                                       + exp_seq@.len() as int)
+            ),
+            forall|j: int| 0 <= j < exp_seq@.len() ==>
+                #[trigger] final(self).coins()[
+                    (p, (old(self).purses()[p].next_coin_idx + j) as u64)
+                ] == (CoinRec {
+                    purse: p,
+                    idx: (old(self).purses()[p].next_coin_idx + j) as u64,
+                    exponent: exp_seq@[j],
+                    state: CoinState::Pending,
+                    age: (old(self).next_age + j) as u64,
+                    account: 0,
+                }),
     {
         let ghost old_p_next = old(self).purses()[p].next_coin_idx;
         let ghost old_next_age = old(self).next_age;
@@ -12350,6 +12380,32 @@ impl State {
                 self.entries() == old_entries_map,
                 self.entries@ == old_entries_vec,
                 self.spec_entries@ == old_spec_entries,
+                self.fee_balance == old(self).fee_balance,
+                self.next_extrinsic_id == old(self).next_extrinsic_id,
+                self.paid_ring_membership == old(self).paid_ring_membership,
+                self.total_in == old(self).total_in,
+                self.total_out == old(self).total_out,
+                self.tokens@ == old(self).tokens@,
+                self.chain_coins@ == old(self).chain_coins@,
+                self.chain_entries@ == old(self).chain_entries@,
+                // Cumulative new coins so far have their full records.
+                forall|j: int| 0 <= j < k as int ==>
+                    #[trigger] self.coins()[(p, (old_p_next + j) as u64)]
+                        == (CoinRec {
+                            purse: p,
+                            idx: (old_p_next + j) as u64,
+                            exponent: exp_seq@[j],
+                            state: CoinState::Pending,
+                            age: (old_next_age + j) as u64,
+                            account: 0,
+                        }),
+                // Cumulative new-key domain.
+                self.coins().dom() =~= old_coins_map.dom().union(
+                    Set::new(|kk: (PurseId, u64)|
+                        kk.0 == p
+                        && (old_p_next as int) <= (kk.1 as int)
+                        && (kk.1 as int) < (old_p_next as int) + k as int)
+                ),
                 old_operations_map == old(self).operations(),
                 old_operations_vec == old(self).operations@,
                 old_spec_operations == old(self).spec_operations@,
@@ -17999,6 +18055,151 @@ proof fn lemma_purge_entries_of_purse_refines(pre: State, post: State, p: PurseI
     let post_view = quint_view(post);
     let step_view = quint_step_purge_entries_of_purse(quint_view(pre), p);
     assert(post_view.entries =~= step_view.entries);
+}
+
+/// Quint analog: bulk mint `exp_seq.len()` Pending coins in `p` with
+/// sequential indices `[base_idx, base_idx + n)` and sequential ages
+/// `[base_age, base_age + n)`. Quint createCoins fold reduced to a
+/// single map-union expression.
+pub open spec fn quint_step_top_up_purse(
+    pre: QuintViewState,
+    p: PurseId,
+    exp_seq: Seq<u8>,
+    base_idx: u64,
+    base_age: u64,
+) -> QuintViewState
+    recommends
+        pre.purses.dom().contains(p),
+        pre.purses[p].next_coin_idx == base_idx as nat,
+        (base_idx as nat) + exp_seq.len() <= u64::MAX as nat,
+        (base_age as nat) + exp_seq.len() <= u64::MAX as nat,
+{
+    QuintViewState {
+        coins: Map::new(
+            |k: (PurseId, u64)|
+                pre.coins.dom().contains(k)
+                || (k.0 == p
+                    && (base_idx as int) <= (k.1 as int)
+                    && (k.1 as int) < (base_idx as int) + exp_seq.len() as int),
+            |k: (PurseId, u64)|
+                if pre.coins.dom().contains(k) {
+                    pre.coins[k]
+                } else {
+                    let j = (k.1 as int) - (base_idx as int);
+                    CoinRec {
+                        purse: p,
+                        idx: k.1,
+                        exponent: exp_seq[j],
+                        state: CoinState::Pending,
+                        age: ((base_age as int) + j) as u64,
+                        account: 0,
+                    }
+                }
+        ),
+        purses: pre.purses.insert(p, PurseRecSpec {
+            id: pre.purses[p].id,
+            name: pre.purses[p].name,
+            next_coin_idx: pre.purses[p].next_coin_idx + exp_seq.len(),
+            next_entry_idx: pre.purses[p].next_entry_idx,
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_top_up_purse_refines(
+    pre: State,
+    post: State,
+    p: PurseId,
+    exp_seq: Seq<u8>,
+    base_idx: u64,
+    base_age: u64,
+)
+    requires
+        pre.invariant(),
+        pre.purses().dom().contains(p),
+        pre.purses()[p].next_coin_idx == base_idx as nat,
+        pre.next_age == base_age,
+        (base_idx as nat) + exp_seq.len() <= u64::MAX as nat,
+        (base_age as nat) + exp_seq.len() <= u64::MAX as nat,
+        forall|j: int| 0 <= j < exp_seq.len() ==>
+            (#[trigger] exp_seq[j]) <= MAX_EXPONENT,
+        post.invariant(),
+        post.purses().dom() =~= pre.purses().dom(),
+        post.purses()[p].next_coin_idx == pre.purses()[p].next_coin_idx + exp_seq.len(),
+        post.purses()[p].id == p,
+        post.purses()[p].name == pre.purses()[p].name,
+        post.purses()[p].next_entry_idx == pre.purses()[p].next_entry_idx,
+        forall|q: PurseId| q != p && #[trigger] pre.purses().dom().contains(q)
+            ==> post.purses()[q] == pre.purses()[q],
+        post.coins().dom() =~= pre.coins().dom().union(
+            Set::new(|k: (PurseId, u64)|
+                k.0 == p
+                && (base_idx as int) <= (k.1 as int)
+                && (k.1 as int) < (base_idx as int) + exp_seq.len() as int)
+        ),
+        forall|k: (PurseId, u64)| #[trigger] pre.coins().dom().contains(k)
+            ==> post.coins()[k] == pre.coins()[k],
+        forall|j: int| 0 <= j < exp_seq.len() ==>
+            #[trigger] post.coins()[(p, (base_idx + j) as u64)]
+                == (CoinRec {
+                    purse: p,
+                    idx: (base_idx + j) as u64,
+                    exponent: exp_seq[j],
+                    state: CoinState::Pending,
+                    age: (base_age + j) as u64,
+                    account: 0,
+                }),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_top_up_purse(
+            quint_view(pre), p, exp_seq, base_idx, base_age,
+        ),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_top_up_purse(
+        quint_view(pre), p, exp_seq, base_idx, base_age,
+    );
+    assert(post_view.purses =~= step_view.purses);
+    // For coins, prove extensional equality: for every key, both maps
+    // agree on dom and value.
+    assert forall|k: (PurseId, u64)|
+        #[trigger] post_view.coins.dom().contains(k)
+            <==> step_view.coins.dom().contains(k)
+    by {
+    }
+    assert forall|k: (PurseId, u64)| post_view.coins.dom().contains(k)
+        implies #[trigger] post_view.coins[k] == step_view.coins[k]
+    by {
+        if pre.coins().dom().contains(k) {
+            assert(post_view.coins[k] == pre.coins()[k]);
+            assert(step_view.coins[k] == pre.coins()[k]);
+        } else {
+            // k is in the new range; k.0 == p, k.1 in [base_idx, base_idx + n).
+            let j = (k.1 as int) - (base_idx as int);
+            assert(0 <= j < exp_seq.len());
+            assert(k == (p, (base_idx + j) as u64));
+            assert(post_view.coins[k] == (CoinRec {
+                purse: p,
+                idx: (base_idx + j) as u64,
+                exponent: exp_seq[j],
+                state: CoinState::Pending,
+                age: (base_age + j) as u64,
+                account: 0,
+            }));
+        }
+    }
+    assert(post_view.coins =~= step_view.coins);
 }
 
 /// Quint analog: `purses' = purses.put(new_id, {id, name, 0, 0})`.
