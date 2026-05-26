@@ -9022,6 +9022,476 @@ impl State {
         None
     }
 
+    /// Tier-3 (entry-supplemented cover, §6.3, 2-coin + 1-entry): find
+    /// any pair of distinct `Available` coins and one `Ready +
+    /// LocalAvailable` entry in purse `p` whose values sum exactly
+    /// to `amount`. Sharp `None` postcondition.
+    pub fn find_two_coin_one_entry_cover(&self, p: PurseId, amount: u64)
+        -> (res: Option<((PurseId, u64), (PurseId, u64), (PurseId, u64))>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some((c1, c2, e)) =>
+                    self.coins().dom().contains(c1)
+                    && self.coins().dom().contains(c2)
+                    && self.entries().dom().contains(e)
+                    && c1 != c2
+                    && c1.0 == p && c2.0 == p && e.0 == p
+                    && self.coins()[c1].state == CoinState::Available
+                    && self.coins()[c2].state == CoinState::Available
+                    && self.entries()[e].on_chain == EntryOnChain::Ready
+                    && self.entries()[e].local == EntryLocal::LocalAvailable
+                    && coin_value(self.coins()[c1].exponent)
+                        + coin_value(self.coins()[c2].exponent)
+                        + coin_value(self.entries()[e].exponent)
+                        == amount as nat,
+                None =>
+                    forall|i1: int, i2: int, k: int|
+                        0 <= i1 < self.coins@.len()
+                        && 0 <= i2 < self.coins@.len()
+                        && 0 <= k < self.entries@.len()
+                        && i1 != i2
+                        ==> {
+                            let c1 = #[trigger] self.coins@[i1];
+                            let c2 = #[trigger] self.coins@[i2];
+                            let e = #[trigger] self.entries@[k];
+                            c1.purse != p
+                            || c1.state != CoinState::Available
+                            || c2.purse != p
+                            || c2.state != CoinState::Available
+                            || e.purse != p
+                            || e.on_chain != EntryOnChain::Ready
+                            || e.local != EntryLocal::LocalAvailable
+                            || (coin_value(c1.exponent)
+                                    + coin_value(c2.exponent)
+                                    + coin_value(e.exponent)
+                                != amount as nat)
+                        },
+            },
+    {
+        let nc = self.coins.len();
+        let ne = self.entries.len();
+        let mut i: usize = 0;
+        while i < nc
+            invariant
+                0 <= i <= nc,
+                nc == self.coins.len(),
+                ne == self.entries.len(),
+                self.invariant(),
+                // Outer accumulator: no (i1, i2, k) with i1 < i works.
+                forall|i1: int, i2: int, k: int|
+                    0 <= i1 < i as int
+                    && 0 <= i2 < nc as int
+                    && 0 <= k < ne as int
+                    && i1 != i2
+                    ==> {
+                        let c1 = #[trigger] self.coins@[i1];
+                        let c2 = #[trigger] self.coins@[i2];
+                        let e = #[trigger] self.entries@[k];
+                        c1.purse != p
+                        || c1.state != CoinState::Available
+                        || c2.purse != p
+                        || c2.state != CoinState::Available
+                        || e.purse != p
+                        || e.on_chain != EntryOnChain::Ready
+                        || e.local != EntryLocal::LocalAvailable
+                        || (coin_value(c1.exponent)
+                                + coin_value(c2.exponent)
+                                + coin_value(e.exponent)
+                            != amount as nat)
+                    },
+            decreases nc - i,
+        {
+            let ci_avail = matches!(self.coins[i].state, CoinState::Available);
+            if self.coins[i].purse == p && ci_avail {
+                proof {
+                    let coin_key = (self.coins@[i as int].purse, self.coins@[i as int].idx);
+                    assert(self.spec_coins@.dom().contains(coin_key));
+                    assert(self.spec_coins@[coin_key] == self.coins@[i as int]);
+                    assert(self.coins@[i as int].exponent <= MAX_EXPONENT);
+                }
+                let vi: u64 = pow2_u64_exec(self.coins[i].exponent);
+                if vi <= amount {
+                    let mut j: usize = 0;
+                    while j < nc
+                        invariant
+                            0 <= j <= nc,
+                            nc == self.coins.len(),
+                            ne == self.entries.len(),
+                            i < nc,
+                            self.invariant(),
+                            self.coins@[i as int].purse == p,
+                            self.coins@[i as int].state == CoinState::Available,
+                            vi as nat == coin_value(self.coins@[i as int].exponent),
+                            vi <= 1073741824u64,
+                            vi <= amount,
+                            forall|i1: int, i2: int, k: int|
+                                0 <= i1 < i as int
+                                && 0 <= i2 < nc as int
+                                && 0 <= k < ne as int
+                                && i1 != i2
+                                ==> {
+                                    let c1 = #[trigger] self.coins@[i1];
+                                    let c2 = #[trigger] self.coins@[i2];
+                                    let e = #[trigger] self.entries@[k];
+                                    c1.purse != p
+                                    || c1.state != CoinState::Available
+                                    || c2.purse != p
+                                    || c2.state != CoinState::Available
+                                    || e.purse != p
+                                    || e.on_chain != EntryOnChain::Ready
+                                    || e.local != EntryLocal::LocalAvailable
+                                    || (coin_value(c1.exponent)
+                                            + coin_value(c2.exponent)
+                                            + coin_value(e.exponent)
+                                        != amount as nat)
+                                },
+                            // Middle accumulator: forall (i, j1, k) with j1 < j, j1 != i.
+                            forall|j1: int, k: int|
+                                0 <= j1 < j as int
+                                && 0 <= k < ne as int
+                                && j1 != i as int
+                                ==> {
+                                    let c2 = #[trigger] self.coins@[j1];
+                                    let e = #[trigger] self.entries@[k];
+                                    c2.purse != p
+                                    || c2.state != CoinState::Available
+                                    || e.purse != p
+                                    || e.on_chain != EntryOnChain::Ready
+                                    || e.local != EntryLocal::LocalAvailable
+                                    || (coin_value(self.coins@[i as int].exponent)
+                                            + coin_value(c2.exponent)
+                                            + coin_value(e.exponent)
+                                        != amount as nat)
+                                },
+                        decreases nc - j,
+                    {
+                        if j != i {
+                            let cj_avail = matches!(self.coins[j].state, CoinState::Available);
+                            if self.coins[j].purse == p && cj_avail {
+                                proof {
+                                    let coin_key = (self.coins@[j as int].purse,
+                                                    self.coins@[j as int].idx);
+                                    assert(self.spec_coins@.dom().contains(coin_key));
+                                    assert(self.spec_coins@[coin_key] == self.coins@[j as int]);
+                                    assert(self.coins@[j as int].exponent <= MAX_EXPONENT);
+                                }
+                                let vj: u64 = pow2_u64_exec(self.coins[j].exponent);
+                                if vi + vj <= amount {
+                                    let mut k: usize = 0;
+                                    while k < ne
+                                        invariant
+                                            0 <= k <= ne,
+                                            nc == self.coins.len(),
+                                            ne == self.entries.len(),
+                                            i < nc,
+                                            j < nc,
+                                            i != j as usize,
+                                            self.invariant(),
+                                            self.coins@[i as int].purse == p,
+                                            self.coins@[i as int].state == CoinState::Available,
+                                            self.coins@[j as int].purse == p,
+                                            self.coins@[j as int].state == CoinState::Available,
+                                            vi as nat == coin_value(self.coins@[i as int].exponent),
+                                            vj as nat == coin_value(self.coins@[j as int].exponent),
+                                            vi <= 1073741824u64,
+                                            vj <= 1073741824u64,
+                                            vi + vj <= amount,
+                                            // Inner accumulator: forall k2 < k checked, triple fails.
+                                            forall|k2: int|
+                                                0 <= k2 < k as int
+                                                ==>
+                                                (#[trigger] self.entries@[k2]).purse != p
+                                                || self.entries@[k2].on_chain != EntryOnChain::Ready
+                                                || self.entries@[k2].local != EntryLocal::LocalAvailable
+                                                || (coin_value(self.coins@[i as int].exponent)
+                                                        + coin_value(self.coins@[j as int].exponent)
+                                                        + coin_value(self.entries@[k2].exponent)
+                                                    != amount as nat),
+                                        decreases ne - k,
+                                    {
+                                        let e = &self.entries[k];
+                                        let is_ready = matches!(e.on_chain, EntryOnChain::Ready);
+                                        let is_local_avail = matches!(e.local,
+                                                                      EntryLocal::LocalAvailable);
+                                        if e.purse == p && is_ready && is_local_avail {
+                                            proof {
+                                                let entry_key = (self.entries@[k as int].purse,
+                                                                 self.entries@[k as int].idx);
+                                                assert(self.spec_entries@.dom().contains(entry_key));
+                                                assert(self.spec_entries@[entry_key]
+                                                    == self.entries@[k as int]);
+                                                assert(self.entries@[k as int].exponent
+                                                    <= MAX_EXPONENT);
+                                            }
+                                            let ve: u64 = pow2_u64_exec(e.exponent);
+                                            if vi + vj + ve == amount {
+                                                let ck1 = (self.coins[i].purse, self.coins[i].idx);
+                                                let ck2 = (self.coins[j].purse, self.coins[j].idx);
+                                                let ek = (self.entries[k].purse, self.entries[k].idx);
+                                                proof {
+                                                    assert(self.spec_coins@.dom().contains(ck1));
+                                                    assert(self.spec_coins@.dom().contains(ck2));
+                                                    assert(self.spec_entries@.dom().contains(ek));
+                                                    assert(ck1 != ck2);
+                                                }
+                                                return Some((ck1, ck2, ek));
+                                            }
+                                        }
+                                        k = k + 1;
+                                    }
+                                }
+                            }
+                        }
+                        j = j + 1;
+                    }
+                }
+            }
+            i = i + 1;
+        }
+        None
+    }
+
+    /// Tier-3 (entry-supplemented cover, §6.3, 1-coin + 2-entry): find
+    /// any single `Available` coin and a pair of distinct `Ready +
+    /// LocalAvailable` entries in purse `p` whose values sum exactly
+    /// to `amount`. Sharp `None` postcondition.
+    pub fn find_one_coin_two_entry_cover(&self, p: PurseId, amount: u64)
+        -> (res: Option<((PurseId, u64), (PurseId, u64), (PurseId, u64))>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some((c, e1, e2)) =>
+                    self.coins().dom().contains(c)
+                    && self.entries().dom().contains(e1)
+                    && self.entries().dom().contains(e2)
+                    && e1 != e2
+                    && c.0 == p && e1.0 == p && e2.0 == p
+                    && self.coins()[c].state == CoinState::Available
+                    && self.entries()[e1].on_chain == EntryOnChain::Ready
+                    && self.entries()[e1].local == EntryLocal::LocalAvailable
+                    && self.entries()[e2].on_chain == EntryOnChain::Ready
+                    && self.entries()[e2].local == EntryLocal::LocalAvailable
+                    && coin_value(self.coins()[c].exponent)
+                        + coin_value(self.entries()[e1].exponent)
+                        + coin_value(self.entries()[e2].exponent)
+                        == amount as nat,
+                None =>
+                    forall|i: int, k1: int, k2: int|
+                        0 <= i < self.coins@.len()
+                        && 0 <= k1 < self.entries@.len()
+                        && 0 <= k2 < self.entries@.len()
+                        && k1 != k2
+                        ==> {
+                            let c = #[trigger] self.coins@[i];
+                            let e1 = #[trigger] self.entries@[k1];
+                            let e2 = #[trigger] self.entries@[k2];
+                            c.purse != p
+                            || c.state != CoinState::Available
+                            || e1.purse != p
+                            || e1.on_chain != EntryOnChain::Ready
+                            || e1.local != EntryLocal::LocalAvailable
+                            || e2.purse != p
+                            || e2.on_chain != EntryOnChain::Ready
+                            || e2.local != EntryLocal::LocalAvailable
+                            || (coin_value(c.exponent)
+                                    + coin_value(e1.exponent)
+                                    + coin_value(e2.exponent)
+                                != amount as nat)
+                        },
+            },
+    {
+        let nc = self.coins.len();
+        let ne = self.entries.len();
+        let mut i: usize = 0;
+        while i < nc
+            invariant
+                0 <= i <= nc,
+                nc == self.coins.len(),
+                ne == self.entries.len(),
+                self.invariant(),
+                forall|i1: int, k1: int, k2: int|
+                    0 <= i1 < i as int
+                    && 0 <= k1 < ne as int
+                    && 0 <= k2 < ne as int
+                    && k1 != k2
+                    ==> {
+                        let c = #[trigger] self.coins@[i1];
+                        let e1 = #[trigger] self.entries@[k1];
+                        let e2 = #[trigger] self.entries@[k2];
+                        c.purse != p
+                        || c.state != CoinState::Available
+                        || e1.purse != p
+                        || e1.on_chain != EntryOnChain::Ready
+                        || e1.local != EntryLocal::LocalAvailable
+                        || e2.purse != p
+                        || e2.on_chain != EntryOnChain::Ready
+                        || e2.local != EntryLocal::LocalAvailable
+                        || (coin_value(c.exponent)
+                                + coin_value(e1.exponent)
+                                + coin_value(e2.exponent)
+                            != amount as nat)
+                    },
+            decreases nc - i,
+        {
+            let ci_avail = matches!(self.coins[i].state, CoinState::Available);
+            if self.coins[i].purse == p && ci_avail {
+                proof {
+                    let coin_key = (self.coins@[i as int].purse, self.coins@[i as int].idx);
+                    assert(self.spec_coins@.dom().contains(coin_key));
+                    assert(self.spec_coins@[coin_key] == self.coins@[i as int]);
+                    assert(self.coins@[i as int].exponent <= MAX_EXPONENT);
+                }
+                let vi: u64 = pow2_u64_exec(self.coins[i].exponent);
+                if vi <= amount {
+                    let mut j: usize = 0;
+                    while j < ne
+                        invariant
+                            0 <= j <= ne,
+                            nc == self.coins.len(),
+                            ne == self.entries.len(),
+                            i < nc,
+                            self.invariant(),
+                            self.coins@[i as int].purse == p,
+                            self.coins@[i as int].state == CoinState::Available,
+                            vi as nat == coin_value(self.coins@[i as int].exponent),
+                            vi <= 1073741824u64,
+                            vi <= amount,
+                            forall|i1: int, k1: int, k2: int|
+                                0 <= i1 < i as int
+                                && 0 <= k1 < ne as int
+                                && 0 <= k2 < ne as int
+                                && k1 != k2
+                                ==> {
+                                    let c = #[trigger] self.coins@[i1];
+                                    let e1 = #[trigger] self.entries@[k1];
+                                    let e2 = #[trigger] self.entries@[k2];
+                                    c.purse != p
+                                    || c.state != CoinState::Available
+                                    || e1.purse != p
+                                    || e1.on_chain != EntryOnChain::Ready
+                                    || e1.local != EntryLocal::LocalAvailable
+                                    || e2.purse != p
+                                    || e2.on_chain != EntryOnChain::Ready
+                                    || e2.local != EntryLocal::LocalAvailable
+                                    || (coin_value(c.exponent)
+                                            + coin_value(e1.exponent)
+                                            + coin_value(e2.exponent)
+                                        != amount as nat)
+                                },
+                            forall|j1: int, k2: int|
+                                0 <= j1 < j as int
+                                && 0 <= k2 < ne as int
+                                && j1 != k2
+                                ==> {
+                                    let e1 = #[trigger] self.entries@[j1];
+                                    let e2 = #[trigger] self.entries@[k2];
+                                    e1.purse != p
+                                    || e1.on_chain != EntryOnChain::Ready
+                                    || e1.local != EntryLocal::LocalAvailable
+                                    || e2.purse != p
+                                    || e2.on_chain != EntryOnChain::Ready
+                                    || e2.local != EntryLocal::LocalAvailable
+                                    || (coin_value(self.coins@[i as int].exponent)
+                                            + coin_value(e1.exponent)
+                                            + coin_value(e2.exponent)
+                                        != amount as nat)
+                                },
+                        decreases ne - j,
+                    {
+                        let e1 = &self.entries[j];
+                        let is_ready1 = matches!(e1.on_chain, EntryOnChain::Ready);
+                        let is_local_avail1 = matches!(e1.local, EntryLocal::LocalAvailable);
+                        if e1.purse == p && is_ready1 && is_local_avail1 {
+                            proof {
+                                let entry_key = (self.entries@[j as int].purse,
+                                                 self.entries@[j as int].idx);
+                                assert(self.spec_entries@.dom().contains(entry_key));
+                                assert(self.spec_entries@[entry_key]
+                                    == self.entries@[j as int]);
+                                assert(self.entries@[j as int].exponent <= MAX_EXPONENT);
+                            }
+                            let ve1: u64 = pow2_u64_exec(e1.exponent);
+                            if vi + ve1 <= amount {
+                                let mut k: usize = 0;
+                                while k < ne
+                                    invariant
+                                        0 <= k <= ne,
+                                        nc == self.coins.len(),
+                                        ne == self.entries.len(),
+                                        i < nc,
+                                        j < ne,
+                                        self.invariant(),
+                                        self.coins@[i as int].purse == p,
+                                        self.coins@[i as int].state == CoinState::Available,
+                                        self.entries@[j as int].purse == p,
+                                        self.entries@[j as int].on_chain == EntryOnChain::Ready,
+                                        self.entries@[j as int].local == EntryLocal::LocalAvailable,
+                                        vi as nat == coin_value(self.coins@[i as int].exponent),
+                                        ve1 as nat == coin_value(self.entries@[j as int].exponent),
+                                        vi <= 1073741824u64,
+                                        ve1 <= 1073741824u64,
+                                        vi + ve1 <= amount,
+                                        forall|k2: int|
+                                            0 <= k2 < k as int
+                                            && k2 != j as int
+                                            ==>
+                                            (#[trigger] self.entries@[k2]).purse != p
+                                            || self.entries@[k2].on_chain != EntryOnChain::Ready
+                                            || self.entries@[k2].local != EntryLocal::LocalAvailable
+                                            || (coin_value(self.coins@[i as int].exponent)
+                                                    + coin_value(self.entries@[j as int].exponent)
+                                                    + coin_value(self.entries@[k2].exponent)
+                                                != amount as nat),
+                                    decreases ne - k,
+                                {
+                                    if k != j {
+                                        let e2 = &self.entries[k];
+                                        let is_ready2 = matches!(e2.on_chain, EntryOnChain::Ready);
+                                        let is_local_avail2 = matches!(e2.local,
+                                                                       EntryLocal::LocalAvailable);
+                                        if e2.purse == p && is_ready2 && is_local_avail2 {
+                                            proof {
+                                                let entry_key = (self.entries@[k as int].purse,
+                                                                 self.entries@[k as int].idx);
+                                                assert(self.spec_entries@.dom().contains(entry_key));
+                                                assert(self.spec_entries@[entry_key]
+                                                    == self.entries@[k as int]);
+                                                assert(self.entries@[k as int].exponent
+                                                    <= MAX_EXPONENT);
+                                            }
+                                            let ve2: u64 = pow2_u64_exec(e2.exponent);
+                                            if vi + ve1 + ve2 == amount {
+                                                let ck = (self.coins[i].purse, self.coins[i].idx);
+                                                let ek1 = (self.entries[j].purse,
+                                                           self.entries[j].idx);
+                                                let ek2 = (self.entries[k].purse,
+                                                           self.entries[k].idx);
+                                                proof {
+                                                    assert(self.spec_coins@.dom().contains(ck));
+                                                    assert(self.spec_entries@.dom().contains(ek1));
+                                                    assert(self.spec_entries@.dom().contains(ek2));
+                                                    assert(ek1 != ek2);
+                                                }
+                                                return Some((ck, ek1, ek2));
+                                            }
+                                        }
+                                    }
+                                    k = k + 1;
+                                }
+                            }
+                        }
+                        j = j + 1;
+                    }
+                }
+            }
+            i = i + 1;
+        }
+        None
+    }
+
     /// Tier-1 multi-coin (§6.3): find any pair of distinct `Available`
     /// coins in purse `p` whose values sum exactly to `amount`. Returns
     /// the two keys in Vec order, or `None` if no such pair exists.
