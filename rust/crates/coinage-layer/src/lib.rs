@@ -8527,6 +8527,7 @@ impl State {
             key.0 == src,
             old(self).coins().dom().contains(key),
             old(self).coins()[key].state == CoinState::Available,
+            old(self).purses().dom().contains(src),
             old(self).purses().dom().contains(dst),
             old(self).purses()[dst].next_coin_idx < u64::MAX,
             old(self).next_age < u64::MAX,
@@ -8535,14 +8536,70 @@ impl State {
         ensures
             final(self).invariant(),
             res.0 == old(self).next_handle,
-            final(self).operations().dom().contains(res.0),
-            final(self).operations()[res.0].status == OpStatus::Submitted,
-            final(self).operations()[res.0].kind == OpKind::Rebalance,
-            final(self).operations()[res.0].purse == src,
+            !old(self).operations().dom().contains(res.0),
             res.1.0 == dst,
-            final(self).coins().dom().contains(res.1),
-            final(self).coins()[res.1].state == CoinState::Available,
-            final(self).coins()[res.1].exponent == old(self).coins()[key].exponent,
+            res.1.1 == old(self).purses()[dst].next_coin_idx,
+            final(self).operations() == old(self).operations().insert(res.0, OperationRec {
+                handle: res.0,
+                kind: OpKind::Rebalance,
+                purse: src,
+                status: OpStatus::Submitted,
+            }),
+            final(self).coins() == old(self).coins()
+                .insert(key, CoinRec {
+                    purse: old(self).coins()[key].purse,
+                    idx: old(self).coins()[key].idx,
+                    exponent: old(self).coins()[key].exponent,
+                    age: old(self).coins()[key].age,
+                    account: old(self).coins()[key].account,
+                    state: CoinState::Spent,
+                })
+                .insert(res.1, CoinRec {
+                    purse: dst,
+                    idx: res.1.1,
+                    exponent: old(self).coins()[key].exponent,
+                    state: CoinState::Available,
+                    age: old(self).next_age,
+                    account: 0,
+                }),
+            final(self).next_age == old(self).next_age + 1,
+            final(self).purses().dom() =~= old(self).purses().dom(),
+            final(self).purses()[dst].id == dst,
+            final(self).purses()[dst].name == old(self).purses()[dst].name,
+            final(self).purses()[dst].next_coin_idx
+                == old(self).purses()[dst].next_coin_idx + 1,
+            final(self).purses()[dst].next_entry_idx
+                == old(self).purses()[dst].next_entry_idx,
+            forall|q: PurseId| q != dst && #[trigger] old(self).purses().dom().contains(q)
+                ==> final(self).purses()[q] == old(self).purses()[q],
+            final(self).entries() == old(self).entries(),
+            final(self).next_handle == old(self).next_handle + 1,
+            final(self).fee_balance == old(self).fee_balance,
+            final(self).next_extrinsic_id == old(self).next_extrinsic_id,
+            final(self).events@ == old(self).events@
+                .push(Event::OperationStarted {
+                    handle: res.0,
+                    kind: OpKind::Rebalance,
+                    purse: src,
+                })
+                .push(Event::CoinSpent {
+                    purse: src,
+                    exponent: old(self).coins()[key].exponent,
+                })
+                .push(Event::CoinAvailable {
+                    purse: dst,
+                    exponent: old(self).coins()[key].exponent,
+                })
+                .push(Event::OperationProgress {
+                    handle: res.0,
+                    status: OpStatus::Submitted,
+                }),
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
+            final(self).tokens@ == old(self).tokens@,
+            final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         let handle = self.start_op(OpKind::Rebalance, src);
         proof {
@@ -17201,6 +17258,170 @@ proof fn lemma_tracked_import_coin_refines(
     let post_view = quint_view(post);
     let step_view = quint_step_tracked_import_coin(
         quint_view(pre), p, exponent, account, pre.next_age, new_idx,
+    );
+    assert(post_view.coins =~= step_view.coins);
+    assert(post_view.purses =~= step_view.purses);
+    assert(post_view.operations =~= step_view.operations);
+    assert(post_view.events =~= step_view.events);
+}
+
+/// Quint analog: `start_op(Rebalance, src) ; rebalance(src, dst, key)
+/// ; mark_op_submitted(handle)`. Three refinement steps composed.
+pub open spec fn quint_step_tracked_rebalance(
+    pre: QuintViewState,
+    src: PurseId,
+    dst: PurseId,
+    key: (PurseId, u64),
+    next_age: u64,
+    new_idx: u64,
+) -> QuintViewState
+    recommends
+        src != dst,
+        key.0 == src,
+        pre.coins.dom().contains(key),
+        pre.coins[key].state == CoinState::Available,
+        pre.purses.dom().contains(dst),
+        pre.purses[dst].next_coin_idx == new_idx as nat,
+        (new_idx as nat) < u64::MAX as nat,
+        pre.next_handle < u64::MAX,
+{
+    let handle = pre.next_handle;
+    let exp = pre.coins[key].exponent;
+    let new_key = (dst, new_idx);
+    QuintViewState {
+        operations: pre.operations.insert(handle, OperationRec {
+            handle,
+            kind: OpKind::Rebalance,
+            purse: src,
+            status: OpStatus::Submitted,
+        }),
+        coins: pre.coins
+            .insert(key, CoinRec {
+                purse: pre.coins[key].purse,
+                idx: pre.coins[key].idx,
+                exponent: exp,
+                age: pre.coins[key].age,
+                account: pre.coins[key].account,
+                state: CoinState::Spent,
+            })
+            .insert(new_key, CoinRec {
+                purse: dst,
+                idx: new_idx,
+                exponent: exp,
+                state: CoinState::Available,
+                age: next_age,
+                account: 0,
+            }),
+        purses: pre.purses.insert(dst, PurseRecSpec {
+            id: pre.purses[dst].id,
+            name: pre.purses[dst].name,
+            next_coin_idx: pre.purses[dst].next_coin_idx + 1,
+            next_entry_idx: pre.purses[dst].next_entry_idx,
+        }),
+        next_handle: (pre.next_handle + 1) as u64,
+        events: pre.events
+            .push(Event::OperationStarted {
+                handle,
+                kind: OpKind::Rebalance,
+                purse: src,
+            })
+            .push(Event::CoinSpent { purse: src, exponent: exp })
+            .push(Event::CoinAvailable { purse: dst, exponent: exp })
+            .push(Event::OperationProgress {
+                handle,
+                status: OpStatus::Submitted,
+            }),
+        ..pre
+    }
+}
+
+proof fn lemma_tracked_rebalance_refines(
+    pre: State,
+    post: State,
+    src: PurseId,
+    dst: PurseId,
+    key: (PurseId, u64),
+    new_idx: u64,
+)
+    requires
+        pre.invariant(),
+        src != dst,
+        key.0 == src,
+        pre.coins().dom().contains(key),
+        pre.coins()[key].state == CoinState::Available,
+        pre.purses().dom().contains(dst),
+        pre.purses()[dst].next_coin_idx == new_idx as nat,
+        (new_idx as nat) < u64::MAX as nat,
+        pre.next_age < u64::MAX,
+        pre.next_handle < u64::MAX,
+        pre.events@.len() + 4 <= u64::MAX as nat,
+        post.invariant(),
+        post.coins() == pre.coins()
+            .insert(key, CoinRec {
+                purse: pre.coins()[key].purse,
+                idx: pre.coins()[key].idx,
+                exponent: pre.coins()[key].exponent,
+                age: pre.coins()[key].age,
+                account: pre.coins()[key].account,
+                state: CoinState::Spent,
+            })
+            .insert((dst, new_idx), CoinRec {
+                purse: dst,
+                idx: new_idx,
+                exponent: pre.coins()[key].exponent,
+                state: CoinState::Available,
+                age: pre.next_age,
+                account: 0,
+            }),
+        post.purses().dom() =~= pre.purses().dom(),
+        post.purses()[dst].id == dst,
+        post.purses()[dst].name == pre.purses()[dst].name,
+        post.purses()[dst].next_coin_idx == pre.purses()[dst].next_coin_idx + 1,
+        post.purses()[dst].next_entry_idx == pre.purses()[dst].next_entry_idx,
+        forall|q: PurseId| q != dst && #[trigger] pre.purses().dom().contains(q)
+            ==> post.purses()[q] == pre.purses()[q],
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations().insert(pre.next_handle, OperationRec {
+            handle: pre.next_handle,
+            kind: OpKind::Rebalance,
+            purse: src,
+            status: OpStatus::Submitted,
+        }),
+        post.events@ == pre.events@
+            .push(Event::OperationStarted {
+                handle: pre.next_handle,
+                kind: OpKind::Rebalance,
+                purse: src,
+            })
+            .push(Event::CoinSpent {
+                purse: src,
+                exponent: pre.coins()[key].exponent,
+            })
+            .push(Event::CoinAvailable {
+                purse: dst,
+                exponent: pre.coins()[key].exponent,
+            })
+            .push(Event::OperationProgress {
+                handle: pre.next_handle,
+                status: OpStatus::Submitted,
+            }),
+        post.next_handle == pre.next_handle + 1,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_tracked_rebalance(
+            quint_view(pre), src, dst, key, pre.next_age, new_idx,
+        ),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_tracked_rebalance(
+        quint_view(pre), src, dst, key, pre.next_age, new_idx,
     );
     assert(post_view.coins =~= step_view.coins);
     assert(post_view.purses =~= step_view.purses);
