@@ -13942,6 +13942,91 @@ proof fn lemma_alloc_extrinsic_id_refines(pre: State, post: State)
 {
 }
 
+/// Quint analog: `coins' = coins.set(rec.purse, rec.idx) -> rec`. Inverse of
+/// the chain-mirror loss path: a coin previously observed lives in
+/// `chain_coins` and is being re-injected into the canonical `coins` map.
+pub open spec fn quint_step_restore_chain_coin(
+    pre: QuintViewState,
+    rec: CoinRec,
+) -> QuintViewState
+    recommends
+        !pre.coins.dom().contains((rec.purse, rec.idx)),
+{
+    QuintViewState {
+        coins: pre.coins.insert((rec.purse, rec.idx), rec),
+        ..pre
+    }
+}
+
+proof fn lemma_restore_chain_coin_refines(pre: State, post: State, rec: CoinRec)
+    requires
+        pre.invariant(),
+        !pre.coins().dom().contains((rec.purse, rec.idx)),
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins().insert((rec.purse, rec.idx), rec),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_restore_chain_coin(quint_view(pre), rec),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_restore_chain_coin(quint_view(pre), rec);
+    assert(post_view.coins =~= step_view.coins);
+}
+
+/// Quint analog: `entries' = entries.set(rec.purse, rec.idx) -> rec`.
+/// Mirror of `restore_chain_coin` for entries.
+pub open spec fn quint_step_restore_chain_entry(
+    pre: QuintViewState,
+    rec: EntryRec,
+) -> QuintViewState
+    recommends
+        !pre.entries.dom().contains((rec.purse, rec.idx)),
+{
+    QuintViewState {
+        entries: pre.entries.insert((rec.purse, rec.idx), rec),
+        ..pre
+    }
+}
+
+proof fn lemma_restore_chain_entry_refines(pre: State, post: State, rec: EntryRec)
+    requires
+        pre.invariant(),
+        !pre.entries().dom().contains((rec.purse, rec.idx)),
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries().insert((rec.purse, rec.idx), rec),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_restore_chain_entry(quint_view(pre), rec),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_restore_chain_entry(quint_view(pre), rec);
+    assert(post_view.entries =~= step_view.entries);
+}
+
 /// Quint analog: `purses' = purses.put(new_id, {id, name, 0, 0})`.
 /// Note: Quint createPurse also emits `EPurseCreated`; the Verus
 /// implementation deliberately doesn't (the pilot scheme treats purse
