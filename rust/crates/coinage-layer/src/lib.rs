@@ -2249,6 +2249,33 @@ impl State {
             final(self).invariant(),
             final(self).chain_coins@ == old(self).chain_coins@,
             final(self).chain_entries@ == old(self).chain_entries@,
+            match res {
+                Some(j) => {
+                    &&& 0 <= j < old(self).chain_coins@.len()
+                    &&& !old(self).coins().dom().contains(
+                            (old(self).chain_coins@[j as int].purse,
+                             old(self).chain_coins@[j as int].idx))
+                    &&& final(self).coins() == old(self).coins().insert(
+                            (old(self).chain_coins@[j as int].purse,
+                             old(self).chain_coins@[j as int].idx),
+                            old(self).chain_coins@[j as int])
+                },
+                None =>
+                    final(self).coins() == old(self).coins(),
+            },
+            final(self).purses() == old(self).purses(),
+            final(self).entries() == old(self).entries(),
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
+            final(self).next_extrinsic_id == old(self).next_extrinsic_id,
+            final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
+            final(self).tokens@ == old(self).tokens@,
     {
         let res = self.find_restorable_missing_chain_coin();
         match res {
@@ -2270,6 +2297,33 @@ impl State {
             final(self).invariant(),
             final(self).chain_coins@ == old(self).chain_coins@,
             final(self).chain_entries@ == old(self).chain_entries@,
+            match res {
+                Some(j) => {
+                    &&& 0 <= j < old(self).chain_entries@.len()
+                    &&& !old(self).entries().dom().contains(
+                            (old(self).chain_entries@[j as int].purse,
+                             old(self).chain_entries@[j as int].idx))
+                    &&& final(self).entries() == old(self).entries().insert(
+                            (old(self).chain_entries@[j as int].purse,
+                             old(self).chain_entries@[j as int].idx),
+                            old(self).chain_entries@[j as int])
+                },
+                None =>
+                    final(self).entries() == old(self).entries(),
+            },
+            final(self).purses() == old(self).purses(),
+            final(self).coins() == old(self).coins(),
+            final(self).operations@ == old(self).operations@,
+            final(self).spec_operations@ == old(self).spec_operations@,
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
+            final(self).next_extrinsic_id == old(self).next_extrinsic_id,
+            final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
+            final(self).tokens@ == old(self).tokens@,
     {
         let res = self.find_restorable_missing_chain_entry();
         match res {
@@ -15093,6 +15147,132 @@ proof fn lemma_rename_purse_success_refines(
 /// Quint analog: `purses' = purses` (the PurseNotFound branch of
 /// `rename_purse` is a state-preserving no-op).
 proof fn lemma_rename_purse_fail_refines(pre: State, post: State)
+    requires
+        pre.invariant(),
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_view(pre),
+{
+}
+
+/// Quint analog (Some branch): `coins' = coins.put(rec.purse, rec.idx) -> rec`
+/// where `rec = chain_coins[j]`. Composes with
+/// [`quint_step_restore_chain_coin`] for the actual step.
+proof fn lemma_recover_scan_step_coin_some_refines(
+    pre: State,
+    post: State,
+    j: usize,
+)
+    requires
+        pre.invariant(),
+        0 <= j < pre.chain_coins@.len(),
+        !pre.coins().dom().contains(
+            (pre.chain_coins@[j as int].purse,
+             pre.chain_coins@[j as int].idx)),
+        post.invariant(),
+        post.coins() == pre.coins().insert(
+            (pre.chain_coins@[j as int].purse,
+             pre.chain_coins@[j as int].idx),
+            pre.chain_coins@[j as int]),
+        post.purses() == pre.purses(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_restore_chain_coin(
+            quint_view(pre), pre.chain_coins@[j as int],
+        ),
+{
+    lemma_restore_chain_coin_refines(pre, post, pre.chain_coins@[j as int]);
+}
+
+/// Quint analog (None branch): state-preserving no-op.
+proof fn lemma_recover_scan_step_coin_none_refines(pre: State, post: State)
+    requires
+        pre.invariant(),
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_view(pre),
+{
+}
+
+/// Entry parallel of [`lemma_recover_scan_step_coin_some_refines`].
+proof fn lemma_recover_scan_step_entry_some_refines(
+    pre: State,
+    post: State,
+    j: usize,
+)
+    requires
+        pre.invariant(),
+        0 <= j < pre.chain_entries@.len(),
+        !pre.entries().dom().contains(
+            (pre.chain_entries@[j as int].purse,
+             pre.chain_entries@[j as int].idx)),
+        post.invariant(),
+        post.entries() == pre.entries().insert(
+            (pre.chain_entries@[j as int].purse,
+             pre.chain_entries@[j as int].idx),
+            pre.chain_entries@[j as int]),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_restore_chain_entry(
+            quint_view(pre), pre.chain_entries@[j as int],
+        ),
+{
+    lemma_restore_chain_entry_refines(pre, post, pre.chain_entries@[j as int]);
+}
+
+/// Entry parallel of [`lemma_recover_scan_step_coin_none_refines`].
+proof fn lemma_recover_scan_step_entry_none_refines(pre: State, post: State)
     requires
         pre.invariant(),
         post.invariant(),
