@@ -2688,6 +2688,14 @@ impl State {
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
             final(self).next_purse_id == old(self).next_purse_id,
+            final(self).next_extrinsic_id == old(self).next_extrinsic_id,
+            final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
+            final(self).tokens@ == old(self).tokens@,
+            final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         let ghost old_purses_vec = self.purses@;
         let ghost old_spec_purses = self.spec_purses@;
@@ -2742,6 +2750,14 @@ impl State {
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
             final(self).next_purse_id == old(self).next_purse_id,
+            final(self).next_extrinsic_id == old(self).next_extrinsic_id,
+            final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
+            final(self).tokens@ == old(self).tokens@,
+            final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         let ghost old_purses_vec = self.purses@;
         let ghost old_spec_purses = self.spec_purses@;
@@ -14238,6 +14254,109 @@ proof fn lemma_add_entry_with_meta_refines(
     );
     assert(post_view.entries =~= step_view.entries);
     assert(post_view.purses =~= step_view.purses);
+}
+
+/// Quint analog: `feeBalance' = feeBalance + amount`.
+pub open spec fn quint_step_top_up_fee_account(
+    pre: QuintViewState,
+    amount: u64,
+) -> QuintViewState
+    recommends
+        pre.fee_balance <= u64::MAX - amount,
+{
+    QuintViewState {
+        fee_balance: (pre.fee_balance + amount) as u64,
+        ..pre
+    }
+}
+
+proof fn lemma_top_up_fee_account_refines(pre: State, post: State, amount: u64)
+    requires
+        pre.invariant(),
+        pre.fee_balance <= u64::MAX - amount,
+        post.invariant(),
+        post.fee_balance == pre.fee_balance + amount,
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_top_up_fee_account(quint_view(pre), amount),
+{
+}
+
+/// Quint analog: `feeBalance' = feeBalance - amount` (only fires on
+/// the successful branch; the InsufficientFunds branch leaves
+/// `feeBalance` unchanged, refined separately as the no-op step).
+pub open spec fn quint_step_deduct_fee_success(
+    pre: QuintViewState,
+    amount: u64,
+) -> QuintViewState
+    recommends
+        pre.fee_balance >= amount,
+{
+    QuintViewState {
+        fee_balance: (pre.fee_balance - amount) as u64,
+        ..pre
+    }
+}
+
+proof fn lemma_deduct_fee_success_refines(pre: State, post: State, amount: u64)
+    requires
+        pre.invariant(),
+        pre.fee_balance >= amount,
+        post.invariant(),
+        post.fee_balance == pre.fee_balance - amount,
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_deduct_fee_success(quint_view(pre), amount),
+{
+}
+
+/// Quint analog: `feeBalance' = feeBalance` (the InsufficientFunds
+/// branch of `deduct_fee` is a state-preserving no-op).
+proof fn lemma_deduct_fee_fail_refines(pre: State, post: State)
+    requires
+        pre.invariant(),
+        post.invariant(),
+        post.fee_balance == pre.fee_balance,
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_view(pre),
+{
 }
 
 /// Quint analog: `purses' = purses.put(new_id, {id, name, 0, 0})`.
