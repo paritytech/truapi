@@ -2927,9 +2927,28 @@ impl State {
                         #[trigger] old(self).operations().dom().contains(h)
                         ==> old(self).operations()[h].purse != p)
                     && old(self).purses().dom().contains(p)
-                    && p != MAIN_PURSE,
+                    && p != MAIN_PURSE
+                    && final(self).purses() == old(self).purses().remove(p)
+                    && final(self).coins() == old(self).coins().remove_keys(
+                        Set::new(|k: (PurseId, u64)| k.0 == p)
+                    )
+                    && final(self).entries() == old(self).entries().remove_keys(
+                        Set::new(|k: (PurseId, u64)| k.0 == p)
+                    ),
                 Err(_) => true,
             },
+            final(self).operations() == old(self).operations(),
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
+            final(self).next_extrinsic_id == old(self).next_extrinsic_id,
+            final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
+            final(self).tokens@ == old(self).tokens@,
+            final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         if self.has_op_targeting_purse(p) {
             return Err(Error::PurseHasInFlightOperations);
@@ -2981,6 +3000,18 @@ impl State {
                     ),
                 Err(_) => false,
             },
+            final(self).operations() == old(self).operations(),
+            final(self).next_handle == old(self).next_handle,
+            final(self).next_age == old(self).next_age,
+            final(self).fee_balance == old(self).fee_balance,
+            final(self).next_extrinsic_id == old(self).next_extrinsic_id,
+            final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
+            final(self).tokens@ == old(self).tokens@,
+            final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         if p == MAIN_PURSE {
             return Err(Error::CannotDeleteMainPurse);
@@ -16226,6 +16257,131 @@ proof fn lemma_import_coin_refines(
     assert(post_view.coins =~= step_view.coins);
     assert(post_view.purses =~= step_view.purses);
     assert(post_view.events =~= step_view.events);
+}
+
+/// Quint analog (success branch): `purses' = purses.remove(p) ;
+/// coins' = coins.remove_keys(filter purse==p) ; entries' = entries
+/// .remove_keys(filter purse==p)`.
+pub open spec fn quint_step_delete_purse_success(
+    pre: QuintViewState,
+    p: PurseId,
+) -> QuintViewState
+    recommends
+        pre.purses.dom().contains(p),
+        p != MAIN_PURSE,
+{
+    QuintViewState {
+        purses: pre.purses.remove(p),
+        coins: pre.coins.remove_keys(Set::new(|k: (PurseId, u64)| k.0 == p)),
+        entries: pre.entries.remove_keys(Set::new(|k: (PurseId, u64)| k.0 == p)),
+        ..pre
+    }
+}
+
+proof fn lemma_delete_purse_success_refines(pre: State, post: State, p: PurseId)
+    requires
+        pre.invariant(),
+        pre.purses().dom().contains(p),
+        p != MAIN_PURSE,
+        !pre.has_live_coin_in(p),
+        forall|h: OpHandle| #[trigger] pre.operations().dom().contains(h)
+            ==> pre.operations()[h].purse != p,
+        post.invariant(),
+        post.purses() == pre.purses().remove(p),
+        post.coins() == pre.coins().remove_keys(
+            Set::new(|k: (PurseId, u64)| k.0 == p)),
+        post.entries() == pre.entries().remove_keys(
+            Set::new(|k: (PurseId, u64)| k.0 == p)),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_delete_purse_success(quint_view(pre), p),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_delete_purse_success(quint_view(pre), p);
+    assert(post_view.purses =~= step_view.purses);
+    assert(post_view.coins =~= step_view.coins);
+    assert(post_view.entries =~= step_view.entries);
+}
+
+/// Quint analog (CannotDeleteMainPurse branch): identity.
+proof fn lemma_delete_purse_main_refines(pre: State, post: State)
+    requires
+        pre.invariant(),
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_view(pre),
+{
+}
+
+/// Quint analog (PurseNotFound branch): `coins' = coins.remove_keys
+/// (filter purse==p)` and `entries' = entries.remove_keys(filter purse
+/// ==p)`. By invariant, these filters are vacuous when p ∉ purses.dom
+/// — but the Verus contract still spells out the deltas because
+/// remove_keys is unconditional in the body.
+pub open spec fn quint_step_delete_purse_notfound(
+    pre: QuintViewState,
+    p: PurseId,
+) -> QuintViewState
+{
+    QuintViewState {
+        coins: pre.coins.remove_keys(Set::new(|k: (PurseId, u64)| k.0 == p)),
+        entries: pre.entries.remove_keys(Set::new(|k: (PurseId, u64)| k.0 == p)),
+        ..pre
+    }
+}
+
+proof fn lemma_delete_purse_notfound_refines(pre: State, post: State, p: PurseId)
+    requires
+        pre.invariant(),
+        !pre.purses().dom().contains(p),
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins().remove_keys(
+            Set::new(|k: (PurseId, u64)| k.0 == p)),
+        post.entries() == pre.entries().remove_keys(
+            Set::new(|k: (PurseId, u64)| k.0 == p)),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_delete_purse_notfound(quint_view(pre), p),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_delete_purse_notfound(quint_view(pre), p);
+    assert(post_view.coins =~= step_view.coins);
+    assert(post_view.entries =~= step_view.entries);
 }
 
 /// Quint analog: `purses' = purses.put(new_id, {id, name, 0, 0})`.
