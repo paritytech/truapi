@@ -8896,7 +8896,22 @@ impl State {
                     && coin_value(self.coins()[coin_key].exponent)
                         + coin_value(self.entries()[entry_key].exponent)
                         == amount as nat,
-                None => true,
+                None =>
+                    // Sharp: no (coin, entry) pair satisfies the cover.
+                    forall|i: int, k: int|
+                        0 <= i < self.coins@.len()
+                        && 0 <= k < self.entries@.len()
+                        ==> {
+                            let c = #[trigger] self.coins@[i];
+                            let e = #[trigger] self.entries@[k];
+                            c.purse != p
+                            || c.state != CoinState::Available
+                            || e.purse != p
+                            || e.on_chain != EntryOnChain::Ready
+                            || e.local != EntryLocal::LocalAvailable
+                            || (coin_value(c.exponent) + coin_value(e.exponent)
+                                != amount as nat)
+                        },
             },
     {
         let nc = self.coins.len();
@@ -8908,6 +8923,21 @@ impl State {
                 nc == self.coins.len(),
                 ne == self.entries.len(),
                 self.invariant(),
+                // Outer accumulator: no (coin, entry) pair with coin index < i.
+                forall|i1: int, k: int|
+                    0 <= i1 < i as int
+                    && 0 <= k < ne as int
+                    ==> {
+                        let c = #[trigger] self.coins@[i1];
+                        let e = #[trigger] self.entries@[k];
+                        c.purse != p
+                        || c.state != CoinState::Available
+                        || e.purse != p
+                        || e.on_chain != EntryOnChain::Ready
+                        || e.local != EntryLocal::LocalAvailable
+                        || (coin_value(c.exponent) + coin_value(e.exponent)
+                            != amount as nat)
+                    },
             decreases nc - i,
         {
             let ci_avail = matches!(self.coins[i].state, CoinState::Available);
@@ -8933,6 +8963,32 @@ impl State {
                             vi as nat == coin_value(self.coins@[i as int].exponent),
                             vi <= 1073741824u64,
                             vi <= amount,
+                            // Outer accumulator carried.
+                            forall|i1: int, kk: int|
+                                0 <= i1 < i as int
+                                && 0 <= kk < ne as int
+                                ==> {
+                                    let c = #[trigger] self.coins@[i1];
+                                    let e = #[trigger] self.entries@[kk];
+                                    c.purse != p
+                                    || c.state != CoinState::Available
+                                    || e.purse != p
+                                    || e.on_chain != EntryOnChain::Ready
+                                    || e.local != EntryLocal::LocalAvailable
+                                    || (coin_value(c.exponent) + coin_value(e.exponent)
+                                        != amount as nat)
+                                },
+                            // Inner accumulator: for all checked k2 < k,
+                            // the pair (i, k2) doesn't satisfy.
+                            forall|k2: int|
+                                0 <= k2 < k as int
+                                ==>
+                                (#[trigger] self.entries@[k2]).purse != p
+                                || self.entries@[k2].on_chain != EntryOnChain::Ready
+                                || self.entries@[k2].local != EntryLocal::LocalAvailable
+                                || (coin_value(self.coins@[i as int].exponent)
+                                        + coin_value(self.entries@[k2].exponent)
+                                    != amount as nat),
                         decreases ne - k,
                     {
                         let e = &self.entries[k];
