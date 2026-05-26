@@ -438,6 +438,17 @@ pub enum CoinSelection {
     Split { coin: (PurseId, u64) },
 }
 
+/// Result of a bounded subset-sum search over `Available` coins:
+/// either a single coin, a pair, a triple, or a quadruple of distinct
+/// coin keys whose values sum exactly to the requested amount. Returned
+/// by [`State::find_subset_sum_up_to_4`].
+pub enum SubsetSumCover {
+    One((PurseId, u64)),
+    Two((PurseId, u64), (PurseId, u64)),
+    Three((PurseId, u64), (PurseId, u64), (PurseId, u64)),
+    Four((PurseId, u64), (PurseId, u64), (PurseId, u64), (PurseId, u64)),
+}
+
 /// Snapshot returned by `query_purse` (design §8.1 `PurseInfo`).
 /// Pilot scope: `spendable`, `spendable_strict`, `pending` are always 0
 /// (no coins/entries in state yet).
@@ -9672,6 +9683,155 @@ impl State {
             i = i + 1;
         }
         None
+    }
+
+    /// Composite multi-coin subset-sum search: tries 1-, 2-, 3-, 4-coin
+    /// exact covers in order and returns the first hit. The `None`
+    /// branch carries the *conjoined* sharp postconditions from all
+    /// four primitives — i.e. no subset of size 1, 2, 3, or 4 in the
+    /// purse sums to `amount`.
+    ///
+    /// Practical multi-coin selector for task #87. Full N-coin powerset
+    /// (any size) remains open; this covers the realistic small-K case
+    /// that almost all transfers actually hit.
+    pub fn find_subset_sum_up_to_4(&self, p: PurseId, amount: u64)
+        -> (res: Option<SubsetSumCover>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some(SubsetSumCover::One(k1)) =>
+                    self.coins().dom().contains(k1)
+                    && k1.0 == p
+                    && self.coins()[k1].state == CoinState::Available
+                    && coin_value(self.coins()[k1].exponent) == amount as nat,
+                Some(SubsetSumCover::Two(k1, k2)) =>
+                    self.coins().dom().contains(k1)
+                    && self.coins().dom().contains(k2)
+                    && k1 != k2
+                    && k1.0 == p && k2.0 == p
+                    && self.coins()[k1].state == CoinState::Available
+                    && self.coins()[k2].state == CoinState::Available
+                    && coin_value(self.coins()[k1].exponent)
+                        + coin_value(self.coins()[k2].exponent)
+                        == amount as nat,
+                Some(SubsetSumCover::Three(k1, k2, k3)) =>
+                    self.coins().dom().contains(k1)
+                    && self.coins().dom().contains(k2)
+                    && self.coins().dom().contains(k3)
+                    && k1 != k2 && k1 != k3 && k2 != k3
+                    && k1.0 == p && k2.0 == p && k3.0 == p
+                    && self.coins()[k1].state == CoinState::Available
+                    && self.coins()[k2].state == CoinState::Available
+                    && self.coins()[k3].state == CoinState::Available
+                    && coin_value(self.coins()[k1].exponent)
+                        + coin_value(self.coins()[k2].exponent)
+                        + coin_value(self.coins()[k3].exponent)
+                        == amount as nat,
+                Some(SubsetSumCover::Four(k1, k2, k3, k4)) =>
+                    self.coins().dom().contains(k1)
+                    && self.coins().dom().contains(k2)
+                    && self.coins().dom().contains(k3)
+                    && self.coins().dom().contains(k4)
+                    && k1 != k2 && k1 != k3 && k1 != k4
+                    && k2 != k3 && k2 != k4 && k3 != k4
+                    && k1.0 == p && k2.0 == p && k3.0 == p && k4.0 == p
+                    && self.coins()[k1].state == CoinState::Available
+                    && self.coins()[k2].state == CoinState::Available
+                    && self.coins()[k3].state == CoinState::Available
+                    && self.coins()[k4].state == CoinState::Available
+                    && coin_value(self.coins()[k1].exponent)
+                        + coin_value(self.coins()[k2].exponent)
+                        + coin_value(self.coins()[k3].exponent)
+                        + coin_value(self.coins()[k4].exponent)
+                        == amount as nat,
+                None => {
+                    // Conjoined sharp Nones from the four primitives.
+                    &&& forall|k: (PurseId, u64)|
+                            #[trigger] self.coins().dom().contains(k)
+                            && k.0 == p
+                            && self.coins()[k].state == CoinState::Available
+                            ==> coin_value(self.coins()[k].exponent) != amount as nat
+                    &&& forall|i1: int, i2: int|
+                            0 <= i1 < self.coins@.len()
+                            && 0 <= i2 < self.coins@.len()
+                            && i1 != i2
+                            ==> {
+                                let c1 = #[trigger] self.coins@[i1];
+                                let c2 = #[trigger] self.coins@[i2];
+                                c1.purse != p
+                                || c1.state != CoinState::Available
+                                || c2.purse != p
+                                || c2.state != CoinState::Available
+                                || (coin_value(c1.exponent) + coin_value(c2.exponent)
+                                    != amount as nat)
+                            }
+                    &&& forall|i1: int, i2: int, i3: int|
+                            0 <= i1 < self.coins@.len()
+                            && 0 <= i2 < self.coins@.len()
+                            && 0 <= i3 < self.coins@.len()
+                            && i1 != i2 && i1 != i3 && i2 != i3
+                            ==> {
+                                let c1 = #[trigger] self.coins@[i1];
+                                let c2 = #[trigger] self.coins@[i2];
+                                let c3 = #[trigger] self.coins@[i3];
+                                c1.purse != p
+                                || c1.state != CoinState::Available
+                                || c2.purse != p
+                                || c2.state != CoinState::Available
+                                || c3.purse != p
+                                || c3.state != CoinState::Available
+                                || (coin_value(c1.exponent)
+                                        + coin_value(c2.exponent)
+                                        + coin_value(c3.exponent)
+                                    != amount as nat)
+                            }
+                    &&& forall|i1: int, i2: int, i3: int, i4: int|
+                            0 <= i1 < self.coins@.len()
+                            && 0 <= i2 < self.coins@.len()
+                            && 0 <= i3 < self.coins@.len()
+                            && 0 <= i4 < self.coins@.len()
+                            && i1 != i2 && i1 != i3 && i1 != i4
+                            && i2 != i3 && i2 != i4 && i3 != i4
+                            ==> {
+                                let c1 = #[trigger] self.coins@[i1];
+                                let c2 = #[trigger] self.coins@[i2];
+                                let c3 = #[trigger] self.coins@[i3];
+                                let c4 = #[trigger] self.coins@[i4];
+                                c1.purse != p
+                                || c1.state != CoinState::Available
+                                || c2.purse != p
+                                || c2.state != CoinState::Available
+                                || c3.purse != p
+                                || c3.state != CoinState::Available
+                                || c4.purse != p
+                                || c4.state != CoinState::Available
+                                || (coin_value(c1.exponent)
+                                        + coin_value(c2.exponent)
+                                        + coin_value(c3.exponent)
+                                        + coin_value(c4.exponent)
+                                    != amount as nat)
+                            }
+                },
+            },
+    {
+        match self.find_exact_single_coin(p, amount) {
+            Some(k1) => return Some(SubsetSumCover::One(k1)),
+            None => {}
+        }
+        match self.find_two_coin_exact_cover(p, amount) {
+            Some((k1, k2)) => return Some(SubsetSumCover::Two(k1, k2)),
+            None => {}
+        }
+        match self.find_three_coin_exact_cover(p, amount) {
+            Some((k1, k2, k3)) => return Some(SubsetSumCover::Three(k1, k2, k3)),
+            None => {}
+        }
+        match self.find_four_coin_exact_cover(p, amount) {
+            Some((k1, k2, k3, k4)) =>
+                Some(SubsetSumCover::Four(k1, k2, k3, k4)),
+            None => None,
+        }
     }
 
     /// Tier-2 (split cover, §6.3): find any `Available` coin in purse `p`
