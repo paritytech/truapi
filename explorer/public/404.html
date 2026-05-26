@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TrUAPI Explorer</title>
+    <script>
+      // GitHub Pages SPA shim: rewrite the requested path into a query string
+      // the index.html bootstrap can replay, then redirect to the base.
+      (function () {
+        var base = "/explorer/";
+        var path = window.location.pathname;
+        var search = window.location.search;
+        var hash = window.location.hash;
+        if (path.indexOf(base) === 0) {
+          var rest = path.slice(base.length);
+          window.location.replace(base + "?p=/" + rest + (search ? "&" + search.slice(1) : "") + hash);
+        } else {
+          window.location.replace(base);
+        }
+      })();
+    </script>
+  </head>
+  <body></body>
+</html>

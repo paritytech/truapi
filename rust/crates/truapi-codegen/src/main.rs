@@ -49,6 +49,17 @@ struct Cli {
     /// Output directory for the generated `@parity/truapi-host` TypeScript surface (optional).
     #[arg(long)]
     host_output: Option<String>,
+
+    /// Output directory for generated explorer metadata (optional). When set,
+    /// writes `codegen/types.ts` with the DataType list consumed by the
+    /// explorer site.
+    #[arg(long)]
+    explorer_output: Option<String>,
+
+    /// Suppress `exampleSource` in the generated playground services metadata.
+    /// Used by snapshot tooling to keep historical archives small.
+    #[arg(long, default_value_t = false)]
+    strip_examples: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -98,7 +109,7 @@ fn main() -> Result<()> {
         "Generated TypeScript client for TrUAPI V{client_version} codec {codec_version} in {output}",
     );
     if let Some(path) = &cli.playground_output {
-        ts::generate_playground_services(&api, path, client_version)
+        ts::generate_playground_services(&api, path, client_version, cli.strip_examples)
             .with_context(|| format!("writing playground metadata to {path}"))?;
         println!("Generated playground metadata in {path}");
     }
@@ -110,6 +121,11 @@ fn main() -> Result<()> {
     if let Some(path) = &cli.host_output {
         ts::generate_host(&api, path).with_context(|| format!("writing host package to {path}"))?;
         println!("Generated host package in {path}");
+    }
+    if let Some(path) = &cli.explorer_output {
+        ts::generate_explorer(&api, path, client_version)
+            .with_context(|| format!("writing explorer metadata to {path}"))?;
+        println!("Generated explorer metadata in {path}");
     }
     Ok(())
 }

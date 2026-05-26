@@ -52,6 +52,14 @@ jobs:
           NEXT_PUBLIC_BASE_PATH: /truapi
         run: yarn build
 
+      - name: Install explorer dependencies
+        working-directory: explorer
+        run: npm install --no-audit --no-fund
+
+      - name: Build explorer (static export)
+        working-directory: explorer
+        run: npm run build
+
       - name: Assemble GitHub Pages site
         run: |
           rm -rf site
@@ -66,6 +74,9 @@ jobs:
           mkdir -p site/cargo_doc
           cp -RL target/doc/truapi/. site/cargo_doc/
           cp -RL target/doc/static.files site/static.files
+          # Explorer mounted at /explorer/ (its Vite `base` path).
+          mkdir -p site/explorer
+          cp -R explorer/dist/. site/explorer/
           touch site/.nojekyll
 
       - name: Upload Pages artifact
