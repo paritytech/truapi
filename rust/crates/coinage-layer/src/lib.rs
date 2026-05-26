@@ -6,32 +6,44 @@
 //!
 //! **Scope.** Verified protocol kernel covering the four core state
 //! components — purses, coins, recycler entries, operations — with
-//! their lifecycle transitions and the §6.3 priority order. Chain
-//! interaction is abstracted: chain-side state changes arrive via
-//! caller-driven primitives (`set_entry_on_chain`, `mark_op_finalized`,
-//! …) rather than being modeled directly. No persistence, no crypto;
-//! `member_key` / `account` / chain timestamps are `u64` placeholders
-//! supplied by the host.
+//! their lifecycle transitions, the §6.3 priority order, chain-mirror
+//! recovery state, the events stream, the fee account, unload tokens,
+//! and the totals/accumulators. Chain interaction is abstracted:
+//! chain-side state changes arrive via caller-driven primitives
+//! (`set_entry_on_chain`, `mark_op_finalized`, …) rather than being
+//! modeled directly. No persistence, no crypto; `member_key` /
+//! `account` / chain timestamps are `u64` placeholders supplied by
+//! the host.
 //!
-//! **What's in.** Per-purse and per-coin and per-entry allocators
-//! with overflow-safe contracts; full `OpStatus` phase order
-//! (Preparing → Submitted → InBlock → Finalized → (Waiting →)? Done
-//! | Failed) with typed transition wrappers; per-key lock/release/
-//! commit primitives; six `tracked_*` lifecycle wrappers (transfer,
-//! rebalance, top-up-via-entry, unload-via-entry, export, import);
-//! atomic composites for kick-off (`start_op_locking_{coin,entry}`),
-//! cancel (`cancel_op_releasing_{coin,entry}`), and commit
-//! (`commit_op_consuming_locked_{coin,entry}`); aggregations for
-//! `query_purse.{spendable, spendable_strict, pending}`; spec + exec
-//! for `classify_incoming_payment`; spec + exec for the §6.3 coin
-//! and entry priority orders.
+//! **Module map.**
 //!
-//! **What's deferred.** Real `2^exp` arithmetic (pilot uses
-//! `coin_value(exp) = exp + 1`); cross-state lock referential-
-//! integrity invariant; bulk-sweep `cancel_op` (the per-key release
-//! primitives are available); multi-coin tier-1 exact subset-sum
-//! exec; tier-3 entry-supplemented cover exec; the events Vec;
-//! recovery flow; fee account and unload tokens.
+//! ```text
+//! types.rs              — public types, constants, tag enums, the State struct
+//! spec_helpers.rs       — top-level spec functions (lock predicates, priority,
+//!                         sums, payment classify, coin_value/pow2_nat)
+//! pow2.rs               — pow2 lemmas + executable `pow2_u64_exec`
+//!
+//! state_invariant.rs    — view accessors, `invariant()`, `init()`
+//! state_purses.rs       — purse lifecycle (create/rename/delete/purge)
+//! state_coins.rs        — coin lifecycle (add, mark, lock/unlock/commit)
+//! state_entries.rs      — entry lifecycle (add, set, mark, lock/release)
+//! state_operations.rs   — op status transitions + bulk release helpers
+//! state_composites.rs   — atomic op composites (start/cancel/commit pairs)
+//! state_high_level.rs   — transfer, rebalance, export/import, split,
+//!                         unload, top-up, reserve
+//! state_tracked.rs      — `tracked_*` wrappers (op-handle-bearing variants)
+//! state_chain.rs        — chain-mirror state + recovery scans
+//! state_selectors.rs    — `find_*`, subset-sum covers, classify-payment exec
+//! state_aggregators.rs  — count / sum / total / lock-count helpers
+//! state_queries.rs      — read-only queries + has-/check- helpers
+//! state_fee.rs          — fee account top-up / deduct / select-mode
+//! state_tokens.rs       — unload-token mint / consume / count
+//! state_events.rs       — `emit_event`, `event_count`
+//! state_accumulators.rs — total_in/out, paid_ring_membership, extrinsic-id
+//!
+//! refinement.rs         — Quint→Verus refinement scaffolding (per-method
+//!                         `quint_step_*` spec fns + `lemma_*_refines` proofs)
+//! ```
 //!
 //! **Encoding.** Exec storage is `Vec<…Rec>` per component. Contracts
 //! quantify over ghost spec maps (`Ghost<Map<key, Rec>>`). The
@@ -42,16 +54,10 @@
 //! contracts — Verus's `&mut self` SMT encoding doesn't carry these
 //! over for free.
 
-use vstd::prelude::*;
-
-verus! {
-
-
-} // verus!
-
 pub mod types;
 pub mod spec_helpers;
 pub mod pow2;
+
 pub mod state_invariant;
 pub mod state_purses;
 pub mod state_coins;
@@ -68,6 +74,7 @@ pub mod state_fee;
 pub mod state_tokens;
 pub mod state_events;
 pub mod state_accumulators;
+
 pub mod refinement;
 
 pub use types::*;
