@@ -314,131 +314,6 @@ export const services: ServiceInfo[] = [
     ],
   },
   {
-    name: "Coin Payment",
-    methods: [
-      {
-        name: "create_purse",
-        type: "unary",
-        signature:
-          "createPurse(request: HostCoinPaymentCreatePurseRequest): Promise<Result<HostCoinPaymentCreatePurseResponse, CoinPaymentError>>",
-        docUrl: "api/coin_payment/trait.CoinPayment.html#method.create_purse",
-        description:
-          'Create a new firewalled CoinPayment purse.\n\n```truapi-client-example\nimport { type Client } from "@parity/truapi";\n\nexport async function createPurse(truapi: Client): Promise<number> {\n  const result = await truapi.coinPayment.createPurse({\n    name: "Terminal purse",\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value.purse;\n}\n```',
-        requestDescription: "HostCoinPaymentCreatePurseRequest",
-        requestType: "host-coin-payment-create-purse-request",
-        responseType: "host-coin-payment-create-purse-response",
-        errorType: "coin-payment-error",
-      },
-      {
-        name: "query_purse",
-        type: "unary",
-        signature:
-          "queryPurse(request: HostCoinPaymentQueryPurseRequest): Promise<Result<HostCoinPaymentQueryPurseResponse, CoinPaymentError>>",
-        docUrl: "api/coin_payment/trait.CoinPayment.html#method.query_purse",
-        description:
-          'Query product-visible purse metadata and balance.\n\n```truapi-client-example\nimport {\n  type Client,\n  type HostCoinPaymentQueryPurseResponse,\n} from "@parity/truapi";\n\nexport async function queryPurse(\n  truapi: Client,\n  purse: number,\n): Promise<HostCoinPaymentQueryPurseResponse> {\n  const result = await truapi.coinPayment.queryPurse({\n    purse,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value;\n}\n```',
-        requestDescription: "HostCoinPaymentQueryPurseRequest",
-        requestType: "host-coin-payment-query-purse-request",
-        responseType: "host-coin-payment-query-purse-response",
-        errorType: "coin-payment-error",
-      },
-      {
-        name: "rebalance_purse",
-        type: "subscription",
-        signature:
-          "rebalancePurse(request: HostCoinPaymentRebalancePurseRequest): ObservableLike<CoinPaymentStatus, CoinPaymentError>",
-        docUrl:
-          "api/coin_payment/trait.CoinPayment.html#method.rebalance_purse",
-        description:
-          'Transfer balance between local purses.\n\n```truapi-client-example\nimport {\n  type Client,\n  type HostCoinPaymentRebalancePurseError,\n  type CoinPaymentStatus,\n  type Subscription,\n  type SubscriptionError,\n} from "@parity/truapi";\n\nexport function rebalancePurse(truapi: Client): Subscription {\n  return truapi.coinPayment\n    .rebalancePurse({\n      request: { from: 1, to: 2, amount: 1000 },\n    })\n    .subscribe({\n      next: (status: CoinPaymentStatus) => console.log(status),\n      error: (error: SubscriptionError<HostCoinPaymentRebalancePurseError>) =>\n        console.error(error),\n    });\n}\n```',
-        requestDescription: "HostCoinPaymentRebalancePurseRequest",
-        requestType: "host-coin-payment-rebalance-purse-request",
-        responseType: "coin-payment-status",
-        errorType: "coin-payment-error",
-      },
-      {
-        name: "delete_purse",
-        type: "subscription",
-        signature:
-          "deletePurse(request: HostCoinPaymentDeletePurseRequest): ObservableLike<CoinPaymentStatus, CoinPaymentError>",
-        docUrl: "api/coin_payment/trait.CoinPayment.html#method.delete_purse",
-        description:
-          'Delete a purse after draining its balance into another local purse.\n\n```truapi-client-example\nimport {\n  type Client,\n  type HostCoinPaymentDeletePurseError,\n  type CoinPaymentStatus,\n  type Subscription,\n  type SubscriptionError,\n} from "@parity/truapi";\n\nexport function deletePurse(truapi: Client): Subscription {\n  return truapi.coinPayment\n    .deletePurse({\n      request: { target: 2, drainInto: 1 },\n    })\n    .subscribe({\n      next: (status: CoinPaymentStatus) => console.log(status),\n      error: (error: SubscriptionError<HostCoinPaymentDeletePurseError>) =>\n        console.error(error),\n    });\n}\n```',
-        requestDescription: "HostCoinPaymentDeletePurseRequest",
-        requestType: "host-coin-payment-delete-purse-request",
-        responseType: "coin-payment-status",
-        errorType: "coin-payment-error",
-      },
-      {
-        name: "create_receivable",
-        type: "unary",
-        signature:
-          "createReceivable(request: HostCoinPaymentCreateReceivableRequest): Promise<Result<HostCoinPaymentCreateReceivableResponse, CoinPaymentError>>",
-        docUrl:
-          "api/coin_payment/trait.CoinPayment.html#method.create_receivable",
-        description:
-          'Create a receivable public key for depositing into a purse.\n\n```truapi-client-example\nimport { type Client, type CoinPaymentReceivable } from "@parity/truapi";\n\nexport async function createReceivable(\n  truapi: Client,\n  purse: number,\n): Promise<CoinPaymentReceivable> {\n  const result = await truapi.coinPayment.createReceivable({\n    into: purse,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value.receivable;\n}\n```',
-        requestDescription: "HostCoinPaymentCreateReceivableRequest",
-        requestType: "host-coin-payment-create-receivable-request",
-        responseType: "host-coin-payment-create-receivable-response",
-        errorType: "coin-payment-error",
-      },
-      {
-        name: "create_cheque",
-        type: "unary",
-        signature:
-          "createCheque(request: HostCoinPaymentCreateChequeRequest): Promise<Result<HostCoinPaymentCreateChequeResponse, CoinPaymentError>>",
-        docUrl: "api/coin_payment/trait.CoinPayment.html#method.create_cheque",
-        description:
-          'Create a cheque paying from a local purse to a receivable.\n\n```truapi-client-example\nimport { type CoinPaymentCheque, type Client, type CoinPaymentReceivable } from "@parity/truapi";\n\nexport async function createCheque(\n  truapi: Client,\n  receiver: CoinPaymentReceivable,\n): Promise<CoinPaymentCheque> {\n  const result = await truapi.coinPayment.createCheque({\n    from: 1,\n    to: receiver,\n    amount: 1000,\n  });\n\n  if (result.isErr()) throw result.error;\n  return result.value.cheque;\n}\n```',
-        requestDescription: "HostCoinPaymentCreateChequeRequest",
-        requestType: "host-coin-payment-create-cheque-request",
-        responseType: "host-coin-payment-create-cheque-response",
-        errorType: "coin-payment-error",
-      },
-      {
-        name: "deposit",
-        type: "subscription",
-        signature:
-          "deposit(request: HostCoinPaymentDepositRequest): ObservableLike<CoinPaymentStatus, CoinPaymentError>",
-        docUrl: "api/coin_payment/trait.CoinPayment.html#method.deposit",
-        description:
-          'Claim coins from a cheque into the receivable\'s purse.\n\n```truapi-client-example\nimport {\n  type CoinPaymentCheque,\n  type Client,\n  type HostCoinPaymentDepositError,\n  type CoinPaymentStatus,\n  type Subscription,\n  type SubscriptionError,\n} from "@parity/truapi";\n\nexport function depositCheque(truapi: Client, cheque: CoinPaymentCheque): Subscription {\n  return truapi.coinPayment\n    .deposit({ request: { cheque } })\n    .subscribe({\n      next: (status: CoinPaymentStatus) => console.log(status),\n      error: (error: SubscriptionError<HostCoinPaymentDepositError>) =>\n        console.error(error),\n    });\n}\n```',
-        requestDescription: "HostCoinPaymentDepositRequest",
-        requestType: "host-coin-payment-deposit-request",
-        responseType: "coin-payment-status",
-        errorType: "coin-payment-error",
-      },
-      {
-        name: "refund",
-        type: "subscription",
-        signature:
-          "refund(request: HostCoinPaymentRefundRequest): ObservableLike<CoinPaymentStatus, CoinPaymentError>",
-        docUrl: "api/coin_payment/trait.CoinPayment.html#method.refund",
-        description:
-          'Attempt to return coins associated with a receivable.\n\n```truapi-client-example\nimport {\n  type Client,\n  type HostCoinPaymentRefundError,\n  type CoinPaymentReceivable,\n  type CoinPaymentStatus,\n  type Subscription,\n  type SubscriptionError,\n} from "@parity/truapi";\n\nexport function refundReceivable(\n  truapi: Client,\n  receivable: CoinPaymentReceivable,\n): Subscription {\n  return truapi.coinPayment\n    .refund({ request: { receivable } })\n    .subscribe({\n      next: (status: CoinPaymentStatus) => console.log(status),\n      error: (error: SubscriptionError<HostCoinPaymentRefundError>) =>\n        console.error(error),\n    });\n}\n```',
-        requestDescription: "HostCoinPaymentRefundRequest",
-        requestType: "host-coin-payment-refund-request",
-        responseType: "coin-payment-status",
-        errorType: "coin-payment-error",
-      },
-      {
-        name: "listen_for_payment",
-        type: "subscription",
-        signature:
-          "listenForPayment(request: HostCoinPaymentListenForRequest): ObservableLike<HostCoinPaymentListenForItem, CoinPaymentError>",
-        docUrl:
-          "api/coin_payment/trait.CoinPayment.html#method.listen_for_payment",
-        description:
-          'Listen for a cheque delivered through a standard transmission channel.\n\n```truapi-client-example\nimport {\n  type Client,\n  type HostCoinPaymentListenForError,\n  type HostCoinPaymentListenForItem,\n  type CoinPaymentReceivable,\n  type Subscription,\n  type SubscriptionError,\n} from "@parity/truapi";\n\nexport function listenForCheque(\n  truapi: Client,\n  receivable: CoinPaymentReceivable,\n): Subscription {\n  return truapi.coinPayment\n    .listenForPayment({ request: { receivable } })\n    .subscribe({\n      next: (item: HostCoinPaymentListenForItem) => console.log(item),\n      error: (error: SubscriptionError<HostCoinPaymentListenForError>) =>\n        console.error(error),\n    });\n}\n```',
-        requestDescription: "HostCoinPaymentListenForRequest",
-        requestType: "host-coin-payment-listen-for-request",
-        responseType: "host-coin-payment-listen-for-item",
-        errorType: "coin-payment-error",
-      },
-    ],
-  },
-  {
     name: "Entropy",
     methods: [
       {
@@ -452,33 +327,6 @@ export const services: ServiceInfo[] = [
         requestType: "host-derive-entropy-request",
         responseType: "host-derive-entropy-response",
         errorType: "host-derive-entropy-error",
-      },
-    ],
-  },
-  {
-    name: "JSON-RPC",
-    methods: [
-      {
-        name: "send_message",
-        type: "unary",
-        signature:
-          "sendMessage(request: HostJsonrpcMessageSendRequest): Promise<Result<undefined, GenericError>>",
-        docUrl: "api/jsonrpc/trait.JsonRpc.html#method.send_message",
-        description: "Send a JSON-RPC message.",
-        requestDescription: "HostJsonrpcMessageSendRequest",
-        requestType: "host-jsonrpc-message-send-request",
-        errorType: "generic-error",
-      },
-      {
-        name: "subscribe_messages",
-        type: "subscription",
-        signature:
-          "subscribeMessages(request: HostJsonrpcMessageSubscribeRequest): ObservableLike<HostJsonrpcMessageSubscribeItem>",
-        docUrl: "api/jsonrpc/trait.JsonRpc.html#method.subscribe_messages",
-        description: "Subscribe to inbound JSON-RPC messages.",
-        requestDescription: "HostJsonrpcMessageSubscribeRequest",
-        requestType: "host-jsonrpc-message-subscribe-request",
-        responseType: "host-jsonrpc-message-subscribe-item",
       },
     ],
   },
@@ -666,24 +514,6 @@ export const services: ServiceInfo[] = [
     ],
   },
   {
-    name: "Resource Allocation",
-    methods: [
-      {
-        name: "request",
-        type: "unary",
-        signature:
-          "request(request: HostRequestResourceAllocationRequest): Promise<Result<HostRequestResourceAllocationResponse, ResourceAllocationError>>",
-        docUrl:
-          "api/resource_allocation/trait.ResourceAllocation.html#method.request",
-        description: "Request the host to pre-allocate one or more resources.",
-        requestDescription: "HostRequestResourceAllocationRequest",
-        requestType: "host-request-resource-allocation-request",
-        responseType: "host-request-resource-allocation-response",
-        errorType: "resource-allocation-error",
-      },
-    ],
-  },
-  {
     name: "Signing",
     methods: [
       {
@@ -856,19 +686,6 @@ export const services: ServiceInfo[] = [
         requestDescription: "HostNavigateToRequest",
         requestType: "host-navigate-to-request",
         errorType: "host-navigate-to-error",
-      },
-    ],
-  },
-  {
-    name: "Theme",
-    methods: [
-      {
-        name: "subscribe",
-        type: "subscription",
-        signature: "subscribe(): ObservableLike<HostThemeSubscribeItem>",
-        docUrl: "api/theme/trait.Theme.html#method.subscribe",
-        description: "Subscribe to host theme changes.",
-        responseType: "host-theme-subscribe-item",
       },
     ],
   },
