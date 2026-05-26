@@ -2624,6 +2624,13 @@ impl State {
             final(self).next_age == old(self).next_age,
             final(self).next_purse_id == old(self).next_purse_id,
             final(self).fee_balance == old(self).fee_balance,
+            final(self).events@ == old(self).events@,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
+            final(self).tokens@ == old(self).tokens@,
+            final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
     {
         let ghost old_purses_vec = self.purses@;
         let ghost old_spec_purses = self.spec_purses@;
@@ -13895,6 +13902,44 @@ proof fn lemma_mark_entry_missing_refines(pre: State, post: State, key: (PurseId
     let post_view = quint_view(post);
     let step_view = quint_step_mark_entry_missing(quint_view(pre), key);
     assert(post_view.entries =~= step_view.entries);
+}
+
+/// Quint analog: `nextExtrinsicId' = nextExtrinsicId + 1`. The Quint
+/// allocator returns the pre-increment value (matching Verus exec).
+pub open spec fn quint_step_alloc_extrinsic_id(
+    pre: QuintViewState,
+) -> QuintViewState
+    recommends
+        pre.next_extrinsic_id < u64::MAX,
+{
+    QuintViewState {
+        next_extrinsic_id: (pre.next_extrinsic_id + 1) as u64,
+        ..pre
+    }
+}
+
+proof fn lemma_alloc_extrinsic_id_refines(pre: State, post: State)
+    requires
+        pre.invariant(),
+        pre.next_extrinsic_id < u64::MAX,
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id + 1,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_alloc_extrinsic_id(quint_view(pre)),
+{
 }
 
 /// Quint analog: `purses' = purses.put(new_id, {id, name, 0, 0})`.
