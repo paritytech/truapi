@@ -8039,21 +8039,72 @@ impl State {
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
+            final(self).entries() == old(self).entries(),
+            final(self).fee_balance == old(self).fee_balance,
+            final(self).next_extrinsic_id == old(self).next_extrinsic_id,
+            final(self).paid_ring_membership == old(self).paid_ring_membership,
+            final(self).total_in == old(self).total_in,
+            final(self).total_out == old(self).total_out,
+            final(self).tokens@ == old(self).tokens@,
+            final(self).chain_coins@ == old(self).chain_coins@,
+            final(self).chain_entries@ == old(self).chain_entries@,
             match res {
                 Some(new_key) =>
                     new_key.0 == to
-                    && final(self).coins().dom().contains(new_key)
-                    && final(self).coins()[new_key].state == CoinState::Available
-                    && final(self).coins()[new_key].exponent >= min_exp
-                    && final(self).next_age == old(self).next_age + 1,
+                    && new_key.1 == old(self).purses()[to].next_coin_idx
+                    && final(self).next_age == old(self).next_age + 1
+                    && final(self).purses().dom() =~= old(self).purses().dom()
+                    && final(self).purses()[to].id == to
+                    && final(self).purses()[to].name == old(self).purses()[to].name
+                    && final(self).purses()[to].next_coin_idx
+                        == old(self).purses()[to].next_coin_idx + 1
+                    && final(self).purses()[to].next_entry_idx
+                        == old(self).purses()[to].next_entry_idx
+                    && (forall|q: PurseId| q != to
+                        && #[trigger] old(self).purses().dom().contains(q)
+                        ==> final(self).purses()[q] == old(self).purses()[q])
+                    && (exists|src_key: (PurseId, u64)|
+                        #[trigger] old(self).coins().dom().contains(src_key)
+                        && src_key.0 == from
+                        && old(self).coins()[src_key].state == CoinState::Available
+                        && old(self).coins()[src_key].exponent >= min_exp
+                        && final(self).coins() == old(self).coins()
+                            .insert(src_key, CoinRec {
+                                purse: old(self).coins()[src_key].purse,
+                                idx: old(self).coins()[src_key].idx,
+                                exponent: old(self).coins()[src_key].exponent,
+                                age: old(self).coins()[src_key].age,
+                                account: old(self).coins()[src_key].account,
+                                state: CoinState::Spent,
+                            })
+                            .insert(new_key, CoinRec {
+                                purse: to,
+                                idx: new_key.1,
+                                exponent: old(self).coins()[src_key].exponent,
+                                state: CoinState::Available,
+                                age: old(self).next_age,
+                                account: 0,
+                            })
+                        && final(self).events@ == old(self).events@
+                            .push(Event::CoinSpent {
+                                purse: from,
+                                exponent: old(self).coins()[src_key].exponent,
+                            })
+                            .push(Event::CoinAvailable {
+                                purse: to,
+                                exponent: old(self).coins()[src_key].exponent,
+                            })),
                 None =>
                     // No Available coin in `from` met the threshold.
                     final(self).next_age == old(self).next_age
-                    && forall|k: (PurseId, u64)|
+                    && final(self).purses() == old(self).purses()
+                    && final(self).coins() == old(self).coins()
+                    && final(self).events@ == old(self).events@
+                    && (forall|k: (PurseId, u64)|
                         #[trigger] old(self).coins().dom().contains(k)
                         && k.0 == from
                         && old(self).coins()[k].state == CoinState::Available
-                        ==> old(self).coins()[k].exponent < min_exp,
+                        ==> old(self).coins()[k].exponent < min_exp),
             },
     {
         match self.select_coin(from, min_exp) {
@@ -16688,6 +16739,162 @@ proof fn lemma_rebalance_refines(
     assert(post_view.coins =~= step_view.coins);
     assert(post_view.purses =~= step_view.purses);
     assert(post_view.events =~= step_view.events);
+}
+
+/// Quint analog (Some branch): non-deterministic transfer of a
+/// specific source coin to a fresh coin in `to`. The Quint
+/// transfer Action uses `oneOf` over candidate coins; Verus
+/// realizes the choice via `select_coin`. The refinement lemma
+/// is parameterized over the witness `src_key`.
+pub open spec fn quint_step_transfer_some(
+    pre: QuintViewState,
+    from: PurseId,
+    to: PurseId,
+    src_key: (PurseId, u64),
+    next_age: u64,
+    new_idx: u64,
+) -> QuintViewState
+    recommends
+        pre.coins.dom().contains(src_key),
+        src_key.0 == from,
+        pre.coins[src_key].state == CoinState::Available,
+        pre.purses.dom().contains(to),
+        pre.purses[to].next_coin_idx == new_idx as nat,
+        (new_idx as nat) < u64::MAX as nat,
+{
+    let exp = pre.coins[src_key].exponent;
+    let new_key = (to, new_idx);
+    QuintViewState {
+        coins: pre.coins
+            .insert(src_key, CoinRec {
+                purse: pre.coins[src_key].purse,
+                idx: pre.coins[src_key].idx,
+                exponent: exp,
+                age: pre.coins[src_key].age,
+                account: pre.coins[src_key].account,
+                state: CoinState::Spent,
+            })
+            .insert(new_key, CoinRec {
+                purse: to,
+                idx: new_idx,
+                exponent: exp,
+                state: CoinState::Available,
+                age: next_age,
+                account: 0,
+            }),
+        purses: pre.purses.insert(to, PurseRecSpec {
+            id: pre.purses[to].id,
+            name: pre.purses[to].name,
+            next_coin_idx: pre.purses[to].next_coin_idx + 1,
+            next_entry_idx: pre.purses[to].next_entry_idx,
+        }),
+        events: pre.events
+            .push(Event::CoinSpent { purse: from, exponent: exp })
+            .push(Event::CoinAvailable { purse: to, exponent: exp }),
+        ..pre
+    }
+}
+
+proof fn lemma_transfer_some_refines(
+    pre: State,
+    post: State,
+    from: PurseId,
+    to: PurseId,
+    src_key: (PurseId, u64),
+    new_idx: u64,
+)
+    requires
+        pre.invariant(),
+        pre.coins().dom().contains(src_key),
+        src_key.0 == from,
+        pre.coins()[src_key].state == CoinState::Available,
+        pre.purses().dom().contains(to),
+        pre.purses()[to].next_coin_idx == new_idx as nat,
+        (new_idx as nat) < u64::MAX as nat,
+        pre.events@.len() + 2 <= u64::MAX as nat,
+        pre.next_age < u64::MAX,
+        post.invariant(),
+        post.coins() == pre.coins()
+            .insert(src_key, CoinRec {
+                purse: pre.coins()[src_key].purse,
+                idx: pre.coins()[src_key].idx,
+                exponent: pre.coins()[src_key].exponent,
+                age: pre.coins()[src_key].age,
+                account: pre.coins()[src_key].account,
+                state: CoinState::Spent,
+            })
+            .insert((to, new_idx), CoinRec {
+                purse: to,
+                idx: new_idx,
+                exponent: pre.coins()[src_key].exponent,
+                state: CoinState::Available,
+                age: pre.next_age,
+                account: 0,
+            }),
+        post.purses().dom() =~= pre.purses().dom(),
+        post.purses()[to].id == to,
+        post.purses()[to].name == pre.purses()[to].name,
+        post.purses()[to].next_coin_idx == pre.purses()[to].next_coin_idx + 1,
+        post.purses()[to].next_entry_idx == pre.purses()[to].next_entry_idx,
+        forall|q: PurseId| q != to && #[trigger] pre.purses().dom().contains(q)
+            ==> post.purses()[q] == pre.purses()[q],
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@
+            .push(Event::CoinSpent {
+                purse: from,
+                exponent: pre.coins()[src_key].exponent,
+            })
+            .push(Event::CoinAvailable {
+                purse: to,
+                exponent: pre.coins()[src_key].exponent,
+            }),
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_transfer_some(
+            quint_view(pre), from, to, src_key, pre.next_age, new_idx,
+        ),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_transfer_some(
+        quint_view(pre), from, to, src_key, pre.next_age, new_idx,
+    );
+    assert(post_view.coins =~= step_view.coins);
+    assert(post_view.purses =~= step_view.purses);
+    assert(post_view.events =~= step_view.events);
+}
+
+/// Quint analog (None branch): identity — no Available coin met
+/// the threshold, no state change.
+proof fn lemma_transfer_none_refines(pre: State, post: State)
+    requires
+        pre.invariant(),
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_view(pre),
+{
 }
 
 /// Quint analog: `purses' = purses.put(new_id, {id, name, 0, 0})`.
