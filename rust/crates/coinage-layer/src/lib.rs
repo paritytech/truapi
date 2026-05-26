@@ -11624,8 +11624,7 @@ impl State {
             final(self).invariant(),
             key.0 == p,
             key.1 == old(self).purses()[p].next_entry_idx,
-            final(self).entries().dom().contains(key),
-            final(self).entries()[key] == (EntryRec {
+            final(self).entries() == old(self).entries().insert(key, EntryRec {
                 purse: p,
                 idx: key.1,
                 exponent,
@@ -11638,6 +11637,15 @@ impl State {
             }),
             final(self).coins() == old(self).coins(),
             final(self).coins@ == old(self).coins@,
+            final(self).purses().dom() =~= old(self).purses().dom(),
+            final(self).purses()[p].id == p,
+            final(self).purses()[p].name == old(self).purses()[p].name,
+            final(self).purses()[p].next_coin_idx
+                == old(self).purses()[p].next_coin_idx,
+            final(self).purses()[p].next_entry_idx
+                == old(self).purses()[p].next_entry_idx + 1,
+            forall|q: PurseId| q != p && #[trigger] old(self).purses().dom().contains(q)
+                ==> final(self).purses()[q] == old(self).purses()[q],
             final(self).operations@ == old(self).operations@,
             final(self).spec_operations@ == old(self).spec_operations@,
             final(self).next_handle == old(self).next_handle,
@@ -14491,6 +14499,115 @@ proof fn lemma_consume_token_fail_refines(pre: State, post: State)
     ensures
         quint_view(post) == quint_view(pre),
 {
+}
+
+/// Quint analog: insert a fresh Waiting/LocalAvailable entry, bump
+/// the owning purse's `next_entry_idx`, and push `EEntryAllocated`.
+pub open spec fn quint_step_top_up_via_entry(
+    pre: QuintViewState,
+    p: PurseId,
+    exponent: u8,
+    member_key: u64,
+    allocated_at: u64,
+    ready_at: u64,
+    ring_idx: u64,
+    new_idx: u64,
+) -> QuintViewState
+    recommends
+        pre.purses.dom().contains(p),
+        pre.purses[p].next_entry_idx == new_idx as nat,
+        (new_idx as nat) < u64::MAX as nat,
+{
+    let key = (p, new_idx);
+    QuintViewState {
+        entries: pre.entries.insert(key, EntryRec {
+            purse: p,
+            idx: new_idx,
+            exponent,
+            on_chain: EntryOnChain::Waiting,
+            local: EntryLocal::LocalAvailable,
+            member_key,
+            allocated_at,
+            ready_at,
+            ring_idx,
+        }),
+        purses: pre.purses.insert(p, PurseRecSpec {
+            id: pre.purses[p].id,
+            name: pre.purses[p].name,
+            next_coin_idx: pre.purses[p].next_coin_idx,
+            next_entry_idx: pre.purses[p].next_entry_idx + 1,
+        }),
+        events: pre.events.push(Event::EntryAllocated { purse: p, exponent }),
+        ..pre
+    }
+}
+
+proof fn lemma_top_up_via_entry_refines(
+    pre: State,
+    post: State,
+    p: PurseId,
+    exponent: u8,
+    member_key: u64,
+    allocated_at: u64,
+    ready_at: u64,
+    ring_idx: u64,
+    new_idx: u64,
+)
+    requires
+        pre.invariant(),
+        pre.purses().dom().contains(p),
+        pre.purses()[p].next_entry_idx == new_idx as nat,
+        (new_idx as nat) < u64::MAX as nat,
+        pre.events@.len() < u64::MAX as nat,
+        exponent <= MAX_EXPONENT,
+        post.invariant(),
+        post.entries() == pre.entries().insert(
+            (p, new_idx),
+            EntryRec {
+                purse: p,
+                idx: new_idx,
+                exponent,
+                on_chain: EntryOnChain::Waiting,
+                local: EntryLocal::LocalAvailable,
+                member_key,
+                allocated_at,
+                ready_at,
+                ring_idx,
+            },
+        ),
+        post.coins() == pre.coins(),
+        post.purses().dom() =~= pre.purses().dom(),
+        post.purses()[p].id == p,
+        post.purses()[p].name == pre.purses()[p].name,
+        post.purses()[p].next_coin_idx == pre.purses()[p].next_coin_idx,
+        post.purses()[p].next_entry_idx == pre.purses()[p].next_entry_idx + 1,
+        forall|q: PurseId| q != p && #[trigger] pre.purses().dom().contains(q)
+            ==> post.purses()[q] == pre.purses()[q],
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@.push(Event::EntryAllocated { purse: p, exponent }),
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_top_up_via_entry(
+            quint_view(pre), p, exponent,
+            member_key, allocated_at, ready_at, ring_idx, new_idx,
+        ),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_top_up_via_entry(
+        quint_view(pre), p, exponent,
+        member_key, allocated_at, ready_at, ring_idx, new_idx,
+    );
+    assert(post_view.entries =~= step_view.entries);
+    assert(post_view.purses =~= step_view.purses);
+    assert(post_view.events =~= step_view.events);
 }
 
 /// Quint analog: `purses' = purses.put(new_id, {id, name, 0, 0})`.
