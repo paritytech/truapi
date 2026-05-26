@@ -4233,10 +4233,21 @@ impl State {
         ensures
             final(self).invariant(),
             final(self).purses() == old(self).purses(),
-            final(self).coins().dom().contains(key),
-            final(self).coins()[key].state == CoinState::Available,
-            final(self).operations().dom().contains(handle),
-            final(self).operations()[handle].status == OpStatus::Failed,
+            final(self).coins() == old(self).coins().insert(key, CoinRec {
+                purse: old(self).coins()[key].purse,
+                idx: old(self).coins()[key].idx,
+                exponent: old(self).coins()[key].exponent,
+                age: old(self).coins()[key].age,
+                account: old(self).coins()[key].account,
+                state: CoinState::Available,
+            }),
+            final(self).entries() == old(self).entries(),
+            final(self).operations() == old(self).operations().insert(handle, OperationRec {
+                handle: old(self).operations()[handle].handle,
+                kind: old(self).operations()[handle].kind,
+                purse: old(self).operations()[handle].purse,
+                status: OpStatus::Failed,
+            }),
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
             final(self).fee_balance == old(self).fee_balance,
@@ -4279,10 +4290,16 @@ impl State {
             final(self).invariant(),
             final(self).purses() == old(self).purses(),
             final(self).coins() == old(self).coins(),
-            final(self).entries().dom().contains(key),
-            final(self).entries()[key].local == EntryLocal::LocalAvailable,
-            final(self).operations().dom().contains(handle),
-            final(self).operations()[handle].status == OpStatus::Failed,
+            final(self).entries() == old(self).entries().insert(key, EntryRec {
+                local: EntryLocal::LocalAvailable,
+                ..old(self).entries()[key]
+            }),
+            final(self).operations() == old(self).operations().insert(handle, OperationRec {
+                handle: old(self).operations()[handle].handle,
+                kind: old(self).operations()[handle].kind,
+                purse: old(self).operations()[handle].purse,
+                status: OpStatus::Failed,
+            }),
             final(self).next_handle == old(self).next_handle,
             final(self).next_age == old(self).next_age,
             final(self).fee_balance == old(self).fee_balance,
@@ -15420,6 +15437,191 @@ proof fn lemma_release_one_entry_lock_for_none_refines(pre: State, post: State)
     ensures
         quint_view(post) == quint_view(pre),
 {
+}
+
+/// Quint analog: `release_locked_coin(key, handle) ;
+/// set_op_failed(handle)`. Composes two individual refinement steps.
+pub open spec fn quint_step_cancel_op_releasing_coin(
+    pre: QuintViewState,
+    handle: OpHandle,
+    key: (PurseId, u64),
+) -> QuintViewState
+    recommends
+        pre.coins.dom().contains(key),
+        pre.coins[key].state == CoinState::LockedFor(handle),
+        pre.operations.dom().contains(handle),
+        match pre.operations[handle].status {
+            OpStatus::Preparing => true,
+            OpStatus::Waiting(_) => true,
+            _ => false,
+        },
+{
+    QuintViewState {
+        coins: pre.coins.insert(key, CoinRec {
+            purse: pre.coins[key].purse,
+            idx: pre.coins[key].idx,
+            exponent: pre.coins[key].exponent,
+            age: pre.coins[key].age,
+            account: pre.coins[key].account,
+            state: CoinState::Available,
+        }),
+        operations: pre.operations.insert(handle, OperationRec {
+            handle: pre.operations[handle].handle,
+            kind: pre.operations[handle].kind,
+            purse: pre.operations[handle].purse,
+            status: OpStatus::Failed,
+        }),
+        events: pre.events.push(Event::OperationCompleted {
+            handle,
+            status: OpStatus::Failed,
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_cancel_op_releasing_coin_refines(
+    pre: State,
+    post: State,
+    handle: OpHandle,
+    key: (PurseId, u64),
+)
+    requires
+        pre.invariant(),
+        pre.operations().dom().contains(handle),
+        match pre.operations()[handle].status {
+            OpStatus::Preparing => true,
+            OpStatus::Waiting(_) => true,
+            _ => false,
+        },
+        pre.coins().dom().contains(key),
+        pre.coins()[key].state == CoinState::LockedFor(handle),
+        pre.events@.len() < u64::MAX as nat,
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins().insert(key, CoinRec {
+            purse: pre.coins()[key].purse,
+            idx: pre.coins()[key].idx,
+            exponent: pre.coins()[key].exponent,
+            age: pre.coins()[key].age,
+            account: pre.coins()[key].account,
+            state: CoinState::Available,
+        }),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations().insert(handle, OperationRec {
+            handle: pre.operations()[handle].handle,
+            kind: pre.operations()[handle].kind,
+            purse: pre.operations()[handle].purse,
+            status: OpStatus::Failed,
+        }),
+        post.events@ == pre.events@.push(Event::OperationCompleted {
+            handle,
+            status: OpStatus::Failed,
+        }),
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_cancel_op_releasing_coin(quint_view(pre), handle, key),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_cancel_op_releasing_coin(quint_view(pre), handle, key);
+    assert(post_view.coins =~= step_view.coins);
+    assert(post_view.operations =~= step_view.operations);
+    assert(post_view.events =~= step_view.events);
+}
+
+/// Entry parallel of [`quint_step_cancel_op_releasing_coin`].
+pub open spec fn quint_step_cancel_op_releasing_entry(
+    pre: QuintViewState,
+    handle: OpHandle,
+    key: (PurseId, u64),
+) -> QuintViewState
+    recommends
+        pre.entries.dom().contains(key),
+        pre.entries[key].local == EntryLocal::LocalLockedFor(handle),
+        pre.operations.dom().contains(handle),
+        match pre.operations[handle].status {
+            OpStatus::Preparing => true,
+            OpStatus::Waiting(_) => true,
+            _ => false,
+        },
+{
+    QuintViewState {
+        entries: pre.entries.insert(key, EntryRec {
+            local: EntryLocal::LocalAvailable,
+            ..pre.entries[key]
+        }),
+        operations: pre.operations.insert(handle, OperationRec {
+            handle: pre.operations[handle].handle,
+            kind: pre.operations[handle].kind,
+            purse: pre.operations[handle].purse,
+            status: OpStatus::Failed,
+        }),
+        events: pre.events.push(Event::OperationCompleted {
+            handle,
+            status: OpStatus::Failed,
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_cancel_op_releasing_entry_refines(
+    pre: State,
+    post: State,
+    handle: OpHandle,
+    key: (PurseId, u64),
+)
+    requires
+        pre.invariant(),
+        pre.operations().dom().contains(handle),
+        match pre.operations()[handle].status {
+            OpStatus::Preparing => true,
+            OpStatus::Waiting(_) => true,
+            _ => false,
+        },
+        pre.entries().dom().contains(key),
+        pre.entries()[key].local == EntryLocal::LocalLockedFor(handle),
+        pre.events@.len() < u64::MAX as nat,
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries().insert(key, EntryRec {
+            local: EntryLocal::LocalAvailable,
+            ..pre.entries()[key]
+        }),
+        post.operations() == pre.operations().insert(handle, OperationRec {
+            handle: pre.operations()[handle].handle,
+            kind: pre.operations()[handle].kind,
+            purse: pre.operations()[handle].purse,
+            status: OpStatus::Failed,
+        }),
+        post.events@ == pre.events@.push(Event::OperationCompleted {
+            handle,
+            status: OpStatus::Failed,
+        }),
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_cancel_op_releasing_entry(quint_view(pre), handle, key),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_cancel_op_releasing_entry(quint_view(pre), handle, key);
+    assert(post_view.entries =~= step_view.entries);
+    assert(post_view.operations =~= step_view.operations);
+    assert(post_view.events =~= step_view.events);
 }
 
 /// Quint analog: `purses' = purses.put(new_id, {id, name, 0, 0})`.
