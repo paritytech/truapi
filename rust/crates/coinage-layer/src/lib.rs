@@ -12844,4 +12844,233 @@ proof fn lemma_emit_event_refines(pre: State, post: State, e: Event)
     assert(post_view.events =~= step_view.events);
 }
 
+/// Quint analog: `entries' = entries.set(key, {..local = LocalConsumed..})`,
+/// `events' = events.append(EEntryConsumed{purse, exp})`.
+pub open spec fn quint_step_consume_entry(
+    pre: QuintViewState,
+    key: (PurseId, u64),
+) -> QuintViewState
+    recommends pre.entries.dom().contains(key),
+{
+    QuintViewState {
+        entries: pre.entries.insert(key, EntryRec {
+            local: EntryLocal::LocalConsumed,
+            ..pre.entries[key]
+        }),
+        events: pre.events.push(Event::EntryConsumed {
+            purse: key.0,
+            exponent: pre.entries[key].exponent,
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_consume_entry_refines(pre: State, post: State, key: (PurseId, u64))
+    requires
+        pre.invariant(),
+        pre.entries().dom().contains(key),
+        exists|h: OpHandle| pre.entries()[key].local == EntryLocal::LocalLockedFor(h),
+        pre.events@.len() < u64::MAX as nat,
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries().insert(key, EntryRec {
+            local: EntryLocal::LocalConsumed,
+            ..pre.entries()[key]
+        }),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@.push(Event::EntryConsumed {
+            purse: key.0,
+            exponent: pre.entries()[key].exponent,
+        }),
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_consume_entry(quint_view(pre), key),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_consume_entry(quint_view(pre), key);
+    assert(post_view.entries =~= step_view.entries);
+    assert(post_view.events =~= step_view.events);
+}
+
+/// Quint analog: `operations' = operations.set(handle, {..status = Submitted..})`,
+/// `events' = events.append(EOperationProgress{handle, status=Submitted})`.
+pub open spec fn quint_step_mark_op_submitted(
+    pre: QuintViewState,
+    handle: OpHandle,
+) -> QuintViewState
+    recommends pre.operations.dom().contains(handle),
+{
+    QuintViewState {
+        operations: pre.operations.insert(handle, OperationRec {
+            status: OpStatus::Submitted,
+            ..pre.operations[handle]
+        }),
+        events: pre.events.push(Event::OperationProgress {
+            handle,
+            status: OpStatus::Submitted,
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_mark_op_submitted_refines(pre: State, post: State, handle: OpHandle)
+    requires
+        pre.invariant(),
+        pre.operations().dom().contains(handle),
+        pre.operations()[handle].status == OpStatus::Preparing,
+        pre.events@.len() < u64::MAX as nat,
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations().insert(handle, OperationRec {
+            handle: pre.operations()[handle].handle,
+            kind: pre.operations()[handle].kind,
+            purse: pre.operations()[handle].purse,
+            status: OpStatus::Submitted,
+        }),
+        post.events@ == pre.events@.push(Event::OperationProgress {
+            handle,
+            status: OpStatus::Submitted,
+        }),
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_mark_op_submitted(quint_view(pre), handle),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_mark_op_submitted(quint_view(pre), handle);
+    assert(post_view.operations =~= step_view.operations);
+    assert(post_view.events =~= step_view.events);
+}
+
+/// Quint analog: `operations' = operations.set(handle, {..status = Done..})`,
+/// `events' = events.append(EOperationCompleted{handle, status=Done})`.
+pub open spec fn quint_step_mark_op_done(
+    pre: QuintViewState,
+    handle: OpHandle,
+) -> QuintViewState
+    recommends pre.operations.dom().contains(handle),
+{
+    QuintViewState {
+        operations: pre.operations.insert(handle, OperationRec {
+            status: OpStatus::Done,
+            ..pre.operations[handle]
+        }),
+        events: pre.events.push(Event::OperationCompleted {
+            handle,
+            status: OpStatus::Done,
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_mark_op_done_refines(pre: State, post: State, handle: OpHandle)
+    requires
+        pre.invariant(),
+        pre.operations().dom().contains(handle),
+        pre.events@.len() < u64::MAX as nat,
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations().insert(handle, OperationRec {
+            handle: pre.operations()[handle].handle,
+            kind: pre.operations()[handle].kind,
+            purse: pre.operations()[handle].purse,
+            status: OpStatus::Done,
+        }),
+        post.events@ == pre.events@.push(Event::OperationCompleted {
+            handle,
+            status: OpStatus::Done,
+        }),
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_mark_op_done(quint_view(pre), handle),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_mark_op_done(quint_view(pre), handle);
+    assert(post_view.operations =~= step_view.operations);
+    assert(post_view.events =~= step_view.events);
+}
+
+/// Quint analog: `operations' = operations.set(handle, {..status = Failed..})`,
+/// `events' = events.append(EOperationCompleted{handle, status=Failed})`.
+pub open spec fn quint_step_set_op_failed(
+    pre: QuintViewState,
+    handle: OpHandle,
+) -> QuintViewState
+    recommends pre.operations.dom().contains(handle),
+{
+    QuintViewState {
+        operations: pre.operations.insert(handle, OperationRec {
+            status: OpStatus::Failed,
+            ..pre.operations[handle]
+        }),
+        events: pre.events.push(Event::OperationCompleted {
+            handle,
+            status: OpStatus::Failed,
+        }),
+        ..pre
+    }
+}
+
+proof fn lemma_set_op_failed_refines(pre: State, post: State, handle: OpHandle)
+    requires
+        pre.invariant(),
+        pre.operations().dom().contains(handle),
+        pre.events@.len() < u64::MAX as nat,
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations().insert(handle, OperationRec {
+            handle: pre.operations()[handle].handle,
+            kind: pre.operations()[handle].kind,
+            purse: pre.operations()[handle].purse,
+            status: OpStatus::Failed,
+        }),
+        post.events@ == pre.events@.push(Event::OperationCompleted {
+            handle,
+            status: OpStatus::Failed,
+        }),
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_set_op_failed(quint_view(pre), handle),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_set_op_failed(quint_view(pre), handle);
+    assert(post_view.operations =~= step_view.operations);
+    assert(post_view.events =~= step_view.events);
+}
+
 } // verus!
