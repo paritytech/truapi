@@ -8468,6 +8468,232 @@ impl State {
         None
     }
 
+    /// Entry analog of [`Self::find_exact_single_coin`]: find a single
+    /// `Ready + LocalAvailable` entry in purse `p` whose
+    /// `coin_value(exp)` equals `requested` exactly. Sharp `None`.
+    pub fn find_exact_single_entry(&self, p: PurseId, requested: u64)
+        -> (res: Option<(PurseId, u64)>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some(key) =>
+                    self.entries().dom().contains(key)
+                    && key.0 == p
+                    && self.entries()[key].on_chain == EntryOnChain::Ready
+                    && self.entries()[key].local == EntryLocal::LocalAvailable
+                    && coin_value(self.entries()[key].exponent) == requested as nat,
+                None =>
+                    forall|k: (PurseId, u64)|
+                        #[trigger] self.entries().dom().contains(k)
+                        && k.0 == p
+                        && self.entries()[k].on_chain == EntryOnChain::Ready
+                        && self.entries()[k].local == EntryLocal::LocalAvailable
+                        ==> coin_value(self.entries()[k].exponent) != requested as nat,
+            },
+    {
+        let mut j: usize = 0;
+        while j < self.entries.len()
+            invariant
+                0 <= j <= self.entries.len(),
+                self.invariant(),
+                forall|jj: int| 0 <= jj < j ==>
+                    (#[trigger] self.entries@[jj]).purse != p
+                    || self.entries@[jj].on_chain != EntryOnChain::Ready
+                    || self.entries@[jj].local != EntryLocal::LocalAvailable
+                    || coin_value(self.entries@[jj].exponent) != requested as nat,
+            decreases self.entries.len() - j,
+        {
+            let e = &self.entries[j];
+            let is_ready = matches!(e.on_chain, EntryOnChain::Ready);
+            let is_local_avail = matches!(e.local, EntryLocal::LocalAvailable);
+            proof {
+                let entry_key = (self.entries@[j as int].purse, self.entries@[j as int].idx);
+                assert(self.spec_entries@.dom().contains(entry_key));
+                assert(self.spec_entries@[entry_key] == self.entries@[j as int]);
+                assert(self.entries@[j as int].exponent <= MAX_EXPONENT);
+            }
+            let value: u64 = pow2_u64_exec(e.exponent);
+            if e.purse == p && is_ready && is_local_avail && value == requested {
+                let key = (e.purse, e.idx);
+                proof {
+                    assert(self.spec_entries@.dom().contains(key));
+                }
+                return Some(key);
+            }
+            j = j + 1;
+        }
+        proof {
+            // Lift Vec-scan "not found" to a universal claim over the ghost map
+            // via entry invariant (s).
+            assert forall|k: (PurseId, u64)|
+                #[trigger] self.entries().dom().contains(k)
+                && k.0 == p
+                && self.entries()[k].on_chain == EntryOnChain::Ready
+                && self.entries()[k].local == EntryLocal::LocalAvailable
+                implies coin_value(self.entries()[k].exponent) != requested as nat
+            by {
+                let w = choose|jj: int|
+                    0 <= jj < self.entries@.len()
+                    && #[trigger] self.entries@[jj].purse == k.0
+                    && self.entries@[jj].idx == k.1;
+                assert(self.entries@[w].purse == p);
+                assert(self.entries@[w].on_chain == self.entries()[k].on_chain);
+                assert(self.entries@[w].local == self.entries()[k].local);
+                assert(self.entries@[w].exponent == self.entries()[k].exponent);
+            }
+        }
+        None
+    }
+
+    /// Entry analog of [`Self::find_two_coin_exact_cover`]: find any
+    /// pair of distinct `Ready + LocalAvailable` entries in purse `p`
+    /// whose values sum exactly to `amount`. Sharp `None`.
+    pub fn find_two_entry_exact_cover(&self, p: PurseId, amount: u64)
+        -> (res: Option<((PurseId, u64), (PurseId, u64))>)
+        requires
+            self.invariant(),
+        ensures
+            match res {
+                Some((k1, k2)) =>
+                    self.entries().dom().contains(k1)
+                    && self.entries().dom().contains(k2)
+                    && k1 != k2
+                    && k1.0 == p && k2.0 == p
+                    && self.entries()[k1].on_chain == EntryOnChain::Ready
+                    && self.entries()[k1].local == EntryLocal::LocalAvailable
+                    && self.entries()[k2].on_chain == EntryOnChain::Ready
+                    && self.entries()[k2].local == EntryLocal::LocalAvailable
+                    && coin_value(self.entries()[k1].exponent)
+                        + coin_value(self.entries()[k2].exponent)
+                        == amount as nat,
+                None =>
+                    forall|i1: int, i2: int|
+                        0 <= i1 < self.entries@.len()
+                        && 0 <= i2 < self.entries@.len()
+                        && i1 != i2
+                        ==> {
+                            let e1 = #[trigger] self.entries@[i1];
+                            let e2 = #[trigger] self.entries@[i2];
+                            e1.purse != p
+                            || e1.on_chain != EntryOnChain::Ready
+                            || e1.local != EntryLocal::LocalAvailable
+                            || e2.purse != p
+                            || e2.on_chain != EntryOnChain::Ready
+                            || e2.local != EntryLocal::LocalAvailable
+                            || (coin_value(e1.exponent) + coin_value(e2.exponent)
+                                != amount as nat)
+                        },
+            },
+    {
+        let n = self.entries.len();
+        let mut i: usize = 0;
+        while i < n
+            invariant
+                0 <= i <= n,
+                n == self.entries.len(),
+                self.invariant(),
+                forall|i1: int, i2: int|
+                    0 <= i1 < i as int && 0 <= i2 < n as int && i1 != i2 ==> {
+                        let e1 = #[trigger] self.entries@[i1];
+                        let e2 = #[trigger] self.entries@[i2];
+                        e1.purse != p
+                        || e1.on_chain != EntryOnChain::Ready
+                        || e1.local != EntryLocal::LocalAvailable
+                        || e2.purse != p
+                        || e2.on_chain != EntryOnChain::Ready
+                        || e2.local != EntryLocal::LocalAvailable
+                        || (coin_value(e1.exponent) + coin_value(e2.exponent)
+                            != amount as nat)
+                    },
+            decreases n - i,
+        {
+            let e1_ref = &self.entries[i];
+            let is_ready1 = matches!(e1_ref.on_chain, EntryOnChain::Ready);
+            let is_local_avail1 = matches!(e1_ref.local, EntryLocal::LocalAvailable);
+            if e1_ref.purse == p && is_ready1 && is_local_avail1 {
+                proof {
+                    let entry_key = (self.entries@[i as int].purse, self.entries@[i as int].idx);
+                    assert(self.spec_entries@.dom().contains(entry_key));
+                    assert(self.spec_entries@[entry_key] == self.entries@[i as int]);
+                    assert(self.entries@[i as int].exponent <= MAX_EXPONENT);
+                }
+                let vi: u64 = pow2_u64_exec(self.entries[i].exponent);
+                if vi <= amount {
+                    let mut k: usize = 0;
+                    while k < n
+                        invariant
+                            0 <= k <= n,
+                            n == self.entries.len(),
+                            i < n,
+                            self.invariant(),
+                            self.entries@[i as int].purse == p,
+                            self.entries@[i as int].on_chain == EntryOnChain::Ready,
+                            self.entries@[i as int].local == EntryLocal::LocalAvailable,
+                            vi as nat == coin_value(self.entries@[i as int].exponent),
+                            vi <= 1073741824u64,
+                            vi <= amount,
+                            forall|i1: int, i2: int|
+                                0 <= i1 < i as int
+                                && 0 <= i2 < n as int
+                                && i1 != i2 ==> {
+                                    let e1 = #[trigger] self.entries@[i1];
+                                    let e2 = #[trigger] self.entries@[i2];
+                                    e1.purse != p
+                                    || e1.on_chain != EntryOnChain::Ready
+                                    || e1.local != EntryLocal::LocalAvailable
+                                    || e2.purse != p
+                                    || e2.on_chain != EntryOnChain::Ready
+                                    || e2.local != EntryLocal::LocalAvailable
+                                    || (coin_value(e1.exponent) + coin_value(e2.exponent)
+                                        != amount as nat)
+                                },
+                            forall|k2: int|
+                                0 <= k2 < k as int && k2 != i as int ==>
+                                (#[trigger] self.entries@[k2]).purse != p
+                                || self.entries@[k2].on_chain != EntryOnChain::Ready
+                                || self.entries@[k2].local != EntryLocal::LocalAvailable
+                                || (coin_value(self.entries@[i as int].exponent)
+                                        + coin_value(self.entries@[k2].exponent)
+                                    != amount as nat),
+                        decreases n - k,
+                    {
+                        if k != i {
+                            let e2_ref = &self.entries[k];
+                            let is_ready2 = matches!(e2_ref.on_chain, EntryOnChain::Ready);
+                            let is_local_avail2 = matches!(e2_ref.local,
+                                                           EntryLocal::LocalAvailable);
+                            if e2_ref.purse == p && is_ready2 && is_local_avail2 {
+                                proof {
+                                    let entry_key = (self.entries@[k as int].purse,
+                                                     self.entries@[k as int].idx);
+                                    assert(self.spec_entries@.dom().contains(entry_key));
+                                    assert(self.spec_entries@[entry_key]
+                                        == self.entries@[k as int]);
+                                    assert(self.entries@[k as int].exponent <= MAX_EXPONENT);
+                                }
+                                let vk: u64 = pow2_u64_exec(self.entries[k].exponent);
+                                if vi + vk == amount {
+                                    let k1 = (self.entries[i].purse, self.entries[i].idx);
+                                    let k2_key = (self.entries[k].purse, self.entries[k].idx);
+                                    proof {
+                                        assert(self.spec_entries@.dom().contains(k1));
+                                        assert(self.spec_entries@.dom().contains(k2_key));
+                                        assert(k1 != k2_key);
+                                    }
+                                    return Some((k1, k2_key));
+                                }
+                            }
+                        }
+                        k = k + 1;
+                    }
+                }
+            }
+            i = i + 1;
+        }
+        None
+    }
+
     /// Find the highest-priority selectable entry in purse `p` —
     /// Ready on-chain, LocalAvailable locally — per the §6.3
     /// `entryOrderLT` ordering. Returns `None` if no such entry
