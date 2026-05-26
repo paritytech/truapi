@@ -17925,6 +17925,82 @@ proof fn lemma_tracked_unload_via_entry_refines(
     assert(post_view.events =~= step_view.events);
 }
 
+/// Quint analog: `coins' = coins.remove_keys(filter purse==p)`.
+pub open spec fn quint_step_purge_coins_of_purse(
+    pre: QuintViewState,
+    p: PurseId,
+) -> QuintViewState {
+    QuintViewState {
+        coins: pre.coins.remove_keys(Set::new(|k: (PurseId, u64)| k.0 == p)),
+        ..pre
+    }
+}
+
+proof fn lemma_purge_coins_of_purse_refines(pre: State, post: State, p: PurseId)
+    requires
+        pre.invariant(),
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins().remove_keys(
+            Set::new(|k: (PurseId, u64)| k.0 == p)),
+        post.entries() == pre.entries(),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_purge_coins_of_purse(quint_view(pre), p),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_purge_coins_of_purse(quint_view(pre), p);
+    assert(post_view.coins =~= step_view.coins);
+}
+
+/// Quint analog: `entries' = entries.remove_keys(filter purse==p)`.
+pub open spec fn quint_step_purge_entries_of_purse(
+    pre: QuintViewState,
+    p: PurseId,
+) -> QuintViewState {
+    QuintViewState {
+        entries: pre.entries.remove_keys(Set::new(|k: (PurseId, u64)| k.0 == p)),
+        ..pre
+    }
+}
+
+proof fn lemma_purge_entries_of_purse_refines(pre: State, post: State, p: PurseId)
+    requires
+        pre.invariant(),
+        post.invariant(),
+        post.purses() == pre.purses(),
+        post.coins() == pre.coins(),
+        post.entries() == pre.entries().remove_keys(
+            Set::new(|k: (PurseId, u64)| k.0 == p)),
+        post.operations() == pre.operations(),
+        post.events@ == pre.events@,
+        post.next_handle == pre.next_handle,
+        post.next_extrinsic_id == pre.next_extrinsic_id,
+        post.total_in == pre.total_in,
+        post.total_out == pre.total_out,
+        post.fee_balance == pre.fee_balance,
+        post.paid_ring_membership == pre.paid_ring_membership,
+        post.tokens@ == pre.tokens@,
+        post.chain_coins@ == pre.chain_coins@,
+        post.chain_entries@ == pre.chain_entries@,
+    ensures
+        quint_view(post) == quint_step_purge_entries_of_purse(quint_view(pre), p),
+{
+    let post_view = quint_view(post);
+    let step_view = quint_step_purge_entries_of_purse(quint_view(pre), p);
+    assert(post_view.entries =~= step_view.entries);
+}
+
 /// Quint analog: `purses' = purses.put(new_id, {id, name, 0, 0})`.
 /// Note: Quint createPurse also emits `EPurseCreated`; the Verus
 /// implementation deliberately doesn't (the pilot scheme treats purse
