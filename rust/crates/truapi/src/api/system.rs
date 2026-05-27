@@ -39,10 +39,12 @@ pub trait System: Send + Sync {
     /// Query whether the host supports a specific feature.
     ///
     /// ```ts
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    ///
     /// const result = await truapi.system.featureSupported({
     ///   tag: "Chain",
     ///   value: {
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///   },
     /// });
     /// result.match(
