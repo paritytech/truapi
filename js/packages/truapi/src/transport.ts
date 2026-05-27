@@ -3,6 +3,13 @@ import { err, ok, type Result, type ResultAsync } from "neverthrow";
 import { str, u8, type ResultPayload } from "./scale.js";
 
 /**
+ * Coerce an unknown thrown value into an `Error` instance.
+ */
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+/**
  * Handle returned by TrUAPI subscription APIs.
  **/
 export interface Subscription {
@@ -408,7 +415,7 @@ function createBaseProvider() {
     /** Transition to the closed state. Idempotent. */
     close(error: unknown) {
       if (closedError) return;
-      closedError = error instanceof Error ? error : new Error(String(error));
+      closedError = toError(error);
       for (const fn of [...onCloseCleanup]) {
         try {
           fn();
@@ -494,7 +501,7 @@ export function createIframeProvider(options: {
         target.postMessage(message, hostOrigin);
       } catch (error) {
         base.close(error);
-        throw error instanceof Error ? error : new Error(String(error));
+        throw toError(error);
       }
     },
     subscribe: base.subscribe,
@@ -559,7 +566,7 @@ export function createMessagePortProvider(
           resolvedPort.postMessage(message);
         } catch (error) {
           base.close(error);
-          throw error instanceof Error ? error : new Error(String(error));
+          throw toError(error);
         }
       } else {
         pending.push(message);
