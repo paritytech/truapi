@@ -8,8 +8,12 @@
       // GitHub Pages SPA shim: rewrite the requested path into a query string
       // the index.html bootstrap can replay, then redirect to the base.
       (function () {
-        var base = "/explorer/";
+        // Derive the mount path from this file's own URL so the shim works
+        // whether the app is served at /explorer/ or /truapi/explorer/.
+        var marker = "/explorer/";
         var path = window.location.pathname;
+        var idx = path.indexOf(marker);
+        var base = idx >= 0 ? path.slice(0, idx + marker.length) : marker;
         var search = window.location.search;
         var hash = window.location.hash;
         if (path.indexOf(base) === 0) {

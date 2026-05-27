@@ -58,6 +58,8 @@ jobs:
 
       - name: Build explorer (static export)
         working-directory: explorer
+        env:
+          EXPLORER_BASE_PATH: /truapi/explorer/
         run: npm run build
 
       - name: Assemble GitHub Pages site
