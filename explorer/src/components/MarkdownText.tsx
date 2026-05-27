@@ -8,6 +8,8 @@ interface MarkdownTextProps {
   versionId: string;
   types: DataType[];
   className?: string;
+  /** Drop fenced code blocks (e.g. client examples), keeping prose and inline code. */
+  hideCodeBlocks?: boolean;
 }
 
 /**
@@ -24,6 +26,7 @@ export function MarkdownText({
   versionId,
   types,
   className,
+  hideCodeBlocks,
 }: MarkdownTextProps) {
   const nameToId = useMemo(() => {
     const map: Record<string, string> = {};
@@ -72,6 +75,7 @@ export function MarkdownText({
               {children}
             </code>
           ),
+          ...(hideCodeBlocks ? { pre: () => null } : {}),
           p: ({ children }) => (
             <p className="leading-relaxed last:mb-0 mb-2">{children}</p>
           ),

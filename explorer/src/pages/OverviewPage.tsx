@@ -96,6 +96,7 @@ export default function OverviewPage() {
                           versionId={version.id}
                           types={version.types}
                           className="text-xs text-slate-400 mt-0.5"
+                          hideCodeBlocks
                         />
                       )}
                     </div>
