@@ -32,11 +32,11 @@ Because the channel carries nothing but bytes, both sides must agree precisely o
 
 Messages are plain structs and enums that are serialized into bytes on one side and decoded back into the same shape on the other.
 
-Message serialization is built on [JAM codec](https://github.com/paritytech/jam-codec). The codec is positional — it writes no field names or tags, only values in declaration order — so **the field order of structs and the variant order of enums are part of the wire contract**; reordering them silently breaks compatibility. The examples in this document omit the codec derive calls, but they are always implied. `Result` is treated as an ordinary serializable enum.
+Message serialization is built on [SCALE codec](https://github.com/paritytech/parity-scale-codec). The codec is positional — it writes no field names or tags, only values in declaration order — so **the field order of structs and the variant order of enums are part of the wire contract**; reordering them silently breaks compatibility. The examples in this document omit the codec derive calls, but they are always implied. `Result` is treated as an ordinary serializable enum.
 
-#### Note on JAM codec
+#### Note on `Compact`
 
-[JAM codec](https://github.com/paritytech/jam-codec) is based on SCALE codec, adding native support for the `Compact` type — a variable-length integer encoding that keeps small numbers small on the wire.
+SCALE encodes integers in fixed width by default. The `Compact` type provides a variable-length encoding that keeps small numbers small on the wire — a single byte for the common small values.
 
 ### Interface
 
@@ -149,6 +149,6 @@ Before either side trusts a single byte of payload, they have to agree on how th
 
 Handshake calls are bidirectional: both Host and Product can send a handshake request, and both MUST respond to one. An implementation CAN apply a timeout of 10 seconds, after which the connection is marked failed and the call returns a timeout error. The handshake result can be cached.
 
-The handshake request carries the protocol (codec) version as a `u8`. On receiving it, the peer switches its encoding/decoding mode to match; for JAM codec, the version is `1`. A successful handshake MUST be the first request TrUAPI processes — any other request sent before a successful handshake response MUST fail.
+The handshake request carries the protocol (codec) version as a `u8`. On receiving it, the peer switches its encoding/decoding mode to match; for SCALE codec, the version is `1`. A successful handshake MUST be the first request TrUAPI processes — any other request sent before a successful handshake response MUST fail.
 
 The concrete handshake request, response, and error types are defined in the `truapi` crate.
