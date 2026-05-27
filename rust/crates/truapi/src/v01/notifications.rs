@@ -1,6 +1,6 @@
 use parity_scale_codec::{Decode, Encode};
 
-use super::{ProductAccountId, Topic};
+use super::{AccountId, Topic};
 
 /// Opaque identifier for a push notification, unique per product.
 pub type NotificationId = u32;
@@ -54,16 +54,13 @@ pub struct HostPushNotificationCancelRequest {
 /// touched.
 ///
 /// `signer` is mandatory: the subscriber always names the publisher whose
-/// statements should trigger a push — the calling product's own identity to
-/// self-subscribe, or a *different* product's (e.g. a conference organizer's
-/// announcements).
+/// statements should trigger a push.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostPushAddRulesRequest {
     /// Topics to register.
     pub topics: Vec<Topic>,
-    /// Publisher whose statements should trigger a push. Pass the calling
-    /// product's own identity to self-subscribe.
-    pub signer: ProductAccountId,
+    /// Public key of the publisher whose statements should trigger a push.
+    pub signer: AccountId,
 }
 
 /// Failure modes for [`HostPushAddRulesRequest`].
@@ -84,8 +81,8 @@ pub enum HostPushAddRulesError {
 pub struct HostPushRemoveRulesRequest {
     /// Topics to remove.
     pub topics: Vec<Topic>,
-    /// Publisher scope of the rules to remove. Mandatory.
-    pub signer: ProductAccountId,
+    /// Public key of the publisher whose rules to remove. Mandatory.
+    pub signer: AccountId,
 }
 
 /// Failure modes for [`HostPushRemoveRulesRequest`].
@@ -128,8 +125,8 @@ pub enum HostPushListRulesError {
 pub struct HostPushSetRulesRequest {
     /// Topics that should be active after the call.
     pub topics: Vec<Topic>,
-    /// Publisher scope whose rule set is being replaced. Mandatory.
-    pub signer: ProductAccountId,
+    /// Public key of the publisher whose rule set is being replaced. Mandatory.
+    pub signer: AccountId,
 }
 
 /// Failure modes for [`HostPushSetRulesRequest`].

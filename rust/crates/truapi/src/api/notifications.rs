@@ -77,9 +77,7 @@ pub trait Notifications: Send + Sync {
     /// Register one or more `(signer, topic)` rules so the user is woken by a
     /// push when a signed statement matching a rule appears on the Statement
     /// Store. Mirrors `POST /v1/subscriptions/rules` from the v2 push backend
-    /// spec. `signer` is mandatory — the publisher whose statements should wake
-    /// the user (the calling product's own identity to self-subscribe, or
-    /// another product's).
+    /// spec.
     ///
     /// ```ts
     /// const result = await truapi.notifications.pushAddRules({

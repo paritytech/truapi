@@ -104,10 +104,10 @@ async fn push_broadcast(
 A rule is a `(signer, topic)` pair. `signer` is **mandatory**: the subscriber always names the publisher.
 
 ```rust
-pub struct HostPushAddRulesRequest    { pub topics: Vec<Topic>, pub signer: ProductAccountId }
-pub struct HostPushRemoveRulesRequest { pub topics: Vec<Topic>, pub signer: ProductAccountId }
+pub struct HostPushAddRulesRequest    { pub topics: Vec<Topic>, pub signer: AccountId }
+pub struct HostPushRemoveRulesRequest { pub topics: Vec<Topic>, pub signer: AccountId }
 pub struct HostPushListRulesRequest;
-pub struct HostPushSetRulesRequest    { pub topics: Vec<Topic>, pub signer: ProductAccountId }
+pub struct HostPushSetRulesRequest    { pub topics: Vec<Topic>, pub signer: AccountId }
 
 pub struct HostPushListRulesResponse {
     pub topics: Vec<Topic>,
