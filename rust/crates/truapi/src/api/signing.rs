@@ -118,6 +118,8 @@ pub trait Signing: Send + Sync {
     /// Sign an extrinsic payload with a non-product account.
     ///
     /// ```ts
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    ///
     /// const result = await truapi.signing.signPayloadWithLegacyAccount({
     ///   signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
     ///   payload: {
@@ -125,7 +127,7 @@ pub trait Signing: Send + Sync {
     ///     blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///     blockNumber: "0x00000000",
     ///     era: "0x00",
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///     method: "0x0000",
     ///     nonce: "0x00000000",
     ///     signedExtensions: [],
@@ -181,12 +183,14 @@ pub trait Signing: Send + Sync {
     /// Sign an extrinsic payload.
     ///
     /// ```ts
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    ///
     /// const result = await truapi.signing.signPayload({
     ///   account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },
     ///   blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///   blockNumber: "0x00000000",
     ///   era: "0x00",
-    ///   genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///   method: "0x00003448656c6c6f2c20776f726c6421",
     ///   nonce: "0x00000000",
     ///   signedExtensions: [],
