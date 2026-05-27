@@ -57,10 +57,7 @@ pub enum RemotePermission {
 
 /// remote-permission request (RFC 0002).
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode, Display)]
-#[display(
-    "{}",
-    permissions.iter().map(ToString::to_string).collect::<Vec<_>>().join("; ")
-)]
+#[display("{permission}")]
 pub struct RemotePermissionRequest {
     /// Permission requested by the product.
     pub permission: RemotePermission,
