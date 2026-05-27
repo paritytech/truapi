@@ -156,11 +156,10 @@ pub trait Notifications: Send + Sync {
     ) -> Result<HostPushSetRulesResponse, CallError<HostPushSetRulesError>>;
 
     /// Publish an announcement to subscribers. Interim distribution that does
-    /// not use the Statement Store as the distribution layer, while preserving
-    /// the broadcaster's authenticity: the host signs the announcement with the
-    /// calling product's account and submits it directly to the push backend,
-    /// which verifies the signature and fans out using the same `(signer,
-    /// topic)` rule matching.
+    /// not use the Statement Store as the distribution layer: the host sets the
+    /// publisher `signer` to the calling product's identity (the product cannot
+    /// override it) and submits the announcement to the push backend, which fans
+    /// out using the same `(signer, topic)` rule matching.
     ///
     /// ```ts
     /// const result = await truapi.notifications.pushBroadcast({

@@ -158,9 +158,9 @@ pub struct PushBroadcastContent {
 }
 
 /// Request to publish an announcement to subscribers via the interim direct
-/// transport. The host signs the announcement with the calling product's
-/// account and submits it directly to the push backend; the product supplies
-/// only the topics and content.
+/// transport. The host sets the publisher `signer` to the calling product's
+/// identity and submits the announcement to the push backend; the product
+/// supplies only the topics and content.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostPushBroadcastRequest {
     /// Topics to publish on; matched against subscriber rules with the caller
@@ -173,7 +173,7 @@ pub struct HostPushBroadcastRequest {
 /// Result of a successful [`HostPushBroadcastRequest`].
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostPushBroadcastResponse {
-    /// Blake2b-256 hash of the signed broadcast, for dedup and audit.
+    /// Blake2b-256 hash of the broadcast, for dedup and audit.
     pub message_hash: [u8; 32],
 }
 

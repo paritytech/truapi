@@ -14,7 +14,7 @@ Adds four TrUAPI methods — `push_add_rules`, `push_remove_rules`, `push_list_r
 
 The method names use `add` / `remove` rather than `subscribe` / `unsubscribe` because the `_subscribe` suffix is reserved for streaming TrUAPI methods (e.g. `statementStore.subscribe`).
 
-An **interim transport**, `push_broadcast`, distributes announcements **without using the Statement Store as the distribution layer**, while still preserving the broadcaster's authenticity: the host signs the announcement with the calling product's account and submits it directly to the push backend, which verifies the signature and fans out using the same `(signer, topic)` rule matching. It is marked **(interim)** in the API and Types sections below.
+An **interim transport**, `push_broadcast`, distributes announcements **without using the Statement Store as the distribution layer**. The host submits the announcement to the push backend, **setting the publisher `signer` itself** (the product cannot override it), and the backend fans out using the same `(signer, topic)` rule matching. It is marked **(interim)** in the API and Types sections below.
 
 ## References
 
@@ -29,7 +29,7 @@ The push-notifications v2 design assigns delivery to a host-side notification sy
 
 ### Worked example: festival announcements
 
-A conference product publishes festival-wide announcements signed by the organizer. An attendee's app subscribes by calling `push_add_rules({ topics: [announcements_topic], signer: organizer_id })`, passing the organizer product's `ProductAccountId` explicitly. The organizer publishes with `push_broadcast` — the host signs the announcement and submits it to the backend. From that point on the attendee is woken for new announcements even with the app closed:
+A conference product publishes festival-wide announcements signed by the organizer. An attendee's app subscribes by calling `push_add_rules({ topics: [announcements_topic], signer: organizer_id })`, passing the organizer product's `ProductAccountId` explicitly. The organizer publishes with `push_broadcast` — the host sets the `signer` to the organizer and submits the announcement to the backend. From that point on the attendee is woken for new announcements even with the app closed:
 
 ```
 Publisher app                                          Subscriber app
@@ -43,13 +43,13 @@ Publisher app                                          Subscriber app
         |                  +------------------------------------+---+------+
         |                  |  Host + push backend                          |
         |                  |  stores rule (organizer_id, T)                |
-        |                  |  (4) verify signature; match (organizer_id,T) |
+        |                  |  (4) match (organizer_id, T)                  |
         |                  |       -> deliver to this subscriber           |
         |                  +-----------------------+-----------------------+
         |                                          ^
-        |   (2) push_broadcast({ topics: [T],      |  (3) host signs the
-        |       content })                         |      announcement and
-        |------------------------------------------+      submits to backend
+        |   (2) push_broadcast({ topics: [T],      |  (3) host sets signer
+        |       content })                         |      and submits to
+        |------------------------------------------+      the backend
 ```
 
 ## Detailed Design
@@ -90,7 +90,7 @@ async fn push_set_rules(
 
 #### Interim: direct broadcast
 
-`push_broadcast` distributes an announcement **without using the Statement Store as the distribution layer**, while preserving the broadcaster's authenticity. The product sends only `{ topics, content }`. The host **MUST** sign the broadcast with the calling product's account (it sets the signer to that account — unforgeable, host-set — and signs a canonical encoding of `(signer, topics, content)`) and submit it directly to the backend. The backend **MUST** verify the signature, rejecting any unsigned or invalidly-signed broadcast, then matches `(signer, topic)` against subscriber rules; matching, rate-limiting, dedup, and dispatch are unchanged — only the distribution layer differs. The signature is the basis of authenticity; the product neither supplies nor can forge it, which is why it appears in neither the request nor the response.
+`push_broadcast` distributes an announcement **without using the Statement Store as the distribution layer**. The product sends only `{ topics, content }`. The host **sets the `signer` itself** — to the calling product's channel identity, host-set so the product cannot override or spoof it — and submits the announcement to the backend. The backend matches `(signer, topic)` against subscriber rules; matching, rate-limiting, dedup, and dispatch are unchanged — only the distribution layer differs. The product never sets `signer`, which is why it is absent from the request.
 
 ```rust
 #[wire(request_id = 172)]
@@ -146,7 +146,7 @@ pub enum HostPushSetRulesError {
 
 #### Interim: direct broadcast
 
-The broadcast is **not** a Statement Store statement: the requirement is a **verifiable signature**, not a store-shaped object, so there is no `channel`, topic slots, or `expiry`. A later version can move distribution to the Statement Store without changing subscriber rules or the authenticity model.
+The broadcast is **not** a Statement Store statement: it is a plain `{ topics, content }` the host submits with a host-set `signer`, so there is no `channel`, topic slots, or `expiry`. A later version can move distribution to the Statement Store without changing subscriber rules.
 
 ```rust
 pub struct PushBroadcastContent {
@@ -161,7 +161,7 @@ pub struct HostPushBroadcastRequest {
 }
 
 pub struct HostPushBroadcastResponse {
-    pub message_hash: [u8; 32],     // Blake2b-256 of the signed broadcast (dedup / audit)
+    pub message_hash: [u8; 32],     // Blake2b-256 of the broadcast (dedup / audit)
 }
 
 pub enum HostPushBroadcastError {
