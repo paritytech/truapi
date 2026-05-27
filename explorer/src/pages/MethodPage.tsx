@@ -2,7 +2,6 @@ import { Link, useOutletContext, useParams } from "react-router-dom";
 import type { VersionEntry } from "../data/types";
 import { findMethod, productFunction } from "../data/registry";
 import PatternBadge from "../components/PatternBadge";
-import CodeBlock from "../components/CodeBlock";
 import { TypeString } from "../components/TypeLink";
 import { MarkdownText } from "../components/MarkdownText";
 
@@ -126,16 +125,6 @@ export default function MethodPage() {
           )}
         </div>
       </div>
-
-
-      {method.exampleSource && (
-        <div className="mb-8 animate-slide-up">
-          <h2 className="text-lg font-semibold text-white font-display mb-3">
-            Example
-          </h2>
-          <CodeBlock code={method.exampleSource} />
-        </div>
-      )}
     </div>
   );
 }

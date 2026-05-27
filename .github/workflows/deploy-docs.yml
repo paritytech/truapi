@@ -81,6 +81,13 @@ jobs:
           cp -R explorer/dist/. site/explorer/
           touch site/.nojekyll
 
+      - name: Add explorer SPA fallback to root 404
+        # GitHub Pages serves only the site-root 404.html (the playground's
+        # Next.js not-found) for every missing path, including the explorer's
+        # client routes. Inject a shim that replays /explorer/* deep links into
+        # the explorer index; other paths keep the playground 404.
+        run: node scripts/inject-explorer-404.mjs site/404.html
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
