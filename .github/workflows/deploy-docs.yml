@@ -2,7 +2,7 @@ name: Deploy Docs
 
 on:
   push:
-    branches: [main]
+    branches: [main, worktree-explorer-site-129]
   workflow_dispatch:
 
 concurrency:
