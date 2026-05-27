@@ -689,4 +689,35 @@ export const services: ServiceInfo[] = [
       },
     ],
   },
+  {
+    name: "Resource Allocation",
+    methods: [
+      {
+        name: "request",
+        type: "unary",
+        signature:
+          "request(request: HostRequestResourceAllocationRequest): Promise<Result<HostRequestResourceAllocationResponse, ResourceAllocationError>>",
+        docUrl:
+          "api/resource_allocation/trait.ResourceAllocation.html#method.request",
+        description: "Request the host to pre-allocate one or more resources.",
+        requestDescription: "HostRequestResourceAllocationRequest",
+        requestType: "host-request-resource-allocation-request",
+        responseType: "host-request-resource-allocation-response",
+        errorType: "resource-allocation-error",
+      },
+    ],
+  },
+  {
+    name: "Theme",
+    methods: [
+      {
+        name: "subscribe",
+        type: "subscription",
+        signature: "subscribe(): ObservableLike<HostThemeSubscribeItem>",
+        docUrl: "api/theme/trait.Theme.html#method.subscribe",
+        description: "Subscribe to host theme changes.",
+        responseType: "host-theme-subscribe-item",
+      },
+    ],
+  },
 ];
