@@ -13,7 +13,7 @@ The TrUAPI protocol connects a **Product** — a web application — with its **
 
 This document specifies the **transport layer**: the rules for turning a method call on one side into bytes on the wire and back into a typed result on the other. It deliberately stops there. The concrete call surface — the methods themselves, their request/response types, error enums, and the wire-protocol discriminant ids — is defined in the `truapi` crate (`rust/crates/truapi`) and the clients generated from it. Keeping the two apart lets the API surface grow without disturbing the transport rules underneath it.
 
-TrUAPI is language-agnostic. The examples below are written in Rust, but the protocol assumes nothing Rust-specific; any language that can serialize the same byte layout can speak it.
+TrUAPI is language-agnostic. The protocol assumes nothing Rust-specific; any language that can serialize the same byte layout can speak it.
 
 ## Technical Requirements
 
