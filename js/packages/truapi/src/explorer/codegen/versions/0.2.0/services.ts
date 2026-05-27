@@ -689,4 +689,62 @@ export const services: ServiceInfo[] = [
       },
     ],
   },
+  {
+    name: "JSON-RPC",
+    methods: [
+      {
+        name: "send_message",
+        type: "unary",
+        signature:
+          "sendMessage(request: HostJsonrpcMessageSendRequest): Promise<Result<undefined, GenericError>>",
+        docUrl: "api/jsonrpc/trait.JsonRpc.html#method.send_message",
+        description: "Send a JSON-RPC message.",
+        requestDescription: "HostJsonrpcMessageSendRequest",
+        requestType: "host-jsonrpc-message-send-request",
+        errorType: "generic-error",
+      },
+      {
+        name: "subscribe_messages",
+        type: "subscription",
+        signature:
+          "subscribeMessages(request: HostJsonrpcMessageSubscribeRequest): ObservableLike<HostJsonrpcMessageSubscribeItem>",
+        docUrl: "api/jsonrpc/trait.JsonRpc.html#method.subscribe_messages",
+        description: "Subscribe to inbound JSON-RPC messages.",
+        requestDescription: "HostJsonrpcMessageSubscribeRequest",
+        requestType: "host-jsonrpc-message-subscribe-request",
+        responseType: "host-jsonrpc-message-subscribe-item",
+      },
+    ],
+  },
+  {
+    name: "Resource Allocation",
+    methods: [
+      {
+        name: "request",
+        type: "unary",
+        signature:
+          "request(request: HostRequestResourceAllocationRequest): Promise<Result<HostRequestResourceAllocationResponse, ResourceAllocationError>>",
+        docUrl:
+          "api/resource_allocation/trait.ResourceAllocation.html#method.request",
+        description: "Request the host to pre-allocate one or more resources.",
+        requestDescription: "HostRequestResourceAllocationRequest",
+        requestType: "host-request-resource-allocation-request",
+        responseType: "host-request-resource-allocation-response",
+        errorType: "resource-allocation-error",
+      },
+    ],
+  },
+  {
+    name: "Theme",
+    methods: [
+      {
+        name: "subscribe",
+        type: "subscription",
+        signature: "subscribe(): ObservableLike<HostThemeSubscribeItem>",
+        docUrl: "api/theme/trait.Theme.html#method.subscribe",
+        description: "Subscribe to host theme changes.",
+        responseType: "host-theme-subscribe-item",
+      },
+    ],
+  },
 ];
