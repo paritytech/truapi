@@ -12,8 +12,10 @@ pub trait JsonRpc: Send + Sync {
     /// Send a JSON-RPC message.
     ///
     /// ```ts
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    ///
     /// const result = await truapi.jsonRpc.sendMessage({
-    ///   genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///   message: '{"jsonrpc":"2.0","id":1,"method":"system_name","params":[]}',
     /// });
     /// result.match(
@@ -33,13 +35,14 @@ pub trait JsonRpc: Send + Sync {
     /// Subscribe to inbound JSON-RPC messages.
     ///
     /// ```ts
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    ///
     /// import { from, take } from "rxjs";
     ///
     /// from(
     ///   truapi.jsonRpc.subscribeMessages({
     ///     request: {
-    ///       genesisHash:
-    ///         "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///       genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///     },
     ///   }),
     /// )

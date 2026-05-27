@@ -84,13 +84,15 @@ pub trait Account: Send + Sync {
     /// Generate a ring VRF proof for a product account.
     ///
     /// ```ts
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    ///
     /// const result = await truapi.account.createAccountProof({
     ///   productAccountId: {
     ///     dotNsIdentifier: "truapi-playground.dot",
     ///     derivationIndex: 0,
     ///   },
     ///   ringLocation: {
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///     ringRootHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///     hints: { palletInstance: 42 },
     ///   },
