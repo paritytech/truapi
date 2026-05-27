@@ -23,7 +23,7 @@ pub trait ResourceAllocation: Send + Sync {
     ///   (error) => console.error(error),
     /// );
     /// ```
-    #[wire(request_id = 124)]
+    #[wire(request_id = 130)]
     async fn request(
         &self,
         _cx: &CallContext,

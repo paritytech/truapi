@@ -52,7 +52,7 @@ pub trait Notifications: Send + Sync {
     ///   (error) => console.error(error),
     /// );
     /// ```
-    #[wire(request_id = 128)]
+    #[wire(request_id = 134)]
     async fn cancel_push_notification(
         &self,
         cx: &CallContext,

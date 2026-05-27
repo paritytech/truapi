@@ -19,7 +19,7 @@ pub trait Entropy: Send + Sync {
     ///   (error) => console.error(error),
     /// );
     /// ```
-    #[wire(request_id = 102)]
+    #[wire(request_id = 108)]
     async fn derive(
         &self,
         _cx: &CallContext,

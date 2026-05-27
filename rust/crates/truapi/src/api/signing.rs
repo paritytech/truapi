@@ -151,7 +151,7 @@ pub trait Signing: Send + Sync {
     ///   (error) => console.error(error),
     /// );
     /// ```
-    #[wire(request_id = 108)]
+    #[wire(request_id = 114)]
     async fn sign_raw(
         &self,
         _cx: &CallContext,
@@ -186,7 +186,7 @@ pub trait Signing: Send + Sync {
     ///   (error) => console.error(error),
     /// );
     /// ```
-    #[wire(request_id = 110)]
+    #[wire(request_id = 116)]
     async fn sign_payload(
         &self,
         _cx: &CallContext,

@@ -139,7 +139,7 @@ pub trait Account: Send + Sync {
     ///   (error) => console.error(error),
     /// );
     /// ```
-    #[wire(request_id = 104)]
+    #[wire(request_id = 110)]
     async fn get_user_id(
         &self,
         _cx: &CallContext,
@@ -162,7 +162,7 @@ pub trait Account: Send + Sync {
     ///   (error) => console.error(error),
     /// );
     /// ```
-    #[wire(request_id = 106)]
+    #[wire(request_id = 112)]
     async fn request_login(
         &self,
         _cx: &CallContext,
