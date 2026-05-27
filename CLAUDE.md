@@ -83,6 +83,22 @@ npm run build
 npm test                # wire-equality + wire-table-loop smoke tests
 ```
 
+### Explorer
+
+The explorer is a standalone Vite/React site (no host needed). To run it
+locally, just start its own dev server and open the URL directly in a browser.
+**Do not** launch dotli for the explorer; dotli is only for the playground.
+
+```bash
+cd explorer
+npx vite --base / --port 5181   # standalone site at http://localhost:5181/
+npm run build                    # static export to dist/
+```
+
+Use a port other than 5173 (dotli's conventional port) to avoid stale-tab
+confusion. The explorer deploys to the GitHub Pages root; the playground stays
+on dotli/Pages `/playground/`.
+
 ### Playground
 
 ```bash
