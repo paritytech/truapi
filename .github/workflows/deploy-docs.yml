@@ -42,16 +42,6 @@ jobs:
       - name: Build Rust API docs (HTML)
         run: cargo doc -p truapi --no-deps
 
-      - name: Install playground dependencies
-        working-directory: playground
-        run: yarn install --frozen-lockfile
-
-      - name: Build playground (static export)
-        working-directory: playground
-        env:
-          NEXT_PUBLIC_BASE_PATH: /truapi
-        run: yarn build
-
       - name: Install explorer dependencies
         working-directory: explorer
         run: npm ci
@@ -59,15 +49,19 @@ jobs:
       - name: Build explorer (static export)
         working-directory: explorer
         env:
-          EXPLORER_BASE_PATH: /truapi/explorer/
+          EXPLORER_BASE_PATH: /truapi/
         run: npm run build
 
       - name: Assemble GitHub Pages site
         run: |
           rm -rf site
           mkdir -p site
-          # Playground at root.
-          cp -R playground/out/. site/
+          # Explorer SPA at the site root.
+          cp -R explorer/dist/. site/
+          # GitHub Pages serves the site-root 404.html for every missing path.
+          # Serving a copy of the SPA index lets React Router resolve explorer
+          # deep links (e.g. /truapi/v/main/method/foo) on a fresh load.
+          cp site/index.html site/404.html
           # truapi crate's cargo doc mounted at /cargo_doc/ with the crate's
           # pages flattened (no /truapi/ prefix). rustdoc HTMLs reference
           # static.files via `../../../static.files/`, which from
@@ -76,17 +70,7 @@ jobs:
           mkdir -p site/cargo_doc
           cp -RL target/doc/truapi/. site/cargo_doc/
           cp -RL target/doc/static.files site/static.files
-          # Explorer mounted at /explorer/ (its Vite `base` path).
-          mkdir -p site/explorer
-          cp -R explorer/dist/. site/explorer/
           touch site/.nojekyll
-
-      - name: Add explorer SPA fallback to root 404
-        # GitHub Pages serves only the site-root 404.html (the playground's
-        # Next.js not-found) for every missing path, including the explorer's
-        # client routes. Inject a shim that replays /explorer/* deep links into
-        # the explorer index; other paths keep the playground 404.
-        run: node scripts/inject-explorer-404.mjs site/404.html
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
