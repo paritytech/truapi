@@ -10,6 +10,8 @@ required=(
   "js/packages/truapi/src/generated/types.ts"
   "js/packages/truapi/src/generated/wire-table.ts"
   "js/packages/truapi/src/playground/codegen/services.ts"
+  "js/packages/truapi/src/explorer/codegen/types.ts"
+  "js/packages/truapi/src/explorer/versions.ts"
 )
 
 missing=0

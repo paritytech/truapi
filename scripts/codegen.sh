@@ -28,11 +28,15 @@ cargo run -p truapi-codegen -- \
   --playground-output js/packages/truapi/src/playground \
   --client-examples-output playground/test/generated/examples \
   --host-output js/packages/truapi-host/src/generated \
+  --explorer-output js/packages/truapi/src/explorer \
   --codec-version 1
+
+node scripts/regen-explorer-versions.mjs
 
 npm exec --yes -- prettier --write \
   "js/packages/truapi/src/generated/**/*.ts" \
   "js/packages/truapi/src/playground/**/*.ts" \
+  "js/packages/truapi/src/explorer/**/*.ts" \
   "playground/test/generated/examples/**/*.ts" \
   "js/packages/truapi-host/src/generated/**/*.ts"
 

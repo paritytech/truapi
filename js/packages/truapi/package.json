@@ -1,6 +1,6 @@
 {
   "name": "@parity/truapi",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "TrUAPI TypeScript transport, SCALE codecs, and generated API client",
   "license": "MIT",
   "author": "Parity Technologies <admin@parity.io>",
@@ -46,6 +46,18 @@
     "./playground/codegen/truapi-dts": {
       "types": "./dist/playground/codegen/truapi-dts.d.ts",
       "import": "./dist/playground/codegen/truapi-dts.js"
+    },
+    "./explorer/data-types": {
+      "types": "./dist/explorer/data-types.d.ts",
+      "import": "./dist/explorer/data-types.js"
+    },
+    "./explorer/types": {
+      "types": "./dist/explorer/codegen/types.d.ts",
+      "import": "./dist/explorer/codegen/types.js"
+    },
+    "./explorer/versions": {
+      "types": "./dist/explorer/versions.d.ts",
+      "import": "./dist/explorer/versions.js"
     }
   },
   "scripts": {
@@ -53,7 +65,7 @@
     "build": "tsc",
     "prebuild": "npm run ensure-generated",
     "prepare": "npm run build",
-    "codegen": "cargo run -p truapi-codegen -- --input ../../../target/doc/truapi.json --output src/generated --playground-output src/playground",
+    "codegen": "cargo run -p truapi-codegen -- --input ../../../target/doc/truapi.json --output src/generated --playground-output src/playground --explorer-output src/explorer",
     "typecheck": "npm run build",
     "pretest": "npm run ensure-generated",
     "test": "for f in test/*.test.mjs; do echo \"=== $f ===\" && bun \"$f\" || exit 1; done"

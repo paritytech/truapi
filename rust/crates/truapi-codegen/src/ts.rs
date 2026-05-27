@@ -12,9 +12,11 @@ use indoc::{formatdoc, writedoc};
 use crate::rustdoc::*;
 
 mod examples;
+mod explorer;
 mod playground;
 
 pub use examples::generate_client_examples;
+pub use explorer::generate_explorer;
 pub use playground::generate_playground_services;
 
 #[derive(Default)]
@@ -3427,6 +3429,7 @@ mod tests {
     fn versioned_tuple_wrapper_variants(name: &str, variants: &[(u32, &str)]) -> TypeDef {
         TypeDef {
             name: name.to_string(),
+            module_path: vec!["truapi".into(), "versioned".into()],
             generic_params: Vec::new(),
             kind: TypeDefKind::Enum(
                 variants
@@ -3467,6 +3470,7 @@ mod tests {
         ];
         TypeDef {
             name: name.to_string(),
+            module_path: vec!["truapi".into(), "versioned".into()],
             generic_params: Vec::new(),
             kind: TypeDefKind::Enum(vec![
                 VariantDef {
@@ -3488,6 +3492,7 @@ mod tests {
     fn detect_versioned_wrapper_keeps_each_versioned_variant() {
         let ty = TypeDef {
             name: "ExampleRequest".to_string(),
+            module_path: vec!["truapi".into(), "versioned".into()],
             generic_params: Vec::new(),
             kind: TypeDefKind::Enum(vec![
                 VariantDef {
