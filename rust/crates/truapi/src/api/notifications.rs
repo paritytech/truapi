@@ -2,6 +2,7 @@
 
 use crate::versioned::notifications::{
     HostPushAddRulesError, HostPushAddRulesRequest, HostPushAddRulesResponse,
+    HostPushBroadcastError, HostPushBroadcastRequest, HostPushBroadcastResponse,
     HostPushListRulesError, HostPushListRulesRequest, HostPushListRulesResponse,
     HostPushNotificationCancelError, HostPushNotificationCancelRequest,
     HostPushNotificationCancelResponse, HostPushNotificationError, HostPushNotificationRequest,
@@ -73,15 +74,17 @@ pub trait Notifications: Send + Sync {
         request: HostPushNotificationCancelRequest,
     ) -> Result<HostPushNotificationCancelResponse, CallError<HostPushNotificationCancelError>>;
 
-    /// Register one or more topics so the user is woken up by a push when a
-    /// signed statement matching any registered topic appears on the
-    /// Statement Store. Mirrors `POST /v1/subscriptions/rules` from the v2
-    /// push backend spec. The signer is injected by the host (based on the
-    /// calling product's identity) when relaying the rule to the backend.
+    /// Register one or more `(signer, topic)` rules so the user is woken by a
+    /// push when a signed statement matching a rule appears on the Statement
+    /// Store. Mirrors `POST /v1/subscriptions/rules` from the v2 push backend
+    /// spec. `signer` is mandatory — the publisher whose statements should wake
+    /// the user (the calling product's own identity to self-subscribe, or
+    /// another product's).
     ///
     /// ```ts
     /// const result = await truapi.notifications.pushAddRules({
     ///   topics: ["0x00"],
+    ///   signer: "0x…",
     /// });
     /// result.match(
     ///   () => console.log("ok"),
@@ -101,6 +104,7 @@ pub trait Notifications: Send + Sync {
     /// ```ts
     /// const result = await truapi.notifications.pushRemoveRules({
     ///   topics: ["0x00"],
+    ///   signer: "0x…",
     /// });
     /// result.match(
     ///   () => console.log("ok"),
@@ -141,6 +145,7 @@ pub trait Notifications: Send + Sync {
     /// ```ts
     /// const result = await truapi.notifications.pushSetRules({
     ///   topics: ["0x00"],
+    ///   signer: "0x…",
     /// });
     /// result.match(
     ///   () => console.log("ok"),
@@ -153,4 +158,27 @@ pub trait Notifications: Send + Sync {
         cx: &CallContext,
         request: HostPushSetRulesRequest,
     ) -> Result<HostPushSetRulesResponse, CallError<HostPushSetRulesError>>;
+
+    /// Publish an announcement to subscribers. Interim distribution that does
+    /// not use the Statement Store as the distribution layer: the host sets the
+    /// publisher `signer` to the calling product's identity (the product cannot
+    /// override it) and submits the announcement to the push backend, which fans
+    /// out using the same `(signer, topic)` rule matching.
+    ///
+    /// ```ts
+    /// const result = await truapi.notifications.pushBroadcast({
+    ///   topics: ["0x00"],
+    ///   content: { title: "Web3 Summit", body: "Keynote moved to Hall A" },
+    /// });
+    /// result.match(
+    ///   (value) => console.log(value.matched),
+    ///   (error) => console.error(error),
+    /// );
+    /// ```
+    #[wire(request_id = 172)]
+    async fn push_broadcast(
+        &self,
+        cx: &CallContext,
+        request: HostPushBroadcastRequest,
+    ) -> Result<HostPushBroadcastResponse, CallError<HostPushBroadcastError>>;
 }

@@ -21,4 +21,7 @@ versioned_type! {
     pub enum HostPushSetRulesRequest { V1 => v01::HostPushSetRulesRequest }
     pub enum HostPushSetRulesResponse { V1 }
     pub enum HostPushSetRulesError { V1 => v01::HostPushSetRulesError }
+    pub enum HostPushBroadcastRequest { V1 => v01::HostPushBroadcastRequest }
+    pub enum HostPushBroadcastResponse { V1 => v01::HostPushBroadcastResponse }
+    pub enum HostPushBroadcastError { V1 => v01::HostPushBroadcastError }
 }
