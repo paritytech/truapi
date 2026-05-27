@@ -100,4 +100,4 @@ Alternatively, with a deployed Polkadot Desktop Host installed, navigate to
 ## Deployment
 
 Pushes to `main` trigger `.github/workflows/deploy-playground.yml`, which builds `playground/` and publishes the static export to `truapi-playground.dot` via `bulletin-deploy`.
-Pushes to `main` also trigger `.github/workflows/deploy-docs.yml`, which publishes the explorer (at the Pages root) and the Rust API docs (under `/cargo_doc/`) to GitHub Pages.
+Pushes to `main` also trigger `.github/workflows/deploy-docs.yml`, which publishes the explorer (at the Pages root), the playground (under `/playground/`), and the Rust API docs (under `/cargo_doc/`) to GitHub Pages.
