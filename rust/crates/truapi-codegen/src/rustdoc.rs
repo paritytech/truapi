@@ -856,6 +856,11 @@ fn resolve_type(ty: &serde_json::Value, names: &NameContext) -> Result<TypeRef> 
             "Option" => Ok(TypeRef::Option(Box::new(expect_single_arg(
                 "Option", args,
             )?))),
+            "Compact" => {
+                expect_single_arg("Compact", args)?;
+                Ok(TypeRef::Primitive("compact".to_string()))
+            }
+            "OptionBool" => Ok(TypeRef::Primitive("optionBool".to_string())),
             "String" => {
                 if !args.is_empty() {
                     bail!(

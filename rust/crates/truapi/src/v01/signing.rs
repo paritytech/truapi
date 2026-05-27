@@ -5,9 +5,7 @@ use super::ProductAccountId;
 /// Full Substrate extrinsic signing payload with all fields needed for signature
 /// generation.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct HostSignPayloadRequest {
-    /// Product account that will sign this payload.
-    pub account: ProductAccountId,
+pub struct HostSignPayloadData {
     /// Reference block hash.
     pub block_hash: Vec<u8>,
     /// Reference block number.
@@ -38,6 +36,15 @@ pub struct HostSignPayloadRequest {
     pub mode: Option<u32>,
     /// Request signed transaction back.
     pub with_signed_transaction: Option<bool>,
+}
+
+/// Request to sign an extrinsic payload with a product account.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostSignPayloadRequest {
+    /// Product account that will sign this payload.
+    pub account: ProductAccountId,
+    /// The extrinsic payload to sign.
+    pub payload: HostSignPayloadData,
 }
 
 /// Raw data to sign -- either binary bytes or a string message.
@@ -104,7 +111,7 @@ pub struct HostSignPayloadWithLegacyAccountRequest {
     /// Signer address (SS58 or hex) of the legacy account.
     pub signer: String,
     /// The extrinsic payload to sign.
-    pub payload: HostSignPayloadRequest,
+    pub payload: HostSignPayloadData,
 }
 
 /// Response containing a created transaction.

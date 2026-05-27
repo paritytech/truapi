@@ -27,6 +27,7 @@ export {
   Vector,
   _void,
   bool,
+  compact,
   i8,
   i16,
   i32,
@@ -39,6 +40,29 @@ export {
   u64,
   u128,
 } from "scale-ts";
+
+/**
+ * Substrate `OptionBool`: a one-byte `Option<bool>`.
+ *
+ * Canonical SCALE encoding (matches `parity_scale_codec::OptionBool`):
+ * `undefined` → `0`, `true` → `1`, `false` → `2`.
+ */
+export const OptionBool: Codec<boolean | undefined> = enhanceCodec(
+  u8,
+  (value: boolean | undefined) => (value === undefined ? 0 : value ? 1 : 2),
+  (byte: number) => {
+    switch (byte) {
+      case 0:
+        return undefined;
+      case 1:
+        return true;
+      case 2:
+        return false;
+      default:
+        throw new Error(`Unknown OptionBool byte: ${byte}. Expected 0, 1, or 2.`);
+    }
+  },
+);
 
 /** Hex-encoded byte string, e.g. `"0xdeadbeef"`. */
 export type HexString = `0x${string}`;
