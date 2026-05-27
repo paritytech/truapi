@@ -12,8 +12,6 @@ pr:
 
 Adds four TrUAPI methods — `push_add_rules`, `push_remove_rules`, `push_list_rules`, `push_set_rules` — that mirror the rule-management endpoints of the [v2 push backend spec](https://hackmd.io/@1JCaGppGSUqHtJilikYaKw/r16YTVg5Ze). A rule is a `(signer, topic)` pair the product specifies in full: `signer` (mandatory) is the publisher whose statements should wake the user. The backend then delivers a push to the user's device(s) whenever a signed statement matching that `(signer, topic)` pair appears on the Statement Store. The product never sees push tokens.
 
-The method names use `add` / `remove` rather than `subscribe` / `unsubscribe` because the `_subscribe` suffix is reserved for streaming TrUAPI methods (e.g. `statementStore.subscribe`).
-
 An **interim transport**, `push_broadcast`, distributes announcements **without using the Statement Store as the distribution layer**. The host submits the announcement to the push backend, **setting the publisher `signer` itself** (the product cannot override it), and the backend fans out using the same `(signer, topic)` rule matching. It is marked **(interim)** in the API and Types sections below.
 
 ## References
