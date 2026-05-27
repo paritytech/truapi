@@ -1,8 +1,5 @@
 use parity_scale_codec::{Decode, Encode};
 
-/// A raw 32-byte account identifier (public key) for a legacy account.
-pub type AccountId = [u8; 32];
-
 /// Identifies a product-specific account by combining a dotNS domain name with a
 /// derivation index.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
