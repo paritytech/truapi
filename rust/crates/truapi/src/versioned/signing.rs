@@ -15,10 +15,10 @@ versioned_type! {
     pub enum HostSignPayloadWithLegacyAccountRequest { V1 => v01::HostSignPayloadWithLegacyAccountRequest }
     pub enum HostSignPayloadWithLegacyAccountResponse { V1 => v01::HostSignPayloadResponse }
     pub enum HostSignPayloadWithLegacyAccountError { V1 => v01::HostSignPayloadError }
-    pub enum HostCreateTransactionRequest { V1 => v01::HostCreateTransactionRequest }
+    pub enum HostCreateTransactionRequest { V1 => v01::ProductAccountTxPayload }
     pub enum HostCreateTransactionResponse { V1 => v01::HostCreateTransactionResponse }
     pub enum HostCreateTransactionError { V1 => v01::HostCreateTransactionError }
-    pub enum HostCreateTransactionWithLegacyAccountRequest { V1 => v01::HostCreateTransactionWithLegacyAccountRequest }
+    pub enum HostCreateTransactionWithLegacyAccountRequest { V1 => v01::LegacyAccountTxPayload }
     pub enum HostCreateTransactionWithLegacyAccountResponse { V1 => v01::HostCreateTransactionWithLegacyAccountResponse }
     pub enum HostCreateTransactionWithLegacyAccountError { V1 => v01::HostCreateTransactionError }
 }
