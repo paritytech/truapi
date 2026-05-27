@@ -20,6 +20,7 @@ const DOC_DIR = join(ROOT, "target/doc");
 const CRATE_DOC = join(DOC_DIR, "truapi");
 const STATIC_FILES = join(DOC_DIR, "static.files");
 const PUBLIC_DIR = join(PLAYGROUND, "public/cargo_doc");
+const PUBLIC_STATIC_FILES = join(PLAYGROUND, "public/static.files");
 const OUT = join(PLAYGROUND, ".env.development.local");
 
 await mkdir(dirname(PUBLIC_DIR), { recursive: true });
@@ -37,9 +38,11 @@ try {
 // Refresh public/cargo_doc as a fresh directory of symlinks. Each entry in
 // target/doc/truapi/ is linked at the top level so URLs are
 // /cargo_doc/api/... (no /truapi/ prefix), matching the deployed layout.
-// static.files lives next to truapi/ in target/doc; link it in too so the
-// rustdoc HTML's `../static.files/...` references resolve inside /cargo_doc/.
+// rustdoc HTMLs reference static.files via `../../../static.files/`, which
+// from /cargo_doc/api/<mod>/ resolves to the site root, so static.files is
+// symlinked at public/static.files (sibling of public/cargo_doc).
 await rm(PUBLIC_DIR, { recursive: true, force: true });
+await rm(PUBLIC_STATIC_FILES, { force: true });
 await mkdir(PUBLIC_DIR, { recursive: true });
 
 if (crateExists) {
@@ -48,7 +51,7 @@ if (crateExists) {
   }
   try {
     await stat(STATIC_FILES);
-    await symlink(STATIC_FILES, join(PUBLIC_DIR, "static.files"), "dir");
+    await symlink(STATIC_FILES, PUBLIC_STATIC_FILES, "dir");
   } catch {
     /* no static.files yet — cargo doc not built */
   }
@@ -62,5 +65,5 @@ await writeFile(
 );
 
 console.log(
-  `wrote ${relative(PLAYGROUND, OUT)} and ${relative(PLAYGROUND, PUBLIC_DIR)}/ (symlinks to target/doc/truapi + static.files)`,
+  `wrote ${relative(PLAYGROUND, OUT)}, ${relative(PLAYGROUND, PUBLIC_DIR)}/ (→ target/doc/truapi), and ${relative(PLAYGROUND, PUBLIC_STATIC_FILES)} (→ target/doc/static.files)`,
 );

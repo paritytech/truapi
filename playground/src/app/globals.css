@@ -1055,62 +1055,6 @@ button {
 }
 
 /* =========================================================
-   SPLASH (connecting / disconnected)
-   ========================================================= */
-
-.splash {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: 32px 20px;
-  background:
-    radial-gradient(ellipse 900px 500px at 85% -10%, var(--glow-1), transparent 60%),
-    radial-gradient(ellipse 700px 400px at -5% 110%, var(--glow-2), transparent 60%),
-    var(--bg);
-}
-.splash__card {
-  max-width: 440px;
-  width: 100%;
-  text-align: left;
-}
-.splash__eyebrow {
-  font-family: var(--font-mono), monospace;
-  font-size: 11px;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 18px;
-}
-.splash__title {
-  font-family: var(--font-serif), serif;
-  font-style: italic;
-  font-size: clamp(32px, 6vw, 48px);
-  line-height: 1.05;
-  letter-spacing: -0.02em;
-  margin: 0 0 14px;
-  font-weight: 400;
-}
-.splash__body {
-  font-size: 15px;
-  line-height: 1.6;
-  color: var(--ink-2);
-  margin: 0 0 18px;
-}
-.splash__code {
-  display: inline-block;
-  font-family: var(--font-mono), monospace;
-  font-size: 13px;
-  background: var(--paper);
-  border: 1px solid var(--rule-strong);
-  border-radius: var(--radius);
-  padding: 6px 10px;
-  color: var(--ink);
-}
-
-/* =========================================================
    COMMAND PALETTE
    ========================================================= */
 

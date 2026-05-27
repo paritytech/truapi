@@ -1,5 +1,6 @@
 import { transform } from "sucrase";
 import type { Subscription, TrUApiClient } from "@parity/truapi";
+import { createWithChainHeadFollow, type WithChainHeadFollow } from "./example-helpers";
 
 export type LogEntry = {
   level: "log" | "error" | "warn";
@@ -15,7 +16,14 @@ export type RunResult =
   | { kind: "unary"; promise: Promise<unknown>; cancel: () => void }
   | { kind: "subscription"; subscription: RunSubscription };
 
-const IMPORT_RE = /^\s*import\s+[^;]*?from\s+["']@parity\/truapi["'];?\s*$/gm;
+// Drop any `@parity/truapi` import that does not name value specifiers (e.g.
+// bare type-only imports left over after sucrase). Named value imports are
+// rewritten by `TRUAPI_NAMED_IMPORT_RE` below.
+const IMPORT_RE = /^\s*import\s+(?!\{)[^;]*?from\s+["']@parity\/truapi["'];?\s*$/gm;
+// `import { PASEO_NEXT_V2_ASSET_HUB, ... } from "@parity/truapi"`
+//   → `const { PASEO_NEXT_V2_ASSET_HUB, ... } = __truapi;`
+const TRUAPI_NAMED_IMPORT_RE =
+  /^\s*import\s*(\{[^}]*\})\s*from\s+["']@parity\/truapi["'];?\s*$/gm;
 // `import { from, take, ... } from "rxjs"` → `const { from, take, ... } = __rxjs;`
 const RXJS_IMPORT_RE =
   /^\s*import\s*(\{[^}]*\})\s*from\s+["']rxjs["'];?\s*$/gm;
@@ -36,13 +44,16 @@ const AsyncFunction = Object.getPrototypeOf(
   truapi: unknown,
   __console: ConsoleShim,
   __rxjs: unknown,
+  withChainHeadFollow: WithChainHeadFollow,
+  __truapi: unknown,
 ) => Promise<unknown>;
 
-let rxjsModulePromise: Promise<unknown> | null = null;
-function getRxjs(): Promise<unknown> {
-  if (!rxjsModulePromise) rxjsModulePromise = import("rxjs");
-  return rxjsModulePromise;
+function lazyImport(load: () => Promise<unknown>): () => Promise<unknown> {
+  let promise: Promise<unknown> | null = null;
+  return () => (promise ??= load());
 }
+const getRxjs = lazyImport(() => import("rxjs"));
+const getTruapiPkg = lazyImport(() => import("@parity/truapi"));
 
 export async function runExample(opts: {
   source: string;
@@ -62,6 +73,7 @@ export async function runExample(opts: {
   }
 
   const stripped = js
+    .replace(TRUAPI_NAMED_IMPORT_RE, "const $1 = __truapi;")
     .replace(IMPORT_RE, "")
     .replace(RXJS_IMPORT_RE, "const $1 = __rxjs;")
     .replace(EXPORT_RE, "$1$2");
@@ -71,9 +83,18 @@ export async function runExample(opts: {
     truapi: unknown,
     c: ConsoleShim,
     rxjs: unknown,
+    withChainHeadFollow: WithChainHeadFollow,
+    truapiPkg: unknown,
   ) => Promise<unknown>;
   try {
-    run = new AsyncFunction("truapi", "__console", "__rxjs", body);
+    run = new AsyncFunction(
+      "truapi",
+      "__console",
+      "__rxjs",
+      "withChainHeadFollow",
+      "__truapi",
+      body,
+    );
   } catch (err) {
     throw new ExampleSyntaxError(
       `wrap failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -101,8 +122,15 @@ export async function runExample(opts: {
     }
   };
 
-  const rxjs = await getRxjs();
-  const promise = run(trackingClient, consoleShim, rxjs);
+  const [rxjs, truapiPkg] = await Promise.all([getRxjs(), getTruapiPkg()]);
+  const withChainHeadFollow = createWithChainHeadFollow(trackingClient as TrUApiClient);
+  const promise = run(
+    trackingClient,
+    consoleShim,
+    rxjs,
+    withChainHeadFollow,
+    truapiPkg,
+  );
 
   if (kind === "subscription") {
     await promise;

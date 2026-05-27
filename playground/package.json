@@ -1,6 +1,6 @@
 {
   "name": "truapi-playground",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,7 +10,7 @@
     "prebuild": "node ./scripts/bundle-rxjs-dts.mjs",
     "build": "next build",
     "prelint": "node ./scripts/bundle-rxjs-dts.mjs",
-    "lint": "next lint && tsc --noEmit && tsc -p tsconfig.examples.json",
+    "lint": "next lint --dir src --dir test/generated/examples && tsc --noEmit && tsc -p tsconfig.examples.json",
     "pretypecheck": "node ./scripts/bundle-rxjs-dts.mjs",
     "typecheck": "tsc --noEmit",
     "typecheck:examples": "tsc -p tsconfig.examples.json",

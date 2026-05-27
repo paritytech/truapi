@@ -3,6 +3,13 @@ import { err, ok, type Result, type ResultAsync } from "neverthrow";
 import { str, u8, type ResultPayload } from "./scale.js";
 
 /**
+ * Coerce an unknown thrown value into an `Error` instance.
+ */
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+/**
  * Handle returned by TrUAPI subscription APIs.
  **/
 export interface Subscription {
@@ -384,36 +391,140 @@ function scanStrEnd(bytes: Uint8Array): Result<number, Error> {
 }
 
 /**
+ * Internal listener bookkeeping and close-once state machine shared by the
+ * built-in `Provider` implementations. Transport-specific code wires its
+ * inbound source to `deliver`, registers cleanup via `onClose`, and exposes
+ * `subscribe`/`subscribeClose` to callers.
+ **/
+function createBaseProvider() {
+  const listeners = new Set<(message: Uint8Array) => void>();
+  const closeListeners = new Set<(error: Error) => void>();
+  const onCloseCleanup = new Set<() => void>();
+  let closedError: Error | null = null;
+
+  return {
+    /** Current close error, or `null` while the provider is open. */
+    closed: (): Error | null => closedError,
+
+    /** Dispatch an inbound frame to every active subscriber. */
+    deliver(message: Uint8Array) {
+      if (closedError) return;
+      for (const listener of [...listeners]) listener(message);
+    },
+
+    /** Transition to the closed state. Idempotent. */
+    close(error: unknown) {
+      if (closedError) return;
+      closedError = toError(error);
+      for (const fn of [...onCloseCleanup]) {
+        try {
+          fn();
+        } catch {
+          // ignore cleanup failure
+        }
+      }
+      onCloseCleanup.clear();
+      for (const listener of [...closeListeners]) listener(closedError);
+      listeners.clear();
+      closeListeners.clear();
+    },
+
+    /** Register a cleanup function to run exactly once when `close` fires. */
+    onClose(fn: () => void) {
+      if (closedError) {
+        try {
+          fn();
+        } catch {
+          // ignore cleanup failure
+        }
+        return;
+      }
+      onCloseCleanup.add(fn);
+    },
+
+    /** Register an inbound message listener. No-op after close. */
+    subscribe(callback: (message: Uint8Array) => void): () => void {
+      if (closedError) return () => {};
+      listeners.add(callback);
+      return () => {
+        listeners.delete(callback);
+      };
+    },
+
+    /**
+     * Register a close listener. If the provider is already closed, the
+     * callback fires immediately with the stored error.
+     **/
+    subscribeClose(callback: (error: Error) => void): () => void {
+      if (closedError) {
+        callback(closedError);
+        return () => {};
+      }
+      closeListeners.add(callback);
+      return () => {
+        closeListeners.delete(callback);
+      };
+    },
+  };
+}
+
+/**
+ * Create a provider for the child side of an iframe `postMessage` channel.
+ *
+ * `target` is the `Window` the provider posts to (typically `window.parent`);
+ * `hostOrigin` is the pinned `targetOrigin` for outbound frames and the
+ * required `event.origin` of inbound frames. The provider only delivers
+ * frames whose `event.source === target` and `event.origin === hostOrigin`,
+ * so it cannot be coerced by an unrelated frame parent.
+ **/
+export function createIframeProvider(options: {
+  target: Window;
+  hostOrigin: string;
+}): Provider {
+  const base = createBaseProvider();
+  const { target, hostOrigin } = options;
+
+  const onMessage = (event: MessageEvent) => {
+    if (event.source !== target) return;
+    if (event.origin !== hostOrigin) return;
+    if (!(event.data instanceof Uint8Array)) return;
+    base.deliver(event.data);
+  };
+  window.addEventListener("message", onMessage);
+  base.onClose(() => window.removeEventListener("message", onMessage));
+
+  return {
+    postMessage(message) {
+      const error = base.closed();
+      if (error) throw error;
+      try {
+        target.postMessage(message, hostOrigin);
+      } catch (error) {
+        base.close(error);
+        throw toError(error);
+      }
+    },
+    subscribe: base.subscribe,
+    subscribeClose: base.subscribeClose,
+    dispose() {
+      base.close(new Error("iframe provider disposed"));
+    },
+  };
+}
+
+/**
  * Create a provider from a web or Electron `MessagePort`.
  **/
 export function createMessagePortProvider(
   port: MessagePort | Promise<MessagePort>,
 ): Provider {
+  const base = createBaseProvider();
   let resolvedPort: MessagePort | null = null;
-  let closedError: Error | null = null;
   const pending: Uint8Array[] = [];
-  const listeners: Array<(message: Uint8Array) => void> = [];
-  const closeListeners: Array<(error: Error) => void> = [];
-
-  /**
-   * Notify close listeners once and drop queued outbound messages.
-   **/
-  function notifyClose(error: unknown) {
-    const nextError = error instanceof Error ? error : new Error(String(error));
-    if (closedError) {
-      return;
-    }
-
-    closedError = nextError;
-    pending.length = 0;
-    for (const listener of [...closeListeners]) {
-      listener(nextError);
-    }
-  }
 
   void Promise.resolve(port)
     .then((p) => {
-      if (closedError) {
+      if (base.closed()) {
         try {
           p.close();
         } catch {
@@ -424,83 +535,48 @@ export function createMessagePortProvider(
 
       resolvedPort = p;
       p.onmessage = (event: MessageEvent) => {
-        const data = event.data;
-        if (!(data instanceof Uint8Array)) return;
-        for (const listener of [...listeners]) listener(data);
+        if (event.data instanceof Uint8Array) base.deliver(event.data);
       };
       if ("onmessageerror" in p) {
         p.onmessageerror = () => {
-          notifyClose(new Error("message port closed unexpectedly"));
+          base.close(new Error("message port closed unexpectedly"));
         };
       }
       p.start();
       for (const msg of pending) p.postMessage(msg);
       pending.length = 0;
+      base.onClose(() => {
+        try {
+          p.close();
+        } catch {
+          // ignore duplicate close during shutdown
+        }
+      });
     })
     .catch((error: unknown) => {
-      notifyClose(error);
+      base.close(error);
     });
 
   return {
-    /**
-     * Send bytes through the resolved port or queue them until it resolves.
-     **/
     postMessage(message) {
-      if (closedError) {
-        throw closedError;
-      }
-
+      const error = base.closed();
+      if (error) throw error;
       if (resolvedPort) {
         try {
           resolvedPort.postMessage(message);
         } catch (error) {
-          notifyClose(error);
-          throw error instanceof Error ? error : new Error(String(error));
+          base.close(error);
+          throw toError(error);
         }
       } else {
         pending.push(message);
       }
     },
-
-    /**
-     * Register an inbound message listener.
-     **/
-    subscribe(callback) {
-      listeners.push(callback);
-      return () => {
-        const idx = listeners.indexOf(callback);
-        if (idx >= 0) listeners.splice(idx, 1);
-      };
-    },
-
-    /**
-     * Register a close listener.
-     **/
-    subscribeClose(callback) {
-      if (closedError) {
-        callback(closedError);
-        return () => {};
-      }
-
-      closeListeners.push(callback);
-      return () => {
-        const idx = closeListeners.indexOf(callback);
-        if (idx >= 0) closeListeners.splice(idx, 1);
-      };
-    },
-
-    /**
-     * Dispose the provider and close the port if it has resolved.
-     **/
+    subscribe: base.subscribe,
+    subscribeClose: base.subscribeClose,
     dispose() {
-      notifyClose(new Error("message port provider disposed"));
-      try {
-        resolvedPort?.close();
-      } catch {
-        // ignore duplicate close during shutdown
-      }
-      listeners.length = 0;
-      closeListeners.length = 0;
+      base.close(new Error("message port provider disposed"));
+      pending.length = 0;
     },
   };
 }

@@ -2,28 +2,35 @@ use super::*;
 use indoc::writedoc;
 
 /// Generates playground-only service metadata from the same Rustdoc API input
-/// used by the client generator.
+/// used by the client generator. When `strip_examples` is true, suppresses
+/// `exampleSource` (used by version snapshots to keep historical archives small).
 pub fn generate_playground_services(
     api: &ApiDefinition,
     output_dir: &str,
     target_version: u32,
+    strip_examples: bool,
 ) -> Result<()> {
     let codegen_dir = Path::new(output_dir).join("codegen");
     fs::create_dir_all(&codegen_dir)?;
     validate_versioned_wrapper_shapes(api)?;
 
-    let code = generate_playground_services_code(api, target_version)?;
+    let code = generate_playground_services_code(api, target_version, strip_examples)?;
     fs::write(codegen_dir.join("services.ts"), code)?;
 
     Ok(())
 }
 
-fn generate_playground_services_code(api: &ApiDefinition, target_version: u32) -> Result<String> {
+fn generate_playground_services_code(
+    api: &ApiDefinition,
+    target_version: u32,
+    strip_examples: bool,
+) -> Result<String> {
     let wrappers = collect_versioned_wrappers(api);
     let emit_versions = versioned_wrapper_emit_versions(api, &wrappers, target_version)?;
     let aliases = selected_public_aliases(api, &wrappers, &emit_versions, target_version);
     let ctx = CodecContext::default();
     let services = public_services(api)?;
+    let explorer_type_ids = explorer_type_id_set(api, &aliases);
 
     let mut out = String::new();
     writedoc!(
@@ -102,13 +109,32 @@ fn generate_playground_services_code(api: &ApiDefinition, target_version: u32) -
                 )
                 .unwrap();
             }
-            if let Some(client_example) = docs.client_example.as_deref() {
+            if let Some(client_example) = docs.client_example.as_deref()
+                && !strip_examples
+            {
                 writeln!(
                     out,
                     "        exampleSource: {},",
                     ts_string_literal(client_example)
                 )
                 .unwrap();
+            }
+            if let Some(id) = data_type_id_from_ts(&payload.inner_type_ts)
+                && explorer_type_ids.contains(&id)
+            {
+                writeln!(out, "        requestType: {},", ts_string_literal(&id)).unwrap();
+            }
+            let (response_inner, error_inner) =
+                method_response_inner_ts(method, &wrappers, &ctx, wire_version)?;
+            if let Some(id) = response_inner.as_deref().and_then(data_type_id_from_ts)
+                && explorer_type_ids.contains(&id)
+            {
+                writeln!(out, "        responseType: {},", ts_string_literal(&id)).unwrap();
+            }
+            if let Some(id) = error_inner.as_deref().and_then(data_type_id_from_ts)
+                && explorer_type_ids.contains(&id)
+            {
+                writeln!(out, "        errorType: {},", ts_string_literal(&id)).unwrap();
             }
             writeln!(out, "      }},").unwrap();
         }
@@ -173,6 +199,88 @@ pub(super) fn split_playground_docs(docs: Option<&str>) -> Result<PlaygroundDocs
 
 pub(super) fn playground_type_name(value: &str) -> String {
     value.replace("T.", "")
+}
+
+/// Returns the kebab-case explorer DataType id for a TS type expression
+/// produced by `emit_payload`/`emit_response` (e.g. `T.HostAccountGetRequest`).
+/// Returns `None` for `undefined`, primitives, arrays, generic instantiations,
+/// or anything else that doesn't correspond to a single named DataType.
+pub fn data_type_id_from_ts(value: &str) -> Option<String> {
+    let stripped = playground_type_name(value);
+    let trimmed = stripped.trim();
+    if trimmed.is_empty()
+        || trimmed == "undefined"
+        || trimmed == "void"
+        || trimmed.contains(['[', '<', '|', '&', '(', '{', ' '])
+    {
+        return None;
+    }
+    if !trimmed
+        .chars()
+        .next()
+        .map(|c| c.is_ascii_uppercase())
+        .unwrap_or(false)
+    {
+        return None;
+    }
+    Some(name_to_kebab_id(trimmed))
+}
+
+/// Converts a TS type name (`HostAccountGetRequest`, `JsonRpcSubscription`)
+/// to a kebab-case identifier (`host-account-get-request`,
+/// `json-rpc-subscription`).
+pub fn name_to_kebab_id(name: &str) -> String {
+    name.to_case(Case::Kebab)
+}
+
+/// Set of explorer DataType ids (kebab-case names) emitted by
+/// [`crate::ts::generate_explorer`] for `api`. Used by the playground
+/// emitter to gate `requestType`/`responseType`/`errorType` so they only
+/// reference types the explorer actually surfaces.
+pub fn explorer_type_id_set(
+    api: &ApiDefinition,
+    aliases: &BTreeMap<String, String>,
+) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for ty in &api.types {
+        if detect_versioned_wrapper(ty).is_some() {
+            continue;
+        }
+        let public = aliases
+            .get(&ty.name)
+            .cloned()
+            .unwrap_or_else(|| ty.name.clone());
+        out.insert(name_to_kebab_id(&public));
+    }
+    out
+}
+
+/// Returns `(response_inner_ts, error_inner_ts)` for a method's return type,
+/// stripping versioned wrappers. Either component is `None` when the return
+/// shape has no corresponding inner type (e.g. a plain `Subscription` has no
+/// error arm).
+pub(super) fn method_response_inner_ts(
+    method: &MethodDef,
+    wrappers: &HashMap<String, VersionedWrapper>,
+    ctx: &CodecContext,
+    wire_version: Option<u32>,
+) -> Result<(Option<String>, Option<String>)> {
+    match &method.return_type {
+        ReturnType::Result { ok, err } => {
+            let ok_resp = emit_response(ok, wrappers, ctx, wire_version)?;
+            let err_resp = emit_error_response(err, wrappers, ctx, wire_version)?;
+            Ok((Some(ok_resp.inner_type_ts), Some(err_resp.inner_type_ts)))
+        }
+        ReturnType::Subscription(item) => {
+            let resp = emit_response(item, wrappers, ctx, wire_version)?;
+            Ok((Some(resp.inner_type_ts), None))
+        }
+        ReturnType::ResultSubscription { item, err } => {
+            let resp = emit_response(item, wrappers, ctx, wire_version)?;
+            let err_resp = emit_error_response(err, wrappers, ctx, wire_version)?;
+            Ok((Some(resp.inner_type_ts), Some(err_resp.inner_type_ts)))
+        }
+    }
 }
 
 /// Rustdoc URL fragment for the trait method, relative to the cargo doc root
@@ -260,4 +368,48 @@ fn playground_request_description(
             _ => None,
         })
         .unwrap_or(value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn name_to_kebab_id_handles_simple() {
+        assert_eq!(
+            name_to_kebab_id("HostAccountGetRequest"),
+            "host-account-get-request"
+        );
+        assert_eq!(
+            name_to_kebab_id("JsonRpcSubscription"),
+            "json-rpc-subscription"
+        );
+    }
+
+    #[test]
+    fn name_to_kebab_id_acronym_boundary() {
+        assert_eq!(name_to_kebab_id("URLPath"), "url-path");
+        assert_eq!(name_to_kebab_id("IOError"), "io-error");
+    }
+
+    #[test]
+    fn data_type_id_returns_none_for_non_named() {
+        assert_eq!(data_type_id_from_ts("undefined"), None);
+        assert_eq!(data_type_id_from_ts("void"), None);
+        assert_eq!(data_type_id_from_ts("T.Foo[]"), None);
+        assert_eq!(data_type_id_from_ts("string"), None);
+        assert_eq!(data_type_id_from_ts(""), None);
+    }
+
+    #[test]
+    fn data_type_id_kebabs_named_types() {
+        assert_eq!(
+            data_type_id_from_ts("T.HostAccountGetRequest"),
+            Some("host-account-get-request".to_string())
+        );
+        assert_eq!(
+            data_type_id_from_ts("HostAccountGetResponse"),
+            Some("host-account-get-response".to_string())
+        );
+    }
 }

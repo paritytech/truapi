@@ -1,6 +1,6 @@
 use parity_scale_codec::{Decode, Encode};
 
-use super::common::GenericErr;
+use super::common::GenericError;
 
 /// Request to query whether a feature is supported by the host.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
@@ -32,7 +32,7 @@ pub enum HostHandshakeError {
     /// Host does not speak the codec version requested by the product.
     UnsupportedProtocolVersion,
     /// Catch-all.
-    Unknown(GenericErr),
+    Unknown(GenericError),
 }
 
 /// Wire-codec negotiation payload sent by the product (RFC 0009).
