@@ -10,7 +10,7 @@ pr:
 
 ## Summary
 
-Adds four TrUAPI methods — `push_add_rules`, `push_remove_rules`, `push_list_rules`, `push_set_rules` — that mirror the rule-management endpoints of the [v2 push backend spec](https://hackmd.io/@1JCaGppGSUqHtJilikYaKw/r16YTVg5Ze). From the product's point of view a rule is just a `topic`: the product does not specify the signer, the host injects it when forwarding the rule to its push backend. The backend then delivers a push to the user's device(s) whenever a signed statement matching the resulting `(signer, topic)` pair appears on the Statement Store. The product never sees push tokens.
+Adds four TrUAPI methods — `push_add_rules`, `push_remove_rules`, `push_list_rules`, `push_set_rules` — that mirror the rule-management endpoints of the [v2 push backend spec](https://hackmd.io/@1JCaGppGSUqHtJilikYaKw/r16YTVg5Ze). A rule is a `(signer, topic)` pair the product specifies in full: `signer` (mandatory) is the publisher whose statements should wake the user. The backend then delivers a push to the user's device(s) whenever a signed statement matching that `(signer, topic)` pair appears on the Statement Store. The product never sees push tokens.
 
 The method names use `add` / `remove` rather than `subscribe` / `unsubscribe` because the `_subscribe` suffix is reserved for streaming TrUAPI methods (e.g. `statementStore.subscribe`).
 
@@ -25,7 +25,7 @@ This RFC exposes a TrUAPI-shaped surface over the rule-management API defined in
 
 ## Motivation
 
-The push-notifications v2 design assigns delivery to a host-side notification system that tails the Statement Store, verifies signatures, and delivers pushes only for `(signer, topic)` pairs the user has whitelisted. TrUAPI needs a primitive that lets a product manipulate that whitelist. When `signer` is omitted the host defaults to the calling product's own identity; when provided explicitly the product can subscribe to statements from a different product.
+The push-notifications v2 design assigns delivery to a host-side notification system that tails the Statement Store, verifies signatures, and delivers pushes only for `(signer, topic)` pairs the user has whitelisted. TrUAPI needs a primitive that lets a product manipulate that whitelist. `signer` is **mandatory** on every rule: the product always names the publisher it wants.
 
 ### Worked example: festival announcements
 
@@ -103,13 +103,13 @@ async fn push_broadcast(
 
 `Topic` is reused from `v01::statement_store`.
 
-A rule is a `(signer, topic)` pair. When `signer` is `None` the host injects the calling product's own identity; set it explicitly to subscribe to statements published by a different product.
+A rule is a `(signer, topic)` pair. `signer` is **mandatory**: the subscriber always names the publisher.
 
 ```rust
-pub struct HostPushAddRulesRequest    { pub topics: Vec<Topic>, pub signer: Option<ProductAccountId> }
-pub struct HostPushRemoveRulesRequest { pub topics: Vec<Topic>, pub signer: Option<ProductAccountId> }
+pub struct HostPushAddRulesRequest    { pub topics: Vec<Topic>, pub signer: ProductAccountId }
+pub struct HostPushRemoveRulesRequest { pub topics: Vec<Topic>, pub signer: ProductAccountId }
 pub struct HostPushListRulesRequest;
-pub struct HostPushSetRulesRequest    { pub topics: Vec<Topic>, pub signer: Option<ProductAccountId> }
+pub struct HostPushSetRulesRequest    { pub topics: Vec<Topic>, pub signer: ProductAccountId }
 
 pub struct HostPushListRulesResponse {
     pub topics: Vec<Topic>,

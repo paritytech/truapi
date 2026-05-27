@@ -74,15 +74,17 @@ pub trait Notifications: Send + Sync {
         request: HostPushNotificationCancelRequest,
     ) -> Result<HostPushNotificationCancelResponse, CallError<HostPushNotificationCancelError>>;
 
-    /// Register one or more topics so the user is woken up by a push when a
-    /// signed statement matching any registered topic appears on the
-    /// Statement Store. Mirrors `POST /v1/subscriptions/rules` from the v2
-    /// push backend spec. The signer is injected by the host (based on the
-    /// calling product's identity) when relaying the rule to the backend.
+    /// Register one or more `(signer, topic)` rules so the user is woken by a
+    /// push when a signed statement matching a rule appears on the Statement
+    /// Store. Mirrors `POST /v1/subscriptions/rules` from the v2 push backend
+    /// spec. `signer` is mandatory — the publisher whose statements should wake
+    /// the user (the calling product's own identity to self-subscribe, or
+    /// another product's).
     ///
     /// ```ts
     /// const result = await truapi.notifications.pushAddRules({
     ///   topics: ["0x00"],
+    ///   signer: "0x…",
     /// });
     /// result.match(
     ///   () => console.log("ok"),
@@ -102,6 +104,7 @@ pub trait Notifications: Send + Sync {
     /// ```ts
     /// const result = await truapi.notifications.pushRemoveRules({
     ///   topics: ["0x00"],
+    ///   signer: "0x…",
     /// });
     /// result.match(
     ///   () => console.log("ok"),
@@ -142,6 +145,7 @@ pub trait Notifications: Send + Sync {
     /// ```ts
     /// const result = await truapi.notifications.pushSetRules({
     ///   topics: ["0x00"],
+    ///   signer: "0x…",
     /// });
     /// result.match(
     ///   () => console.log("ok"),
