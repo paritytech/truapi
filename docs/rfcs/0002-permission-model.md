@@ -240,7 +240,7 @@ Migration is straightforward for implementors following semantic versioning: bum
 
 ### Prior Art and References
 
-- [Host API Design Document](../design/host-api-protocol.md) — the current API definition this RFC amends.
+- [Host API Design Document](../design/truapi-protocol.md) — the current API definition this RFC amends.
 - [Web platform Permissions API](https://www.w3.org/TR/permissions/) — the W3C model for browser permission prompts: one-time prompt, persisted decision, queryable state. The lifecycle defined here follows the same pattern.
 - [Android permission model](https://developer.android.com/guide/topics/permissions/overview) — similar grant-once-persist approach; also distinguishes install-time (declared) permissions from runtime (prompted) permissions.
 
