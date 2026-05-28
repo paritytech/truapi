@@ -4,6 +4,17 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      environment:
+        description: bulletin-deploy environment to publish to (blank = CLI default)
+        type: choice
+        default: ''
+        options:
+          - ''
+          - paseo-next-v2
+          - preview
+          - paseo-next
+          - paseo-review
 
 concurrency:
   group: deploy-truapi-playground
@@ -44,7 +55,9 @@ jobs:
 
       - name: Deploy to DotNS
         uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3.0.2
+        env:
+          BULLETIN_ENV: ${{ inputs.environment }}
         with:
           timeout_minutes: 10
           max_attempts: 3
-          command: cd playground && bulletin-deploy ./out truapi-playground.dot --js-merkle
+          command: cd playground && bulletin-deploy ./out truapi-playground.dot --js-merkle ${BULLETIN_ENV:+--env "$BULLETIN_ENV"}
