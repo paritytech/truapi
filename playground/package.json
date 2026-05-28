@@ -14,7 +14,6 @@
     "pretypecheck": "node ./scripts/bundle-rxjs-dts.mjs",
     "typecheck": "tsc --noEmit",
     "typecheck:examples": "tsc -p tsconfig.examples.json",
-    "generate-matrix": "node ../scripts/aggregate-diagnosis-matrix.mjs --out matrix.md --consume pending-reports",
     "deploy:test": "yarn build && bulletin-deploy ./out truapi-playground.dot && rm out.car",
     "lint:fix": "next lint --fix",
     "e2e": "playwright test",
