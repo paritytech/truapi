@@ -11,7 +11,23 @@ The playground is an interactive reference for the TrUAPI: every method grouped 
 - **Full method browser**: every TrUAPI service and method, each with a description and a Request / Response or Subscription badge.
 - **Live calls**: edit a JSON request payload and fire the call against the connected host.
 - **Subscriptions**: open and close streaming methods and watch events arrive in real time.
-- **Auto-test view**: runs every wired method and reports pass / fail in one pass.
+- **Auto-test view**: runs every method and reports pass / fail in one pass.
+- **Run diagnosis**: runs the full surface — non-disruptive methods in parallel, then each disruptive method (signing, permission/resource requests, `navigate_to`) sequentially so you can complete phone interactions one at a time — and produces a copy-pasteable markdown table (`## Truapi Web/Desktop Diagnosis`, a timestamp, and a method/status row per method) that feeds the cross-host compatibility matrix.
+
+Collect one diagnosis report per host, then merge them into a single host × method matrix. Drop each report (any `*.md` filename) into `pending-reports/` and run:
+
+```bash
+yarn generate-matrix   # or: npm run generate-matrix
+```
+
+This consumes every report in `pending-reports/` (deleting them) and writes the combined `matrix.md` to the playground root. Columns are the hosts (the `Web`/`Desktop` mode from each report's title; same-mode reports are disambiguated by filename), rows are the methods, and a method missing from a report shows `—`.
+
+The underlying script also runs standalone for ad-hoc use:
+
+```bash
+node ../scripts/aggregate-diagnosis-matrix.mjs web.md desktop.md > matrix.md
+node ../scripts/aggregate-diagnosis-matrix.mjs reports/   # all *.md in a dir
+```
 - **Wiring status**: methods that are not yet bound are flagged "Not supported" so you can see protocol coverage at a glance.
 
 ## Local development

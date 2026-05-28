@@ -1,6 +1,6 @@
 import type { MethodInfo, ServiceInfo } from "@/src/lib/services";
 import type { TestEntry } from "@/src/lib/auto-test";
-import { AUTO_TEST_ID } from "@/src/lib/auto-test";
+import { AUTO_TEST_ID, DIAGNOSIS_ID } from "@/src/lib/auto-test";
 
 function hasExample(method: MethodInfo): boolean {
   return !!method.exampleSource;
@@ -23,6 +23,7 @@ export function ServiceTable({
   onSelect: (service: string, method: string) => void;
 }) {
   const isAutoTestActive = activeMethod?.service === AUTO_TEST_ID;
+  const isDiagnosisActive = activeMethod?.service === DIAGNOSIS_ID;
 
   let autoTestMark: string | null = null;
   if (testResults && Object.keys(testResults).length > 0) {
@@ -51,14 +52,14 @@ export function ServiceTable({
       <button
         type="button"
         className="method method--autotest"
-        data-active={isAutoTestActive}
+        data-active={isDiagnosisActive}
         data-supported="true"
-        onClick={() => onSelect(AUTO_TEST_ID, "")}
+        onClick={() => onSelect(DIAGNOSIS_ID, "")}
       >
         <div className="method__body">
-          <div className="method__name">Auto-Test</div>
+          <div className="method__name">Diagnosis</div>
           <div className="method__meta">
-            <span className="method__desc">Run all methods</span>
+            <span className="method__desc">Full host coverage report</span>
             {autoTestMark && (
               <span
                 className="method__mark autotest__mark"
@@ -67,6 +68,20 @@ export function ServiceTable({
                 {autoTestMark}
               </span>
             )}
+          </div>
+        </div>
+      </button>
+      <button
+        type="button"
+        className="method method--autotest"
+        data-active={isAutoTestActive}
+        data-supported="true"
+        onClick={() => onSelect(AUTO_TEST_ID, "")}
+      >
+        <div className="method__body">
+          <div className="method__name">Auto-Test</div>
+          <div className="method__meta">
+            <span className="method__desc">Run all methods</span>
           </div>
         </div>
       </button>
