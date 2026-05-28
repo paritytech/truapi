@@ -21,24 +21,14 @@ pub trait Signing: Send + Sync {
     ///
     /// ```ts
     /// const result = await truapi.signing.createTransaction({
-    ///   productAccountId: {
+    ///   signer: {
     ///     dotNsIdentifier: "truapi-playground.dot",
     ///     derivationIndex: 0,
     ///   },
-    ///   payload: {
-    ///     tag: "V1",
-    ///     value: {
-    ///       callData: "0x0000",
-    ///       extensions: [],
-    ///       txExtVersion: 0,
-    ///       context: {
-    ///         metadata: "0x",
-    ///         tokenSymbol: "DOT",
-    ///         tokenDecimals: 10,
-    ///         bestBlockHeight: 0,
-    ///       },
-    ///     },
-    ///   },
+    ///   genesisHash: "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3",
+    ///   callData: "0x0000",
+    ///   extensions: [],
+    ///   txExtVersion: 0,
     /// });
     /// result.match(
     ///   (value) => console.log(value),
@@ -54,24 +44,15 @@ pub trait Signing: Send + Sync {
         Err(CallError::unavailable())
     }
 
-    /// Construct a signed transaction for a non-product account.
+    /// Construct a signed transaction for a non-product (legacy) account.
     ///
     /// ```ts
     /// const result = await truapi.signing.createTransactionWithLegacyAccount({
-    ///   payload: {
-    ///     tag: "V1",
-    ///     value: {
-    ///       callData: "0x0000",
-    ///       extensions: [],
-    ///       txExtVersion: 0,
-    ///       context: {
-    ///         metadata: "0x",
-    ///         tokenSymbol: "DOT",
-    ///         tokenDecimals: 10,
-    ///         bestBlockHeight: 0,
-    ///       },
-    ///     },
-    ///   },
+    ///   signer: "0x0000000000000000000000000000000000000000000000000000000000000000",
+    ///   genesisHash: "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3",
+    ///   callData: "0x0000",
+    ///   extensions: [],
+    ///   txExtVersion: 0,
     /// });
     /// result.match(
     ///   (value) => console.log(value),
@@ -123,7 +104,6 @@ pub trait Signing: Send + Sync {
     /// const result = await truapi.signing.signPayloadWithLegacyAccount({
     ///   signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
     ///   payload: {
-    ///     account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },
     ///     blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///     blockNumber: "0x00000000",
     ///     era: "0x00",
@@ -187,17 +167,19 @@ pub trait Signing: Send + Sync {
     ///
     /// const result = await truapi.signing.signPayload({
     ///   account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },
-    ///   blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///   blockNumber: "0x00000000",
-    ///   era: "0x00",
-    ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
-    ///   method: "0x00003448656c6c6f2c20776f726c6421",
-    ///   nonce: "0x00000000",
-    ///   signedExtensions: [],
-    ///   specVersion: "0x00000000",
-    ///   tip: "0x00000000000000000000000000000000",
-    ///   transactionVersion: "0x00000000",
-    ///   version: 4,
+    ///   payload: {
+    ///     blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///     blockNumber: "0x00000000",
+    ///     era: "0x00",
+    ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
+    ///     method: "0x00003448656c6c6f2c20776f726c6421",
+    ///     nonce: "0x00000000",
+    ///     signedExtensions: [],
+    ///     specVersion: "0x00000000",
+    ///     tip: "0x00000000000000000000000000000000",
+    ///     transactionVersion: "0x00000000",
+    ///     version: 4,
+    ///   },
     /// });
     /// result.match(
     ///   (value) => console.log(value),

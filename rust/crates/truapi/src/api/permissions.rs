@@ -25,11 +25,11 @@ pub trait Permissions: Send + Sync {
         request: HostDevicePermissionRequest,
     ) -> Result<HostDevicePermissionResponse, CallError<HostDevicePermissionError>>;
 
-    /// Request one or more remote-operation permissions.
+    /// Request a remote-operation permission.
     ///
     /// ```ts
     /// const result = await truapi.permissions.requestRemotePermission({
-    ///   permissions: [{ tag: "Remote", value: { domains: ["api.example.com"] } }],
+    ///   permission: { tag: "Remote", value: { domains: ["api.example.com"] } },
     /// });
     /// result.match(
     ///   (value) => console.log(value),

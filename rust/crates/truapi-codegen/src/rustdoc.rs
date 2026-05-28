@@ -154,6 +154,10 @@ pub enum TypeRef {
 pub struct TypeDef {
     /// Type name as it appears in source.
     pub name: String,
+    /// Module path leading to the type, excluding the type name itself
+    /// (e.g. `["truapi", "api", "account"]`). Used by the explorer codegen
+    /// to bucket types by category.
+    pub module_path: Vec<String>,
     /// Generic parameter names declared on the type, in declaration order.
     pub generic_params: Vec<String>,
     /// Type body shape (alias, struct, tuple struct, or enum).
@@ -295,12 +299,18 @@ pub fn extract_api(krate: &Crate) -> Result<ApiDefinition> {
                 .get(&candidate.item_id)
                 .with_context(|| format!("Missing rustdoc item `{}`", candidate.item_id))?;
 
+            let module_path: Vec<String> = candidate
+                .path
+                .iter()
+                .take(candidate.path.len().saturating_sub(1))
+                .cloned()
+                .collect();
             let type_def = if candidate.kind == "struct" {
-                extract_struct(&candidate.item_id, item, krate, &names)?
+                extract_struct(&candidate.item_id, item, krate, &names, module_path)?
             } else if candidate.kind == "enum" {
-                extract_enum(&candidate.item_id, item, krate, &names)?
+                extract_enum(&candidate.item_id, item, krate, &names, module_path)?
             } else if candidate.kind == "type_alias" {
-                extract_type_alias(&candidate.item_id, item, &names)?
+                extract_type_alias(&candidate.item_id, item, &names, module_path)?
             } else {
                 bail!(
                     "Unsupported rustdoc item kind `{}` for `{}`",
@@ -856,6 +866,11 @@ fn resolve_type(ty: &serde_json::Value, names: &NameContext) -> Result<TypeRef> 
             "Option" => Ok(TypeRef::Option(Box::new(expect_single_arg(
                 "Option", args,
             )?))),
+            "Compact" => {
+                expect_single_arg("Compact", args)?;
+                Ok(TypeRef::Primitive("compact".to_string()))
+            }
+            "OptionBool" => Ok(TypeRef::Primitive("optionBool".to_string())),
             "String" => {
                 if !args.is_empty() {
                     bail!(
@@ -975,6 +990,7 @@ fn extract_struct(
     item: &Item,
     krate: &Crate,
     names: &NameContext,
+    module_path: Vec<String>,
 ) -> Result<TypeDef> {
     let rust_name = item
         .name
@@ -1017,6 +1033,7 @@ fn extract_struct(
 
         return Ok(TypeDef {
             name,
+            module_path,
             generic_params,
             kind: TypeDefKind::TupleStruct(fields),
             docs: clean_docs(item.docs.as_deref()),
@@ -1062,13 +1079,20 @@ fn extract_struct(
 
     Ok(TypeDef {
         name,
+        module_path,
         generic_params,
         kind: TypeDefKind::Struct(fields),
         docs: clean_docs(item.docs.as_deref()),
     })
 }
 
-fn extract_enum(item_id: &str, item: &Item, krate: &Crate, names: &NameContext) -> Result<TypeDef> {
+fn extract_enum(
+    item_id: &str,
+    item: &Item,
+    krate: &Crate,
+    names: &NameContext,
+    module_path: Vec<String>,
+) -> Result<TypeDef> {
     let rust_name = item
         .name
         .as_ref()
@@ -1112,6 +1136,7 @@ fn extract_enum(item_id: &str, item: &Item, krate: &Crate, names: &NameContext) 
 
     Ok(TypeDef {
         name,
+        module_path,
         generic_params,
         kind: TypeDefKind::Enum(variants),
         docs: clean_docs(item.docs.as_deref()),
@@ -1193,7 +1218,12 @@ fn extract_variant_fields(
     bail!("Unsupported enum variant kind: {}", summarize_json(kind))
 }
 
-fn extract_type_alias(item_id: &str, item: &Item, names: &NameContext) -> Result<TypeDef> {
+fn extract_type_alias(
+    item_id: &str,
+    item: &Item,
+    names: &NameContext,
+    module_path: Vec<String>,
+) -> Result<TypeDef> {
     let rust_name = item
         .name
         .as_ref()
@@ -1214,6 +1244,7 @@ fn extract_type_alias(item_id: &str, item: &Item, names: &NameContext) -> Result
 
     Ok(TypeDef {
         name,
+        module_path,
         generic_params,
         kind: TypeDefKind::Alias(target),
         docs: clean_docs(item.docs.as_deref()),
