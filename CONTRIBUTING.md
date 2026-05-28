@@ -19,17 +19,19 @@ Feature proposals live as markdown files in `docs/features/`. To propose a new f
 
 For larger changes that need cross-team discussion, use the RFC process:
 
-1. Create a branch and add a new file to `docs/rfcs/` using the next available number (e.g., `docs/rfcs/0002-my-proposal.md`)
+1. Create a branch and add a new file to `docs/rfcs/<slug>.md` (e.g., `docs/rfcs/my-proposal.md`) — do **not** assign a number
 2. Use `docs/rfcs/0001-template.md` as a reference for the expected structure and frontmatter
-3. Update `docs/rfcs/_index.md` with a link to your RFC
-4. Open a PR using the **rfc** template (`?template=rfc.md`) and add the `rfc` and `proposal` labels
-5. The PR will be auto-added to the project board for tracking and review
+3. Open a PR using the **rfc** template (`?template=rfc.md`) and add the `rfc` label
+4. The PR will be auto-added to the project board for tracking and review
+5. When the PR is approved and merged, CI automatically assigns the next sequential number, renames the file, and appends it to `docs/rfcs/_index.md`
 
 **Important:** RFC PRs must include corresponding changes to the TrUAPI Rust
 interfaces in `rust/crates/truapi/`. A CI check (`check-rfc.yml`) enforces
 this — PRs that touch `docs/rfcs/` without also modifying `rust/crates/truapi/`
 will fail. This ensures every RFC ships with a concrete API change, not just
 prose.
+
+If you use Claude Code, the [`rfc`](.claude/skills/rfc/SKILL.md) skill is highly recommended for drafting RFCs — invoke it with `/rfc` to turn your notes into a well-structured document that follows the template above.
 
 ## Design Documents
 

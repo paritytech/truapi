@@ -8,7 +8,7 @@ _Source of truth for the TrUAPI protocol: shared traits, versioned types, and th
 
 It defines:
 
-- **Versioned data types** under `v01`, `v02`, and `versioned`.
+- **Versioned data types** under `v01` and `versioned`.
 - **Domain API traits** under `api/`, plus the composed `TrUApi` trait.
 - **Wire ids** via per-method `#[wire(id = N)]` annotations that pin the byte-level method table.
 - **Subscription primitives** through `Subscription<T>` for streamed host responses.

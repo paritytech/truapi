@@ -49,15 +49,32 @@ jobs:
       - name: Build playground (static export)
         working-directory: playground
         env:
-          NEXT_PUBLIC_BASE_PATH: /truapi
+          NEXT_PUBLIC_BASE_PATH: /truapi/playground
         run: yarn build
+
+      - name: Install explorer dependencies
+        working-directory: explorer
+        run: npm ci
+
+      - name: Build explorer (static export)
+        working-directory: explorer
+        env:
+          EXPLORER_BASE_PATH: /truapi/
+        run: npm run build
 
       - name: Assemble GitHub Pages site
         run: |
           rm -rf site
           mkdir -p site
-          # Playground at root.
-          cp -R playground/out/. site/
+          # Explorer SPA at the site root.
+          cp -R explorer/dist/. site/
+          # GitHub Pages serves the site-root 404.html for every missing path.
+          # Serving a copy of the SPA index lets React Router resolve explorer
+          # deep links (e.g. /truapi/v/main/method/foo) on a fresh load.
+          cp site/index.html site/404.html
+          # Playground mounted at /playground/ (its Next.js basePath).
+          mkdir -p site/playground
+          cp -R playground/out/. site/playground/
           # truapi crate's cargo doc mounted at /cargo_doc/ with the crate's
           # pages flattened (no /truapi/ prefix). rustdoc HTMLs reference
           # static.files via `../../../static.files/`, which from
