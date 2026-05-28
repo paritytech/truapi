@@ -11,7 +11,7 @@ pr:
 
 ## Summary
 
-Adds four TrUAPI methods — `push_add_rules`, `push_remove_rules`, `push_list_rules`, `push_set_rules` — that expose the rule-management endpoints of the [v2 push backend spec](https://hackmd.io/@1JCaGppGSUqHtJilikYaKw/r16YTVg5Ze) to products. A rule is a `(signer, topic)` pair the product specifies in full: `signer` is the publisher whose signed statements should wake the user. The backend delivers a push to the user's device(s) whenever a signed statement matching a whitelisted `(signer, topic)` pair appears on the Statement Store. The product never sees push tokens; tokens live in the backend subscription keyed to the authenticated device.
+Adds four TrUAPI methods — `push_add_rules`, `push_remove_rules`, `push_list_rules`, `push_set_rules` — that expose the rule-management endpoints of the [v2 push backend spec](https://hackmd.io/@1JCaGppGSUqHtJilikYaKw/r16YTVg5Ze) to products. A rule is a `(signer, topic)` pair: `signer` is the publisher whose signed statements should wake the user. The backend delivers a push to the user's device(s) whenever a signed statement matching a whitelisted `(signer, topic)` pair appears on the Statement Store. The product never sees push tokens; tokens live in the backend subscription keyed to the authenticated device.
 
 A fifth method, `push_broadcast`, is an **interim transport** that distributes an announcement without using the Statement Store as the distribution layer. The host submits the announcement to the push backend and **sets the publisher `signer` itself** to the calling product's identity (the product cannot override it), and the backend fans out using the same `(signer, topic)` rule matching. It is marked **(interim)** throughout.
 
@@ -63,7 +63,7 @@ The design follows the v2 backend spec ([backend-mediated](https://hackmd.io/@1J
 
 ### Rule model
 
-A rule is a `(signer, topic)` pair. `signer` is mandatory: the subscriber always names the publisher. Rules are grouped per signer on the wire as `PushRule { signer, topics }`, which is equivalent to the flat `(signer, topic)` tuple set the backend stores. `Topic` is reused from `v01::statement_store`.
+A rule is a `(signer, topic)` pair. `signer` is mandatory: the subscriber always names the publisher. Rules are grouped per signer on the wire as `PushRule { signer, topics }`, which is equivalent to the flat `(signer, topic)` tuple set the backend stores.
 
 All rule operations are scoped to the **calling user's own subscription**: a product manages only the rules on the device it is running on, and cannot read or mutate another user's rules.
 
@@ -71,13 +71,13 @@ All rule operations are scoped to the **calling user's own subscription**: a pro
 
 Each TrUAPI method maps to one backend endpoint:
 
-| TrUAPI method       | Backend endpoint                 | Purpose                                       |
-| ------------------- | -------------------------------- | --------------------------------------------- |
-| `push_add_rules`    | `POST   /v1/subscriptions/rules` | additively whitelist rules                    |
-| `push_remove_rules` | `DELETE /v1/subscriptions/rules` | remove specific rules                         |
-| `push_list_rules`   | `GET    /v1/subscriptions`       | snapshot of the currently active rule set     |
-| `push_set_rules`    | `PUT    /v1/subscriptions/rules` | atomic replace of the full multi-signer set   |
-| `push_broadcast`    | direct submit _(interim)_        | publish a signed announcement                 |
+| TrUAPI method       | Backend endpoint                 | Purpose                                     |
+| ------------------- | -------------------------------- | ------------------------------------------- |
+| `push_add_rules`    | `POST   /v1/subscriptions/rules` | additively whitelist rules                  |
+| `push_remove_rules` | `DELETE /v1/subscriptions/rules` | remove specific rules                       |
+| `push_list_rules`   | `GET    /v1/subscriptions`       | snapshot of the currently active rule set   |
+| `push_set_rules`    | `PUT    /v1/subscriptions/rules` | atomic replace of the full multi-signer set |
+| `push_broadcast`    | direct submit _(interim)_        | publish a signed announcement               |
 
 ```rust
 #[wire(request_id = 164)]
@@ -176,6 +176,13 @@ pub enum HostPushSetRulesError {
 
 The broadcast is not a Statement Store statement: it is a plain `{ topics, content }` the host submits with a host-set `signer`, so there is no `channel`, topic slots, or `expiry`. The backend enforces its own per-publisher rate limits and notification payload size caps as defined in the v2 backend spec.
 
+**Why not just use the existing `statementStore.submit` path.** Two reasons, in order of weight:
+
+1. **No 1→many encryption scheme exists.** Statements on the Statement Store are encrypted per-recipient: each statement is readable by exactly one addressee. Nothing in the v1 or v2 design defines a way to encrypt a single statement so that many subscribers can read it. The only short-term workaround would be plaintext statements, which puts announcement content in the clear on every node that propagates the topic and keeps it there until expiry.
+2. **Timeline.** Host-direct submission to the push backend is the simpler engineering path until 1→many encryption (or a deliberate plaintext-with-explicit-mitigations decision) is settled.
+
+`push_broadcast` sidesteps both: announcement content is plaintext but authenticity-only, submission is gated by the host-attested product identity (the backend can rate-limit per publisher at the door), and nothing lands on SS.
+
 ```rust
 #[wire(request_id = 172)]
 async fn push_broadcast(
@@ -208,9 +215,9 @@ pub enum HostPushBroadcastError {
 
 ## Drawbacks
 
+- **Broadcast content is not confidential.** `push_broadcast` is authenticity-only: `signer` is host-attested but `content` travels plaintext from the host to the backend and into the delivered push. Pairwise statement-store messages are end-to-end encrypted under `K(A,B)`; announcements are not. Products MUST NOT use `push_broadcast` for sensitive payloads.
 - **Two delivery paths during the interim.** `push_broadcast` and Statement-Store-sourced announcements coexist, so the backend matches the same `(signer, topic)` rules against two sources until distribution is unified. This is transitional complexity that the Future Directions section retires.
 - **No per-product rule quota is specified here.** A product can add an unbounded number of rules to the user's subscription, subject only to whatever the backend imposes. Quota policy is left to the backend.
-- **`push_set_rules` is a blunt instrument.** Because it replaces the whole multi-signer set, a product that holds a stale snapshot can clobber rules added by another product on the same subscription. Products that only mean to adjust their own publisher should prefer add/remove.
 
 ## Testing, Security, and Privacy
 
@@ -218,7 +225,6 @@ pub enum HostPushBroadcastError {
 - **Push tokens are never exposed.** The token lives in the backend subscription keyed to the authenticated device; TrUAPI returns only rules. A product cannot read or derive the token.
 - **Rule operations are scoped to the calling user's own subscription.** A product cannot read or mutate rules on another user's device. Add/remove/set/list all act on the subscription of the device the product runs on.
 - **`signer` on broadcast is host-attested.** In `push_broadcast` the host sets `signer` to the calling product's identity; a product cannot broadcast under another publisher's identity.
-- **Subscribe-vs-publish asymmetry.** A product may subscribe the user to **any** `signer` (the festival example subscribes the attendee to the organizer), but may only **broadcast as itself**. Naming a publisher in a rule grants no ability to publish as that publisher.
 
 ## Performance, Ergonomics, and Compatibility
 
@@ -243,10 +249,12 @@ These are new methods at fresh wire ids (164–172); no existing method changes,
 
 ## Unresolved Questions
 
-- **Broadcast authorization.** Should the host gate which products may call `push_broadcast`, or is host-attested `signer` sufficient on its own? An unbounded broadcast right lets any product wake its subscribers at the backend's rate-limit ceiling.
+- **1→many encryption.** A non-interim SS-based broadcast path is blocked on an encryption scheme that lets one statement be readable by many subscribers. Today each statement is addressed to a single recipient. Accepting plaintext statements is the alternative, but it puts announcement content in the clear on every node that propagates the topic. Which direction the eventual design takes is open.
 - **Rule quota.** Should TrUAPI surface a per-subscription rule cap (and a corresponding error) rather than deferring entirely to the backend?
 - **List pagination.** `push_list_rules` returns the whole set in one response. A subscription with many rules may warrant pagination; left out until a concrete need appears.
 
 ## Future Directions and Related Material
 
-The non-interim path moves announcement **distribution** onto the Statement Store: a publisher writes a signed statement, the backend tailer matches it against the same `(signer, topic)` rules, and delivery proceeds identically. At that point `push_broadcast` is retired as a distribution mechanism while subscriber rules and the four rule-management methods stay unchanged. The interim `push_broadcast` exists only so products can announce before the Statement-Store distribution path is live; designing rules around `(signer, topic)` from the start is what makes the eventual switch transparent to subscribers.
+The non-interim publish path is already exposed: a publisher can write a signed statement to the Statement Store today via `statementStore.submit` (wire id 62), and the v2 backend design has the tailer match `(signer, topic)` against the same subscriber rules. Designing rules around `(signer, topic)` from the start is what makes the eventual switch transparent to subscribers; whenever the SS-based delivery is wired up, `push_broadcast` is retired with no change to the rule-management surface.
+
+The real blocker to retiring `push_broadcast` is **not** the backend tailer plumbing but the missing 1→many encryption: SS statements are addressed to a single recipient today, and there is no defined scheme that lets one statement be readable by many subscribers without falling back to plaintext (with the content-visibility implications described in the interim-broadcast section). Future work picks one of: (a) define a 1→many encryption scheme for SS statements; (b) accept plaintext broadcast statements as a deliberate trade-off, with the visibility characteristics that implies.

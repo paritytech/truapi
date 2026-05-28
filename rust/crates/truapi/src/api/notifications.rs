@@ -169,7 +169,7 @@ pub trait Notifications: Send + Sync {
     ///   content: { title: "Web3 Summit", body: "Keynote moved to Hall A" },
     /// });
     /// result.match(
-    ///   (value) => console.log(value.matched),
+    ///   (value) => console.log(value.messageHash),
     ///   (error) => console.error(error),
     /// );
     /// ```
