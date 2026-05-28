@@ -52,14 +52,14 @@ export function ServiceTable({
       <button
         type="button"
         className="method method--autotest"
-        data-active={isDiagnosisActive}
+        data-active={isAutoTestActive}
         data-supported="true"
-        onClick={() => onSelect(DIAGNOSIS_ID, "")}
+        onClick={() => onSelect(AUTO_TEST_ID, "")}
       >
         <div className="method__body">
-          <div className="method__name">Diagnosis</div>
+          <div className="method__name">Auto-Test</div>
           <div className="method__meta">
-            <span className="method__desc">Full host coverage report</span>
+            <span className="method__desc">Run all methods</span>
             {autoTestMark && (
               <span
                 className="method__mark autotest__mark"
@@ -74,14 +74,14 @@ export function ServiceTable({
       <button
         type="button"
         className="method method--autotest"
-        data-active={isAutoTestActive}
+        data-active={isDiagnosisActive}
         data-supported="true"
-        onClick={() => onSelect(AUTO_TEST_ID, "")}
+        onClick={() => onSelect(DIAGNOSIS_ID, "")}
       >
         <div className="method__body">
-          <div className="method__name">Auto-Test</div>
+          <div className="method__name">Diagnosis</div>
           <div className="method__meta">
-            <span className="method__desc">Run all methods</span>
+            <span className="method__desc">Full host coverage report</span>
           </div>
         </div>
       </button>

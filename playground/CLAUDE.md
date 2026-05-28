@@ -22,7 +22,7 @@ yarn e2e               # Playwright e2e suite
 yarn generate-matrix   # Aggregate pending-reports/*.md into matrix.md (consumes the reports)
 ```
 
-Drop one diagnosis report per host (the playground's "Copy report" output) into `pending-reports/`, then `yarn generate-matrix` merges them into a host × method `matrix.md` at the playground root and deletes the consumed reports. Both `pending-reports/*.md` and `matrix.md` are gitignored. The aggregator lives at `../scripts/aggregate-diagnosis-matrix.mjs`.
+Drop one diagnosis report per host (the playground's "Copy report" output) into `pending-reports/`, then `yarn generate-matrix` merges them into a host × method `matrix.md` at the playground root and deletes the consumed reports. Both `pending-reports/*.md` and `matrix.md` are gitignored. The aggregator lives at `../scripts/aggregate-diagnosis-matrix.mjs`. End-to-end guide (tester + aggregator roles, status legend, example matrix) in [README.md → Diagnosis & compatibility matrix](./README.md#diagnosis--compatibility-matrix).
 
 `predev` and `prebuild`/`prelint`/`pretypecheck` automatically run `scripts/bundle-rxjs-dts.mjs` (and, for `predev`, `scripts/write-dev-env.mjs`) so the Monaco editor always has up-to-date rxjs type definitions.
 
