@@ -31,6 +31,8 @@ this — PRs that touch `docs/rfcs/` without also modifying `rust/crates/truapi/
 will fail. This ensures every RFC ships with a concrete API change, not just
 prose.
 
+If you use Claude Code, the [`rfc`](.claude/skills/rfc/SKILL.md) skill is highly recommended for drafting RFCs — invoke it with `/rfc` to turn your notes into a well-structured document that follows the template above.
+
 ## Design Documents
 
 Canonical design documentation lives in `docs/design/`. To propose updates or add new design docs:

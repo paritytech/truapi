@@ -8,6 +8,12 @@ export interface MethodInfo {
   description?: string;
   requestDescription?: string;
   exampleSource?: string;
+  /** DataType id (kebab-case) of the method's request payload, when applicable. */
+  requestType?: string;
+  /** DataType id of the method's response. */
+  responseType?: string;
+  /** DataType id of the method's error. */
+  errorType?: string;
 }
 
 export interface ServiceInfo {

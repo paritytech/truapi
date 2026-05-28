@@ -12,9 +12,11 @@ use indoc::{formatdoc, writedoc};
 use crate::rustdoc::*;
 
 mod examples;
+mod explorer;
 mod playground;
 
 pub use examples::generate_client_examples;
+pub use explorer::generate_explorer;
 pub use playground::generate_playground_services;
 
 #[derive(Default)]
@@ -1918,6 +1920,8 @@ fn codec_expr_mode(
             "u32" => Ok("S.u32".to_string()),
             "u64" => Ok("S.u64".to_string()),
             "u128" => Ok("S.u128".to_string()),
+            "compact" => Ok("S.compact".to_string()),
+            "optionBool" => Ok("S.OptionBool".to_string()),
             "i8" => Ok("S.i8".to_string()),
             "i16" => Ok("S.i16".to_string()),
             "i32" => Ok("S.i32".to_string()),
@@ -1995,6 +1999,8 @@ fn ts_type_with_named(ty: &TypeRef, qualified: bool, mode: NameMode) -> Result<S
             "bool" => Ok("boolean".to_string()),
             "u8" | "u16" | "u32" | "i8" | "i16" | "i32" | "f32" | "f64" => Ok("number".to_string()),
             "u64" | "u128" | "i64" | "i128" => Ok("bigint".to_string()),
+            "compact" => Ok("number | bigint".to_string()),
+            "optionBool" => Ok("boolean | undefined".to_string()),
             "str" => Ok("string".to_string()),
             _ => bail!("Unsupported primitive type `{name}` in TypeScript type generation"),
         },
@@ -3423,6 +3429,7 @@ mod tests {
     fn versioned_tuple_wrapper_variants(name: &str, variants: &[(u32, &str)]) -> TypeDef {
         TypeDef {
             name: name.to_string(),
+            module_path: vec!["truapi".into(), "versioned".into()],
             generic_params: Vec::new(),
             kind: TypeDefKind::Enum(
                 variants
@@ -3463,6 +3470,7 @@ mod tests {
         ];
         TypeDef {
             name: name.to_string(),
+            module_path: vec!["truapi".into(), "versioned".into()],
             generic_params: Vec::new(),
             kind: TypeDefKind::Enum(vec![
                 VariantDef {
@@ -3484,6 +3492,7 @@ mod tests {
     fn detect_versioned_wrapper_keeps_each_versioned_variant() {
         let ty = TypeDef {
             name: "ExampleRequest".to_string(),
+            module_path: vec!["truapi".into(), "versioned".into()],
             generic_params: Vec::new(),
             kind: TypeDefKind::Enum(vec![
                 VariantDef {

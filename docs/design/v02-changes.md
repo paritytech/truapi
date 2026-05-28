@@ -15,8 +15,7 @@ RFC: [RFC 0001](https://github.com/paritytech/triangle-js-sdks/pull/66) | Issue:
 ### What changed
 
 - `DevicePermissionRequest` (4 variants) is replaced by `DevicePermission` (9 variants).
-- `RemotePermissionRequest` (single request) is replaced by `Vec<RemotePermission>` (batched requests).
-- The `remote_permission` function signature changes accordingly.
+- `RemotePermission`'s variant set is expanded (see below).
 
 ### New `DevicePermission` variants
 
@@ -28,9 +27,9 @@ RFC: [RFC 0001](https://github.com/paritytech/triangle-js-sdks/pull/66) | Issue:
 | `OpenUrl`       | Permission to open URLs in the system browser (external navigation out of the host). |
 | `Biometrics`    | Trigger biometric authentication (fingerprint, Face ID) for sensitive operations.    |
 
-### Batched `RemotePermission`
+### Expanded `RemotePermission`
 
-The v0.1 `RemotePermissionRequest` had two variants (`ExternalRequest`, `TransactionSubmit`). The v0.2 `RemotePermission` replaces this with a richer set that supports batching:
+The v0.1 `RemotePermissionRequest` had two variants (`ExternalRequest`, `TransactionSubmit`). The v0.2 `RemotePermission` replaces this with a richer set:
 
 | Variant               | Purpose                                                                                                |
 | --------------------- | ------------------------------------------------------------------------------------------------------ |
@@ -42,7 +41,7 @@ The v0.1 `RemotePermissionRequest` had two variants (`ExternalRequest`, `Transac
 
 ### Rationale
 
-The v0.1 permission model required pre-authorisations in the product manifest. Gav's direction was to move to _just-in-time_ (JIT) permission requests instead: the host prompts the user the first time a capability is needed, with options for "Allow always", "This time only", or "Never". Batching remote permissions into a single call lets the host present one consolidated prompt instead of several sequential dialogs.
+The v0.1 permission model required pre-authorisations in the product manifest. Gav's direction was to move to _just-in-time_ (JIT) permission requests instead: the host prompts the user the first time a capability is needed, with options for "Allow always", "This time only", or "Never". Each remote permission is requested on its own so the user sees one prompt per distinct grant and can reason about exactly what they are approving. (Batching multiple remote permissions into one call was considered and dropped: a single prompt spanning several distinct grants is hard to justify to the user and produces bad UX.)
 
 Business methods like `remote_chain_transaction_broadcast` and `remote_statement_store_submit` implicitly trigger permission prompts if not yet resolved, so simple products work correctly without explicit permission preambles.
 
@@ -274,7 +273,7 @@ Product-derived accounts are protocol-generated and have no user-chosen label, w
 | Method                             | What changed                                                                                                                  | RFC                                                                |
 | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
 | `host_device_permission`           | Request type: `DevicePermissionRequest` (4 variants) to `DevicePermission` (9 variants)                                       | [RFC 0001](https://github.com/paritytech/triangle-js-sdks/pull/66) |
-| `remote_permission`                | Request type: single `RemotePermissionRequest` to batched `Vec<RemotePermission>` (5 variants incl. `PreimageSubmit`)         | [RFC 0001](https://github.com/paritytech/triangle-js-sdks/pull/66) |
+| `remote_permission`                | `RemotePermission` variant set expanded to 5 (incl. `PreimageSubmit`); request stays a single `RemotePermission`              | [RFC 0001](https://github.com/paritytech/triangle-js-sdks/pull/66) |
 | `host_sign_payload`                | `SigningPayload.address` replaced by `SigningPayload.account: ProductAccountId`                                               | [RFC 0005](https://github.com/paritytech/triangle-js-sdks/pull/82) |
 | `host_sign_raw`                    | `SigningRawPayload.address` replaced by `SigningRawPayload.account: ProductAccountId`                                         | [RFC 0005](https://github.com/paritytech/triangle-js-sdks/pull/82) |
 | `remote_statement_store_subscribe` | Parameter: `Vec<Topic>` to `TopicFilter` (MatchAll/MatchAny enum)                                                             |                                                                    |
