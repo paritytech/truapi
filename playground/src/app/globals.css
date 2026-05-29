@@ -980,6 +980,9 @@ button {
 .console__body--error {
   color: #ffb4b4;
 }
+.console__cta {
+  margin-top: 12px;
+}
 .console__body--empty {
   color: var(--console-mute);
   font-style: italic;
