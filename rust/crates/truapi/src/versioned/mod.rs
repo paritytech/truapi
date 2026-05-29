@@ -1,23 +1,16 @@
 //! Versioned request and response wrappers for the unified TrUAPI contract.
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum Version {
-    /// Initial protocol version.
-    V1,
-}
-
-pub mod latest {
-    use super::Version;
-
-    pub const VERSION: Version = Version::V1;
-}
-
 #[allow(clippy::result_unit_err)]
 pub trait IntoVersion: Sized {
-    fn into_version(self, version: Version) -> Result<Self, ()>;
+    /// The latest version this envelope supports.
+    const LATEST: u8;
 
+    /// Convert this envelope to the requested version; `N` selects the `Vn` variant.
+    fn into_version(self, version: u8) -> Result<Self, ()>;
+
+    /// Convert this envelope to its latest supported version.
     fn into_latest(self) -> Result<Self, ()> {
-        self.into_version(latest::VERSION)
+        self.into_version(Self::LATEST)
     }
 }
 
@@ -59,7 +52,9 @@ macro_rules! versioned_type {
         }
 
         impl $crate::versioned::IntoVersion for $name {
-            fn into_version(self, _version: $crate::versioned::Version) -> Result<Self, ()> {
+            const LATEST: u8 = 1;
+
+            fn into_version(self, _version: u8) -> Result<Self, ()> {
                 Ok(self)
             }
         }
@@ -83,7 +78,9 @@ macro_rules! versioned_type {
         }
 
         impl $crate::versioned::IntoVersion for $name {
-            fn into_version(self, _version: $crate::versioned::Version) -> Result<Self, ()> {
+            const LATEST: u8 = 1;
+
+            fn into_version(self, _version: u8) -> Result<Self, ()> {
                 Ok(self)
             }
         }
