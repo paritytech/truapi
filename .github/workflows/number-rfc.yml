@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   number-rfc:
@@ -17,11 +18,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Find unnumbered RFCs and assign numbers
+      - name: Number unnumbered RFCs
         run: |
           cd docs/rfcs
 
-          # Collect unnumbered RFC files (not _index.md, not template, not already numbered)
           UNNUMBERED=()
           for f in *.md; do
             case "$f" in
@@ -32,46 +32,84 @@ jobs:
 
           if [ ${#UNNUMBERED[@]} -eq 0 ]; then
             echo "No unnumbered RFCs found."
-            exit 0
+          else
+            MAX=0
+            for f in [0-9][0-9][0-9][0-9]-*.md; do
+              [ -e "$f" ] || continue
+              NUM=$(echo "$f" | grep -oE '^[0-9]+' | sed 's/^0*//')
+              [ "${NUM:-0}" -gt "$MAX" ] && MAX="$NUM"
+            done
+
+            for DRAFT in "${UNNUMBERED[@]}"; do
+              MAX=$((MAX + 1))
+              PADDED=$(printf '%04d' "$MAX")
+              SLUG="${DRAFT%.md}"
+              NEW_NAME="${PADDED}-${SLUG}.md"
+              echo "Numbering: $DRAFT -> $NEW_NAME (RFC $PADDED)"
+              git mv "$DRAFT" "$NEW_NAME"
+              sed -i -E "s/^# RFC — /# RFC ${PADDED} — /" "$NEW_NAME"
+              sed -i -E "s/^# RFC [0-9]+ — /# RFC ${PADDED} — /" "$NEW_NAME"
+            done
           fi
 
-          # Determine the highest existing number
-          MAX=0
-          for f in [0-9][0-9][0-9][0-9]-*.md; do
-            [ -e "$f" ] || continue
-            NUM=$(echo "$f" | grep -oE '^[0-9]+' | sed 's/^0*//')
-            [ "${NUM:-0}" -gt "$MAX" ] && MAX="$NUM"
-          done
+      - name: Rebuild _index.md from RFC files on disk
+        run: |
+          cd docs/rfcs
 
-          for DRAFT in "${UNNUMBERED[@]}"; do
-            MAX=$((MAX + 1))
-            PADDED=$(printf '%04d' "$MAX")
-            SLUG="${DRAFT%.md}"
-            NEW_NAME="${PADDED}-${SLUG}.md"
+          # Extract title and owner from an RFC file.
+          # Supports both YAML frontmatter (title:/owner:) and markdown table
+          # (| **Authors** | ... | or | Author | ... |) formats.
+          extract_meta() {
+            local file="$1" title="" owner="" st=""
 
-            echo "Numbering: $DRAFT -> $NEW_NAME (RFC $PADDED)"
+            # Try YAML frontmatter (between --- delimiters)
+            if head -1 "$file" | grep -q '^---$'; then
+              title=$(awk '/^---$/{n++; next} n==1 && /^title:/{print; exit}' "$file" | sed 's/^title: *"*//; s/"*$//')
+              owner=$(awk '/^---$/{n++; next} n==1 && /^owner:/{print; exit}' "$file" | sed 's/^owner: *"*//; s/"*$//')
+              st=$(awk '/^---$/{n++; next} n==1 && /^status:/{print; exit}' "$file" | sed 's/^status: *//; s/ *$//')
+            fi
 
-            # Rename the file
-            git mv "$DRAFT" "$NEW_NAME"
+            # Fall back to first H1 heading for title (strip RFC prefix)
+            if [ -z "$title" ]; then
+              title=$(grep -m1 '^# ' "$file" | sed 's/^# *//; s/^RFC[-— ]*[0-9]*[—: ]*//' | sed 's/^ *//')
+            fi
 
-            # Update the heading: "# RFC — Title" or "# Title" -> "# RFC NNNN — Title"
-            sed -i -E "s/^# RFC — /# RFC ${PADDED} — /" "$NEW_NAME"
-            sed -i -E "s/^# RFC [0-9]+ — /# RFC ${PADDED} — /" "$NEW_NAME"
+            # Fall back to markdown table for owner (handles both | Author | and | **Authors** |)
+            if [ -z "$owner" ]; then
+              owner=$(grep -iE '^\| *\*{0,2}Authors?\*{0,2}' "$file" | head -1 \
+                | awk -F'|' '{gsub(/^[ \t]+|[ \t]+$/, "", $3); print $3}')
+            fi
 
-            # Extract title from frontmatter
-            TITLE=$(grep -m1 '^title:' "$NEW_NAME" | sed 's/^title: *"//;s/" *$//')
-            # Extract owner from frontmatter
-            OWNER=$(grep -m1 '^owner:' "$NEW_NAME" | sed 's/^owner: *"//;s/" *$//')
-            # Extract status from frontmatter (default to accepted on merge)
-            STATUS=$(grep -m1 '^status:' "$NEW_NAME" | sed 's/^status: *//;s/ *$//')
-            STATUS="${STATUS:-accepted}"
+            : "${st:=accepted}"
+            echo "${title}|${owner}|${st}"
+          }
 
-            # Append row to _index.md
-            printf '| %s   | [%s](%s) | %-18s | %-13s | |\n' \
-              "$PADDED" "$TITLE" "$NEW_NAME" "$STATUS" "$OWNER" >> _index.md
-          done
+          # Preserve the frontmatter and table header from the existing _index.md
+          # (everything up to and including the header separator line)
+          HEADER_END=$(grep -n '^| *---' _index.md | tail -1 | cut -d: -f1)
+          head -n "$HEADER_END" _index.md > _index.md.tmp
 
-      - name: Commit and push
+          # Rebuild rows from all numbered RFC files on disk (sorted)
+          for f in $(ls [0-9][0-9][0-9][0-9]-*.md 2>/dev/null | sort); do
+            PADDED=$(echo "$f" | grep -oE '^[0-9]{4}')
+            META=$(extract_meta "$f")
+            TITLE=$(echo "$META" | cut -d'|' -f1)
+            OWNER=$(echo "$META" | cut -d'|' -f2)
+            STATUS=$(echo "$META" | cut -d'|' -f3)
+
+            # Look up the PR link from the old index if it exists
+            PR=$(grep "^| *${PADDED}" _index.md | sed 's/.*| *\(\[#[0-9]*\]([^)]*)\) *|.*/\1/' | grep '^\[#' || true)
+            : "${PR:=—}"
+
+            printf '| %s   | [%s](%s) | %-18s | %-13s | %s |\n' \
+              "$PADDED" "$TITLE" "$f" "$STATUS" "$OWNER" "$PR"
+          done >> _index.md.tmp
+
+          mv _index.md.tmp _index.md
+
+      - name: Create PR if changes exist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -79,6 +117,14 @@ jobs:
             echo "Nothing to commit."
             exit 0
           fi
+          BRANCH="ci/update-rfc-index-$(date +%s)"
+          git checkout -b "$BRANCH"
           git add docs/rfcs/
-          git commit -m "Assign RFC number to newly merged RFC(s)"
-          git push
+          git commit -m "Update RFC index"
+          git push origin "$BRANCH"
+          gh pr create \
+            --title "ci: update RFC index" \
+            --body "Auto-generated by the number-rfc workflow." \
+            --head "$BRANCH" \
+            --base main \
+            --reviewer paritytech/host-sdk-team

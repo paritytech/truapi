@@ -5,8 +5,18 @@ import { findMethod, productFunction } from "../data/registry";
 import PatternBadge from "../components/PatternBadge";
 import { TypeString } from "../components/TypeLink";
 import { MarkdownText } from "../components/MarkdownText";
+import CodeBlock from "../components/CodeBlock";
 import { compatibility } from "../data/compatibility";
 import type { CompatStatus } from "../data/compatibility-types";
+
+/** Deployed playground served inside the Polkadot Desktop Host. */
+const HOSTED_PLAYGROUND_URL = "https://truapi-playground.dot.li";
+
+/** Deep link that opens this method in the host-backed playground. */
+function playgroundUrl(service: string, method: string): string {
+  const params = new URLSearchParams({ service, method });
+  return `${HOSTED_PLAYGROUND_URL}/?${params.toString()}`;
+}
 
 /** Detail page for a single method. */
 export default function MethodPage() {
@@ -53,6 +63,9 @@ export default function MethodPage() {
           status: compatRow.results[h.label] ?? null,
         }))
       : null;
+
+  const exampleSource = method.exampleSource;
+  const playgroundDeepLink = playgroundUrl(service.name, method.name);
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -138,6 +151,37 @@ export default function MethodPage() {
           )}
         </div>
       </div>
+
+      {exampleSource && (
+        <div className="mb-8 animate-slide-up">
+          <div className="flex items-center justify-between gap-3 mb-3">
+            <h2 className="text-sm font-semibold text-white font-display">
+              Example
+            </h2>
+            <a
+              href={playgroundDeepLink}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs font-medium text-pink-400 hover:text-pink-300 transition-colors whitespace-nowrap"
+            >
+              Run in playground ↗
+            </a>
+          </div>
+          <CodeBlock code={exampleSource} />
+          <p className="text-xs text-slate-500 mt-2">
+            Open this example in the{" "}
+            <a
+              href={playgroundDeepLink}
+              target="_blank"
+              rel="noreferrer"
+              className="text-pink-400 hover:text-pink-300 transition-colors"
+            >
+              host-backed playground
+            </a>{" "}
+            to run it live.
+          </p>
+        </div>
+      )}
 
       {hostSupport && (
         <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl overflow-hidden mb-8 card-hover animate-slide-up">

@@ -25,17 +25,14 @@ use crate::{CallContext, CallError, Subscription};
 pub trait CoinPayment: Send + Sync {
     /// Create a new firewalled CoinPayment purse.
     ///
-    /// ```truapi-client-example
-    /// import { type Client } from "@parity/truapi";
-    ///
-    /// export async function createPurse(truapi: Client): Promise<number> {
-    ///   const result = await truapi.coinPayment.createPurse({
-    ///     name: "Terminal purse",
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value.purse;
-    /// }
+    /// ```ts
+    /// const result = await truapi.coinPayment.createPurse({
+    ///   name: "Terminal purse",
+    /// });
+    /// result.match(
+    ///   (value) => console.log(value.purse),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 136)]
     async fn create_purse(
@@ -49,23 +46,12 @@ pub trait CoinPayment: Send + Sync {
 
     /// Query product-visible purse metadata and balance.
     ///
-    /// ```truapi-client-example
-    /// import {
-    ///   type Client,
-    ///   type HostCoinPaymentQueryPurseResponse,
-    /// } from "@parity/truapi";
-    ///
-    /// export async function queryPurse(
-    ///   truapi: Client,
-    ///   purse: number,
-    /// ): Promise<HostCoinPaymentQueryPurseResponse> {
-    ///   const result = await truapi.coinPayment.queryPurse({
-    ///     purse,
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// ```ts
+    /// const result = await truapi.coinPayment.queryPurse({ purse: 1 });
+    /// result.match(
+    ///   (value) => console.log(value.info),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 138)]
     async fn query_purse(
@@ -78,26 +64,20 @@ pub trait CoinPayment: Send + Sync {
 
     /// Transfer balance between local purses.
     ///
-    /// ```truapi-client-example
-    /// import {
-    ///   type Client,
-    ///   type HostCoinPaymentRebalancePurseError,
-    ///   type CoinPaymentStatus,
-    ///   type Subscription,
-    ///   type SubscriptionError,
-    /// } from "@parity/truapi";
+    /// ```ts
+    /// import { from, take } from "rxjs";
     ///
-    /// export function rebalancePurse(truapi: Client): Subscription {
-    ///   return truapi.coinPayment
-    ///     .rebalancePurse({
-    ///       request: { from: 1, to: 2, amount: 1000 },
-    ///     })
-    ///     .subscribe({
-    ///       next: (status: CoinPaymentStatus) => console.log(status),
-    ///       error: (error: SubscriptionError<HostCoinPaymentRebalancePurseError>) =>
-    ///         console.error(error),
-    ///     });
-    /// }
+    /// from(
+    ///   truapi.coinPayment.rebalancePurse({
+    ///     request: { from: 1, to: 2, amount: 1000 },
+    ///   }),
+    /// )
+    ///   .pipe(take(3))
+    ///   .subscribe({
+    ///     next: (status) => console.log(status),
+    ///     error: (error) => console.error(error),
+    ///     complete: () => console.log("completed"),
+    ///   });
     /// ```
     #[wire(start_id = 140)]
     async fn rebalance_purse(
@@ -113,26 +93,20 @@ pub trait CoinPayment: Send + Sync {
 
     /// Delete a purse after draining its balance into another local purse.
     ///
-    /// ```truapi-client-example
-    /// import {
-    ///   type Client,
-    ///   type HostCoinPaymentDeletePurseError,
-    ///   type CoinPaymentStatus,
-    ///   type Subscription,
-    ///   type SubscriptionError,
-    /// } from "@parity/truapi";
+    /// ```ts
+    /// import { from, take } from "rxjs";
     ///
-    /// export function deletePurse(truapi: Client): Subscription {
-    ///   return truapi.coinPayment
-    ///     .deletePurse({
-    ///       request: { target: 2, drainInto: 1 },
-    ///     })
-    ///     .subscribe({
-    ///       next: (status: CoinPaymentStatus) => console.log(status),
-    ///       error: (error: SubscriptionError<HostCoinPaymentDeletePurseError>) =>
-    ///         console.error(error),
-    ///     });
-    /// }
+    /// from(
+    ///   truapi.coinPayment.deletePurse({
+    ///     request: { target: 2, drainInto: 1 },
+    ///   }),
+    /// )
+    ///   .pipe(take(3))
+    ///   .subscribe({
+    ///     next: (status) => console.log(status),
+    ///     error: (error) => console.error(error),
+    ///     complete: () => console.log("completed"),
+    ///   });
     /// ```
     #[wire(start_id = 144)]
     async fn delete_purse(
@@ -148,20 +122,12 @@ pub trait CoinPayment: Send + Sync {
 
     /// Create a receivable public key for depositing into a purse.
     ///
-    /// ```truapi-client-example
-    /// import { type Client, type CoinPaymentReceivable } from "@parity/truapi";
-    ///
-    /// export async function createReceivable(
-    ///   truapi: Client,
-    ///   purse: number,
-    /// ): Promise<CoinPaymentReceivable> {
-    ///   const result = await truapi.coinPayment.createReceivable({
-    ///     into: purse,
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value.receivable;
-    /// }
+    /// ```ts
+    /// const result = await truapi.coinPayment.createReceivable({ into: 1 });
+    /// result.match(
+    ///   (value) => console.log(value.receivable),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 148)]
     async fn create_receivable(
@@ -177,22 +143,16 @@ pub trait CoinPayment: Send + Sync {
 
     /// Create a cheque paying from a local purse to a receivable.
     ///
-    /// ```truapi-client-example
-    /// import { type CoinPaymentCheque, type Client, type CoinPaymentReceivable } from "@parity/truapi";
-    ///
-    /// export async function createCheque(
-    ///   truapi: Client,
-    ///   receiver: CoinPaymentReceivable,
-    /// ): Promise<CoinPaymentCheque> {
-    ///   const result = await truapi.coinPayment.createCheque({
-    ///     from: 1,
-    ///     to: receiver,
-    ///     amount: 1000,
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value.cheque;
-    /// }
+    /// ```ts
+    /// const result = await truapi.coinPayment.createCheque({
+    ///   from: 1,
+    ///   to: "0x0000000000000000000000000000000000000000000000000000000000000000",
+    ///   amount: 1000,
+    /// });
+    /// result.match(
+    ///   (value) => console.log(value.cheque),
+    ///   (error) => console.error(error),
+    /// );
     /// ```
     #[wire(request_id = 150)]
     async fn create_cheque(
@@ -206,25 +166,23 @@ pub trait CoinPayment: Send + Sync {
 
     /// Claim coins from a cheque into the receivable's purse.
     ///
-    /// ```truapi-client-example
-    /// import {
-    ///   type CoinPaymentCheque,
-    ///   type Client,
-    ///   type HostCoinPaymentDepositError,
-    ///   type CoinPaymentStatus,
-    ///   type Subscription,
-    ///   type SubscriptionError,
-    /// } from "@parity/truapi";
+    /// ```ts
+    /// import { type CoinPaymentCheque } from "@parity/truapi";
+    /// import { from, take } from "rxjs";
     ///
-    /// export function depositCheque(truapi: Client, cheque: CoinPaymentCheque): Subscription {
-    ///   return truapi.coinPayment
-    ///     .deposit({ request: { cheque } })
-    ///     .subscribe({
-    ///       next: (status: CoinPaymentStatus) => console.log(status),
-    ///       error: (error: SubscriptionError<HostCoinPaymentDepositError>) =>
-    ///         console.error(error),
-    ///     });
-    /// }
+    /// const cheque: CoinPaymentCheque = {
+    ///   id: "0x0000000000000000000000000000000000000000000000000000000000000000",
+    ///   amount: 1000,
+    ///   encryptedSecrets: "0x",
+    /// };
+    ///
+    /// from(truapi.coinPayment.deposit({ request: { cheque } }))
+    ///   .pipe(take(3))
+    ///   .subscribe({
+    ///     next: (status) => console.log(status),
+    ///     error: (error) => console.error(error),
+    ///     complete: () => console.log("completed"),
+    ///   });
     /// ```
     #[wire(start_id = 152)]
     async fn deposit(
@@ -238,28 +196,23 @@ pub trait CoinPayment: Send + Sync {
 
     /// Attempt to return coins associated with a receivable.
     ///
-    /// ```truapi-client-example
-    /// import {
-    ///   type Client,
-    ///   type HostCoinPaymentRefundError,
-    ///   type CoinPaymentReceivable,
-    ///   type CoinPaymentStatus,
-    ///   type Subscription,
-    ///   type SubscriptionError,
-    /// } from "@parity/truapi";
+    /// ```ts
+    /// import { from, take } from "rxjs";
     ///
-    /// export function refundReceivable(
-    ///   truapi: Client,
-    ///   receivable: CoinPaymentReceivable,
-    /// ): Subscription {
-    ///   return truapi.coinPayment
-    ///     .refund({ request: { receivable } })
-    ///     .subscribe({
-    ///       next: (status: CoinPaymentStatus) => console.log(status),
-    ///       error: (error: SubscriptionError<HostCoinPaymentRefundError>) =>
-    ///         console.error(error),
-    ///     });
-    /// }
+    /// from(
+    ///   truapi.coinPayment.refund({
+    ///     request: {
+    ///       receivable:
+    ///         "0x0000000000000000000000000000000000000000000000000000000000000000",
+    ///     },
+    ///   }),
+    /// )
+    ///   .pipe(take(3))
+    ///   .subscribe({
+    ///     next: (status) => console.log(status),
+    ///     error: (error) => console.error(error),
+    ///     complete: () => console.log("completed"),
+    ///   });
     /// ```
     #[wire(start_id = 156)]
     async fn refund(
@@ -273,28 +226,23 @@ pub trait CoinPayment: Send + Sync {
 
     /// Listen for a cheque delivered through a standard transmission channel.
     ///
-    /// ```truapi-client-example
-    /// import {
-    ///   type Client,
-    ///   type HostCoinPaymentListenForError,
-    ///   type HostCoinPaymentListenForItem,
-    ///   type CoinPaymentReceivable,
-    ///   type Subscription,
-    ///   type SubscriptionError,
-    /// } from "@parity/truapi";
+    /// ```ts
+    /// import { from, take } from "rxjs";
     ///
-    /// export function listenForCheque(
-    ///   truapi: Client,
-    ///   receivable: CoinPaymentReceivable,
-    /// ): Subscription {
-    ///   return truapi.coinPayment
-    ///     .listenForPayment({ request: { receivable } })
-    ///     .subscribe({
-    ///       next: (item: HostCoinPaymentListenForItem) => console.log(item),
-    ///       error: (error: SubscriptionError<HostCoinPaymentListenForError>) =>
-    ///         console.error(error),
-    ///     });
-    /// }
+    /// from(
+    ///   truapi.coinPayment.listenForPayment({
+    ///     request: {
+    ///       receivable:
+    ///         "0x0000000000000000000000000000000000000000000000000000000000000000",
+    ///     },
+    ///   }),
+    /// )
+    ///   .pipe(take(3))
+    ///   .subscribe({
+    ///     next: (item) => console.log(item),
+    ///     error: (error) => console.error(error),
+    ///     complete: () => console.log("completed"),
+    ///   });
     /// ```
     #[wire(start_id = 160)]
     async fn listen_for_payment(
