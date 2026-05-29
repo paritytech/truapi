@@ -4,10 +4,12 @@ import {
   type RunSubscription,
 } from "./example-runner";
 import { stringify } from "./host-api-bridge";
+import { errorTextFrom } from "./result-status";
 import { getClient } from "./transport";
 import type { MethodInfo, ServiceInfo } from "./services";
 
 export const AUTO_TEST_ID = "__auto_test__";
+export const DIAGNOSIS_ID = "__diagnosis__";
 
 export type TestStatus = "idle" | "running" | "pass" | "fail" | "skipped";
 
@@ -74,7 +76,7 @@ async function runOne({
     return;
   }
   if (!method.exampleSource) {
-    onUpdate(id, { status: "skipped" });
+    onUpdate(id, { status: "fail", output: "no runnable example" });
     return;
   }
 
@@ -105,21 +107,41 @@ async function runOne({
           ),
         ),
       ]);
-      onUpdate(id, {
-        status: "pass",
-        request: source,
-        output: stringify(value) ?? "null",
-      });
+      // Generated examples self-handle the Result via
+      // `result.match(v => console.log(v), e => console.error(e))`, so an Err
+      // surfaces as an error-level log rather than a thrown exception. Some
+      // examples instead `return result` / `console.log(result)`, leaving the
+      // neverthrow Err as the resolved value. Treat either as an errored call.
+      const errText = errorTextFrom(value, logs);
+      if (errText != null) {
+        onUpdate(id, {
+          status: "fail",
+          request: source,
+          output: errText,
+        });
+      } else {
+        onUpdate(id, {
+          status: "pass",
+          request: source,
+          output: stringify(value) ?? joinLogs(logs) ?? "null",
+        });
+      }
     } else {
       await runSubscription(id, source, run.subscription, logs, onUpdate);
     }
   } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     onUpdate(id, {
       status: "fail",
       request: source,
-      output: err instanceof Error ? err.message : String(err),
+      output: message,
     });
   }
+}
+
+function joinLogs(logs: LogEntry[]): string | undefined {
+  if (logs.length === 0) return undefined;
+  return logs.map((l) => l.text).join("\n");
 }
 
 async function runSubscription(
@@ -129,40 +151,47 @@ async function runSubscription(
   logs: LogEntry[],
   onUpdate: (id: string, entry: TestEntry) => void,
 ): Promise<void> {
-  await new Promise<void>((resolve) => {
-    const deadline = setTimeout(() => {
-      try {
-        sub.unsubscribe();
-      } catch {
-        /* benign */
-      }
-      const text = logs.map((l) => l.text).join("\n");
-      if (logs.length > 0) {
-        onUpdate(id, { status: "pass", request: source, output: text });
-      } else {
-        onUpdate(id, {
-          status: "fail",
-          request: source,
-          output: `subscription delivered no events in ${SUBSCRIPTION_TIMEOUT_MS / 1000}s`,
-        });
-      }
-      resolve();
-    }, SUBSCRIPTION_TIMEOUT_MS);
+  const settle = (resolve: () => void) => {
+    try {
+      sub.unsubscribe();
+    } catch {
+      /* benign */
+    }
+    const errText = errorTextFrom(undefined, logs);
+    if (errText != null) {
+      onUpdate(id, {
+        status: "fail",
+        request: source,
+        output: errText,
+      });
+    } else if (logs.length > 0) {
+      onUpdate(id, {
+        status: "pass",
+        request: source,
+        output: logs.map((l) => l.text).join("\n"),
+      });
+    } else {
+      onUpdate(id, {
+        status: "fail",
+        request: source,
+        output: `subscription delivered no events in ${SUBSCRIPTION_TIMEOUT_MS / 1000}s`,
+      });
+    }
+    resolve();
+  };
 
+  await new Promise<void>((resolve) => {
     const interval = setInterval(() => {
       if (logs.length > 0) {
         clearInterval(interval);
         clearTimeout(deadline);
-        try {
-          sub.unsubscribe();
-        } catch {
-          /* benign */
-        }
-        const text = logs.map((l) => l.text).join("\n");
-        onUpdate(id, { status: "pass", request: source, output: text });
-        resolve();
+        settle(resolve);
       }
     }, 50);
+    const deadline = setTimeout(() => {
+      clearInterval(interval);
+      settle(resolve);
+    }, SUBSCRIPTION_TIMEOUT_MS);
   });
 }
 
@@ -231,4 +260,37 @@ export async function runAutoTests(
       }
     }),
   );
+}
+
+// Full diagnosis: run every non-disruptive method in parallel, then run each
+// disruptive method (signing, permission/resource requests, `navigate_to`)
+// sequentially — one at a time — so the human can complete each phone
+// interaction before the next begins. Produces a complete worked / failed /
+// not-wired matrix suitable for the copy-pasteable report.
+export async function runDiagnosis(
+  services: ServiceInfo[],
+  onUpdate: (id: string, entry: TestEntry) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  await runAutoTests(services, onUpdate, signal, EXCLUDED_METHODS);
+
+  const byId = new Map<string, { serviceName: string; method: MethodInfo }>();
+  for (const svc of services) {
+    for (const m of svc.methods) {
+      byId.set(`${svc.name}/${m.name}`, { serviceName: svc.name, method: m });
+    }
+  }
+
+  for (const id of EXCLUDED_METHODS) {
+    if (signal?.aborted) return;
+    const entry = byId.get(id);
+    if (!entry) continue;
+    await runOne({
+      serviceName: entry.serviceName,
+      method: entry.method,
+      onUpdate,
+      excludeSet: new Set(),
+      signal,
+    });
+  }
 }
