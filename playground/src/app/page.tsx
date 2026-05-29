@@ -8,18 +8,25 @@ import {
 import { ServiceTable } from "@/src/components/ServiceTable";
 import { MethodView } from "@/src/components/MethodView";
 import { AutoTestView } from "@/src/components/AutoTestView";
+import { DiagnosisView } from "@/src/components/DiagnosisView";
 import { CommandPalette } from "@/src/components/CommandPalette";
 import { services } from "@/src/lib/services";
 import {
   type TestEntry,
   AUTO_TEST_ID,
+  DIAGNOSIS_ID,
   EXCLUDED_METHODS,
   runAutoTests,
+  runDiagnosis,
   runSingleTest,
 } from "@/src/lib/auto-test";
 import packageJson from "../../package.json";
 
 const VERSION_LABEL = `v${packageJson.version}`;
+
+// Stable empty map so a view that does not own the current results re-renders
+// with an empty object rather than a fresh `{}` each render.
+const EMPTY_RESULTS: Record<string, TestEntry> = {};
 
 const STATUS_LABEL: Record<string, string> = {
   connected: "Host Linked",
@@ -132,6 +139,11 @@ export default function PlaygroundPage() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [testResults, setTestResults] = useState<Record<string, TestEntry>>({});
   const [isTestRunning, setIsTestRunning] = useState(false);
+  // Which runner the current `testResults` belong to, so the Diagnosis and
+  // Auto-Test screens never render each other's results under the wrong title.
+  const [resultsOwner, setResultsOwner] = useState<
+    "autotest" | "diagnosis" | null
+  >(null);
   const abortRef = useRef<AbortController | null>(null);
 
   // Hydrate selection from the URL on mount and respond to back/forward.
@@ -185,6 +197,7 @@ export default function PlaygroundPage() {
       const controller = new AbortController();
       abortRef.current = controller;
       setIsTestRunning(true);
+      setResultsOwner("autotest");
       const initial: Record<string, TestEntry> = {};
       for (const svc of services) {
         for (const m of svc.methods) {
@@ -216,6 +229,39 @@ export default function PlaygroundPage() {
     [isTestRunning],
   );
 
+  const handleRunDiagnosis = useCallback(async () => {
+    if (isTestRunning) return;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setIsTestRunning(true);
+    setResultsOwner("diagnosis");
+    const initial: Record<string, TestEntry> = {};
+    for (const svc of services) {
+      for (const m of svc.methods) {
+        initial[`${svc.name}/${m.name}`] = { status: "idle" };
+      }
+    }
+    setTestResults(initial);
+    try {
+      await runDiagnosis(
+        services,
+        (id, entry) => {
+          setTestResults((prev) => ({ ...prev, [id]: entry }));
+        },
+        controller.signal,
+      );
+    } finally {
+      setTestResults((prev) => {
+        const updated = { ...prev };
+        for (const [id, entry] of Object.entries(updated)) {
+          if (entry.status === "running") updated[id] = { status: "idle" };
+        }
+        return updated;
+      });
+      setIsTestRunning(false);
+    }
+  }, [isTestRunning]);
+
   const handleStopTests = useCallback(() => {
     abortRef.current?.abort();
   }, []);
@@ -242,6 +288,11 @@ export default function PlaygroundPage() {
 
   const hasView = selection !== null;
   const isAutoTest = selection?.service === AUTO_TEST_ID;
+  const isDiagnosis = selection?.service === DIAGNOSIS_ID;
+  const autoTestResults =
+    resultsOwner === "autotest" ? testResults : EMPTY_RESULTS;
+  const diagnosisResults =
+    resultsOwner === "diagnosis" ? testResults : EMPTY_RESULTS;
 
   return (
     <div className="shell">
@@ -260,10 +311,19 @@ export default function PlaygroundPage() {
           />
         </aside>
         <section className="view">
-          {isAutoTest ? (
+          {isDiagnosis ? (
+            <DiagnosisView
+              services={services}
+              testResults={diagnosisResults}
+              isRunning={isTestRunning}
+              onRun={handleRunDiagnosis}
+              onStop={handleStopTests}
+              onBack={() => setSelection(null)}
+            />
+          ) : isAutoTest ? (
             <AutoTestView
               services={services}
-              testResults={testResults}
+              testResults={autoTestResults}
               isRunning={isTestRunning}
               onRun={handleRunTests}
               onStop={handleStopTests}

@@ -980,6 +980,9 @@ button {
 .console__body--error {
   color: #ffb4b4;
 }
+.console__cta {
+  margin-top: 12px;
+}
 .console__body--empty {
   color: var(--console-mute);
   font-style: italic;
@@ -1535,6 +1538,87 @@ button {
 .autotest__retry:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+
+.autotest__report {
+  margin-top: 28px;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.autotest__report-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--rule);
+}
+.autotest__report-copy {
+  padding: 6px 14px;
+  font-family: var(--font-mono), monospace;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  background: transparent;
+  border: 1px solid var(--rule-strong);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+.autotest__report-copy:hover {
+  background: var(--bg-tint);
+  color: var(--ink);
+}
+.autotest__report-body {
+  margin: 0;
+  padding: 14px;
+  font-family: var(--font-mono), monospace;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--console-ink);
+  background: var(--console-bg);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.diag__callout {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-left: 2px solid var(--rule-strong);
+  background: var(--bg-tint);
+  font-family: var(--font-sans), sans-serif;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.diag__log {
+  margin-top: 24px;
+  border-top: 1px solid var(--rule);
+}
+
+.diag__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--rule);
+  min-height: 34px;
+}
+
+.diag__name {
+  flex: 1;
+  font-family: var(--font-mono), monospace;
+  font-size: 13px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.diag__row[data-status="idle"] .diag__name {
+  color: var(--ink-4);
 }
 
 /* =========================================================
