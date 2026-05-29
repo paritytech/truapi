@@ -15,6 +15,7 @@ use std::task::{Context, Poll};
 use futures::Stream;
 
 pub mod api;
+pub mod next;
 pub mod v01;
 pub mod versioned;
 
