@@ -2026,53 +2026,6 @@ export const types: DataType[] = [
     ],
   },
   {
-    id: "host-jsonrpc-message-send-request",
-    name: "HostJsonrpcMessageSendRequest",
-    category: "jsonrpc",
-    definition:
-      "export interface HostJsonrpcMessageSendRequest {\n  genesisHash: HexString;\n  message: string;\n}",
-    fields: [
-      {
-        name: "genesis_hash",
-        type: "HexString",
-        description: "Chain genesis hash.",
-      },
-      {
-        name: "message",
-        type: "string",
-        description: "JSON-RPC message body.",
-      },
-    ],
-  },
-  {
-    id: "host-jsonrpc-message-subscribe-item",
-    name: "HostJsonrpcMessageSubscribeItem",
-    category: "jsonrpc",
-    definition:
-      "export interface HostJsonrpcMessageSubscribeItem {\n  message: string;\n}",
-    fields: [
-      {
-        name: "message",
-        type: "string",
-        description: "JSON-RPC message body.",
-      },
-    ],
-  },
-  {
-    id: "host-jsonrpc-message-subscribe-request",
-    name: "HostJsonrpcMessageSubscribeRequest",
-    category: "jsonrpc",
-    definition:
-      "export interface HostJsonrpcMessageSubscribeRequest {\n  genesisHash: HexString;\n}",
-    fields: [
-      {
-        name: "genesis_hash",
-        type: "HexString",
-        description: "Chain genesis hash.",
-      },
-    ],
-  },
-  {
     id: "host-local-storage-clear-request",
     name: "HostLocalStorageClearRequest",
     category: "local_storage",

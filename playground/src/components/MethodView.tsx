@@ -19,8 +19,22 @@ const CARGO_DOC_BASE =
   process.env.NEXT_PUBLIC_CARGO_DOC_BASE ??
   "https://paritytech.github.io/truapi/cargo_doc";
 
+/** Deployed playground served inside the Polkadot Desktop Host. */
+const HOSTED_PLAYGROUND_URL = "https://truapi-playground.dot.li";
+
 function cargoDocMethodUrl(docUrl: string | undefined): string | undefined {
   return docUrl ? `${CARGO_DOC_BASE}/${docUrl}` : undefined;
+}
+
+/** Deep link that opens this method in the host-backed playground. */
+function hostedPlaygroundUrl(service: string, method: string): string {
+  const params = new URLSearchParams({ service, method });
+  return `${HOSTED_PLAYGROUND_URL}/?${params.toString()}`;
+}
+
+/** Thrown by the transport when no host is detected (standalone tab). */
+function isHostMissingError(error: string): boolean {
+  return error.includes("must be opened inside a TrUAPI host");
 }
 
 function formatError(value: unknown): string {
@@ -354,6 +368,19 @@ export function MethodView({
                 data-testid="error-display"
               >
                 {error}
+                {isHostMissingError(error) && (
+                  <div className="console__cta">
+                    <a
+                      className="open-in-dotli"
+                      href={hostedPlaygroundUrl(service, method)}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Open this example in the host-backed playground"
+                    >
+                      Run in hosted playground ↗
+                    </a>
+                  </div>
+                )}
               </div>
             ) : result ? (
               <div className="console__body" data-testid="response-content">

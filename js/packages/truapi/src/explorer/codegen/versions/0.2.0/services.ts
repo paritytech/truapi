@@ -690,33 +690,6 @@ export const services: ServiceInfo[] = [
     ],
   },
   {
-    name: "JSON-RPC",
-    methods: [
-      {
-        name: "send_message",
-        type: "unary",
-        signature:
-          "sendMessage(request: HostJsonrpcMessageSendRequest): Promise<Result<undefined, GenericError>>",
-        docUrl: "api/jsonrpc/trait.JsonRpc.html#method.send_message",
-        description: "Send a JSON-RPC message.",
-        requestDescription: "HostJsonrpcMessageSendRequest",
-        requestType: "host-jsonrpc-message-send-request",
-        errorType: "generic-error",
-      },
-      {
-        name: "subscribe_messages",
-        type: "subscription",
-        signature:
-          "subscribeMessages(request: HostJsonrpcMessageSubscribeRequest): ObservableLike<HostJsonrpcMessageSubscribeItem>",
-        docUrl: "api/jsonrpc/trait.JsonRpc.html#method.subscribe_messages",
-        description: "Subscribe to inbound JSON-RPC messages.",
-        requestDescription: "HostJsonrpcMessageSubscribeRequest",
-        requestType: "host-jsonrpc-message-subscribe-request",
-        responseType: "host-jsonrpc-message-subscribe-item",
-      },
-    ],
-  },
-  {
     name: "Resource Allocation",
     methods: [
       {
