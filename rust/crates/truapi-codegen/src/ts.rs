@@ -365,6 +365,8 @@ pub fn generate(
 ) -> Result<()> {
     fs::create_dir_all(output_dir)?;
     validate_versioned_wrapper_shapes(api)?;
+    let wrappers = collect_versioned_wrappers(api);
+    playground::validate_method_examples(api, &wrappers, target_version)?;
 
     let types_code = generate_types(api, target_version)?;
     fs::write(Path::new(output_dir).join("types.ts"), types_code)?;
