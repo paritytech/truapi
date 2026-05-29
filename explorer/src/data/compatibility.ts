@@ -5,7 +5,467 @@
 import type { CompatibilityMatrix } from "./compatibility-types";
 
 export const compatibility: CompatibilityMatrix = {
-  "generatedAt": "1970-01-01T00:00:00.000Z",
-  "hosts": [],
-  "methods": []
+  "generatedAt": "2026-05-29T18:24:37.097Z",
+  "hosts": [
+    {
+      "label": "Desktop",
+      "mode": "Desktop",
+      "reportedAt": "2026-05-29T17:52:51.416Z"
+    },
+    {
+      "label": "Web",
+      "mode": "Web",
+      "reportedAt": "2026-05-29T17:57:54.233Z"
+    }
+  ],
+  "methods": [
+    {
+      "id": "Account/connection_status_subscribe",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Account/get_account",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Account/get_account_alias",
+      "results": {
+        "Desktop": "pass",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Account/create_account_proof",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Account/get_legacy_accounts",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Account/get_user_id",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Account/request_login",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Chain/follow_head_subscribe",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Chain/get_head_header",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Chain/get_head_body",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Chain/get_head_storage",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Chain/call_head",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Chain/unpin_head",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Chain/continue_head",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Chain/stop_head_operation",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Chain/get_spec_genesis_hash",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Chain/get_spec_chain_name",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Chain/get_spec_properties",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Chain/broadcast_transaction",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Chain/stop_transaction",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Chat/create_room",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Chat/register_bot",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Chat/list_subscribe",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Chat/post_message",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Chat/action_subscribe",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Chat/custom_message_render_subscribe",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Coin Payment/create_purse",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Coin Payment/query_purse",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Coin Payment/rebalance_purse",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Coin Payment/delete_purse",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Coin Payment/create_receivable",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Coin Payment/create_cheque",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Coin Payment/deposit",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Coin Payment/refund",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Coin Payment/listen_for_payment",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Entropy/derive",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Local Storage/read",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Local Storage/write",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Local Storage/clear",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Notifications/send_push_notification",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Notifications/cancel_push_notification",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Payment/balance_subscribe",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Payment/top_up",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Payment/request",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Payment/status_subscribe",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Permissions/request_device_permission",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Permissions/request_remote_permission",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Preimage/lookup_subscribe",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Preimage/submit",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Resource Allocation/request",
+      "results": {
+        "Desktop": "pass",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Signing/create_transaction",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Signing/create_transaction_with_legacy_account",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Signing/sign_raw_with_legacy_account",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Signing/sign_payload_with_legacy_account",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Signing/sign_raw",
+      "results": {
+        "Desktop": "fail",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Signing/sign_payload",
+      "results": {
+        "Desktop": "fail",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Statement Store/subscribe",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Statement Store/create_proof",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Statement Store/submit",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "Statement Store/create_proof_authorized",
+      "results": {
+        "Desktop": "pass",
+        "Web": "fail"
+      }
+    },
+    {
+      "id": "System/handshake",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "System/feature_supported",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "System/navigate_to",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    },
+    {
+      "id": "Theme/subscribe",
+      "results": {
+        "Desktop": "pass",
+        "Web": "pass"
+      }
+    }
+  ]
 };
