@@ -1,6 +1,7 @@
 //! Versioned wrappers for [`Preimage`](crate::api::Preimage) methods.
 
 use crate::v01;
+use truapi_macros::versioned_type;
 
 versioned_type! {
     pub enum RemotePreimageLookupSubscribeRequest { V1 => v01::RemotePreimageLookupSubscribeRequest }

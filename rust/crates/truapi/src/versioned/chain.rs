@@ -1,6 +1,7 @@
 //! Versioned wrappers for [`Chain`](crate::api::Chain) methods.
 
 use crate::v01;
+use truapi_macros::versioned_type;
 
 versioned_type! {
     pub enum RemoteChainHeadFollowRequest { V1 => v01::RemoteChainHeadFollowRequest }

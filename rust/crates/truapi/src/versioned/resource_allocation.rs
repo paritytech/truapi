@@ -1,6 +1,7 @@
 //! Versioned wrappers for [`ResourceAllocation`](crate::api::ResourceAllocation) methods.
 
 use crate::v01;
+use truapi_macros::versioned_type;
 
 versioned_type! {
     pub enum HostRequestResourceAllocationRequest { V1 => v01::HostRequestResourceAllocationRequest }

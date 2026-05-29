@@ -1,6 +1,7 @@
 //! Versioned wrappers for [`System`](crate::api::System) methods.
 
 use crate::v01;
+use truapi_macros::versioned_type;
 
 versioned_type! {
     pub enum HostHandshakeRequest { V1 => v01::HostHandshakeRequest }

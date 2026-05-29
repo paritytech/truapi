@@ -1,6 +1,7 @@
 //! Versioned wrappers for [`LocalStorage`](crate::api::LocalStorage) methods.
 
 use crate::v01;
+use truapi_macros::versioned_type;
 
 versioned_type! {
     pub enum HostLocalStorageReadRequest { V1 => v01::HostLocalStorageReadRequest }

@@ -1,6 +1,7 @@
 //! Versioned wrappers for [`Permissions`](crate::api::Permissions) methods.
 
 use crate::v01;
+use truapi_macros::versioned_type;
 
 versioned_type! {
     #[derive(derive_more::Display)]
