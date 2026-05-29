@@ -4,8 +4,6 @@
 pub enum Version {
     /// Initial protocol version.
     V1,
-    /// Unstable next version under development.
-    Next,
 }
 
 pub mod latest {
