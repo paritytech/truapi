@@ -25,7 +25,7 @@ use crate::{CallContext, CallError, Subscription};
 pub trait CoinPayment: Send + Sync {
     /// Create a new firewalled CoinPayment purse.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import { type Client } from "@parity/truapi";
     ///
     /// export async function createPurse(truapi: Client): Promise<number> {
@@ -49,7 +49,7 @@ pub trait CoinPayment: Send + Sync {
 
     /// Query product-visible purse metadata and balance.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostCoinPaymentQueryPurseResponse,
@@ -78,7 +78,7 @@ pub trait CoinPayment: Send + Sync {
 
     /// Transfer balance between local purses.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostCoinPaymentRebalancePurseError,
@@ -113,7 +113,7 @@ pub trait CoinPayment: Send + Sync {
 
     /// Delete a purse after draining its balance into another local purse.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostCoinPaymentDeletePurseError,
@@ -148,7 +148,7 @@ pub trait CoinPayment: Send + Sync {
 
     /// Create a receivable public key for depositing into a purse.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import { type Client, type CoinPaymentReceivable } from "@parity/truapi";
     ///
     /// export async function createReceivable(
@@ -177,7 +177,7 @@ pub trait CoinPayment: Send + Sync {
 
     /// Create a cheque paying from a local purse to a receivable.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import { type CoinPaymentCheque, type Client, type CoinPaymentReceivable } from "@parity/truapi";
     ///
     /// export async function createCheque(
@@ -206,7 +206,7 @@ pub trait CoinPayment: Send + Sync {
 
     /// Claim coins from a cheque into the receivable's purse.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type CoinPaymentCheque,
     ///   type Client,
@@ -238,7 +238,7 @@ pub trait CoinPayment: Send + Sync {
 
     /// Attempt to return coins associated with a receivable.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostCoinPaymentRefundError,
@@ -273,7 +273,7 @@ pub trait CoinPayment: Send + Sync {
 
     /// Listen for a cheque delivered through a standard transmission channel.
     ///
-    /// ```truapi-client-example
+    /// ```ts
     /// import {
     ///   type Client,
     ///   type HostCoinPaymentListenForError,

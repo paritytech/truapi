@@ -197,6 +197,47 @@ pub(super) fn split_playground_docs(docs: Option<&str>) -> Result<PlaygroundDocs
     })
 }
 
+/// Fails if any public trait method lacks a valid ` ```ts ` example in its
+/// doc comment. Every method renders an EXAMPLE tab in the playground from
+/// the extracted `exampleSource`; a missing or mis-fenced example would
+/// silently leave that tab empty and dump the snippet into the description.
+pub(super) fn validate_method_examples(
+    api: &ApiDefinition,
+    wrappers: &HashMap<String, VersionedWrapper>,
+    target_version: u32,
+) -> Result<()> {
+    for service in public_services(api)? {
+        let trait_def = service.trait_def;
+        for method in included_methods(trait_def, wrappers, target_version)? {
+            validate_example_docs(&trait_def.name, &method.name, method.docs.as_deref())?;
+        }
+    }
+    Ok(())
+}
+
+/// Checks a single method's doc comment carries exactly one ` ```ts ` example
+/// that `split_playground_docs` can extract. Rejects a missing example, an
+/// example fenced with an unrecognized label, and any code fence left behind
+/// in the description (which means the example was not extracted).
+fn validate_example_docs(trait_name: &str, method_name: &str, docs: Option<&str>) -> Result<()> {
+    let parsed = split_playground_docs(docs)?;
+    if let Some(description) = &parsed.description
+        && description.contains("```")
+    {
+        bail!(
+            "{trait_name}::{method_name} has a code fence left in its description; \
+             examples must be fenced with ```ts so they are extracted into exampleSource"
+        );
+    }
+    if parsed.client_example.is_none() {
+        bail!(
+            "{trait_name}::{method_name} has no ```ts example in its doc comment; \
+             every TrUAPI method must carry one so the playground renders an EXAMPLE tab"
+        );
+    }
+    Ok(())
+}
+
 pub(super) fn playground_type_name(value: &str) -> String {
     value.replace("T.", "")
 }
@@ -399,6 +440,35 @@ mod tests {
         assert_eq!(data_type_id_from_ts("T.Foo[]"), None);
         assert_eq!(data_type_id_from_ts("string"), None);
         assert_eq!(data_type_id_from_ts(""), None);
+    }
+
+    #[test]
+    fn validate_example_docs_accepts_ts_fence() {
+        let docs = "Summary line.\n\n```ts\nconst x = 1;\n```";
+        assert!(validate_example_docs("CoinPayment", "create_purse", Some(docs)).is_ok());
+    }
+
+    #[test]
+    fn validate_example_docs_rejects_missing_example() {
+        let docs = "Summary line with no example.";
+        let err = validate_example_docs("CoinPayment", "create_purse", Some(docs)).unwrap_err();
+        assert!(err.to_string().contains("no ```ts example"));
+    }
+
+    #[test]
+    fn validate_example_docs_rejects_missing_docs() {
+        let err = validate_example_docs("CoinPayment", "create_purse", None).unwrap_err();
+        assert!(err.to_string().contains("no ```ts example"));
+    }
+
+    #[test]
+    fn validate_example_docs_rejects_unrecognized_label() {
+        let docs = "Summary.\n\n```truapi-client-example\nconst x = 1;\n```";
+        let err = validate_example_docs("CoinPayment", "create_purse", Some(docs)).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("code fence left in its description")
+        );
     }
 
     #[test]
