@@ -9,6 +9,7 @@ import {
   type RunSubscription,
 } from "@/src/lib/example-runner";
 import { getClient } from "@/src/lib/transport";
+import { errorTextFrom } from "@/src/lib/result-status";
 import { services } from "@/src/lib/services";
 import type { MethodInfo, ServiceInfo } from "@/src/lib/services";
 
@@ -128,13 +129,22 @@ export function MethodView({
     setResult("");
     setLogs([]);
     setTab("output");
+    // Examples self-handle their Result (`result.match(v => console.log(v),
+    // e => console.error(e))`), so an Err surfaces as an error-level log rather
+    // than a thrown exception. Accumulate logs locally — the `logs` React state
+    // is stale inside this handler — so we can detect the error after the call.
+    const callLogs: LogEntry[] = [];
+    const collectLog = (entry: LogEntry) => {
+      callLogs.push(entry);
+      onLog(entry);
+    };
     try {
       const client = getClient();
       const run = await runExample({
         source,
         kind: methodInfo.type,
         client,
-        onLog,
+        onLog: collectLog,
       });
 
       if (run.kind === "unary") {
@@ -152,8 +162,13 @@ export function MethodView({
         });
         try {
           const value = await Promise.race([run.promise, abortPromise]);
-          const rendered = stringify(value);
-          if (rendered !== undefined) setResult(rendered);
+          const errText = errorTextFrom(value, callLogs);
+          if (errText != null) {
+            setError(errText);
+          } else {
+            const rendered = stringify(value);
+            if (rendered !== undefined) setResult(rendered);
+          }
         } finally {
           if (timeoutHandle !== null) clearTimeout(timeoutHandle);
           callAbortRef.current = null;
