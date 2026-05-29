@@ -282,7 +282,7 @@ impl Drop for JsCallbackJsonRpcConnection {
 }
 
 fn generic(reason: String) -> v01::GenericError {
-    v01::GenericError::GenericError(v01::GenericErr { reason })
+    v01::GenericError { reason }
 }
 
 /// Await the JS callback's return value if it's a Promise; pass other

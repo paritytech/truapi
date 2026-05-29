@@ -19,8 +19,8 @@ use crate::subscription::Spawner;
 
 use futures::StreamExt;
 use truapi::api::{
-    Account, Chain, Chat, Entropy, JsonRpc, LocalStorage, Payment, Permissions, Preimage,
-    ResourceAllocation, Signing, StatementStore, System, Theme,
+    Account, Chain, Chat, CoinPayment, Entropy, LocalStorage, Notifications, Payment, Permissions,
+    Preimage, ResourceAllocation, Signing, StatementStore, System, Theme,
 };
 use truapi::v01;
 use truapi::versioned::account::{
@@ -50,19 +50,23 @@ use truapi::versioned::local_storage::{
     HostLocalStorageReadError, HostLocalStorageReadRequest, HostLocalStorageReadResponse,
     HostLocalStorageWriteError, HostLocalStorageWriteRequest, HostLocalStorageWriteResponse,
 };
+use truapi::versioned::notifications::{
+    HostPushNotificationCancelError, HostPushNotificationCancelRequest,
+    HostPushNotificationCancelResponse, HostPushNotificationError, HostPushNotificationRequest,
+    HostPushNotificationResponse,
+};
 use truapi::versioned::permissions::{
     HostDevicePermissionError, HostDevicePermissionRequest, HostDevicePermissionResponse,
     RemotePermissionError, RemotePermissionRequest, RemotePermissionResponse,
 };
 use truapi::versioned::system::{
     HostFeatureSupportedError, HostFeatureSupportedRequest, HostFeatureSupportedResponse,
-    HostNavigateToError, HostNavigateToRequest, HostNavigateToResponse, HostPushNotificationError,
-    HostPushNotificationRequest, HostPushNotificationResponse,
+    HostNavigateToError, HostNavigateToRequest, HostNavigateToResponse,
 };
 use truapi::{CallContext, CallError, Subscription};
 use truapi_platform::{
     ChainProvider as PlatformChainProvider, JsonRpcConnection, Navigation as PlatformNavigation,
-    Notifications as PlatformNotifications, Platform, Storage as PlatformStorage,
+    Platform, Storage as PlatformStorage,
 };
 
 /// Adapter that exposes a [`truapi_platform::Platform`] through the
@@ -161,18 +165,6 @@ where
         feature_supported(self.platform.as_ref(), request)
             .await
             .map_err(|err| CallError::Domain(HostFeatureSupportedError::V1(err)))
-    }
-
-    async fn push_notification(
-        &self,
-        _cx: &CallContext,
-        request: HostPushNotificationRequest,
-    ) -> Result<HostPushNotificationResponse, CallError<HostPushNotificationError>> {
-        let HostPushNotificationRequest::V1(inner) = request;
-        PlatformNotifications::push_notification(self.platform.as_ref(), inner)
-            .await
-            .map(|()| HostPushNotificationResponse::V1)
-            .map_err(|err| CallError::Domain(HostPushNotificationError::V1(err)))
     }
 
     async fn navigate_to(
@@ -528,18 +520,43 @@ where
 // ---------------------------------------------------------------------------
 // Traits that defer entirely to default "unavailable" trait bodies.
 //
-// These API surfaces (Chat, JsonRpc, Payment, ResourceAllocation, Entropy,
-// Theme) are not part of the v0.1 platform contract, so we leave every
-// method at its default `Err(CallError::unavailable())` body and supply
-// empty trait impls here. Adding a method later only requires implementing
-// the relevant `truapi_platform::*` extension trait.
+// These API surfaces (Chat, CoinPayment, Payment, ResourceAllocation,
+// Entropy, Theme) are not part of the v0.1 platform contract, so we leave
+// every method at its default `Err(CallError::unavailable())` body and
+// supply empty trait impls here. Adding a method later only requires
+// implementing the relevant `truapi_platform::*` extension trait.
 
 impl<P> Chat for PlatformRuntimeHost<P> where P: Platform + 'static {}
-impl<P> JsonRpc for PlatformRuntimeHost<P> where P: Platform + 'static {}
+impl<P> CoinPayment for PlatformRuntimeHost<P> where P: Platform + 'static {}
 impl<P> Payment for PlatformRuntimeHost<P> where P: Platform + 'static {}
 impl<P> ResourceAllocation for PlatformRuntimeHost<P> where P: Platform + 'static {}
 impl<P> Entropy for PlatformRuntimeHost<P> where P: Platform + 'static {}
 impl<P> Theme for PlatformRuntimeHost<P> where P: Platform + 'static {}
+
+// `Notifications` methods are required (no default bodies), so the
+// unavailable stubs are spelled out. The v0.1 platform contract does not
+// model host-assigned notification ids, cancellation, or scheduling.
+impl<P> Notifications for PlatformRuntimeHost<P>
+where
+    P: Platform + 'static,
+{
+    async fn send_push_notification(
+        &self,
+        _cx: &CallContext,
+        _request: HostPushNotificationRequest,
+    ) -> Result<HostPushNotificationResponse, CallError<HostPushNotificationError>> {
+        Err(CallError::unavailable())
+    }
+
+    async fn cancel_push_notification(
+        &self,
+        _cx: &CallContext,
+        _request: HostPushNotificationCancelRequest,
+    ) -> Result<HostPushNotificationCancelResponse, CallError<HostPushNotificationCancelError>>
+    {
+        Err(CallError::unavailable())
+    }
+}
 
 #[cfg(test)]
 mod tests {

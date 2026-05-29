@@ -11,9 +11,10 @@ use truapi::api::{
     Account,
     Chain,
     Chat,
+    CoinPayment,
     Entropy,
-    JsonRpc,
     LocalStorage,
+    Notifications,
     Payment,
     Permissions,
     Preimage,
@@ -32,14 +33,15 @@ use crate::subscription::subscription_stream;
 /// Register every TrUAPI method with the dispatcher.
 pub fn register<P>(dispatcher: &mut Dispatcher, host: Arc<P>)
 where
-    P: Account + Chain + Chat + Entropy + JsonRpc + LocalStorage + Payment + Permissions + Preimage + ResourceAllocation + Signing + StatementStore + System + Theme + Send + Sync + 'static,
+    P: Account + Chain + Chat + CoinPayment + Entropy + LocalStorage + Notifications + Payment + Permissions + Preimage + ResourceAllocation + Signing + StatementStore + System + Theme + Send + Sync + 'static,
 {
     register_account(dispatcher, host.clone());
     register_chain(dispatcher, host.clone());
     register_chat(dispatcher, host.clone());
+    register_coin_payment(dispatcher, host.clone());
     register_entropy(dispatcher, host.clone());
-    register_jsonrpc(dispatcher, host.clone());
     register_local_storage(dispatcher, host.clone());
+    register_notifications(dispatcher, host.clone());
     register_payment(dispatcher, host.clone());
     register_permissions(dispatcher, host.clone());
     register_preimage(dispatcher, host.clone());
@@ -529,6 +531,168 @@ where
     }
 }
 
+fn register_coin_payment<P>(dispatcher: &mut Dispatcher, host: Arc<P>)
+where
+    P: CoinPayment + Send + Sync + 'static,
+{
+    {
+        let host = host.clone();
+        dispatcher.on_request("coin_payment_create_purse", move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::coin_payment::HostCoinPaymentCreatePurseRequest =
+                    Decode::decode(&mut &bytes[..]).map_err(|e| encode_decode_error(e.to_string()))?;
+                let cx = CallContext::with_request_id(request_id.clone());
+                let response: versioned::coin_payment::HostCoinPaymentCreatePurseResponse = match host.create_purse(&cx, request).await {
+                    Ok(value) => value,
+                    Err(err) => return Err(encode_call_error_payload(err)),
+                };
+                let mut buf = Vec::with_capacity(1 + response.size_hint());
+                buf.push(0u8);
+                response.encode_to(&mut buf);
+                Ok(buf)
+            })
+        });
+    }
+    {
+        let host = host.clone();
+        dispatcher.on_request("coin_payment_query_purse", move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::coin_payment::HostCoinPaymentQueryPurseRequest =
+                    Decode::decode(&mut &bytes[..]).map_err(|e| encode_decode_error(e.to_string()))?;
+                let cx = CallContext::with_request_id(request_id.clone());
+                let response: versioned::coin_payment::HostCoinPaymentQueryPurseResponse = match host.query_purse(&cx, request).await {
+                    Ok(value) => value,
+                    Err(err) => return Err(encode_call_error_payload(err)),
+                };
+                let mut buf = Vec::with_capacity(1 + response.size_hint());
+                buf.push(0u8);
+                response.encode_to(&mut buf);
+                Ok(buf)
+            })
+        });
+    }
+    {
+        let host = host.clone();
+        dispatcher.on_subscription("coin_payment_rebalance_purse", move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::coin_payment::HostCoinPaymentRebalancePurseRequest =
+                    Decode::decode(&mut &bytes[..]).map_err(|e| encode_decode_error(e.to_string()))?;
+                let cx = CallContext::with_request_id(request_id.clone());
+                let stream = match host.rebalance_purse(&cx, request).await {
+                    Ok(sub) => sub,
+                    Err(err) => return Err(encode_call_error_payload(err)),
+                };
+                Ok(subscription_stream::<versioned::coin_payment::HostCoinPaymentRebalancePurseItem, _>(stream))
+            })
+        });
+    }
+    {
+        let host = host.clone();
+        dispatcher.on_subscription("coin_payment_delete_purse", move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::coin_payment::HostCoinPaymentDeletePurseRequest =
+                    Decode::decode(&mut &bytes[..]).map_err(|e| encode_decode_error(e.to_string()))?;
+                let cx = CallContext::with_request_id(request_id.clone());
+                let stream = match host.delete_purse(&cx, request).await {
+                    Ok(sub) => sub,
+                    Err(err) => return Err(encode_call_error_payload(err)),
+                };
+                Ok(subscription_stream::<versioned::coin_payment::HostCoinPaymentDeletePurseItem, _>(stream))
+            })
+        });
+    }
+    {
+        let host = host.clone();
+        dispatcher.on_request("coin_payment_create_receivable", move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::coin_payment::HostCoinPaymentCreateReceivableRequest =
+                    Decode::decode(&mut &bytes[..]).map_err(|e| encode_decode_error(e.to_string()))?;
+                let cx = CallContext::with_request_id(request_id.clone());
+                let response: versioned::coin_payment::HostCoinPaymentCreateReceivableResponse = match host.create_receivable(&cx, request).await {
+                    Ok(value) => value,
+                    Err(err) => return Err(encode_call_error_payload(err)),
+                };
+                let mut buf = Vec::with_capacity(1 + response.size_hint());
+                buf.push(0u8);
+                response.encode_to(&mut buf);
+                Ok(buf)
+            })
+        });
+    }
+    {
+        let host = host.clone();
+        dispatcher.on_request("coin_payment_create_cheque", move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::coin_payment::HostCoinPaymentCreateChequeRequest =
+                    Decode::decode(&mut &bytes[..]).map_err(|e| encode_decode_error(e.to_string()))?;
+                let cx = CallContext::with_request_id(request_id.clone());
+                let response: versioned::coin_payment::HostCoinPaymentCreateChequeResponse = match host.create_cheque(&cx, request).await {
+                    Ok(value) => value,
+                    Err(err) => return Err(encode_call_error_payload(err)),
+                };
+                let mut buf = Vec::with_capacity(1 + response.size_hint());
+                buf.push(0u8);
+                response.encode_to(&mut buf);
+                Ok(buf)
+            })
+        });
+    }
+    {
+        let host = host.clone();
+        dispatcher.on_subscription("coin_payment_deposit", move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::coin_payment::HostCoinPaymentDepositRequest =
+                    Decode::decode(&mut &bytes[..]).map_err(|e| encode_decode_error(e.to_string()))?;
+                let cx = CallContext::with_request_id(request_id.clone());
+                let stream = match host.deposit(&cx, request).await {
+                    Ok(sub) => sub,
+                    Err(err) => return Err(encode_call_error_payload(err)),
+                };
+                Ok(subscription_stream::<versioned::coin_payment::HostCoinPaymentDepositItem, _>(stream))
+            })
+        });
+    }
+    {
+        let host = host.clone();
+        dispatcher.on_subscription("coin_payment_refund", move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::coin_payment::HostCoinPaymentRefundRequest =
+                    Decode::decode(&mut &bytes[..]).map_err(|e| encode_decode_error(e.to_string()))?;
+                let cx = CallContext::with_request_id(request_id.clone());
+                let stream = match host.refund(&cx, request).await {
+                    Ok(sub) => sub,
+                    Err(err) => return Err(encode_call_error_payload(err)),
+                };
+                Ok(subscription_stream::<versioned::coin_payment::HostCoinPaymentRefundItem, _>(stream))
+            })
+        });
+    }
+    {
+        let host = host;
+        dispatcher.on_subscription("coin_payment_listen_for_payment", move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::coin_payment::HostCoinPaymentListenForRequest =
+                    Decode::decode(&mut &bytes[..]).map_err(|e| encode_decode_error(e.to_string()))?;
+                let cx = CallContext::with_request_id(request_id.clone());
+                let stream = match host.listen_for_payment(&cx, request).await {
+                    Ok(sub) => sub,
+                    Err(err) => return Err(encode_call_error_payload(err)),
+                };
+                Ok(subscription_stream::<versioned::coin_payment::HostCoinPaymentListenForItem, _>(stream))
+            })
+        });
+    }
+}
+
 fn register_entropy<P>(dispatcher: &mut Dispatcher, host: Arc<P>)
 where
     P: Entropy + Send + Sync + 'static,
@@ -549,44 +713,6 @@ where
                 buf.push(0u8);
                 response.encode_to(&mut buf);
                 Ok(buf)
-            })
-        });
-    }
-}
-
-fn register_jsonrpc<P>(dispatcher: &mut Dispatcher, host: Arc<P>)
-where
-    P: JsonRpc + Send + Sync + 'static,
-{
-    {
-        let host = host.clone();
-        dispatcher.on_request("json_rpc_send_message", move |request_id: String, bytes: Vec<u8>| {
-            let host = host.clone();
-            Box::pin(async move {
-                let request: versioned::jsonrpc::HostJsonrpcMessageSendRequest =
-                    Decode::decode(&mut &bytes[..]).map_err(|e| encode_decode_error(e.to_string()))?;
-                let cx = CallContext::with_request_id(request_id.clone());
-                let response: versioned::jsonrpc::HostJsonrpcMessageSendResponse = match host.send_message(&cx, request).await {
-                    Ok(value) => value,
-                    Err(err) => return Err(encode_call_error_payload(err)),
-                };
-                let mut buf = Vec::with_capacity(1 + response.size_hint());
-                buf.push(0u8);
-                response.encode_to(&mut buf);
-                Ok(buf)
-            })
-        });
-    }
-    {
-        let host = host;
-        dispatcher.on_subscription("json_rpc_subscribe_messages", move |request_id: String, bytes: Vec<u8>| {
-            let host = host.clone();
-            Box::pin(async move {
-                let request: versioned::jsonrpc::HostJsonrpcMessageSubscribeRequest =
-                    Decode::decode(&mut &bytes[..]).map_err(|e| encode_decode_error(e.to_string()))?;
-                let cx = CallContext::with_request_id(request_id.clone());
-                let stream = host.subscribe_messages(&cx, request).await;
-                Ok(subscription_stream::<versioned::jsonrpc::HostJsonrpcMessageSubscribeItem, _>(stream))
             })
         });
     }
@@ -655,6 +781,50 @@ where
     }
 }
 
+fn register_notifications<P>(dispatcher: &mut Dispatcher, host: Arc<P>)
+where
+    P: Notifications + Send + Sync + 'static,
+{
+    {
+        let host = host.clone();
+        dispatcher.on_request("notifications_send_push_notification", move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::notifications::HostPushNotificationRequest =
+                    Decode::decode(&mut &bytes[..]).map_err(|e| encode_decode_error(e.to_string()))?;
+                let cx = CallContext::with_request_id(request_id.clone());
+                let response: versioned::notifications::HostPushNotificationResponse = match host.send_push_notification(&cx, request).await {
+                    Ok(value) => value,
+                    Err(err) => return Err(encode_call_error_payload(err)),
+                };
+                let mut buf = Vec::with_capacity(1 + response.size_hint());
+                buf.push(0u8);
+                response.encode_to(&mut buf);
+                Ok(buf)
+            })
+        });
+    }
+    {
+        let host = host;
+        dispatcher.on_request("notifications_cancel_push_notification", move |request_id: String, bytes: Vec<u8>| {
+            let host = host.clone();
+            Box::pin(async move {
+                let request: versioned::notifications::HostPushNotificationCancelRequest =
+                    Decode::decode(&mut &bytes[..]).map_err(|e| encode_decode_error(e.to_string()))?;
+                let cx = CallContext::with_request_id(request_id.clone());
+                let response: versioned::notifications::HostPushNotificationCancelResponse = match host.cancel_push_notification(&cx, request).await {
+                    Ok(value) => value,
+                    Err(err) => return Err(encode_call_error_payload(err)),
+                };
+                let mut buf = Vec::with_capacity(1 + response.size_hint());
+                buf.push(0u8);
+                response.encode_to(&mut buf);
+                Ok(buf)
+            })
+        });
+    }
+}
+
 fn register_payment<P>(dispatcher: &mut Dispatcher, host: Arc<P>)
 where
     P: Payment + Send + Sync + 'static,
@@ -680,10 +850,10 @@ where
         dispatcher.on_request("payment_request", move |request_id: String, bytes: Vec<u8>| {
             let host = host.clone();
             Box::pin(async move {
-                let request: versioned::payment::HostPaymentRequestRequest =
+                let request: versioned::payment::HostPaymentRequest =
                     Decode::decode(&mut &bytes[..]).map_err(|e| encode_decode_error(e.to_string()))?;
                 let cx = CallContext::with_request_id(request_id.clone());
-                let response: versioned::payment::HostPaymentRequestResponse = match host.request(&cx, request).await {
+                let response: versioned::payment::HostPaymentResponse = match host.request(&cx, request).await {
                     Ok(value) => value,
                     Err(err) => return Err(encode_call_error_payload(err)),
                 };
@@ -1062,25 +1232,6 @@ where
                     Decode::decode(&mut &bytes[..]).map_err(|e| encode_decode_error(e.to_string()))?;
                 let cx = CallContext::with_request_id(request_id.clone());
                 let response: versioned::system::HostFeatureSupportedResponse = match host.feature_supported(&cx, request).await {
-                    Ok(value) => value,
-                    Err(err) => return Err(encode_call_error_payload(err)),
-                };
-                let mut buf = Vec::with_capacity(1 + response.size_hint());
-                buf.push(0u8);
-                response.encode_to(&mut buf);
-                Ok(buf)
-            })
-        });
-    }
-    {
-        let host = host.clone();
-        dispatcher.on_request("system_push_notification", move |request_id: String, bytes: Vec<u8>| {
-            let host = host.clone();
-            Box::pin(async move {
-                let request: versioned::system::HostPushNotificationRequest =
-                    Decode::decode(&mut &bytes[..]).map_err(|e| encode_decode_error(e.to_string()))?;
-                let cx = CallContext::with_request_id(request_id.clone());
-                let response: versioned::system::HostPushNotificationResponse = match host.push_notification(&cx, request).await {
                     Ok(value) => value,
                     Err(err) => return Err(encode_call_error_payload(err)),
                 };

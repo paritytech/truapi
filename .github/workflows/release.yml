@@ -65,7 +65,7 @@ jobs:
 
       - name: Build @parity/truapi
         if: steps.version.outputs.proceed == 'true'
-        run: npm run build --prefix js/packages/truapi
+        run: ./scripts/codegen.sh
 
       - name: Tag release
         if: steps.version.outputs.proceed == 'true'
@@ -97,3 +97,13 @@ jobs:
           inputs: '${{ format(''{{ "repo": "{0}", "run_id": "{1}" }}'', github.repository, github.run_id) }}'
         env:
           GITHUB_TOKEN: ${{ secrets.NPM_PUBLISH_AUTOMATION_TOKEN }}
+
+      - name: Create GitHub Release
+        if: steps.version.outputs.proceed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --title "@parity/truapi ${{ steps.version.outputs.version }}" \
+            --generate-notes \
+            artifacts/*.tgz

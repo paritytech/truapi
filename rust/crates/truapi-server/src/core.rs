@@ -139,10 +139,9 @@ mod tests {
     use truapi::versioned::local_storage::{
         HostLocalStorageClearRequest, HostLocalStorageReadRequest, HostLocalStorageWriteRequest,
     };
+    use truapi::versioned::notifications::HostPushNotificationRequest;
     use truapi::versioned::permissions::RemotePermissionRequest;
-    use truapi::versioned::system::{
-        HostFeatureSupportedRequest, HostFeatureSupportedResponse, HostPushNotificationRequest,
-    };
+    use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
     use truapi_platform::{
         ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, Permissions, Storage,
     };
@@ -325,22 +324,31 @@ mod tests {
     }
 
     #[test]
-    fn push_notification_round_trips_ok() {
+    fn send_push_notification_is_unavailable() {
         let core = make_core();
         let request = HostPushNotificationRequest::V1(v01::HostPushNotificationRequest {
             text: "hi".into(),
             deeplink: None,
+            scheduled_at: None,
         });
-        let payload = run_request(&core, "system_push_notification", request.encode());
-        // Stub returns Ok(()), so wire is Ok disc 0x00 + V1 variant 0x00.
-        assert_eq!(payload, vec![0x00, 0x00]);
+        let payload = run_request(
+            &core,
+            "notifications_send_push_notification",
+            request.encode(),
+        );
+        // Notifications are not modeled by the v0.1 platform contract, so the
+        // runtime returns CallError::unavailable(): Err disc 0x01, HostFailure
+        // variant 0x04, then the SCALE-encoded "unavailable" reason.
+        let mut expected = vec![0x01u8, 0x04u8];
+        "unavailable".to_string().encode_to(&mut expected);
+        assert_eq!(payload, expected);
     }
 
     #[test]
     fn request_remote_permission_round_trips_granted() {
         let core = make_core();
         let request = RemotePermissionRequest::V1(v01::RemotePermissionRequest {
-            permissions: vec![v01::RemotePermission::ChainSubmit],
+            permission: v01::RemotePermission::ChainSubmit,
         });
         let payload = run_request(
             &core,

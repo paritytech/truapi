@@ -58,8 +58,8 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install @parity/truapi deps
-        run: npm ci --prefix js/packages/truapi
+      - name: Install workspace deps
+        run: npm ci
 
       - name: Run codegen
         run: ./scripts/codegen.sh
@@ -85,13 +85,10 @@ jobs:
           bun-version: latest
 
       - name: Install
-        run: npm ci --prefix js/packages/truapi
+        run: npm ci
 
       - name: Build
         run: npm run build --prefix js/packages/truapi
-
-      - name: Typecheck examples
-        run: npm run typecheck:examples --prefix js/packages/truapi
 
       - name: Test
         run: npm test --prefix js/packages/truapi
@@ -113,8 +110,8 @@ jobs:
         with:
           node-version: 22
 
-      - name: Build @parity/truapi
-        run: npm ci --prefix js/packages/truapi && npm run build --prefix js/packages/truapi
+      - name: Install workspace deps + build @parity/truapi
+        run: npm ci && ./scripts/codegen.sh
 
       - name: Install playground deps
         working-directory: playground
@@ -127,6 +124,38 @@ jobs:
       - name: Lint
         working-directory: playground
         run: yarn lint
+
+  explorer:
+    name: Explorer (build + lint)
+    runs-on: ubuntu-latest
+    needs: ts-client
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install workspace deps + build @parity/truapi
+        run: npm ci && ./scripts/codegen.sh
+
+      - name: Install explorer deps
+        working-directory: explorer
+        run: npm ci
+
+      - name: Lint
+        working-directory: explorer
+        run: npm run lint
+
+      - name: Build
+        working-directory: explorer
+        run: npm run build
 
   e2e:
     name: E2E (playground inside dotli)
@@ -155,7 +184,7 @@ jobs:
           bun-version: latest
 
       - name: Build @parity/truapi
-        run: npm ci --prefix js/packages/truapi && npm run build --prefix js/packages/truapi
+        run: npm ci && ./scripts/codegen.sh
 
       - name: Install dotli deps
         working-directory: hosts/dotli
@@ -185,7 +214,7 @@ jobs:
     name: CI Status
     if: always()
     runs-on: ubuntu-latest
-    needs: [rust, codegen, ts-client, playground, e2e]
+    needs: [rust, codegen, ts-client, playground, explorer, e2e]
     steps:
       - name: Check all jobs
         run: |
@@ -194,6 +223,7 @@ jobs:
             "${{ needs.codegen.result }}"
             "${{ needs.ts-client.result }}"
             "${{ needs.playground.result }}"
+            "${{ needs.explorer.result }}"
             "${{ needs.e2e.result }}"
           )
           for r in "${results[@]}"; do

@@ -67,7 +67,7 @@ pub enum HostRejection {
 impl From<HostRejection> for v01::GenericError {
     fn from(err: HostRejection) -> Self {
         let HostRejection::Rejected { reason } = err;
-        v01::GenericError::GenericError(v01::GenericErr { reason })
+        v01::GenericError { reason }
     }
 }
 
@@ -442,9 +442,9 @@ impl ChainProvider for CallbackPlatform {
         &self,
         _genesis_hash: Vec<u8>,
     ) -> Result<Box<dyn JsonRpcConnection>, v01::GenericError> {
-        Err(v01::GenericError::GenericError(v01::GenericErr {
+        Err(v01::GenericError {
             reason: "chain provider not wired through native callbacks".into(),
-        }))
+        })
     }
 }
 

@@ -10,6 +10,8 @@ required=(
   "js/packages/truapi/src/generated/types.ts"
   "js/packages/truapi/src/generated/wire-table.ts"
   "js/packages/truapi/src/playground/codegen/services.ts"
+  "js/packages/truapi/src/explorer/codegen/types.ts"
+  "js/packages/truapi/src/explorer/versions.ts"
 )
 
 missing=0
@@ -20,7 +22,7 @@ for path in "${required[@]}"; do
   fi
 done
 
-if [ "$missing" -eq 0 ] && find js/packages/truapi/test/generated/examples -name '*.ts' -print -quit >/dev/null 2>&1; then
+if [ "$missing" -eq 0 ] && find playground/test/generated/examples -name '*.ts' -print -quit >/dev/null 2>&1; then
   exit 0
 fi
 

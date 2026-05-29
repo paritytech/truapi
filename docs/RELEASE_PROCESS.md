@@ -24,7 +24,10 @@ npm run version-packages     # consumes the changeset, bumps package.json + writ
 
 The first command writes a markdown file under `.changeset/`; the second
 consumes it, bumps `js/packages/truapi/package.json`, appends an entry to
-`js/packages/truapi/CHANGELOG.md`, and deletes the changeset file.
+`js/packages/truapi/CHANGELOG.md`, deletes the changeset file, and then
+runs `scripts/sync-cargo-version.mjs` to bump
+`rust/crates/truapi/Cargo.toml` to the same version. All three files
+should appear in the resulting diff.
 
 Commit the resulting diff and open a PR using the **release** template:
 
@@ -69,6 +72,9 @@ You can watch the dispatched run under
 - A `release:` PR that forgets to bump the version will be skipped at
   the tag-already-exists check, not silently re-publish over an
   existing version.
+- A `release:` PR with mismatched `js/packages/truapi/package.json` and
+  `rust/crates/truapi/Cargo.toml` versions is blocked at PR time by the
+  `Release version check` workflow.
 - The whole flow uses the default `GITHUB_TOKEN`. No GitHub App, no bot
   identity, no separate secrets to manage other than the org-level
   `NPM_PUBLISH_AUTOMATION_TOKEN` that the automation itself relies on.

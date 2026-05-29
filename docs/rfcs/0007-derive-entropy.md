@@ -32,7 +32,7 @@ type Entropy = [u8; 32];
 
 enum DeriveEntropyError {
     /// An unexpected error occurred in the host (e.g., an internal bug).
-    Unknown,
+    Unknown(GenericErr),
 }
 
 /// Derives 32 bytes of deterministic entropy scoped to the calling product

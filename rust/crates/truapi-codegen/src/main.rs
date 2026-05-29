@@ -73,6 +73,17 @@ struct Cli {
     /// surface (optional). Only honored when `--platform-input` is also set.
     #[arg(long)]
     platform_ts_output: Option<String>,
+
+    /// Output directory for generated explorer metadata (optional). When set,
+    /// writes `codegen/types.ts` with the DataType list consumed by the
+    /// explorer site.
+    #[arg(long)]
+    explorer_output: Option<String>,
+
+    /// Suppress `exampleSource` in the generated playground services metadata.
+    /// Used by snapshot tooling to keep historical archives small.
+    #[arg(long, default_value_t = false)]
+    strip_examples: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -122,7 +133,7 @@ fn main() -> Result<()> {
         "Generated TypeScript client for TrUAPI V{client_version} codec {codec_version} in {output}",
     );
     if let Some(path) = &cli.playground_output {
-        ts::generate_playground_services(&api, path, client_version)
+        ts::generate_playground_services(&api, path, client_version, cli.strip_examples)
             .with_context(|| format!("writing playground metadata to {path}"))?;
         println!("Generated playground metadata in {path}");
     }
@@ -152,6 +163,11 @@ fn main() -> Result<()> {
         println!("Generated typed HostCallbacks TS surface in {output}");
     } else if cli.platform_input.is_some() != cli.platform_ts_output.is_some() {
         anyhow::bail!("--platform-input and --platform-ts-output must be provided together");
+    }
+    if let Some(path) = &cli.explorer_output {
+        ts::generate_explorer(&api, path, client_version)
+            .with_context(|| format!("writing explorer metadata to {path}"))?;
+        println!("Generated explorer metadata in {path}");
     }
     Ok(())
 }

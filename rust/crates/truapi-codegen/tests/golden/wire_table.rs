@@ -9,8 +9,8 @@
 // entry id=1 tag="system_handshake_response"
 // entry id=2 tag="system_feature_supported_request"
 // entry id=3 tag="system_feature_supported_response"
-// entry id=4 tag="system_push_notification_request"
-// entry id=5 tag="system_push_notification_response"
+// entry id=4 tag="notifications_send_push_notification_request"
+// entry id=5 tag="notifications_send_push_notification_response"
 // entry id=6 tag="system_navigate_to_request"
 // entry id=7 tag="system_navigate_to_response"
 // entry id=8 tag="permissions_request_device_permission_request"
@@ -75,12 +75,6 @@
 // entry id=67 tag="preimage_lookup_subscribe_receive"
 // entry id=68 tag="preimage_submit_request"
 // entry id=69 tag="preimage_submit_response"
-// entry id=70 tag="json_rpc_send_message_request"
-// entry id=71 tag="json_rpc_send_message_response"
-// entry id=72 tag="json_rpc_subscribe_messages_start"
-// entry id=73 tag="json_rpc_subscribe_messages_stop"
-// entry id=74 tag="json_rpc_subscribe_messages_interrupt"
-// entry id=75 tag="json_rpc_subscribe_messages_receive"
 // entry id=76 tag="chain_follow_head_subscribe_start"
 // entry id=77 tag="chain_follow_head_subscribe_stop"
 // entry id=78 tag="chain_follow_head_subscribe_interrupt"
@@ -139,6 +133,36 @@
 // entry id=131 tag="resource_allocation_request_response"
 // entry id=132 tag="statement_store_create_proof_authorized_request"
 // entry id=133 tag="statement_store_create_proof_authorized_response"
+// entry id=134 tag="notifications_cancel_push_notification_request"
+// entry id=135 tag="notifications_cancel_push_notification_response"
+// entry id=136 tag="coin_payment_create_purse_request"
+// entry id=137 tag="coin_payment_create_purse_response"
+// entry id=138 tag="coin_payment_query_purse_request"
+// entry id=139 tag="coin_payment_query_purse_response"
+// entry id=140 tag="coin_payment_rebalance_purse_start"
+// entry id=141 tag="coin_payment_rebalance_purse_stop"
+// entry id=142 tag="coin_payment_rebalance_purse_interrupt"
+// entry id=143 tag="coin_payment_rebalance_purse_receive"
+// entry id=144 tag="coin_payment_delete_purse_start"
+// entry id=145 tag="coin_payment_delete_purse_stop"
+// entry id=146 tag="coin_payment_delete_purse_interrupt"
+// entry id=147 tag="coin_payment_delete_purse_receive"
+// entry id=148 tag="coin_payment_create_receivable_request"
+// entry id=149 tag="coin_payment_create_receivable_response"
+// entry id=150 tag="coin_payment_create_cheque_request"
+// entry id=151 tag="coin_payment_create_cheque_response"
+// entry id=152 tag="coin_payment_deposit_start"
+// entry id=153 tag="coin_payment_deposit_stop"
+// entry id=154 tag="coin_payment_deposit_interrupt"
+// entry id=155 tag="coin_payment_deposit_receive"
+// entry id=156 tag="coin_payment_refund_start"
+// entry id=157 tag="coin_payment_refund_stop"
+// entry id=158 tag="coin_payment_refund_interrupt"
+// entry id=159 tag="coin_payment_refund_receive"
+// entry id=160 tag="coin_payment_listen_for_payment_start"
+// entry id=161 tag="coin_payment_listen_for_payment_stop"
+// entry id=162 tag="coin_payment_listen_for_payment_interrupt"
+// entry id=163 tag="coin_payment_listen_for_payment_receive"
 
 /// A single wire-table row.
 pub struct WireEntry {
@@ -188,7 +212,7 @@ pub const WIRE_TABLE: &[WireEntry] = &[
         },
     },
     WireEntry {
-        method: "system_push_notification",
+        method: "notifications_send_push_notification",
         kind: WireKind::Request {
             request_id: 4,
             response_id: 5,
@@ -389,22 +413,6 @@ pub const WIRE_TABLE: &[WireEntry] = &[
         },
     },
     WireEntry {
-        method: "json_rpc_send_message",
-        kind: WireKind::Request {
-            request_id: 70,
-            response_id: 71,
-        },
-    },
-    WireEntry {
-        method: "json_rpc_subscribe_messages",
-        kind: WireKind::Subscription {
-            start_id: 72,
-            stop_id: 73,
-            interrupt_id: 74,
-            receive_id: 75,
-        },
-    },
-    WireEntry {
         method: "chain_follow_head_subscribe",
         kind: WireKind::Subscription {
             start_id: 76,
@@ -585,6 +593,86 @@ pub const WIRE_TABLE: &[WireEntry] = &[
         kind: WireKind::Request {
             request_id: 132,
             response_id: 133,
+        },
+    },
+    WireEntry {
+        method: "notifications_cancel_push_notification",
+        kind: WireKind::Request {
+            request_id: 134,
+            response_id: 135,
+        },
+    },
+    WireEntry {
+        method: "coin_payment_create_purse",
+        kind: WireKind::Request {
+            request_id: 136,
+            response_id: 137,
+        },
+    },
+    WireEntry {
+        method: "coin_payment_query_purse",
+        kind: WireKind::Request {
+            request_id: 138,
+            response_id: 139,
+        },
+    },
+    WireEntry {
+        method: "coin_payment_rebalance_purse",
+        kind: WireKind::Subscription {
+            start_id: 140,
+            stop_id: 141,
+            interrupt_id: 142,
+            receive_id: 143,
+        },
+    },
+    WireEntry {
+        method: "coin_payment_delete_purse",
+        kind: WireKind::Subscription {
+            start_id: 144,
+            stop_id: 145,
+            interrupt_id: 146,
+            receive_id: 147,
+        },
+    },
+    WireEntry {
+        method: "coin_payment_create_receivable",
+        kind: WireKind::Request {
+            request_id: 148,
+            response_id: 149,
+        },
+    },
+    WireEntry {
+        method: "coin_payment_create_cheque",
+        kind: WireKind::Request {
+            request_id: 150,
+            response_id: 151,
+        },
+    },
+    WireEntry {
+        method: "coin_payment_deposit",
+        kind: WireKind::Subscription {
+            start_id: 152,
+            stop_id: 153,
+            interrupt_id: 154,
+            receive_id: 155,
+        },
+    },
+    WireEntry {
+        method: "coin_payment_refund",
+        kind: WireKind::Subscription {
+            start_id: 156,
+            stop_id: 157,
+            interrupt_id: 158,
+            receive_id: 159,
+        },
+    },
+    WireEntry {
+        method: "coin_payment_listen_for_payment",
+        kind: WireKind::Subscription {
+            start_id: 160,
+            stop_id: 161,
+            interrupt_id: 162,
+            receive_id: 163,
         },
     },
 ];

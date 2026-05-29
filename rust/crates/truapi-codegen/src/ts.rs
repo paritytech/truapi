@@ -12,10 +12,12 @@ use indoc::{formatdoc, writedoc};
 use crate::rustdoc::*;
 
 mod examples;
+mod explorer;
 mod host_callbacks;
 mod playground;
 
 pub use examples::generate_client_examples;
+pub use explorer::generate_explorer;
 pub use host_callbacks::generate as generate_host_callbacks;
 pub use playground::generate_playground_services;
 
@@ -365,6 +367,8 @@ pub fn generate(
 ) -> Result<()> {
     fs::create_dir_all(output_dir)?;
     validate_versioned_wrapper_shapes(api)?;
+    let wrappers = collect_versioned_wrappers(api);
+    playground::validate_method_examples(api, &wrappers, target_version)?;
 
     let types_code = generate_types(api, target_version)?;
     fs::write(Path::new(output_dir).join("types.ts"), types_code)?;
@@ -724,8 +728,13 @@ fn method_versioned_wrappers(
         ReturnType::Subscription(item) => {
             collect_type_versioned_wrappers(item, wrappers, &mut names);
         }
-        ReturnType::ResultSubscription { item, err: _ } => {
+        ReturnType::ResultSubscription { item, err } => {
             collect_type_versioned_wrappers(item, wrappers, &mut names);
+            collect_type_versioned_wrappers(
+                call_error_inner(err).unwrap_or(err),
+                wrappers,
+                &mut names,
+            );
         }
     }
     names.sort();
@@ -930,6 +939,12 @@ fn write_observable_helper(out: &mut String) {
     writedoc!(
         out,
         r#"
+        // ES Observable interop key (rxjs reads Symbol.observable, falling
+        // back to "@@observable" on platforms without the well-known symbol).
+        const OBSERVABLE_INTEROP: symbol | string =
+          (typeof Symbol === "function" && (Symbol as {{ observable?: symbol }}).observable) ||
+          "@@observable";
+
         function createObservable<Item, Reason = never>({{
           transport,
           ids,
@@ -943,7 +958,7 @@ fn write_observable_helper(out: &mut String) {
           decodeItem: (payload: Uint8Array) => Item;
           decodeInterrupt?: (payload: Uint8Array) => Reason;
         }}): ObservableLike<Item, Reason> {{
-          return {{
+          const observable: ObservableLike<Item, Reason> = {{
             subscribe(observer: Partial<Observer<Item, Reason>> = {{}}): Subscription {{
               let closed = false;
               let raw: Subscription | undefined;
@@ -999,7 +1014,11 @@ fn write_observable_helper(out: &mut String) {
                 }},
               }};
             }},
+            [OBSERVABLE_INTEROP as typeof Symbol.observable]() {{
+              return observable;
+            }},
           }};
+          return observable;
         }}
 
         "#
@@ -1905,6 +1924,8 @@ fn codec_expr_mode(
             "u32" => Ok("S.u32".to_string()),
             "u64" => Ok("S.u64".to_string()),
             "u128" => Ok("S.u128".to_string()),
+            "compact" => Ok("S.compact".to_string()),
+            "optionBool" => Ok("S.OptionBool".to_string()),
             "i8" => Ok("S.i8".to_string()),
             "i16" => Ok("S.i16".to_string()),
             "i32" => Ok("S.i32".to_string()),
@@ -1982,6 +2003,8 @@ fn ts_type_with_named(ty: &TypeRef, qualified: bool, mode: NameMode) -> Result<S
             "bool" => Ok("boolean".to_string()),
             "u8" | "u16" | "u32" | "i8" | "i16" | "i32" | "f32" | "f64" => Ok("number".to_string()),
             "u64" | "u128" | "i64" | "i128" => Ok("bigint".to_string()),
+            "compact" => Ok("number | bigint".to_string()),
+            "optionBool" => Ok("boolean | undefined".to_string()),
             "str" => Ok("string".to_string()),
             _ => bail!("Unsupported primitive type `{name}` in TypeScript type generation"),
         },
@@ -3313,11 +3336,13 @@ mod tests {
     fn service_display_name_formats_known_acronyms() {
         let json_rpc = TraitDef {
             name: "JsonRpc".to_string(),
+            module_path: Vec::new(),
             methods: Vec::new(),
             docs: None,
         };
         let system = TraitDef {
             name: "System".to_string(),
+            module_path: Vec::new(),
             methods: Vec::new(),
             docs: None,
         };
@@ -3355,6 +3380,7 @@ mod tests {
         ApiDefinition {
             traits: vec![TraitDef {
                 name: "Example".to_string(),
+                module_path: Vec::new(),
                 methods,
                 docs: None,
             }],
@@ -3407,6 +3433,7 @@ mod tests {
     fn versioned_tuple_wrapper_variants(name: &str, variants: &[(u32, &str)]) -> TypeDef {
         TypeDef {
             name: name.to_string(),
+            module_path: vec!["truapi".into(), "versioned".into()],
             generic_params: Vec::new(),
             kind: TypeDefKind::Enum(
                 variants
@@ -3447,6 +3474,7 @@ mod tests {
         ];
         TypeDef {
             name: name.to_string(),
+            module_path: vec!["truapi".into(), "versioned".into()],
             generic_params: Vec::new(),
             kind: TypeDefKind::Enum(vec![
                 VariantDef {
@@ -3468,6 +3496,7 @@ mod tests {
     fn detect_versioned_wrapper_keeps_each_versioned_variant() {
         let ty = TypeDef {
             name: "ExampleRequest".to_string(),
+            module_path: vec!["truapi".into(), "versioned".into()],
             generic_params: Vec::new(),
             kind: TypeDefKind::Enum(vec![
                 VariantDef {
@@ -3654,6 +3683,7 @@ mod tests {
         let api = ApiDefinition {
             traits: vec![TraitDef {
                 name: "Example".to_string(),
+                module_path: Vec::new(),
                 methods: vec![
                     request_method_with_wrappers(
                         "legacy",
@@ -3699,6 +3729,7 @@ mod tests {
             traits: vec![
                 TraitDef {
                     name: "Legacy".to_string(),
+                    module_path: Vec::new(),
                     methods: vec![request_method_with_wrappers(
                         "legacy_call",
                         Some(2),
@@ -3710,6 +3741,7 @@ mod tests {
                 },
                 TraitDef {
                     name: "FutureOnly".to_string(),
+                    module_path: Vec::new(),
                     methods: vec![request_method_with_wrappers(
                         "future_call",
                         Some(4),
@@ -3746,6 +3778,7 @@ mod tests {
         let api = ApiDefinition {
             traits: vec![TraitDef {
                 name: "Example".to_string(),
+                module_path: Vec::new(),
                 methods: vec![MethodDef {
                     name: "example_call".to_string(),
                     kind: MethodKind::Request,
@@ -3794,6 +3827,7 @@ mod tests {
         let api = ApiDefinition {
             traits: vec![TraitDef {
                 name: "Example".to_string(),
+                module_path: Vec::new(),
                 methods: vec![MethodDef {
                     name: "example_call".to_string(),
                     kind: MethodKind::Request,
@@ -3839,6 +3873,7 @@ mod tests {
         let api = ApiDefinition {
             traits: vec![TraitDef {
                 name: "Example".to_string(),
+                module_path: Vec::new(),
                 methods: vec![MethodDef {
                     name: "example_call".to_string(),
                     kind: MethodKind::Request,

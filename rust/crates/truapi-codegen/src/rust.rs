@@ -179,6 +179,7 @@ mod tests {
         let api = ApiDefinition {
             traits: vec![TraitDef {
                 name: "Account".to_string(),
+                module_path: Vec::new(),
                 methods: vec![make_subscription_method("connection_status_subscribe", 18)],
                 docs: None,
             }],
@@ -209,11 +210,13 @@ mod tests {
             traits: vec![
                 TraitDef {
                     name: "StatementStore".to_string(),
+                    module_path: Vec::new(),
                     methods: vec![make_request_method("submit", 62)],
                     docs: None,
                 },
                 TraitDef {
                     name: "Preimage".to_string(),
+                    module_path: Vec::new(),
                     methods: vec![make_request_method("submit", 68)],
                     docs: None,
                 },
@@ -259,11 +262,13 @@ mod tests {
             traits: vec![
                 TraitDef {
                     name: "Foo".to_string(),
+                    module_path: Vec::new(),
                     methods: vec![make_request_method("bar_baz", 10)],
                     docs: None,
                 },
                 TraitDef {
                     name: "FooBar".to_string(),
+                    module_path: Vec::new(),
                     methods: vec![make_request_method("baz", 12)],
                     docs: None,
                 },
@@ -293,6 +298,7 @@ mod tests {
         let api = ApiDefinition {
             traits: vec![TraitDef {
                 name: "Permissions".to_string(),
+                module_path: Vec::new(),
                 methods: vec![make_request_method("request_device_permission", 8)],
                 docs: None,
             }],
@@ -318,6 +324,7 @@ mod tests {
         let api = ApiDefinition {
             traits: vec![TraitDef {
                 name: "Permissions".to_string(),
+                module_path: Vec::new(),
                 methods: vec![
                     make_request_method("alpha", 10),
                     make_request_method("beta", 10),
@@ -356,6 +363,7 @@ mod tests {
         let api = ApiDefinition {
             traits: vec![TraitDef {
                 name: "Permissions".to_string(),
+                module_path: Vec::new(),
                 methods: vec![method],
                 docs: None,
             }],
@@ -378,6 +386,7 @@ mod tests {
         let api = ApiDefinition {
             traits: vec![TraitDef {
                 name: "Account".to_string(),
+                module_path: Vec::new(),
                 methods: vec![method],
                 docs: None,
             }],
@@ -401,6 +410,7 @@ mod tests {
         let api = ApiDefinition {
             traits: vec![TraitDef {
                 name: "Permissions".to_string(),
+                module_path: Vec::new(),
                 methods: vec![method],
                 docs: None,
             }],
@@ -423,6 +433,7 @@ mod tests {
         let api = ApiDefinition {
             traits: vec![TraitDef {
                 name: "Account".to_string(),
+                module_path: Vec::new(),
                 methods: vec![method],
                 docs: None,
             }],
@@ -453,6 +464,7 @@ mod tests {
         let api = ApiDefinition {
             traits: vec![TraitDef {
                 name: "Permissions".to_string(),
+                module_path: Vec::new(),
                 methods: vec![method],
                 docs: None,
             }],
@@ -485,6 +497,7 @@ mod tests {
         let api = ApiDefinition {
             traits: vec![TraitDef {
                 name: "Permissions".to_string(),
+                module_path: Vec::new(),
                 methods: vec![method],
                 docs: None,
             }],
