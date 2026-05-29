@@ -1,9 +1,8 @@
 //! Versioned wrappers for [`CoinPayment`](crate::api::CoinPayment) methods.
 
 use crate::v01;
-use truapi_macros::versioned_type;
 
-versioned_type! {
+truapi_macros::versioned_type! {
     pub enum HostCoinPaymentCreatePurseRequest { V1 => v01::HostCoinPaymentCreatePurseRequest }
     pub enum HostCoinPaymentCreatePurseResponse { V1 => v01::HostCoinPaymentCreatePurseResponse }
     pub enum HostCoinPaymentCreatePurseError { V1 => v01::CoinPaymentError }

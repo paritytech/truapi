@@ -24,7 +24,10 @@ use proc_macro::TokenStream;
 use proc_macro2::Literal;
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
-use syn::{Attribute, Ident, ItemFn, LitInt, Token, TraitItemFn, Type, braced, parse_macro_input};
+use syn::{
+    Attribute, Ident, ItemFn, LitInt, Token, TraitItemFn, Type, Visibility, braced,
+    parse_macro_input,
+};
 
 #[derive(Default)]
 struct WireArgs {
@@ -159,9 +162,10 @@ impl Parse for VersionedInput {
     }
 }
 
-/// A single `pub enum Name { V1 => Ty, ... }` declaration.
+/// A single `[vis] enum Name { V1 => Ty, ... }` declaration.
 struct VersionedEnum {
     attrs: Vec<Attribute>,
+    vis: Visibility,
     name: Ident,
     variants: Vec<VersionedVariant>,
 }
@@ -169,7 +173,7 @@ struct VersionedEnum {
 impl Parse for VersionedEnum {
     fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
         let attrs = input.call(Attribute::parse_outer)?;
-        input.parse::<Token![pub]>()?;
+        let vis: Visibility = input.parse()?;
         input.parse::<Token![enum]>()?;
         let name: Ident = input.parse()?;
 
@@ -187,6 +191,7 @@ impl Parse for VersionedEnum {
 
         Ok(Self {
             attrs,
+            vis,
             name,
             variants,
         })
@@ -237,6 +242,12 @@ fn variant_version(ident: &Ident) -> syn::Result<u8> {
 /// `impl Versioned` exposing `Latest`, `LATEST`, and `version()`. Single-version
 /// envelopes also get trivial `IntoLatest`/`FromLatest` impls; multi-version
 /// envelopes leave those to be written by hand, since the conversion is bespoke.
+///
+/// The declared visibility (`pub`, `pub(crate)`, or none) carries through to the
+/// generated enum.
+///
+/// The generated impls name `crate::versioned::*` traits, so invoke this from
+/// within the `truapi` crate.
 #[proc_macro]
 pub fn versioned_type(item: TokenStream) -> TokenStream {
     let input = parse_macro_input!(item as VersionedInput);
@@ -257,6 +268,7 @@ fn expand_versioned(input: &VersionedInput) -> syn::Result<proc_macro2::TokenStr
 fn expand_versioned_enum(def: &VersionedEnum) -> syn::Result<proc_macro2::TokenStream> {
     let VersionedEnum {
         attrs,
+        vis,
         name,
         variants,
     } = def;
@@ -271,9 +283,9 @@ fn expand_versioned_enum(def: &VersionedEnum) -> syn::Result<proc_macro2::TokenS
     let mut variant_defs = Vec::new();
     let mut version_arms = Vec::new();
     for (i, variant) in variants.iter().enumerate() {
-        let expected = (i as u8) + 1;
+        let expected = i + 1;
         let version = variant_version(&variant.ident)?;
-        if version != expected {
+        if usize::from(version) != expected {
             return Err(syn::Error::new(
                 variant.ident.span(),
                 format!("expected variant `V{expected}`; versions must be contiguous from 1"),
@@ -307,7 +319,7 @@ fn expand_versioned_enum(def: &VersionedEnum) -> syn::Result<proc_macro2::TokenS
         #(#attrs)*
         #[doc = #doc]
         #[derive(Debug, Clone, PartialEq, Eq, parity_scale_codec::Encode, parity_scale_codec::Decode)]
-        pub enum #name {
+        #vis enum #name {
             #(#variant_defs),*
         }
 

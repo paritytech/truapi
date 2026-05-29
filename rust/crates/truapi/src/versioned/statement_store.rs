@@ -1,9 +1,8 @@
 //! Versioned wrappers for [`StatementStore`](crate::api::StatementStore) methods.
 
 use crate::v01;
-use truapi_macros::versioned_type;
 
-versioned_type! {
+truapi_macros::versioned_type! {
     pub enum RemoteStatementStoreSubscribeRequest { V1 => v01::RemoteStatementStoreSubscribeRequest }
     pub enum RemoteStatementStoreSubscribeItem { V1 => v01::RemoteStatementStoreSubscribeItem }
     pub enum RemoteStatementStoreCreateProofRequest { V1 => v01::RemoteStatementStoreCreateProofRequest }

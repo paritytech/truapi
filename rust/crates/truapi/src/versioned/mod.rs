@@ -50,6 +50,41 @@ pub mod theme;
 mod tests {
     use parity_scale_codec::{Decode, Encode};
 
+    #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+    struct ProbeV1 {
+        a: u32,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+    struct ProbeV2 {
+        b: Vec<u8>,
+    }
+
+    truapi_macros::versioned_type! {
+        enum MultiVersionProbe {
+            V1 => ProbeV1,
+            V2 => ProbeV2,
+        }
+    }
+
+    // Multi-version envelopes assign positional SCALE codec indices (V1 -> 0,
+    // V2 -> 1) and 1-based version numbers.
+    #[test]
+    fn multi_version_codec_indices_are_positional() {
+        use super::Versioned;
+
+        let v1 = MultiVersionProbe::V1(ProbeV1 { a: 7 });
+        let v2 = MultiVersionProbe::V2(ProbeV2 {
+            b: b"hello".to_vec(),
+        });
+
+        assert_eq!(v1.encode()[0], 0, "V1 encodes codec index 0");
+        assert_eq!(v2.encode()[0], 1, "V2 encodes codec index 1");
+        assert_eq!(v1.version(), 1);
+        assert_eq!(v2.version(), 2);
+        assert_eq!(MultiVersionProbe::LATEST, 2);
+    }
+
     #[test]
     fn v1_discriminant_is_zero() {
         let v1 = super::permissions::HostDevicePermissionRequest::V1(

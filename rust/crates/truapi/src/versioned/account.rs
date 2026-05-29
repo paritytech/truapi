@@ -1,9 +1,8 @@
 //! Versioned wrappers for [`Account`](crate::api::Account) methods.
 
 use crate::v01;
-use truapi_macros::versioned_type;
 
-versioned_type! {
+truapi_macros::versioned_type! {
     pub enum HostAccountGetRequest { V1 => v01::HostAccountGetRequest }
     pub enum HostAccountGetResponse { V1 => v01::HostAccountGetResponse }
     pub enum HostAccountGetError { V1 => v01::HostAccountGetError }
