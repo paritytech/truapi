@@ -231,7 +231,7 @@ Two cores. The per-tab Rust core handles product-specific work (account, signing
 
 **Land Option 2: the Rust core lives in a SharedWorker scoped to `host.dot.li`.** The protocol iframe in each tab becomes a thin shim that constructs the SharedWorker once per browser, exposes the small set of platform callbacks the worker can't make from its own context (modal UI prompts routed back via postMessage), and relays MessagePorts from the host shell at `dot.li` to the worker.
 
-> The shipped `@parity/truapi-host-shared` entrypoint (`worker-runtime.ts`) is a plain per-tab dedicated Web Worker (Option 1's worker model). SharedWorker is the recommended target here but is not yet implemented.
+> The shipped `@parity/truapi-host-wasm/worker-runtime` entrypoint is a plain per-tab dedicated Web Worker (Option 1's worker model). SharedWorker is the recommended target here but is not yet implemented.
 
 Reasons:
 
@@ -241,7 +241,7 @@ Reasons:
 
 3. **No protocol logic on the user-visible thread.** The host shell at `dot.li` renders the top bar and modals; it never decodes a TrUAPI frame. Heavy crypto + smoldot + libp2p stay off any paint-frame budget.
 
-4. **Falls back cleanly when SharedWorker isn't available.** Feature-detect (`typeof SharedWorker !== "undefined"`) and downgrade to a per-tab `Worker` (Option 1 behavior). The same `@parity/truapi-host-shared` entry point covers both, only the constructor differs. Safari 16+ ships SharedWorker, so the fallback is only for very old engines.
+4. **Falls back cleanly when SharedWorker isn't available.** Feature-detect (`typeof SharedWorker !== "undefined"`) and downgrade to a per-tab `Worker` (Option 1 behavior). The same `@parity/truapi-host-wasm/worker-runtime` entry point covers both, only the constructor differs. Safari 16+ ships SharedWorker, so the fallback is only for very old engines.
 
 5. **iOS lifecycle is acceptable.** iOS may suspend a SharedWorker when all tabs are backgrounded. The amortization benefit shrinks but isn't worse than a per-tab Worker (which also dies with its tab on iOS). Cross-tab payoff is still real on desktop and is a no-cost win when the browser keeps the worker alive.
 
@@ -251,7 +251,7 @@ Options 1 (per-tab worker in protocol iframe), 3 (worker on the user-visible `do
 
 To get from today's topology to Option 2:
 
-1. **Ship `truapi-server` WASM as a SharedWorker entrypoint.** Today `@parity/truapi-host-shared/dist/worker-runtime.js` runs as a per-tab dedicated `Worker`; this step promotes the same entrypoint to `new SharedWorker(...)` from the protocol iframe at `host.dot.li`. Smoldot is embedded inside the WASM, so dotli's existing `apps/protocol/src/protocol-shared-worker.ts` retires in the same step.
+1. **Ship `truapi-server` WASM as a SharedWorker entrypoint.** Today `@parity/truapi-host-wasm/worker-runtime` runs as a per-tab dedicated `Worker`; this step promotes the same entrypoint to `new SharedWorker(...)` from the protocol iframe at `host.dot.li`. Smoldot is embedded inside the WASM, so dotli's existing `apps/protocol/src/protocol-shared-worker.ts` retires in the same step.
 
 2. **Migrate auth-storage from localStorage to IndexedDB.** The current `apps/protocol/src/main.ts` shared-auth handler writes `PAPP_${siteId}_${key}` keys to `localStorage`. SharedWorkers have no `localStorage`; persistent state lives in IDB. The protocol-iframe shim runs a one-shot migration: enumerate `localStorage` for `PAPP_*` keys, write them into IDB, then clear localStorage. Cross-tab notifications switch from `BroadcastChannel` to the SharedWorker fan-out.
 

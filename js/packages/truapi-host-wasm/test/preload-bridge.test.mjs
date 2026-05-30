@@ -6,7 +6,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createElectronProvider } from "../dist/index.js";
+import { createElectronProvider } from "../dist/electron/index.js";
 
 function makeFakePort() {
   const messageListeners = new Set();

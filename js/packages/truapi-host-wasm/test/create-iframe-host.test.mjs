@@ -5,7 +5,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createIframeHost } from "../dist/index.js";
+import { createIframeHost } from "../dist/web/index.js";
 
 function setupFakeDom() {
   // Track listeners on the synthetic `window` and the iframe so the

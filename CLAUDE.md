@@ -16,10 +16,11 @@ rust/crates/
   uniffi-bindgen-cli/    Thin CLI wrapper around uniffi::uniffi_bindgen_main()
 js/packages/
   truapi/                  @parity/truapi TS package; generated TS lives under ignored paths
-  truapi-host/             @parity/truapi-host host-side codegen + dispatcher
-  truapi-host-shared/      @parity/truapi-host-shared: WASM-backed Provider, worker entrypoint, pre-built WASM under dist/wasm/
-  truapi-host-web/         @parity/truapi-host-web: iframe MessageChannel + Web Worker WASM provider
-  truapi-host-electron/    @parity/truapi-host-electron: Electron MessagePortMain provider
+  truapi-host/             @parity/truapi-host host-side codegen + dispatcher (no shared core)
+  truapi-host-wasm/        @parity/truapi-host-wasm: WASM-backed host runtime. Subpath entries:
+                           `.` (core Provider + dispatcher + node runtime), `/web` (iframe + Web
+                           Worker), `/electron` (MessagePortMain), `/worker-runtime` (Worker entry).
+                           Pre-built WASM under dist/wasm/{web,node}/
 android/
   truapi-host/             io.parity:truapi-host-android Maven library (AAR + UniFFI Kotlin bindings)
 ios/
@@ -40,7 +41,7 @@ scripts/codegen.sh         regenerate the TS client from the Rust crate
   `truapi::versioned::*` and `truapi::v01::*`. The runtime crates re-export
   rather than redefine.
 - Pre-built `truapi-server` WASM artifacts are committed under
-  `js/packages/truapi-host-shared/dist/wasm/{web,node}/`. Regenerate via
+  `js/packages/truapi-host-wasm/dist/wasm/{web,node}/`. Regenerate via
   `make wasm` whenever `rust/crates/truapi-server/` changes. CI rebuilds the
   bundle as a smoke check; exact byte-identity isn't enforced because
   wasm-pack output depends on Rust/wasm-bindgen versions.

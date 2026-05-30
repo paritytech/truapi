@@ -29,7 +29,7 @@ export interface CreateElectronProviderOptions {
  * provider exchanges SCALE-encoded `Uint8Array` frames with the renderer.
  * The provider's `dispose` closes the port.
  *
- * Hosts typically pair this with `@parity/truapi-host-shared`'s
+ * Hosts typically pair this with `@parity/truapi-host-wasm`'s
  * `createNodeWasmProvider` (for the WASM core) and `createHostServer`
  * from `@parity/truapi-host` (for the dispatcher) to assemble a full
  * Electron host.

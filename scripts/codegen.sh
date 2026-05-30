@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Regenerate js/packages/truapi/src/generated/* from rust/crates/truapi
-# plus js/packages/truapi-host-shared/src/generated/* from rust/crates/truapi-platform.
+# plus js/packages/truapi-host-wasm/src/generated/* from rust/crates/truapi-platform.
 #
 # Pipeline:
 #   1. cargo +nightly rustdoc -p truapi --output-format json -> target/doc/truapi.json
@@ -11,7 +11,7 @@
 #                                     --client-examples-output playground/test/generated/examples
 #                                     --host-output js/packages/truapi-host/src/generated
 #                                     --platform-input target/doc/truapi_platform.json
-#                                     --platform-ts-output js/packages/truapi-host-shared/src/generated
+#                                     --platform-ts-output js/packages/truapi-host-wasm/src/generated
 #                                     --explorer-output js/packages/truapi/src/explorer
 #                                     --codec-version 1
 #
@@ -35,7 +35,7 @@ cargo run -p truapi-codegen -- \
   --client-examples-output playground/test/generated/examples \
   --host-output js/packages/truapi-host/src/generated \
   --platform-input target/doc/truapi_platform.json \
-  --platform-ts-output js/packages/truapi-host-shared/src/generated \
+  --platform-ts-output js/packages/truapi-host-wasm/src/generated \
   --explorer-output js/packages/truapi/src/explorer \
   --codec-version 1
 
@@ -47,7 +47,7 @@ npm exec --yes -- prettier --write \
   "js/packages/truapi/src/explorer/**/*.ts" \
   "playground/test/generated/examples/**/*.ts" \
   "js/packages/truapi-host/src/generated/**/*.ts" \
-  "js/packages/truapi-host-shared/src/generated/**/*.ts"
+  "js/packages/truapi-host-wasm/src/generated/**/*.ts"
 
 # Rebuild dist/ so downstream consumers (in particular the playground,
 # which picks up @parity/truapi via yarn 1.x file: snapshot) see the
@@ -73,4 +73,4 @@ echo "Generated client at js/packages/truapi/src/generated/"
 echo "Generated playground metadata at js/packages/truapi/src/playground/codegen/"
 echo "Generated client examples at playground/test/generated/examples/"
 echo "Generated host package at js/packages/truapi-host/src/generated/"
-echo "Generated host-callbacks at js/packages/truapi-host-shared/src/generated/"
+echo "Generated host-callbacks at js/packages/truapi-host-wasm/src/generated/"

@@ -21,16 +21,14 @@ setup: ## First-time setup: submodules + JS dependencies.
 build: ## Build the Rust workspace and the TypeScript client.
 	cargo build --workspace
 	cd $(TRUAPI_PKG) && npm run build
-	cd $(JS_PACKAGES)/truapi-host-shared && npm install --no-fund --no-audit && npm run build
-	cd $(JS_PACKAGES)/truapi-host-web && npm install --no-fund --no-audit && npm run build
-	cd $(JS_PACKAGES)/truapi-host-electron && npm install --no-fund --no-audit && npm run build
+	cd $(JS_PACKAGES)/truapi-host-wasm && npm install --no-fund --no-audit && npm run build
 
 codegen: ## Regenerate the TypeScript client from the Rust crate.
 	./scripts/codegen.sh
 	cd $(PLAYGROUND) && rm -rf node_modules/@parity && yarn install
 
-wasm: ## Rebuild the truapi-server WASM artifacts under js/packages/truapi-host-shared/dist/wasm/.
-	cd $(JS_PACKAGES)/truapi-host-shared && npm run build:wasm
+wasm: ## Rebuild the truapi-server WASM artifacts under js/packages/truapi-host-wasm/dist/wasm/.
+	cd $(JS_PACKAGES)/truapi-host-wasm && npm run build:wasm
 
 UNIFFI_CDYLIB_DIR := target/release
 UNAME_S := $(shell uname -s)
@@ -67,9 +65,7 @@ android-publish-local: ## Publish io.parity:truapi-host-android to ~/.m2 (dev wo
 test: ## Run Rust + TypeScript client tests.
 	cargo test --workspace --features ws-bridge
 	cd $(TRUAPI_PKG) && npm test
-	cd $(JS_PACKAGES)/truapi-host-shared && npm test
-	cd $(JS_PACKAGES)/truapi-host-web && npm test
-	cd $(JS_PACKAGES)/truapi-host-electron && npm test
+	cd $(JS_PACKAGES)/truapi-host-wasm && npm test
 
 check: ## Full verification suite (build, fmt, clippy, test, TS tests, playground build + lint).
 	cargo build --workspace
@@ -77,9 +73,7 @@ check: ## Full verification suite (build, fmt, clippy, test, TS tests, playgroun
 	cargo clippy --workspace --all-targets --all-features -- -D warnings
 	cargo test --workspace --features ws-bridge
 	cd $(TRUAPI_PKG) && npm run build && npm test
-	cd $(JS_PACKAGES)/truapi-host-shared && npm install --no-fund --no-audit && npm test
-	cd $(JS_PACKAGES)/truapi-host-web && npm install --no-fund --no-audit && npm test
-	cd $(JS_PACKAGES)/truapi-host-electron && npm install --no-fund --no-audit && npm test
+	cd $(JS_PACKAGES)/truapi-host-wasm && npm install --no-fund --no-audit && npm test
 	cd $(PLAYGROUND) && yarn build && yarn lint
 
 playground: ## Refresh the playground's @parity/truapi snapshot and rebuild.

@@ -60,10 +60,9 @@ rust/crates/
   uniffi-bindgen-cli/    Thin CLI wrapper around uniffi::uniffi_bindgen_main() for the workspace
 js/packages/
   truapi/                  @parity/truapi TypeScript client
-  truapi-host/             @parity/truapi-host host-side codegen and dispatcher
-  truapi-host-shared/      @parity/truapi-host-shared: WASM-backed Provider + worker entrypoint
-  truapi-host-web/         @parity/truapi-host-web: iframe MessageChannel host + Web Worker provider
-  truapi-host-electron/    @parity/truapi-host-electron: Electron MessagePortMain provider
+  truapi-host/             @parity/truapi-host host-side codegen and dispatcher (no shared core)
+  truapi-host-wasm/        @parity/truapi-host-wasm: WASM-backed host runtime; entries `.` (core),
+                           `/web` (iframe + Web Worker), `/electron` (MessagePortMain), `/worker-runtime`
 android/
   truapi-host/             io.parity:truapi-host-android Maven library (AAR + UniFFI Kotlin bindings)
 ios/
@@ -76,17 +75,17 @@ scripts/codegen.sh         Regenerate the TS client from the Rust source
 
 ### Native + JS host SDKs
 
-Hosts integrate the Rust core through one of the `@parity/truapi-host-*` packages:
+JS hosts integrate the Rust core through [`@parity/truapi-host-wasm`](js/packages/truapi-host-wasm),
+a single package with tree-shakeable subpath entries (the separate
+`@parity/truapi-host`, with no shared core, is for hosts that bring their own runtime):
 
-- [`@parity/truapi-host-shared`](js/packages/truapi-host-shared) ships the
-  `truapi-server` WASM bundle, the `Provider` factories that drive it, and a
-  Web Worker entrypoint so the WASM core can run off the page main thread.
-- [`@parity/truapi-host-web`](js/packages/truapi-host-web) wires the WASM
-  provider into a browser host: iframe MessageChannel handshake plus
-  `createWebWorkerProvider`.
-- [`@parity/truapi-host-electron`](js/packages/truapi-host-electron) wraps an
-  Electron `MessagePortMain` as a `Provider`, pairs with
-  `truapi-host-shared`'s Node-side WASM runtime.
+- `@parity/truapi-host-wasm` (the `.` entry) ships the `truapi-server` WASM bundle, the
+  `Provider` factories that drive it, the dispatcher adapter, and `createNodeWasmProvider`.
+- `@parity/truapi-host-wasm/web` wires the WASM provider into a browser host: the iframe
+  MessageChannel handshake (`createIframeHost`) plus `createWebWorkerProvider`.
+- `@parity/truapi-host-wasm/electron` wraps an Electron `MessagePortMain` as a `Provider`.
+- `@parity/truapi-host-wasm/worker-runtime` is the Web Worker entrypoint so the WASM core can
+  run off the page main thread.
 
 Native shells sit one level under `android/` and `ios/` and ship as versioned packages from git tags:
 
@@ -115,7 +114,7 @@ make setup    # submodules + JS dependencies
 make build    # Rust workspace + TypeScript client + @parity/truapi-host-* packages
 make test     # Rust + TypeScript client + @parity/truapi-host-* tests
 make check    # full suite: build, fmt, clippy, test, TS tests, playground build + lint
-make wasm     # rebuild truapi-server WASM artifacts under js/packages/truapi-host-shared/dist/wasm/
+make wasm     # rebuild truapi-server WASM artifacts under js/packages/truapi-host-wasm/dist/wasm/
 make uniffi   # regenerate UniFFI Kotlin + Swift bindings under android/truapi-host/ and ios/truapi-host/
 ```
 

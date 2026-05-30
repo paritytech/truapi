@@ -1,29 +1,43 @@
 {
-  "name": "@parity/truapi-host-shared",
+  "name": "@parity/truapi-host-wasm",
   "version": "0.1.0",
-  "description": "Shared TrUAPI host runtime: WASM-backed provider, dispatcher adapters, worker entry-point",
+  "description": "WASM-backed TrUAPI host runtime: embeds the Rust core, with web (iframe + Web Worker) and Electron (MessagePortMain) entry points",
   "license": "MIT",
   "author": "Parity Technologies <admin@parity.io>",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "sideEffects": [
+    "./dist/worker-runtime.js",
+    "./dist/wasm/**"
+  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./worker-runtime": {
-      "types": "./dist/worker-runtime.d.ts",
-      "import": "./dist/worker-runtime.js"
+    "./web": {
+      "types": "./dist/web/index.d.ts",
+      "import": "./dist/web/index.js"
+    },
+    "./electron": {
+      "types": "./dist/electron/index.d.ts",
+      "import": "./dist/electron/index.js"
     },
     "./node-runtime": {
       "types": "./dist/node-runtime.d.ts",
       "import": "./dist/node-runtime.js"
     },
+    "./worker-runtime": {
+      "types": "./dist/worker-runtime.d.ts",
+      "import": "./dist/worker-runtime.js"
+    },
     "./wasm/web": {
+      "types": "./dist/wasm/web/truapi_server.d.ts",
       "import": "./dist/wasm/web/truapi_server.js"
     },
     "./wasm/node": {
+      "types": "./dist/wasm/node/truapi_server.d.ts",
       "import": "./dist/wasm/node/truapi_server.js"
     }
   },

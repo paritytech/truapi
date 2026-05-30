@@ -1,0 +1,12 @@
+node_modules/
+*.tsbuildinfo
+# Ignore compiled TS output (top-level + the web/ and electron/ entry subdirs)
+# but keep the committed WASM artifacts under dist/wasm/.
+dist/**/*.js
+dist/**/*.d.ts
+dist/**/*.js.map
+dist/**/*.d.ts.map
+dist/generated/
+!dist/wasm/**
+# Codegen output from truapi-codegen --platform-ts-output.
+src/generated/

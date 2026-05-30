@@ -1,5 +1,5 @@
 // Sanity test that the worker-protocol module is importable and exports
-// what `createWebWorkerProvider` (from @parity/truapi-host-web) expects. The
+// what `createWebWorkerProvider` (from @parity/truapi-host-wasm/web) expects. The
 // real web worker entry-point loads a browser-only WASM bundle, so we
 // cannot boot it under Node; this test verifies the wire-shape of the
 // shared protocol contract instead.
@@ -17,7 +17,7 @@ test("worker-protocol module loads without runtime types (TS-only)", () => {
   assert.deepEqual(Object.keys(workerProtocol), []);
 });
 
-test("@parity/truapi-host-shared exposes the documented surface", () => {
+test("@parity/truapi-host-wasm exposes the documented surface", () => {
   // Dispatcher re-export from @parity/truapi-host.
   assert.equal(typeof shared.createHostServer, "function");
   assert.equal(typeof shared.toFlatResponsePayload, "function");

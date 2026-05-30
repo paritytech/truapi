@@ -3,9 +3,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'js/packages/truapi-host-shared/**'
-      - 'js/packages/truapi-host-web/**'
-      - 'js/packages/truapi-host-electron/**'
+      - 'js/packages/truapi-host-wasm/**'
       - 'android/**'
       - 'ios/**'
       - 'rust/crates/truapi-server/**'
@@ -15,9 +13,7 @@ on:
       - 'rust/crates/truapi/**'
   pull_request:
     paths:
-      - 'js/packages/truapi-host-shared/**'
-      - 'js/packages/truapi-host-web/**'
-      - 'js/packages/truapi-host-electron/**'
+      - 'js/packages/truapi-host-wasm/**'
       - 'android/**'
       - 'ios/**'
       - 'rust/crates/truapi-server/**'
@@ -39,28 +35,28 @@ jobs:
       - name: Install wasm-pack
         run: cargo install wasm-pack
       # Rebuilds the bundle from the current truapi-server source and runs the
-      # host-shared node smoke test against those freshly-built artifacts, so a
+      # truapi-host-wasm node smoke test against those freshly-built artifacts, so a
       # stale committed bundle cannot pass green. Byte-equality against the
       # committed bundle is intentionally not asserted: wasm-pack output varies
       # with the Rust toolchain and wasm-bindgen version, so cross-machine
       # reproducibility is not achievable. The committed artifacts under
-      # js/packages/truapi-host-shared/dist/wasm/ serve as a convenience for
+      # js/packages/truapi-host-wasm/dist/wasm/ serve as a convenience for
       # consumers that don't run Rust; regenerate locally with `make wasm`
       # before changing truapi-server source.
       - name: Rebuild WASM
         run: make wasm
       - name: Sanity-check artifact presence
         run: |
-          test -s js/packages/truapi-host-shared/dist/wasm/web/truapi_server_bg.wasm
-          test -s js/packages/truapi-host-shared/dist/wasm/web/truapi_server.js
-          test -s js/packages/truapi-host-shared/dist/wasm/node/truapi_server_bg.wasm
-          test -s js/packages/truapi-host-shared/dist/wasm/node/truapi_server.js
+          test -s js/packages/truapi-host-wasm/dist/wasm/web/truapi_server_bg.wasm
+          test -s js/packages/truapi-host-wasm/dist/wasm/web/truapi_server.js
+          test -s js/packages/truapi-host-wasm/dist/wasm/node/truapi_server_bg.wasm
+          test -s js/packages/truapi-host-wasm/dist/wasm/node/truapi_server.js
       - name: Build @parity/truapi-host (dep)
         run: cd js/packages/truapi-host && npm install --no-fund --no-audit && npm run build
       - name: Build @parity/truapi client (dep)
         run: cd js/packages/truapi && npm install --no-fund --no-audit && npm run build
-      - name: Test @parity/truapi-host-shared against the rebuilt bundle
-        run: cd js/packages/truapi-host-shared && npm install --no-fund --no-audit && npm test
+      - name: Test @parity/truapi-host-wasm against the rebuilt bundle
+        run: cd js/packages/truapi-host-wasm && npm install --no-fund --no-audit && npm test
   host-packages-js-tests:
     runs-on: ubuntu-latest
     steps:
@@ -71,12 +67,8 @@ jobs:
         run: cd js/packages/truapi-host && npm install --no-fund --no-audit && npm run build
       - name: Build @parity/truapi client (dep)
         run: cd js/packages/truapi && npm install --no-fund --no-audit && npm run build
-      - name: Test @parity/truapi-host-shared
-        run: cd js/packages/truapi-host-shared && npm install --no-fund --no-audit && npm test
-      - name: Test @parity/truapi-host-web
-        run: cd js/packages/truapi-host-web && npm install --no-fund --no-audit && npm test
-      - name: Test @parity/truapi-host-electron
-        run: cd js/packages/truapi-host-electron && npm install --no-fund --no-audit && npm test
+      - name: Test @parity/truapi-host-wasm
+        run: cd js/packages/truapi-host-wasm && npm install --no-fund --no-audit && npm test
   android-assemble:
     # Smoke-builds the Android library + verifies the Maven publication
     # can be assembled (writes to maven-local). No release happens here;

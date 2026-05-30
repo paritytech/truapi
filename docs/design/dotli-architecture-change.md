@@ -95,7 +95,7 @@ Product iframes can't host the protocol core: their origin changes with every ap
 
 The protocol iframe at `host.dot.li` has neither problem: it's a stable origin and it has no UI, so a same-origin worker constructed from it runs the WASM core off the main thread while keeping `truapi`'s persistent state on a stable origin.
 
-> The shipped `@parity/truapi-host-shared` entrypoint (`worker-runtime.ts`) is a plain per-tab dedicated Web Worker. The `SharedWorker` topology drawn in these diagrams is the recommended target (see Option 2 in the companion proposal), not yet implemented. Read every `SharedWorker` mention below as the future shape.
+> The shipped `@parity/truapi-host-wasm/worker-runtime` entrypoint is a plain per-tab dedicated Web Worker. The `SharedWorker` topology drawn in these diagrams is the recommended target (see Option 2 in the companion proposal), not yet implemented. Read every `SharedWorker` mention below as the future shape.
 
 `SharedWorker` semantics give two further wins:
 
@@ -125,9 +125,9 @@ The protocol iframe at `host.dot.li` has neither problem: it's a stable origin a
 
    ──── DEPS ADDED ────
 
-   @parity/truapi-host-shared      SharedWorker entrypoint that imports
+   @parity/truapi-host-wasm        SharedWorker entrypoint that imports
                                    the WASM core (smoldot embedded)
-   @parity/truapi-host-web         protocol-iframe shim: constructs the
+   @parity/truapi-host-wasm/web    protocol-iframe shim: constructs the
                                    SharedWorker, exposes the platform
                                    callbacks the worker can't make from
                                    its own context (modal UI, etc.),
