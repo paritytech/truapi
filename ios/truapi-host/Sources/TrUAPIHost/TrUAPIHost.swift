@@ -98,11 +98,6 @@ public protocol HostBridge: AnyObject, Sendable {
     /// Lifecycle logger. Marker is a stable slug, detail is free-form.
     func onCoreLog(marker: String, detail: String)
 
-    /// Forward an outbound SCALE-encoded protocol frame to the product.
-    /// Invoked on the `truapi-ws-bridge` worker thread; hop to the main thread
-    /// before touching the `WKWebView`.
-    func onCoreResponse(frame: Data)
-
     /// Open a URL in the system browser. Invoked on the `truapi-ws-bridge`
     /// worker thread; hop to the main thread to present UI.
     func navigateTo(url: String) throws
@@ -149,10 +144,6 @@ private final class HostCallbackAdapter: HostCallbacks, @unchecked Sendable {
         bridge.onCoreLog(marker: marker, detail: detail)
     }
 
-    func onCoreResponse(frame: Data) {
-        bridge.onCoreResponse(frame: frame)
-    }
-
     func navigateTo(url: String) throws {
         try bridge.navigateTo(url: url)
     }
@@ -193,8 +184,7 @@ private final class HostCallbackAdapter: HostCallbacks, @unchecked Sendable {
 /// Hosts integrating with a `WKWebView`-based product call `startWsBridge`
 /// and pass the resulting `ws://127.0.0.1:<port>/?t=<token>` URL to the
 /// product via `LocalhostBridgeBootstrap.script(...)`. The product wires
-/// that URL into `@parity/truapi`'s `createWebSocketProvider`. Direct
-/// `receiveFromProduct` is available for tests and alternative transports.
+/// that URL into `@parity/truapi`'s `createWebSocketProvider`.
 public final class TrUAPIHostCore {
     private let inner: NativeTrUApiCore
     // Co-owns the adapter alongside the generated FfiConverter handle map,
@@ -205,15 +195,6 @@ public final class TrUAPIHostCore {
         let adapter = HostCallbackAdapter(bridge: bridge)
         self.callbackRetainer = adapter
         self.inner = NativeTrUApiCore(callbacks: adapter)
-    }
-
-    /// Deliver an opaque SCALE-encoded wire frame into the Rust core. The
-    /// WS bridge feeds the core internally; this entrypoint is exposed for
-    /// tests and alternative transports. The core may synchronously re-enter
-    /// `HostBridge` callbacks (including a nested `receiveFromProduct`) before
-    /// returning, so callers must not hold a non-reentrant lock across the call.
-    public func receiveFromProduct(_ frame: Data) {
-        _ = inner.receiveFromProduct(frame: frame)
     }
 
     /// Set the currently-paired session. `pubkey` must be exactly 32 bytes.
@@ -242,11 +223,5 @@ public final class TrUAPIHostCore {
     /// Stop the localhost WebSocket bridge (if running).
     public func stopWsBridge() {
         inner.stopWsBridge()
-    }
-
-    /// Smoke-test helper: returns a SCALE-encoded `feature_supported`
-    /// request frame so the iOS shell can verify the wire path.
-    public func debugSmokeFeatureRequestFrame() -> Data {
-        inner.debugSmokeFeatureRequestFrame()
     }
 }

@@ -98,7 +98,6 @@ class MyBridge(private val webView: WebView) : HostBridge {
     private val main = Handler(Looper.getMainLooper())
 
     override val storage = MyStorage()
-    override fun onCoreResponse(frame: ByteArray) { /* WS bridge handles outbound */ }
 
     override fun navigateTo(url: String) {
         main.post { /* startActivity(Intent(ACTION_VIEW, Uri.parse(url))) */ }

@@ -517,20 +517,6 @@ public protocol NativeTrUApiCoreProtocol: AnyObject, Sendable {
     func clearActiveSession() 
     
     /**
-     * Smoke-test helper: return a SCALE-encoded `feature_supported`
-     * request frame so the iOS/Android shells can verify the wire path
-     * without owning request construction logic.
-     */
-    func debugSmokeFeatureRequestFrame()  -> Data
-    
-    /**
-     * Push an inbound SCALE-encoded protocol frame from the product into
-     * the dispatcher. Responses are emitted back through the
-     * [`HostCallbacks::on_core_response`] callback.
-     */
-    func receiveFromProduct(frame: Data)  -> Bool
-    
-    /**
      * Push the currently-paired session into the core. Mirrors the JS
      * `setActiveSession`. `pubkey` must be exactly 32 bytes (sr25519 root
      * public key).
@@ -631,31 +617,6 @@ open func clearActiveSession()  {try! rustCall() {
     uniffi_truapi_server_fn_method_nativetruapicore_clear_active_session(self.uniffiClonePointer(),$0
     )
 }
-}
-    
-    /**
-     * Smoke-test helper: return a SCALE-encoded `feature_supported`
-     * request frame so the iOS/Android shells can verify the wire path
-     * without owning request construction logic.
-     */
-open func debugSmokeFeatureRequestFrame() -> Data  {
-    return try!  FfiConverterData.lift(try! rustCall() {
-    uniffi_truapi_server_fn_method_nativetruapicore_debug_smoke_feature_request_frame(self.uniffiClonePointer(),$0
-    )
-})
-}
-    
-    /**
-     * Push an inbound SCALE-encoded protocol frame from the product into
-     * the dispatcher. Responses are emitted back through the
-     * [`HostCallbacks::on_core_response`] callback.
-     */
-open func receiveFromProduct(frame: Data) -> Bool  {
-    return try!  FfiConverterBool.lift(try! rustCall() {
-    uniffi_truapi_server_fn_method_nativetruapicore_receive_from_product(self.uniffiClonePointer(),
-        FfiConverterData.lower(frame),$0
-    )
-})
 }
     
     /**
@@ -1221,13 +1182,6 @@ public protocol HostCallbacks: AnyObject, Sendable {
     func onCoreLog(marker: String, detail: String) 
     
     /**
-     * Forward an outbound protocol frame (already SCALE-encoded) to the
-     * product. The native shell pumps these into the in-app messaging
-     * channel.
-     */
-    func onCoreResponse(frame: Data) 
-    
-    /**
      * Open a URL in the system browser.
      */
     func navigateTo(url: String) throws 
@@ -1300,30 +1254,6 @@ fileprivate struct UniffiCallbackInterfaceHostCallbacks {
                 return uniffiObj.onCoreLog(
                      marker: try FfiConverterString.lift(marker),
                      detail: try FfiConverterString.lift(detail)
-                )
-            }
-
-            
-            let writeReturn = { () }
-            uniffiTraitInterfaceCall(
-                callStatus: uniffiCallStatus,
-                makeCall: makeCall,
-                writeReturn: writeReturn
-            )
-        },
-        onCoreResponse: { (
-            uniffiHandle: UInt64,
-            frame: RustBuffer,
-            uniffiOutReturn: UnsafeMutableRawPointer,
-            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
-        ) in
-            let makeCall = {
-                () throws -> () in
-                guard let uniffiObj = try? FfiConverterCallbackInterfaceHostCallbacks.handleMap.get(handle: uniffiHandle) else {
-                    throw UniffiInternalError.unexpectedStaleHandle
-                }
-                return uniffiObj.onCoreResponse(
-                     frame: try FfiConverterData.lift(frame)
                 )
             }
 
@@ -1676,12 +1606,6 @@ private let initializationResult: InitializationResult = {
     if (uniffi_truapi_server_checksum_method_nativetruapicore_clear_active_session() != 49688) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_nativetruapicore_debug_smoke_feature_request_frame() != 14429) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_truapi_server_checksum_method_nativetruapicore_receive_from_product() != 8699) {
-        return InitializationResult.apiChecksumMismatch
-    }
     if (uniffi_truapi_server_checksum_method_nativetruapicore_set_active_session() != 33211) {
         return InitializationResult.apiChecksumMismatch
     }
@@ -1697,31 +1621,28 @@ private let initializationResult: InitializationResult = {
     if (uniffi_truapi_server_checksum_method_hostcallbacks_on_core_log() != 50767) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_on_core_response() != 8464) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_navigate_to() != 30730) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_navigate_to() != 45479) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_push_notification() != 8367) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_push_notification() != 3163) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_device_permission() != 3079) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_device_permission() != 3805) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_remote_permission() != 1103) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_remote_permission() != 10542) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_feature_supported() != 22483) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_feature_supported() != 16480) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_read() != 16214) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_read() != 9342) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_write() != 61540) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_write() != 34181) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_clear() != 58615) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_clear() != 19429) {
         return InitializationResult.apiChecksumMismatch
     }
 

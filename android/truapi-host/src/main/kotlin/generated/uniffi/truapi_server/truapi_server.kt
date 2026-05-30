@@ -658,13 +658,13 @@ internal interface UniffiCallbackInterfaceHostCallbacksMethod0 : com.sun.jna.Cal
     fun callback(`uniffiHandle`: Long,`marker`: RustBuffer.ByValue,`detail`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
 internal interface UniffiCallbackInterfaceHostCallbacksMethod1 : com.sun.jna.Callback {
-    fun callback(`uniffiHandle`: Long,`frame`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
-}
-internal interface UniffiCallbackInterfaceHostCallbacksMethod2 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`url`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-internal interface UniffiCallbackInterfaceHostCallbacksMethod3 : com.sun.jna.Callback {
+internal interface UniffiCallbackInterfaceHostCallbacksMethod2 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`payload`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
+}
+internal interface UniffiCallbackInterfaceHostCallbacksMethod3 : com.sun.jna.Callback {
+    fun callback(`uniffiHandle`: Long,`request`: RustBuffer.ByValue,`uniffiOutReturn`: ByteByReference,uniffiCallStatus: UniffiRustCallStatus,)
 }
 internal interface UniffiCallbackInterfaceHostCallbacksMethod4 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`request`: RustBuffer.ByValue,`uniffiOutReturn`: ByteByReference,uniffiCallStatus: UniffiRustCallStatus,)
@@ -673,48 +673,42 @@ internal interface UniffiCallbackInterfaceHostCallbacksMethod5 : com.sun.jna.Cal
     fun callback(`uniffiHandle`: Long,`request`: RustBuffer.ByValue,`uniffiOutReturn`: ByteByReference,uniffiCallStatus: UniffiRustCallStatus,)
 }
 internal interface UniffiCallbackInterfaceHostCallbacksMethod6 : com.sun.jna.Callback {
-    fun callback(`uniffiHandle`: Long,`request`: RustBuffer.ByValue,`uniffiOutReturn`: ByteByReference,uniffiCallStatus: UniffiRustCallStatus,)
-}
-internal interface UniffiCallbackInterfaceHostCallbacksMethod7 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`key`: RustBuffer.ByValue,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-internal interface UniffiCallbackInterfaceHostCallbacksMethod8 : com.sun.jna.Callback {
+internal interface UniffiCallbackInterfaceHostCallbacksMethod7 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`key`: RustBuffer.ByValue,`value`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-internal interface UniffiCallbackInterfaceHostCallbacksMethod9 : com.sun.jna.Callback {
+internal interface UniffiCallbackInterfaceHostCallbacksMethod8 : com.sun.jna.Callback {
     fun callback(`uniffiHandle`: Long,`key`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,)
 }
-@Structure.FieldOrder("onCoreLog", "onCoreResponse", "navigateTo", "pushNotification", "devicePermission", "remotePermission", "featureSupported", "localStorageRead", "localStorageWrite", "localStorageClear", "uniffiFree")
+@Structure.FieldOrder("onCoreLog", "navigateTo", "pushNotification", "devicePermission", "remotePermission", "featureSupported", "localStorageRead", "localStorageWrite", "localStorageClear", "uniffiFree")
 internal open class UniffiVTableCallbackInterfaceHostCallbacks(
     @JvmField internal var `onCoreLog`: UniffiCallbackInterfaceHostCallbacksMethod0? = null,
-    @JvmField internal var `onCoreResponse`: UniffiCallbackInterfaceHostCallbacksMethod1? = null,
-    @JvmField internal var `navigateTo`: UniffiCallbackInterfaceHostCallbacksMethod2? = null,
-    @JvmField internal var `pushNotification`: UniffiCallbackInterfaceHostCallbacksMethod3? = null,
-    @JvmField internal var `devicePermission`: UniffiCallbackInterfaceHostCallbacksMethod4? = null,
-    @JvmField internal var `remotePermission`: UniffiCallbackInterfaceHostCallbacksMethod5? = null,
-    @JvmField internal var `featureSupported`: UniffiCallbackInterfaceHostCallbacksMethod6? = null,
-    @JvmField internal var `localStorageRead`: UniffiCallbackInterfaceHostCallbacksMethod7? = null,
-    @JvmField internal var `localStorageWrite`: UniffiCallbackInterfaceHostCallbacksMethod8? = null,
-    @JvmField internal var `localStorageClear`: UniffiCallbackInterfaceHostCallbacksMethod9? = null,
+    @JvmField internal var `navigateTo`: UniffiCallbackInterfaceHostCallbacksMethod1? = null,
+    @JvmField internal var `pushNotification`: UniffiCallbackInterfaceHostCallbacksMethod2? = null,
+    @JvmField internal var `devicePermission`: UniffiCallbackInterfaceHostCallbacksMethod3? = null,
+    @JvmField internal var `remotePermission`: UniffiCallbackInterfaceHostCallbacksMethod4? = null,
+    @JvmField internal var `featureSupported`: UniffiCallbackInterfaceHostCallbacksMethod5? = null,
+    @JvmField internal var `localStorageRead`: UniffiCallbackInterfaceHostCallbacksMethod6? = null,
+    @JvmField internal var `localStorageWrite`: UniffiCallbackInterfaceHostCallbacksMethod7? = null,
+    @JvmField internal var `localStorageClear`: UniffiCallbackInterfaceHostCallbacksMethod8? = null,
     @JvmField internal var `uniffiFree`: UniffiCallbackInterfaceFree? = null,
 ) : Structure() {
     class UniffiByValue(
         `onCoreLog`: UniffiCallbackInterfaceHostCallbacksMethod0? = null,
-        `onCoreResponse`: UniffiCallbackInterfaceHostCallbacksMethod1? = null,
-        `navigateTo`: UniffiCallbackInterfaceHostCallbacksMethod2? = null,
-        `pushNotification`: UniffiCallbackInterfaceHostCallbacksMethod3? = null,
-        `devicePermission`: UniffiCallbackInterfaceHostCallbacksMethod4? = null,
-        `remotePermission`: UniffiCallbackInterfaceHostCallbacksMethod5? = null,
-        `featureSupported`: UniffiCallbackInterfaceHostCallbacksMethod6? = null,
-        `localStorageRead`: UniffiCallbackInterfaceHostCallbacksMethod7? = null,
-        `localStorageWrite`: UniffiCallbackInterfaceHostCallbacksMethod8? = null,
-        `localStorageClear`: UniffiCallbackInterfaceHostCallbacksMethod9? = null,
+        `navigateTo`: UniffiCallbackInterfaceHostCallbacksMethod1? = null,
+        `pushNotification`: UniffiCallbackInterfaceHostCallbacksMethod2? = null,
+        `devicePermission`: UniffiCallbackInterfaceHostCallbacksMethod3? = null,
+        `remotePermission`: UniffiCallbackInterfaceHostCallbacksMethod4? = null,
+        `featureSupported`: UniffiCallbackInterfaceHostCallbacksMethod5? = null,
+        `localStorageRead`: UniffiCallbackInterfaceHostCallbacksMethod6? = null,
+        `localStorageWrite`: UniffiCallbackInterfaceHostCallbacksMethod7? = null,
+        `localStorageClear`: UniffiCallbackInterfaceHostCallbacksMethod8? = null,
         `uniffiFree`: UniffiCallbackInterfaceFree? = null,
-    ): UniffiVTableCallbackInterfaceHostCallbacks(`onCoreLog`,`onCoreResponse`,`navigateTo`,`pushNotification`,`devicePermission`,`remotePermission`,`featureSupported`,`localStorageRead`,`localStorageWrite`,`localStorageClear`,`uniffiFree`,), Structure.ByValue
+    ): UniffiVTableCallbackInterfaceHostCallbacks(`onCoreLog`,`navigateTo`,`pushNotification`,`devicePermission`,`remotePermission`,`featureSupported`,`localStorageRead`,`localStorageWrite`,`localStorageClear`,`uniffiFree`,), Structure.ByValue
 
    internal fun uniffiSetValue(other: UniffiVTableCallbackInterfaceHostCallbacks) {
         `onCoreLog` = other.`onCoreLog`
-        `onCoreResponse` = other.`onCoreResponse`
         `navigateTo` = other.`navigateTo`
         `pushNotification` = other.`pushNotification`
         `devicePermission` = other.`devicePermission`
@@ -727,11 +721,6 @@ internal open class UniffiVTableCallbackInterfaceHostCallbacks(
     }
 
 }
-
-
-
-
-
 
 
 
@@ -829,10 +818,6 @@ internal interface IntegrityCheckingUniffiLib : Library {
     // Integrity check functions only
     fun uniffi_truapi_server_checksum_method_nativetruapicore_clear_active_session(
 ): Short
-fun uniffi_truapi_server_checksum_method_nativetruapicore_debug_smoke_feature_request_frame(
-): Short
-fun uniffi_truapi_server_checksum_method_nativetruapicore_receive_from_product(
-): Short
 fun uniffi_truapi_server_checksum_method_nativetruapicore_set_active_session(
 ): Short
 fun uniffi_truapi_server_checksum_method_nativetruapicore_start_ws_bridge(
@@ -842,8 +827,6 @@ fun uniffi_truapi_server_checksum_method_nativetruapicore_stop_ws_bridge(
 fun uniffi_truapi_server_checksum_constructor_nativetruapicore_new(
 ): Short
 fun uniffi_truapi_server_checksum_method_hostcallbacks_on_core_log(
-): Short
-fun uniffi_truapi_server_checksum_method_hostcallbacks_on_core_response(
 ): Short
 fun uniffi_truapi_server_checksum_method_hostcallbacks_navigate_to(
 ): Short
@@ -919,10 +902,6 @@ fun uniffi_truapi_server_fn_constructor_nativetruapicore_new(`callbacks`: Long,u
 ): Pointer
 fun uniffi_truapi_server_fn_method_nativetruapicore_clear_active_session(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
 ): Unit
-fun uniffi_truapi_server_fn_method_nativetruapicore_debug_smoke_feature_request_frame(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
-): RustBuffer.ByValue
-fun uniffi_truapi_server_fn_method_nativetruapicore_receive_from_product(`ptr`: Pointer,`frame`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
-): Byte
 fun uniffi_truapi_server_fn_method_nativetruapicore_set_active_session(`ptr`: Pointer,`pubkey`: RustBuffer.ByValue,`liteUsername`: RustBuffer.ByValue,`fullUsername`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
 ): Byte
 fun uniffi_truapi_server_fn_method_nativetruapicore_start_ws_bridge(`ptr`: Pointer,`bindPort`: Short,uniffi_out_err: UniffiRustCallStatus, 
@@ -1060,12 +1039,6 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_truapi_server_checksum_method_nativetruapicore_clear_active_session() != 49688.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_truapi_server_checksum_method_nativetruapicore_debug_smoke_feature_request_frame() != 14429.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_truapi_server_checksum_method_nativetruapicore_receive_from_product() != 8699.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
     if (lib.uniffi_truapi_server_checksum_method_nativetruapicore_set_active_session() != 33211.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1081,31 +1054,28 @@ private fun uniffiCheckApiChecksums(lib: IntegrityCheckingUniffiLib) {
     if (lib.uniffi_truapi_server_checksum_method_hostcallbacks_on_core_log() != 50767.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_truapi_server_checksum_method_hostcallbacks_on_core_response() != 8464.toShort()) {
+    if (lib.uniffi_truapi_server_checksum_method_hostcallbacks_navigate_to() != 30730.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_truapi_server_checksum_method_hostcallbacks_navigate_to() != 45479.toShort()) {
+    if (lib.uniffi_truapi_server_checksum_method_hostcallbacks_push_notification() != 8367.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_truapi_server_checksum_method_hostcallbacks_push_notification() != 3163.toShort()) {
+    if (lib.uniffi_truapi_server_checksum_method_hostcallbacks_device_permission() != 3079.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_truapi_server_checksum_method_hostcallbacks_device_permission() != 3805.toShort()) {
+    if (lib.uniffi_truapi_server_checksum_method_hostcallbacks_remote_permission() != 1103.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_truapi_server_checksum_method_hostcallbacks_remote_permission() != 10542.toShort()) {
+    if (lib.uniffi_truapi_server_checksum_method_hostcallbacks_feature_supported() != 22483.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_truapi_server_checksum_method_hostcallbacks_feature_supported() != 16480.toShort()) {
+    if (lib.uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_read() != 16214.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_read() != 9342.toShort()) {
+    if (lib.uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_write() != 61540.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_write() != 34181.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_clear() != 58615.toShort()) {
+    if (lib.uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_clear() != 19429.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
 }
@@ -1515,20 +1485,6 @@ public interface NativeTrUApiCoreInterface {
     fun `clearActiveSession`()
     
     /**
-     * Smoke-test helper: return a SCALE-encoded `feature_supported`
-     * request frame so the iOS/Android shells can verify the wire path
-     * without owning request construction logic.
-     */
-    fun `debugSmokeFeatureRequestFrame`(): kotlin.ByteArray
-    
-    /**
-     * Push an inbound SCALE-encoded protocol frame from the product into
-     * the dispatcher. Responses are emitted back through the
-     * [`HostCallbacks::on_core_response`] callback.
-     */
-    fun `receiveFromProduct`(`frame`: kotlin.ByteArray): kotlin.Boolean
-    
-    /**
      * Push the currently-paired session into the core. Mirrors the JS
      * `setActiveSession`. `pubkey` must be exactly 32 bytes (sr25519 root
      * public key).
@@ -1665,40 +1621,6 @@ open class NativeTrUApiCore: Disposable, AutoCloseable, NativeTrUApiCoreInterfac
 }
     }
     
-    
-
-    
-    /**
-     * Smoke-test helper: return a SCALE-encoded `feature_supported`
-     * request frame so the iOS/Android shells can verify the wire path
-     * without owning request construction logic.
-     */override fun `debugSmokeFeatureRequestFrame`(): kotlin.ByteArray {
-            return FfiConverterByteArray.lift(
-    callWithPointer {
-    uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_truapi_server_fn_method_nativetruapicore_debug_smoke_feature_request_frame(
-        it, _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Push an inbound SCALE-encoded protocol frame from the product into
-     * the dispatcher. Responses are emitted back through the
-     * [`HostCallbacks::on_core_response`] callback.
-     */override fun `receiveFromProduct`(`frame`: kotlin.ByteArray): kotlin.Boolean {
-            return FfiConverterBoolean.lift(
-    callWithPointer {
-    uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_truapi_server_fn_method_nativetruapicore_receive_from_product(
-        it, FfiConverterByteArray.lower(`frame`),_status)
-}
-    }
-    )
-    }
     
 
     
@@ -2145,13 +2067,6 @@ public interface HostCallbacks {
     fun `onCoreLog`(`marker`: kotlin.String, `detail`: kotlin.String)
     
     /**
-     * Forward an outbound protocol frame (already SCALE-encoded) to the
-     * product. The native shell pumps these into the in-app messaging
-     * channel.
-     */
-    fun `onCoreResponse`(`frame`: kotlin.ByteArray)
-    
-    /**
      * Open a URL in the system browser.
      */
     fun `navigateTo`(`url`: kotlin.String)
@@ -2217,19 +2132,7 @@ internal object uniffiCallbackInterfaceHostCallbacks {
             uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
         }
     }
-    internal object `onCoreResponse`: UniffiCallbackInterfaceHostCallbacksMethod1 {
-        override fun callback(`uniffiHandle`: Long,`frame`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
-            val uniffiObj = FfiConverterTypeHostCallbacks.handleMap.get(uniffiHandle)
-            val makeCall = { ->
-                uniffiObj.`onCoreResponse`(
-                    FfiConverterByteArray.lift(`frame`),
-                )
-            }
-            val writeReturn = { _: Unit -> Unit }
-            uniffiTraitInterfaceCall(uniffiCallStatus, makeCall, writeReturn)
-        }
-    }
-    internal object `navigateTo`: UniffiCallbackInterfaceHostCallbacksMethod2 {
+    internal object `navigateTo`: UniffiCallbackInterfaceHostCallbacksMethod1 {
         override fun callback(`uniffiHandle`: Long,`url`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
             val uniffiObj = FfiConverterTypeHostCallbacks.handleMap.get(uniffiHandle)
             val makeCall = { ->
@@ -2246,7 +2149,7 @@ internal object uniffiCallbackInterfaceHostCallbacks {
             )
         }
     }
-    internal object `pushNotification`: UniffiCallbackInterfaceHostCallbacksMethod3 {
+    internal object `pushNotification`: UniffiCallbackInterfaceHostCallbacksMethod2 {
         override fun callback(`uniffiHandle`: Long,`payload`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
             val uniffiObj = FfiConverterTypeHostCallbacks.handleMap.get(uniffiHandle)
             val makeCall = { ->
@@ -2263,7 +2166,7 @@ internal object uniffiCallbackInterfaceHostCallbacks {
             )
         }
     }
-    internal object `devicePermission`: UniffiCallbackInterfaceHostCallbacksMethod4 {
+    internal object `devicePermission`: UniffiCallbackInterfaceHostCallbacksMethod3 {
         override fun callback(`uniffiHandle`: Long,`request`: RustBuffer.ByValue,`uniffiOutReturn`: ByteByReference,uniffiCallStatus: UniffiRustCallStatus,) {
             val uniffiObj = FfiConverterTypeHostCallbacks.handleMap.get(uniffiHandle)
             val makeCall = { ->
@@ -2280,7 +2183,7 @@ internal object uniffiCallbackInterfaceHostCallbacks {
             )
         }
     }
-    internal object `remotePermission`: UniffiCallbackInterfaceHostCallbacksMethod5 {
+    internal object `remotePermission`: UniffiCallbackInterfaceHostCallbacksMethod4 {
         override fun callback(`uniffiHandle`: Long,`request`: RustBuffer.ByValue,`uniffiOutReturn`: ByteByReference,uniffiCallStatus: UniffiRustCallStatus,) {
             val uniffiObj = FfiConverterTypeHostCallbacks.handleMap.get(uniffiHandle)
             val makeCall = { ->
@@ -2297,7 +2200,7 @@ internal object uniffiCallbackInterfaceHostCallbacks {
             )
         }
     }
-    internal object `featureSupported`: UniffiCallbackInterfaceHostCallbacksMethod6 {
+    internal object `featureSupported`: UniffiCallbackInterfaceHostCallbacksMethod5 {
         override fun callback(`uniffiHandle`: Long,`request`: RustBuffer.ByValue,`uniffiOutReturn`: ByteByReference,uniffiCallStatus: UniffiRustCallStatus,) {
             val uniffiObj = FfiConverterTypeHostCallbacks.handleMap.get(uniffiHandle)
             val makeCall = { ->
@@ -2314,7 +2217,7 @@ internal object uniffiCallbackInterfaceHostCallbacks {
             )
         }
     }
-    internal object `localStorageRead`: UniffiCallbackInterfaceHostCallbacksMethod7 {
+    internal object `localStorageRead`: UniffiCallbackInterfaceHostCallbacksMethod6 {
         override fun callback(`uniffiHandle`: Long,`key`: RustBuffer.ByValue,`uniffiOutReturn`: RustBuffer,uniffiCallStatus: UniffiRustCallStatus,) {
             val uniffiObj = FfiConverterTypeHostCallbacks.handleMap.get(uniffiHandle)
             val makeCall = { ->
@@ -2331,7 +2234,7 @@ internal object uniffiCallbackInterfaceHostCallbacks {
             )
         }
     }
-    internal object `localStorageWrite`: UniffiCallbackInterfaceHostCallbacksMethod8 {
+    internal object `localStorageWrite`: UniffiCallbackInterfaceHostCallbacksMethod7 {
         override fun callback(`uniffiHandle`: Long,`key`: RustBuffer.ByValue,`value`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
             val uniffiObj = FfiConverterTypeHostCallbacks.handleMap.get(uniffiHandle)
             val makeCall = { ->
@@ -2349,7 +2252,7 @@ internal object uniffiCallbackInterfaceHostCallbacks {
             )
         }
     }
-    internal object `localStorageClear`: UniffiCallbackInterfaceHostCallbacksMethod9 {
+    internal object `localStorageClear`: UniffiCallbackInterfaceHostCallbacksMethod8 {
         override fun callback(`uniffiHandle`: Long,`key`: RustBuffer.ByValue,`uniffiOutReturn`: Pointer,uniffiCallStatus: UniffiRustCallStatus,) {
             val uniffiObj = FfiConverterTypeHostCallbacks.handleMap.get(uniffiHandle)
             val makeCall = { ->
@@ -2375,7 +2278,6 @@ internal object uniffiCallbackInterfaceHostCallbacks {
 
     internal var vtable = UniffiVTableCallbackInterfaceHostCallbacks.UniffiByValue(
         `onCoreLog`,
-        `onCoreResponse`,
         `navigateTo`,
         `pushNotification`,
         `devicePermission`,

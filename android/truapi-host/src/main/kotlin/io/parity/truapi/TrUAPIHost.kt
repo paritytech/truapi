@@ -80,13 +80,6 @@ interface HostBridge {
     fun onCoreLog(marker: String, detail: String) {}
 
     /**
-     * Forward an outbound SCALE-encoded protocol frame to the product.
-     * Invoked on the `truapi-ws-bridge` worker thread; marshal to the main
-     * thread before touching the `WebView`.
-     */
-    fun onCoreResponse(frame: ByteArray)
-
-    /**
      * Open a URL in the system browser. Invoked on the `truapi-ws-bridge`
      * worker thread; marshal the UI launch (e.g. `startActivity`) to the main
      * thread.
@@ -138,9 +131,6 @@ private class HostCallbackAdapter(private val bridge: HostBridge) : HostCallback
     override fun onCoreLog(marker: String, detail: String) =
         bridge.onCoreLog(marker, detail)
 
-    override fun onCoreResponse(frame: ByteArray) =
-        bridge.onCoreResponse(frame)
-
     override fun navigateTo(url: String) =
         bridge.navigateTo(url)
 
@@ -174,26 +164,13 @@ private class HostCallbackAdapter(private val bridge: HostBridge) : HostCallback
  * Hosts integrating with a `WebView`-based product call [startWsBridge] and
  * pass the resulting `ws://127.0.0.1:<port>/?t=<token>` URL to the product
  * (typically via a query string or page-bootstrap hook). The product wires
- * that URL into `@parity/truapi`'s `createWebSocketProvider`. Direct
- * [receiveFromProduct] calls are still available for tests or alternative
- * transports.
+ * that URL into `@parity/truapi`'s `createWebSocketProvider`.
  */
 class TrUAPIHostCore(bridge: HostBridge) : AutoCloseable {
     // Co-owns the adapter alongside the generated FfiConverter handle map,
     // which is what actually keeps the callback object alive for the core.
     private val callbackRetainer: HostCallbacks = HostCallbackAdapter(bridge)
     private val inner: NativeTrUApiCore = NativeTrUApiCore(callbackRetainer)
-
-    /**
-     * Deliver an opaque SCALE-encoded wire frame into the Rust core. The WS
-     * bridge feeds the core internally; this entrypoint is exposed for tests
-     * and alternative transports. The core may synchronously re-enter
-     * [HostBridge] callbacks (including a nested `receiveFromProduct`) before
-     * returning, so callers must not hold a non-reentrant lock across the call.
-     */
-    fun receiveFromProduct(frame: ByteArray) {
-        inner.receiveFromProduct(frame)
-    }
 
     /** Set the currently-paired session. `pubkey` must be exactly 32 bytes. */
     fun setActiveSession(
@@ -221,10 +198,6 @@ class TrUAPIHostCore(bridge: HostBridge) : AutoCloseable {
     fun stopWsBridge() {
         inner.stopWsBridge()
     }
-
-    /** Smoke-test helper: returns a SCALE-encoded `feature_supported` request frame. */
-    fun debugSmokeFeatureRequestFrame(): ByteArray =
-        inner.debugSmokeFeatureRequestFrame()
 
     override fun close() {
         inner.close()

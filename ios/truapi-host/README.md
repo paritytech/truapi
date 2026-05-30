@@ -60,12 +60,6 @@ final class MyStorage: HostStorageBackend, @unchecked Sendable {
 final class MyBridge: HostBridge, @unchecked Sendable {
     let storage: HostStorageBackend = MyStorage()
 
-    func onCoreResponse(frame: Data) {
-        // Not used in WS-bridge mode: responses are written directly to the
-        // WebSocket by the Rust core. Implement if you wire an alternative
-        // transport via `core.receiveFromProduct(_:)`.
-    }
-
     // Callbacks arrive on the `truapi-ws-bridge` worker thread, never the main
     // thread. Hop to the main thread before touching UIKit/WebKit.
     func navigateTo(url: String) throws {
