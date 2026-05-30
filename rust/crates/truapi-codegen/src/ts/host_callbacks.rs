@@ -138,7 +138,14 @@ fn collect_named_types(definition: &PlatformDefinition) -> BTreeSet<String> {
                 PlatformInner::Result { ok, .. } => collect_from_type(ok, &mut out),
                 PlatformInner::Stream(inner) => collect_from_type(inner, &mut out),
                 PlatformInner::Plain(inner) => collect_from_type(inner, &mut out),
-                PlatformInner::TraitObject(_) | PlatformInner::Unit => {}
+                // A trait object returns its bare trait name in the TS
+                // signature; collect it so a non-local trait gets imported
+                // rather than emitted as an undeclared name. Local traits are
+                // filtered out below since their interfaces live in this file.
+                PlatformInner::TraitObject(name) => {
+                    out.insert(name.clone());
+                }
+                PlatformInner::Unit => {}
             }
         }
     }

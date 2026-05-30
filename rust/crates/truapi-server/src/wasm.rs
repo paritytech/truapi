@@ -200,8 +200,17 @@ impl ChainProvider for WasmPlatform {
         SendWrapper::new(async move {
             let (response_tx, response_rx) = mpsc::unbounded::<String>();
             let on_response = Closure::wrap(Box::new(move |json: JsValue| {
-                let s = json.as_string().unwrap_or_default();
-                let _ = response_tx.unbounded_send(s);
+                // The host must hand back JSON-RPC frames as strings. Drop (and
+                // log) non-string values rather than forwarding an empty frame
+                // that would desync request/response correlation.
+                match json.as_string() {
+                    Some(s) => {
+                        let _ = response_tx.unbounded_send(s);
+                    }
+                    None => web_sys::console::error_1(&JsValue::from_str(
+                        "chainConnect onResponse expected a JSON string; dropping non-string value",
+                    )),
+                }
             }) as Box<dyn FnMut(JsValue)>);
 
             let genesis_hex = genesis_hash.iter().fold(
@@ -266,11 +275,19 @@ impl JsonRpcConnection for JsCallbackJsonRpcConnection {
         }
     }
 
+    /// Single-take: the response receiver is handed out exactly once. A second
+    /// call yields an empty stream (and logs), since the channel has one
+    /// consumer.
     fn responses(&self) -> BoxStream<'static, String> {
         let mut guard = self.response_rx.lock().unwrap();
         match guard.take() {
             Some(rx) => rx.boxed(),
-            None => futures::stream::empty().boxed(),
+            None => {
+                web_sys::console::error_1(&JsValue::from_str(
+                    "JsCallbackJsonRpcConnection::responses() called more than once",
+                ));
+                futures::stream::empty().boxed()
+            }
         }
     }
 }
@@ -333,7 +350,12 @@ fn invoke_bool(
         let arg = Uint8Array::from(payload.as_slice());
         let returned = fn_.call1(&JsValue::NULL, &arg).map_err(js_to_string)?;
         let resolved = await_optional_promise(returned).await?;
-        Ok(resolved.as_bool().unwrap_or(false))
+        // A non-boolean resolved value is a host contract violation; surface it
+        // rather than silently masking it as `false` (which would read as a
+        // denial / unsupported and hide the host bug).
+        resolved
+            .as_bool()
+            .ok_or_else(|| "callback must resolve to a boolean".to_string())
     })
 }
 
@@ -450,6 +472,11 @@ impl WasmTrUApiCore {
     /// list).
     #[wasm_bindgen(constructor)]
     pub fn new(callbacks: JsValue) -> Result<WasmTrUApiCore, JsValue> {
+        // Surface Rust panics to the browser console. A panic mid-dispatch
+        // aborts the call as a wasm trap; the host should treat a thrown error
+        // from `receiveFromProduct` as a fatal-instance signal and rebuild the
+        // core rather than continue using it.
+        console_error_panic_hook::set_once();
         let bridge = Arc::new(JsBridge::from_js(&callbacks)?);
         let disposed = Arc::new(AtomicBool::new(false));
         let transport = Arc::new(WasmCallbackTransport {

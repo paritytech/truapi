@@ -17,6 +17,7 @@ use std::collections::BTreeSet;
 use std::fmt::Write;
 
 use anyhow::{Result, bail};
+use indoc::{formatdoc, indoc, writedoc};
 
 use crate::rustdoc::*;
 
@@ -98,15 +99,18 @@ impl ModuleEmission {
         }
 
         let fn_name = format!("register_{module}");
+        let trait_name = &trait_def.name;
         let mut code = String::new();
-        writeln!(
+        writedoc!(
             code,
-            "fn {fn_name}<P>(dispatcher: &mut Dispatcher, host: Arc<P>)"
+            r#"
+            fn {fn_name}<P>(dispatcher: &mut Dispatcher, host: Arc<P>)
+            where
+                P: {trait_name} + Send + Sync + 'static,
+            {{
+            "#
         )
         .unwrap();
-        writeln!(code, "where").unwrap();
-        writeln!(code, "    P: {} + Send + Sync + 'static,", trait_def.name).unwrap();
-        writeln!(code, "{{").unwrap();
         let last = methods.len().saturating_sub(1);
         for (idx, method) in methods.iter().enumerate() {
             let host_expr = if idx == last { "host" } else { "host.clone()" };
@@ -214,26 +218,30 @@ impl MethodEmission {
         let method = &self.name;
         let wire = &self.wire_name;
 
-        writeln!(out, "    {{").unwrap();
-        writeln!(out, "        let host = {host_expr};").unwrap();
-        writeln!(
+        write_indented(
             out,
-            "        dispatcher.on_request(\"{wire}\", move |request_id: String, bytes: Vec<u8>| {{"
-        )
-        .unwrap();
-        writeln!(out, "            let host = host.clone();").unwrap();
-        writeln!(out, "            Box::pin(async move {{").unwrap();
+            4,
+            &formatdoc! {
+                r#"
+                {{
+                    let host = {host_expr};
+                    dispatcher.on_request("{wire}", move |request_id: String, bytes: Vec<u8>| {{
+                        let host = host.clone();
+                        Box::pin(async move {{
+                "#
+            },
+        );
         let call_args = if let Some(request) = &self.request_wrapper {
-            writeln!(
+            write_indented(
                 out,
-                "                let request: versioned::{module}::{request} ="
-            )
-            .unwrap();
-            writeln!(
-                out,
-                "                    Decode::decode(&mut &bytes[..]).map_err(|e| encode_decode_error(e.to_string()))?;"
-            )
-            .unwrap();
+                16,
+                &formatdoc! {
+                    r#"
+                    let request: versioned::{module}::{request} =
+                        Decode::decode(&mut &bytes[..]).map_err(|e| encode_decode_error(e.to_string()))?;
+                    "#
+                },
+            );
             "&cx, request"
         } else {
             writeln!(out, "                let _ = bytes;").unwrap();
@@ -245,46 +253,46 @@ impl MethodEmission {
         )
         .unwrap();
         match &self.response_wrapper {
-            Some(response) => {
-                writeln!(
-                    out,
-                    "                let response: versioned::{module}::{response} = match host.{method}({call_args}).await {{",
-                )
-                .unwrap();
-                writeln!(out, "                    Ok(value) => value,").unwrap();
-                writeln!(
-                    out,
-                    "                    Err(err) => return Err(encode_call_error_payload(err)),"
-                )
-                .unwrap();
-                writeln!(out, "                }};").unwrap();
-                writeln!(
-                    out,
-                    "                let mut buf = Vec::with_capacity(1 + response.size_hint());"
-                )
-                .unwrap();
-                writeln!(out, "                buf.push(0u8);").unwrap();
-                writeln!(out, "                response.encode_to(&mut buf);").unwrap();
-                writeln!(out, "                Ok(buf)").unwrap();
-            }
-            None => {
-                writeln!(
-                    out,
-                    "                match host.{method}({call_args}).await {{"
-                )
-                .unwrap();
-                writeln!(out, "                    Ok(()) => Ok(vec![0u8]),").unwrap();
-                writeln!(
-                    out,
-                    "                    Err(err) => Err(encode_call_error_payload(err)),"
-                )
-                .unwrap();
-                writeln!(out, "                }}").unwrap();
-            }
+            Some(response) => write_indented(
+                out,
+                16,
+                &formatdoc! {
+                    r#"
+                    let response: versioned::{module}::{response} = match host.{method}({call_args}).await {{
+                        Ok(value) => value,
+                        Err(err) => return Err(encode_call_error_payload(err)),
+                    }};
+                    let mut buf = Vec::with_capacity(1 + response.size_hint());
+                    buf.push(0u8);
+                    response.encode_to(&mut buf);
+                    Ok(buf)
+                    "#
+                },
+            ),
+            None => write_indented(
+                out,
+                16,
+                &formatdoc! {
+                    r#"
+                    match host.{method}({call_args}).await {{
+                        Ok(()) => Ok(vec![0u8]),
+                        Err(err) => Err(encode_call_error_payload(err)),
+                    }}
+                    "#
+                },
+            ),
         }
-        writeln!(out, "            }})").unwrap();
-        writeln!(out, "        }});").unwrap();
-        writeln!(out, "    }}").unwrap();
+        write_indented(
+            out,
+            4,
+            indoc! {
+                r#"
+                        })
+                    });
+                }
+                "#
+            },
+        );
     }
 
     fn write_subscription(&self, out: &mut String, host_expr: &str) {
@@ -298,87 +306,76 @@ impl MethodEmission {
 
         let is_result_sub = matches!(self.kind, MethodKind::ResultSubscription);
 
-        writeln!(out, "    {{").unwrap();
-        writeln!(out, "        let host = {host_expr};").unwrap();
-        writeln!(
+        write_indented(
             out,
-            "        dispatcher.on_subscription(\"{wire}\", move |request_id: String, bytes: Vec<u8>| {{"
-        )
-        .unwrap();
-        writeln!(out, "            let host = host.clone();").unwrap();
-        writeln!(out, "            Box::pin(async move {{").unwrap();
-        if let Some(request) = &self.request_wrapper {
-            writeln!(
+            4,
+            &formatdoc! {
+                r#"
+                {{
+                    let host = {host_expr};
+                    dispatcher.on_subscription("{wire}", move |request_id: String, bytes: Vec<u8>| {{
+                        let host = host.clone();
+                        Box::pin(async move {{
+                "#
+            },
+        );
+        let call_args = if let Some(request) = &self.request_wrapper {
+            write_indented(
                 out,
-                "                let request: versioned::{module}::{request} ="
-            )
-            .unwrap();
-            writeln!(
-                out,
-                "                    Decode::decode(&mut &bytes[..]).map_err(|e| encode_decode_error(e.to_string()))?;"
-            )
-            .unwrap();
-            writeln!(
-                out,
-                "                let cx = CallContext::with_request_id(request_id.clone());"
-            )
-            .unwrap();
-            if is_result_sub {
-                writeln!(
-                    out,
-                    "                let stream = match host.{method}(&cx, request).await {{"
-                )
-                .unwrap();
-                writeln!(out, "                    Ok(sub) => sub,").unwrap();
-                writeln!(
-                    out,
-                    "                    Err(err) => return Err(encode_call_error_payload(err)),"
-                )
-                .unwrap();
-                writeln!(out, "                }};").unwrap();
-            } else {
-                writeln!(
-                    out,
-                    "                let stream = host.{method}(&cx, request).await;"
-                )
-                .unwrap();
-            }
+                16,
+                &formatdoc! {
+                    r#"
+                    let request: versioned::{module}::{request} =
+                        Decode::decode(&mut &bytes[..]).map_err(|e| encode_decode_error(e.to_string()))?;
+                    "#
+                },
+            );
+            "&cx, request"
         } else {
             writeln!(out, "                let _ = bytes;").unwrap();
+            "&cx"
+        };
+        writeln!(
+            out,
+            "                let cx = CallContext::with_request_id(request_id.clone());"
+        )
+        .unwrap();
+        if is_result_sub {
+            write_indented(
+                out,
+                16,
+                &formatdoc! {
+                    r#"
+                    let stream = match host.{method}({call_args}).await {{
+                        Ok(sub) => sub,
+                        Err(err) => return Err(encode_call_error_payload(err)),
+                    }};
+                    "#
+                },
+            );
+        } else {
             writeln!(
                 out,
-                "                let cx = CallContext::with_request_id(request_id.clone());"
+                "                let stream = host.{method}({call_args}).await;"
             )
             .unwrap();
-            if is_result_sub {
-                writeln!(
-                    out,
-                    "                let stream = match host.{method}(&cx).await {{"
-                )
-                .unwrap();
-                writeln!(out, "                    Ok(sub) => sub,").unwrap();
-                writeln!(
-                    out,
-                    "                    Err(err) => return Err(encode_call_error_payload(err)),"
-                )
-                .unwrap();
-                writeln!(out, "                }};").unwrap();
-            } else {
-                writeln!(
-                    out,
-                    "                let stream = host.{method}(&cx).await;"
-                )
-                .unwrap();
-            }
         }
         writeln!(
             out,
             "                Ok(subscription_stream::<versioned::{module}::{item}, _>(stream))"
         )
         .unwrap();
-        writeln!(out, "            }})").unwrap();
-        writeln!(out, "        }});").unwrap();
-        writeln!(out, "    }}").unwrap();
+        write_indented(
+            out,
+            4,
+            indoc! {
+                r#"
+                        })
+                    });
+                }
+                "#
+            },
+        );
     }
 }
 
@@ -391,47 +388,75 @@ fn named_root(ty: &TypeRef) -> Option<String> {
     None
 }
 
+/// Append `block` to `out`, prefixing every non-empty line with `indent` spaces.
+fn write_indented(out: &mut String, indent: usize, block: &str) {
+    let pad = " ".repeat(indent);
+    for line in block.lines() {
+        if line.is_empty() {
+            out.push('\n');
+        } else {
+            writeln!(out, "{pad}{line}").unwrap();
+        }
+    }
+}
+
 fn write_header(out: &mut String) {
-    writeln!(out, "//! Wire dispatcher for the unified `TrUApi` trait.").unwrap();
-    writeln!(out, "//!").unwrap();
-    writeln!(out, "//! Auto-generated by truapi-codegen. Do not edit.").unwrap();
-    writeln!(out).unwrap();
+    writedoc!(
+        out,
+        r#"
+        //! Wire dispatcher for the unified `TrUApi` trait.
+        //!
+        //! Auto-generated by truapi-codegen. Do not edit.
+
+        "#
+    )
+    .unwrap();
 }
 
 fn write_imports(out: &mut String, traits: &[&TraitDef]) {
-    writeln!(out, "use std::sync::Arc;").unwrap();
-    writeln!(out).unwrap();
-    writeln!(out, "use parity_scale_codec::{{Decode, Encode}};").unwrap();
-    writeln!(out).unwrap();
-    writeln!(out, "use truapi::CallContext;").unwrap();
-    writeln!(out, "use truapi::api::{{").unwrap();
+    writedoc!(
+        out,
+        r#"
+        use std::sync::Arc;
+
+        use parity_scale_codec::{{Decode, Encode}};
+
+        use truapi::CallContext;
+        use truapi::api::{{
+        "#
+    )
+    .unwrap();
     for trait_def in traits {
         writeln!(out, "    {},", trait_def.name).unwrap();
     }
-    writeln!(out, "}};").unwrap();
-    writeln!(out, "use truapi::versioned;").unwrap();
-    writeln!(out).unwrap();
-    writeln!(out, "use crate::dispatcher::Dispatcher;").unwrap();
-    writeln!(
+    writedoc!(
         out,
-        "use crate::frame::{{encode_call_error_payload, encode_decode_error}};"
+        r#"
+        }};
+        use truapi::versioned;
+
+        use crate::dispatcher::Dispatcher;
+        use crate::frame::{{encode_call_error_payload, encode_decode_error}};
+        use crate::subscription::subscription_stream;
+        "#
     )
     .unwrap();
-    writeln!(out, "use crate::subscription::subscription_stream;").unwrap();
 }
 
 fn write_top_register(out: &mut String, traits: &[&TraitDef]) {
-    writeln!(out, "/// Register every TrUAPI method with the dispatcher.").unwrap();
-    writeln!(
-        out,
-        "pub fn register<P>(dispatcher: &mut Dispatcher, host: Arc<P>)"
-    )
-    .unwrap();
-    writeln!(out, "where").unwrap();
     let trait_names: Vec<&str> = traits.iter().map(|t| t.name.as_str()).collect();
     let bounds = trait_names.join(" + ");
-    writeln!(out, "    P: {bounds} + Send + Sync + 'static,").unwrap();
-    writeln!(out, "{{").unwrap();
+    writedoc!(
+        out,
+        r#"
+        /// Register every TrUAPI method with the dispatcher.
+        pub fn register<P>(dispatcher: &mut Dispatcher, host: Arc<P>)
+        where
+            P: {bounds} + Send + Sync + 'static,
+        {{
+        "#
+    )
+    .unwrap();
     let last = traits.len().saturating_sub(1);
     for (idx, trait_def) in traits.iter().enumerate() {
         let host_expr = if idx == last { "host" } else { "host.clone()" };

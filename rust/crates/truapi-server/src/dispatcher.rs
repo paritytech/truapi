@@ -8,18 +8,16 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::atomic::AtomicU8;
 
 use futures::future::LocalBoxFuture;
 
-use crate::frame::{FrameKind, Payload, ProtocolMessage, compose_action};
+use truapi::CallError;
+
+use crate::frame::{
+    FrameKind, Payload, ProtocolMessage, compose_action, encode_call_error_payload,
+};
 use crate::subscription::{Spawner, SubscriptionManager, SubscriptionStream};
 use crate::transport::Transport;
-
-/// Latest wire-codec version this server implements. Used as the default
-/// negotiated version until the system `handshake` resolves; clients on
-/// the same major version keep working without an explicit handshake.
-pub const LATEST_PROTOCOL_VERSION: u8 = 1;
 
 /// A handler for a request-response method. The returned future is not
 /// required to be `Send` because the truapi trait uses `async fn`, whose
@@ -47,36 +45,16 @@ pub struct Dispatcher {
     request_handlers: HashMap<String, RequestHandler>,
     subscription_handlers: HashMap<String, SubscriptionHandler>,
     subscriptions: SubscriptionManager,
-    /// Wire-codec version negotiated through `handshake`. The handshake
-    /// handler stores the requested version here (writing through the
-    /// shared `Arc`) so subsequent responses encode in matching wire bytes.
-    negotiated_version: Arc<AtomicU8>,
 }
 
 impl Dispatcher {
-    /// Construct a dispatcher with a fresh negotiated-version slot
-    /// (defaults to [`LATEST_PROTOCOL_VERSION`]). Subscriptions are driven
-    /// on `spawner`.
+    /// Construct a dispatcher whose subscriptions are driven on `spawner`.
     pub fn new(spawner: Spawner) -> Self {
-        Self::with_negotiated_version(spawner, Arc::new(AtomicU8::new(LATEST_PROTOCOL_VERSION)))
-    }
-
-    /// Construct a dispatcher that shares its negotiated-version slot
-    /// with another component (typically the host's handshake handler).
-    pub fn with_negotiated_version(spawner: Spawner, negotiated_version: Arc<AtomicU8>) -> Self {
         Self {
             request_handlers: HashMap::new(),
             subscription_handlers: HashMap::new(),
             subscriptions: SubscriptionManager::new(spawner),
-            negotiated_version,
         }
-    }
-
-    /// Clone the shared negotiated-version slot. The handshake handler
-    /// writes to this; per-method registration captures it for response
-    /// wrapping.
-    pub fn negotiated_version(&self) -> Arc<AtomicU8> {
-        self.negotiated_version.clone()
     }
 
     /// Register a request-response handler for a method. Returns the
@@ -116,50 +94,51 @@ impl Dispatcher {
 
         match kind {
             FrameKind::Request => {
-                if let Some(handler) = self.request_handlers.get(&method) {
+                // On the wire, every response is `Result<Ok, Err>`-shaped: the
+                // handler returns `Ok(bytes)` already prefixed with a `0x00`
+                // discriminant for success, and `Err(bytes)` whose bytes are
+                // the SCALE-encoded `CallError`. The error path prepends `0x01`
+                // so the wire payload is always `[disc][value...]`.
+                let payload = if let Some(handler) = self.request_handlers.get(&method) {
                     let request_id = message.request_id.clone();
-                    let result = handler(request_id, message.payload.value).await;
-                    // On the wire, every response is `Result<Ok, Err>`-shaped:
-                    // the handler returns `Ok(bytes)` already prefixed with a
-                    // `0x00` discriminant for success, and `Err(bytes)` whose
-                    // bytes are the SCALE-encoded `CallError`. The error path
-                    // prepends `0x01` here so the wire payload is always
-                    // `[disc][value...]`.
-                    let payload = match result {
+                    match handler(request_id, message.payload.value).await {
                         Ok(value) => Payload {
                             tag: compose_action(&method, FrameKind::Response),
                             value,
                         },
-                        Err(err_bytes) => {
-                            let mut value = Vec::with_capacity(1 + err_bytes.len());
-                            value.push(1u8);
-                            value.extend_from_slice(&err_bytes);
-                            Payload {
-                                tag: compose_action(&method, FrameKind::Response),
-                                value,
-                            }
-                        }
-                    };
-                    transport.send(ProtocolMessage {
-                        request_id: message.request_id,
-                        payload,
-                    });
-                }
+                        Err(err_bytes) => Payload {
+                            tag: compose_action(&method, FrameKind::Response),
+                            value: prefix_err(err_bytes),
+                        },
+                    }
+                } else {
+                    // A well-formed request for a method with no registered
+                    // handler resolves to `Unsupported` so the caller fails
+                    // fast instead of waiting for a response that never comes.
+                    Payload {
+                        tag: compose_action(&method, FrameKind::Response),
+                        value: prefix_err(encode_call_error_payload(CallError::<()>::Unsupported)),
+                    }
+                };
+                transport.send(ProtocolMessage {
+                    request_id: message.request_id,
+                    payload,
+                });
             }
             FrameKind::Start => {
                 if let Some(handler) = self.subscription_handlers.get(&method) {
+                    // Reserve the slot before awaiting the handler so a `_stop`
+                    // arriving while the handler resolves cancels the pending
+                    // subscription instead of racing the registration.
+                    let token = self.subscriptions.reserve(message.request_id.clone());
                     let request_id = message.request_id.clone();
-                    let stream_result = handler(request_id, message.payload.value).await;
-                    match stream_result {
+                    match handler(request_id, message.payload.value).await {
                         Ok(stream) => {
-                            self.subscriptions.register(
-                                message.request_id,
-                                &method,
-                                stream,
-                                transport,
-                            );
+                            self.subscriptions
+                                .activate(token, &method, stream, transport);
                         }
                         Err(err_bytes) => {
+                            self.subscriptions.cancel_reservation(token);
                             transport.send(ProtocolMessage {
                                 request_id: message.request_id,
                                 payload: Payload {
@@ -169,6 +148,16 @@ impl Dispatcher {
                             });
                         }
                     }
+                } else {
+                    // Unregistered subscription method: interrupt with
+                    // `Unsupported` rather than dropping the start silently.
+                    transport.send(ProtocolMessage {
+                        request_id: message.request_id,
+                        payload: Payload {
+                            tag: compose_action(&method, FrameKind::Interrupt),
+                            value: encode_call_error_payload(CallError::<()>::Unsupported),
+                        },
+                    });
                 }
             }
             FrameKind::Stop => {
@@ -178,6 +167,16 @@ impl Dispatcher {
             _ => {}
         }
     }
+}
+
+/// Prepend the `0x01` Err discriminant to SCALE-encoded `CallError` bytes,
+/// producing the `[disc][value...]` Result wire shape the response envelope
+/// expects.
+fn prefix_err(err_bytes: Vec<u8>) -> Vec<u8> {
+    let mut value = Vec::with_capacity(1 + err_bytes.len());
+    value.push(1u8);
+    value.extend_from_slice(&err_bytes);
+    value
 }
 
 #[cfg(test)]
@@ -222,11 +221,12 @@ mod tests {
         }
     }
 
-    /// An unregistered method discriminant must not be answered. The
-    /// dispatcher reaches into its handler maps; a miss should be a silent
-    /// drop rather than panicking or sending a bogus response.
+    /// A well-formed request for a method with no registered handler must
+    /// resolve to an `Unsupported` response (Err disc `0x01`, then the
+    /// `CallError::Unsupported` variant `0x02`), so the caller fails fast
+    /// instead of hanging on a response that never arrives.
     #[test]
-    fn dispatch_unknown_method_silently_drops() {
+    fn dispatch_unregistered_request_replies_unsupported() {
         let dispatcher = Dispatcher::new(crate::subscription::thread_per_subscription_spawner());
         let transport = Arc::new(RecordingTransport::default());
         let transport_dyn: Arc<dyn Transport> = transport.clone();
@@ -235,10 +235,31 @@ mod tests {
             Vec::new(),
         );
         futures::executor::block_on(dispatcher.dispatch(frame, transport_dyn));
-        assert!(
-            transport.sent().is_empty(),
-            "unknown method must not send any frames"
+        let sent = transport.sent();
+        assert_eq!(sent.len(), 1, "unregistered request must get a response");
+        assert_eq!(
+            sent[0].payload.tag,
+            compose_action("missing_method", FrameKind::Response)
         );
+        assert_eq!(sent[0].payload.value, vec![0x01, 0x02]);
+    }
+
+    /// A `_start` for a subscription method with no registered handler must
+    /// emit an `_interrupt` carrying `Unsupported`, not drop silently.
+    #[test]
+    fn dispatch_unregistered_subscription_interrupts_unsupported() {
+        let dispatcher = Dispatcher::new(crate::subscription::thread_per_subscription_spawner());
+        let transport = Arc::new(RecordingTransport::default());
+        let transport_dyn: Arc<dyn Transport> = transport.clone();
+        let frame = make_frame(&compose_action("missing_sub", FrameKind::Start), Vec::new());
+        futures::executor::block_on(dispatcher.dispatch(frame, transport_dyn));
+        let sent = transport.sent();
+        assert_eq!(sent.len(), 1, "unregistered start must get an interrupt");
+        assert_eq!(
+            sent[0].payload.tag,
+            compose_action("missing_sub", FrameKind::Interrupt)
+        );
+        assert_eq!(sent[0].payload.value, vec![0x02]);
     }
 
     /// A handler that returns `Err(CallError::Denied)` must produce a

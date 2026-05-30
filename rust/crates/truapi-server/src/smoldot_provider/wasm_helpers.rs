@@ -1,4 +1,6 @@
-// Vendored from subxt-lightclient 0.50.0 (Apache-2.0 OR GPL-3.0)
+// SPDX-License-Identifier: Apache-2.0
+// Vendored from subxt-lightclient 0.50.0 (Apache-2.0 OR GPL-3.0), elected
+// under Apache-2.0. See ../../THIRD_PARTY_NOTICES.md for attribution.
 
 use super::wasm_socket::WasmSocket;
 

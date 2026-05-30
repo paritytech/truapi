@@ -3,7 +3,10 @@ name = "truapi-server"
 version = "0.1.0"
 edition.workspace = true
 description = "TrUAPI server runtime: dispatcher, frames, SCALE, streams"
-license = "MIT"
+# MIT for this crate's own code; the smoldot light-client glue under
+# src/smoldot_provider/wasm_*.rs is vendored from subxt-lightclient under
+# Apache-2.0 (see THIRD_PARTY_NOTICES.md and the per-file SPDX headers).
+license = "MIT AND Apache-2.0"
 
 [lib]
 crate-type = ["rlib", "cdylib", "staticlib"]
@@ -39,6 +42,7 @@ futures = { version = "0.3", features = ["thread-pool"] }
 js-sys = "0.3"
 wasm-bindgen = "0.2.118"
 wasm-bindgen-futures = "0.4"
+console_error_panic_hook = "0.1"
 smoldot-light = { version = "1.1.0", optional = true, default-features = false }
 smoldot = { version = "1.1.0", optional = true, default-features = false, features = ["std"] }
 futures-timer = { version = "3", features = ["wasm-bindgen"] }

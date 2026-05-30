@@ -52,9 +52,11 @@ dependencies {
     api("net.java.dev.jna:jna:5.14.0@aar")
 }
 
-// Version + coordinates for the published Maven artifact. Bumped through
-// commits prefixed `release: truapi-host-android@<version>`; the release
-// workflow at `.github/workflows/release-android.yml` reads this value.
+// Coordinates for the local Maven publication (`publishToMavenLocal`).
+// Distribution is via JitPack: a git tag drives `jitpack.yml`, and JitPack
+// derives the consumer coordinates from the repo + subproject as
+// `com.github.paritytech.truapi:truapi-host:<tag>`, overriding the group and
+// artifactId below. These fields only matter for local testing.
 val publicationGroup = "io.parity"
 val publicationArtifact = "truapi-host-android"
 val publicationVersion = "0.1.0"

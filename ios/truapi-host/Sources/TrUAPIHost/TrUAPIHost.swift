@@ -37,20 +37,31 @@ public enum LocalhostBridgeBootstrap {
     /// `createWebSocketProvider` from `@parity/truapi`.
     public static func script(port: UInt16, token: String) -> String {
         let url = "ws://127.0.0.1:\(port)/?t=\(token)"
-        let safeUrl = escapeJavaScriptString(url)
-        let safeToken = escapeJavaScriptString(token)
+        let safeUrl = jsStringLiteral(url)
+        let safeToken = jsStringLiteral(token)
         return """
         (function() {
-          window.__truapi_localhost = { url: '\(safeUrl)', token: '\(safeToken)' };
+          window.__truapi_localhost = { url: \(safeUrl), token: \(safeToken) };
           window.dispatchEvent(new Event('truapi-native-ready'));
         })();
         """
     }
 
-    private static func escapeJavaScriptString(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "'", with: "\\'")
+    /// Encodes `value` as a complete double-quoted JavaScript string literal,
+    /// safe to embed inside a `<script>` body. `JSONEncoder` escapes quotes,
+    /// backslashes, control characters, and forward slashes (closing `</script`
+    /// tags); U+2028 / U+2029 are escaped explicitly because JSON leaves them
+    /// raw while JS treats them as line terminators. Falls back to an empty
+    /// literal if encoding ever fails.
+    private static func jsStringLiteral(_ value: String) -> String {
+        guard let data = try? JSONEncoder().encode(value),
+              let encoded = String(data: data, encoding: .utf8)
+        else {
+            return "\"\""
+        }
+        return encoded
+            .replacingOccurrences(of: "\u{2028}", with: "\\u2028")
+            .replacingOccurrences(of: "\u{2029}", with: "\\u2029")
     }
 }
 
@@ -76,26 +87,43 @@ public protocol HostStorageBackend: AnyObject, Sendable {
 /// Embedders typically forward the SCALE payloads through the
 /// `@parity/truapi` JS client for UI prompts, then return the boolean
 /// granted flag.
+///
+/// Threading: when the WS bridge is running, the Rust core invokes every
+/// callback on the dedicated `truapi-ws-bridge` worker thread, never the main
+/// thread. Any UI work an implementation does (navigation, prompts,
+/// notifications, touching the `WKWebView`) MUST hop to the main thread, e.g.
+/// `await MainActor.run { ... }` or `DispatchQueue.main.async { ... }`. Calling
+/// UIKit/WebKit off the main thread is undefined behaviour.
 public protocol HostBridge: AnyObject, Sendable {
     /// Lifecycle logger. Marker is a stable slug, detail is free-form.
     func onCoreLog(marker: String, detail: String)
 
     /// Forward an outbound SCALE-encoded protocol frame to the product.
+    /// Invoked on the `truapi-ws-bridge` worker thread; hop to the main thread
+    /// before touching the `WKWebView`.
     func onCoreResponse(frame: Data)
 
-    /// Open a URL in the system browser.
+    /// Open a URL in the system browser. Invoked on the `truapi-ws-bridge`
+    /// worker thread; hop to the main thread to present UI.
     func navigateTo(url: String) throws
 
     /// Deliver a push notification (SCALE-encoded `HostPushNotificationRequest`).
+    /// Invoked on the `truapi-ws-bridge` worker thread; hop to the main thread
+    /// for any UI work.
     func pushNotification(payload: Data) throws
 
-    /// Prompt for a device-level permission. Returns the granted flag.
+    /// Prompt for a device-level permission. Returns the granted flag. Invoked
+    /// on the `truapi-ws-bridge` worker thread; present the prompt on the main
+    /// thread and block this thread until the user decides.
     func devicePermission(request: Data) throws -> Bool
 
-    /// Prompt for a remote (product-scoped) permission bundle.
+    /// Prompt for a remote (product-scoped) permission bundle. Invoked on the
+    /// `truapi-ws-bridge` worker thread; present the prompt on the main thread
+    /// and block this thread until the user decides.
     func remotePermission(request: Data) throws -> Bool
 
-    /// Answer a feature-support query.
+    /// Answer a feature-support query. Invoked on the `truapi-ws-bridge` worker
+    /// thread.
     func featureSupported(request: Data) throws -> Bool
 
     /// Scoped key-value storage for the Rust core.
@@ -169,8 +197,8 @@ private final class HostCallbackAdapter: HostCallbacks, @unchecked Sendable {
 /// `receiveFromProduct` is available for tests and alternative transports.
 public final class TrUAPIHostCore {
     private let inner: NativeTrUApiCore
-    // Retained so the UniFFI callback vtable stays valid for the lifetime
-    // of `inner`.
+    // Co-owns the adapter alongside the generated FfiConverter handle map,
+    // which is what actually keeps the callback object alive for the core.
     private let callbackRetainer: HostCallbacks
 
     public init(bridge: HostBridge) {
@@ -181,7 +209,9 @@ public final class TrUAPIHostCore {
 
     /// Deliver an opaque SCALE-encoded wire frame into the Rust core. The
     /// WS bridge feeds the core internally; this entrypoint is exposed for
-    /// tests and alternative transports.
+    /// tests and alternative transports. The core may synchronously re-enter
+    /// `HostBridge` callbacks (including a nested `receiveFromProduct`) before
+    /// returning, so callers must not hold a non-reentrant lock across the call.
     public func receiveFromProduct(_ frame: Data) {
         _ = inner.receiveFromProduct(frame: frame)
     }

@@ -7,6 +7,15 @@
 //! The bridge owns a `tokio` runtime spawned at [`WsBridge::start`] time and
 //! shuts down both the accept loop and the runtime when the handle is dropped
 //! or [`WsBridge::stop`] is called.
+//!
+//! Security model: the listener binds to `127.0.0.1` only, and every
+//! connection must present the per-session 256-bit token (`?t=<token>`,
+//! drawn from the OS CSPRNG) before the WebSocket upgrade completes. The token
+//! is the sole authentication gate and is compared in constant time. It is
+//! handed only to the host's embedded WebView, so the bridge does not also pin
+//! the `Origin` header (the WebView's origin is not known a priori). Inbound
+//! messages are size-capped, and the per-connection outbound queue and the
+//! total connection count are bounded to contain a misbehaving local peer.
 
 use std::io;
 use std::net::SocketAddr;
@@ -23,9 +32,25 @@ use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tokio_tungstenite::tungstenite::handshake::server::{ErrorResponse, Request, Response};
 use tokio_tungstenite::tungstenite::http::{Response as HttpResponse, StatusCode};
 use tokio_tungstenite::tungstenite::protocol::CloseFrame;
+use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 
 use crate::{ProtocolMessage, TrUApiCore, Transport};
+
+/// Maximum simultaneous connections the bridge will service. The product uses
+/// a single connection; the cap bounds resource use from a buggy or hostile
+/// local peer opening many sockets.
+const MAX_WS_BRIDGE_CONNECTIONS: usize = 32;
+
+/// Bound on the per-connection outbound frame queue. A peer that stops reading
+/// cannot make the core buffer responses without limit; once the queue fills
+/// the connection is treated as closed.
+const OUTBOUND_QUEUE_CAP: usize = 4096;
+
+/// Ceiling on a single inbound WebSocket message / frame. `ProtocolMessage`
+/// frames on this SCALE control channel are small; the cap prevents a
+/// memory-amplification DoS well below tungstenite's 64 MiB default.
+const MAX_WS_MESSAGE_BYTES: usize = 8 << 20;
 
 /// Per-session descriptor returned to the host: product uses `port + token`
 /// to build its WebSocket URL (e.g. `ws://127.0.0.1:<port>/?t=<token>`).
@@ -201,13 +226,18 @@ async fn accept_loop(
                         continue;
                     }
                 };
+                handles.retain(|h| !h.is_finished());
+                if handles.len() >= MAX_WS_BRIDGE_CONNECTIONS {
+                    logger("truapi.ws_bridge.connection_limit", &peer.to_string());
+                    drop(stream);
+                    continue;
+                }
                 let core = core.clone();
                 let logger = logger.clone();
                 let expected = expected_token.clone();
                 handles.push(tokio::task::spawn_local(async move {
                     handle_connection(stream, peer, core, expected, logger).await;
                 }));
-                handles.retain(|h| !h.is_finished());
             }
         }
     }
@@ -240,7 +270,16 @@ async fn handle_connection(
         }
     };
 
-    let ws = match tokio_tungstenite::accept_hdr_async(stream, callback).await {
+    // Cap inbound message/frame size so a peer cannot force the runtime to
+    // buffer up to tungstenite's 64 MiB default on this small control channel.
+    let config = WebSocketConfig {
+        max_message_size: Some(MAX_WS_MESSAGE_BYTES),
+        max_frame_size: Some(MAX_WS_MESSAGE_BYTES),
+        ..Default::default()
+    };
+    let ws = match tokio_tungstenite::accept_hdr_async_with_config(stream, callback, Some(config))
+        .await
+    {
         Ok(ws) => ws,
         Err(err) => {
             logger("truapi.ws_bridge.handshake_error", &err.to_string());
@@ -250,7 +289,7 @@ async fn handle_connection(
 
     logger("truapi.ws_bridge.connection_open", &peer.to_string());
     let (mut sink, mut source) = ws.split();
-    let (out_tx, mut out_rx) = mpsc::unbounded_channel::<Vec<u8>>();
+    let (out_tx, mut out_rx) = mpsc::channel::<Vec<u8>>(OUTBOUND_QUEUE_CAP);
     let transport: Arc<dyn Transport> = Arc::new(WsTransport::new(out_tx));
 
     let pump_logger = logger.clone();
@@ -312,20 +351,35 @@ fn path_token_matches(path_and_query: Option<&str>, expected: &str) -> bool {
             Some(kv) => kv,
             None => continue,
         };
-        if key == "t" && value == expected {
+        if key == "t" && constant_time_eq(value.as_bytes(), expected.as_bytes()) {
             return true;
         }
     }
     false
 }
 
+/// Constant-time byte-slice equality, used for the session-token check so a
+/// local peer cannot recover the token via early-exit comparison timing. The
+/// token length is fixed and public, so a length mismatch may short-circuit;
+/// only the value comparison must be constant time.
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    if a.len() != b.len() {
+        return false;
+    }
+    let mut diff = 0u8;
+    for (x, y) in a.iter().zip(b.iter()) {
+        diff |= x ^ y;
+    }
+    diff == 0
+}
+
 struct WsTransport {
-    outbound: mpsc::UnboundedSender<Vec<u8>>,
+    outbound: mpsc::Sender<Vec<u8>>,
     closed: Mutex<bool>,
 }
 
 impl WsTransport {
-    fn new(outbound: mpsc::UnboundedSender<Vec<u8>>) -> Self {
+    fn new(outbound: mpsc::Sender<Vec<u8>>) -> Self {
         Self {
             outbound,
             closed: Mutex::new(false),
@@ -338,7 +392,9 @@ impl Transport for WsTransport {
         if *self.closed.lock().unwrap() {
             return;
         }
-        if self.outbound.send(message.encode()).is_err() {
+        // Non-blocking: a full queue means the peer stopped reading, so the
+        // connection is treated as closed rather than buffering without bound.
+        if self.outbound.try_send(message.encode()).is_err() {
             *self.closed.lock().unwrap() = true;
         }
     }

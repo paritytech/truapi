@@ -5,8 +5,12 @@
 //! `[truapi]` so it's easy to grep for.
 //!
 //! The macro is a no-op when disabled: format args are not evaluated,
-//! so callers can `truapi_debug!("payload={:?}", expensive)` without
-//! paying for the formatting on hot paths.
+//! so callers can `truapi_debug!("payload={value:?}")` without paying for the
+//! formatting on hot paths. Disabled by default; the host opts in via
+//! [`set_enabled`] (exposed to JS as `setDebugEnabled`).
+//!
+//! Output is plaintext to the console/stderr, so never pass secret material
+//! (key bytes, session tokens, signatures) to [`truapi_debug!`].
 
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -32,7 +36,7 @@ pub fn emit(line: &str) {
 /// Wasm variant of `emit`: routes to the browser console.
 #[cfg(target_arch = "wasm32")]
 pub fn emit(line: &str) {
-    let _ = line;
+    web_sys::console::log_1(&wasm_bindgen::JsValue::from_str(line));
 }
 
 /// Emit a debug log line when [`is_enabled`] is true.

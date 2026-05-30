@@ -174,13 +174,128 @@ fn local_storage_read_err_response_uses_err_discriminant() {
         compose_action("local_storage_read", FrameKind::Response),
     );
 
-    // Wire payload: `[Err disc=0x01][SCALE-encoded CallError]`. The stub
-    // returns `HostLocalStorageReadError::Full`; the runtime wraps it in
-    // `CallError::Domain(HostLocalStorageReadError::V1(Full))`, encoded as:
-    //   [0x01 Err disc]
-    //   [0x00 CallError::Domain variant]
-    //   [0x00 HostLocalStorageReadError::V1 variant]
-    //   [0x00 v01::HostLocalStorageReadError::Full variant]
-    assert_eq!(response.payload.value, vec![0x01, 0x00, 0x00, 0x00]);
+    // Wire payload: `[Err disc=0x01][CallError::Domain variant=0x00][encoded
+    // domain error]`. Build the expected bytes from the typed value the runtime
+    // wraps (the stub returns `Full`) rather than a hand-written literal, so a
+    // reorder of any domain enum variant is caught instead of silently passing.
+    let domain = truapi::versioned::local_storage::HostLocalStorageReadError::V1(
+        v01::HostLocalStorageReadError::Full,
+    );
+    let mut expected = vec![0x01u8, 0x00u8];
+    domain.encode_to(&mut expected);
+    assert_eq!(response.payload.value, expected);
     assert_eq!(response.payload.value.first(), Some(&0x01));
+}
+
+fn make_core() -> TrUApiCore {
+    TrUApiCore::from_platform(
+        Arc::new(StubPlatform),
+        truapi_server::subscription::thread_per_subscription_spawner(),
+    )
+}
+
+/// Untrusted product input that is not a decodable frame must be dropped
+/// (return `None`), never panic. Exercises the decode-failure boundary in
+/// `receive_from_product` that the happy-path tests above bypass.
+#[test]
+fn malformed_frames_are_dropped_without_panic() {
+    let core = make_core();
+
+    // Empty input and arbitrary garbage.
+    assert!(core.receive_from_product(&[]).is_none());
+    assert!(
+        core.receive_from_product(&[0xff, 0xff, 0xff, 0xff])
+            .is_none()
+    );
+
+    // A truncated SCALE string header (claims length but no body).
+    assert!(
+        core.receive_from_product(&[200u8 << 2, 0x61, 0x62])
+            .is_none()
+    );
+
+    // A well-formed requestId envelope carrying an unknown wire discriminant.
+    let mut unknown_disc = Vec::new();
+    "p:1".to_string().encode_to(&mut unknown_disc);
+    unknown_disc.push(0xFA);
+    unknown_disc.extend_from_slice(&[0u8; 4]);
+    assert!(core.receive_from_product(&unknown_disc).is_none());
+}
+
+/// Drive a subscription through the encoded-frame boundary: `_start` yields
+/// the initial `_receive`, then `_stop` tears it down so a later session
+/// change produces no further frames. Covers the wire layer the in-crate
+/// `subscription.rs` unit tests bypass.
+#[test]
+fn subscription_start_receive_stop_through_wire_boundary() {
+    use std::sync::Mutex;
+    use std::time::{Duration, Instant};
+    use truapi_server::Transport;
+
+    #[derive(Default)]
+    struct RecordingTransport {
+        sent: Mutex<Vec<ProtocolMessage>>,
+    }
+    impl Transport for RecordingTransport {
+        fn send(&self, message: ProtocolMessage) {
+            self.sent.lock().unwrap().push(message);
+        }
+        fn on_message(
+            &self,
+            _handler: Box<dyn Fn(ProtocolMessage) + Send + Sync>,
+        ) -> Box<dyn FnOnce()> {
+            Box::new(|| {})
+        }
+    }
+
+    let core = make_core();
+    let transport = Arc::new(RecordingTransport::default());
+    let dyn_transport: Arc<dyn Transport> = transport.clone();
+
+    let method = "account_connection_status_subscribe";
+    let start = ProtocolMessage {
+        request_id: "p:1".into(),
+        payload: Payload {
+            tag: compose_action(method, FrameKind::Start),
+            value: Vec::new(),
+        },
+    };
+    futures::executor::block_on(core.dispatch(start, dyn_transport.clone()));
+
+    // Wait for the initial `_receive` item (Disconnected).
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while transport.sent.lock().unwrap().is_empty() {
+        assert!(Instant::now() < deadline, "no initial _receive frame");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert_eq!(
+        transport.sent.lock().unwrap()[0].payload.tag,
+        compose_action(method, FrameKind::Receive),
+    );
+
+    // Stop the subscription, then push a session change. A live subscription
+    // would emit a Connected `_receive`; a stopped one must stay silent.
+    let stop = ProtocolMessage {
+        request_id: "p:1".into(),
+        payload: Payload {
+            tag: compose_action(method, FrameKind::Stop),
+            value: Vec::new(),
+        },
+    };
+    futures::executor::block_on(core.dispatch(stop, dyn_transport));
+    std::thread::sleep(Duration::from_millis(50));
+
+    core.session_state()
+        .set_session(truapi_server::host_logic::session::SessionInfo {
+            public_key: [7u8; 32],
+            lite_username: None,
+            full_username: None,
+        });
+    std::thread::sleep(Duration::from_millis(50));
+
+    assert_eq!(
+        transport.sent.lock().unwrap().len(),
+        1,
+        "stopped subscription must emit no further frames"
+    );
 }

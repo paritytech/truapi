@@ -223,7 +223,7 @@ export interface CreateWebWorkerProviderOptions {
  * typically import the worker entry-point with `?worker`:
  *
  * ```ts
- * import HostWorker from "@parity/truapi-host-shared/dist/worker-runtime.js?worker";
+ * import HostWorker from "@parity/truapi-host-shared/worker-runtime?worker";
  * const worker = new HostWorker();
  * const provider = await createWebWorkerProvider(worker, callbacks);
  * ```
@@ -286,10 +286,27 @@ export function createWebWorkerProvider(
       }
     };
 
+    const notifyFault = (error: Error): void => {
+      if (state.disposed) return;
+      state.disposed = true;
+      for (const listener of [...state.closeListeners]) listener(error);
+      state.listeners.clear();
+      state.closeListeners.clear();
+    };
+
     const onError = (e: ErrorEvent): void => {
       cleanupInit();
       worker.terminate();
       reject(new Error(`worker init failed: ${e.message}`));
+    };
+
+    const onRuntimeError = (e: ErrorEvent): void => {
+      console.error("[truapi worker]", e.message);
+      notifyFault(new Error(`worker error: ${e.message}`));
+    };
+
+    const onMessageError = (): void => {
+      notifyFault(new Error("worker message could not be deserialized"));
     };
 
     const onInitMessage = (ev: MessageEvent<WorkerToMain>): void => {
@@ -302,6 +319,10 @@ export function createWebWorkerProvider(
         };
         worker.postMessage(configure);
         worker.addEventListener("message", onMessage);
+        // Surface a post-init worker fault (uncaught throw, OOM, killed
+        // worker) to close listeners for the provider's lifetime.
+        worker.addEventListener("error", onRuntimeError);
+        worker.addEventListener("messageerror", onMessageError);
         resolve(buildProvider(state));
       } else if (msg.kind === "error") {
         cleanupInit();

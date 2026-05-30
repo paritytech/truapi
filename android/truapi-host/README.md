@@ -70,11 +70,22 @@ Both return a `Boolean` granted flag. SCALE decoding for the UI prompt is done b
 
 ## Example
 
+> **Threading:** when the WS bridge is running, the Rust core invokes every
+> `HostBridge` callback on the dedicated `truapi-ws-bridge` worker thread, never
+> the UI thread. Marshal any UI work (navigation, prompts, notifications,
+> touching the `WebView`) onto the main thread with
+> `Handler(Looper.getMainLooper())` or a `Dispatchers.Main` `CoroutineScope`.
+> Permission callbacks return synchronously, so block the worker thread (e.g. a
+> `CountDownLatch`) until the main-thread prompt resolves.
+
 ```kt
+import android.os.Handler
+import android.os.Looper
 import android.webkit.WebView
 import io.parity.truapi.HostBridge
 import io.parity.truapi.HostStorage
 import io.parity.truapi.TrUAPIHostCore
+import java.util.concurrent.CountDownLatch
 
 class MyStorage : HostStorage {
     private val map = mutableMapOf<String, ByteArray>()
@@ -83,23 +94,40 @@ class MyStorage : HostStorage {
     override fun clear(key: String) { map.remove(key) }
 }
 
-class MyBridge : HostBridge {
+class MyBridge(private val webView: WebView) : HostBridge {
+    private val main = Handler(Looper.getMainLooper())
+
     override val storage = MyStorage()
     override fun onCoreResponse(frame: ByteArray) { /* WS bridge handles outbound */ }
-    override fun navigateTo(url: String) { /* open in browser */ }
-    override fun pushNotification(payload: ByteArray) { /* show notification */ }
-    override fun devicePermission(request: ByteArray): Boolean = TODO("prompt user")
+
+    override fun navigateTo(url: String) {
+        main.post { /* startActivity(Intent(ACTION_VIEW, Uri.parse(url))) */ }
+    }
+
+    override fun pushNotification(payload: ByteArray) {
+        main.post { /* show notification */ }
+    }
+
+    override fun devicePermission(request: ByteArray): Boolean {
+        // Called on the worker thread; prompt on the main thread and wait.
+        val latch = CountDownLatch(1)
+        var granted = false
+        main.post { /* show prompt, set granted, then */ latch.countDown() }
+        latch.await()
+        return granted
+    }
+
     override fun remotePermission(request: ByteArray): Boolean = TODO("prompt user")
     override fun featureSupported(request: ByteArray): Boolean = false
 }
 
-val core = TrUAPIHostCore(MyBridge())
+val webView: WebView = existingWebView
+val core = TrUAPIHostCore(MyBridge(webView))
 val endpoint = core.startWsBridge()
 val wsUrl = "ws://127.0.0.1:${endpoint.port.toInt()}/?t=${endpoint.token}"
 
 // Inject `wsUrl` into the product page; product JS calls
 // `@parity/truapi`'s `createWebSocketProvider(wsUrl)` to open the wire.
-val webView: WebView = existingWebView
 webView.loadUrl("https://your-product.example/?truapi=${java.net.URLEncoder.encode(wsUrl, "UTF-8")}")
 ```
 
@@ -168,7 +196,7 @@ gradle :truapi-host:publishReleasePublicationToMavenLocal
 make android-publish-local
 ```
 
-The artifact lands under `~/.m2/repository/io/parity/truapi-host-android/<version>/`. Consumers pointing at `mavenLocal()` can resolve it via `io.parity:truapi-host-android:<version>`.
+The artifact lands under `~/.m2/repository/io/parity/truapi-host-android/<version>/`. Consumers pointing at `mavenLocal()` can resolve it via `io.parity:truapi-host-android:<version>`. These local coordinates differ from the JitPack consumer coordinate (`com.github.paritytech.truapi:truapi-host:<tag>`): JitPack derives the group and artifactId from the repo and Gradle subproject, overriding the `io.parity:truapi-host-android` coordinates set in `build.gradle.kts`.
 
 ## Regenerating the UniFFI bindings
 

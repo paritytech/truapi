@@ -22,7 +22,20 @@ struct Row {
     method: String,
     request_or_start: u8,
     response_or_receive: u8,
+    /// Subscription `_stop` / `_interrupt` ids; `None` for request methods.
+    stop: Option<u8>,
+    interrupt: Option<u8>,
     is_subscription: bool,
+}
+
+/// Parse a wire id. A malformed id is a hard failure, never a silent `0`: a
+/// defensive fallback here would let a symmetric codegen-format change collapse
+/// both tables to `0`s and pass the parity check while real drift slipped by.
+fn parse_id(raw: &str, method: &str) -> u8 {
+    raw.trim_end_matches(',')
+        .trim()
+        .parse()
+        .unwrap_or_else(|_| panic!("unparseable wire id for `{method}`: {raw:?}"))
 }
 
 fn parse_rust(src: &str) -> Vec<Row> {
@@ -39,6 +52,8 @@ fn parse_rust(src: &str) -> Vec<Row> {
         let method = rest[..end].to_string();
         let mut request_or_start = None;
         let mut response_or_receive = None;
+        let mut stop = None;
+        let mut interrupt = None;
         let mut is_subscription = false;
         for inner in iter.by_ref() {
             let t = inner.trim();
@@ -49,15 +64,19 @@ fn parse_rust(src: &str) -> Vec<Row> {
                 .strip_prefix("request_id: ")
                 .or_else(|| t.strip_prefix("start_id: "))
             {
-                let n: u8 = rest.trim_end_matches(',').parse().unwrap_or(0);
-                request_or_start = Some(n);
+                request_or_start = Some(parse_id(rest, &method));
             }
             if let Some(rest) = t
                 .strip_prefix("response_id: ")
                 .or_else(|| t.strip_prefix("receive_id: "))
             {
-                let n: u8 = rest.trim_end_matches(',').parse().unwrap_or(0);
-                response_or_receive = Some(n);
+                response_or_receive = Some(parse_id(rest, &method));
+            }
+            if let Some(rest) = t.strip_prefix("stop_id: ") {
+                stop = Some(parse_id(rest, &method));
+            }
+            if let Some(rest) = t.strip_prefix("interrupt_id: ") {
+                interrupt = Some(parse_id(rest, &method));
             }
             if t == "},"
                 && let (Some(rs), Some(rr)) = (request_or_start, response_or_receive)
@@ -66,6 +85,8 @@ fn parse_rust(src: &str) -> Vec<Row> {
                     method,
                     request_or_start: rs,
                     response_or_receive: rr,
+                    stop,
+                    interrupt,
                     is_subscription,
                 });
                 break;
@@ -92,6 +113,8 @@ fn parse_ts(src: &str) -> Vec<Row> {
         let method = rest[..name_end].to_ascii_lowercase();
         let mut request_or_start = None;
         let mut response_or_receive = None;
+        let mut stop = None;
+        let mut interrupt = None;
         let mut is_subscription = false;
         for inner in iter.by_ref() {
             let t = inner.trim();
@@ -102,15 +125,19 @@ fn parse_ts(src: &str) -> Vec<Row> {
                 .strip_prefix("request: ")
                 .or_else(|| t.strip_prefix("start: "))
             {
-                let n: u8 = rest.trim_end_matches(',').parse().unwrap_or(0);
-                request_or_start = Some(n);
+                request_or_start = Some(parse_id(rest, &method));
             }
             if let Some(rest) = t
                 .strip_prefix("response: ")
                 .or_else(|| t.strip_prefix("receive: "))
             {
-                let n: u8 = rest.trim_end_matches(',').parse().unwrap_or(0);
-                response_or_receive = Some(n);
+                response_or_receive = Some(parse_id(rest, &method));
+            }
+            if let Some(rest) = t.strip_prefix("stop: ") {
+                stop = Some(parse_id(rest, &method));
+            }
+            if let Some(rest) = t.strip_prefix("interrupt: ") {
+                interrupt = Some(parse_id(rest, &method));
             }
             if t.starts_with("} as const") || t == "}" {
                 if let (Some(rs), Some(rr)) = (request_or_start, response_or_receive) {
@@ -118,6 +145,8 @@ fn parse_ts(src: &str) -> Vec<Row> {
                         method,
                         request_or_start: rs,
                         response_or_receive: rr,
+                        stop,
+                        interrupt,
                         is_subscription,
                     });
                 }
@@ -159,9 +188,21 @@ fn rust_and_ts_wire_tables_agree() {
 
     let rust_rows = parse_rust(RUST_TABLE);
     let ts_rows = parse_ts(&ts_src);
+    // Lower bound pinned to the known table size so a parser/codegen regression
+    // that quietly shrinks both tables in lockstep cannot pass: `assert_eq!`
+    // alone is satisfied by two equal-but-truncated tables.
+    const MIN_EXPECTED_ROWS: usize = 60;
     assert!(
-        !rust_rows.is_empty(),
-        "rust parser produced no entries; wire_table.rs format may have changed"
+        rust_rows.len() >= MIN_EXPECTED_ROWS,
+        "rust parser produced {} entries (expected >= {MIN_EXPECTED_ROWS}); \
+         wire_table.rs format may have changed",
+        rust_rows.len()
+    );
+    assert!(
+        ts_rows.len() >= MIN_EXPECTED_ROWS,
+        "ts parser produced {} entries (expected >= {MIN_EXPECTED_ROWS}); \
+         wire-table.ts format may have changed",
+        ts_rows.len()
     );
     assert_eq!(
         rust_rows, ts_rows,

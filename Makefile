@@ -8,7 +8,6 @@
 TRUAPI_PKG := js/packages/truapi
 PLAYGROUND := playground
 JS_PACKAGES := js/packages
-WASM_DIST := $(JS_PACKAGES)/truapi-host-shared/dist/wasm
 
 help: ## Show this help.
 	@awk 'BEGIN { FS = ":.*##"; printf "Usage: make <target>\n\nTargets:\n" } \
@@ -31,8 +30,7 @@ codegen: ## Regenerate the TypeScript client from the Rust crate.
 	cd $(PLAYGROUND) && rm -rf node_modules/@parity && yarn install
 
 wasm: ## Rebuild the truapi-server WASM artifacts under js/packages/truapi-host-shared/dist/wasm/.
-	cd rust/crates/truapi-server && wasm-pack build --target web --no-default-features --out-dir ../../../$(WASM_DIST)/web
-	cd rust/crates/truapi-server && wasm-pack build --target nodejs --no-default-features --out-dir ../../../$(WASM_DIST)/node
+	cd $(JS_PACKAGES)/truapi-host-shared && npm run build:wasm
 
 UNIFFI_CDYLIB_DIR := target/release
 UNAME_S := $(shell uname -s)

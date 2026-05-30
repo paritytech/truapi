@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 
 import { createWebSocketProvider } from "../dist/transport.js";
 
-function makeStubWebSocket() {
+function makeStubWebSocket(opts = {}) {
   // Records what the provider did to its socket so the tests can assert.
   const sent = [];
   let openHandler = null;
@@ -14,6 +14,7 @@ function makeStubWebSocket() {
   let closeHandler = null;
   let errorHandler = null;
   let readyState = 0; // CONNECTING
+  let sendThrows = opts.sendThrows ?? false;
 
   class StubWebSocket {
     static get CONNECTING() {
@@ -49,6 +50,7 @@ function makeStubWebSocket() {
     }
 
     send(bytes) {
+      if (sendThrows) throw new Error("send failed");
       sent.push(bytes);
     }
     close() {
@@ -63,6 +65,17 @@ function makeStubWebSocket() {
     open() {
       readyState = 1;
       if (openHandler) openHandler();
+    },
+    setReadyState(state) {
+      readyState = state;
+    },
+    setSendThrows(value) {
+      sendThrows = value;
+    },
+    deliver(data) {
+      if (messageHandler) {
+        messageHandler({ data });
+      }
     },
     inbound(bytes) {
       if (messageHandler) {
@@ -181,6 +194,85 @@ function makeStubWebSocket() {
   assert.throws(
     () => provider.postMessage(new Uint8Array([1])),
     /websocket closed/,
+  );
+}
+
+// 6. triggerError() surfaces a /websocket error/ through subscribeClose
+{
+  const stub = makeStubWebSocket();
+  const provider = createWebSocketProvider("ws://127.0.0.1:0/?t=token", {
+    WebSocket: stub.StubWebSocket,
+  });
+  stub.open();
+
+  const errors = [];
+  provider.subscribeClose((err) => errors.push(err));
+  stub.triggerError();
+  assert.equal(errors.length, 1);
+  assert.match(errors[0].message, /websocket error/);
+}
+
+// 7. non-ArrayBuffer inbound payloads are dropped without firing listeners
+{
+  const stub = makeStubWebSocket();
+  const provider = createWebSocketProvider("ws://127.0.0.1:0/?t=token", {
+    WebSocket: stub.StubWebSocket,
+  });
+  stub.open();
+
+  let count = 0;
+  provider.subscribe(() => {
+    count += 1;
+  });
+  stub.deliver("not-an-arraybuffer");
+  stub.deliver({ some: "object" });
+  assert.equal(count, 0, "non-ArrayBuffer frames are ignored");
+
+  // A real ArrayBuffer still flows through.
+  stub.inbound(new Uint8Array([7]));
+  assert.equal(count, 1, "ArrayBuffer frames still deliver");
+}
+
+// 8. postMessage while readyState is CLOSING (2) throws /websocket not open/
+{
+  const stub = makeStubWebSocket();
+  const provider = createWebSocketProvider("ws://127.0.0.1:0/?t=token", {
+    WebSocket: stub.StubWebSocket,
+  });
+  stub.open();
+  stub.setReadyState(2); // CLOSING
+  assert.throws(
+    () => provider.postMessage(new Uint8Array([1])),
+    /websocket not open/,
+  );
+}
+
+// 9. a send that throws during the onopen flush closes the provider
+{
+  const stub = makeStubWebSocket();
+  const provider = createWebSocketProvider("ws://127.0.0.1:0/?t=token", {
+    WebSocket: stub.StubWebSocket,
+  });
+
+  const errors = [];
+  provider.subscribeClose((err) => errors.push(err));
+
+  // Queue a frame while CONNECTING, then make the socket throw on send and
+  // open it so the flush hits the failing send path.
+  provider.postMessage(new Uint8Array([1, 2, 3]));
+  stub.setSendThrows(true);
+  stub.open();
+
+  assert.equal(
+    errors.length,
+    1,
+    "flush failure surfaces through subscribeClose",
+  );
+  assert.match(errors[0].message, /send failed/);
+  assert.throws(
+    () => provider.postMessage(new Uint8Array([4])),
+    /send failed/,
+    "provider is closed after the failed flush",
   );
 }
 

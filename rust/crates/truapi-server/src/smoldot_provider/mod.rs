@@ -34,6 +34,10 @@ mod wasm_socket;
 #[cfg(target_arch = "wasm32")]
 use wasm_platform::{PlatformRefAlias, make_platform};
 
+// `paseo.json` embeds a `lightSyncState` warp-sync checkpoint to speed initial
+// sync. It is a point-in-time snapshot: regenerate it periodically (the older
+// it gets, the more GRANDPA catch-up smoldot must do from the checkpoint).
+// `asset-hub-paseo.json` carries no checkpoint and relies on relay finality.
 const PASEO_SPEC: &str = include_str!("specs/paseo.json");
 const ASSET_HUB_PASEO_SPEC: &str = include_str!("specs/asset-hub-paseo.json");
 
@@ -41,6 +45,12 @@ const PASEO_RELAY_GENESIS: &str =
     "0x77afd6190f1554ad45fd0d31aee62aacc33c6db0ea801129acb813f913e0764f";
 const ASSET_HUB_PASEO_GENESIS: &str =
     "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2";
+
+/// Per-chain json-rpc bus ceilings. Sized well above the chainHead-v1 usage
+/// the dispatcher permits, but finite so a stalled consumer cannot grow the
+/// smoldot-side buffers without bound.
+const MAX_PENDING_RPC_REQUESTS: u32 = 256;
+const MAX_RPC_SUBSCRIPTIONS: u32 = 1024;
 
 /// Errors returned by [`SmoldotChainProvider::with_bundled_specs`].
 #[derive(Debug, Display)]
@@ -65,7 +75,13 @@ type ClientRef = Arc<Mutex<Client<PlatformRefAlias>>>;
 /// A [`RuntimeChainProvider`] backed by `smoldot_light::Client`.
 ///
 /// Built via [`SmoldotChainProvider::with_bundled_specs`] with Paseo + Asset
-/// Hub Paseo pre-loaded.
+/// Hub Paseo pre-loaded. Each chain supports a single [`connect`] for the
+/// client's lifetime: the json-rpc response stream is single-consumer and is
+/// handed out on first connect, so a second `connect` for the same chain
+/// reports a distinct `HostFailure` rather than masquerading as an unknown
+/// genesis hash.
+///
+/// [`connect`]: RuntimeChainProvider::connect
 pub struct SmoldotChainProvider {
     client: ClientRef,
     chains: HashMap<String, Arc<ChainEntry>>,
@@ -83,8 +99,9 @@ impl SmoldotChainProvider {
             .add_chain(AddChainConfig {
                 specification: PASEO_SPEC,
                 json_rpc: AddChainConfigJsonRpc::Enabled {
-                    max_pending_requests: std::num::NonZeroU32::new(u32::MAX).unwrap(),
-                    max_subscriptions: u32::MAX,
+                    max_pending_requests: std::num::NonZeroU32::new(MAX_PENDING_RPC_REQUESTS)
+                        .unwrap(),
+                    max_subscriptions: MAX_RPC_SUBSCRIPTIONS,
                 },
                 database_content: "",
                 potential_relay_chains: std::iter::empty(),
@@ -97,8 +114,9 @@ impl SmoldotChainProvider {
             .add_chain(AddChainConfig {
                 specification: ASSET_HUB_PASEO_SPEC,
                 json_rpc: AddChainConfigJsonRpc::Enabled {
-                    max_pending_requests: std::num::NonZeroU32::new(u32::MAX).unwrap(),
-                    max_subscriptions: u32::MAX,
+                    max_pending_requests: std::num::NonZeroU32::new(MAX_PENDING_RPC_REQUESTS)
+                        .unwrap(),
+                    max_subscriptions: MAX_RPC_SUBSCRIPTIONS,
                 },
                 database_content: "",
                 potential_relay_chains: std::iter::once(relay.chain_id),
@@ -130,34 +148,29 @@ impl SmoldotChainProvider {
     }
 }
 
-fn encode_genesis_hash(hash: &[u8]) -> String {
-    let mut out = String::with_capacity(2 + hash.len() * 2);
-    out.push_str("0x");
-    for byte in hash {
-        out.push_str(&format!("{byte:02x}"));
-    }
-    out
-}
-
 #[async_trait::async_trait]
 impl RuntimeChainProvider for SmoldotChainProvider {
     async fn connect(
         &self,
         genesis_hash: Vec<u8>,
     ) -> Result<Arc<dyn JsonRpcConnection>, RuntimeFailure> {
-        let key = encode_genesis_hash(&genesis_hash);
+        let key = crate::chain_runtime::encode_hex(&genesis_hash);
         let entry = self
             .chains
             .get(&key)
             .cloned()
             .ok_or_else(|| RuntimeFailure::unavailable("remote_chain_connect"))?;
 
-        let responses = entry
-            .responses
-            .lock()
-            .unwrap()
-            .take()
-            .ok_or_else(|| RuntimeFailure::unavailable("remote_chain_connect"))?;
+        // Single-consumer stream: taken on first connect. A second connect for
+        // the same chain reports a distinct failure (rather than the
+        // `Unavailable` used for an unknown genesis) so callers can tell
+        // "no such chain" apart from "already connected".
+        let responses = entry.responses.lock().unwrap().take().ok_or_else(|| {
+            RuntimeFailure::host_failure(
+                "remote_chain_connect",
+                "smoldot chain already connected (single connection per chain)",
+            )
+        })?;
 
         Ok(Arc::new(SmoldotJsonRpcConnection::new(
             self.client.clone(),

@@ -8,6 +8,15 @@ import {
 
 interface NodeWasmModuleShape {
   WasmTrUApiCore: new (callbacks: unknown) => WasmCoreLike;
+  setDebugEnabled: (enabled: boolean) => void;
+}
+
+/**
+ * Options for `createNodeWasmProvider`.
+ */
+export interface CreateNodeWasmProviderOptions {
+  /** Toggle the wasm core's debug logging. Default: `false`. */
+  debug?: boolean;
 }
 
 /**
@@ -19,6 +28,7 @@ interface NodeWasmModuleShape {
  */
 export async function createNodeWasmProvider(
   partial: Omit<WasmRawCallbacks, "emitFrame">,
+  options: CreateNodeWasmProviderOptions = {},
 ): Promise<Provider> {
   // Dynamic import keeps the WASM module out of the package's static
   // dependency graph and out of the tsc rootDir. Indirected through a
@@ -36,6 +46,8 @@ export async function createNodeWasmProvider(
   if (!wasm?.WasmTrUApiCore) {
     throw new Error("Node WASM bundle did not export WasmTrUApiCore");
   }
+
+  wasm.setDebugEnabled?.(options.debug ?? false);
 
   return createWasmProvider(
     (raw) => new wasm.WasmTrUApiCore(raw),

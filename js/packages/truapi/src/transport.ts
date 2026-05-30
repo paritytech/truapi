@@ -607,32 +607,21 @@ export function createWebSocketProvider(
     throw new Error("WebSocket constructor not available in this environment");
   }
 
+  const base = createBaseProvider();
   const socket = new WebSocketCtor(url);
   socket.binaryType = "arraybuffer";
 
-  let closedError: Error | null = null;
   const pending: Uint8Array[] = [];
-  const listeners = new Set<(message: Uint8Array) => void>();
-  const closeListeners = new Set<(error: Error) => void>();
-
-  function notifyClose(error: unknown) {
-    const nextError = error instanceof Error ? error : new Error(String(error));
-    if (closedError) {
-      return;
-    }
-    closedError = nextError;
+  base.onClose(() => {
     pending.length = 0;
-    for (const listener of [...closeListeners]) {
-      listener(nextError);
-    }
-  }
+  });
 
   socket.onopen = () => {
     for (const msg of pending) {
       try {
         socket.send(msg);
       } catch (error) {
-        notifyClose(error);
+        base.close(error);
         return;
       }
     }
@@ -644,16 +633,15 @@ export function createWebSocketProvider(
     if (!(data instanceof ArrayBuffer)) {
       return;
     }
-    const bytes = new Uint8Array(data);
-    for (const listener of [...listeners]) listener(bytes);
+    base.deliver(new Uint8Array(data));
   };
 
   socket.onerror = () => {
-    notifyClose(new Error("websocket error"));
+    base.close(new Error("websocket error"));
   };
 
   socket.onclose = (event: CloseEvent) => {
-    notifyClose(
+    base.close(
       new Error(
         `websocket closed (code=${event.code}, reason=${event.reason || "unknown"})`,
       ),
@@ -662,15 +650,16 @@ export function createWebSocketProvider(
 
   return {
     postMessage(message) {
-      if (closedError) {
-        throw closedError;
+      const error = base.closed();
+      if (error) {
+        throw error;
       }
       if (socket.readyState === WebSocketCtor.OPEN) {
         try {
           socket.send(message);
         } catch (error) {
-          notifyClose(error);
-          throw error instanceof Error ? error : new Error(String(error));
+          base.close(error);
+          throw toError(error);
         }
       } else if (socket.readyState === WebSocketCtor.CONNECTING) {
         pending.push(message);
@@ -678,31 +667,15 @@ export function createWebSocketProvider(
         throw new Error("websocket not open");
       }
     },
-    subscribe(callback) {
-      listeners.add(callback);
-      return () => {
-        listeners.delete(callback);
-      };
-    },
-    subscribeClose(callback) {
-      if (closedError) {
-        callback(closedError);
-        return () => {};
-      }
-      closeListeners.add(callback);
-      return () => {
-        closeListeners.delete(callback);
-      };
-    },
+    subscribe: base.subscribe,
+    subscribeClose: base.subscribeClose,
     dispose() {
-      notifyClose(new Error("websocket provider disposed"));
+      base.close(new Error("websocket provider disposed"));
       try {
         socket.close();
       } catch {
         // ignore duplicate close during shutdown
       }
-      listeners.clear();
-      closeListeners.clear();
     },
   };
 }

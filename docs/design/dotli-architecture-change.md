@@ -93,7 +93,9 @@ Production nginx routes (see `dotli/nginx/nginx.polkadot`):
 
 Product iframes can't host the protocol core: their origin changes with every app CID, so any `localStorage` / IndexedDB / OPFS state would be lost on every update. The host shell at `dot.li` is stable but cohabits with user-facing UI; running heavy crypto + smoldot there would block paint frames.
 
-The protocol iframe at `host.dot.li` has neither problem: it's a stable origin and it has no UI, so a same-origin `SharedWorker` constructed from it runs the WASM core off the main thread while keeping `truapi`'s persistent state on a stable origin.
+The protocol iframe at `host.dot.li` has neither problem: it's a stable origin and it has no UI, so a same-origin worker constructed from it runs the WASM core off the main thread while keeping `truapi`'s persistent state on a stable origin.
+
+> The shipped `@parity/truapi-host-shared` entrypoint (`worker-runtime.ts`) is a plain per-tab dedicated Web Worker. The `SharedWorker` topology drawn in these diagrams is the recommended target (see Option 2 in the companion proposal), not yet implemented. Read every `SharedWorker` mention below as the future shape.
 
 `SharedWorker` semantics give two further wins:
 
@@ -149,9 +151,10 @@ The protocol iframe at `host.dot.li` has neither problem: it's a stable origin a
 
 ```
                  BEFORE                            AFTER
-              (15+ handlers,                  (5 callbacks the
-               JS owns the logic)              core literally
-                                                cannot make)
+              (15+ handlers,                  (6 host-facing
+               JS owns the logic)              capability traits
+                                                the core can't
+                                                make itself)
 
   ┌──────────────────────────┐         ┌──────────────────────────┐
   │ accountGet               │ ──────► │ accountGet      (D1*)    │
@@ -166,12 +169,11 @@ The protocol iframe at `host.dot.li` has neither problem: it's a stable origin a
   │ statementStoreCreateProof│ ──────► │ statementStore… (D2*)    │
   │ preimageLookupSubscribe  │ ──────► │ preimageLookup… (D2*)    │
   │                          │         ├──────────────────────────┤
-  │ devicePermission ────────┼───┐     │ promptPermission         │ ◄ A3
-  │ remotePermission ────────┼───┘     │                          │
-  │ navigateTo (parsing) ────┼─────►   │ openUrl (already parsed) │ ◄ A2
-  │ featureSupported         │ ──────► │ featureSupported (A5)    │
-  │ localStorage*            │ ──────► │ localStorageRead/Write/  │
-  │                          │         │ Clear                    │
+  │ devicePermission ────────┼─────►   │ devicePermission         │
+  │ remotePermission ────────┼─────►   │ remotePermission         │
+  │ navigateTo (parsing) ────┼─────►   │ navigateTo (parsed core) │
+  │ featureSupported         │ ──────► │ featureSupported         │
+  │ localStorage*            │ ──────► │ Storage read/write/clear │
   │ pushNotification         │ ──────► │ pushNotification         │
   │ chainConnection          │ ──────► │ chainConnect    (E1*)    │
   │ themeSubscribe (#366)    │ ──X     │ (out of scope)           │
@@ -179,16 +181,19 @@ The protocol iframe at `host.dot.li` has neither problem: it's a stable origin a
 
    * (D1/D2/E1) = host-papp, libp2p, layer-2 retirement issues already
                   documented in tracking issues, NOT this PR.
-   ◄ A2/A3/A5  = already done in core (Phase A).
+   The AFTER column names match the `truapi-platform` traits as shipped:
+   `Permissions` keeps the two-call device/remote split per v0.1,
+   `Navigation` receives URLs already parsed by the core, `Features`,
+   `Storage`, `Notifications`, and `ChainProvider` cover the rest.
 ```
 
 ---
 
-## 4. Adopting HostCallbacks per the vision doc
+## 4. Mapping host callbacks to `truapi-platform` traits
 
-Every row in the middle block of diagram §3 is one piece of "logic that used to live in JS, now lives in Rust." The vision doc classifies each by the **capability trait** the host implements; everything else gets pulled out of the host into the core.
+Every row in the middle block of diagram §3 is one piece of "logic that used to live in JS, now lives in Rust." Each maps to one of the **capability traits** the host implements in `truapi-platform` (`Storage`, `Navigation`, `Notifications`, `Permissions`, `Features`, `ChainProvider`); everything else gets pulled out of the host into the core. Where a section below describes a single consolidated prompt or a different trait vocabulary, it is calling out a **proposed future shape**, not the shipped surface; the shipped names are the six above.
 
-### 4.1 `devicePermission` + `remotePermission` → `promptPermission` (Phase A3)
+### 4.1 `devicePermission` + `remotePermission` (shipped split; consolidation proposed)
 
 **Before, host did the policy work.** Two separate callbacks:
 
@@ -202,21 +207,23 @@ Every row in the middle block of diagram §3 is one piece of "logic that used to
   3. Showed a different modal flow (the now-deleted `showRemotePermissionModal`).
   4. Rate-limited.
 
-That is policy: classification, mapping, caching, rate limiting. By the vision doc's test ("why can't the Rust core do this directly?"), none of it is a syscall.
+That is policy: classification, mapping, caching, rate limiting. By the test "why can't the Rust core do this directly?", none of it is a syscall.
 
-**After, host owns one trait: "ask the user yes or no."** A single `promptPermission(HostPermission) -> bool`. The Rust `host_logic::permissions` service in core:
+**Shipped today: the `Permissions` trait keeps the two-call split.** Per v0.1, `truapi-platform::Permissions` has `device_permission(HostDevicePermissionRequest)` and `remote_permission(RemotePermissionRequest)`, mirrored by the dotli adapter and the iOS/Android bridges. The host renders one modal flow per call and returns the response.
 
-- Knows the canonical wire tags and their human labels.
-- Checks the cached decision (via `storageRead`) before calling back.
-- Decides whether the permission is enforceable; auto-grants the unenforceable ones without bothering the host.
-- Rate-limits.
-- Only when *the user must actually be asked*, dispatches `promptPermission` and waits for the boolean.
+**Proposed future shape: collapse both into one prompt.** A single host trait of the form `prompt_permission(HostPermission) -> bool` would let the Rust permissions service in core:
 
-In dotli, this is `host-callbacks/PromptPermission.ts`. Its sole job: render the modal, return `true` on grant, `false` on deny. Same trait will be implemented by Swift on iOS and Kotlin on Android, each rendering its native consent sheet. None of them re-implements the cache, the rate limiter, or the wire-tag mapping.
+- Know the canonical wire tags and their human labels.
+- Check the cached decision (via `Storage::read`) before calling back.
+- Decide whether the permission is enforceable; auto-grant the unenforceable ones without bothering the host.
+- Rate-limit.
+- Only when *the user must actually be asked*, dispatch the prompt and wait for the boolean.
 
-The dotli adapter still references `getPermissionStatus` / `setPermissionStatus` against a local `permissions.ts` store, that is a transitional wart. The cache should fully migrate to the core's `storageRead`/`storageWrite`. Phase A3 introduces the contract; the storage-key migration is still in flight and will let `permissions.ts` disappear from the dotli tree entirely.
+In dotli that consolidated callback would be a single `host-callbacks/PromptPermission.ts` whose sole job is to render the modal and return `true` on grant, `false` on deny, with the same trait implemented by Swift on iOS and Kotlin on Android. None of them would re-implement the cache, the rate limiter, or the wire-tag mapping. This consolidation is not yet in core; it is the direction this section argues for.
 
-### 4.2 `navigateTo (parsing)` → `openUrl (already parsed)` (Phase A2)
+The dotli adapter references `getPermissionStatus` / `setPermissionStatus` against a local `permissions.ts` store. Once the grant cache moves into the core's `Storage`, `permissions.ts` can disappear from the dotli tree entirely.
+
+### 4.2 `navigateTo (parsing)` → `Navigation::navigate_to (already parsed)`
 
 **Before, host was a URL parser.** `navigateTo(url)` handed a raw string to the host. JS had to:
 
@@ -226,30 +233,33 @@ The dotli adapter still references `getPermissionStatus` / `setPermissionStatus`
 
 That is a parser plus a deep-link dispatcher. Three platforms, three parsers, three places to drift.
 
-**After, host owns one trait: "hand this URL to the OS browser."** Two distinct surfaces emerge in the core (`host_logic::dotns`):
+**After, host owns one trait: "hand this URL to the OS browser."** Two distinct surfaces split in the core:
 
 - Internal routing (deep links to other `.dot` apps) is handled entirely inside the core. It dispatches itself, no host roundtrip.
-- External navigation surfaces as `openUrl(url)`, and `url` is *already validated* by the core. The host treats it as opaque.
+- External navigation surfaces as `Navigation::navigate_to(url)`, and `url` is *already validated* by the core. The host treats it as opaque.
 
-In dotli, this is `host-callbacks/OpenUrl.ts`, which is essentially `window.open(url, "_blank")`. This maps to the vision doc's `NavigationProvider::open_url`. The vision doc also lists `handle_deep_link` on the same trait, but in dotli's split the core does not need to call back for deep links: it already knows the dApp graph and dispatches directly.
+In dotli, this is the host's `Navigation` impl, which is essentially `window.open(url, "_blank")`. The shipped `truapi-platform::Navigation` trait has the single `navigate_to` method; there is no separate deep-link callback because the core already knows the dApp graph and dispatches deep links directly.
 
 ### 4.3 `featureSupported` (kept; planned for removal)
 
 `featureSupported(genesisHash)` lets the core ask "does this host know about this chain?" before letting a product call it. The host answers yes/no from its supported-chain catalog.
 
-The plan, tracked separately, is to drop this callback. The Rust core will bundle the chain catalog itself, so there is no question for the host to answer. That fits the vision doc's "why can't the Rust core do this directly?" test, the answer for `featureSupported` is "it can," so the callback should not exist.
+The plan, tracked separately, is to drop this callback. The Rust core will bundle the chain catalog itself, so there is no question for the host to answer. That fits the "why can't the Rust core do this directly?" test, the answer for `featureSupported` is "it can," so the callback should not exist.
 
-### 4.4 `localStorage*` → `localStorageRead` / `localStorageWrite` / `localStorageClear`
+### 4.4 `localStorage*` → `Storage::read` / `Storage::write` / `Storage::clear`
 
 **Before, implicit, scattered.** The novasamatech protocol had several scoped storage callbacks (one per dApp namespace), and the JS host computed prefixes (`dotli:<label>:<key>`), guarded against quota errors, and decided what counted as "scoped" vs. "global" state. The core did not own a storage abstraction; it asked the host for what it needed and trusted the host's scoping.
 
-**After, three flat ops, no scoping in the host.** The vision doc's `StorageProvider`:
+**After, three flat ops, no scoping in the host.** The shipped `truapi-platform::Storage` trait:
 
 ```rust
-pub trait StorageProvider {
-    fn read(&self, key: &str) -> Result<Option<Vec<u8>>, StorageError>;
-    fn write(&self, key: &str, value: &[u8]) -> Result<(), StorageError>;
-    fn clear(&self, key: &str) -> Result<(), StorageError>;
+pub trait Storage: Send + Sync {
+    fn read(&self, key: String)
+        -> impl Future<Output = Result<Option<Vec<u8>>, HostLocalStorageReadError>> + Send;
+    fn write(&self, key: String, value: Vec<u8>)
+        -> impl Future<Output = Result<(), HostLocalStorageReadError>> + Send;
+    fn clear(&self, key: String)
+        -> impl Future<Output = Result<(), HostLocalStorageReadError>> + Send;
 }
 ```
 
@@ -261,24 +271,25 @@ Three methods. The core:
 
 The host, `host-callbacks/LocalStorage.ts` in dotli, just plumbs to `window.localStorage.getItem` / `setItem` / `removeItem`. On iOS that is `NSUserDefaults`. On Android `SharedPreferences`. None of those hosts cares what the keys mean; they just store bytes against strings.
 
-This is also what makes the permission-cache cleanup in §4.1 tractable: once permissions migrate fully to `storageRead/Write`, the dotli adapter loses `permissions.ts` entirely and the core owns the grant cache the way it owns every other piece of state.
+This is also what makes the permission-cache cleanup in §4.1 tractable: once permissions migrate fully to `Storage::read`/`Storage::write`, the dotli adapter loses `permissions.ts` entirely and the core owns the grant cache the way it owns every other piece of state.
 
 ---
 
-## 5. Mapping dotli `host-callbacks/` to vision-doc traits
+## 5. Mapping dotli `host-callbacks/` to `truapi-platform` traits
 
-Each `host-callbacks/*.ts` file in dotli is a one-trait implementation:
+Each `host-callbacks/*.ts` file in dotli implements one capability trait:
 
-| dotli file              | vision-doc trait        | core owns                           | host owns              |
+| dotli file              | `truapi-platform` trait | core owns                           | host owns              |
 |-------------------------|-------------------------|-------------------------------------|------------------------|
-| `LocalStorage.ts`       | `StorageProvider`       | namespacing, schema, invalidation   | `window.localStorage`  |
-| `OpenUrl.ts`            | `NavigationProvider`    | URL parsing, deep-link dispatch     | `window.open`          |
-| `PushNotification.ts`   | `NotificationProvider`  | rate limiting, dedupe, payload fmt  | `Notification` API     |
-| `PromptPermission.ts`   | `ConsentProvider`       | classification, cache, mapping      | the consent modal      |
+| `LocalStorage.ts`       | `Storage`               | namespacing, schema, invalidation   | `window.localStorage`  |
+| `OpenUrl.ts`            | `Navigation`            | URL parsing, deep-link dispatch     | `window.open`          |
+| `PushNotification.ts`   | `Notifications`         | rate limiting, dedupe, payload fmt  | `Notification` API     |
+| `PromptPermission.ts`   | `Permissions`           | classification, cache, mapping      | the consent modal(s)   |
+| `Chain.ts`              | `ChainProvider`         | chainHead state machine, RPC fan-in | smoldot / RPC socket   |
 
-The "before" column for each row was a handler in `container.ts` that mixed all three concerns, protocol logic, policy, *and* the OS call, in JS. The refactor's whole purpose is to leave only the third column on the host side, and that is what makes iOS/Android able to share the rest with web.
+`Permissions` is shipped as the two-call device/remote split (§4.1); `Features` (`featureSupported`) is the sixth host-facing trait and is planned for removal (§4.3). The "before" column for each row was a handler in `container.ts` that mixed all three concerns, protocol logic, policy, *and* the OS call, in JS. The refactor's whole purpose is to leave only the third column on the host side, and that is what makes iOS/Android able to share the rest with web.
 
-The remaining dotli callbacks (`Account.ts`, `Signing.ts`, `Chain.ts`, `StatementStore.ts`, `Preimage.ts`) are the ones marked `(D1*)`, `(D2*)`, `(E1*)` in diagram §3. They do not fit the vision-doc model yet because they currently rely on JS-only libraries (`host-papp` for accounts/signing, smoldot, Helia). Each retirement issue describes how the underlying capability moves into Rust so the dotli callback can be dropped, leaving only the four vision-doc syscall traits above.
+The remaining dotli callbacks (`Account.ts`, `Signing.ts`, `StatementStore.ts`, `Preimage.ts`) are the ones marked `(D1*)`, `(D2*)` in diagram §3. They are not part of the `truapi-platform` trait set: account, signing, statement-store and preimage flows live in the Rust core itself, and these callbacks currently rely on JS-only libraries (`host-papp` for accounts/signing, sub-store, Helia). Each retirement issue describes how the underlying capability moves into Rust so the dotli callback can be dropped, leaving only the host-facing capability traits above.
 
 ---
 

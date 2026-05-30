@@ -12,9 +12,11 @@ function makeFakePort() {
   const messageListeners = new Set();
   const closeListeners = new Set();
   const sent = [];
+  const offCalls = [];
   let closed = false;
   return {
     sent,
+    offCalls,
     isClosed: () => closed,
     deliverMessage(data) {
       for (const listener of [...messageListeners]) listener({ data });
@@ -32,6 +34,7 @@ function makeFakePort() {
         return this;
       },
       off(event, handler) {
+        offCalls.push(event);
         if (event === "message") messageListeners.delete(handler);
         else if (event === "close") closeListeners.delete(handler);
         return this;
@@ -85,6 +88,49 @@ test("createElectronProvider notifies close subscribers when the port closes", (
   fake.deliverClose();
   assert.equal(closes.length, 1);
   assert.ok(closes[0] instanceof Error);
+
+  provider.dispose();
+});
+
+test("dispose removes both port listeners and blocks further traffic", () => {
+  const fake = makeFakePort();
+  const provider = createElectronProvider({ port: fake.api });
+
+  const received = [];
+  provider.subscribe((message) => received.push(message));
+
+  provider.dispose();
+  assert.deepEqual(
+    [...fake.offCalls].sort(),
+    ["close", "message"],
+    "dispose detaches both the message and close handlers",
+  );
+
+  // postMessage after dispose is a no-op.
+  provider.postMessage(new Uint8Array([1, 2]));
+  assert.equal(fake.sent.length, 0, "no frames sent after dispose");
+
+  // Inbound frames after dispose never reach subscribers.
+  fake.deliverMessage(new Uint8Array([3, 4]));
+  assert.equal(received.length, 0, "no frames delivered after dispose");
+});
+
+test("a peer-initiated close detaches port listeners and blocks postMessage", () => {
+  const fake = makeFakePort();
+  const provider = createElectronProvider({ port: fake.api });
+
+  provider.subscribeClose(() => {});
+  fake.deliverClose();
+
+  assert.deepEqual(
+    [...fake.offCalls].sort(),
+    ["close", "message"],
+    "peer close detaches both handlers",
+  );
+
+  // postMessage after a peer-initiated close is a no-op.
+  provider.postMessage(new Uint8Array([5]));
+  assert.equal(fake.sent.length, 0, "no frames sent after a peer close");
 
   provider.dispose();
 });

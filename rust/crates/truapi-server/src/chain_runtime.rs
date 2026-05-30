@@ -23,6 +23,7 @@ use std::task::{Context, Poll};
 
 use futures::FutureExt;
 use futures::channel::{mpsc, oneshot};
+use futures::future::{BoxFuture, Shared};
 use futures::stream::BoxStream;
 use futures::{Stream, StreamExt};
 use serde_json::{Map, Value, json};
@@ -42,6 +43,18 @@ use truapi_platform::JsonRpcConnection;
 use crate::subscription::Spawner;
 
 const FOLLOW_METHOD: &str = "remote_chain_head_follow";
+
+/// Cap on the number of distinct remote subscription ids buffered in
+/// `pending_follow_events`, and on the events held per id, so a misbehaving
+/// node (or late events for a retired remote id) cannot grow memory without
+/// bound while a follow id is being established.
+const MAX_PENDING_FOLLOW_EVENT_IDS: usize = 64;
+const MAX_PENDING_FOLLOW_EVENTS_PER_ID: usize = 256;
+
+/// Shared, single-flight `chainHead_v1_follow` setup keyed by local follow id.
+/// Concurrent callers for the same id await one in-flight request rather than
+/// each opening (and leaking) a separate remote subscription.
+type FollowSetup = Shared<BoxFuture<'static, Result<String, RuntimeFailure>>>;
 
 /// Classification of framework-level chain failures separate from JSON-RPC
 /// domain errors. Maps cleanly to [`truapi::CallError`] variants at the
@@ -527,7 +540,7 @@ impl ChainRuntime {
                     RuntimeFailure::host_failure(method, failure.reason())
                 }
             })?;
-        let connection = ChainConnection::new(genesis_hash.to_owned(), rpc, self.spawner.clone());
+        let connection = ChainConnection::new(rpc, self.spawner.clone());
         self.connections
             .lock()
             .unwrap()
@@ -544,45 +557,13 @@ impl ChainRuntime {
         let connection = self
             .connection_for(FOLLOW_METHOD, &request.genesis_hash)
             .await?;
-        if connection.follow_exists(&local_follow_id) {
-            if let Some(sender) = sender {
-                connection.attach_sender(&local_follow_id, sender);
-            }
-            return Ok(());
-        }
-
-        connection.insert_follow(
-            local_follow_id.clone(),
-            FollowState {
-                with_runtime: request.with_runtime,
-                remote_follow_id: None,
-                sender,
-            },
-        );
-
-        let remote_follow_id = match connection
-            .request_value(
-                FOLLOW_METHOD,
-                "chainHead_v1_follow",
-                json!([request.with_runtime]),
-            )
-            .await
-        {
-            Ok(Value::String(value)) => value,
-            Ok(_) => {
-                connection.remove_follow(&local_follow_id);
-                return Err(RuntimeFailure::host_failure(
-                    FOLLOW_METHOD,
-                    "unexpected chainHead_v1_follow result",
-                ));
-            }
-            Err(failure) => {
-                connection.remove_follow(&local_follow_id);
-                return Err(failure);
-            }
-        };
-
-        connection.set_remote_follow_id(&local_follow_id, remote_follow_id);
+        // Record this subscriber's sender before kicking off (or joining) the
+        // single-flight setup so events route to it regardless of which caller
+        // wins the setup.
+        connection.register_follow_intent(&local_follow_id, request.with_runtime, sender);
+        connection
+            .ensure_remote_follow(local_follow_id, request.with_runtime)
+            .await?;
         Ok(())
     }
 
@@ -593,31 +574,16 @@ impl ChainRuntime {
         local_follow_id: String,
         with_runtime: bool,
     ) -> Result<String, RuntimeFailure> {
-        if let Some(remote_follow_id) = connection.remote_follow_id(&local_follow_id) {
-            if with_runtime && !connection.follow_with_runtime(&local_follow_id) {
-                return Err(RuntimeFailure::host_failure(
-                    method,
-                    "follow subscription was created without runtime metadata",
-                ));
-            }
-            return Ok(remote_follow_id);
+        let remote_follow_id = connection
+            .ensure_remote_follow(local_follow_id.clone(), with_runtime)
+            .await?;
+        if with_runtime && !connection.follow_with_runtime(&local_follow_id) {
+            return Err(RuntimeFailure::host_failure(
+                method,
+                "follow subscription was created without runtime metadata",
+            ));
         }
-
-        self.start_follow(
-            local_follow_id.clone(),
-            RemoteChainHeadFollowRequest {
-                genesis_hash: connection.genesis_hash.clone(),
-                with_runtime,
-            },
-            None,
-        )
-        .await?;
-
-        connection
-            .remote_follow_id(&local_follow_id)
-            .ok_or_else(|| {
-                RuntimeFailure::host_failure(method, "follow subscription did not produce an id")
-            })
+        Ok(remote_follow_id)
     }
 
     fn cleanup_follow(&self, genesis_hash: &[u8], local_follow_id: &str) {
@@ -638,26 +604,26 @@ enum FollowSignal {
 }
 
 struct ChainConnection {
-    genesis_hash: Vec<u8>,
     rpc: Arc<dyn JsonRpcConnection>,
     request_ids: AtomicU64,
     closed: AtomicBool,
     follows: Mutex<HashMap<String, FollowState>>,
     follows_by_remote: Mutex<HashMap<String, String>>,
     pending_follow_events: Mutex<HashMap<String, Vec<RemoteChainHeadFollowItem>>>,
+    follow_setups: Mutex<HashMap<String, FollowSetup>>,
     requests: Mutex<HashMap<String, PendingRequest>>,
 }
 
 impl ChainConnection {
-    fn new(genesis_hash: Vec<u8>, rpc: Arc<dyn JsonRpcConnection>, spawner: Spawner) -> Arc<Self> {
+    fn new(rpc: Arc<dyn JsonRpcConnection>, spawner: Spawner) -> Arc<Self> {
         let connection = Arc::new(Self {
-            genesis_hash,
             rpc,
             request_ids: AtomicU64::new(1),
             closed: AtomicBool::new(false),
             follows: Mutex::new(HashMap::new()),
             follows_by_remote: Mutex::new(HashMap::new()),
             pending_follow_events: Mutex::new(HashMap::new()),
+            follow_setups: Mutex::new(HashMap::new()),
             requests: Mutex::new(HashMap::new()),
         });
         connection.clone().spawn_response_loop(spawner);
@@ -689,19 +655,21 @@ impl ChainConnection {
         rpc_method: &'static str,
         params: Value,
     ) -> Result<Value, RuntimeFailure> {
-        if self.is_closed() {
-            return Err(RuntimeFailure::unavailable(method));
-        }
-
         let request_id = format!(
             "truapi:{}",
             self.request_ids.fetch_add(1, Ordering::Relaxed)
         );
         let (tx, rx) = oneshot::channel();
-        self.requests
-            .lock()
-            .unwrap()
-            .insert(request_id.clone(), PendingRequest { method, tx });
+        {
+            // Check `closed` and insert under the same lock `close_with_failure`
+            // takes, so the connection cannot drain the request map between the
+            // check and the insert and leave this request to hang forever.
+            let mut requests = self.requests.lock().unwrap();
+            if self.is_closed() {
+                return Err(RuntimeFailure::unavailable(method));
+            }
+            requests.insert(request_id.clone(), PendingRequest { method, tx });
+        }
         self.rpc.send(
             json!({
                 "jsonrpc": "2.0",
@@ -716,10 +684,6 @@ impl ChainConnection {
             Ok(result) => result,
             Err(_) => Err(RuntimeFailure::unavailable(method)),
         }
-    }
-
-    fn follow_exists(&self, local_follow_id: &str) -> bool {
-        self.follows.lock().unwrap().contains_key(local_follow_id)
     }
 
     fn follow_with_runtime(&self, local_follow_id: &str) -> bool {
@@ -739,23 +703,138 @@ impl ChainConnection {
             .and_then(|follow| follow.remote_follow_id.clone())
     }
 
-    fn insert_follow(&self, local_follow_id: String, follow: FollowState) {
-        self.follows.lock().unwrap().insert(local_follow_id, follow);
-    }
-
-    fn attach_sender(&self, local_follow_id: &str, sender: mpsc::UnboundedSender<FollowSignal>) {
-        if let Some(follow) = self.follows.lock().unwrap().get_mut(local_follow_id) {
-            follow.sender = Some(sender);
+    /// Record intent to follow `local_follow_id`, attaching `sender` for a
+    /// follow subscriber. Idempotent: an existing follow keeps its
+    /// `with_runtime` flag and remote id; only the sender is (re)attached.
+    fn register_follow_intent(
+        &self,
+        local_follow_id: &str,
+        with_runtime: bool,
+        sender: Option<mpsc::UnboundedSender<FollowSignal>>,
+    ) {
+        let mut follows = self.follows.lock().unwrap();
+        match follows.get_mut(local_follow_id) {
+            Some(follow) => {
+                if sender.is_some() {
+                    follow.sender = sender;
+                }
+            }
+            None => {
+                follows.insert(
+                    local_follow_id.to_string(),
+                    FollowState {
+                        with_runtime,
+                        remote_follow_id: None,
+                        sender,
+                    },
+                );
+            }
         }
     }
 
+    /// Issue `chainHead_v1_follow` exactly once per local follow id and return
+    /// the remote subscription id. Concurrent callers for the same id share
+    /// one in-flight setup instead of each opening a duplicate remote
+    /// subscription that would then leak.
+    async fn ensure_remote_follow(
+        self: &Arc<Self>,
+        local_follow_id: String,
+        with_runtime: bool,
+    ) -> Result<String, RuntimeFailure> {
+        if let Some(remote_follow_id) = self.remote_follow_id(&local_follow_id) {
+            return Ok(remote_follow_id);
+        }
+
+        let setup = {
+            let mut setups = self.follow_setups.lock().unwrap();
+            if let Some(existing) = setups.get(&local_follow_id) {
+                existing.clone()
+            } else {
+                let connection = self.clone();
+                let id = local_follow_id.clone();
+                let setup: FollowSetup =
+                    async move { connection.run_follow_setup(id, with_runtime).await }
+                        .boxed()
+                        .shared();
+                setups.insert(local_follow_id.clone(), setup.clone());
+                setup
+            }
+        };
+
+        let result = setup.await;
+        // On failure, drop the cached setup so a later re-subscribe can retry.
+        // On success the established follow short-circuits the fast path above,
+        // and `remove_follow` clears the entry at teardown.
+        if result.is_err() {
+            self.follow_setups.lock().unwrap().remove(&local_follow_id);
+        }
+        result
+    }
+
+    /// Body of the single-flight follow setup: ensure the `FollowState`
+    /// exists, issue `chainHead_v1_follow`, and record the remote id.
+    async fn run_follow_setup(
+        self: Arc<Self>,
+        local_follow_id: String,
+        with_runtime: bool,
+    ) -> Result<String, RuntimeFailure> {
+        self.follows
+            .lock()
+            .unwrap()
+            .entry(local_follow_id.clone())
+            .or_insert_with(|| FollowState {
+                with_runtime,
+                remote_follow_id: None,
+                sender: None,
+            });
+
+        let remote_follow_id = match self
+            .request_value(FOLLOW_METHOD, "chainHead_v1_follow", json!([with_runtime]))
+            .await
+        {
+            Ok(Value::String(value)) => value,
+            Ok(_) => {
+                self.remove_follow(&local_follow_id);
+                return Err(RuntimeFailure::host_failure(
+                    FOLLOW_METHOD,
+                    "unexpected chainHead_v1_follow result",
+                ));
+            }
+            Err(failure) => {
+                self.remove_follow(&local_follow_id);
+                return Err(failure);
+            }
+        };
+
+        self.set_remote_follow_id(&local_follow_id, remote_follow_id.clone());
+        Ok(remote_follow_id)
+    }
+
     fn set_remote_follow_id(&self, local_follow_id: &str, remote_follow_id: String) {
-        if let Some(follow) = self.follows.lock().unwrap().get_mut(local_follow_id) {
-            follow.remote_follow_id = Some(remote_follow_id.clone());
-            self.follows_by_remote
+        let attached = {
+            let mut follows = self.follows.lock().unwrap();
+            if let Some(follow) = follows.get_mut(local_follow_id) {
+                follow.remote_follow_id = Some(remote_follow_id.clone());
+                self.follows_by_remote
+                    .lock()
+                    .unwrap()
+                    .insert(remote_follow_id.clone(), local_follow_id.to_string());
+                true
+            } else {
+                false
+            }
+        };
+        if !attached {
+            // The local follow was torn down (stream dropped, connection
+            // closed) while `chainHead_v1_follow` was in flight. Release the
+            // now-orphaned remote subscription rather than leaking it on the
+            // node, and drop any events buffered for it.
+            self.send_unfollow(&remote_follow_id);
+            self.pending_follow_events
                 .lock()
                 .unwrap()
-                .insert(remote_follow_id.clone(), local_follow_id.to_string());
+                .remove(&remote_follow_id);
+            return;
         }
         let buffered = self
             .pending_follow_events
@@ -769,6 +848,7 @@ impl ChainConnection {
     }
 
     fn remove_follow(&self, local_follow_id: &str) {
+        self.follow_setups.lock().unwrap().remove(local_follow_id);
         if let Some(follow) = self.follows.lock().unwrap().remove(local_follow_id)
             && let Some(remote_follow_id) = follow.remote_follow_id
         {
@@ -785,6 +865,12 @@ impl ChainConnection {
         let Some(remote_follow_id) = remote_follow_id else {
             return;
         };
+        self.send_unfollow(&remote_follow_id);
+    }
+
+    /// Send a `chainHead_v1_unfollow` for `remote_follow_id`. Best-effort: a
+    /// closed connection simply drops the request.
+    fn send_unfollow(&self, remote_follow_id: &str) {
         self.rpc.send(
             json!({
                 "jsonrpc": "2.0",
@@ -867,12 +953,19 @@ impl ChainConnection {
         match local_follow_id {
             Some(local_follow_id) => self.deliver_follow_event(&local_follow_id, event),
             None => {
-                self.pending_follow_events
-                    .lock()
-                    .unwrap()
-                    .entry(remote_follow_id.to_string())
-                    .or_default()
-                    .push(event);
+                let mut pending = self.pending_follow_events.lock().unwrap();
+                // Bound the buffer in both dimensions so a misbehaving node, or
+                // late events for a retired remote id, cannot grow memory
+                // without limit while a follow id is being established.
+                let known = pending.contains_key(remote_follow_id);
+                if !known && pending.len() >= MAX_PENDING_FOLLOW_EVENT_IDS {
+                    return Ok(());
+                }
+                let buffer = pending.entry(remote_follow_id.to_string()).or_default();
+                if buffer.len() >= MAX_PENDING_FOLLOW_EVENTS_PER_ID {
+                    return Ok(());
+                }
+                buffer.push(event);
             }
         }
         Ok(())
@@ -895,9 +988,15 @@ impl ChainConnection {
     }
 
     fn close_with_failure(&self, failure: RuntimeFailure) {
-        self.closed.store(true, Ordering::Relaxed);
-
-        let requests = std::mem::take(&mut *self.requests.lock().unwrap());
+        // Flip `closed` while holding the requests lock so it is mutually
+        // exclusive with `request_value`'s check-and-insert: a request is
+        // either seen here and failed, or sees `closed` and bails, but never
+        // slips through to hang.
+        let requests = {
+            let mut requests = self.requests.lock().unwrap();
+            self.closed.store(true, Ordering::Relaxed);
+            std::mem::take(&mut *requests)
+        };
         for (_, request) in requests {
             let mapped = match failure.kind() {
                 RuntimeFailureKind::Unavailable => RuntimeFailure::unavailable(request.method),
@@ -911,6 +1010,7 @@ impl ChainConnection {
         let follows = std::mem::take(&mut *self.follows.lock().unwrap());
         self.follows_by_remote.lock().unwrap().clear();
         self.pending_follow_events.lock().unwrap().clear();
+        self.follow_setups.lock().unwrap().clear();
         for (_, follow) in follows {
             if let Some(sender) = follow.sender {
                 let _ = sender.unbounded_send(FollowSignal::Interrupt);

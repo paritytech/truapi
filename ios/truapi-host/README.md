@@ -38,6 +38,13 @@ Both return a `Bool` granted flag. SCALE decoding for the UI prompt is done by t
 
 ## Example
 
+> **Threading:** when the WS bridge is running, the Rust core invokes every
+> `HostBridge` callback on the dedicated `truapi-ws-bridge` worker thread, never
+> the main thread. Hop to the main thread (`DispatchQueue.main` / `MainActor`)
+> before touching UIKit, WebKit, or the `WKWebView`. Permission callbacks return
+> synchronously, so use `DispatchQueue.main.sync` (or a semaphore) to present
+> the prompt on the main thread and block the worker until the user decides.
+
 ```swift
 import Foundation
 import WebKit
@@ -59,10 +66,25 @@ final class MyBridge: HostBridge, @unchecked Sendable {
         // transport via `core.receiveFromProduct(_:)`.
     }
 
-    func navigateTo(url: String) throws { /* open in browser */ }
-    func pushNotification(payload: Data) throws { /* show notification */ }
-    func devicePermission(request: Data) throws -> Bool { false }
-    func remotePermission(request: Data) throws -> Bool { false }
+    // Callbacks arrive on the `truapi-ws-bridge` worker thread, never the main
+    // thread. Hop to the main thread before touching UIKit/WebKit.
+    func navigateTo(url: String) throws {
+        DispatchQueue.main.async { /* UIApplication.shared.open(...) */ }
+    }
+
+    func pushNotification(payload: Data) throws {
+        DispatchQueue.main.async { /* schedule notification */ }
+    }
+
+    func devicePermission(request: Data) throws -> Bool {
+        // Present synchronously on the main thread and return the decision.
+        DispatchQueue.main.sync { /* show prompt; */ false }
+    }
+
+    func remotePermission(request: Data) throws -> Bool {
+        DispatchQueue.main.sync { /* show prompt; */ false }
+    }
+
     func featureSupported(request: Data) throws -> Bool { false }
 }
 

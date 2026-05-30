@@ -14,7 +14,7 @@ Browser TrUAPI host wrapper:
 ```ts
 import { createMessagePortProvider, createTransport } from "@parity/truapi";
 import { createHostServer } from "@parity/truapi-host";
-import HostWorker from "@parity/truapi-host-shared/dist/worker-runtime.js?worker";
+import HostWorker from "@parity/truapi-host-shared/worker-runtime?worker";
 import { createIframeHost, createWebWorkerProvider } from "@parity/truapi-host-web";
 
 // 1. WASM core inside a Worker, exposed as a Provider.

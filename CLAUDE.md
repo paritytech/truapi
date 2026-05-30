@@ -32,9 +32,10 @@ scripts/codegen.sh         regenerate the TS client from the Rust crate
 
 ### Crate + binding invariants
 
-- `truapi` is canonical and untouched except for additive `Display` impls. New
+- `truapi` is canonical; runtime crates re-export rather than redefine. New
   syscall traits and host-side runtime types live in `truapi-platform` and
-  `truapi-server`, not in `truapi`.
+  `truapi-server`, not in `truapi`. Any additions to `truapi` itself are limited
+  to additive `Display` impls.
 - All types exposed by `truapi-platform` and `truapi-server` come from
   `truapi::versioned::*` and `truapi::v01::*`. The runtime crates re-export
   rather than redefine.

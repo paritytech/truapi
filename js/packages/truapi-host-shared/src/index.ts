@@ -22,6 +22,7 @@ export type {
 } from "./runtime.js";
 export { createUnavailableCallbacks, createWasmProvider } from "./runtime.js";
 
+export type { CreateNodeWasmProviderOptions } from "./node-runtime.js";
 export { createNodeWasmProvider } from "./node-runtime.js";
 
 export type {

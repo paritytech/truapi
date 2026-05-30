@@ -5,6 +5,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import {
+  encodeWireMessage,
+  decodeWireMessage,
+  VersionedHostFeatureSupportedRequest,
+  HostFeatureSupportedResponse,
+  GenericError,
+  scale as S,
+} from "@parity/truapi";
+import { SYSTEM_FEATURE_SUPPORTED } from "@parity/truapi/wire-table";
+
 import { createNodeWasmProvider } from "../dist/index.js";
 
 function makeCallbacks() {
@@ -55,5 +65,64 @@ test("createNodeWasmProvider dispose is idempotent", async () => {
   const provider = await createNodeWasmProvider(makeCallbacks());
   provider.dispose();
   // Second call must not throw.
+  provider.dispose();
+});
+
+test("createNodeWasmProvider round-trips a featureSupported request through the WASM core", async () => {
+  const callbacks = makeCallbacks();
+  callbacks.featureSupported = async () => true;
+  const provider = await createNodeWasmProvider(callbacks);
+
+  const frames = [];
+  provider.subscribe((bytes) => frames.push(bytes));
+
+  const payload = VersionedHostFeatureSupportedRequest.enc({
+    tag: "V1",
+    value: { tag: "Chain", value: { genesisHash: "0x00" } },
+  });
+  const inbound = encodeWireMessage({
+    requestId: "rt-1",
+    payload: { id: SYSTEM_FEATURE_SUPPORTED.request, value: payload },
+  });
+  assert.ok(inbound.isOk(), "request frame must encode");
+  provider.postMessage(inbound.value);
+
+  // Let the WASM dispatch + host callback + emit cycle settle.
+  await new Promise((r) => setTimeout(r, 50));
+
+  assert.equal(frames.length, 1, "exactly one response frame emitted");
+  const decoded = decodeWireMessage(frames[0]);
+  assert.ok(decoded.isOk(), "response frame must decode");
+  assert.equal(decoded.value.requestId, "rt-1");
+  assert.equal(decoded.value.payload.id, SYSTEM_FEATURE_SUPPORTED.response);
+
+  const responseCodec = S.indexedTaggedUnion({
+    V1: [0, S.Result(HostFeatureSupportedResponse, GenericError)],
+  });
+  const response = responseCodec.dec(decoded.value.payload.value);
+  assert.deepEqual(response, {
+    tag: "V1",
+    value: { success: true, value: { supported: true } },
+  });
+
+  provider.dispose();
+});
+
+test("createNodeWasmProvider surfaces a rejected receiveFromProduct through subscribeClose", async () => {
+  const provider = await createNodeWasmProvider(makeCallbacks());
+
+  const closes = [];
+  provider.subscribeClose((error) => closes.push(error));
+  const frames = [];
+  provider.subscribe((bytes) => frames.push(bytes));
+
+  // A garbage buffer the core cannot decode rejects receiveFromProduct.
+  provider.postMessage(new Uint8Array([0xff, 0xff, 0xff, 0xff, 0xff]));
+  await new Promise((r) => setTimeout(r, 50));
+
+  assert.equal(closes.length, 1, "close listener fires once on decode failure");
+  assert.ok(closes[0] instanceof Error);
+  assert.equal(frames.length, 0, "no response frame on a rejected frame");
+
   provider.dispose();
 });

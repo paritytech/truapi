@@ -1,10 +1,11 @@
 //! `PlatformRuntimeHost<P>` adapts a [`truapi_platform::Platform`] into the
 //! typed `truapi::api::*` host traits the generated dispatcher routes to.
 //!
-//! Most methods are straight delegations to the platform; the rest are
-//! either stubbed out (as `CallError::Unsupported` for the Chain surface)
-//! or carry host-agnostic logic owned by the core (e.g. `dotns` URL
-//! parsing for `navigate_to`, the permission cache layer).
+//! Most methods are straight delegations to the platform; the rest carry
+//! host-agnostic logic owned by the core (the chainHead-v1 runtime behind
+//! the Chain surface, `dotns` URL parsing for `navigate_to`, and the
+//! permission cache layer). Methods with no platform backing return
+//! `CallError::unavailable()`.
 
 use std::sync::Arc;
 
@@ -90,14 +91,35 @@ impl<P> PlatformRuntimeHost<P> {
     where
         P: Platform + 'static,
     {
-        let chain_provider: Arc<dyn RuntimeChainProvider> =
-            Arc::new(PlatformChainRuntimeProvider {
-                platform: platform.clone(),
-            });
+        let chain_provider = Self::chain_provider(platform.clone());
         Self {
             platform,
             chain: ChainRuntime::new(chain_provider, spawner),
             session_state: SessionState::new(),
+        }
+    }
+
+    /// Chain provider backing the chainHead-v1 runtime. Without the `smoldot`
+    /// feature, chain access routes through the platform's `ChainProvider`.
+    #[cfg(not(feature = "smoldot"))]
+    fn chain_provider(platform: Arc<P>) -> Arc<dyn RuntimeChainProvider>
+    where
+        P: Platform + 'static,
+    {
+        Arc::new(PlatformChainRuntimeProvider { platform })
+    }
+
+    /// With the `smoldot` feature, the embedded light client owns chain
+    /// access, falling back to the platform's `ChainProvider` only if the
+    /// client fails to start.
+    #[cfg(feature = "smoldot")]
+    fn chain_provider(platform: Arc<P>) -> Arc<dyn RuntimeChainProvider>
+    where
+        P: Platform + 'static,
+    {
+        match crate::smoldot_provider::SmoldotChainProvider::with_bundled_specs() {
+            Ok(provider) => Arc::new(provider),
+            Err(_err) => Arc::new(PlatformChainRuntimeProvider { platform }),
         }
     }
 
@@ -129,12 +151,6 @@ where
             .await
             .map(Arc::from)
             .map_err(|_| RuntimeFailure::unavailable("remote_chain_connect"))
-    }
-}
-
-fn unsupported_with_reason<E>(reason: &str) -> CallError<E> {
-    CallError::HostFailure {
-        reason: reason.to_string(),
     }
 }
 
@@ -179,9 +195,14 @@ where
                     v01::HostNavigateToError::Unknown { reason },
                 )));
             }
-            decision => decision
-                .canonical_url()
-                .expect("only Reject yields no canonical URL"),
+            decision => match decision.canonical_url() {
+                Some(url) => url,
+                None => {
+                    return Err(CallError::HostFailure {
+                        reason: "navigate decision produced no canonical URL".to_string(),
+                    });
+                }
+            },
         };
         PlatformNavigation::navigate_to(self.platform.as_ref(), resolved)
             .await
@@ -313,9 +334,7 @@ where
         _cx: &CallContext,
         _request: HostRequestLoginRequest,
     ) -> Result<HostRequestLoginResponse, CallError<HostRequestLoginError>> {
-        Err(unsupported_with_reason(
-            "request_login is not implemented by the platform layer",
-        ))
+        Err(CallError::unavailable())
     }
 }
 
@@ -699,12 +718,12 @@ mod tests {
     }
 
     #[test]
-    fn request_login_returns_unsupported() {
+    fn request_login_returns_unavailable() {
         let host = PlatformRuntimeHost::new(Arc::new(StubPlatform), test_spawner());
         let cx = CallContext::new();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
         let err = futures::executor::block_on(host.request_login(&cx, request)).unwrap_err();
-        assert!(matches!(err, CallError::HostFailure { .. }));
+        assert!(matches!(err, CallError::HostFailure { reason } if reason == "unavailable"));
     }
 
     #[test]

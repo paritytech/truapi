@@ -49,9 +49,19 @@ export function createElectronProvider(
     for (const listener of [...listeners]) listener(data);
   };
 
+  const removePortListeners = (): void => {
+    try {
+      port.off("message", onMessage);
+      port.off("close", onClose);
+    } catch {
+      // already detached
+    }
+  };
+
   const onClose = (): void => {
     if (disposed) return;
     disposed = true;
+    removePortListeners();
     const error = new Error("electron message port closed");
     for (const listener of [...closeListeners]) listener(error);
     listeners.clear();
@@ -82,9 +92,8 @@ export function createElectronProvider(
     dispose() {
       if (disposed) return;
       disposed = true;
+      removePortListeners();
       try {
-        port.off("message", onMessage);
-        port.off("close", onClose);
         port.close();
       } catch {
         // already closed

@@ -87,11 +87,22 @@ pub fn parse_navigate(input: &str) -> NavigateDecision {
     }
 }
 
-/// `.dot` TLD check: NFC-normalized and case-folded so `Example.DOT` and
-/// `example.dot` collapse to the same outcome.
-fn is_dot_domain(host: &str) -> bool {
+/// Canonical host form: case-folded and NFC-normalized (belt-and-suspenders;
+/// `url` already applies IDNA to parsed hosts), with a trailing root dot
+/// dropped so the absolute form `example.dot.` keys identically to
+/// `example.dot`.
+fn normalize_host(host: &str) -> String {
     let normalized: String = host.nfc().collect::<String>().to_lowercase();
-    normalized.ends_with(".dot")
+    normalized
+        .strip_suffix('.')
+        .unwrap_or(&normalized)
+        .to_string()
+}
+
+/// `.dot` TLD check, applied to the [`normalize_host`] form so `Example.DOT`
+/// and the trailing-dot FQDN `example.dot.` classify like `example.dot`.
+fn is_dot_domain(host: &str) -> bool {
+    normalize_host(host).ends_with(".dot")
 }
 
 fn parse_with_explicit_https(input: &str) -> Option<Url> {
@@ -125,7 +136,7 @@ fn classify_dot(input: &str) -> Option<NavigateDecision> {
     }
 
     Some(NavigateDecision::DotName {
-        identifier: hostname.nfc().collect::<String>().to_lowercase(),
+        identifier: normalize_host(hostname),
         path: strip_leading_slash(parsed.path()) + &suffix(&parsed),
     })
 }
@@ -163,15 +174,10 @@ const ALLOWED_EXTERNAL_SCHEMES: &[&str] = &["http", "https", "mailto", "tel", "p
 /// URL through as its canonical string form. Returns `Err(reason)` for an
 /// unparseable input or a scheme outside [`ALLOWED_EXTERNAL_SCHEMES`].
 fn normalize_external(input: &str) -> Result<String, String> {
-    // `parse_with_explicit_https` first tries direct parse, then prepends
-    // `https://`. If the direct parse succeeded but produced a disallowed
-    // scheme, reject early so we never silently rewrite (e.g.) `javascript:`
-    // into `https://javascript:...`.
-    if let Ok(direct) = Url::parse(input)
-        && !ALLOWED_EXTERNAL_SCHEMES.contains(&direct.scheme())
-    {
-        return Err(format!("scheme `{}` is not allowed", direct.scheme()));
-    }
+    // `parse_with_explicit_https` returns a successful direct parse as-is and
+    // only prepends `https://` when the direct parse fails, so a disallowed
+    // scheme (e.g. `javascript:`) is never rewritten to https: the single
+    // scheme check below rejects it.
     let url = parse_with_explicit_https(input)
         .ok_or_else(|| "URL constructor rejected input".to_string())?;
     if !ALLOWED_EXTERNAL_SCHEMES.contains(&url.scheme()) {
@@ -224,6 +230,16 @@ mod tests {
     #[test]
     fn dot_bare() {
         assert_eq!(parse_navigate("mytestapp.dot"), dot("mytestapp.dot", ""));
+    }
+
+    #[test]
+    fn dot_trailing_root_dot_is_a_product() {
+        // The absolute FQDN form classifies and keys like the bare name.
+        assert_eq!(parse_navigate("example.dot."), dot("example.dot", ""));
+        assert_eq!(
+            parse_navigate("https://example.dot./path"),
+            dot("example.dot", "path")
+        );
     }
 
     #[test]

@@ -44,7 +44,7 @@ The mechanism for "products can't bypass the core's API" is the iframe `sandbox`
 
 So the trade is: drop per-CID DNS subdomains, accept opaque origin for products, route all persistence and (where needed) fetch through the core.
 
-This matches the vision-doc model exactly. It's also the only way to keep the architecture meaningful on native (iOS/Android), where DNS subdomains aren't a thing, products there already go through the core for everything.
+This matches the shared-core model in the companion architecture doc. It's also the only way to keep the architecture meaningful on native (iOS/Android), where DNS subdomains aren't a thing, products there already go through the core for everything.
 
 ## Content delivery without `<cid>.app.dot.li`
 
@@ -231,6 +231,8 @@ Two cores. The per-tab Rust core handles product-specific work (account, signing
 
 **Land Option 2: the Rust core lives in a SharedWorker scoped to `host.dot.li`.** The protocol iframe in each tab becomes a thin shim that constructs the SharedWorker once per browser, exposes the small set of platform callbacks the worker can't make from its own context (modal UI prompts routed back via postMessage), and relays MessagePorts from the host shell at `dot.li` to the worker.
 
+> The shipped `@parity/truapi-host-shared` entrypoint (`worker-runtime.ts`) is a plain per-tab dedicated Web Worker (Option 1's worker model). SharedWorker is the recommended target here but is not yet implemented.
+
 Reasons:
 
 1. **Stable origin for persistent state.** `host.dot.li` is the only origin in the topology that doesn't change with every CID update. `truapi-platform::Storage` lives in IndexedDB on that origin so granted permissions, session state, content caches, and chain warm-start data survive product upgrades.
@@ -249,7 +251,7 @@ Options 1 (per-tab worker in protocol iframe), 3 (worker on the user-visible `do
 
 To get from today's topology to Option 2:
 
-1. **Ship `truapi-server` WASM as a SharedWorker entrypoint.** `@parity/truapi-host-shared/dist/worker-runtime.js` is imported by the protocol iframe at `host.dot.li` via `new SharedWorker(...)`. Smoldot is embedded inside the WASM, so dotli's existing `apps/protocol/src/protocol-shared-worker.ts` retires in the same step.
+1. **Ship `truapi-server` WASM as a SharedWorker entrypoint.** Today `@parity/truapi-host-shared/dist/worker-runtime.js` runs as a per-tab dedicated `Worker`; this step promotes the same entrypoint to `new SharedWorker(...)` from the protocol iframe at `host.dot.li`. Smoldot is embedded inside the WASM, so dotli's existing `apps/protocol/src/protocol-shared-worker.ts` retires in the same step.
 
 2. **Migrate auth-storage from localStorage to IndexedDB.** The current `apps/protocol/src/main.ts` shared-auth handler writes `PAPP_${siteId}_${key}` keys to `localStorage`. SharedWorkers have no `localStorage`; persistent state lives in IDB. The protocol-iframe shim runs a one-shot migration: enumerate `localStorage` for `PAPP_*` keys, write them into IDB, then clear localStorage. Cross-tab notifications switch from `BroadcastChannel` to the SharedWorker fan-out.
 

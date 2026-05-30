@@ -9,6 +9,10 @@ on:
       - 'android/**'
       - 'ios/**'
       - 'rust/crates/truapi-server/**'
+      - 'rust/crates/truapi-platform/**'
+      - 'rust/crates/truapi-codegen/**'
+      - 'rust/crates/truapi-macros/**'
+      - 'rust/crates/truapi/**'
   pull_request:
     paths:
       - 'js/packages/truapi-host-shared/**'
@@ -17,6 +21,10 @@ on:
       - 'android/**'
       - 'ios/**'
       - 'rust/crates/truapi-server/**'
+      - 'rust/crates/truapi-platform/**'
+      - 'rust/crates/truapi-codegen/**'
+      - 'rust/crates/truapi-macros/**'
+      - 'rust/crates/truapi/**'
 
 jobs:
   wasm-bundle-check:
@@ -26,16 +34,20 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
       - name: Install wasm-pack
         run: cargo install wasm-pack
-      # Verifies `make wasm` completes against the current truapi-server
-      # source. Does not assert byte-equality against the committed bundle:
-      # wasm-pack output varies with the Rust toolchain and wasm-bindgen
-      # version, so cross-machine reproducibility is not achievable. The
-      # committed artifacts under js/packages/truapi-host-shared/dist/wasm/
-      # serve as a convenience for consumers that don't run Rust; regenerate
-      # locally with `make wasm` before changing truapi-server source.
-      - name: Rebuild WASM (build-only smoke)
+      # Rebuilds the bundle from the current truapi-server source and runs the
+      # host-shared node smoke test against those freshly-built artifacts, so a
+      # stale committed bundle cannot pass green. Byte-equality against the
+      # committed bundle is intentionally not asserted: wasm-pack output varies
+      # with the Rust toolchain and wasm-bindgen version, so cross-machine
+      # reproducibility is not achievable. The committed artifacts under
+      # js/packages/truapi-host-shared/dist/wasm/ serve as a convenience for
+      # consumers that don't run Rust; regenerate locally with `make wasm`
+      # before changing truapi-server source.
+      - name: Rebuild WASM
         run: make wasm
       - name: Sanity-check artifact presence
         run: |
@@ -43,6 +55,12 @@ jobs:
           test -s js/packages/truapi-host-shared/dist/wasm/web/truapi_server.js
           test -s js/packages/truapi-host-shared/dist/wasm/node/truapi_server_bg.wasm
           test -s js/packages/truapi-host-shared/dist/wasm/node/truapi_server.js
+      - name: Build @parity/truapi-host (dep)
+        run: cd js/packages/truapi-host && npm install --no-fund --no-audit && npm run build
+      - name: Build @parity/truapi client (dep)
+        run: cd js/packages/truapi && npm install --no-fund --no-audit && npm run build
+      - name: Test @parity/truapi-host-shared against the rebuilt bundle
+        run: cd js/packages/truapi-host-shared && npm install --no-fund --no-audit && npm test
   host-packages-js-tests:
     runs-on: ubuntu-latest
     steps:
@@ -62,7 +80,8 @@ jobs:
   android-assemble:
     # Smoke-builds the Android library + verifies the Maven publication
     # can be assembled (writes to maven-local). No release happens here;
-    # the actual publish runs from release-android.yml on tagged commits.
+    # distribution is via JitPack, which builds tagged commits per
+    # jitpack.yml and serves the io.parity:truapi-host-android artifact.
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -71,9 +71,13 @@ impl<'a, S: Storage, P: Permissions> PermissionsService<'a, S, P> {
         if let Some(cached) = peek(self.storage, &key).await? {
             return Ok(cached);
         }
+        // Only a genuine user decision is persisted. A prompt-callback error is
+        // transient (UI unavailable, IPC timeout), not a denial, so fail closed
+        // for this call but do not cache it — the next request re-prompts rather
+        // than locking the capability out permanently with no revoke path.
         let granted = match self.prompt.device_permission(permission).await {
             Ok(HostDevicePermissionResponse { granted }) => granted,
-            Err(_) => false,
+            Err(_) => return Ok(Decision::Denied),
         };
         let decision = if granted {
             Decision::Granted
@@ -94,9 +98,11 @@ impl<'a, S: Storage, P: Permissions> PermissionsService<'a, S, P> {
         if let Some(cached) = peek(self.storage, &key).await? {
             return Ok(cached);
         }
+        // See `check_or_prompt_device`: persist only a genuine user decision; a
+        // transient callback error fails closed for this call without caching.
         let granted = match self.prompt.remote_permission(request).await {
             Ok(RemotePermissionResponse { granted }) => granted,
-            Err(_) => false,
+            Err(_) => return Ok(Decision::Denied),
         };
         let decision = if granted {
             Decision::Granted
@@ -125,9 +131,9 @@ pub fn device_storage_key(permission: &HostDevicePermissionRequest) -> String {
 }
 
 /// Canonical storage key for a remote permission. The permission is
-/// canonicalized (domain lists sorted) then SCALE-encoded and hex-encoded so
-/// attacker-controlled domain strings cannot collide with another permission
-/// by injecting separator characters.
+/// canonicalized (domain lists lowercased, sorted, and de-duplicated) then
+/// SCALE-encoded and hex-encoded so attacker-controlled domain strings cannot
+/// collide with another permission by injecting separator characters.
 pub fn remote_storage_key(request: &RemotePermissionRequest) -> String {
     let canonical = canonical_remote_request(request);
     format!(
@@ -139,9 +145,14 @@ pub fn remote_storage_key(request: &RemotePermissionRequest) -> String {
 fn canonical_remote_request(request: &RemotePermissionRequest) -> RemotePermissionRequest {
     let permission = match &request.permission {
         RemotePermission::Remote { domains } => {
-            let mut sorted = domains.clone();
-            sorted.sort();
-            RemotePermission::Remote { domains: sorted }
+            // DNS domains are case-insensitive, so a logically-identical bundle
+            // requested with different casing or duplicate entries must
+            // canonicalize to one key (no spurious re-prompt).
+            let mut canonical: Vec<String> =
+                domains.iter().map(|d| d.to_ascii_lowercase()).collect();
+            canonical.sort();
+            canonical.dedup();
+            RemotePermission::Remote { domains: canonical }
         }
         other => other.clone(),
     };
@@ -268,6 +279,21 @@ mod tests {
             },
         };
         assert_eq!(remote_storage_key(&unsorted), remote_storage_key(&sorted));
+    }
+
+    #[test]
+    fn remote_storage_key_is_case_insensitive_and_dedups_domains() {
+        let mixed = RemotePermissionRequest {
+            permission: RemotePermission::Remote {
+                domains: vec!["Example.COM".into(), "a.com".into(), "a.com".into()],
+            },
+        };
+        let canonical = RemotePermissionRequest {
+            permission: RemotePermission::Remote {
+                domains: vec!["a.com".into(), "example.com".into()],
+            },
+        };
+        assert_eq!(remote_storage_key(&mixed), remote_storage_key(&canonical));
     }
 
     #[test]
@@ -428,9 +454,8 @@ mod tests {
         assert_eq!(after, Some(Decision::Granted));
     }
 
-    /// Prompt callback failure collapses to `Denied` and is persisted.
-    /// Critically, the next `check_or_prompt_device` call must not
-    /// re-prompt; cached denials short-circuit just like cached grants.
+    /// Prompt callback that always errors, to exercise the transient-failure
+    /// path (fail closed for the current call, but do not persist the error).
     struct FailingPrompt;
 
     impl Permissions for FailingPrompt {
@@ -454,7 +479,7 @@ mod tests {
     }
 
     #[test]
-    fn prompt_failure_collapses_to_denial_and_persists() {
+    fn prompt_failure_denies_without_persisting() {
         let storage = MemStorage::default();
         let prompt = FailingPrompt;
         let service = PermissionsService::new(&storage, &prompt);
@@ -465,11 +490,16 @@ mod tests {
         .unwrap();
         assert_eq!(decision, Decision::Denied);
 
-        // The denial is persisted; peek now returns Some(Denied).
+        // A transient callback error is fail-closed for this call but NOT
+        // cached, so peek still sees no decision and the next request
+        // re-prompts rather than permanently locking out the capability.
         let cached =
             futures::executor::block_on(service.peek_device(&HostDevicePermissionRequest::Camera))
                 .unwrap();
-        assert_eq!(cached, Some(Decision::Denied));
+        assert_eq!(
+            cached, None,
+            "a transient prompt error must not be persisted"
+        );
     }
 
     /// A corrupt SCALE-encoded cache entry must be treated as "no cache",

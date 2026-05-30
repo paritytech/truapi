@@ -66,31 +66,62 @@ interface HostStorage {
  * Embedders typically wire the SCALE payloads through the generated
  * `@parity/truapi` client running on the JS side for UI rendering, then
  * report the user's decision as a `Boolean`.
+ *
+ * Threading: when the WS bridge is running, the Rust core invokes every
+ * callback on the dedicated `truapi-ws-bridge` worker thread, never the UI
+ * (main) thread. Any UI work an implementation does (navigation, prompts,
+ * notifications) MUST be marshalled onto the main thread, e.g. with
+ * `Handler(Looper.getMainLooper()).post { ... }` or a `CoroutineScope` bound
+ * to `Dispatchers.Main`. Touching views or the `WebView` directly from a
+ * callback throws `CalledFromWrongThreadException`.
  */
 interface HostBridge {
     /** Lifecycle logger. Marker is a stable slug, detail is free-form. */
     fun onCoreLog(marker: String, detail: String) {}
 
-    /** Forward an outbound SCALE-encoded protocol frame to the product. */
+    /**
+     * Forward an outbound SCALE-encoded protocol frame to the product.
+     * Invoked on the `truapi-ws-bridge` worker thread; marshal to the main
+     * thread before touching the `WebView`.
+     */
     fun onCoreResponse(frame: ByteArray)
 
-    /** Open a URL in the system browser. */
+    /**
+     * Open a URL in the system browser. Invoked on the `truapi-ws-bridge`
+     * worker thread; marshal the UI launch (e.g. `startActivity`) to the main
+     * thread.
+     */
     @Throws(HostNavigateRejection::class)
     fun navigateTo(url: String)
 
-    /** Deliver a push notification (SCALE-encoded `HostPushNotificationRequest`). */
+    /**
+     * Deliver a push notification (SCALE-encoded `HostPushNotificationRequest`).
+     * Invoked on the `truapi-ws-bridge` worker thread; marshal any UI work to
+     * the main thread.
+     */
     @Throws(HostRejection::class)
     fun pushNotification(payload: ByteArray)
 
-    /** Prompt for a device-level permission. Returns whether it was granted. */
+    /**
+     * Prompt for a device-level permission. Returns whether it was granted.
+     * Invoked on the `truapi-ws-bridge` worker thread; present the prompt on
+     * the main thread and block this thread until the user decides.
+     */
     @Throws(HostRejection::class)
     fun devicePermission(request: ByteArray): Boolean
 
-    /** Prompt for a remote (product-scoped) permission bundle. */
+    /**
+     * Prompt for a remote (product-scoped) permission bundle. Invoked on the
+     * `truapi-ws-bridge` worker thread; present the prompt on the main thread
+     * and block this thread until the user decides.
+     */
     @Throws(HostRejection::class)
     fun remotePermission(request: ByteArray): Boolean
 
-    /** Answer a feature-support query. */
+    /**
+     * Answer a feature-support query. Invoked on the `truapi-ws-bridge` worker
+     * thread.
+     */
     @Throws(HostRejection::class)
     fun featureSupported(request: ByteArray): Boolean
 
@@ -148,13 +179,17 @@ private class HostCallbackAdapter(private val bridge: HostBridge) : HostCallback
  * transports.
  */
 class TrUAPIHostCore(bridge: HostBridge) : AutoCloseable {
+    // Co-owns the adapter alongside the generated FfiConverter handle map,
+    // which is what actually keeps the callback object alive for the core.
     private val callbackRetainer: HostCallbacks = HostCallbackAdapter(bridge)
     private val inner: NativeTrUApiCore = NativeTrUApiCore(callbackRetainer)
 
     /**
      * Deliver an opaque SCALE-encoded wire frame into the Rust core. The WS
      * bridge feeds the core internally; this entrypoint is exposed for tests
-     * and alternative transports.
+     * and alternative transports. The core may synchronously re-enter
+     * [HostBridge] callbacks (including a nested `receiveFromProduct`) before
+     * returning, so callers must not hold a non-reentrant lock across the call.
      */
     fun receiveFromProduct(frame: ByteArray) {
         inner.receiveFromProduct(frame)
