@@ -18,17 +18,34 @@ pub trait StatementStore: Send + Sync {
     /// ```ts
     /// import { from, take } from "rxjs";
     ///
-    /// from(
-    ///   truapi.statementStore.subscribe({
-    ///     request: { tag: "MatchAll", value: [] },
-    ///   }),
-    /// )
-    ///   .pipe(take(3))
-    ///   .subscribe({
-    ///     next: (statements) => console.log(statements),
-    ///     error: (error) => console.error(error),
-    ///     complete: () => console.log("completed"),
+    /// // Create and submit a statement first so the subscription has a match.
+    /// const proofResult = await truapi.statementStore.createProof({
+    ///   productAccountId: {
+    ///     dotNsIdentifier: "truapi-playground.dot",
+    ///     derivationIndex: 0,
+    ///   },
+    ///   statement: { topics: [] },
+    /// });
+    ///
+    /// if (proofResult.isErr()) {
+    ///   console.error(proofResult.error);
+    /// } else {
+    ///   await truapi.statementStore.submit({
+    ///     proof: proofResult.value.proof,
+    ///     topics: [],
     ///   });
+    ///   from(
+    ///     truapi.statementStore.subscribe({
+    ///       request: { tag: "MatchAll", value: [] },
+    ///     }),
+    ///   )
+    ///     .pipe(take(1))
+    ///     .subscribe({
+    ///       next: (statements) => console.log(statements),
+    ///       error: (error) => console.error(error),
+    ///       complete: () => console.log("completed"),
+    ///     });
+    /// }
     /// ```
     #[wire(start_id = 56)]
     async fn subscribe(
@@ -109,19 +126,18 @@ pub trait StatementStore: Send + Sync {
     ///     topics: [],
     ///   },
     /// });
-    /// await proofResult.match(
-    ///   async (proof) => {
-    ///     const result = await truapi.statementStore.submit({
-    ///       proof: proof.proof,
-    ///       topics: [],
-    ///     });
-    ///     result.match(
-    ///       () => console.log("ok"),
-    ///       (error) => console.error(error),
-    ///     );
-    ///   },
-    ///   async (error) => console.error(error),
-    /// );
+    /// if (proofResult.isErr()) {
+    ///   console.error(proofResult.error);
+    /// } else {
+    ///   const result = await truapi.statementStore.submit({
+    ///     proof: proofResult.value.proof,
+    ///     topics: [],
+    ///   });
+    ///   result.match(
+    ///     () => console.log("ok"),
+    ///     (error) => console.error(error),
+    ///   );
+    /// }
     /// ```
     #[wire(request_id = 62)]
     async fn submit(
