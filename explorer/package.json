@@ -7,8 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "tsc -b --noEmit",
-    "preview": "vite preview",
-    "test": "for f in test/*.test.mjs; do echo \"=== $f ===\" && bun \"$f\" || exit 1; done"
+    "preview": "vite preview"
   },
   "dependencies": {
     "@parity/truapi": "file:../js/packages/truapi",

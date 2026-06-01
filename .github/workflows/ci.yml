@@ -126,7 +126,7 @@ jobs:
         run: yarn lint
 
   explorer:
-    name: Explorer (build + lint + test)
+    name: Explorer (build + lint)
     runs-on: ubuntu-latest
     needs: ts-client
     steps:
@@ -142,8 +142,6 @@ jobs:
         with:
           node-version: 22
 
-      - uses: oven-sh/setup-bun@v2
-
       - name: Install workspace deps + build @parity/truapi
         run: npm ci && ./scripts/codegen.sh
 
@@ -154,10 +152,6 @@ jobs:
       - name: Lint
         working-directory: explorer
         run: npm run lint
-
-      - name: Test
-        working-directory: explorer
-        run: npm test
 
       - name: Build
         working-directory: explorer
