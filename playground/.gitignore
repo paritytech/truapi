@@ -13,6 +13,7 @@ playwright/.cache/
 # Next.js
 .next/
 out/
+out.car
 
 # Production
 build
