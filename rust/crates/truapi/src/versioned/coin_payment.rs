@@ -2,7 +2,7 @@
 
 use crate::v01;
 
-versioned_type! {
+truapi_macros::versioned_type! {
     pub enum HostCoinPaymentCreatePurseRequest { V1 => v01::HostCoinPaymentCreatePurseRequest }
     pub enum HostCoinPaymentCreatePurseResponse { V1 => v01::HostCoinPaymentCreatePurseResponse }
     pub enum HostCoinPaymentCreatePurseError { V1 => v01::CoinPaymentError }
