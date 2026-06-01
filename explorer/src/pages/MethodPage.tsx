@@ -18,8 +18,14 @@ function playgroundUrl(service: string, method: string): string {
 /** Detail page for a single method. */
 export default function MethodPage() {
   const { version } = useOutletContext<{ version: VersionEntry }>();
-  const { methodName } = useParams<{ methodName: string }>();
-  const found = methodName ? findMethod(version, methodName) : null;
+  const { serviceName, methodName } = useParams<{
+    serviceName: string;
+    methodName: string;
+  }>();
+  const found =
+    serviceName && methodName
+      ? findMethod(version, serviceName, methodName)
+      : null;
 
   if (!found) {
     return (

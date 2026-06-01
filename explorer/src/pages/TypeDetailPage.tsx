@@ -2,7 +2,7 @@ import { Fragment } from "react";
 import { Link, useOutletContext, useParams } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
 import type { VersionEntry } from "../data/types";
-import { findType, usedByType } from "../data/registry";
+import { findType, methodPath, usedByType } from "../data/registry";
 import CodeBlock from "../components/CodeBlock";
 import { TypeString } from "../components/TypeLink";
 
@@ -153,13 +153,13 @@ export default function TypeDetailPage() {
             </h2>
           </div>
           <div className="px-5 py-3 flex flex-wrap gap-2">
-            {referencing.map((m) => (
+            {referencing.map(({ service, method }) => (
               <Link
-                key={m.name}
-                to={`${prefix}/method/${m.name}`}
+                key={`${service.name}/${method.name}`}
+                to={methodPath(version.id, service.name, method.name)}
                 className="px-3 py-1.5 rounded-md text-xs font-mono bg-slate-700/30 text-slate-300 hover:bg-slate-700/50 hover:text-white border border-slate-600/30 transition-all duration-150"
               >
-                {m.name}
+                {method.name}
               </Link>
             ))}
           </div>

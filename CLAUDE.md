@@ -93,6 +93,7 @@ locally, just start its own dev server and open the URL directly in a browser.
 cd explorer
 npx vite --base / --port 5181   # standalone site at http://localhost:5181/
 npm run build                    # static export to dist/
+npm test                         # registry lookup/routing unit tests (bun)
 ```
 
 Use a port other than 5173 (dotli's conventional port) to avoid stale-tab
