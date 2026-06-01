@@ -42,14 +42,14 @@ pub trait Payment: Send + Sync {
     /// ```ts
     /// // Fund the balance first so the request is not rejected for lack of funds.
     /// const topUp = await truapi.payment.topUp({
-    ///   amount: 1000000000n,
+    ///   amount: 1000n,
     ///   source: { tag: "ProductAccount", value: { derivationIndex: 0 } },
     /// });
     /// if (topUp.isErr()) {
     ///   console.error(topUp.error);
     /// } else {
     ///   const result = await truapi.payment.request({
-    ///     amount: 1000000n,
+    ///     amount: 1000n,
     ///     destination:
     ///       "0x0000000000000000000000000000000000000000000000000000000000000000",
     ///   });
@@ -75,14 +75,14 @@ pub trait Payment: Send + Sync {
     ///
     /// // Fund the balance and start a payment first so there is a status to watch.
     /// const topUp = await truapi.payment.topUp({
-    ///   amount: 1000000000n,
+    ///   amount: 1000n,
     ///   source: { tag: "ProductAccount", value: { derivationIndex: 0 } },
     /// });
     /// if (topUp.isErr()) {
     ///   console.error(topUp.error);
     /// } else {
     ///   const requested = await truapi.payment.request({
-    ///     amount: 1000000n,
+    ///     amount: 1000n,
     ///     destination:
     ///       "0x0000000000000000000000000000000000000000000000000000000000000000",
     ///   });
@@ -119,7 +119,7 @@ pub trait Payment: Send + Sync {
     ///
     /// ```ts
     /// const result = await truapi.payment.topUp({
-    ///   amount: 1000000000n,
+    ///   amount: 1000n,
     ///   source: { tag: "ProductAccount", value: { derivationIndex: 0 } },
     /// });
     /// result.match(
