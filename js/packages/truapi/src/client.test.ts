@@ -249,37 +249,6 @@ describe("generated client transport", () => {
         expect(fixture.sent).toHaveLength(1);
     });
 
-    it("uses the same typed-interrupt envelope for RFC0017 coin-payment streams", () => {
-        const fixture = providerFixture();
-        const transport = createTransport(fixture.provider);
-        const client = createClient(transport);
-        const errors: Error[] = [];
-
-        const sub = client.coinPayment
-            .rebalancePurse({ request: { from: 1, to: 2, amount: 1000 } })
-            .subscribe({ error: (error) => errors.push(error) });
-
-        const reason = "Denied";
-        const frame = unwrap(
-            encodeWireMessage({
-                requestId: sub.subscriptionId,
-                payload: {
-                    id: W.COIN_PAYMENT_REBALANCE_PURSE.interrupt,
-                    value: T.VersionedHostCoinPaymentRebalancePurseError.enc({
-                        tag: "V1",
-                        value: reason,
-                    }),
-                },
-            }),
-            "encode typed coin payment interrupt",
-        );
-        fixture.receive(frame);
-
-        expect(errors).toHaveLength(1);
-        expect(errors[0]).toBeInstanceOf(SubscriptionError);
-        expect((errors[0] as SubscriptionError).reason).toEqual(reason);
-    });
-
     it("treats a malformed receive payload as terminal and sends _stop", () => {
         // After the error, the generated wrapper sends `_stop` and ignores later
         // receive frames for that subscription.

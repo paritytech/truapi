@@ -18,7 +18,6 @@ created: 2026-03-13
 | 0009   | [Unauthenticated Product Access](0009-unauthenticated-product-access.md) | accepted           | Filippo Vecchiato | [#128](https://github.com/paritytech/triangle-js-sdks/pull/128) |
 | 0010   | [W3S Allowance Management in TrUAPI](0010-allowance.md) | accepted           | Valentin Sergeev | — |
 | 0015   | [Get User Primary DotNS Name](0015-get-user-id.md) | accepted           | Valentin Sergeev | [#144](https://github.com/paritytech/triangle-js-sdks/pull/144) |
-| 0017   | [Coinage Payment User Agent API](0017-coinage-payment.md) | accepted           | @replghost    | — |
 | 0019   | [Scheduled Push Notifications](0019-scheduled-notifications.md) | accepted           | @johnthecat   | — |
 | 0020   | [Remove `context` from `create_transaction` and mirror in Accounts Protocol](0020-create-transaction.md) | accepted           | Valentin Sergeev | — |
 | 0021   | [Add Coins variant to PaymentTopUpSource](0021-payment-topup-coins.md) | accepted           | @filippovecchiato | — |

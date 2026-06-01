@@ -3,7 +3,6 @@
 mod account;
 mod chain;
 mod chat;
-mod coin_payment;
 mod common;
 mod entropy;
 mod local_storage;
@@ -21,7 +20,6 @@ mod transaction;
 pub use account::*;
 pub use chain::*;
 pub use chat::*;
-pub use coin_payment::*;
 pub use common::*;
 pub use entropy::*;
 pub use local_storage::*;

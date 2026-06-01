@@ -445,26 +445,26 @@ mod tests {
     #[test]
     fn validate_example_docs_accepts_ts_fence() {
         let docs = "Summary line.\n\n```ts\nconst x = 1;\n```";
-        assert!(validate_example_docs("CoinPayment", "create_purse", Some(docs)).is_ok());
+        assert!(validate_example_docs("Payment", "top_up", Some(docs)).is_ok());
     }
 
     #[test]
     fn validate_example_docs_rejects_missing_example() {
         let docs = "Summary line with no example.";
-        let err = validate_example_docs("CoinPayment", "create_purse", Some(docs)).unwrap_err();
+        let err = validate_example_docs("Payment", "top_up", Some(docs)).unwrap_err();
         assert!(err.to_string().contains("no ```ts example"));
     }
 
     #[test]
     fn validate_example_docs_rejects_missing_docs() {
-        let err = validate_example_docs("CoinPayment", "create_purse", None).unwrap_err();
+        let err = validate_example_docs("Payment", "top_up", None).unwrap_err();
         assert!(err.to_string().contains("no ```ts example"));
     }
 
     #[test]
     fn validate_example_docs_rejects_unrecognized_label() {
         let docs = "Summary.\n\n```truapi-client-example\nconst x = 1;\n```";
-        let err = validate_example_docs("CoinPayment", "create_purse", Some(docs)).unwrap_err();
+        let err = validate_example_docs("Payment", "top_up", Some(docs)).unwrap_err();
         assert!(
             err.to_string()
                 .contains("code fence left in its description")
