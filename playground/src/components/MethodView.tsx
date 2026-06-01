@@ -9,6 +9,7 @@ import {
   type RunSubscription,
 } from "@/src/lib/example-runner";
 import { getClient } from "@/src/lib/transport";
+import { errorTextFrom } from "@/src/lib/result-status";
 import { services } from "@/src/lib/services";
 import type { MethodInfo, ServiceInfo } from "@/src/lib/services";
 
@@ -18,8 +19,22 @@ const CARGO_DOC_BASE =
   process.env.NEXT_PUBLIC_CARGO_DOC_BASE ??
   "https://paritytech.github.io/truapi/cargo_doc";
 
+/** Deployed playground served inside the Polkadot Desktop Host. */
+const HOSTED_PLAYGROUND_URL = "https://truapi-playground.dot.li";
+
 function cargoDocMethodUrl(docUrl: string | undefined): string | undefined {
   return docUrl ? `${CARGO_DOC_BASE}/${docUrl}` : undefined;
+}
+
+/** Deep link that opens this method in the host-backed playground. */
+function hostedPlaygroundUrl(service: string, method: string): string {
+  const params = new URLSearchParams({ service, method });
+  return `${HOSTED_PLAYGROUND_URL}/?${params.toString()}`;
+}
+
+/** Thrown by the transport when no host is detected (standalone tab). */
+function isHostMissingError(error: string): boolean {
+  return error.includes("must be opened inside a TrUAPI host");
 }
 
 function formatError(value: unknown): string {
@@ -114,13 +129,22 @@ export function MethodView({
     setResult("");
     setLogs([]);
     setTab("output");
+    // Examples self-handle their Result (`result.match(v => console.log(v),
+    // e => console.error(e))`), so an Err surfaces as an error-level log rather
+    // than a thrown exception. Accumulate logs locally — the `logs` React state
+    // is stale inside this handler — so we can detect the error after the call.
+    const callLogs: LogEntry[] = [];
+    const collectLog = (entry: LogEntry) => {
+      callLogs.push(entry);
+      onLog(entry);
+    };
     try {
       const client = getClient();
       const run = await runExample({
         source,
         kind: methodInfo.type,
         client,
-        onLog,
+        onLog: collectLog,
       });
 
       if (run.kind === "unary") {
@@ -138,8 +162,13 @@ export function MethodView({
         });
         try {
           const value = await Promise.race([run.promise, abortPromise]);
-          const rendered = stringify(value);
-          if (rendered !== undefined) setResult(rendered);
+          const errText = errorTextFrom(value, callLogs);
+          if (errText != null) {
+            setError(errText);
+          } else {
+            const rendered = stringify(value);
+            if (rendered !== undefined) setResult(rendered);
+          }
         } finally {
           if (timeoutHandle !== null) clearTimeout(timeoutHandle);
           callAbortRef.current = null;
@@ -339,6 +368,19 @@ export function MethodView({
                 data-testid="error-display"
               >
                 {error}
+                {isHostMissingError(error) && (
+                  <div className="console__cta">
+                    <a
+                      className="open-in-dotli"
+                      href={hostedPlaygroundUrl(service, method)}
+                      target="_blank"
+                      rel="noreferrer"
+                      title="Open this example in the host-backed playground"
+                    >
+                      Run in hosted playground ↗
+                    </a>
+                  </div>
+                )}
               </div>
             ) : result ? (
               <div className="console__body" data-testid="response-content">

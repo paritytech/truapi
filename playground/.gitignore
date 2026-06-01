@@ -13,6 +13,7 @@ playwright/.cache/
 # Next.js
 .next/
 out/
+out.car
 
 # Production
 build
@@ -40,3 +41,7 @@ next-env.d.ts
 
 # PAPI generated
 .papi/
+
+# Diagnosis reports awaiting aggregation, and the generated matrix
+pending-reports/*.md
+matrix.md
