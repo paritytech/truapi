@@ -5,17 +5,17 @@
 import type { CompatibilityMatrix } from "./compatibility-types";
 
 export const compatibility: CompatibilityMatrix = {
-  "generatedAt": "2026-05-29T18:24:37.097Z",
+  "generatedAt": "2026-06-01T14:06:11.568Z",
   "hosts": [
-    {
+     {
       "label": "Desktop",
       "mode": "Desktop",
-      "reportedAt": "2026-05-29T17:52:51.416Z"
+      "reportedAt": "2026-06-01T12:36:27.521Z"
     },
     {
       "label": "Web",
       "mode": "Web",
-      "reportedAt": "2026-05-29T17:57:54.233Z"
+      "reportedAt": "2026-06-01T12:34:57.911Z"
     }
   ],
   "methods": [
@@ -37,7 +37,7 @@ export const compatibility: CompatibilityMatrix = {
       "id": "Account/get_account_alias",
       "results": {
         "Desktop": "pass",
-        "Web": "fail"
+        "Web": "pass"
       }
     },
     {
@@ -295,15 +295,15 @@ export const compatibility: CompatibilityMatrix = {
     {
       "id": "Notifications/send_push_notification",
       "results": {
-        "Desktop": "fail",
-        "Web": "fail"
+        "Desktop": "pass",
+        "Web": "pass"
       }
     },
     {
       "id": "Notifications/cancel_push_notification",
       "results": {
-        "Desktop": "fail",
-        "Web": "fail"
+        "Desktop": "pass",
+        "Web": "pass"
       }
     },
     {
