@@ -110,6 +110,17 @@ export default function Sidebar({
           >
             Data Types
           </Link>
+          <Link
+            to={`${prefix}/compatibility`}
+            onClick={onClose}
+            className={`block px-3 py-1.5 rounded-md text-sm transition-all duration-150 ${
+              isActive(`${prefix}/compatibility`)
+                ? "bg-slate-800 text-white font-medium"
+                : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+            }`}
+          >
+            Compatibility
+          </Link>
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 pb-4 pt-1">

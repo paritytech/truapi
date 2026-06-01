@@ -41,7 +41,3 @@ next-env.d.ts
 
 # PAPI generated
 .papi/
-
-# Diagnosis reports awaiting aggregation, and the generated matrix
-pending-reports/*.md
-matrix.md
