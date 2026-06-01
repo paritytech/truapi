@@ -1,13 +1,13 @@
 import { Link, useOutletContext } from "react-router-dom";
 import { Check, Minus, X } from "lucide-react";
 import type { VersionEntry } from "../data/types";
+import { methodPath } from "../data/registry";
 import { compatibility } from "../data/compatibility";
 import type { CompatStatus } from "../data/compatibility-types";
 
 /** Per-method host compatibility, aggregated from per-host diagnosis reports. */
 export default function CompatibilityPage() {
   const { version } = useOutletContext<{ version: VersionEntry }>();
-  const prefix = `/v/${version.id}`;
   const { generatedAt, hosts, methods } = compatibility;
 
   if (hosts.length === 0) {
@@ -88,7 +88,7 @@ export default function CompatibilityPage() {
                   results: byId.get(`${service.name}/${m.name}`)?.results,
                 }))}
                 hosts={hosts.map((h) => h.label)}
-                prefix={prefix}
+                versionId={version.id}
               />
             ))}
           </tbody>
@@ -103,13 +103,13 @@ function ServiceRows({
   serviceIndex,
   methods,
   hosts,
-  prefix,
+  versionId,
 }: {
   serviceName: string;
   serviceIndex: number;
   methods: Array<{ name: string; results?: Record<string, CompatStatus | null> }>;
   hosts: string[];
-  prefix: string;
+  versionId: string;
 }) {
   const colCount = hosts.length + 1;
   return (
@@ -144,7 +144,7 @@ function ServiceRows({
               }`}
             >
               <Link
-                to={`${prefix}/method/${m.name}`}
+                to={methodPath(versionId, serviceName, m.name)}
                 className="text-slate-200 hover:text-pink-300 transition-colors"
               >
                 {m.name}

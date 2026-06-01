@@ -100,7 +100,10 @@ export default function App() {
       <Route path="/" element={<Navigate to={`/v/${fallback}/`} replace />} />
       <Route path="/v/:version" element={<VersionLayout />}>
         <Route index element={<OverviewPage />} />
-        <Route path="method/:methodName" element={<MethodPage />} />
+        <Route
+          path="method/:serviceName/:methodName"
+          element={<MethodPage />}
+        />
         <Route path="types" element={<TypesPage />} />
         <Route path="type/:typeId" element={<TypeDetailPage />} />
         <Route path="compatibility" element={<CompatibilityPage />} />

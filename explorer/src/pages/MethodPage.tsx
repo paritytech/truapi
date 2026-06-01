@@ -21,8 +21,14 @@ function playgroundUrl(service: string, method: string): string {
 /** Detail page for a single method. */
 export default function MethodPage() {
   const { version } = useOutletContext<{ version: VersionEntry }>();
-  const { methodName } = useParams<{ methodName: string }>();
-  const found = methodName ? findMethod(version, methodName) : null;
+  const { serviceName, methodName } = useParams<{
+    serviceName: string;
+    methodName: string;
+  }>();
+  const found =
+    serviceName && methodName
+      ? findMethod(version, serviceName, methodName)
+      : null;
 
   if (!found) {
     return (
@@ -168,18 +174,6 @@ export default function MethodPage() {
             </a>
           </div>
           <CodeBlock code={exampleSource} />
-          <p className="text-xs text-slate-500 mt-2">
-            Open this example in the{" "}
-            <a
-              href={playgroundDeepLink}
-              target="_blank"
-              rel="noreferrer"
-              className="text-pink-400 hover:text-pink-300 transition-colors"
-            >
-              host-backed playground
-            </a>{" "}
-            to run it live.
-          </p>
         </div>
       )}
 

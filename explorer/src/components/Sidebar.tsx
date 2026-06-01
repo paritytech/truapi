@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { ChevronDown, X } from "lucide-react";
 import VersionSelector from "./VersionSelector";
+import { methodPath } from "../data/registry";
 import type { VersionEntry } from "../data/types";
 
 interface SidebarProps {
@@ -130,7 +131,9 @@ export default function Sidebar({
           {current.services.map((service) => {
             const isExpanded = expanded.has(service.name);
             const hasActive = service.methods.some(
-              (m) => location.pathname === `${prefix}/method/${m.name}`,
+              (m) =>
+                location.pathname ===
+                methodPath(current.id, service.name, m.name),
             );
             return (
               <div key={service.name} className="mb-0.5">
@@ -154,7 +157,11 @@ export default function Sidebar({
                 {isExpanded && (
                   <div className="ml-3 border-l border-slate-700/50 pl-2 py-0.5">
                     {service.methods.map((method) => {
-                      const path = `${prefix}/method/${method.name}`;
+                      const path = methodPath(
+                        current.id,
+                        service.name,
+                        method.name,
+                      );
                       const active = location.pathname === path;
                       return (
                         <Link

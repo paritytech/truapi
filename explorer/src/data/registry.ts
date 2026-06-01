@@ -62,16 +62,32 @@ export function findVersion(id: string | undefined): VersionEntry {
   return versions[0];
 }
 
-/** Find a method (and its owning service) by method name in a version. */
+/** A method paired with its owning service. */
+export interface ServiceMethod {
+  service: ServiceInfo;
+  method: MethodInfo;
+}
+
+/** Find a method by name within a specific service of a version. */
 export function findMethod(
   version: VersionEntry,
-  name: string,
-): { service: ServiceInfo; method: MethodInfo } | null {
-  for (const service of version.services) {
-    const method = service.methods.find((m) => m.name === name);
-    if (method) return { service, method };
-  }
-  return null;
+  serviceName: string,
+  methodName: string,
+): ServiceMethod | null {
+  const service = version.services.find((s) => s.name === serviceName);
+  const method = service?.methods.find((m) => m.name === methodName);
+  return service && method ? { service, method } : null;
+}
+
+/** Route path for a method page, qualified by its owning service. */
+export function methodPath(
+  versionId: string,
+  serviceName: string,
+  methodName: string,
+): string {
+  const svc = encodeURIComponent(serviceName);
+  const meth = encodeURIComponent(methodName);
+  return `/v/${versionId}/method/${svc}/${meth}`;
 }
 
 /** Find a data type by id in a version. */
@@ -79,12 +95,12 @@ export function findType(version: VersionEntry, id: string): DataType | null {
   return version.types.find((t) => t.id === id) ?? null;
 }
 
-/** Methods in a version whose request/response/error matches the given type id. */
+/** Methods (with owning service) whose request/response/error matches the type id. */
 export function usedByType(
   version: VersionEntry,
   typeId: string,
-): MethodInfo[] {
-  const out: MethodInfo[] = [];
+): ServiceMethod[] {
+  const out: ServiceMethod[] = [];
   for (const service of version.services) {
     for (const method of service.methods) {
       if (
@@ -92,7 +108,7 @@ export function usedByType(
         method.responseType === typeId ||
         method.errorType === typeId
       ) {
-        out.push(method);
+        out.push({ service, method });
       }
     }
   }
