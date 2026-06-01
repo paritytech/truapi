@@ -2,7 +2,7 @@
 
 use crate::v01;
 
-versioned_type! {
+truapi_macros::versioned_type! {
     pub enum HostAccountGetRequest { V1 => v01::HostAccountGetRequest }
     pub enum HostAccountGetResponse { V1 => v01::HostAccountGetResponse }
     pub enum HostAccountGetError { V1 => v01::HostAccountGetError }

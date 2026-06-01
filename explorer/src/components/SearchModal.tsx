@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search } from "lucide-react";
+import { methodPath } from "../data/registry";
 import type {
   DataType,
   MethodInfo,
@@ -102,7 +103,7 @@ export default function SearchModal({
 
   const go = (hit: Hit) => {
     if (hit.kind === "method") {
-      navigate(`/v/${version.id}/method/${hit.method.name}`);
+      navigate(methodPath(version.id, hit.service.name, hit.method.name));
     } else {
       navigate(`/v/${version.id}/type/${hit.type.id}`);
     }

@@ -2,7 +2,7 @@
 
 use crate::v01;
 
-versioned_type! {
+truapi_macros::versioned_type! {
     pub enum HostChatCreateRoomRequest { V1 => v01::HostChatCreateRoomRequest }
     pub enum HostChatCreateRoomResponse { V1 => v01::HostChatCreateRoomResponse }
     pub enum HostChatCreateRoomError { V1 => v01::HostChatCreateRoomError }

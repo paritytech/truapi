@@ -1,0 +1,219 @@
+#!/usr/bin/env node
+// Aggregate per-host TrUAPI diagnosis reports into the explorer's committed
+// host × method compatibility matrix (columns = hosts, rows = methods),
+// MDN browser-compat style.
+//
+// Each input is a diagnosis report as produced by the playground's "Copy
+// report" button:
+//
+//   ## Truapi Desktop Diagnosis
+//   _Generated: 2026-05-27T18:00:32.854Z_
+//
+//   | Method | Status |
+//   | --- | --- |
+//   | `Account/get_account` | ✅ |
+//   ...
+//
+// Drop one such report per host (any `*.md` filename) into the explorer's
+// `pending-reports/` directory and run from `explorer/`:
+//
+//   npm run generate-matrix
+//
+// That consumes (deletes) every report in `pending-reports/` and rewrites the
+// committed `src/data/compatibility.ts` source-of-truth. The Compatibility
+// page picks the new data up automatically on the next build / HMR.
+//
+// Direct invocation also works for ad-hoc use:
+//   node scripts/aggregate-diagnosis-matrix.mjs web.md desktop.md           # markdown to stdout
+//   node scripts/aggregate-diagnosis-matrix.mjs --explorer-out src/data/compatibility.ts --consume pending-reports
+//
+// Flags:
+//   --explorer-out <file>   write a TypeScript module exporting `compatibility`
+//   --consume               delete the input report files after a successful write
+//
+// The host column label is the mode from each report's title (Web / Desktop /
+// Unknown). Reports that share a mode are disambiguated with their filename. A
+// method missing from a report renders as "—" in the markdown view and `null`
+// in the TypeScript module.
+
+import {
+  readFileSync,
+  readdirSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { basename, extname, join } from "node:path";
+
+const TITLE_RE = /^##\s+Truapi\s+(.+?)\s+Diagnosis\s*$/im;
+const GENERATED_RE = /^_Generated:\s*(.+?)_\s*$/m;
+// | `Service/method` | ✅ |   (the header row's "Method" cell has no backticks,
+// so it is skipped automatically)
+const ROW_RE = /^\|\s*`([^`]+)`\s*\|\s*(.+?)\s*\|\s*$/;
+
+function collectFiles(args) {
+  const files = [];
+  for (const arg of args) {
+    if (statSync(arg).isDirectory()) {
+      for (const name of readdirSync(arg).sort()) {
+        if (extname(name) === ".md") files.push(join(arg, name));
+      }
+    } else {
+      files.push(arg);
+    }
+  }
+  return files;
+}
+
+function parseReport(file) {
+  const text = readFileSync(file, "utf8");
+  const titleMatch = text.match(TITLE_RE);
+  const mode = titleMatch ? titleMatch[1].trim() : "Unknown";
+  const reportedAtMatch = text.match(GENERATED_RE);
+  const reportedAt = reportedAtMatch ? reportedAtMatch[1].trim() : "";
+  const statuses = new Map();
+  const order = [];
+  for (const line of text.split(/\r?\n/)) {
+    const m = line.match(ROW_RE);
+    if (!m) continue;
+    const method = m[1].trim();
+    if (!statuses.has(method)) order.push(method);
+    statuses.set(method, m[2].trim());
+  }
+  return { file, mode, reportedAt, statuses, order };
+}
+
+function columnLabels(reports) {
+  const modeCounts = new Map();
+  for (const r of reports) {
+    modeCounts.set(r.mode, (modeCounts.get(r.mode) ?? 0) + 1);
+  }
+  return reports.map((r) => {
+    if (modeCounts.get(r.mode) > 1) {
+      return `${r.mode} (${basename(r.file, extname(r.file))})`;
+    }
+    return r.mode;
+  });
+}
+
+function unionMethodOrder(reports) {
+  const seen = new Set();
+  const order = [];
+  for (const r of reports) {
+    for (const method of r.order) {
+      if (!seen.has(method)) {
+        seen.add(method);
+        order.push(method);
+      }
+    }
+  }
+  return order;
+}
+
+// Map the icon-only status cell from a report to the typed enum used by the
+// explorer. Anything that doesn't start with the pass marker is treated as a
+// failure.
+function statusOf(cell) {
+  if (cell.startsWith("✅")) return "pass";
+  return "fail";
+}
+
+function renderMarkdown(reports, labels, methods) {
+  const lines = [];
+  lines.push("# TrUAPI Host Compatibility Matrix");
+  lines.push(
+    `_Generated: ${new Date().toISOString()} — aggregated from ${reports.length} report(s)_`,
+  );
+  lines.push("");
+  lines.push(`| Method | ${labels.join(" | ")} |`);
+  lines.push(`| --- | ${labels.map(() => "---").join(" | ")} |`);
+  for (const method of methods) {
+    const cells = reports.map((r) => r.statuses.get(method) ?? "—");
+    lines.push(`| \`${method}\` | ${cells.join(" | ")} |`);
+  }
+  return lines.join("\n") + "\n";
+}
+
+function renderTypeScript(reports, labels, methods, generatedAt) {
+  const hosts = reports.map((r, i) => ({
+    label: labels[i],
+    mode: r.mode === "Web" || r.mode === "Desktop" ? r.mode : "Unknown",
+    reportedAt: r.reportedAt,
+  }));
+  const rows = methods.map((id) => {
+    const results = {};
+    for (let i = 0; i < reports.length; i++) {
+      const cell = reports[i].statuses.get(id);
+      results[labels[i]] = cell == null ? null : statusOf(cell);
+    }
+    return { id, results };
+  });
+  const matrix = { generatedAt, hosts, methods: rows };
+  return [
+    "// AUTO-GENERATED by explorer/scripts/aggregate-diagnosis-matrix.mjs.",
+    "// Source: per-host diagnosis reports run from the playground's Diagnosis",
+    "// screen. Do not edit by hand — rerun `npm run generate-matrix` instead.",
+    "",
+    'import type { CompatibilityMatrix } from "./compatibility-types";',
+    "",
+    `export const compatibility: CompatibilityMatrix = ${JSON.stringify(matrix, null, 2)};`,
+    "",
+  ].join("\n");
+}
+
+function parseArgs(argv) {
+  const paths = [];
+  let explorerOut = null;
+  let consume = false;
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === "--explorer-out") {
+      explorerOut = argv[++i];
+    } else if (arg === "--consume") {
+      consume = true;
+    } else {
+      paths.push(arg);
+    }
+  }
+  return { paths, explorerOut, consume };
+}
+
+function main() {
+  const { paths, explorerOut, consume } = parseArgs(process.argv.slice(2));
+  if (paths.length === 0) {
+    console.error(
+      "usage: aggregate-diagnosis-matrix.mjs [--explorer-out <file>] [--consume] <report.md|dir> [more...]",
+    );
+    process.exit(1);
+  }
+
+  const files = collectFiles(paths);
+  if (files.length === 0) {
+    console.error("no report files found");
+    process.exit(1);
+  }
+
+  const reports = files.map(parseReport);
+  const labels = columnLabels(reports);
+  const methods = unionMethodOrder(reports);
+  const generatedAt = new Date().toISOString();
+
+  if (explorerOut) {
+    writeFileSync(explorerOut, renderTypeScript(reports, labels, methods, generatedAt));
+  } else {
+    process.stdout.write(renderMarkdown(reports, labels, methods));
+  }
+
+  // Delete inputs only after the matrix is safely written.
+  if (consume) {
+    for (const file of files) unlinkSync(file);
+  }
+
+  if (explorerOut) {
+    console.error(
+      `Wrote ${explorerOut} from ${reports.length} report(s)${consume ? " (consumed)" : ""}.`,
+    );
+  }
+}
+
+main();

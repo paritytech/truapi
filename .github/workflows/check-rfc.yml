@@ -4,12 +4,14 @@ on:
   pull_request:
     paths:
       - 'docs/rfcs/**'
+      - '!docs/rfcs/_index.md'
 
 permissions:
   contents: read
 
 jobs:
   validate-rfc:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

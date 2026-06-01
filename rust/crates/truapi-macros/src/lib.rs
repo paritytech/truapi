@@ -1,6 +1,10 @@
 //! Proc-macros for TrUAPI trait annotations.
 //!
-//! The single attribute exposed is [`wire`], which marks a trait method with
+//! `versioned_type!` is a function-like macro that generates versioned message
+//! envelopes: the `Vn` enums (with SCALE codec indices) plus their
+//! `Versioned`/`IntoLatest`/`FromLatest` impls from `truapi::versioned`.
+//!
+//! The `wire` attribute marks a trait method with
 //! its wire-protocol discriminant ids. The ids appear on the wire as the u8 discriminant in the
 //! `Struct { request_id: str, payload: Enum(<methods>) }` envelope; method
 //! ordering becomes part of the wire protocol.
@@ -17,9 +21,13 @@
 //! rustdoc through the only attribute that is always preserved verbatim.
 
 use proc_macro::TokenStream;
+use proc_macro2::Literal;
 use quote::quote;
 use syn::parse::{Parse, ParseStream};
-use syn::{Ident, ItemFn, LitInt, Token, TraitItemFn, parse_macro_input};
+use syn::{
+    Attribute, Ident, ItemFn, LitInt, Token, TraitItemFn, Type, Visibility, braced,
+    parse_macro_input,
+};
 
 #[derive(Default)]
 struct WireArgs {
@@ -137,4 +145,223 @@ fn wire_tags(args: &WireArgs) -> Vec<String> {
     .into_iter()
     .filter_map(|(name, value)| value.map(|id| format!("@wire_{name}={id}")))
     .collect()
+}
+
+/// One sequence of versioned envelope declarations passed to `versioned_type!`.
+struct VersionedInput {
+    enums: Vec<VersionedEnum>,
+}
+
+impl Parse for VersionedInput {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
+        let mut enums = Vec::new();
+        while !input.is_empty() {
+            enums.push(input.parse()?);
+        }
+        Ok(Self { enums })
+    }
+}
+
+/// A single `[vis] enum Name { V1 => Ty, ... }` declaration.
+struct VersionedEnum {
+    attrs: Vec<Attribute>,
+    vis: Visibility,
+    name: Ident,
+    variants: Vec<VersionedVariant>,
+}
+
+impl Parse for VersionedEnum {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
+        let attrs = input.call(Attribute::parse_outer)?;
+        let vis: Visibility = input.parse()?;
+        input.parse::<Token![enum]>()?;
+        let name: Ident = input.parse()?;
+
+        let body;
+        braced!(body in input);
+        let mut variants = Vec::new();
+        while !body.is_empty() {
+            variants.push(body.parse()?);
+            if body.peek(Token![,]) {
+                body.parse::<Token![,]>()?;
+            } else {
+                break;
+            }
+        }
+
+        Ok(Self {
+            attrs,
+            vis,
+            name,
+            variants,
+        })
+    }
+}
+
+/// A single `Vn` or `Vn => Ty` variant.
+struct VersionedVariant {
+    attrs: Vec<Attribute>,
+    ident: Ident,
+    ty: Option<Type>,
+}
+
+impl Parse for VersionedVariant {
+    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
+        let attrs = input.call(Attribute::parse_outer)?;
+        let ident: Ident = input.parse()?;
+        let ty = if input.peek(Token![=>]) {
+            input.parse::<Token![=>]>()?;
+            Some(input.parse()?)
+        } else {
+            None
+        };
+        Ok(Self { attrs, ident, ty })
+    }
+}
+
+/// Parse the `Vn` version number from a variant identifier.
+fn variant_version(ident: &Ident) -> syn::Result<u8> {
+    let name = ident.to_string();
+    let err = || syn::Error::new(ident.span(), "variant must be named `Vn` where n is a u8");
+    name.strip_prefix('V')
+        .ok_or_else(err)?
+        .parse::<u8>()
+        .map_err(|_| err())
+}
+
+/// Generate versioned message envelopes.
+///
+/// ```ignore
+/// versioned_type! {
+///     pub enum HostFooRequest { V1 => v01::HostFooRequest }
+///     pub enum HostFooResponse { V1 }
+/// }
+/// ```
+///
+/// Each declaration becomes a SCALE enum with positional codec indices and an
+/// `impl Versioned` exposing `Latest`, `LATEST`, and `version()`. Single-version
+/// envelopes also get trivial `IntoLatest`/`FromLatest` impls; multi-version
+/// envelopes leave those to be written by hand, since the conversion is bespoke.
+///
+/// The declared visibility (`pub`, `pub(crate)`, or none) carries through to the
+/// generated enum.
+///
+/// The generated impls name `crate::versioned::*` traits, so invoke this from
+/// within the `truapi` crate.
+#[proc_macro]
+pub fn versioned_type(item: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(item as VersionedInput);
+    match expand_versioned(&input) {
+        Ok(tokens) => tokens.into(),
+        Err(err) => err.to_compile_error().into(),
+    }
+}
+
+fn expand_versioned(input: &VersionedInput) -> syn::Result<proc_macro2::TokenStream> {
+    let mut out = proc_macro2::TokenStream::new();
+    for enum_def in &input.enums {
+        out.extend(expand_versioned_enum(enum_def)?);
+    }
+    Ok(out)
+}
+
+fn expand_versioned_enum(def: &VersionedEnum) -> syn::Result<proc_macro2::TokenStream> {
+    let VersionedEnum {
+        attrs,
+        vis,
+        name,
+        variants,
+    } = def;
+
+    if variants.is_empty() {
+        return Err(syn::Error::new(
+            name.span(),
+            "versioned enum needs at least one variant",
+        ));
+    }
+
+    let mut variant_defs = Vec::new();
+    let mut version_arms = Vec::new();
+    for (i, variant) in variants.iter().enumerate() {
+        let expected = i + 1;
+        let version = variant_version(&variant.ident)?;
+        if usize::from(version) != expected {
+            return Err(syn::Error::new(
+                variant.ident.span(),
+                format!("expected variant `V{expected}`; versions must be contiguous from 1"),
+            ));
+        }
+
+        let index = Literal::u8_unsuffixed(i as u8);
+        let version_lit = Literal::u8_unsuffixed(version);
+        let vattrs = &variant.attrs;
+        let vident = &variant.ident;
+        match &variant.ty {
+            Some(ty) => {
+                variant_defs.push(quote! { #(#vattrs)* #[codec(index = #index)] #vident(#ty) });
+                version_arms.push(quote! { Self::#vident(..) => #version_lit });
+            }
+            None => {
+                variant_defs.push(quote! { #(#vattrs)* #[codec(index = #index)] #vident });
+                version_arms.push(quote! { Self::#vident => #version_lit });
+            }
+        }
+    }
+
+    let doc = format!("Versioned envelope for [`{name}`].");
+    let latest_lit = Literal::u8_unsuffixed(variants.len() as u8);
+    let latest_ty = match &variants.last().expect("checked non-empty").ty {
+        Some(ty) => quote! { #ty },
+        None => quote! { () },
+    };
+
+    let mut tokens = quote! {
+        #(#attrs)*
+        #[doc = #doc]
+        #[derive(Debug, Clone, PartialEq, Eq, parity_scale_codec::Encode, parity_scale_codec::Decode)]
+        #vis enum #name {
+            #(#variant_defs),*
+        }
+
+        impl crate::versioned::Versioned for #name {
+            type Latest = #latest_ty;
+            const LATEST: u8 = #latest_lit;
+            fn version(&self) -> u8 {
+                match self {
+                    #(#version_arms),*
+                }
+            }
+        }
+    };
+
+    if let [only] = &variants[..] {
+        let vident = &only.ident;
+        let (into_body, from_param, from_body) = match &only.ty {
+            Some(_) => (
+                quote! { match self { Self::#vident(inner) => inner } },
+                quote! { latest },
+                quote! { Self::#vident(latest) },
+            ),
+            None => (
+                quote! { match self { Self::#vident => () } },
+                quote! { _latest },
+                quote! { Self::#vident },
+            ),
+        };
+        tokens.extend(quote! {
+            impl crate::versioned::IntoLatest for #name {
+                fn into_latest(self) -> Self::Latest {
+                    #into_body
+                }
+            }
+
+            impl crate::versioned::FromLatest for #name {
+                fn from_latest(#from_param: Self::Latest, _target: u8) -> Self {
+                    #from_body
+                }
+            }
+        });
+    }
+
+    Ok(tokens)
 }

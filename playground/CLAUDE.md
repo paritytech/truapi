@@ -19,10 +19,9 @@ yarn lint:fix          # Auto-fix ESLint issues
 yarn typecheck         # tsc --noEmit on playground sources
 yarn typecheck:examples # Typecheck generated client examples
 yarn e2e               # Playwright e2e suite
-yarn generate-matrix   # Aggregate pending-reports/*.md into matrix.md (consumes the reports)
 ```
 
-Drop one diagnosis report per host (the playground's "Copy report" output) into `pending-reports/`, then `yarn generate-matrix` merges them into a host × method `matrix.md` at the playground root and deletes the consumed reports. Both `pending-reports/*.md` and `matrix.md` are gitignored. The aggregator lives at `../scripts/aggregate-diagnosis-matrix.mjs`. End-to-end guide (tester + aggregator roles, status legend, example matrix) in [README.md → Diagnosis & compatibility matrix](./README.md#diagnosis--compatibility-matrix).
+The Diagnosis screen emits a per-host markdown report via "Copy report". Aggregation into the cross-host matrix happens in the explorer (see [`../explorer/README.md`](../explorer/README.md#host-compatibility-matrix)). The playground itself owns the diagnosis run and the report format only.
 
 `predev` and `prebuild`/`prelint`/`pretypecheck` automatically run `scripts/bundle-rxjs-dts.mjs` (and, for `predev`, `scripts/write-dev-env.mjs`) so the Monaco editor always has up-to-date rxjs type definitions.
 
@@ -40,7 +39,7 @@ Drop one diagnosis report per host (the playground's "Copy report" output) into 
 | `src/lib/example-runner.ts` | Transpiles each rustdoc `ts` example via sucrase, runs it inside an `AsyncFunction` with `truapi`, `console`, and rxjs as ambient bindings. A tracking Proxy auto-unsubscribes inner `.subscribe(...)` calls so subscriptions clean up when the user navigates away. |
 | `src/lib/monaco-setup.ts` | Configures Monaco's TS worker: registers the bundled `@parity/truapi` types (`truapi-dts`), every rxjs `.d.ts`, and an ambient `declare const truapi: Client` so examples typecheck without manual imports. Defines the light/dark themes that match the design tokens. |
 | `src/lib/auto-test.ts` | Runs every method's example (in parallel with a small concurrency budget) and reports pass / fail. `runDiagnosis` runs the full flow: non-disruptive methods in parallel, then each disruptive method sequentially so phone signing can complete one at a time. |
-| `src/lib/diagnosis-report.ts` | Renders the diagnosis results as a copy-pasteable GitHub-flavoured markdown table: a `## Truapi <Web\|Desktop> Diagnosis` title (host mode via `detectHostMode` — Electron UA / native webview ⇒ Desktop, browser iframe ⇒ Web), a generated timestamp, and one method/status row per method. Feeds the host compatibility matrix. |
+| `src/lib/diagnosis-report.ts` | Renders the diagnosis results as a copy-pasteable GitHub-flavoured markdown table: a `## Truapi <Web\|Desktop> Diagnosis` title (host mode via `detectHostMode` — Electron UA / native webview ⇒ Desktop, browser iframe ⇒ Web), a generated timestamp, and one method/status row per method. Consumed by the explorer's matrix aggregator. |
 | `src/lib/result-status.ts` | Shared `errorTextFrom` helper. An example's Err surfaces as a `console.error` log or a returned neverthrow Err, not a throw, so both `MethodView` and `auto-test.ts` use this to tell a failed call from a successful one. |
 | `src/lib/host-api-bridge.ts` | Just `stringify`, the JSON-with-bigint helper shared across components. |
 | `src/components/ExampleEditor.tsx` | Monaco editor wrapper. Auto-folds `// #region helpers` blocks on mount. |
