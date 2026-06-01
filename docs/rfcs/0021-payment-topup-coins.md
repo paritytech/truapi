@@ -3,7 +3,7 @@ title: "Add Coins variant to PaymentTopUpSource"
 owner: "@filippovecchiato"
 ---
 
-# RFC — Add `Coins` variant to `PaymentTopUpSource`
+# RFC 0021 — Add `Coins` variant to `PaymentTopUpSource`
 
 |                 |                                                                  |
 | --------------- | ---------------------------------------------------------------- |
