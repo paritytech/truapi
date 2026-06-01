@@ -159,11 +159,10 @@ function cellStatus(report, id) {
 
 // Merge freshly parsed reports into the prior matrix. Each report upserts its
 // own column (matched by label); columns with no report this run keep their
-// previous values. With `replace`, the prior matrix is ignored so only the
-// reports in this run survive. `methods` is the union method order from the
+// previous values. A null `prior` (e.g. first run, or `--replace`) means only
+// the reports in this run survive. `methods` is the union method order from the
 // reports; existing method rows are preserved and extended.
-function buildMatrix(existing, reports, labels, methods, generatedAt, replace) {
-  const prior = replace ? null : existing;
+function buildMatrix(prior, reports, labels, methods, generatedAt) {
   const reportByLabel = new Map(labels.map((label, i) => [label, reports[i]]));
 
   const hosts = (prior?.hosts ?? []).map((h) => ({ ...h }));
@@ -277,14 +276,7 @@ function main() {
   if (explorerOut) {
     const existing = replace ? null : readExistingMatrix(explorerOut);
     merged = existing != null;
-    const matrix = buildMatrix(
-      existing,
-      reports,
-      labels,
-      methods,
-      generatedAt,
-      replace,
-    );
+    const matrix = buildMatrix(existing, reports, labels, methods, generatedAt);
     writeFileSync(explorerOut, renderTypeScript(matrix));
   } else {
     process.stdout.write(renderMarkdown(reports, labels, methods));

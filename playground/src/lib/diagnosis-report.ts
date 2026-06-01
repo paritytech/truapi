@@ -39,11 +39,10 @@ export function detectHostMode(): HostMode {
     return nativePlatform(ua);
   }
   try {
-    if (window !== window.top) return "Web";
+    return window === window.top ? "Unknown" : "Web";
   } catch {
     return "Web";
   }
-  return "Unknown";
 }
 
 // Render the diagnosis results as a copy-pasteable GitHub-flavoured markdown
