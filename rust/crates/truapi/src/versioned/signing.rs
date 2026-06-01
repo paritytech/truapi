@@ -2,7 +2,7 @@
 
 use crate::v01;
 
-versioned_type! {
+truapi_macros::versioned_type! {
     pub enum HostSignPayloadRequest { V1 => v01::HostSignPayloadRequest }
     pub enum HostSignPayloadResponse { V1 => v01::HostSignPayloadResponse }
     pub enum HostSignPayloadError { V1 => v01::HostSignPayloadError }
