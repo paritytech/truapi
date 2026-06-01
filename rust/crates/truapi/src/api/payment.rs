@@ -89,7 +89,7 @@ pub trait Payment: Send + Sync {
     ///
     /// ```ts
     /// const result = await truapi.payment.topUp({
-    ///   amount: 1000000000000n,
+    ///   amount: 10000n,
     ///   source: { tag: "ProductAccount", value: { derivationIndex: 0 } },
     /// });
     /// result.match(
