@@ -158,18 +158,6 @@ export default function MethodPage() {
             </a>
           </div>
           <CodeBlock code={method.exampleSource} />
-          <p className="text-xs text-slate-500 mt-2">
-            Open this example in the{" "}
-            <a
-              href={playgroundUrl(service.name, method.name)}
-              target="_blank"
-              rel="noreferrer"
-              className="text-pink-400 hover:text-pink-300 transition-colors"
-            >
-              host-backed playground
-            </a>{" "}
-            to run it live.
-          </p>
         </div>
       )}
     </div>
