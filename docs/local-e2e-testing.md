@@ -275,16 +275,15 @@ Fix: turn the link into a fully-qualified path (`super::T`,
 `crate::vXY::T`, or just drop the link to a sibling that won't resolve
 across the doc-namespace boundary). Re-run `./scripts/codegen.sh`.
 
-### V0.2-only wrapper has no V1 variant
+### Payloadless request has no payload arm
 
-Symptom: codegen omits a V1 arm for an enum like `HostGetUserIdRequest`.
-Wire-table loop test passes a smaller `<N>` than expected.
+Symptom: codegen omits a payload arm for a request enum like
+`HostGetUserIdRequest`. The wire-table loop test passes a smaller `<N>`
+than expected.
 
-This is intentional. V0.2-only methods (`host_get_user_id`,
-`host_chat_create_simple_group`, all `EntropyDerivation`, all `Payment`)
-have only the `V2` variant in their versioned wrapper because no V0.1
-host ever spoke them. `IntoVersion::into_version(Version::V1)` returns
-`Err(())` for these.
+This is intentional. A request that takes no arguments declares a
+payloadless `V1` variant (`pub enum HostGetUserIdRequest { V1 }`), so
+there is no inner type for codegen to emit.
 
 ## Definition of done
 

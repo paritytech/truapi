@@ -2,7 +2,7 @@
 
 use crate::v01;
 
-versioned_type! {
+truapi_macros::versioned_type! {
     #[derive(derive_more::Display)]
     #[display("{_0}")]
     pub enum HostDevicePermissionRequest { V1 => v01::HostDevicePermissionRequest }

@@ -1,10 +1,13 @@
 import { Link, useOutletContext, useParams } from "react-router-dom";
+import { Check, Minus, X } from "lucide-react";
 import type { VersionEntry } from "../data/types";
 import { findMethod, productFunction } from "../data/registry";
 import PatternBadge from "../components/PatternBadge";
 import { TypeString } from "../components/TypeLink";
 import { MarkdownText } from "../components/MarkdownText";
 import CodeBlock from "../components/CodeBlock";
+import { compatibility } from "../data/compatibility";
+import type { CompatStatus } from "../data/compatibility-types";
 
 /** Deployed playground served inside the Polkadot Desktop Host. */
 const HOSTED_PLAYGROUND_URL = "https://truapi-playground.dot.li";
@@ -56,6 +59,19 @@ export default function MethodPage() {
         ? `Result(${responseName}, ${errorName})`
         : responseName
     : null;
+
+  const compatId = `${service.name}/${method.name}`;
+  const compatRow = compatibility.methods.find((m) => m.id === compatId);
+  const hostSupport =
+    compatRow && compatibility.hosts.length > 0
+      ? compatibility.hosts.map((h) => ({
+          label: h.label,
+          status: compatRow.results[h.label] ?? null,
+        }))
+      : null;
+
+  const exampleSource = method.exampleSource;
+  const playgroundDeepLink = playgroundUrl(service.name, method.name);
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -142,14 +158,14 @@ export default function MethodPage() {
         </div>
       </div>
 
-      {method.exampleSource && (
+      {exampleSource && (
         <div className="mb-8 animate-slide-up">
           <div className="flex items-center justify-between gap-3 mb-3">
             <h2 className="text-sm font-semibold text-white font-display">
               Example
             </h2>
             <a
-              href={playgroundUrl(service.name, method.name)}
+              href={playgroundDeepLink}
               target="_blank"
               rel="noreferrer"
               className="text-xs font-medium text-pink-400 hover:text-pink-300 transition-colors whitespace-nowrap"
@@ -157,9 +173,79 @@ export default function MethodPage() {
               Run in playground ↗
             </a>
           </div>
-          <CodeBlock code={method.exampleSource} />
+          <CodeBlock code={exampleSource} />
+        </div>
+      )}
+
+      {hostSupport && (
+        <div className="bg-slate-800/30 border border-slate-700/40 rounded-xl overflow-hidden mb-8 card-hover animate-slide-up">
+          <div className="border-b border-slate-700/40 px-5 py-3 flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-white font-display">
+              Host support
+            </h2>
+            <Link
+              to={`${prefix}/compatibility`}
+              className="text-xs text-slate-400 hover:text-slate-200 transition-colors"
+            >
+              Full matrix →
+            </Link>
+          </div>
+          <div className="divide-y divide-slate-700/30">
+            {hostSupport.map((h) => (
+              <div
+                key={h.label}
+                className="px-5 py-2.5 flex items-center justify-between"
+              >
+                <span className="text-sm text-slate-300">{h.label}</span>
+                <HostStatus status={h.status} />
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>
+  );
+}
+
+function HostStatus({ status }: { status: CompatStatus | null }) {
+  if (status === "pass") {
+    return (
+      <span className="inline-flex items-center gap-2 text-sm text-emerald-300">
+        <span
+          className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/15 ring-1 ring-emerald-500/30"
+          aria-hidden
+        >
+          <Check size={12} strokeWidth={2.5} />
+        </span>
+        pass
+      </span>
+    );
+  }
+  if (status === "fail") {
+    return (
+      <span className="inline-flex items-center gap-2 text-sm text-rose-300">
+        <span
+          className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-rose-500/15 ring-1 ring-rose-500/30"
+          aria-hidden
+        >
+          <X size={12} strokeWidth={2.5} />
+        </span>
+        fail
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-2 text-sm text-slate-500"
+      title="not reported"
+    >
+      <span
+        className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-slate-800/60 ring-1 ring-slate-700/50"
+        aria-hidden
+      >
+        <Minus size={12} strokeWidth={2.5} />
+      </span>
+      not reported
+    </span>
   );
 }
