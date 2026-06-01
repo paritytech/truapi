@@ -19,7 +19,7 @@ Extend `HostThemeSubscribeItem` so the host can tell a product **which** theme t
 
 Upstream: [triangle-js-sdks#191](https://github.com/paritytech/triangle-js-sdks/pull/191)
 
-Hosts support named themes (e.g. brand-specific palettes) but the current `Theme` enum only carries `Light` or `Dark`. Products have no way to know which named theme is active, so they cannot match host-specific styling beyond basic colour-scheme toggling.
+The current `Theme` enum only carries `Light` or `Dark`. Products cannot distinguish named host themes.
 
 ## Detailed Design
 
