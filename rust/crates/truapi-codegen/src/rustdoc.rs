@@ -257,10 +257,10 @@ pub fn extract_api(krate: &Crate) -> Result<ApiDefinition> {
 
     let mut traits = Vec::new();
     for (name, candidates) in trait_candidates {
-        // `Versioned` is a runtime-helper trait on the wrapper enums, not a
-        // protocol-method trait. The codegen only cares about the protocol
-        // surface (TrUAPI methods); skip anything declared outside
-        // `truapi::api::*`.
+        // `Versioned`, `IntoLatest`, and `FromLatest` are runtime-helper traits
+        // on the wrapper enums, not protocol-method traits. The codegen only
+        // cares about the protocol surface (TrUAPI methods); skip anything
+        // declared outside `truapi::api::*`.
         let candidate = select_candidate(&name, &candidates)?;
         if !candidate.path.iter().any(|s| s == "api") {
             continue;

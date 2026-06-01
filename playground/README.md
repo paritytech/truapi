@@ -12,7 +12,7 @@ The playground is an interactive reference for the TrUAPI: every method grouped 
 - **Live calls**: edit a JSON request payload and fire the call against the connected host.
 - **Subscriptions**: open and close streaming methods and watch events arrive in real time.
 - **Auto-test view**: runs every method and reports pass / fail in one pass.
-- **Diagnosis view**: runs the full surface and produces a copy-pasteable markdown table that feeds the cross-host compatibility matrix. See [Diagnosis & compatibility matrix](#diagnosis--compatibility-matrix).
+- **Diagnosis view**: runs the full surface and produces a copy-pasteable markdown report per host. The explorer's Compatibility page aggregates those into a cross-host matrix. See [Diagnosis](#diagnosis).
 - **Wiring status**: methods that are not yet bound are flagged "Not supported" so you can see protocol coverage at a glance.
 
 ## Local development
@@ -45,16 +45,9 @@ Methods reach the playground via codegen — there is no per-method wiring file 
 
 A method without a `ts` rustdoc block shows up with a "Not supported" badge — there is no example to run until you add one.
 
-## Diagnosis & compatibility matrix
+## Diagnosis
 
-The Diagnosis view exercises every TrUAPI method against the connected host and emits a per-host report. Aggregating one report per host gives you a single **host × method** matrix — MDN-browser-compat style — that shows which methods work on which hosts.
-
-There are two roles in this workflow:
-
-1. **Tester** — runs the diagnosis inside a host (web or desktop) and copies the report.
-2. **Aggregator** — collects the per-host reports and merges them into the matrix.
-
-### 1. Run a diagnosis inside a host (tester)
+The Diagnosis view exercises every TrUAPI method against the connected host and emits a per-host pass/fail report you can copy out. Per-host reports feed the explorer's **Compatibility** page, which renders the host × method matrix; aggregation lives in the explorer (see [`explorer/README.md`](../explorer/README.md#host-compatibility-matrix)).
 
 Open the playground inside a TrUAPI host (it cannot run standalone in a browser tab):
 
@@ -72,7 +65,7 @@ Then, in the playground:
 2. Read the instructions on the screen, then click **Run diagnosis**.
 3. Wait for the run to finish. Non-disruptive methods run in parallel first, then disruptive methods run one at a time — approve each pop-up on your phone as it appears. A live log updates per method (`queued → processing… → success / failed`).
 4. When the run finishes, a **Report** panel appears above the log. Click **Copy report**.
-5. Save the markdown to a file named after the host, e.g. `web.md` or `desktop.md`.
+5. Save the markdown to a file named after the host (e.g. `web.md` or `desktop.md`) and hand it to whoever updates the compatibility matrix.
 
 The report looks like this:
 
@@ -94,49 +87,6 @@ _Generated: 2026-05-28T10:15:00.000Z_
 | ❌ | The method failed — it errored at runtime, the host returned an error, or it has no runnable example yet. |
 
 The host mode in the title (`Web` / `Desktop`) is detected automatically — Electron in the user-agent or the native-webview marker ⇒ Desktop, browser iframe ⇒ Web.
-
-### 2. Generate the matrix (aggregator)
-
-Collect one report per host. Drop each `*.md` file into [`pending-reports/`](pending-reports/) at the playground root and run:
-
-```bash
-yarn generate-matrix
-```
-
-This consumes every report in `pending-reports/` (deleting them on success) and writes a combined `matrix.md` to the playground root. The output looks like:
-
-```markdown
-# TrUAPI Host Compatibility Matrix
-_Generated: 2026-05-28T10:30:00.000Z — aggregated from 2 report(s)_
-
-| Method | Web | Desktop |
-| --- | --- | --- |
-| `Account/get_account` | ❌ | ✅ |
-| `Account/get_account_alias` | ❌ | ❌ |
-| `System/handshake` | ✅ | ✅ |
-...
-```
-
-- **Columns** are the hosts, labelled by the mode from each report's title. If two reports share a mode (e.g. two different web hosts) they are disambiguated by their filename.
-- **Rows** are the methods, in the order they appear across the reports (union, first-seen-first).
-- A method missing from a report renders as `—`.
-
-`pending-reports/*.md` and `matrix.md` are gitignored, so neither the inputs nor the aggregate are checked in by accident.
-
-#### Standalone CLI
-
-The aggregator also runs directly for ad-hoc use:
-
-```bash
-node ../scripts/aggregate-diagnosis-matrix.mjs web.md desktop.md > matrix.md
-node ../scripts/aggregate-diagnosis-matrix.mjs reports/   # all *.md in a dir
-node ../scripts/aggregate-diagnosis-matrix.mjs --out matrix.md --consume pending-reports
-```
-
-Flags:
-
-- `--out <file>` — write the matrix to `<file>` instead of stdout.
-- `--consume` — delete the input report files **after** a successful write. Never before, so a write error will not lose data.
 
 ## Deploy
 

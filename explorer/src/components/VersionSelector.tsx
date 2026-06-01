@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ChevronDown } from "lucide-react";
 import type { VersionEntry } from "../data/types";
-import { findMethod, findType } from "../data/registry";
+import { findMethod, findType, methodPath } from "../data/registry";
 
 interface VersionSelectorProps {
   versions: VersionEntry[];
@@ -38,11 +38,12 @@ export default function VersionSelector({
     const sub = path.startsWith(prefix) ? path.slice(prefix.length) : "/";
     const nextPrefix = `/v/${target.id}`;
 
-    const methodMatch = sub.match(/^\/method\/(.+)$/);
+    const methodMatch = sub.match(/^\/method\/([^/]+)\/(.+)$/);
     if (methodMatch) {
-      const name = methodMatch[1];
-      if (findMethod(target, name)) {
-        navigate(`${nextPrefix}/method/${name}`);
+      const serviceName = decodeURIComponent(methodMatch[1]);
+      const methodName = decodeURIComponent(methodMatch[2]);
+      if (findMethod(target, serviceName, methodName)) {
+        navigate(methodPath(target.id, serviceName, methodName));
         return;
       }
       navigate(`${nextPrefix}/`);

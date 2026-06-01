@@ -19,7 +19,7 @@ TrUAPI (Triangle User-Agent Programming Interface) is the API surface that hosts
 
 Browse the published Rust API docs at [paritytech.github.io/truapi](https://paritytech.github.io/truapi).
 
-The interactive playground lets you browse every method, edit request payloads, and call or subscribe to them live against a connected host. It also drives an end-to-end **Diagnosis** that produces a per-host pass/fail report, which the `yarn generate-matrix` script then aggregates into a host × method compatibility matrix. Step-by-step guide: [playground/README.md → Diagnosis & compatibility matrix](playground/README.md#diagnosis--compatibility-matrix).
+The interactive playground lets you browse every method, edit request payloads, and call or subscribe to them live against a connected host. It also drives an end-to-end **Diagnosis** that produces a per-host pass/fail report ([playground/README.md → Diagnosis](playground/README.md#diagnosis)). The explorer aggregates those reports into a cross-host **Compatibility** matrix ([explorer/README.md → Host compatibility matrix](explorer/README.md#host-compatibility-matrix)).
 
 **Live:** [truapi-playground.dot.li](https://truapi-playground.dot.li/) (open from inside the Polkadot Desktop Browser)
 

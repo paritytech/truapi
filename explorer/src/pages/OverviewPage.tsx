@@ -1,6 +1,11 @@
 import { Link, useOutletContext } from "react-router-dom";
 import type { VersionEntry } from "../data/types";
-import { methodsByKind, productFunction, totalMethods } from "../data/registry";
+import {
+  methodPath,
+  methodsByKind,
+  productFunction,
+  totalMethods,
+} from "../data/registry";
 import PatternBadge from "../components/PatternBadge";
 import { MarkdownText } from "../components/MarkdownText";
 
@@ -83,7 +88,7 @@ export default function OverviewPage() {
                 {service.methods.map((method) => (
                   <Link
                     key={method.name}
-                    to={`/v/${version.id}/method/${method.name}`}
+                    to={methodPath(version.id, service.name, method.name)}
                     className="flex items-start justify-between gap-3 py-2 group"
                   >
                     <div className="min-w-0">

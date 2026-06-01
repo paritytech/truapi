@@ -2,7 +2,7 @@
 
 use crate::v01;
 
-versioned_type! {
+truapi_macros::versioned_type! {
     pub enum HostPushNotificationRequest { V1 => v01::HostPushNotificationRequest }
     pub enum HostPushNotificationResponse { V1 => v01::HostPushNotificationResponse }
     pub enum HostPushNotificationError { V1 => v01::HostPushNotificationError }

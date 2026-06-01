@@ -9,6 +9,7 @@ import OverviewPage from "./pages/OverviewPage";
 import MethodPage from "./pages/MethodPage";
 import TypesPage from "./pages/TypesPage";
 import TypeDetailPage from "./pages/TypeDetailPage";
+import CompatibilityPage from "./pages/CompatibilityPage";
 
 const SIDEBAR_WIDTH = 288;
 
@@ -99,9 +100,13 @@ export default function App() {
       <Route path="/" element={<Navigate to={`/v/${fallback}/`} replace />} />
       <Route path="/v/:version" element={<VersionLayout />}>
         <Route index element={<OverviewPage />} />
-        <Route path="method/:methodName" element={<MethodPage />} />
+        <Route
+          path="method/:serviceName/:methodName"
+          element={<MethodPage />}
+        />
         <Route path="types" element={<TypesPage />} />
         <Route path="type/:typeId" element={<TypeDetailPage />} />
+        <Route path="compatibility" element={<CompatibilityPage />} />
       </Route>
       <Route path="*" element={<NotFoundRedirect />} />
     </Routes>
