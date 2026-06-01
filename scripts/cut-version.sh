@@ -85,10 +85,6 @@ if [ "$NEXT_FILES" -gt 0 ]; then
 //! TrUAPI Protocol $NEXT_V_MOD type definitions.
 MODEOF
     awk 'NR > 1 && !/^\/\/!/' "$NEXT_DIR/mod.rs" >> "$NEXT_V_DIR/mod.rs" || true
-    for f in "$NEXT_DIR"/*.rs; do
-      [ "$(basename "$f")" = "mod.rs" ] && continue
-      cp "$f" "$NEXT_V_DIR/"
-    done
   fi
 else
   echo "  next/ has no type files to crystallize (v01 types unchanged for $VERSION)"
@@ -336,6 +332,7 @@ generate_changelog() {
       fi
 
       for section_name in Added Changed Fixed Removed; do
+        local items=()
         case "$section_name" in
           Added)   items=("${added[@]+"${added[@]}"}") ;;
           Changed) items=("${changed[@]+"${changed[@]}"}") ;;
@@ -386,4 +383,4 @@ if [ "$DRY_RUN" -eq 0 ]; then
     rust/crates/truapi/Cargo.toml
 fi
 
-echo "Done. Review changes, then commit and tag v$VERSION."
+echo "Done. Review changes, commit, and tag v${VERSION}. Working version is now ${NEXT_VERSION}."
