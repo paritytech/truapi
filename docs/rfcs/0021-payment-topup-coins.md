@@ -43,7 +43,7 @@ A `PartialPayment { credited: Balance }` variant is added to `HostPaymentTopUpEr
 
 ## Alternatives
 
-- **`CoinPayment::deposit` (RFC 0017).** Requires wrapping keys into an encrypted cheque tied to a receivable — unnecessary ceremony when the product already holds keys in the clear.
+- **An encrypted-cheque deposit flow.** Wrapping keys into an encrypted cheque tied to a receivable is unnecessary ceremony when the product already holds keys in the clear.
 
 ## Unresolved Questions
 

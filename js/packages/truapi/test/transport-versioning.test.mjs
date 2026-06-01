@@ -283,43 +283,6 @@ function handshakeResponsePayload(value) {
   assert.equal(fixture.sent.length, 1);
 }
 
-// CoinPayment subscriptions use the same typed interrupt envelope for RFC0017
-// resolvable status streams.
-{
-  const fixture = providerFixture();
-  const transport = createTransport(fixture.provider);
-  const client = createClient(transport);
-  const errors = [];
-
-  const sub = client.coinPayment
-    .rebalancePurse({
-      request: { from: 1, to: 2, amount: 1000 },
-    })
-    .subscribe({
-      error: (error) => errors.push(error),
-    });
-
-  const reason = "Denied";
-  const frame = unwrap(
-    encodeWireMessage({
-      requestId: sub.subscriptionId,
-      payload: {
-        id: W.COIN_PAYMENT_REBALANCE_PURSE.interrupt,
-        value: T.VersionedHostCoinPaymentRebalancePurseError.enc({
-          tag: "V1",
-          value: reason,
-        }),
-      },
-    }),
-    "encode typed coin payment interrupt",
-  );
-  fixture.receive(frame);
-
-  assert.equal(errors.length, 1);
-  assert.ok(errors[0] instanceof SubscriptionError);
-  assert.deepEqual(errors[0].reason, reason);
-}
-
 // Malformed receive payloads are terminal observable errors. The generated
 // wrapper sends `_stop` and ignores later receive frames for that subscription.
 {
