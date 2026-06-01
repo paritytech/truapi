@@ -45,6 +45,7 @@ pub trait Payment: Send + Sync {
     ///   amount: 1000n,
     ///   source: { tag: "ProductAccount", value: { derivationIndex: 0 } },
     /// });
+    ///
     /// if (topUp.isErr()) {
     ///   console.error(topUp.error);
     /// } else {
@@ -78,6 +79,7 @@ pub trait Payment: Send + Sync {
     ///   amount: 1000n,
     ///   source: { tag: "ProductAccount", value: { derivationIndex: 0 } },
     /// });
+    ///
     /// if (topUp.isErr()) {
     ///   console.error(topUp.error);
     /// } else {
