@@ -5,7 +5,7 @@
 import type { CompatibilityMatrix } from "./compatibility-types";
 
 export const compatibility: CompatibilityMatrix = {
-  "generatedAt": "2026-06-01T18:13:29.999Z",
+  "generatedAt": "2026-06-01T19:38:16.567Z",
   "hosts": [
     {
       "label": "Desktop",
@@ -21,6 +21,11 @@ export const compatibility: CompatibilityMatrix = {
       "label": "Android",
       "mode": "Android",
       "reportedAt": "2026-06-01T17:52:07.578Z"
+    },
+    {
+      "label": "iOS",
+      "mode": "iOS",
+      "reportedAt": "2026-06-01T16:21:46.683Z"
     }
   ],
   "methods": [
@@ -29,7 +34,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -37,7 +43,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -45,7 +52,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -53,7 +61,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "fail",
         "Web": "fail",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "fail"
       }
     },
     {
@@ -61,7 +70,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -69,7 +79,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "pass"
       }
     },
     {
@@ -77,7 +88,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -85,7 +97,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -93,7 +106,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -101,7 +115,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -109,7 +124,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -117,7 +133,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -125,7 +142,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -133,7 +151,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -141,7 +160,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -149,7 +169,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -157,7 +178,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -165,7 +187,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -173,7 +196,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "fail"
       }
     },
     {
@@ -181,7 +205,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -189,7 +214,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "fail",
         "Web": "fail",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "fail"
       }
     },
     {
@@ -197,7 +223,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "fail",
         "Web": "fail",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "fail"
       }
     },
     {
@@ -205,7 +232,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "fail"
       }
     },
     {
@@ -213,7 +241,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "fail",
         "Web": "fail",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "fail"
       }
     },
     {
@@ -221,7 +250,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "fail"
       }
     },
     {
@@ -229,7 +259,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "fail",
         "Web": "fail",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "fail"
       }
     },
     {
@@ -237,7 +268,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "fail",
         "Web": "fail",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "fail"
       }
     },
     {
@@ -245,7 +277,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "fail",
         "Web": "fail",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "fail"
       }
     },
     {
@@ -253,7 +286,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "fail",
         "Web": "fail",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "fail"
       }
     },
     {
@@ -261,7 +295,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "fail",
         "Web": "fail",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "fail"
       }
     },
     {
@@ -269,7 +304,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "fail",
         "Web": "fail",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "fail"
       }
     },
     {
@@ -277,7 +313,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "fail",
         "Web": "fail",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "fail"
       }
     },
     {
@@ -285,7 +322,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "fail",
         "Web": "fail",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "fail"
       }
     },
     {
@@ -293,7 +331,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "fail",
         "Web": "fail",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "fail"
       }
     },
     {
@@ -301,7 +340,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "fail",
         "Web": "fail",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "fail"
       }
     },
     {
@@ -309,7 +349,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -317,7 +358,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -325,7 +367,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -333,7 +376,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -341,7 +385,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -349,7 +394,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "fail"
       }
     },
     {
@@ -357,7 +403,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "fail",
         "Web": "fail",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -365,7 +412,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "fail",
         "Web": "fail",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "fail"
       }
     },
     {
@@ -373,7 +421,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "fail",
         "Web": "fail",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "fail"
       }
     },
     {
@@ -381,7 +430,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "fail",
         "Web": "fail",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "fail"
       }
     },
     {
@@ -389,7 +439,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -397,7 +448,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -405,7 +457,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "fail"
       }
     },
     {
@@ -413,7 +466,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "fail",
         "Web": "fail",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "fail"
       }
     },
     {
@@ -421,7 +475,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -429,7 +484,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "fail",
         "Web": "fail",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "fail"
       }
     },
     {
@@ -437,7 +493,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "fail",
         "Web": "fail",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "fail"
       }
     },
     {
@@ -445,7 +502,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "fail",
         "Web": "fail",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "fail"
       }
     },
     {
@@ -453,7 +511,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "fail",
         "Web": "fail",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "fail"
       }
     },
     {
@@ -461,7 +520,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -469,7 +529,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -477,7 +538,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "fail",
         "Web": "pass",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "fail"
       }
     },
     {
@@ -485,7 +547,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "fail"
       }
     },
     {
@@ -493,7 +556,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "fail",
         "Web": "fail",
-        "Android": "fail"
+        "Android": "fail",
+        "iOS": "fail"
       }
     },
     {
@@ -501,7 +565,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "fail",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -509,7 +574,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -517,7 +583,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -525,7 +592,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     },
     {
@@ -533,7 +601,8 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "pass"
+        "Android": "pass",
+        "iOS": "pass"
       }
     }
   ]
