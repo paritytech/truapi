@@ -60,6 +60,3 @@ The old `Theme` enum (`Light | Dark`) is renamed to `ThemeVariant` for clarity. 
 
 - Wire-breaking change: deployed products on the old schema will fail to decode the new payload until updated.
 
-## Alternatives
-
-- **Keep `Theme` and add `name` alongside it.** Preserves the old field name but `theme: Theme` where `Theme` means light/dark is confusing when the struct also carries a theme name.
