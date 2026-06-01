@@ -2,7 +2,7 @@
 
 use crate::v01;
 
-versioned_type! {
+truapi_macros::versioned_type! {
     pub enum HostHandshakeRequest { V1 => v01::HostHandshakeRequest }
     pub enum HostHandshakeResponse { V1 }
     pub enum HostHandshakeError { V1 => v01::HostHandshakeError }
