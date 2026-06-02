@@ -28,10 +28,10 @@ Replace the existing `Theme` enum with two types:
 ```rust
 /// Identifies a named theme.
 enum ThemeName {
-    /// The host's default theme.
-    Default,
     /// A custom named theme.
     Custom(String),
+    /// The host's default theme.
+    Default,
 }
 
 /// Light or dark variant.

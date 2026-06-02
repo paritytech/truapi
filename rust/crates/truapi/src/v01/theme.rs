@@ -3,10 +3,10 @@ use parity_scale_codec::{Decode, Encode};
 /// Identifies a named theme.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum ThemeName {
-    /// The host's default theme.
-    Default,
     /// A custom named theme.
     Custom(String),
+    /// The host's default theme.
+    Default,
 }
 
 /// Light or dark variant.
