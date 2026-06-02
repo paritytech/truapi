@@ -162,6 +162,11 @@ function cellStatus(report, id) {
   return cell == null ? null : statusOf(cell);
 }
 
+// The failure detail for one method in one report, or undefined when none.
+function cellDetail(report, id) {
+  return report.details.get(id);
+}
+
 // Merge freshly parsed reports into the prior matrix. Each report upserts its
 // own column (matched by label); columns with no report this run keep their
 // previous values. A null `prior` (e.g. first run, or `--replace`) means only
@@ -194,13 +199,23 @@ function buildMatrix(prior, reports, labels, methods, generatedAt) {
   const priorById = new Map((prior?.methods ?? []).map((m) => [m.id, m]));
   const rows = order.map((id) => {
     const results = {};
+    const details = {};
     for (const host of hosts) {
       const report = reportByLabel.get(host.label);
-      results[host.label] = report
-        ? cellStatus(report, id)
-        : (priorById.get(id)?.results?.[host.label] ?? null);
+      if (report) {
+        results[host.label] = cellStatus(report, id);
+        const detail = cellDetail(report, id);
+        if (detail) details[host.label] = detail;
+      } else {
+        const prevRow = priorById.get(id);
+        results[host.label] = prevRow?.results?.[host.label] ?? null;
+        const prevDetail = prevRow?.details?.[host.label];
+        if (prevDetail) details[host.label] = prevDetail;
+      }
     }
-    return { id, results };
+    const row = { id, results };
+    if (Object.keys(details).length > 0) row.details = details;
+    return row;
   });
 
   return { generatedAt, hosts, methods: rows };
