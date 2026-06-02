@@ -48,12 +48,15 @@ import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 
 const TITLE_RE = /^##\s+Truapi\s+(.+?)\s+Diagnosis\s*$/im;
-const GENERATED_RE = /^_Generated:\s*(.+?)_\s*$/m;
-// | `Service/method` | ✅ | optional details |   (the header row's "Method"
-// cell has no backticks, so it is skipped automatically). Group 2 is the
-// status icon; group 3 is the optional Details cell (it may contain escaped
-// `\|`, so it is captured up to the trailing pipe rather than the first one).
-const ROW_RE = /^\|\s*`([^`]+)`\s*\|\s*([^|]*?)\s*\|\s*(?:(.*?)\s*\|\s*)?$/;
+const GENERATED_RE = /^_?Generated:\s*(.+?)_?\s*$/m;
+// A method row: `| Service/method | ✅ | optional details |`. The method cell
+// may or may not be wrapped in backticks and the columns may be space-padded
+// (markdown formatters do both), so backticks are optional here. Group 2 is the
+// status icon; group 3 is the optional Details cell (captured up to the
+// trailing pipe so an escaped `\|` inside it survives). Header (`| Method | … `)
+// and separator (`| --- | … `) rows are dropped in parseReport: their first
+// cell has no `/`.
+const ROW_RE = /^\|\s*`?([^|`]+?)`?\s*\|\s*([^|]*?)\s*\|\s*(?:(.*?)\s*\|\s*)?$/;
 
 function collectFiles(args) {
   const files = [];
@@ -82,6 +85,7 @@ function parseReport(file) {
     const m = line.match(ROW_RE);
     if (!m) continue;
     const method = m[1].trim();
+    if (!method.includes("/")) continue;
     if (!statuses.has(method)) order.push(method);
     statuses.set(method, m[2].trim());
     const detail = (m[3] ?? "").trim();
