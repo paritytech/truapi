@@ -602,6 +602,18 @@ button {
   margin-bottom: 8px;
 }
 
+.view__breadcrumb--link {
+  display: inline-block;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.view__breadcrumb--link:hover {
+  color: var(--accent);
+}
+
 .view__title {
   font-family: var(--font-serif), serif;
   font-style: italic;
@@ -1606,6 +1618,13 @@ button {
   padding: 7px 0;
   border-bottom: 1px solid var(--rule);
   min-height: 34px;
+}
+
+.diag__row[data-expandable="true"] {
+  cursor: pointer;
+}
+.diag__row[data-expandable="true"]:hover {
+  background: var(--bg-tint);
 }
 
 .diag__name {

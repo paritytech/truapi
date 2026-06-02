@@ -14,6 +14,7 @@ const STATUS_LABEL: Record<TestStatus, string> = {
 interface Row {
   id: string;
   status: TestStatus;
+  output?: string;
 }
 
 export function DiagnosisView({
@@ -32,13 +33,19 @@ export function DiagnosisView({
   onBack: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const rows: Row[] = useMemo(() => {
     const out: Row[] = [];
     for (const svc of services) {
       for (const m of svc.methods) {
         const id = `${svc.name}/${m.name}`;
-        out.push({ id, status: testResults[id]?.status ?? "idle" });
+        const entry = testResults[id];
+        out.push({
+          id,
+          status: entry?.status ?? "idle",
+          output: entry?.output,
+        });
       }
     }
     return out;
@@ -142,15 +149,43 @@ export function DiagnosisView({
 
       {hasResults && (
         <div className="diag__log">
-          {rows.map((r) => (
-            <div key={r.id} className="diag__row" data-status={r.status}>
-              <span className="autotest__dot" data-status={r.status} />
-              <span className="diag__name">{r.id}</span>
-              <span className="autotest__status" data-status={r.status}>
-                {STATUS_LABEL[r.status]}
-              </span>
-            </div>
-          ))}
+          {rows.map((r) => {
+            const expandable = r.output != null;
+            const isExpanded = expandedId === r.id;
+            return (
+              <div key={r.id}>
+                <div
+                  className="diag__row"
+                  data-status={r.status}
+                  data-expandable={expandable}
+                  onClick={
+                    expandable
+                      ? () => setExpandedId(isExpanded ? null : r.id)
+                      : undefined
+                  }
+                >
+                  <span className="autotest__dot" data-status={r.status} />
+                  <span className="diag__name">{r.id}</span>
+                  {expandable && (
+                    <span className="autotest__chevron">
+                      {isExpanded ? "▲" : "▼"}
+                    </span>
+                  )}
+                  <span className="autotest__status" data-status={r.status}>
+                    {STATUS_LABEL[r.status]}
+                  </span>
+                </div>
+                {isExpanded && r.output != null && (
+                  <div className="autotest__detail">
+                    <div className="autotest__detail-label">
+                      {r.status === "fail" ? "Error" : "Response"}
+                    </div>
+                    <pre className="autotest__detail-body">{r.output}</pre>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

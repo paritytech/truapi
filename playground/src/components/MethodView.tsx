@@ -120,6 +120,12 @@ export function MethodView({
     setLogs((prev) => [...prev, entry]);
   }, []);
 
+  // Scroll the index (left rail on desktop) to this method's service section.
+  const revealServiceInRail = useCallback(() => {
+    const el = document.querySelector(`[data-testid="service-${service}"]`);
+    el?.scrollIntoView({ block: "start", behavior: "smooth" });
+  }, [service]);
+
   const runnable = !!methodInfo?.exampleSource;
 
   const handleRun = async () => {
@@ -227,7 +233,14 @@ export function MethodView({
         </button>
       </div>
 
-      <div className="view__breadcrumb">{service}</div>
+      <button
+        type="button"
+        className="view__breadcrumb view__breadcrumb--link"
+        onClick={revealServiceInRail}
+        title="Show this service in the index"
+      >
+        {service}
+      </button>
       <h1 className="view__title">
         <span className="view__slash">/</span>
         <span className="view__method">{method}</span>
