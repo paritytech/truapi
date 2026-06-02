@@ -197,7 +197,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "fail"
+        "iOS": "pass"
       }
     },
     {
@@ -395,7 +395,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "fail"
+        "iOS": "pass"
       }
     },
     {
@@ -458,7 +458,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "fail",
-        "iOS": "fail"
+        "iOS": "pass"
       }
     },
     {
