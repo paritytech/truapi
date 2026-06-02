@@ -1552,20 +1552,9 @@ button {
   cursor: not-allowed;
 }
 
-.autotest__report {
-  margin-top: 28px;
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-}
-.autotest__report-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--rule);
-}
 .autotest__report-copy {
+  margin-left: auto;
+  align-self: center;
   padding: 6px 14px;
   font-family: var(--font-mono), monospace;
   font-size: 11px;
@@ -1574,25 +1563,13 @@ button {
   color: var(--ink-3);
   background: transparent;
   border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
   cursor: pointer;
   transition: background 120ms ease, color 120ms ease;
 }
 .autotest__report-copy:hover {
   background: var(--bg-tint);
   color: var(--ink);
-}
-.autotest__report-body {
-  margin: 0;
-  padding: 14px;
-  font-family: var(--font-mono), monospace;
-  font-size: 12px;
-  line-height: 1.55;
-  color: var(--console-ink);
-  background: var(--console-bg);
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 360px;
-  overflow-y: auto;
 }
 
 .diag__callout {

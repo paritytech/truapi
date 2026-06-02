@@ -20,6 +20,7 @@ import {
   type TestEntry,
   DIAGNOSIS_ID,
   runDiagnosis,
+  runSingleTest,
 } from "@/src/lib/auto-test";
 import packageJson from "../../package.json";
 
@@ -268,6 +269,16 @@ export default function PlaygroundPage() {
     abortRef.current?.abort();
   }, []);
 
+  const handleRetryDiagnosis = useCallback(
+    async (serviceName: string, methodName: string) => {
+      if (isTestRunning) return;
+      await runSingleTest(services, serviceName, methodName, (id, entry) => {
+        setTestResults((prev) => ({ ...prev, [id]: entry }));
+      });
+    },
+    [isTestRunning],
+  );
+
   const hasView = selection !== null;
   const isDiagnosis = selection?.service === DIAGNOSIS_ID;
 
@@ -295,6 +306,7 @@ export default function PlaygroundPage() {
               isRunning={isTestRunning}
               onRun={handleRunDiagnosis}
               onStop={handleStopTests}
+              onRetry={handleRetryDiagnosis}
               onBack={handleBack}
             />
           ) : selection ? (

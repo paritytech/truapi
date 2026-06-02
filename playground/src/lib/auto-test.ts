@@ -194,6 +194,19 @@ async function runSubscription(
   });
 }
 
+// Re-run a single method, e.g. to replay a failed diagnosis row.
+export async function runSingleTest(
+  services: ServiceInfo[],
+  serviceName: string,
+  methodName: string,
+  onUpdate: (id: string, entry: TestEntry) => void,
+): Promise<void> {
+  const svc = services.find((s: ServiceInfo) => s.name === serviceName);
+  const method = svc?.methods.find((m: MethodInfo) => m.name === methodName);
+  if (!svc || !method) return;
+  await runOne({ serviceName, method, onUpdate, excludeSet: new Set() });
+}
+
 async function runAutoTests(
   services: ServiceInfo[],
   onUpdate: (id: string, entry: TestEntry) => void,

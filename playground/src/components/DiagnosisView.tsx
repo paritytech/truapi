@@ -13,6 +13,8 @@ const STATUS_LABEL: Record<TestStatus, string> = {
 
 interface Row {
   id: string;
+  service: string;
+  method: string;
   status: TestStatus;
   output?: string;
 }
@@ -23,6 +25,7 @@ export function DiagnosisView({
   isRunning,
   onRun,
   onStop,
+  onRetry,
   onBack,
 }: {
   services: ServiceInfo[];
@@ -30,6 +33,7 @@ export function DiagnosisView({
   isRunning: boolean;
   onRun: () => void;
   onStop: () => void;
+  onRetry: (service: string, method: string) => void;
   onBack: () => void;
 }) {
   const [copied, setCopied] = useState(false);
@@ -43,6 +47,8 @@ export function DiagnosisView({
         const entry = testResults[id];
         out.push({
           id,
+          service: svc.name,
+          method: m.name,
           status: entry?.status ?? "idle",
           output: entry?.output,
         });
@@ -129,23 +135,16 @@ export function DiagnosisView({
             {passCount} success · {failCount} failed
           </span>
         )}
+        {hasResults && !isRunning && (
+          <button
+            type="button"
+            className="autotest__report-copy"
+            onClick={handleCopyReport}
+          >
+            {copied ? "Copied ✓" : "Copy report"}
+          </button>
+        )}
       </div>
-
-      {hasResults && !isRunning && (
-        <div className="autotest__report">
-          <div className="autotest__report-head">
-            <span className="panel__label">Report</span>
-            <button
-              type="button"
-              className="autotest__report-copy"
-              onClick={handleCopyReport}
-            >
-              {copied ? "Copied ✓" : "Copy report"}
-            </button>
-          </div>
-          <pre className="autotest__report-body">{reportMarkdown}</pre>
-        </div>
-      )}
 
       {hasResults && (
         <div className="diag__log">
@@ -181,6 +180,19 @@ export function DiagnosisView({
                       {r.status === "fail" ? "Error" : "Response"}
                     </div>
                     <pre className="autotest__detail-body">{r.output}</pre>
+                    <button
+                      type="button"
+                      className="autotest__retry"
+                      disabled={isRunning}
+                      title={
+                        isRunning
+                          ? "Wait for the diagnosis run to finish before replaying"
+                          : "Re-run this method"
+                      }
+                      onClick={() => onRetry(r.service, r.method)}
+                    >
+                      ▶ Replay
+                    </button>
                   </div>
                 )}
               </div>
