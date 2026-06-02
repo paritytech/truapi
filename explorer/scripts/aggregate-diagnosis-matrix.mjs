@@ -122,11 +122,12 @@ function unionMethodOrder(reports) {
 }
 
 // Map the icon-only status cell from a report to the typed enum used by the
-// explorer. Anything that doesn't start with the pass marker is treated as a
-// failure.
+// explorer. Only the pass/fail markers are real measurements; a skipped (⏭),
+// idle, or running cell means "not measured", same as an absent row → null.
 function statusOf(cell) {
   if (cell.startsWith("✅")) return "pass";
-  return "fail";
+  if (cell.startsWith("❌")) return "fail";
+  return null;
 }
 
 const KNOWN_MODES = new Set(["Web", "Desktop", "Android", "iOS"]);
