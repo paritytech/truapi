@@ -4,6 +4,7 @@ import type { VersionEntry } from "../data/types";
 import { methodPath } from "../data/registry";
 import { compatibility } from "../data/compatibility";
 import type { CompatStatus } from "../data/compatibility-types";
+import { playgroundDiagnosisUrl } from "../data/playground";
 
 /** Per-method host compatibility, aggregated from per-host diagnosis reports. */
 export default function CompatibilityPage() {
@@ -17,8 +18,16 @@ export default function CompatibilityPage() {
           Host compatibility
         </h1>
         <p className="text-slate-400 mb-6">
-          No host data yet. Run the Diagnosis in the playground for each host
-          you want covered, drop the reports into{" "}
+          No host data yet. Run the{" "}
+          <a
+            href={playgroundDiagnosisUrl()}
+            target="_blank"
+            rel="noreferrer"
+            className="font-medium text-pink-400 hover:text-pink-300 transition-colors"
+          >
+            Diagnosis in the playground
+          </a>{" "}
+          for each host you want covered, drop the reports into{" "}
           <code className="font-mono text-slate-200">
             explorer/pending-reports/
           </code>
@@ -35,9 +44,19 @@ export default function CompatibilityPage() {
   return (
     <div className="max-w-5xl mx-auto">
       <div className="mb-8 animate-slide-up">
-        <h1 className="text-2xl lg:text-3xl font-bold text-white font-display tracking-tight">
-          Host compatibility
-        </h1>
+        <div className="flex items-start justify-between gap-3">
+          <h1 className="text-2xl lg:text-3xl font-bold text-white font-display tracking-tight">
+            Host compatibility
+          </h1>
+          <a
+            href={playgroundDiagnosisUrl()}
+            target="_blank"
+            rel="noreferrer"
+            className="shrink-0 text-xs font-medium text-pink-400 hover:text-pink-300 transition-colors whitespace-nowrap mt-1"
+          >
+            Re-run diagnosis ↗
+          </a>
+        </div>
         <p className="text-sm text-slate-400 mt-2">
           Aggregated from {hosts.length} host{hosts.length === 1 ? "" : "s"} —
           generated{" "}

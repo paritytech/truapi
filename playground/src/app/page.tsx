@@ -127,9 +127,24 @@ function Masthead({
 
 type Selection = { service: string; method: string } | null;
 
+// The Diagnosis and Auto-Test screens are deep-linked with a clean `?view=`
+// param rather than their internal service ids.
+const VIEW_PARAM: Record<string, string> = {
+  [DIAGNOSIS_ID]: "diagnosis",
+  [AUTO_TEST_ID]: "auto-test",
+};
+const SERVICE_FOR_VIEW: Record<string, string> = {
+  diagnosis: DIAGNOSIS_ID,
+  "auto-test": AUTO_TEST_ID,
+};
+
 function selectionFromUrl(): Selection {
   if (typeof window === "undefined") return null;
   const params = new URLSearchParams(window.location.search);
+  const view = params.get("view");
+  if (view && SERVICE_FOR_VIEW[view]) {
+    return { service: SERVICE_FOR_VIEW[view], method: "" };
+  }
   const service = params.get("service");
   const method = params.get("method");
   if (!service) return null;
@@ -139,8 +154,13 @@ function selectionFromUrl(): Selection {
 function urlForSelection(selection: Selection): string {
   if (!selection) return window.location.pathname;
   const params = new URLSearchParams();
-  params.set("service", selection.service);
-  if (selection.method) params.set("method", selection.method);
+  const view = VIEW_PARAM[selection.service];
+  if (view) {
+    params.set("view", view);
+  } else {
+    params.set("service", selection.service);
+    if (selection.method) params.set("method", selection.method);
+  }
   return `${window.location.pathname}?${params.toString()}`;
 }
 

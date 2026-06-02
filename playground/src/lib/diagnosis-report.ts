@@ -11,10 +11,14 @@ const ICON: Record<TestStatus, string> = {
 
 export type HostMode = "Web" | "Desktop" | "Android" | "iOS" | "Unknown";
 
-// Decide which native platform a webview host runs on from the user-agent.
-// iPadOS Safari masquerades as macOS, so a touch-capable "Mac" inside a native
-// webview is treated as iOS.
-function nativePlatform(ua: string): HostMode {
+// Identify the host the playground runs inside, used as the report column /
+// title. The platform comes from the user-agent first: a mobile host (native
+// webview or mobile browser) is Android / iOS, an Electron host is Desktop.
+// iPadOS Safari masquerades as macOS, so a touch-capable "Mac" is treated as
+// iOS. With no platform marker in the UA, a browser iframe is the Web host.
+export function detectHostMode(): HostMode {
+  if (typeof window === "undefined") return "Unknown";
+  const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
   if (/android/i.test(ua)) return "Android";
   if (/iphone|ipad|ipod/i.test(ua)) return "iOS";
   if (
@@ -24,20 +28,8 @@ function nativePlatform(ua: string): HostMode {
   ) {
     return "iOS";
   }
-  return "Desktop";
-}
-
-// Identify the host the playground runs inside, used as the report column /
-// title. Native hosts (Electron desktop app or a mobile webview that sets
-// `__HOST_WEBVIEW_MARK__`) are split by platform into Desktop / Android / iOS;
-// dot.li running inside a browser iframe is the Web host.
-export function detectHostMode(): HostMode {
-  if (typeof window === "undefined") return "Unknown";
-  const ua = typeof navigator !== "undefined" ? navigator.userAgent : "";
   const w = window as Window & { __HOST_WEBVIEW_MARK__?: boolean };
-  if (/electron/i.test(ua) || w.__HOST_WEBVIEW_MARK__) {
-    return nativePlatform(ua);
-  }
+  if (/electron/i.test(ua) || w.__HOST_WEBVIEW_MARK__) return "Desktop";
   try {
     return window === window.top ? "Unknown" : "Web";
   } catch {

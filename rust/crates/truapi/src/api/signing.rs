@@ -20,12 +20,14 @@ pub trait Signing: Send + Sync {
     /// Construct a signed transaction for a product account.
     ///
     /// ```ts
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    ///
     /// const result = await truapi.signing.createTransaction({
     ///   signer: {
     ///     dotNsIdentifier: "truapi-playground.dot",
     ///     derivationIndex: 0,
     ///   },
-    ///   genesisHash: "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3",
+    ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///   callData: "0x0000",
     ///   extensions: [],
     ///   txExtVersion: 0,
@@ -47,9 +49,11 @@ pub trait Signing: Send + Sync {
     /// Construct a signed transaction for a non-product (legacy) account.
     ///
     /// ```ts
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
+    ///
     /// const result = await truapi.signing.createTransactionWithLegacyAccount({
     ///   signer: "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///   genesisHash: "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3",
+    ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///   callData: "0x0000",
     ///   extensions: [],
     ///   txExtVersion: 0,
