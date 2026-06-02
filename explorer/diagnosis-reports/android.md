@@ -43,7 +43,7 @@ _Generated: 2026-06-02T13:24:09.016Z_
 | `Local Storage/read`                             | ✅     |                                                                                                                 |
 | `Local Storage/write`                            | ✅     |                                                                                                                 |
 | `Local Storage/clear`                            | ✅     |                                                                                                                 |
-| `Notifications/send_push_notification`           | ❌     | timed out after 10s                                                                                             |
+| `Notifications/send_push_notification`           | ✅     |                                                                                                                 |
 | `Notifications/cancel_push_notification`         | ✅     |                                                                                                                 |
 | `Payment/balance_subscribe`                      | ✅     |                                                                                                                 |
 | `Payment/top_up`                                 | ✅     |                                                                                                                 |

@@ -57,6 +57,9 @@ export function renderReportMarkdown(
       const id = `${svc.name}/${m.name}`;
       const entry = results[id];
       const status = entry?.status ?? "idle";
+      // Skipped methods (e.g. services the host hasn't wired up) are omitted
+      // from the report entirely so they never reach the compatibility matrix.
+      if (status === "skipped") continue;
       lines.push(`| \`${id}\` | ${ICON[status]} | ${detailCell(entry)} |`);
     }
   }

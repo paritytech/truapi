@@ -99,26 +99,40 @@ export default function CompatibilityPage() {
             </tr>
           </thead>
           <tbody>
-            {version.services.map((service, i) => (
-              <ServiceRows
-                key={service.name}
-                serviceName={service.name}
-                serviceIndex={i}
-                methods={service.methods.map((m) => {
-                  const row = byId.get(`${service.name}/${m.name}`);
-                  return {
-                    name: m.name,
-                    id: `${service.name}/${m.name}`,
-                    results: row?.results,
-                    details: row?.details,
-                  };
-                })}
-                hosts={hosts.map((h) => h.label)}
-                versionId={version.id}
-                expandedId={expandedId}
-                onToggle={setExpandedId}
-              />
-            ))}
+            {version.services
+              .map((service) => ({
+                name: service.name,
+                // Only methods the matrix actually measured. Methods absent from
+                // the matrix (e.g. skipped services) are dropped, and a service
+                // left with none is not rendered at all.
+                methods: service.methods.flatMap((m) => {
+                  const id = `${service.name}/${m.name}`;
+                  const row = byId.get(id);
+                  return row
+                    ? [
+                        {
+                          name: m.name,
+                          id,
+                          results: row.results,
+                          details: row.details,
+                        },
+                      ]
+                    : [];
+                }),
+              }))
+              .filter((service) => service.methods.length > 0)
+              .map((service, i) => (
+                <ServiceRows
+                  key={service.name}
+                  serviceName={service.name}
+                  serviceIndex={i}
+                  methods={service.methods}
+                  hosts={hosts.map((h) => h.label)}
+                  versionId={version.id}
+                  expandedId={expandedId}
+                  onToggle={setExpandedId}
+                />
+              ))}
           </tbody>
         </table>
       </div>

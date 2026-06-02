@@ -131,6 +131,8 @@ function statusOf(cell) {
 }
 
 const KNOWN_MODES = new Set(["Web", "Desktop", "Android", "iOS"]);
+// Canonical column order: desktop-class hosts first, then mobile, then unknown.
+const MODE_ORDER = ["Desktop", "Web", "Android", "iOS", "Unknown"];
 
 // The matrix schema only admits a fixed set of host modes; anything else
 // (including a report with no recognizable title) collapses to "Unknown".
@@ -188,6 +190,7 @@ function buildMatrix(prior, reports, labels, methods, generatedAt) {
     if (at >= 0) hosts[at] = host;
     else hosts.push(host);
   }
+  hosts.sort((a, b) => MODE_ORDER.indexOf(a.mode) - MODE_ORDER.indexOf(b.mode));
 
   const order = [];
   const seen = new Set();
@@ -220,7 +223,13 @@ function buildMatrix(prior, reports, labels, methods, generatedAt) {
     return row;
   });
 
-  return { generatedAt, hosts, methods: rows };
+  // Drop methods with no real measurement on any host (skipped everywhere or
+  // never reported) so the matrix carries only what was actually exercised.
+  const measured = rows.filter((row) =>
+    Object.values(row.results).some((v) => v !== null),
+  );
+
+  return { generatedAt, hosts, methods: measured };
 }
 
 function renderMarkdown(reports, labels, methods) {
