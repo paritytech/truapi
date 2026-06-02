@@ -38,15 +38,14 @@ The Diagnosis screen emits a per-host markdown report via "Copy report". Aggrega
 | `src/lib/transport.ts` | Singleton `Provider`/`Transport`/`TrUApiClient` over iframe postMessage or webview MessagePort. Owns the handshake and connection status. |
 | `src/lib/example-runner.ts` | Transpiles each rustdoc `ts` example via sucrase, runs it inside an `AsyncFunction` with `truapi`, `console`, and rxjs as ambient bindings. A tracking Proxy auto-unsubscribes inner `.subscribe(...)` calls so subscriptions clean up when the user navigates away. |
 | `src/lib/monaco-setup.ts` | Configures Monaco's TS worker: registers the bundled `@parity/truapi` types (`truapi-dts`), every rxjs `.d.ts`, and an ambient `declare const truapi: Client` so examples typecheck without manual imports. Defines the light/dark themes that match the design tokens. |
-| `src/lib/auto-test.ts` | Runs every method's example (in parallel with a small concurrency budget) and reports pass / fail. `runDiagnosis` runs the full flow: non-disruptive methods in parallel, then each disruptive method sequentially so phone signing can complete one at a time. |
+| `src/lib/auto-test.ts` | Runs each method's example and reports pass / fail. `runDiagnosis` runs every method one at a time: automatic methods first, then the methods that prompt the user (signing, permission/resource requests, `navigate_to`) last so each interaction completes in isolation. `runSingleTest` replays one method (used by the Diagnosis row replay). |
 | `src/lib/diagnosis-report.ts` | Renders the diagnosis results as a copy-pasteable GitHub-flavoured markdown table: a `## Truapi <Web\|Desktop\|Android\|iOS> Diagnosis` title (host mode via `detectHostMode` — a native host (Electron UA or `__HOST_WEBVIEW_MARK__`) is split by user-agent into Desktop / Android / iOS, a browser iframe ⇒ Web), a generated timestamp, and one method/status row per method. Consumed by the explorer's matrix aggregator. |
 | `src/lib/result-status.ts` | Shared `errorTextFrom` helper. An example's Err surfaces as a `console.error` log or a returned neverthrow Err, not a throw, so both `MethodView` and `auto-test.ts` use this to tell a failed call from a successful one. |
 | `src/lib/host-api-bridge.ts` | Just `stringify`, the JSON-with-bigint helper shared across components. |
 | `src/components/ExampleEditor.tsx` | Monaco editor wrapper. Auto-folds `// #region helpers` blocks on mount. |
 | `src/components/MethodView.tsx` | Per-method view: signature link to cargo doc, Example / Output tabs, status LED, Run / Stop buttons. |
-| `src/components/AutoTestView.tsx` | Auto-Test screen: parallel pass/fail run with a "Skip disruptive"/"All methods" toggle and editable per-method retry. |
-| `src/components/DiagnosisView.tsx` | Diagnosis screen (own sidebar entry): purpose + login/phone instructions, a Run button, a live per-method log (queued → processing… → success/failed), and the copy-pasteable report. |
-| `src/components/ServiceTable.tsx` / `CommandPalette.tsx` | Method browser and ⌘K search. The browser also hosts the Diagnosis and Auto-Test entries. |
+| `src/components/DiagnosisView.tsx` | Diagnosis screen (own sidebar entry): purpose + login/phone instructions, a Run button, a live per-method log (queued → processing… → success/failed) with per-row expand + replay, and a Copy report button. |
+| `src/components/ServiceTable.tsx` / `CommandPalette.tsx` | Method browser and ⌘K search. The browser also hosts the Diagnosis entry. |
 | `src/app/page.tsx` | Root: connection status, selection state, deep-link sync via `pushState` + `popstate`. |
 
 ### Source of Truth for Methods

@@ -53,9 +53,10 @@ import { basename, extname, join } from "node:path";
 const TITLE_RE = /^##\s+Truapi\s+(.+?)\s+Diagnosis\s*$/im;
 const GENERATED_RE = /^_Generated:\s*(.+?)_\s*$/m;
 // | `Service/method` | ✅ | optional details |   (the header row's "Method"
-// cell has no backticks, so it is skipped automatically; any trailing details
-// column is ignored — only method and status are read)
-const ROW_RE = /^\|\s*`([^`]+)`\s*\|\s*([^|]*?)\s*\|/;
+// cell has no backticks, so it is skipped automatically). Group 2 is the
+// status icon; group 3 is the optional Details cell (it may contain escaped
+// `\|`, so it is captured up to the trailing pipe rather than the first one).
+const ROW_RE = /^\|\s*`([^`]+)`\s*\|\s*([^|]*?)\s*\|\s*(?:(.*?)\s*\|\s*)?$/;
 
 function collectFiles(args) {
   const files = [];
@@ -78,6 +79,7 @@ function parseReport(file) {
   const reportedAtMatch = text.match(GENERATED_RE);
   const reportedAt = reportedAtMatch ? reportedAtMatch[1].trim() : "";
   const statuses = new Map();
+  const details = new Map();
   const order = [];
   for (const line of text.split(/\r?\n/)) {
     const m = line.match(ROW_RE);
@@ -85,8 +87,10 @@ function parseReport(file) {
     const method = m[1].trim();
     if (!statuses.has(method)) order.push(method);
     statuses.set(method, m[2].trim());
+    const detail = (m[3] ?? "").trim();
+    if (detail) details.set(method, detail.replace(/\\\|/g, "|"));
   }
-  return { file, mode, reportedAt, statuses, order };
+  return { file, mode, reportedAt, statuses, details, order };
 }
 
 function columnLabels(reports) {

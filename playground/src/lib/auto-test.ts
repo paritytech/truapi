@@ -18,7 +18,16 @@ export interface TestEntry {
   output?: string;
 }
 
-const EXCLUDED_METHODS = new Set([
+const UNARY_TIMEOUT_MS = 10_000;
+const SIGNING_TIMEOUT_MS = 30_000;
+const SUBSCRIPTION_TIMEOUT_MS = 6_000;
+
+// Services skipped wholesale in the diagnosis until hosts wire them up.
+const SKIPPED_SERVICES = new Set(["Coin Payment"]);
+// Methods run last, after the automatic checks: they prompt the user (signing,
+// permission/resource requests) or navigate away (`navigate_to`), so deferring
+// them keeps each interaction isolated at the end of the run.
+const DEFERRED_METHODS = new Set([
   "System/navigate_to",
   "Permissions/request_device_permission",
   "Permissions/request_remote_permission",
@@ -31,18 +40,6 @@ const EXCLUDED_METHODS = new Set([
   "Signing/create_transaction_with_legacy_account",
   "Account/get_account_alias",
 ]);
-
-const UNARY_TIMEOUT_MS = 10_000;
-const SIGNING_TIMEOUT_MS = 30_000;
-const SUBSCRIPTION_TIMEOUT_MS = 6_000;
-
-const CONCURRENCY = 6;
-// Chain examples open ephemeral follow subscriptions inline; Preimage examples
-// each submit a bulletin transaction from the same account. Running these
-// services serially avoids concurrent follow streams.
-const SERIAL_SERVICES = new Set(["Chain", "Preimage"]);
-// Services skipped wholesale in the diagnosis until hosts wire them up.
-const SKIPPED_SERVICES = new Set(["Coin Payment"]);
 const LONG_TIMEOUT_METHODS = new Set([
   "Resource Allocation/request",
   "Signing/sign_payload",
@@ -57,21 +54,16 @@ type RunOneOpts = {
   serviceName: string;
   method: MethodInfo;
   onUpdate: (id: string, entry: TestEntry) => void;
-  excludeSet: Set<string>;
-  signal?: AbortSignal;
 };
 
 async function runOne({
   serviceName,
   method,
   onUpdate,
-  excludeSet,
-  signal,
 }: RunOneOpts): Promise<void> {
-  if (signal?.aborted) return;
   const id = `${serviceName}/${method.name}`;
 
-  if (SKIPPED_SERVICES.has(serviceName) || excludeSet.has(id)) {
+  if (SKIPPED_SERVICES.has(serviceName)) {
     onUpdate(id, { status: "skipped" });
     return;
   }
@@ -205,86 +197,30 @@ export async function runSingleTest(
   const svc = services.find((s: ServiceInfo) => s.name === serviceName);
   const method = svc?.methods.find((m: MethodInfo) => m.name === methodName);
   if (!svc || !method) return;
-  await runOne({ serviceName, method, onUpdate, excludeSet: new Set() });
+  await runOne({ serviceName, method, onUpdate });
 }
 
-async function runAutoTests(
-  services: ServiceInfo[],
-  onUpdate: (id: string, entry: TestEntry) => void,
-  signal?: AbortSignal,
-  excludeSet: Set<string> = EXCLUDED_METHODS,
-): Promise<void> {
-  const tasks: Array<() => Promise<void>> = [];
-  for (const svc of services) {
-    if (SERIAL_SERVICES.has(svc.name)) {
-      tasks.push(async () => {
-        for (const m of svc.methods) {
-          if (signal?.aborted) return;
-          await runOne({
-            serviceName: svc.name,
-            method: m,
-            onUpdate,
-            excludeSet,
-            signal,
-          });
-        }
-      });
-    } else {
-      for (const m of svc.methods) {
-        tasks.push(() =>
-          runOne({
-            serviceName: svc.name,
-            method: m,
-            onUpdate,
-            excludeSet,
-            signal,
-          }),
-        );
-      }
-    }
-  }
-
-  let cursor = 0;
-  const workerCount = Math.min(CONCURRENCY, tasks.length);
-  await Promise.all(
-    Array.from({ length: workerCount }, async () => {
-      while (cursor < tasks.length && !signal?.aborted) {
-        const task = tasks[cursor++];
-        await task();
-      }
-    }),
-  );
-}
-
-// Full diagnosis: run every non-disruptive method in parallel, then run each
-// disruptive method (signing, permission/resource requests, `navigate_to`)
-// sequentially — one at a time — so the human can complete each phone
-// interaction before the next begins. Produces a complete worked / failed /
-// not-wired matrix suitable for the copy-pasteable report.
+// Full diagnosis: run every method one at a time. Automatic checks run first;
+// methods that prompt the user or navigate away are deferred to the end so each
+// runs in isolation. Produces a complete worked / failed / not-wired matrix
+// suitable for the copy-pasteable report.
 export async function runDiagnosis(
   services: ServiceInfo[],
   onUpdate: (id: string, entry: TestEntry) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  await runAutoTests(services, onUpdate, signal, EXCLUDED_METHODS);
-
-  const byId = new Map<string, { serviceName: string; method: MethodInfo }>();
+  const immediate: Array<{ serviceName: string; method: MethodInfo }> = [];
+  const deferred: typeof immediate = [];
   for (const svc of services) {
-    for (const m of svc.methods) {
-      byId.set(`${svc.name}/${m.name}`, { serviceName: svc.name, method: m });
+    for (const method of svc.methods) {
+      const bucket = DEFERRED_METHODS.has(`${svc.name}/${method.name}`)
+        ? deferred
+        : immediate;
+      bucket.push({ serviceName: svc.name, method });
     }
   }
-
-  for (const id of EXCLUDED_METHODS) {
+  for (const { serviceName, method } of [...immediate, ...deferred]) {
     if (signal?.aborted) return;
-    const entry = byId.get(id);
-    if (!entry) continue;
-    await runOne({
-      serviceName: entry.serviceName,
-      method: entry.method,
-      onUpdate,
-      excludeSet: new Set(),
-      signal,
-    });
+    await runOne({ serviceName, method, onUpdate });
   }
 }

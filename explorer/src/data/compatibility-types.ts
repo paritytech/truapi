@@ -22,6 +22,9 @@ export interface CompatMethodRow {
   /// Keyed by `CompatHost.label`. `null` means the method was absent from that
   /// host's report (e.g. the report predates the method).
   results: Record<string, CompatStatus | null>;
+  /// Failure detail per `CompatHost.label`, taken from the report's Details
+  /// column. Present only for hosts whose report carried an error string.
+  details?: Record<string, string>;
 }
 
 export interface CompatibilityMatrix {
