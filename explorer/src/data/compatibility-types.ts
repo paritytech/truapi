@@ -6,10 +6,10 @@
 export type CompatStatus = "pass" | "fail";
 
 export interface CompatHost {
-  /// Column label — typically the host mode (`Web` / `Desktop`), suffixed with
-  /// a filename when several reports share the same mode.
+  /// Column label — typically the host mode (`Web` / `Desktop` / `Android` /
+  /// `iOS`), suffixed with a filename when several reports share the same mode.
   label: string;
-  mode: "Web" | "Desktop" | "Unknown";
+  mode: "Web" | "Desktop" | "Android" | "iOS" | "Unknown";
   /// `_Generated:` timestamp copied from the source report, so the page can
   /// surface how fresh each host's measurement is.
   reportedAt: string;
