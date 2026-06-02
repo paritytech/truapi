@@ -39,41 +39,41 @@ export function DiagnosisView({
   const [copied, setCopied] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const rows: Row[] = useMemo(() => {
+  const { rows, hasResults, passCount, failCount } = useMemo(() => {
     const out: Row[] = [];
+    let pass = 0;
+    let fail = 0;
     for (const svc of services) {
       for (const m of svc.methods) {
         const id = `${svc.name}/${m.name}`;
         const entry = testResults[id];
+        const status = entry?.status ?? "idle";
+        if (status === "pass") pass++;
+        else if (status === "fail") fail++;
         out.push({
           id,
           service: svc.name,
           method: m.name,
-          status: entry?.status ?? "idle",
+          status,
           output: entry?.output,
         });
       }
     }
-    return out;
-  }, [services, testResults]);
-
-  const { hasResults, passCount, failCount } = useMemo(() => {
-    const entries = Object.values(testResults);
     return {
-      hasResults: entries.length > 0,
-      passCount: entries.filter((e) => e.status === "pass").length,
-      failCount: entries.filter((e) => e.status === "fail").length,
+      rows: out,
+      hasResults: Object.keys(testResults).length > 0,
+      passCount: pass,
+      failCount: fail,
     };
-  }, [testResults]);
-
-  const reportMarkdown = useMemo(
-    () => renderReportMarkdown(services, testResults),
-    [services, testResults],
-  );
+  }, [services, testResults]);
 
   const handleCopyReport = async () => {
     try {
-      await navigator.clipboard.writeText(reportMarkdown);
+      // Rendered on demand: the full report is only needed on copy, not on
+      // every per-method result update during a run.
+      await navigator.clipboard.writeText(
+        renderReportMarkdown(services, testResults),
+      );
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {

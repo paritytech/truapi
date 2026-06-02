@@ -1,6 +1,7 @@
 import type { MethodInfo, ServiceInfo } from "@/src/lib/services";
 import type { TestEntry } from "@/src/lib/auto-test";
 import { DIAGNOSIS_ID } from "@/src/lib/auto-test";
+import { methodTestId, serviceTestId } from "@/src/lib/rail";
 
 function hasExample(method: MethodInfo): boolean {
   return !!method.exampleSource;
@@ -47,7 +48,7 @@ export function ServiceTable({
             <section
               key={svc.name}
               className="service"
-              data-testid={`service-${svc.name}`}
+              data-testid={serviceTestId(svc.name)}
             >
               <div className="service__head">
                 <span className="service__index">{index}</span>
@@ -69,7 +70,7 @@ export function ServiceTable({
                       key={m.name}
                       type="button"
                       className="method"
-                      data-testid={`method-${svc.name}-${m.name}`}
+                      data-testid={methodTestId(svc.name, m.name)}
                       data-active={isActive}
                       data-supported={supported}
                       data-test-status={showStatus ? testStatus : undefined}

@@ -10,6 +10,7 @@ import {
 } from "@/src/lib/example-runner";
 import { getClient } from "@/src/lib/transport";
 import { errorTextFrom } from "@/src/lib/result-status";
+import { methodTestId, revealInRail, serviceTestId } from "@/src/lib/rail";
 import { services } from "@/src/lib/services";
 import type { MethodInfo, ServiceInfo } from "@/src/lib/services";
 
@@ -122,19 +123,16 @@ export function MethodView({
 
   // Scroll the index (left rail on desktop) to this method's service section.
   const revealServiceInRail = useCallback(() => {
-    const el = document.querySelector(`[data-testid="service-${service}"]`);
-    el?.scrollIntoView({ block: "start", behavior: "smooth" });
+    revealInRail(serviceTestId(service), { block: "start", smooth: true });
   }, [service]);
 
   // Scroll the index to this exact method row and select it.
   const revealMethodInRail = useCallback(() => {
-    const el = document.querySelector(
-      `[data-testid="method-${service}-${method}"]`,
-    );
-    if (el instanceof HTMLElement) {
-      el.scrollIntoView({ block: "center", behavior: "smooth" });
-      el.focus({ preventScroll: true });
-    }
+    revealInRail(methodTestId(service, method), {
+      block: "center",
+      smooth: true,
+      focus: true,
+    });
   }, [service, method]);
 
   const runnable = !!methodInfo?.exampleSource;

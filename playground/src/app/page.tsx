@@ -16,6 +16,7 @@ import { MethodView } from "@/src/components/MethodView";
 import { DiagnosisView } from "@/src/components/DiagnosisView";
 import { CommandPalette } from "@/src/components/CommandPalette";
 import { services } from "@/src/lib/services";
+import { methodTestId, revealInRail } from "@/src/lib/rail";
 import {
   type TestEntry,
   DIAGNOSIS_ID,
@@ -224,13 +225,10 @@ export default function PlaygroundPage() {
     const target = pendingScrollRef.current;
     pendingScrollRef.current = null;
     if (!target?.method) return;
-    const el = document.querySelector(
-      `[data-testid="method-${target.service}-${target.method}"]`,
-    );
-    if (el instanceof HTMLElement) {
-      el.scrollIntoView({ block: "center" });
-      el.focus({ preventScroll: true });
-    }
+    revealInRail(methodTestId(target.service, target.method), {
+      block: "center",
+      focus: true,
+    });
   }, [selection]);
 
   const handleRunDiagnosis = useCallback(async () => {
