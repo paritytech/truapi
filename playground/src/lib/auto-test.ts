@@ -8,7 +8,6 @@ import { errorTextFrom } from "./result-status";
 import { getClient } from "./transport";
 import type { MethodInfo, ServiceInfo } from "./services";
 
-export const AUTO_TEST_ID = "__auto_test__";
 export const DIAGNOSIS_ID = "__diagnosis__";
 
 export type TestStatus = "idle" | "running" | "pass" | "fail" | "skipped";
@@ -19,7 +18,7 @@ export interface TestEntry {
   output?: string;
 }
 
-export const EXCLUDED_METHODS = new Set([
+const EXCLUDED_METHODS = new Set([
   "System/navigate_to",
   "Permissions/request_device_permission",
   "Permissions/request_remote_permission",
@@ -41,6 +40,8 @@ const CONCURRENCY = 6;
 // Chain examples open ephemeral follow subscriptions inline. Running the
 // service serially avoids spawning many concurrent follow streams.
 const SERIAL_SERVICES = new Set(["Chain"]);
+// Services skipped wholesale in the diagnosis until hosts wire them up.
+const SKIPPED_SERVICES = new Set(["Coin Payment"]);
 const LONG_TIMEOUT_METHODS = new Set([
   "Resource Allocation/request",
   "Signing/sign_payload",
@@ -57,7 +58,6 @@ type RunOneOpts = {
   onUpdate: (id: string, entry: TestEntry) => void;
   excludeSet: Set<string>;
   signal?: AbortSignal;
-  sourceOverride?: string;
 };
 
 async function runOne({
@@ -66,12 +66,11 @@ async function runOne({
   onUpdate,
   excludeSet,
   signal,
-  sourceOverride,
 }: RunOneOpts): Promise<void> {
   if (signal?.aborted) return;
   const id = `${serviceName}/${method.name}`;
 
-  if (excludeSet.has(id)) {
+  if (SKIPPED_SERVICES.has(serviceName) || excludeSet.has(id)) {
     onUpdate(id, { status: "skipped" });
     return;
   }
@@ -82,7 +81,7 @@ async function runOne({
 
   onUpdate(id, { status: "running" });
 
-  const source = sourceOverride ?? method.exampleSource;
+  const source = method.exampleSource;
   const logs: LogEntry[] = [];
   const onLog = (entry: LogEntry) => logs.push(entry);
   const timeoutMs = LONG_TIMEOUT_METHODS.has(id)
@@ -195,26 +194,7 @@ async function runSubscription(
   });
 }
 
-export async function runSingleTest(
-  services: ServiceInfo[],
-  serviceName: string,
-  methodName: string,
-  onUpdate: (id: string, entry: TestEntry) => void,
-  sourceOverride?: string,
-): Promise<void> {
-  const svc = services.find((s: ServiceInfo) => s.name === serviceName);
-  const method = svc?.methods.find((m: MethodInfo) => m.name === methodName);
-  if (!svc || !method) return;
-  await runOne({
-    serviceName,
-    method,
-    onUpdate,
-    excludeSet: new Set(),
-    sourceOverride,
-  });
-}
-
-export async function runAutoTests(
+async function runAutoTests(
   services: ServiceInfo[],
   onUpdate: (id: string, entry: TestEntry) => void,
   signal?: AbortSignal,

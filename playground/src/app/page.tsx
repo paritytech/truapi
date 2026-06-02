@@ -13,18 +13,13 @@ import {
 } from "@/src/lib/transport";
 import { ServiceTable } from "@/src/components/ServiceTable";
 import { MethodView } from "@/src/components/MethodView";
-import { AutoTestView } from "@/src/components/AutoTestView";
 import { DiagnosisView } from "@/src/components/DiagnosisView";
 import { CommandPalette } from "@/src/components/CommandPalette";
 import { services } from "@/src/lib/services";
 import {
   type TestEntry,
-  AUTO_TEST_ID,
   DIAGNOSIS_ID,
-  EXCLUDED_METHODS,
-  runAutoTests,
   runDiagnosis,
-  runSingleTest,
 } from "@/src/lib/auto-test";
 import packageJson from "../../package.json";
 
@@ -34,10 +29,6 @@ const VERSION_LABEL = `v${packageJson.version}`;
 // previously-open row is centered before paint (no flash of scroll-top).
 const useIsoLayoutEffect =
   typeof window !== "undefined" ? useLayoutEffect : useEffect;
-
-// Stable empty map so a view that does not own the current results re-renders
-// with an empty object rather than a fresh `{}` each render.
-const EMPTY_RESULTS: Record<string, TestEntry> = {};
 
 const STATUS_LABEL: Record<string, string> = {
   connected: "Host Linked",
@@ -127,15 +118,13 @@ function Masthead({
 
 type Selection = { service: string; method: string } | null;
 
-// The Diagnosis and Auto-Test screens are deep-linked with a clean `?view=`
-// param rather than their internal service ids.
+// The Diagnosis screen is deep-linked with a clean `?view=` param rather than
+// its internal service id.
 const VIEW_PARAM: Record<string, string> = {
   [DIAGNOSIS_ID]: "diagnosis",
-  [AUTO_TEST_ID]: "auto-test",
 };
 const SERVICE_FOR_VIEW: Record<string, string> = {
   diagnosis: DIAGNOSIS_ID,
-  "auto-test": AUTO_TEST_ID,
 };
 
 function selectionFromUrl(): Selection {
@@ -172,11 +161,6 @@ export default function PlaygroundPage() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [testResults, setTestResults] = useState<Record<string, TestEntry>>({});
   const [isTestRunning, setIsTestRunning] = useState(false);
-  // Which runner the current `testResults` belong to, so the Diagnosis and
-  // Auto-Test screens never render each other's results under the wrong title.
-  const [resultsOwner, setResultsOwner] = useState<
-    "autotest" | "diagnosis" | null
-  >(null);
   const abortRef = useRef<AbortController | null>(null);
   // The method open when "← INDEX" was clicked, so the index can re-center on
   // it instead of jumping to the top.
@@ -248,51 +232,11 @@ export default function PlaygroundPage() {
     }
   }, [selection]);
 
-  const handleRunTests = useCallback(
-    async (mode: "all" | "safe") => {
-      if (isTestRunning) return;
-      const excludeSet = mode === "safe" ? EXCLUDED_METHODS : new Set<string>();
-      const controller = new AbortController();
-      abortRef.current = controller;
-      setIsTestRunning(true);
-      setResultsOwner("autotest");
-      const initial: Record<string, TestEntry> = {};
-      for (const svc of services) {
-        for (const m of svc.methods) {
-          const id = `${svc.name}/${m.name}`;
-          initial[id] = { status: excludeSet.has(id) ? "skipped" : "idle" };
-        }
-      }
-      setTestResults(initial);
-      try {
-        await runAutoTests(
-          services,
-          (id, entry) => {
-            setTestResults((prev) => ({ ...prev, [id]: entry }));
-          },
-          controller.signal,
-          excludeSet,
-        );
-      } finally {
-        setTestResults((prev) => {
-          const updated = { ...prev };
-          for (const [id, entry] of Object.entries(updated)) {
-            if (entry.status === "running") updated[id] = { status: "idle" };
-          }
-          return updated;
-        });
-        setIsTestRunning(false);
-      }
-    },
-    [isTestRunning],
-  );
-
   const handleRunDiagnosis = useCallback(async () => {
     if (isTestRunning) return;
     const controller = new AbortController();
     abortRef.current = controller;
     setIsTestRunning(true);
-    setResultsOwner("diagnosis");
     const initial: Record<string, TestEntry> = {};
     for (const svc of services) {
       for (const m of svc.methods) {
@@ -324,33 +268,8 @@ export default function PlaygroundPage() {
     abortRef.current?.abort();
   }, []);
 
-  const handleRetryTest = useCallback(
-    async (
-      serviceName: string,
-      methodName: string,
-      requestOverride?: string,
-    ) => {
-      if (isTestRunning) return;
-      await runSingleTest(
-        services,
-        serviceName,
-        methodName,
-        (id, entry) => {
-          setTestResults((prev) => ({ ...prev, [id]: entry }));
-        },
-        requestOverride,
-      );
-    },
-    [isTestRunning],
-  );
-
   const hasView = selection !== null;
-  const isAutoTest = selection?.service === AUTO_TEST_ID;
   const isDiagnosis = selection?.service === DIAGNOSIS_ID;
-  const autoTestResults =
-    resultsOwner === "autotest" ? testResults : EMPTY_RESULTS;
-  const diagnosisResults =
-    resultsOwner === "diagnosis" ? testResults : EMPTY_RESULTS;
 
   return (
     <div className="shell">
@@ -372,20 +291,10 @@ export default function PlaygroundPage() {
           {isDiagnosis ? (
             <DiagnosisView
               services={services}
-              testResults={diagnosisResults}
+              testResults={testResults}
               isRunning={isTestRunning}
               onRun={handleRunDiagnosis}
               onStop={handleStopTests}
-              onBack={handleBack}
-            />
-          ) : isAutoTest ? (
-            <AutoTestView
-              services={services}
-              testResults={autoTestResults}
-              isRunning={isTestRunning}
-              onRun={handleRunTests}
-              onStop={handleStopTests}
-              onRetry={handleRetryTest}
               onBack={handleBack}
             />
           ) : selection ? (
