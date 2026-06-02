@@ -37,9 +37,10 @@ const SIGNING_TIMEOUT_MS = 30_000;
 const SUBSCRIPTION_TIMEOUT_MS = 6_000;
 
 const CONCURRENCY = 6;
-// Chain examples open ephemeral follow subscriptions inline. Running the
-// service serially avoids spawning many concurrent follow streams.
-const SERIAL_SERVICES = new Set(["Chain"]);
+// Chain examples open ephemeral follow subscriptions inline; Preimage examples
+// each submit a bulletin transaction from the same account. Running these
+// services serially avoids concurrent follow streams.
+const SERIAL_SERVICES = new Set(["Chain", "Preimage"]);
 // Services skipped wholesale in the diagnosis until hosts wire them up.
 const SKIPPED_SERVICES = new Set(["Coin Payment"]);
 const LONG_TIMEOUT_METHODS = new Set([

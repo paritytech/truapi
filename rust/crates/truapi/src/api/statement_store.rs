@@ -59,13 +59,16 @@ pub trait StatementStore: Send + Sync {
     /// Create a proof for a statement.
     ///
     /// ```ts
+    /// // Expiry packs a Unix-seconds timestamp in the high 32 bits; a day out
+    /// // keeps the statement unexpired when it is submitted.
+    /// const expiry = BigInt(Math.floor(Date.now() / 1000) + 86400) << 32n;
     /// const result = await truapi.statementStore.createProof({
     ///   productAccountId: {
     ///     dotNsIdentifier: "truapi-playground.dot",
     ///     derivationIndex: 0,
     ///   },
     ///   statement: {
-    ///     expiry: 9999999999999n,
+    ///     expiry,
     ///     topics: [],
     ///   },
     /// });
@@ -90,8 +93,11 @@ pub trait StatementStore: Send + Sync {
     /// bypassing the per-call signing prompt.
     ///
     /// ```ts
+    /// // Expiry packs a Unix-seconds timestamp in the high 32 bits; a day out
+    /// // keeps the statement unexpired when it is submitted.
+    /// const expiry = BigInt(Math.floor(Date.now() / 1000) + 86400) << 32n;
     /// const result = await truapi.statementStore.createProofAuthorized({
-    ///   expiry: 9999999999999n,
+    ///   expiry,
     ///   topics: [],
     /// });
     /// result.match(
@@ -116,13 +122,16 @@ pub trait StatementStore: Send + Sync {
     /// struct), matching upstream `triangle-js-sdks`.
     ///
     /// ```ts
+    /// // Expiry packs a Unix-seconds timestamp in the high 32 bits; a day out
+    /// // keeps the statement unexpired when it is submitted.
+    /// const expiry = BigInt(Math.floor(Date.now() / 1000) + 86400) << 32n;
     /// const proofResult = await truapi.statementStore.createProof({
     ///   productAccountId: {
     ///     dotNsIdentifier: "truapi-playground.dot",
     ///     derivationIndex: 0,
     ///   },
     ///   statement: {
-    ///     expiry: 9999999999999n,
+    ///     expiry,
     ///     topics: [],
     ///   },
     /// });

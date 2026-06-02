@@ -126,6 +126,17 @@ export function MethodView({
     el?.scrollIntoView({ block: "start", behavior: "smooth" });
   }, [service]);
 
+  // Scroll the index to this exact method row and select it.
+  const revealMethodInRail = useCallback(() => {
+    const el = document.querySelector(
+      `[data-testid="method-${service}-${method}"]`,
+    );
+    if (el instanceof HTMLElement) {
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+      el.focus({ preventScroll: true });
+    }
+  }, [service, method]);
+
   const runnable = !!methodInfo?.exampleSource;
 
   const handleRun = async () => {
@@ -242,8 +253,15 @@ export function MethodView({
         {service}
       </button>
       <h1 className="view__title">
-        <span className="view__slash">/</span>
-        <span className="view__method">{method}</span>
+        <button
+          type="button"
+          className="view__title-link"
+          onClick={revealMethodInRail}
+          title="Show this method in the index"
+        >
+          <span className="view__slash">/</span>
+          <span className="view__method">{method}</span>
+        </button>
       </h1>
       <div className="view__kind" data-kind={kind}>
         {kind === "subscription" ? "Subscription" : "Request / Response"}
