@@ -1,5 +1,6 @@
+import { Fragment, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
-import { Check, Minus, X } from "lucide-react";
+import { Check, ChevronDown, Minus, X } from "lucide-react";
 import type { VersionEntry } from "../data/types";
 import { methodPath } from "../data/registry";
 import { compatibility } from "../data/compatibility";
@@ -10,6 +11,7 @@ import { playgroundDiagnosisUrl } from "../data/playground";
 export default function CompatibilityPage() {
   const { version } = useOutletContext<{ version: VersionEntry }>();
   const { generatedAt, hosts, methods } = compatibility;
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   if (hosts.length === 0) {
     return (
@@ -29,7 +31,7 @@ export default function CompatibilityPage() {
           </a>{" "}
           for each host you want covered, drop the reports into{" "}
           <code className="font-mono text-slate-200">
-            explorer/pending-reports/
+            explorer/diagnosis-reports/
           </code>
           , and run{" "}
           <code className="font-mono text-slate-200">npm run generate-matrix</code>{" "}
@@ -102,12 +104,19 @@ export default function CompatibilityPage() {
                 key={service.name}
                 serviceName={service.name}
                 serviceIndex={i}
-                methods={service.methods.map((m) => ({
-                  name: m.name,
-                  results: byId.get(`${service.name}/${m.name}`)?.results,
-                }))}
+                methods={service.methods.map((m) => {
+                  const row = byId.get(`${service.name}/${m.name}`);
+                  return {
+                    name: m.name,
+                    id: `${service.name}/${m.name}`,
+                    results: row?.results,
+                    details: row?.details,
+                  };
+                })}
                 hosts={hosts.map((h) => h.label)}
                 versionId={version.id}
+                expandedId={expandedId}
+                onToggle={setExpandedId}
               />
             ))}
           </tbody>
@@ -123,12 +132,21 @@ function ServiceRows({
   methods,
   hosts,
   versionId,
+  expandedId,
+  onToggle,
 }: {
   serviceName: string;
   serviceIndex: number;
-  methods: Array<{ name: string; results?: Record<string, CompatStatus | null> }>;
+  methods: Array<{
+    name: string;
+    id: string;
+    results?: Record<string, CompatStatus | null>;
+    details?: Record<string, string>;
+  }>;
   hosts: string[];
   versionId: string;
+  expandedId: string | null;
+  onToggle: (id: string | null) => void;
 }) {
   const colCount = hosts.length + 1;
   return (
@@ -152,31 +170,74 @@ function ServiceRows({
       </tr>
       {methods.map((m, i) => {
         const last = i === methods.length - 1;
+        const detailHosts = hosts.filter((h) => m.details?.[h]);
+        const expandable = detailHosts.length > 0;
+        const isExpanded = expandable && expandedId === m.id;
         return (
-          <tr
-            key={m.name}
-            className="group hover:bg-slate-800/40 transition-colors"
-          >
-            <td
-              className={`sticky left-0 z-[1] px-5 py-2 font-mono text-sm whitespace-nowrap bg-slate-925 group-hover:bg-slate-800/40 transition-colors ${
-                last ? "" : "border-b border-slate-700/25"
-              }`}
+          <Fragment key={m.id}>
+            <tr
+              className={`group transition-colors ${
+                expandable ? "cursor-pointer" : ""
+              } ${isExpanded ? "bg-slate-800/40" : "hover:bg-slate-800/40"}`}
+              onClick={
+                expandable ? () => onToggle(isExpanded ? null : m.id) : undefined
+              }
             >
-              <Link
-                to={methodPath(versionId, serviceName, m.name)}
-                className="text-slate-200 hover:text-pink-300 transition-colors"
+              <td
+                className={`sticky left-0 z-[1] px-5 py-2 font-mono text-sm whitespace-nowrap bg-slate-925 transition-colors ${
+                  isExpanded ? "bg-slate-800/40" : "group-hover:bg-slate-800/40"
+                } ${last && !isExpanded ? "" : "border-b border-slate-700/25"}`}
               >
-                {m.name}
-              </Link>
-            </td>
-            {hosts.map((label) => (
-              <StatusCell
-                key={label}
-                status={m.results?.[label]}
-                last={last}
-              />
-            ))}
-          </tr>
+                <div className="flex items-center gap-2">
+                  <Link
+                    to={methodPath(versionId, serviceName, m.name)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="text-slate-200 hover:text-pink-300 transition-colors"
+                  >
+                    {m.name}
+                  </Link>
+                  {expandable && (
+                    <ChevronDown
+                      size={13}
+                      className={`text-slate-500 transition-transform ${
+                        isExpanded ? "rotate-180" : ""
+                      }`}
+                    />
+                  )}
+                </div>
+              </td>
+              {hosts.map((label) => (
+                <StatusCell
+                  key={label}
+                  status={m.results?.[label]}
+                  last={last && !isExpanded}
+                />
+              ))}
+            </tr>
+            {isExpanded && (
+              <tr>
+                <td
+                  colSpan={colCount}
+                  className={`px-5 py-3 bg-slate-925 ${
+                    last ? "" : "border-b border-slate-700/25"
+                  }`}
+                >
+                  <div className="space-y-2.5">
+                    {detailHosts.map((label) => (
+                      <div key={label}>
+                        <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-rose-300/80 font-display mb-1">
+                          {label}
+                        </div>
+                        <pre className="font-mono text-xs text-slate-300 whitespace-pre-wrap break-words bg-slate-900/60 border border-slate-700/40 rounded-lg px-3 py-2">
+                          {m.details?.[label]}
+                        </pre>
+                      </div>
+                    ))}
+                  </div>
+                </td>
+              </tr>
+            )}
+          </Fragment>
         );
       })}
     </>

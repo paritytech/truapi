@@ -9,30 +9,33 @@
 //   ## Truapi Desktop Diagnosis
 //   _Generated: 2026-05-27T18:00:32.854Z_
 //
-//   | Method | Status |
-//   | --- | --- |
-//   | `Account/get_account` | ✅ |
+//   | Method | Status | Details |
+//   | --- | --- | --- |
+//   | `Account/get_account` | ✅ |  |
+//   | `Chat/post_message` | ❌ | host error: not implemented |
 //   ...
 //
-// Drop one report per host you want to (re)measure (any `*.md` filename) into
-// the explorer's `pending-reports/` directory and run from `explorer/`:
+// Keep one report per host you want to (re)measure (a host-named `*.md` file,
+// e.g. `web.md`) in the explorer's `diagnosis-reports/` directory and run from
+// `explorer/`:
 //
 //   npm run generate-matrix
 //
-// That consumes (deletes) every report in `pending-reports/` and merges them
-// into the committed `src/data/compatibility.ts` source-of-truth. Merging is
-// per host: a report whose column label matches an existing host overwrites
-// that host's column, a report for a new label adds a column, and hosts with
-// no report this run are left untouched. So you can refresh just the Desktop
-// column without re-running Web, and add Android / iOS columns incrementally.
+// That merges every report in `diagnosis-reports/` into the committed
+// `src/data/compatibility.ts` source-of-truth. The reports are committed too,
+// so re-running a host overwrites its file and the diff shows what changed.
+// Merging is per host: a report whose column label matches an existing host
+// overwrites that host's column, a report for a new label adds a column, and
+// hosts with no report this run are left untouched. So you can refresh just the
+// Desktop column without re-running Web, and add Android / iOS columns
+// incrementally.
 //
 // Direct invocation also works for ad-hoc use:
 //   node scripts/aggregate-diagnosis-matrix.mjs web.md desktop.md           # markdown to stdout
-//   node scripts/aggregate-diagnosis-matrix.mjs --explorer-out src/data/compatibility.ts --consume pending-reports
+//   node scripts/aggregate-diagnosis-matrix.mjs --explorer-out src/data/compatibility.ts diagnosis-reports
 //
 // Flags:
 //   --explorer-out <file>   write a TypeScript module exporting `compatibility`
-//   --consume               delete the input report files after a successful write
 //   --replace               rebuild from the reports alone, dropping any host
 //                           columns not present in this run (default: merge)
 //
@@ -41,13 +44,7 @@
 // their filename. A method missing from a report renders as "—" in the markdown
 // view and `null` in the TypeScript module.
 
-import {
-  readFileSync,
-  readdirSync,
-  statSync,
-  unlinkSync,
-  writeFileSync,
-} from "node:fs";
+import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 
 const TITLE_RE = /^##\s+Truapi\s+(.+?)\s+Diagnosis\s*$/im;
@@ -253,30 +250,25 @@ function renderTypeScript(matrix) {
 function parseArgs(argv) {
   const paths = [];
   let explorerOut = null;
-  let consume = false;
   let replace = false;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--explorer-out") {
       explorerOut = argv[++i];
-    } else if (arg === "--consume") {
-      consume = true;
     } else if (arg === "--replace") {
       replace = true;
     } else {
       paths.push(arg);
     }
   }
-  return { paths, explorerOut, consume, replace };
+  return { paths, explorerOut, replace };
 }
 
 function main() {
-  const { paths, explorerOut, consume, replace } = parseArgs(
-    process.argv.slice(2),
-  );
+  const { paths, explorerOut, replace } = parseArgs(process.argv.slice(2));
   if (paths.length === 0) {
     console.error(
-      "usage: aggregate-diagnosis-matrix.mjs [--explorer-out <file>] [--consume] [--replace] <report.md|dir> [more...]",
+      "usage: aggregate-diagnosis-matrix.mjs [--explorer-out <file>] [--replace] <report.md|dir> [more...]",
     );
     process.exit(1);
   }
@@ -302,16 +294,11 @@ function main() {
     process.stdout.write(renderMarkdown(reports, labels, methods));
   }
 
-  // Delete inputs only after the matrix is safely written.
-  if (consume) {
-    for (const file of files) unlinkSync(file);
-  }
-
   if (explorerOut) {
     console.error(
       `Wrote ${explorerOut} from ${reports.length} report(s)${
-        consume ? " (consumed)" : ""
-      }${replace ? " (replaced)" : merged ? " (merged)" : ""}.`,
+        replace ? " (replaced)" : merged ? " (merged)" : ""
+      }.`,
     );
   }
 }
