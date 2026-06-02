@@ -264,87 +264,6 @@ export const compatibility: CompatibilityMatrix = {
       }
     },
     {
-      "id": "Coin Payment/create_purse",
-      "results": {
-        "Desktop": "fail",
-        "Web": "fail",
-        "Android": "fail",
-        "iOS": "fail"
-      }
-    },
-    {
-      "id": "Coin Payment/query_purse",
-      "results": {
-        "Desktop": "fail",
-        "Web": "fail",
-        "Android": "fail",
-        "iOS": "fail"
-      }
-    },
-    {
-      "id": "Coin Payment/rebalance_purse",
-      "results": {
-        "Desktop": "fail",
-        "Web": "fail",
-        "Android": "fail",
-        "iOS": "fail"
-      }
-    },
-    {
-      "id": "Coin Payment/delete_purse",
-      "results": {
-        "Desktop": "fail",
-        "Web": "fail",
-        "Android": "fail",
-        "iOS": "fail"
-      }
-    },
-    {
-      "id": "Coin Payment/create_receivable",
-      "results": {
-        "Desktop": "fail",
-        "Web": "fail",
-        "Android": "fail",
-        "iOS": "fail"
-      }
-    },
-    {
-      "id": "Coin Payment/create_cheque",
-      "results": {
-        "Desktop": "fail",
-        "Web": "fail",
-        "Android": "fail",
-        "iOS": "fail"
-      }
-    },
-    {
-      "id": "Coin Payment/deposit",
-      "results": {
-        "Desktop": "fail",
-        "Web": "fail",
-        "Android": "fail",
-        "iOS": "fail"
-      }
-    },
-    {
-      "id": "Coin Payment/refund",
-      "results": {
-        "Desktop": "fail",
-        "Web": "fail",
-        "Android": "fail",
-        "iOS": "fail"
-      }
-    },
-    {
-      "id": "Coin Payment/listen_for_payment",
-      "results": {
-        "Desktop": "fail",
-        "Web": "fail",
-        "Android": "fail",
-        "iOS": "fail"
-      }
-    },
-    {
       "id": "Entropy/derive",
       "results": {
         "Desktop": "pass",
@@ -457,7 +376,7 @@ export const compatibility: CompatibilityMatrix = {
       "results": {
         "Desktop": "pass",
         "Web": "pass",
-        "Android": "fail",
+        "Android": "pass",
         "iOS": "pass"
       }
     },

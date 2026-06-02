@@ -59,17 +59,17 @@ export default function CompatibilityPage() {
         </div>
       </div>
 
-      <div className="overflow-x-auto bg-slate-800/30 border border-slate-700/50 rounded-xl shadow-[0_4px_24px_rgba(0,0,0,0.25)]">
+      <div className="overflow-auto max-h-[70vh] bg-slate-800/30 border border-slate-700/50 rounded-xl shadow-[0_4px_24px_rgba(0,0,0,0.25)]">
         <table className="w-full border-separate border-spacing-0">
           <thead>
             <tr>
-              <th className="sticky left-0 z-10 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400 font-display px-5 py-3 bg-slate-900/70 border-b border-slate-700/60">
+              <th className="sticky left-0 top-0 z-30 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400 font-display px-5 py-3 bg-slate-900 border-b border-slate-700/60">
                 Method
               </th>
               {hosts.map((h) => (
                 <th
                   key={h.label}
-                  className="text-center text-[11px] font-semibold uppercase tracking-wider text-slate-400 font-display px-5 py-3 w-28 whitespace-nowrap bg-slate-900/70 border-b border-l border-slate-700/60"
+                  className="sticky top-0 z-20 text-center text-[11px] font-semibold uppercase tracking-wider text-slate-400 font-display px-5 py-3 w-28 whitespace-nowrap bg-slate-900 border-b border-l border-slate-700/60"
                   title={`Reported ${h.reportedAt || "(unknown time)"}`}
                 >
                   {h.label}
