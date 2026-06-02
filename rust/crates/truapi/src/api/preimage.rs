@@ -17,13 +17,13 @@ pub trait Preimage: Send + Sync {
     /// // Submit a preimage first so the lookup resolves to a value.
     /// const submitted = await truapi.preimage.submit("0xdeadbeef");
     /// if (submitted.isErr()) {
-    ///   console.error(submitted.error);
+    ///   console.error("submit failed:", submitted.error);
     /// } else {
     ///   from(truapi.preimage.lookupSubscribe({ request: { key: submitted.value } }))
     ///     .pipe(take(1))
     ///     .subscribe({
     ///       next: (item) => console.log(item),
-    ///       error: (error) => console.error(error),
+    ///       error: (error) => console.error("lookupSubscribe failed:", error),
     ///       complete: () => console.log("completed"),
     ///     });
     /// }

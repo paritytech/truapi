@@ -28,7 +28,7 @@ pub trait StatementStore: Send + Sync {
     /// });
     ///
     /// if (proofResult.isErr()) {
-    ///   console.error(proofResult.error);
+    ///   console.error("createProof failed:", proofResult.error);
     /// } else {
     ///   await truapi.statementStore.submit({
     ///     proof: proofResult.value.proof,
@@ -42,7 +42,7 @@ pub trait StatementStore: Send + Sync {
     ///     .pipe(take(1))
     ///     .subscribe({
     ///       next: (statements) => console.log(statements),
-    ///       error: (error) => console.error(error),
+    ///       error: (error) => console.error("subscribe failed:", error),
     ///       complete: () => console.log("completed"),
     ///     });
     /// }
@@ -127,7 +127,7 @@ pub trait StatementStore: Send + Sync {
     ///   },
     /// });
     /// if (proofResult.isErr()) {
-    ///   console.error(proofResult.error);
+    ///   console.error("createProof failed:", proofResult.error);
     /// } else {
     ///   const result = await truapi.statementStore.submit({
     ///     proof: proofResult.value.proof,
@@ -135,7 +135,7 @@ pub trait StatementStore: Send + Sync {
     ///   });
     ///   result.match(
     ///     () => console.log("ok"),
-    ///     (error) => console.error(error),
+    ///     (error) => console.error("submit failed:", error),
     ///   );
     /// }
     /// ```

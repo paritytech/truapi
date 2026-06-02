@@ -47,7 +47,7 @@ pub trait Payment: Send + Sync {
     /// });
     ///
     /// if (topUp.isErr()) {
-    ///   console.error(topUp.error);
+    ///   console.error("topUp failed:", topUp.error);
     /// } else {
     ///   const result = await truapi.payment.request({
     ///     amount: 1000n,
@@ -56,7 +56,7 @@ pub trait Payment: Send + Sync {
     ///   });
     ///   result.match(
     ///     (value) => console.log(value),
-    ///     (error) => console.error(error),
+    ///     (error) => console.error("request failed:", error),
     ///   );
     /// }
     /// ```
@@ -81,7 +81,7 @@ pub trait Payment: Send + Sync {
     /// });
     ///
     /// if (topUp.isErr()) {
-    ///   console.error(topUp.error);
+    ///   console.error("topUp failed:", topUp.error);
     /// } else {
     ///   const requested = await truapi.payment.request({
     ///     amount: 1000n,
@@ -89,7 +89,7 @@ pub trait Payment: Send + Sync {
     ///       "0x0000000000000000000000000000000000000000000000000000000000000000",
     ///   });
     ///   if (requested.isErr()) {
-    ///     console.error(requested.error);
+    ///     console.error("request failed:", requested.error);
     ///   } else {
     ///     from(
     ///       truapi.payment.statusSubscribe({
@@ -99,7 +99,7 @@ pub trait Payment: Send + Sync {
     ///       .pipe(take(1))
     ///       .subscribe({
     ///         next: (status) => console.log(status),
-    ///         error: (error) => console.error(error),
+    ///         error: (error) => console.error("statusSubscribe failed:", error),
     ///         complete: () => console.log("completed"),
     ///       });
     ///   }
