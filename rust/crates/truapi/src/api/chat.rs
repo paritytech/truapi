@@ -62,7 +62,7 @@ pub trait Chat: Send + Sync {
     /// import { from, take } from "rxjs";
     ///
     /// from(truapi.chat.listSubscribe())
-    ///   .pipe(take(3))
+    ///   .pipe(take(1))
     ///   .subscribe({
     ///     next: (rooms) => console.log(rooms),
     ///     error: (error) => console.error(error),
@@ -101,7 +101,7 @@ pub trait Chat: Send + Sync {
     /// import { from, take } from "rxjs";
     ///
     /// from(truapi.chat.actionSubscribe())
-    ///   .pipe(take(3))
+    ///   .pipe(take(1))
     ///   .subscribe({
     ///     next: (action) => console.log(action),
     ///     error: (error) => console.error(error),
@@ -132,7 +132,7 @@ pub trait Chat: Send + Sync {
     ///     },
     ///   }),
     /// )
-    ///   .pipe(take(3))
+    ///   .pipe(take(1))
     ///   .subscribe({
     ///     next: (node) => console.log(node),
     ///     error: (error) => console.error(error),

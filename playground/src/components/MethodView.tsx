@@ -10,6 +10,7 @@ import {
 } from "@/src/lib/example-runner";
 import { getClient } from "@/src/lib/transport";
 import { errorTextFrom } from "@/src/lib/result-status";
+import { methodTestId, revealInRail, serviceTestId } from "@/src/lib/rail";
 import { services } from "@/src/lib/services";
 import type { MethodInfo, ServiceInfo } from "@/src/lib/services";
 
@@ -120,6 +121,20 @@ export function MethodView({
     setLogs((prev) => [...prev, entry]);
   }, []);
 
+  // Scroll the index (left rail on desktop) to this method's service section.
+  const revealServiceInRail = useCallback(() => {
+    revealInRail(serviceTestId(service), { block: "start", smooth: true });
+  }, [service]);
+
+  // Scroll the index to this exact method row and select it.
+  const revealMethodInRail = useCallback(() => {
+    revealInRail(methodTestId(service, method), {
+      block: "center",
+      smooth: true,
+      focus: true,
+    });
+  }, [service, method]);
+
   const runnable = !!methodInfo?.exampleSource;
 
   const handleRun = async () => {
@@ -227,10 +242,24 @@ export function MethodView({
         </button>
       </div>
 
-      <div className="view__breadcrumb">{service}</div>
+      <button
+        type="button"
+        className="view__breadcrumb view__breadcrumb--link"
+        onClick={revealServiceInRail}
+        title="Show this service in the index"
+      >
+        {service}
+      </button>
       <h1 className="view__title">
-        <span className="view__slash">/</span>
-        <span className="view__method">{method}</span>
+        <button
+          type="button"
+          className="view__title-link"
+          onClick={revealMethodInRail}
+          title="Show this method in the index"
+        >
+          <span className="view__slash">/</span>
+          <span className="view__method">{method}</span>
+        </button>
       </h1>
       <div className="view__kind" data-kind={kind}>
         {kind === "subscription" ? "Subscription" : "Request / Response"}

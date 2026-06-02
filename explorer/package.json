@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "tsc -b --noEmit",
     "preview": "vite preview",
-    "generate-matrix": "node scripts/aggregate-diagnosis-matrix.mjs --explorer-out src/data/compatibility.ts --consume pending-reports"
+    "generate-matrix": "node scripts/aggregate-diagnosis-matrix.mjs --explorer-out src/data/compatibility.ts diagnosis-reports"
   },
   "dependencies": {
     "@parity/truapi": "file:../js/packages/truapi",
