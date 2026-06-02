@@ -3,7 +3,7 @@
 # Run `make help` for the list of targets.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup build codegen test check playground matrix
+.PHONY: help setup build codegen test check playground matrix explorer
 
 TRUAPI_PKG := js/packages/truapi
 PLAYGROUND := playground
@@ -45,3 +45,6 @@ playground: ## Refresh the playground's @parity/truapi snapshot and rebuild.
 
 matrix: ## Regenerate the host compatibility matrix from explorer/diagnosis-reports.
 	cd $(EXPLORER) && npm run generate-matrix
+
+explorer: ## Run the explorer dev server standalone at http://localhost:5181.
+	cd $(EXPLORER) && npx vite --base / --port 5181
