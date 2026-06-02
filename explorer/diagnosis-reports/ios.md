@@ -30,15 +30,6 @@ Generated: 2026-06-02T12:55:35.461Z
 | Chat/post_message                              | ❌     | { "tag": "Unknown", "value": { "reason": "Error: Messages are not supported" } } |
 | Chat/action_subscribe                          | ❌     | subscription delivered no events in 6s                                           |
 | Chat/custom_message_render_subscribe           | ❌     | subscription delivered no events in 6s                                           |
-| Coin Payment/create_purse                      | ⏭     |                                                                                  |
-| Coin Payment/query_purse                       | ⏭     |                                                                                  |
-| Coin Payment/rebalance_purse                   | ⏭     |                                                                                  |
-| Coin Payment/delete_purse                      | ⏭     |                                                                                  |
-| Coin Payment/create_receivable                 | ⏭     |                                                                                  |
-| Coin Payment/create_cheque                     | ⏭     |                                                                                  |
-| Coin Payment/deposit                           | ⏭     |                                                                                  |
-| Coin Payment/refund                            | ⏭     |                                                                                  |
-| Coin Payment/listen_for_payment                | ⏭     |                                                                                  |
 | Entropy/derive                                 | ✅     |                                                                                  |
 | Local Storage/read                             | ✅     |                                                                                  |
 | Local Storage/write                            | ✅     |                                                                                  |
