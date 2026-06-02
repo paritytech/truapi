@@ -16,18 +16,12 @@ The **Compatibility** page (`/v/<version>/compatibility`) renders a host × meth
    npm run generate-matrix
    ```
 
-   That **merges** the reports into `src/data/compatibility.ts`, leaving the inputs in `diagnosis-reports/`. Merging is per host: a report overwrites the column whose label matches it, a report for a new label adds a column, and host columns with no report this run are left as they were. So you can refresh just Desktop without re-running Web, or add Android / iOS columns one at a time. The Compatibility page (and each method's Host support row) picks up the new data on the next build / Vite HMR.
+   That **rebuilds** `src/data/compatibility.ts` from every report in `diagnosis-reports/` — one column per report — leaving the inputs in place. Because the matrix is always built from the reports alone, the committed reports are the source of truth: to refresh a host, overwrite its `*.md` and regenerate. The Compatibility page (and each method's Host support row) picks up the new data on the next build / Vite HMR.
 4. **Commit** the updated `src/data/compatibility.ts` together with the reports under `diagnosis-reports/`. Keeping the raw per-host reports in version control makes each run diffable against the last.
-
-To rebuild the matrix from scratch — dropping every host column not present in the current run — add `--replace`:
-
-```bash
-npm run generate-matrix -- --replace
-```
 
 ### Data shape
 
-[`src/data/compatibility-types.ts`](src/data/compatibility-types.ts) holds the schema. Each method row carries one `pass | fail | null` entry per host column; `null` means the method was absent from that host's report (typically a method added after the report was taken, or a host that hasn't been re-measured since the method landed). Columns are labelled by host mode (`Web` / `Desktop` / `Android` / `iOS`); when two reports share a mode, the filename disambiguates the label.
+[`src/data/compatibility-types.ts`](src/data/compatibility-types.ts) holds the schema. Each method row carries one `pass | fail | null` entry per host column; `null` means the method was absent from (or skipped in) that host's report. Methods with no measurement on any host are dropped from the matrix. Columns are labelled by host mode (`Web` / `Desktop` / `Android` / `iOS`); when two reports share a mode, the filename disambiguates the label.
 
 ### Standalone CLI
 
@@ -40,5 +34,4 @@ node scripts/aggregate-diagnosis-matrix.mjs --explorer-out src/data/compatibilit
 
 Flags:
 
-- `--explorer-out <file>` — write the TypeScript matrix module instead of stdout markdown. Merges into the file's existing matrix unless `--replace` is given.
-- `--replace` — rebuild from the reports alone, dropping host columns not present in this run (default: merge).
+- `--explorer-out <file>` — write the TypeScript matrix module instead of stdout markdown.

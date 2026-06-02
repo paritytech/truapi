@@ -21,14 +21,10 @@
 //
 //   npm run generate-matrix
 //
-// That merges every report in `diagnosis-reports/` into the committed
-// `src/data/compatibility.ts` source-of-truth. The reports are committed too,
-// so re-running a host overwrites its file and the diff shows what changed.
-// Merging is per host: a report whose column label matches an existing host
-// overwrites that host's column, a report for a new label adds a column, and
-// hosts with no report this run are left untouched. So you can refresh just the
-// Desktop column without re-running Web, and add Android / iOS columns
-// incrementally.
+// That rebuilds `src/data/compatibility.ts` from the reports in
+// `diagnosis-reports/` — one column per report. The reports are committed too,
+// so re-running a host overwrites its file and both the report diff and the
+// regenerated matrix show what changed.
 //
 // Direct invocation also works for ad-hoc use:
 //   node scripts/aggregate-diagnosis-matrix.mjs web.md desktop.md           # markdown to stdout
@@ -36,8 +32,6 @@
 //
 // Flags:
 //   --explorer-out <file>   write a TypeScript module exporting `compatibility`
-//   --replace               rebuild from the reports alone, dropping any host
-//                           columns not present in this run (default: merge)
 //
 // The host column label is the mode from each report's title (Web / Desktop /
 // Android / iOS / Unknown). Reports that share a mode are disambiguated with
@@ -140,25 +134,6 @@ function normalizeMode(mode) {
   return KNOWN_MODES.has(mode) ? mode : "Unknown";
 }
 
-// Read the `compatibility` object back out of a previously generated TypeScript
-// module so a new run can merge into it. Returns null when the file is absent
-// or unparseable (e.g. first-ever run), in which case we start from scratch.
-function readExistingMatrix(file) {
-  let text;
-  try {
-    text = readFileSync(file, "utf8");
-  } catch {
-    return null;
-  }
-  const match = text.match(/compatibility[^=]*=\s*(\{[\s\S]*\})\s*;/);
-  if (!match) return null;
-  try {
-    return JSON.parse(match[1]);
-  } catch {
-    return null;
-  }
-}
-
 // The status of one method for one report's host, mapped to the typed enum, or
 // null when the report doesn't mention the method at all.
 function cellStatus(report, id) {
@@ -171,60 +146,35 @@ function cellDetail(report, id) {
   return report.details.get(id);
 }
 
-// Merge freshly parsed reports into the prior matrix. Each report upserts its
-// own column (matched by label); columns with no report this run keep their
-// previous values. A null `prior` (e.g. first run, or `--replace`) means only
-// the reports in this run survive. `methods` is the union method order from the
-// reports; existing method rows are preserved and extended.
-function buildMatrix(prior, reports, labels, methods, generatedAt) {
+// Build the matrix from the parsed reports alone — one column per report, in
+// canonical host order, with one row per method seen across the reports.
+function buildMatrix(reports, labels, methods, generatedAt) {
   const reportByLabel = new Map(labels.map((label, i) => [label, reports[i]]));
 
-  const hosts = (prior?.hosts ?? []).map((h) => ({ ...h }));
-  for (let i = 0; i < reports.length; i++) {
-    const host = {
+  const hosts = reports
+    .map((report, i) => ({
       label: labels[i],
-      mode: normalizeMode(reports[i].mode),
-      reportedAt: reports[i].reportedAt,
-    };
-    const at = hosts.findIndex((h) => h.label === host.label);
-    if (at >= 0) hosts[at] = host;
-    else hosts.push(host);
-  }
-  hosts.sort((a, b) => MODE_ORDER.indexOf(a.mode) - MODE_ORDER.indexOf(b.mode));
+      mode: normalizeMode(report.mode),
+      reportedAt: report.reportedAt,
+    }))
+    .sort((a, b) => MODE_ORDER.indexOf(a.mode) - MODE_ORDER.indexOf(b.mode));
 
-  const order = [];
-  const seen = new Set();
-  for (const id of [...(prior?.methods ?? []).map((m) => m.id), ...methods]) {
-    if (!seen.has(id)) {
-      seen.add(id);
-      order.push(id);
-    }
-  }
-
-  const priorById = new Map((prior?.methods ?? []).map((m) => [m.id, m]));
-  const rows = order.map((id) => {
+  const rows = methods.map((id) => {
     const results = {};
     const details = {};
     for (const host of hosts) {
       const report = reportByLabel.get(host.label);
-      if (report) {
-        results[host.label] = cellStatus(report, id);
-        const detail = cellDetail(report, id);
-        if (detail) details[host.label] = detail;
-      } else {
-        const prevRow = priorById.get(id);
-        results[host.label] = prevRow?.results?.[host.label] ?? null;
-        const prevDetail = prevRow?.details?.[host.label];
-        if (prevDetail) details[host.label] = prevDetail;
-      }
+      results[host.label] = cellStatus(report, id);
+      const detail = cellDetail(report, id);
+      if (detail) details[host.label] = detail;
     }
     const row = { id, results };
     if (Object.keys(details).length > 0) row.details = details;
     return row;
   });
 
-  // Drop methods with no real measurement on any host (skipped everywhere or
-  // never reported) so the matrix carries only what was actually exercised.
+  // Drop methods with no real measurement on any host (skipped everywhere) so
+  // the matrix carries only what was actually exercised.
   const measured = rows.filter((row) =>
     Object.values(row.results).some((v) => v !== null),
   );
@@ -264,25 +214,22 @@ function renderTypeScript(matrix) {
 function parseArgs(argv) {
   const paths = [];
   let explorerOut = null;
-  let replace = false;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--explorer-out") {
       explorerOut = argv[++i];
-    } else if (arg === "--replace") {
-      replace = true;
     } else {
       paths.push(arg);
     }
   }
-  return { paths, explorerOut, replace };
+  return { paths, explorerOut };
 }
 
 function main() {
-  const { paths, explorerOut, replace } = parseArgs(process.argv.slice(2));
+  const { paths, explorerOut } = parseArgs(process.argv.slice(2));
   if (paths.length === 0) {
     console.error(
-      "usage: aggregate-diagnosis-matrix.mjs [--explorer-out <file>] [--replace] <report.md|dir> [more...]",
+      "usage: aggregate-diagnosis-matrix.mjs [--explorer-out <file>] <report.md|dir> [more...]",
     );
     process.exit(1);
   }
@@ -298,22 +245,12 @@ function main() {
   const methods = unionMethodOrder(reports);
   const generatedAt = new Date().toISOString();
 
-  let merged = false;
   if (explorerOut) {
-    const existing = replace ? null : readExistingMatrix(explorerOut);
-    merged = existing != null;
-    const matrix = buildMatrix(existing, reports, labels, methods, generatedAt);
+    const matrix = buildMatrix(reports, labels, methods, generatedAt);
     writeFileSync(explorerOut, renderTypeScript(matrix));
+    console.error(`Wrote ${explorerOut} from ${reports.length} report(s).`);
   } else {
     process.stdout.write(renderMarkdown(reports, labels, methods));
-  }
-
-  if (explorerOut) {
-    console.error(
-      `Wrote ${explorerOut} from ${reports.length} report(s)${
-        replace ? " (replaced)" : merged ? " (merged)" : ""
-      }.`,
-    );
   }
 }
 
