@@ -52,9 +52,10 @@ import { basename, extname, join } from "node:path";
 
 const TITLE_RE = /^##\s+Truapi\s+(.+?)\s+Diagnosis\s*$/im;
 const GENERATED_RE = /^_Generated:\s*(.+?)_\s*$/m;
-// | `Service/method` | ✅ |   (the header row's "Method" cell has no backticks,
-// so it is skipped automatically)
-const ROW_RE = /^\|\s*`([^`]+)`\s*\|\s*(.+?)\s*\|\s*$/;
+// | `Service/method` | ✅ | optional details |   (the header row's "Method"
+// cell has no backticks, so it is skipped automatically; any trailing details
+// column is ignored — only method and status are read)
+const ROW_RE = /^\|\s*`([^`]+)`\s*\|\s*([^|]*?)\s*\|/;
 
 function collectFiles(args) {
   const files = [];

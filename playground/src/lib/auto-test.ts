@@ -33,7 +33,7 @@ export const EXCLUDED_METHODS = new Set([
   "Account/get_account_alias",
 ]);
 
-const UNARY_TIMEOUT_MS = 4_000;
+const UNARY_TIMEOUT_MS = 10_000;
 const SIGNING_TIMEOUT_MS = 30_000;
 const SUBSCRIPTION_TIMEOUT_MS = 6_000;
 

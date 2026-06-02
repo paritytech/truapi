@@ -50,14 +50,22 @@ export function renderReportMarkdown(
   lines.push(`## Truapi ${mode} Diagnosis`);
   lines.push(`_Generated: ${new Date().toISOString()}_`);
   lines.push("");
-  lines.push("| Method | Status |");
-  lines.push("| --- | --- |");
+  lines.push("| Method | Status | Details |");
+  lines.push("| --- | --- | --- |");
   for (const svc of services) {
     for (const m of svc.methods) {
       const id = `${svc.name}/${m.name}`;
-      const status = results[id]?.status ?? "idle";
-      lines.push(`| \`${id}\` | ${ICON[status]} |`);
+      const entry = results[id];
+      const status = entry?.status ?? "idle";
+      lines.push(`| \`${id}\` | ${ICON[status]} | ${detailCell(entry)} |`);
     }
   }
   return lines.join("\n");
+}
+
+// The failure reason for a method, flattened to a single escaped table cell.
+// Only failures carry details; other statuses leave the cell empty.
+function detailCell(entry: TestEntry | undefined): string {
+  if (entry?.status !== "fail" || entry.output == null) return "";
+  return entry.output.replace(/\s+/g, " ").replace(/\|/g, "\\|").trim();
 }

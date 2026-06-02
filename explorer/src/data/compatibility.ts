@@ -402,7 +402,7 @@ export const compatibility: CompatibilityMatrix = {
       "id": "Signing/create_transaction",
       "results": {
         "Desktop": "fail",
-        "Web": "fail",
+        "Web": "pass",
         "Android": "fail",
         "iOS": "fail"
       }
