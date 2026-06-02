@@ -1,15 +1,42 @@
 import type { Monaco } from "@monaco-editor/react";
 import { loader } from "@monaco-editor/react";
+import type { Environment } from "monaco-editor";
 import { truapiDts } from "@parity/truapi/playground/codegen/truapi-dts";
 import { rxjsFiles } from "./codegen/rxjs-dts";
 
 export const MONACO_THEME_LIGHT = "truapi-light";
 export const MONACO_THEME_DARK = "truapi-dark";
 
+// Bundle the web workers from the local `monaco-editor` package. Without this,
+// the editor falls back to the AMD loader's `require.toUrl`, which the ESM
+// build does not provide (TypeError: reading 'toUrl'). webpack emits each
+// `new Worker(new URL(...))` as its own chunk served from our own origin.
+function monacoWorker(label: string): Worker {
+  if (label === "typescript" || label === "javascript") {
+    return new Worker(
+      new URL(
+        "monaco-editor/esm/vs/language/typescript/ts.worker.js",
+        import.meta.url,
+      ),
+    );
+  }
+  return new Worker(
+    new URL("monaco-editor/esm/vs/editor/editor.worker.js", import.meta.url),
+  );
+}
+
 let loaderConfigured = false;
-async function configureLoader(): Promise<void> {
+/**
+ * Point `@monaco-editor/react`'s loader at the bundled `monaco-editor` package
+ * instead of its default jsdelivr CDN. Must run before the Editor mounts and
+ * calls `loader.init()`, otherwise the loader falls back to the CDN.
+ */
+export async function configureLoader(): Promise<void> {
   if (loaderConfigured) return;
   loaderConfigured = true;
+  (
+    globalThis as typeof globalThis & { MonacoEnvironment?: Environment }
+  ).MonacoEnvironment = { getWorker: (_id, label) => monacoWorker(label) };
   // Lazy-import monaco-editor on the client only. Importing it eagerly at
   // module scope crashes Next's SSR prerender (`window is not defined`).
   const monaco = await import("monaco-editor");

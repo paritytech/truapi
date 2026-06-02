@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   subscribeConnectionStatus,
   type ConnectionStatus,
@@ -23,6 +29,11 @@ import {
 import packageJson from "../../package.json";
 
 const VERSION_LABEL = `v${packageJson.version}`;
+
+// Run the scroll-restore synchronously after the index re-mounts so the
+// previously-open row is centered before paint (no flash of scroll-top).
+const useIsoLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 // Stable empty map so a view that does not own the current results re-renders
 // with an empty object rather than a fresh `{}` each render.
@@ -136,6 +147,8 @@ function urlForSelection(selection: Selection): string {
 export default function PlaygroundPage() {
   const [status, setStatus] = useState<ConnectionStatus | null>(null);
   const [selection, setSelection] = useState<Selection>(null);
+  // The last method viewed, kept highlighted in the index after "← INDEX".
+  const [lastViewed, setLastViewed] = useState<Selection>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [testResults, setTestResults] = useState<Record<string, TestEntry>>({});
   const [isTestRunning, setIsTestRunning] = useState(false);
@@ -145,6 +158,9 @@ export default function PlaygroundPage() {
     "autotest" | "diagnosis" | null
   >(null);
   const abortRef = useRef<AbortController | null>(null);
+  // The method open when "← INDEX" was clicked, so the index can re-center on
+  // it instead of jumping to the top.
+  const pendingScrollRef = useRef<Selection>(null);
 
   // Hydrate selection from the URL on mount and respond to back/forward.
   useEffect(() => {
@@ -189,6 +205,28 @@ export default function PlaygroundPage() {
     setSelection({ service, method });
     setPaletteOpen(false);
   }, []);
+
+  // Going back to the index: remember the open method so the index can scroll
+  // it into the center of view rather than resetting to the top.
+  const handleBack = useCallback(() => {
+    pendingScrollRef.current = selection;
+    setLastViewed(selection);
+    setSelection(null);
+  }, [selection]);
+
+  useIsoLayoutEffect(() => {
+    if (selection !== null) return;
+    const target = pendingScrollRef.current;
+    pendingScrollRef.current = null;
+    if (!target?.method) return;
+    const el = document.querySelector(
+      `[data-testid="method-${target.service}-${target.method}"]`,
+    );
+    if (el instanceof HTMLElement) {
+      el.scrollIntoView({ block: "center" });
+      el.focus({ preventScroll: true });
+    }
+  }, [selection]);
 
   const handleRunTests = useCallback(
     async (mode: "all" | "safe") => {
@@ -305,7 +343,7 @@ export default function PlaygroundPage() {
           </p>
           <ServiceTable
             services={services}
-            activeMethod={selection}
+            activeMethod={selection ?? lastViewed}
             testResults={testResults}
             onSelect={(s, m) => setSelection({ service: s, method: m })}
           />
@@ -318,7 +356,7 @@ export default function PlaygroundPage() {
               isRunning={isTestRunning}
               onRun={handleRunDiagnosis}
               onStop={handleStopTests}
-              onBack={() => setSelection(null)}
+              onBack={handleBack}
             />
           ) : isAutoTest ? (
             <AutoTestView
@@ -328,13 +366,13 @@ export default function PlaygroundPage() {
               onRun={handleRunTests}
               onStop={handleStopTests}
               onRetry={handleRetryTest}
-              onBack={() => setSelection(null)}
+              onBack={handleBack}
             />
           ) : selection ? (
             <MethodView
               service={selection.service}
               method={selection.method}
-              onBack={() => setSelection(null)}
+              onBack={handleBack}
             />
           ) : (
             <div className="empty-state">
