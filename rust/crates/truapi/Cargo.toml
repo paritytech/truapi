@@ -1,6 +1,6 @@
 [package]
 name = "truapi"
-version = "0.3.1"
+version = "0.3.0"
 edition.workspace = true
 description = "TrUAPI trait and type definitions"
 
