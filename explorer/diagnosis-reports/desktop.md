@@ -1,6 +1,6 @@
 ## Truapi Desktop Diagnosis
 
-_Generated: 2026-06-02T13:07:34.449Z_
+_Generated: 2026-06-02T13:11:33.130Z_
 
 | Method                                           | Status | Details                                                                                                   |
 | ------------------------------------------------ | ------ | --------------------------------------------------------------------------------------------------------- |
@@ -43,8 +43,8 @@ _Generated: 2026-06-02T13:07:34.449Z_
 | `Local Storage/read`                             | ✅     |                                                                                                           |
 | `Local Storage/write`                            | ✅     |                                                                                                           |
 | `Local Storage/clear`                            | ✅     |                                                                                                           |
-| `Notifications/send_push_notification`           | ❌     | { "tag": "Unknown", "value": { "reason": "Not implemented" } }                                            |
-| `Notifications/cancel_push_notification`         | ❌     | { "reason": "Not implemented" }                                                                           |
+| `Notifications/send_push_notification`           | ✅     |                                                                                                           |
+| `Notifications/cancel_push_notification`         | ✅     |                                                                                                           |
 | `Payment/balance_subscribe`                      | ❌     | { "name": "SubscriptionError", "reason": { "tag": "Unknown", "value": { "reason": "Not implemented" } } } |
 | `Payment/top_up`                                 | ❌     | { "tag": "Unknown", "value": { "reason": "Not implemented" } }                                            |
 | `Payment/request`                                | ❌     | topUp failed: { "tag": "Unknown", "value": { "reason": "Not implemented" } }                              |
@@ -62,7 +62,7 @@ _Generated: 2026-06-02T13:07:34.449Z_
 | `Signing/sign_payload`                           | ✅     |                                                                                                           |
 | `Statement Store/subscribe`                      | ✅     |                                                                                                           |
 | `Statement Store/create_proof`                   | ✅     |                                                                                                           |
-| `Statement Store/submit`                         | ❌     | submit failed: { "reason": "Not implemented" }                                                            |
+| `Statement Store/submit`                         | ❌     | submit failed: { "reason": "Submit failed, statement already expired" }                                   |
 | `Statement Store/create_proof_authorized`        | ✅     |                                                                                                           |
 | `System/handshake`                               | ✅     |                                                                                                           |
 | `System/feature_supported`                       | ✅     |                                                                                                           |

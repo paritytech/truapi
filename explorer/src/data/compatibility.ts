@@ -5,17 +5,17 @@
 import type { CompatibilityMatrix } from "./compatibility-types";
 
 export const compatibility: CompatibilityMatrix = {
-  "generatedAt": "2026-06-01T19:38:16.567Z",
+  "generatedAt": "2026-06-02T13:12:17.219Z",
   "hosts": [
     {
       "label": "Desktop",
       "mode": "Desktop",
-      "reportedAt": "2026-06-01T18:11:51.224Z"
+      "reportedAt": "2026-06-02T13:11:33.130Z"
     },
     {
       "label": "Web",
       "mode": "Web",
-      "reportedAt": "2026-06-01T18:13:06.175Z"
+      "reportedAt": "2026-06-02T12:52:16.980Z"
     },
     {
       "label": "Android",
@@ -25,7 +25,7 @@ export const compatibility: CompatibilityMatrix = {
     {
       "label": "iOS",
       "mode": "iOS",
-      "reportedAt": "2026-06-01T16:21:46.683Z"
+      "reportedAt": ""
     }
   ],
   "methods": [
@@ -35,7 +35,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -44,7 +44,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -53,7 +53,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -62,7 +62,11 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "fail",
         "Web": "fail",
         "Android": "fail",
-        "iOS": "fail"
+        "iOS": null
+      },
+      "details": {
+        "Desktop": "{ \"tag\": \"Unknown\", \"value\": { \"reason\": \"Not implemented\" } }",
+        "Web": "{ \"tag\": \"Unknown\", \"value\": { \"reason\": \"Not implemented\" } }"
       }
     },
     {
@@ -71,7 +75,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -80,7 +84,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "fail",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -89,7 +93,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -98,7 +102,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -107,7 +111,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -116,7 +120,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -125,7 +129,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -134,7 +138,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -143,7 +147,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -152,7 +156,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -161,7 +165,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -170,7 +174,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -179,7 +183,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -188,7 +192,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -197,7 +201,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -206,7 +210,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -215,7 +219,11 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "fail",
         "Web": "fail",
         "Android": "fail",
-        "iOS": "fail"
+        "iOS": null
+      },
+      "details": {
+        "Desktop": "{ \"tag\": \"Unknown\", \"value\": { \"reason\": \"Not implemented\" } }",
+        "Web": "{ \"tag\": \"Unknown\", \"value\": { \"reason\": \"Not implemented\" } }"
       }
     },
     {
@@ -224,7 +232,11 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "fail",
         "Web": "fail",
         "Android": "fail",
-        "iOS": "fail"
+        "iOS": null
+      },
+      "details": {
+        "Desktop": "{ \"tag\": \"Unknown\", \"value\": { \"reason\": \"Not implemented\" } }",
+        "Web": "{ \"tag\": \"Unknown\", \"value\": { \"reason\": \"Not implemented\" } }"
       }
     },
     {
@@ -233,7 +245,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "fail",
-        "iOS": "fail"
+        "iOS": null
       }
     },
     {
@@ -242,7 +254,11 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "fail",
         "Web": "fail",
         "Android": "fail",
-        "iOS": "fail"
+        "iOS": null
+      },
+      "details": {
+        "Desktop": "{ \"tag\": \"Unknown\", \"value\": { \"reason\": \"Not implemented\" } }",
+        "Web": "{ \"tag\": \"Unknown\", \"value\": { \"reason\": \"Not implemented\" } }"
       }
     },
     {
@@ -251,7 +267,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "fail",
-        "iOS": "fail"
+        "iOS": null
       }
     },
     {
@@ -260,7 +276,11 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "fail",
         "Web": "fail",
         "Android": "fail",
-        "iOS": "fail"
+        "iOS": null
+      },
+      "details": {
+        "Desktop": "subscription delivered no events in 6s",
+        "Web": "subscription delivered no events in 6s"
       }
     },
     {
@@ -269,7 +289,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -278,7 +298,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -287,7 +307,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -296,7 +316,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -305,7 +325,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -314,7 +334,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -323,7 +343,11 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "fail",
         "Web": "fail",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
+      },
+      "details": {
+        "Desktop": "{ \"name\": \"SubscriptionError\", \"reason\": { \"tag\": \"Unknown\", \"value\": { \"reason\": \"Not implemented\" } } }",
+        "Web": "{ \"name\": \"SubscriptionError\", \"reason\": { \"tag\": \"PermissionDenied\" } }"
       }
     },
     {
@@ -332,7 +356,11 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "fail",
         "Web": "fail",
         "Android": "pass",
-        "iOS": "fail"
+        "iOS": null
+      },
+      "details": {
+        "Desktop": "{ \"tag\": \"Unknown\", \"value\": { \"reason\": \"Not implemented\" } }",
+        "Web": "{ \"tag\": \"Unknown\", \"value\": { \"reason\": \"Payments are not supported in dot.li\" } }"
       }
     },
     {
@@ -341,7 +369,11 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "fail",
         "Web": "fail",
         "Android": "fail",
-        "iOS": "fail"
+        "iOS": null
+      },
+      "details": {
+        "Desktop": "topUp failed: { \"tag\": \"Unknown\", \"value\": { \"reason\": \"Not implemented\" } }",
+        "Web": "topUp failed: { \"tag\": \"Unknown\", \"value\": { \"reason\": \"Payments are not supported in dot.li\" } }"
       }
     },
     {
@@ -350,7 +382,11 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "fail",
         "Web": "fail",
         "Android": "fail",
-        "iOS": "fail"
+        "iOS": null
+      },
+      "details": {
+        "Desktop": "topUp failed: { \"tag\": \"Unknown\", \"value\": { \"reason\": \"Not implemented\" } }",
+        "Web": "topUp failed: { \"tag\": \"Unknown\", \"value\": { \"reason\": \"Payments are not supported in dot.li\" } }"
       }
     },
     {
@@ -359,7 +395,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -368,25 +404,31 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
       "id": "Preimage/lookup_subscribe",
       "results": {
-        "Desktop": "pass",
+        "Desktop": "fail",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
+      },
+      "details": {
+        "Desktop": "submit failed: { \"tag\": \"Unknown\", \"value\": { \"reason\": \"Not implemented\" } }"
       }
     },
     {
       "id": "Preimage/submit",
       "results": {
         "Desktop": "fail",
-        "Web": "fail",
+        "Web": "pass",
         "Android": "fail",
-        "iOS": "fail"
+        "iOS": null
+      },
+      "details": {
+        "Desktop": "{ \"tag\": \"Unknown\", \"value\": { \"reason\": \"Not implemented\" } }"
       }
     },
     {
@@ -395,16 +437,16 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
       "id": "Signing/create_transaction",
       "results": {
-        "Desktop": "fail",
+        "Desktop": "pass",
         "Web": "pass",
         "Android": "fail",
-        "iOS": "fail"
+        "iOS": null
       }
     },
     {
@@ -413,7 +455,11 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "fail",
         "Web": "fail",
         "Android": "fail",
-        "iOS": "fail"
+        "iOS": null
+      },
+      "details": {
+        "Desktop": "{ \"tag\": \"Unknown\", \"value\": { \"reason\": \"Not implemented\" } }",
+        "Web": "{ \"tag\": \"Unknown\", \"value\": { \"reason\": \"Account can't be derived from product account id\" } }"
       }
     },
     {
@@ -422,7 +468,11 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "fail",
         "Web": "fail",
         "Android": "fail",
-        "iOS": "fail"
+        "iOS": null
+      },
+      "details": {
+        "Desktop": "{ \"tag\": \"Unknown\", \"value\": { \"reason\": \"Account can't be derived from product account id\" } }",
+        "Web": "{ \"tag\": \"Unknown\", \"value\": { \"reason\": \"Account can't be derived from product account id\" } }"
       }
     },
     {
@@ -431,7 +481,11 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "fail",
         "Web": "fail",
         "Android": "fail",
-        "iOS": "fail"
+        "iOS": null
+      },
+      "details": {
+        "Desktop": "{ \"tag\": \"Unknown\", \"value\": { \"reason\": \"Account can't be derived from product account id\" } }",
+        "Web": "{ \"tag\": \"Unknown\", \"value\": { \"reason\": \"Account can't be derived from product account id\" } }"
       }
     },
     {
@@ -440,7 +494,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -449,16 +503,16 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
       "id": "Statement Store/subscribe",
       "results": {
-        "Desktop": "fail",
+        "Desktop": "pass",
         "Web": "pass",
         "Android": "fail",
-        "iOS": "fail"
+        "iOS": null
       }
     },
     {
@@ -467,7 +521,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "fail"
+        "iOS": null
       }
     },
     {
@@ -476,7 +530,11 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "fail",
         "Web": "fail",
         "Android": "fail",
-        "iOS": "fail"
+        "iOS": null
+      },
+      "details": {
+        "Desktop": "submit failed: { \"reason\": \"Submit failed, statement already expired\" }",
+        "Web": "submit failed: { \"reason\": \"Submit failed, statement already expired\" }"
       }
     },
     {
@@ -485,7 +543,10 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "fail",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
+      },
+      "details": {
+        "Web": "{ \"tag\": \"Unknown\", \"value\": { \"reason\": \"Not implemented\" } }"
       }
     },
     {
@@ -494,7 +555,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -503,7 +564,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -512,7 +573,7 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
       }
     },
     {
@@ -521,7 +582,88 @@ export const compatibility: CompatibilityMatrix = {
         "Desktop": "pass",
         "Web": "pass",
         "Android": "pass",
-        "iOS": "pass"
+        "iOS": null
+      }
+    },
+    {
+      "id": "Coin Payment/create_purse",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail",
+        "Android": null,
+        "iOS": null
+      }
+    },
+    {
+      "id": "Coin Payment/query_purse",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail",
+        "Android": null,
+        "iOS": null
+      }
+    },
+    {
+      "id": "Coin Payment/rebalance_purse",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail",
+        "Android": null,
+        "iOS": null
+      }
+    },
+    {
+      "id": "Coin Payment/delete_purse",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail",
+        "Android": null,
+        "iOS": null
+      }
+    },
+    {
+      "id": "Coin Payment/create_receivable",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail",
+        "Android": null,
+        "iOS": null
+      }
+    },
+    {
+      "id": "Coin Payment/create_cheque",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail",
+        "Android": null,
+        "iOS": null
+      }
+    },
+    {
+      "id": "Coin Payment/deposit",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail",
+        "Android": null,
+        "iOS": null
+      }
+    },
+    {
+      "id": "Coin Payment/refund",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail",
+        "Android": null,
+        "iOS": null
+      }
+    },
+    {
+      "id": "Coin Payment/listen_for_payment",
+      "results": {
+        "Desktop": "fail",
+        "Web": "fail",
+        "Android": null,
+        "iOS": null
       }
     }
   ]
