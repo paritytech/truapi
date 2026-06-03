@@ -38,8 +38,9 @@ export function detectHostMode(): HostMode {
 }
 
 // Render the diagnosis results as a copy-pasteable GitHub-flavoured markdown
-// table: a title carrying the host mode, the generation timestamp, and one row
-// per method in declared order.
+// table: a title carrying the host mode and one row per method in declared
+// order. The output is deterministic for a given set of results (no timestamp)
+// so re-submitting an unchanged run produces an identical report.
 export function renderReportMarkdown(
   services: ServiceInfo[],
   results: Record<string, TestEntry>,
@@ -48,7 +49,6 @@ export function renderReportMarkdown(
   const mode = meta.mode ?? detectHostMode();
   const lines: string[] = [];
   lines.push(`## Truapi ${mode} Diagnosis`);
-  lines.push(`_Generated: ${new Date().toISOString()}_`);
   lines.push("");
   lines.push("| Method | Status | Details |");
   lines.push("| --- | --- | --- |");

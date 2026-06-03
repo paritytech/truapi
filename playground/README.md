@@ -65,13 +65,12 @@ Then, in the playground:
 2. Read the instructions on the screen, then click **Run diagnosis**.
 3. Wait for the run to finish. Non-disruptive methods run in parallel first, then disruptive methods run one at a time — approve each pop-up on your phone as it appears. A live log updates per method (`queued → processing… → success / failed`).
 4. When the run finishes, a **Report** panel appears above the log. Click **Copy report**.
-5. Save the markdown to a file named after the host (e.g. `web.md` or `desktop.md`) and hand it to whoever updates the compatibility matrix.
+5. Click **Submit report ↗** to file a pre-filled GitHub issue that the `diagnosis-report` workflow turns into a per-host PR under `explorer/diagnosis-reports/`. (Or click **Copy report**, save the markdown to a host-named file like `web.md`, and update the matrix by hand — see [`../explorer/README.md`](../explorer/README.md#updating-the-matrix).)
 
 The report looks like this:
 
 ```markdown
 ## Truapi Web Diagnosis
-_Generated: 2026-05-28T10:15:00.000Z_
 
 | Method | Status |
 | --- | --- |
