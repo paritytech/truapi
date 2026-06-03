@@ -29,10 +29,15 @@ pub trait StatementStore: Send + Sync {
     /// if (proofResult.isErr()) {
     ///   console.error("createProof failed:", proofResult.error);
     /// } else {
-    ///   await truapi.statementStore.submit({
+    ///   console.log("submitting proof:\n", proofResult.value.proof);
+    ///   const submitted = await truapi.statementStore.submit({
     ///     proof: proofResult.value.proof,
     ///     topics: [topic],
     ///   });
+    ///   submitted.match(
+    ///     (value) => console.log("proof submitted:", value),
+    ///     (error) => console.error("failed to submit proof:", error),
+    ///   );
     ///   from(
     ///     truapi.statementStore.subscribe({
     ///       request: { tag: "MatchAll", value: [topic] },
