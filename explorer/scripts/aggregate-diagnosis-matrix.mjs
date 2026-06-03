@@ -7,7 +7,6 @@
 // report" button:
 //
 //   ## Truapi Desktop Diagnosis
-//   _Generated: 2026-05-27T18:00:32.854Z_
 //
 //   | Method | Status | Details |
 //   | --- | --- | --- |
@@ -42,7 +41,6 @@ import { readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { basename, extname, join } from "node:path";
 
 const TITLE_RE = /^##\s+Truapi\s+(.+?)\s+Diagnosis\s*$/im;
-const GENERATED_RE = /^_?Generated:\s*(.+?)_?\s*$/m;
 // A method row: `| Service/method | ✅ | optional details |`. The method cell
 // may or may not be wrapped in backticks and the columns may be space-padded
 // (markdown formatters do both), so backticks are optional here. Group 2 is the
@@ -70,8 +68,6 @@ function parseReport(file) {
   const text = readFileSync(file, "utf8");
   const titleMatch = text.match(TITLE_RE);
   const mode = titleMatch ? titleMatch[1].trim() : "Unknown";
-  const reportedAtMatch = text.match(GENERATED_RE);
-  const reportedAt = reportedAtMatch ? reportedAtMatch[1].trim() : "";
   const statuses = new Map();
   const details = new Map();
   const order = [];
@@ -85,7 +81,7 @@ function parseReport(file) {
     const detail = (m[3] ?? "").trim();
     if (detail) details.set(method, detail.replace(/\\\|/g, "|"));
   }
-  return { file, mode, reportedAt, statuses, details, order };
+  return { file, mode, statuses, details, order };
 }
 
 function columnLabels(reports) {
@@ -155,7 +151,6 @@ function buildMatrix(reports, labels, methods, generatedAt) {
     .map((report, i) => ({
       label: labels[i],
       mode: normalizeMode(report.mode),
-      reportedAt: report.reportedAt,
     }))
     .sort((a, b) => MODE_ORDER.indexOf(a.mode) - MODE_ORDER.indexOf(b.mode));
 

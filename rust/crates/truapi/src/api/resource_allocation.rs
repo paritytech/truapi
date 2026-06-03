@@ -18,10 +18,8 @@ pub trait ResourceAllocation: Send + Sync {
     ///     { tag: "AutoSigning" },
     ///   ],
     /// });
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "request failed:", result);
+    /// console.log(result.value);
     /// ```
     #[wire(request_id = 130)]
     async fn request(

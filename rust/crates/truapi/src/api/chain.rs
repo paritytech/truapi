@@ -28,22 +28,19 @@ pub trait Chain: Send + Sync {
     /// ```ts
     /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
-    /// import { from, take } from "rxjs";
+    /// import { firstValueFrom, from } from "rxjs";
     ///
-    /// from(
-    ///   truapi.chain.followHeadSubscribe({
-    ///     request: {
-    ///       genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
-    ///       withRuntime: false,
-    ///     },
-    ///   }),
-    /// )
-    ///   .pipe(take(3))
-    ///   .subscribe({
-    ///     next: (item) => console.log(item),
-    ///     error: (error) => console.error(error),
-    ///     complete: () => console.log("completed"),
-    ///   });
+    /// const item = await firstValueFrom(
+    ///   from(
+    ///     truapi.chain.followHeadSubscribe({
+    ///       request: {
+    ///         genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
+    ///         withRuntime: false,
+    ///       },
+    ///     }),
+    ///   ),
+    /// );
+    /// console.log(item);
     /// ```
     #[wire(start_id = 76)]
     async fn follow_head_subscribe(
@@ -70,10 +67,8 @@ pub trait Chain: Send + Sync {
     ///     ),
     ///   ),
     /// );
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "getHeadHeader failed:", result);
+    /// console.log(result.value);
     /// ```
     #[wire(request_id = 80)]
     async fn get_head_header(
@@ -100,10 +95,8 @@ pub trait Chain: Send + Sync {
     ///     ),
     ///   ),
     /// );
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "getHeadBody failed:", result);
+    /// console.log(result.value);
     /// ```
     #[wire(request_id = 82)]
     async fn get_head_body(
@@ -135,10 +128,8 @@ pub trait Chain: Send + Sync {
     ///     ),
     ///   ),
     /// );
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "getHeadStorage failed:", result);
+    /// console.log(result.value);
     /// ```
     #[wire(request_id = 84)]
     async fn get_head_storage(
@@ -172,10 +163,8 @@ pub trait Chain: Send + Sync {
     ///     ),
     ///   ),
     /// );
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "callHead failed:", result);
+    /// console.log(result.value);
     /// ```
     #[wire(request_id = 86)]
     async fn call_head(
@@ -206,10 +195,8 @@ pub trait Chain: Send + Sync {
     ///     ),
     ///   ),
     /// );
-    /// result.match(
-    ///   () => console.log("ok"),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "unpinHead failed:", result);
+    /// console.log("ok");
     /// ```
     #[wire(request_id = 88)]
     async fn unpin_head(
@@ -240,10 +227,8 @@ pub trait Chain: Send + Sync {
     ///     ),
     ///   ),
     /// );
-    /// result.match(
-    ///   () => console.log("ok"),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "continueHead failed:", result);
+    /// console.log("ok");
     /// ```
     #[wire(request_id = 90)]
     async fn continue_head(
@@ -274,10 +259,8 @@ pub trait Chain: Send + Sync {
     ///     ),
     ///   ),
     /// );
-    /// result.match(
-    ///   () => console.log("ok"),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "stopHeadOperation failed:", result);
+    /// console.log("ok");
     /// ```
     #[wire(request_id = 92)]
     async fn stop_head_operation(
@@ -297,10 +280,8 @@ pub trait Chain: Send + Sync {
     /// const result = await truapi.chain.getSpecGenesisHash({
     ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     /// });
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "getSpecGenesisHash failed:", result);
+    /// console.log(result.value);
     /// ```
     #[wire(request_id = 94)]
     async fn get_spec_genesis_hash(
@@ -320,10 +301,8 @@ pub trait Chain: Send + Sync {
     /// const result = await truapi.chain.getSpecChainName({
     ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     /// });
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "getSpecChainName failed:", result);
+    /// console.log(result.value);
     /// ```
     #[wire(request_id = 96)]
     async fn get_spec_chain_name(
@@ -342,10 +321,8 @@ pub trait Chain: Send + Sync {
     /// const result = await truapi.chain.getSpecProperties({
     ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     /// });
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "getSpecProperties failed:", result);
+    /// console.log(result.value);
     /// ```
     #[wire(request_id = 98)]
     async fn get_spec_properties(
@@ -365,10 +342,8 @@ pub trait Chain: Send + Sync {
     ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///   transaction: "0x",
     /// });
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "broadcastTransaction failed:", result);
+    /// console.log(result.value);
     /// ```
     #[wire(request_id = 100)]
     async fn broadcast_transaction(
@@ -391,10 +366,8 @@ pub trait Chain: Send + Sync {
     ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///   operationId: "op-id",
     /// });
-    /// result.match(
-    ///   () => console.log("ok"),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "stopTransaction failed:", result);
+    /// console.log("ok");
     /// ```
     #[wire(request_id = 102)]
     async fn stop_transaction(

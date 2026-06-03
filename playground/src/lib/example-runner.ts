@@ -7,14 +7,29 @@ export type LogEntry = {
   text: string;
 };
 
-export type RunSubscription = {
-  unsubscribe: () => void;
-  subscriptionId?: string;
-};
+// A running example: `promise` settles when the example body finishes (it
+// awaits its own subscriptions via firstValueFrom), and `cancel` tears down any
+// subscriptions it opened.
+export type RunResult = { promise: Promise<unknown>; cancel: () => void };
 
-export type RunResult =
-  | { kind: "unary"; promise: Promise<unknown>; cancel: () => void }
-  | { kind: "subscription"; subscription: RunSubscription };
+/** Thrown by `assert` in an example to mark it as failed. */
+export class AssertionError extends Error {
+  constructor(message?: string) {
+    super(message ?? "assertion failed");
+    this.name = "AssertionError";
+  }
+}
+
+// Injected into every example: failure is explicit (throw) rather than inferred
+// from `console.error`, so `console.*` is free for narration. Trailing args are
+// formatted into the message the way `console.*` formats its arguments, so an
+// example can surface the failing Result's error: `assert(r.isOk(), "x:", r.error)`.
+function exampleAssert(
+  condition: unknown,
+  ...message: unknown[]
+): asserts condition {
+  if (!condition) throw new AssertionError(format(message));
+}
 
 // Drop any `@parity/truapi` import that does not name value specifiers (e.g.
 // bare type-only imports left over after sucrase). Named value imports are
@@ -46,6 +61,7 @@ const AsyncFunction = Object.getPrototypeOf(
   __rxjs: unknown,
   withChainHeadFollow: WithChainHeadFollow,
   __truapi: unknown,
+  assert: typeof exampleAssert,
 ) => Promise<unknown>;
 
 function lazyImport(load: () => Promise<unknown>): () => Promise<unknown> {
@@ -57,11 +73,10 @@ const getTruapiPkg = lazyImport(() => import("@parity/truapi"));
 
 export async function runExample(opts: {
   source: string;
-  kind: "unary" | "subscription";
   client: TrUApiClient;
   onLog: (entry: LogEntry) => void;
 }): Promise<RunResult> {
-  const { source, kind, client, onLog } = opts;
+  const { source, client, onLog } = opts;
 
   let js: string;
   try {
@@ -85,6 +100,7 @@ export async function runExample(opts: {
     rxjs: unknown,
     withChainHeadFollow: WithChainHeadFollow,
     truapiPkg: unknown,
+    assert: typeof exampleAssert,
   ) => Promise<unknown>;
   try {
     run = new AsyncFunction(
@@ -93,6 +109,7 @@ export async function runExample(opts: {
       "__rxjs",
       "withChainHeadFollow",
       "__truapi",
+      "assert",
       body,
     );
   } catch (err) {
@@ -130,21 +147,14 @@ export async function runExample(opts: {
     rxjs,
     withChainHeadFollow,
     truapiPkg,
+    exampleAssert,
   );
 
-  if (kind === "subscription") {
-    await promise;
-    return {
-      kind: "subscription",
-      subscription: {
-        unsubscribe: unsubscribeAll,
-        subscriptionId: tracked[0]?.subscriptionId,
-      },
-    };
-  }
-
-  promise.finally(unsubscribeAll);
-  return { kind: "unary", promise, cancel: unsubscribeAll };
+  // Tear down tracked subscriptions once the example settles. The caller owns
+  // `promise` and surfaces its rejection; this chain only drives cleanup, so
+  // swallow its rejection to avoid an unhandled-rejection warning/overlay.
+  promise.finally(unsubscribeAll).catch(() => {});
+  return { promise, cancel: unsubscribeAll };
 }
 
 function createTrackingClient(

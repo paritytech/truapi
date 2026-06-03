@@ -9,15 +9,12 @@ pub trait Theme: Send + Sync {
     /// Subscribe to host theme changes.
     ///
     /// ```ts
-    /// import { from, take } from "rxjs";
+    /// import { firstValueFrom, from } from "rxjs";
     ///
-    /// from(truapi.theme.subscribe())
-    ///   .pipe(take(3))
-    ///   .subscribe({
-    ///     next: (theme) => console.log(theme),
-    ///     error: (error) => console.error(error),
-    ///     complete: () => console.log("completed"),
-    ///   });
+    /// const theme = await firstValueFrom(
+    ///   from(truapi.theme.subscribe()),
+    /// );
+    /// console.log(theme);
     /// ```
     #[wire(start_id = 104)]
     async fn subscribe(&self, _cx: &CallContext) -> Subscription<HostThemeSubscribeItem> {

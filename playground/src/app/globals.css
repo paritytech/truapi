@@ -1465,6 +1465,25 @@ button {
   color: var(--ink);
 }
 
+.diag__report-actions {
+  margin-left: auto;
+  align-self: center;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.diag__report-actions .autotest__report-copy {
+  margin-left: 0;
+}
+.diag__submit {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.diag__submit:hover {
+  background: var(--accent);
+  color: var(--bg);
+}
+
 .diag__callout {
   margin: 12px 0 0;
   padding: 10px 12px;
