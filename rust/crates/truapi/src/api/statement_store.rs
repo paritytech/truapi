@@ -112,7 +112,6 @@ pub trait StatementStore: Send + Sync {
     /// const result = await truapi.statementStore.createProofAuthorized({
     ///   expiry,
     ///   topics: [topic],
-    ///   expiry,
     /// });
     /// assert(result.isOk(), "createProof failed:", result);
     /// console.log(result.value);
