@@ -8,20 +8,20 @@ The **Compatibility** page (`/v/<version>/compatibility`) renders a host × meth
 
 ### Updating the matrix
 
-1. **Collect reports.** For each host you want covered, open the playground in that host, run the Diagnosis, and click **Copy report** (see [`../playground/README.md#diagnosis`](../playground/README.md#diagnosis)). Save each report to a host-named markdown file (e.g. `web.md`, `desktop.md`).
-2. **Drop them in.** Place every `*.md` into [`pending-reports/`](pending-reports/).
+1. **Collect reports.** For each host you want to (re)measure, open the playground in that host, run the Diagnosis, and click **Copy report** (see [`../playground/README.md#diagnosis`](../playground/README.md#diagnosis)). Save each report to a host-named markdown file (e.g. `web.md`, `desktop.md`, `android.md`, `ios.md`).
+2. **Drop them in.** Place each host-named `*.md` into [`diagnosis-reports/`](diagnosis-reports/), overwriting that host's previous report.
 3. **Regenerate.** From the `explorer/` directory:
 
    ```bash
    npm run generate-matrix
    ```
 
-   That rewrites `src/data/compatibility.ts` from the reports and deletes the consumed inputs from `pending-reports/`. The Compatibility page (and each method's Host support row) picks up the new data on the next build / Vite HMR.
-4. **Commit** the updated `src/data/compatibility.ts` so the published matrix reflects the new run. The reports themselves are gitignored — only the aggregate is checked in.
+   That **rebuilds** `src/data/compatibility.ts` from every report in `diagnosis-reports/` — one column per report — leaving the inputs in place. Because the matrix is always built from the reports alone, the committed reports are the source of truth: to refresh a host, overwrite its `*.md` and regenerate. The Compatibility page (and each method's Host support row) picks up the new data on the next build / Vite HMR.
+4. **Commit** the updated `src/data/compatibility.ts` together with the reports under `diagnosis-reports/`. Keeping the raw per-host reports in version control makes each run diffable against the last.
 
 ### Data shape
 
-[`src/data/compatibility-types.ts`](src/data/compatibility-types.ts) holds the schema. Each method row carries one `pass | fail | null` entry per host column; `null` means the method was absent from that host's report (typically a method added after the report was taken). Columns are labelled by host mode (`Web` / `Desktop`); when two reports share a mode, the filename disambiguates the label.
+[`src/data/compatibility-types.ts`](src/data/compatibility-types.ts) holds the schema. Each method row carries one `pass | fail | null` entry per host column; `null` means the method was absent from (or skipped in) that host's report. Methods with no measurement on any host are dropped from the matrix. Columns are labelled by host mode (`Web` / `Desktop` / `Android` / `iOS`); when two reports share a mode, the filename disambiguates the label.
 
 ### Standalone CLI
 
@@ -29,10 +29,9 @@ The aggregator can be invoked directly:
 
 ```bash
 node scripts/aggregate-diagnosis-matrix.mjs web.md desktop.md          # markdown preview to stdout
-node scripts/aggregate-diagnosis-matrix.mjs --explorer-out src/data/compatibility.ts --consume pending-reports
+node scripts/aggregate-diagnosis-matrix.mjs --explorer-out src/data/compatibility.ts diagnosis-reports
 ```
 
 Flags:
 
 - `--explorer-out <file>` — write the TypeScript matrix module instead of stdout markdown.
-- `--consume` — delete the input report files **after** a successful write.

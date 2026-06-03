@@ -14,19 +14,19 @@ pub trait Preimage: Send + Sync {
     /// ```ts
     /// import { from, take } from "rxjs";
     ///
-    /// from(
-    ///   truapi.preimage.lookupSubscribe({
-    ///     request: {
-    ///       key: "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///     },
-    ///   }),
-    /// )
-    ///   .pipe(take(3))
-    ///   .subscribe({
-    ///     next: (item) => console.log(item),
-    ///     error: (error) => console.error(error),
-    ///     complete: () => console.log("completed"),
-    ///   });
+    /// // Submit a preimage first so the lookup resolves to a value.
+    /// const submitted = await truapi.preimage.submit("0xdeadbeef");
+    /// if (submitted.isErr()) {
+    ///   console.error("submit failed:", submitted.error);
+    /// } else {
+    ///   from(truapi.preimage.lookupSubscribe({ request: { key: submitted.value } }))
+    ///     .pipe(take(1))
+    ///     .subscribe({
+    ///       next: (item) => console.log(item),
+    ///       error: (error) => console.error("lookupSubscribe failed:", error),
+    ///       complete: () => console.log("completed"),
+    ///     });
+    /// }
     /// ```
     #[wire(start_id = 64)]
     async fn lookup_subscribe(
