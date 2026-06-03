@@ -23,9 +23,15 @@ pub trait StatementStore: Send + Sync {
     /// const topic: `0x${string}` = `0x${bytes.toHex()}`;
     /// const expiry = BigInt(Math.floor(Date.now() / 1000) + 86400) << 32n;
     ///
-    /// const proofResult = await truapi.statementStore.createProofAuthorized({
-    ///   topics: [topic],
-    ///   expiry,
+    /// const proofResult = await truapi.statementStore.createProof({
+    ///   productAccountId: {
+    ///     dotNsIdentifier: "truapi-playground.dot",
+    ///     derivationIndex: 0,
+    ///   },
+    ///   statement: {
+    ///     expiry,
+    ///     topics: [],
+    ///   },
     /// });
     /// assert(proofResult.isOk(), "createProof failed:", proofResult);
     ///
@@ -133,9 +139,15 @@ pub trait StatementStore: Send + Sync {
     /// const topic: `0x${string}` = `0x${bytes.toHex()}`;
     /// const expiry = BigInt(Math.floor(Date.now() / 1000) + 86400) << 32n;
     ///
-    /// const proofResult = await truapi.statementStore.createProofAuthorized({
-    ///   topics: [topic],
-    ///   expiry,
+    /// const proofResult = await truapi.statementStore.createProof({
+    ///   productAccountId: {
+    ///     dotNsIdentifier: "truapi-playground.dot",
+    ///     derivationIndex: 0,
+    ///   },
+    ///   statement: {
+    ///     expiry,
+    ///     topics: [],
+    ///   },
     /// });
     /// assert(proofResult.isOk(), "createProof failed:", proofResult);
     ///
