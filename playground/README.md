@@ -45,6 +45,10 @@ Methods reach the playground via codegen — there is no per-method wiring file 
 
 A method without a `ts` rustdoc block shows up with a "Not supported" badge — there is no example to run until you add one.
 
+### Example conventions
+
+An example **passes** when its promise resolves and **fails** when it throws. Use the ambient `assert(condition, ...message)` (no import) to fail explicitly — `assert(false, ...)` throws. `console.*` is pure output. For a `Result`, write `assert(r.isOk(), "<step> failed:", r)` (narrows `r` to `Ok`, includes the result in the failure message). Await subscriptions with `firstValueFrom(from(<observable>))`.
+
 ## Diagnosis
 
 The Diagnosis view exercises every TrUAPI method against the connected host and emits a per-host pass/fail report you can copy out. Per-host reports feed the explorer's **Compatibility** page, which renders the host × method matrix; aggregation lives in the explorer (see [`explorer/README.md`](../explorer/README.md#host-compatibility-matrix)).

@@ -1,10 +1,8 @@
 import {
   runExample,
   type LogEntry,
-  type RunSubscription,
+  type RunResult,
 } from "./example-runner";
-import { stringify } from "./host-api-bridge";
-import { errorTextFrom } from "./result-status";
 import { getClient } from "./transport";
 import type { MethodInfo, ServiceInfo } from "./services";
 
@@ -20,7 +18,6 @@ export interface TestEntry {
 
 const UNARY_TIMEOUT_MS = 10_000;
 const SIGNING_TIMEOUT_MS = 30_000;
-const SUBSCRIPTION_TIMEOUT_MS = 6_000;
 
 // Services skipped wholesale in the diagnosis until hosts wire them up.
 const SKIPPED_SERVICES = new Set(["Coin Payment"]);
@@ -81,110 +78,42 @@ async function runOne({
     ? SIGNING_TIMEOUT_MS
     : UNARY_TIMEOUT_MS;
 
+  // The example decides pass/fail explicitly: it resolves on success and throws
+  // (via `assert(...)` or any uncaught error) on failure. `console.*` is pure
+  // output, captured into `logs` for the report but with no bearing on status.
+  let run: RunResult | undefined;
   try {
-    const run = await runExample({
-      source,
-      kind: method.type,
-      client: getClient(),
-      onLog,
-    });
-
-    if (run.kind === "unary") {
-      const value = await Promise.race([
-        run.promise,
-        new Promise<never>((_, reject) =>
-          setTimeout(
-            () => reject(new Error(`timed out after ${timeoutMs / 1000}s`)),
-            timeoutMs,
-          ),
+    run = await runExample({ source, client: getClient(), onLog });
+    await Promise.race([
+      run.promise,
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`timed out after ${timeoutMs / 1000}s`)),
+          timeoutMs,
         ),
-      ]);
-      // Generated examples self-handle the Result via
-      // `result.match(v => console.log(v), e => console.error(e))`, so an Err
-      // surfaces as an error-level log rather than a thrown exception. Some
-      // examples instead `return result` / `console.log(result)`, leaving the
-      // neverthrow Err as the resolved value. Treat either as an errored call.
-      const errText = errorTextFrom(value, logs);
-      if (errText != null) {
-        onUpdate(id, {
-          status: "fail",
-          request: source,
-          output: errText,
-        });
-      } else {
-        onUpdate(id, {
-          status: "pass",
-          request: source,
-          output: stringify(value) ?? joinLogs(logs) ?? "null",
-        });
-      }
-    } else {
-      await runSubscription(id, source, run.subscription, logs, onUpdate);
-    }
+      ),
+    ]);
+    onUpdate(id, {
+      status: "pass",
+      request: source,
+      output: joinLogs(logs) ?? "ok",
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    const log = joinLogs(logs);
     onUpdate(id, {
       status: "fail",
       request: source,
-      output: message,
+      output: log ? `${log}\n${message}` : message,
     });
+  } finally {
+    run?.cancel();
   }
 }
 
 function joinLogs(logs: LogEntry[]): string | undefined {
   if (logs.length === 0) return undefined;
   return logs.map((l) => l.text).join("\n");
-}
-
-async function runSubscription(
-  id: string,
-  source: string,
-  sub: RunSubscription,
-  logs: LogEntry[],
-  onUpdate: (id: string, entry: TestEntry) => void,
-): Promise<void> {
-  const settle = (resolve: () => void) => {
-    try {
-      sub.unsubscribe();
-    } catch {
-      /* benign */
-    }
-    const errText = errorTextFrom(undefined, logs);
-    if (errText != null) {
-      onUpdate(id, {
-        status: "fail",
-        request: source,
-        output: errText,
-      });
-    } else if (logs.length > 0) {
-      onUpdate(id, {
-        status: "pass",
-        request: source,
-        output: logs.map((l) => l.text).join("\n"),
-      });
-    } else {
-      onUpdate(id, {
-        status: "fail",
-        request: source,
-        output: `subscription delivered no events in ${SUBSCRIPTION_TIMEOUT_MS / 1000}s`,
-      });
-    }
-    resolve();
-  };
-
-  await new Promise<void>((resolve) => {
-    const interval = setInterval(() => {
-      if (logs.length > 0) {
-        clearInterval(interval);
-        clearTimeout(deadline);
-        settle(resolve);
-      }
-    }, 50);
-    const deadline = setTimeout(() => {
-      clearInterval(interval);
-      settle(resolve);
-    }, SUBSCRIPTION_TIMEOUT_MS);
-  });
 }
 
 // Re-run a single method, e.g. to replay a failed diagnosis row.

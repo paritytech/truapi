@@ -24,10 +24,8 @@ pub trait Notifications: Send + Sync {
     /// const result = await truapi.notifications.sendPushNotification({
     ///   text: "Hello!",
     /// });
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "sendPushNotification failed:", result);
+    /// console.log(result.value);
     /// ```
     #[wire(request_id = 4)]
     async fn send_push_notification(
@@ -47,10 +45,8 @@ pub trait Notifications: Send + Sync {
     /// const result = await truapi.notifications.cancelPushNotification({
     ///   id: 1,
     /// });
-    /// result.match(
-    ///   () => console.log("ok"),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "cancelPushNotification failed:", result);
+    /// console.log("ok");
     /// ```
     #[wire(request_id = 134)]
     async fn cancel_push_notification(

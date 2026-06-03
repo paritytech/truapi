@@ -42,6 +42,15 @@ declare global {
     genesisHash: `0x${string}`;
     withRuntime?: boolean;
   }): Observable<ChainHeadCtx>;
+  /**
+   * Assert a condition, throwing when it does not hold. Examples signal
+   * failure explicitly with `assert(...)`; the playground's diagnosis marks
+   * an example failed when it throws and passed when it runs to completion.
+   * `console.*` output is for display only and never decides pass/fail.
+   * Trailing args are appended to the message, so a failing Result can be
+   * surfaced: `assert(r.isOk(), "x failed:", r)`.
+   */
+  function assert(condition: unknown, ...message: unknown[]): asserts condition;
 }
 
 export {};

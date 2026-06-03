@@ -16,7 +16,7 @@ pub trait StatementStore: Send + Sync {
     /// Subscribe to statements matching a topic filter.
     ///
     /// ```ts
-    /// import { from, take } from "rxjs";
+    /// import { firstValueFrom, from } from "rxjs";
     ///
     /// // Submit a statement under a fresh random topic, then match on it.
     /// const bytes = crypto.getRandomValues(new Uint8Array(32));
@@ -25,31 +25,24 @@ pub trait StatementStore: Send + Sync {
     /// const proofResult = await truapi.statementStore.createProofAuthorized({
     ///   topics: [topic],
     /// });
+    /// assert(proofResult.isOk(), "createProof failed:", proofResult);
     ///
-    /// if (proofResult.isErr()) {
-    ///   console.error("createProof failed:", proofResult.error);
-    /// } else {
-    ///   console.log("submitting proof:\n", proofResult.value.proof);
-    ///   const submitted = await truapi.statementStore.submit({
-    ///     proof: proofResult.value.proof,
-    ///     topics: [topic],
-    ///   });
-    ///   submitted.match(
-    ///     (value) => console.log("proof submitted:", value),
-    ///     (error) => console.error("failed to submit proof:", error),
-    ///   );
+    /// console.log("submitting proof:", proofResult.value.proof);
+    /// const submitted = await truapi.statementStore.submit({
+    ///   proof: proofResult.value.proof,
+    ///   topics: [topic],
+    /// });
+    /// assert(submitted.isOk(), "failed to submit proof:", submitted);
+    /// console.log("proof submitted:", submitted.value);
+    ///
+    /// const statements = await firstValueFrom(
     ///   from(
     ///     truapi.statementStore.subscribe({
     ///       request: { tag: "MatchAll", value: [topic] },
     ///     }),
-    ///   )
-    ///     .pipe(take(1))
-    ///     .subscribe({
-    ///       next: (statements) => console.log(statements),
-    ///       error: (error) => console.error("subscribe failed:", error),
-    ///       complete: () => console.log("completed"),
-    ///     });
-    /// }
+    ///   ),
+    /// );
+    /// console.log(statements);
     /// ```
     #[wire(start_id = 56)]
     async fn subscribe(
@@ -82,10 +75,8 @@ pub trait StatementStore: Send + Sync {
     ///     topics: [topic],
     ///   },
     /// });
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "createProof failed:", result);
+    /// console.log(result.value);
     /// ```
     #[wire(request_id = 60)]
     async fn create_proof(
@@ -112,10 +103,8 @@ pub trait StatementStore: Send + Sync {
     ///   expiry,
     ///   topics: [topic],
     /// });
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "createProof failed:", result);
+    /// console.log(result.value);
     /// ```
     #[wire(request_id = 132)]
     async fn create_proof_authorized(
@@ -139,19 +128,14 @@ pub trait StatementStore: Send + Sync {
     /// const proofResult = await truapi.statementStore.createProofAuthorized({
     ///   topics: [topic],
     /// });
+    /// assert(proofResult.isOk(), "createProof failed:", proofResult);
     ///
-    /// if (proofResult.isErr()) {
-    ///   console.error("createProof failed:", proofResult.error);
-    /// } else {
-    ///   const result = await truapi.statementStore.submit({
-    ///     proof: proofResult.value.proof,
-    ///     topics: [topic],
-    ///   });
-    ///   result.match(
-    ///     () => console.log("ok"),
-    ///     (error) => console.error("submit failed:", error),
-    ///   );
-    /// }
+    /// const result = await truapi.statementStore.submit({
+    ///   proof: proofResult.value.proof,
+    ///   topics: [topic],
+    /// });
+    /// assert(result.isOk(), "submit failed:", result);
+    /// console.log("ok");
     /// ```
     #[wire(request_id = 62)]
     async fn submit(
