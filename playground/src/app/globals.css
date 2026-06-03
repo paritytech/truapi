@@ -1484,26 +1484,6 @@ button {
   color: var(--bg);
 }
 
-.diag__cancel {
-  flex-shrink: 0;
-  padding: 2px 8px;
-  font-family: var(--font-mono), monospace;
-  font-size: 10px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-  background: transparent;
-  border: 1px solid var(--rule-strong);
-  border-radius: var(--radius);
-  cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
-}
-.diag__cancel:hover {
-  background: var(--danger);
-  color: var(--bg);
-  border-color: var(--danger);
-}
-
 .diag__callout {
   margin: 12px 0 0;
   padding: 10px 12px;

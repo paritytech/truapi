@@ -30,7 +30,6 @@ export function DiagnosisView({
   isRunning,
   onRun,
   onStop,
-  onCancelCurrent,
   onRetry,
   onBack,
 }: {
@@ -39,7 +38,6 @@ export function DiagnosisView({
   isRunning: boolean;
   onRun: () => void;
   onStop: () => void;
-  onCancelCurrent: () => void;
   onRetry: (service: string, method: string) => void;
   onBack: () => void;
 }) {
@@ -202,19 +200,6 @@ export function DiagnosisView({
                     <span className="autotest__chevron">
                       {isExpanded ? "▲" : "▼"}
                     </span>
-                  )}
-                  {r.status === "running" && (
-                    <button
-                      type="button"
-                      className="diag__cancel"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onCancelCurrent();
-                      }}
-                      title="Skip this method and continue"
-                    >
-                      ✕ skip
-                    </button>
                   )}
                   <span className="autotest__status" data-status={r.status}>
                     {STATUS_LABEL[r.status]}

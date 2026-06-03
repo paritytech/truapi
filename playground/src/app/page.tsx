@@ -164,8 +164,6 @@ export default function PlaygroundPage() {
   const [testResults, setTestResults] = useState<Record<string, TestEntry>>({});
   const [isTestRunning, setIsTestRunning] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
-  // Cancels the currently-running diagnosis method (null between methods).
-  const cancelCurrentRef = useRef<(() => void) | null>(null);
   // The method open when "← INDEX" was clicked, so the index can re-center on
   // it instead of jumping to the top.
   const pendingScrollRef = useRef<Selection>(null);
@@ -252,9 +250,6 @@ export default function PlaygroundPage() {
           setTestResults((prev) => ({ ...prev, [id]: entry }));
         },
         controller.signal,
-        (cancel) => {
-          cancelCurrentRef.current = cancel;
-        },
       );
     } finally {
       setTestResults((prev) => {
@@ -270,10 +265,6 @@ export default function PlaygroundPage() {
 
   const handleStopTests = useCallback(() => {
     abortRef.current?.abort();
-  }, []);
-
-  const handleCancelCurrent = useCallback(() => {
-    cancelCurrentRef.current?.();
   }, []);
 
   const handleRetryDiagnosis = useCallback(
@@ -313,7 +304,6 @@ export default function PlaygroundPage() {
               isRunning={isTestRunning}
               onRun={handleRunDiagnosis}
               onStop={handleStopTests}
-              onCancelCurrent={handleCancelCurrent}
               onRetry={handleRetryDiagnosis}
               onBack={handleBack}
             />
