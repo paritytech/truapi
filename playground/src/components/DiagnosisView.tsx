@@ -132,7 +132,9 @@ export function DiagnosisView({
         <p className="diag__callout">
           Before you start: make sure you are <strong>logged in</strong>, and
           keep your <strong>phone nearby</strong> to sign transactions and
-          approve pop-ups from the Polkadot app as they appear.
+          approve pop-ups from the Polkadot app as they appear. Some payment
+          methods need an <strong>available balance</strong> in the Polkadot app
+          — without it they fail with an insufficient-balance error.
         </p>
       </div>
 
