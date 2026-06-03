@@ -72,3 +72,21 @@ function detailCell(entry: TestEntry | undefined): string {
   if (entry?.status !== "fail" || entry.output == null) return "";
   return entry.output.replace(/\s+/g, " ").replace(/\|/g, "\\|").trim();
 }
+
+// Repo that receives the pre-filled diagnosis-report issues; the
+// diagnosis-report workflow turns each into a PR under diagnosis-reports/.
+const REPORT_ISSUE_URL = "https://github.com/paritytech/truapi/issues/new";
+
+/**
+ * Pre-filled GitHub issue URL carrying `report` for a given host `mode`. The
+ * title format and the report's `## Truapi <mode> Diagnosis` heading are what
+ * the workflow parses, so they live here next to `renderReportMarkdown`.
+ */
+export function reportIssueUrl(report: string, mode: HostMode): string {
+  const params = new URLSearchParams({
+    labels: "diagnosis-report",
+    title: `Diagnosis report: ${mode}`,
+    body: report,
+  });
+  return `${REPORT_ISSUE_URL}?${params.toString()}`;
+}

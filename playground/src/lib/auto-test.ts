@@ -54,12 +54,53 @@ type RunOneOpts = {
   serviceName: string;
   method: MethodInfo;
   onUpdate: (id: string, entry: TestEntry) => void;
+  signal?: AbortSignal;
 };
+
+// Rejection value used to skip an in-flight call: the user (or a Stop) can
+// cancel a method without waiting for its timeout.
+const CANCELLED = Symbol("cancelled");
+
+// Await `promise`, but reject early after `ms` (timeout) or when `signal`
+// aborts (CANCELLED). Clears its timer and abort listener once settled, so no
+// dangling timers or listeners accumulate across a run.
+async function raceWithTimeout<T>(
+  promise: Promise<T>,
+  ms: number,
+  signal?: AbortSignal,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onAbort: (() => void) | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`timed out after ${ms / 1000}s`)),
+          ms,
+        );
+      }),
+      new Promise<never>((_, reject) => {
+        if (!signal) return;
+        if (signal.aborted) {
+          reject(CANCELLED);
+          return;
+        }
+        onAbort = () => reject(CANCELLED);
+        signal.addEventListener("abort", onAbort, { once: true });
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+    if (onAbort) signal?.removeEventListener("abort", onAbort);
+  }
+}
 
 async function runOne({
   serviceName,
   method,
   onUpdate,
+  signal,
 }: RunOneOpts): Promise<void> {
   const id = `${serviceName}/${method.name}`;
 
@@ -82,23 +123,17 @@ async function runOne({
     : UNARY_TIMEOUT_MS;
 
   try {
-    const run = await runExample({
-      source,
-      kind: method.type,
-      client: getClient(),
-      onLog,
-    });
+    // Race setup too: a subscription example awaits its whole body here (e.g.
+    // an inline submit), so this is where it can hang — keep it cancellable and
+    // timeout-bounded like the call itself.
+    const run = await raceWithTimeout(
+      runExample({ source, kind: method.type, client: getClient(), onLog }),
+      timeoutMs,
+      signal,
+    );
 
     if (run.kind === "unary") {
-      const value = await Promise.race([
-        run.promise,
-        new Promise<never>((_, reject) =>
-          setTimeout(
-            () => reject(new Error(`timed out after ${timeoutMs / 1000}s`)),
-            timeoutMs,
-          ),
-        ),
-      ]);
+      const value = await raceWithTimeout(run.promise, timeoutMs, signal);
       // Generated examples self-handle the Result via
       // `result.match(v => console.log(v), e => console.error(e))`, so an Err
       // surfaces as an error-level log rather than a thrown exception. Some
@@ -119,9 +154,13 @@ async function runOne({
         });
       }
     } else {
-      await runSubscription(id, source, run.subscription, logs, onUpdate);
+      await runSubscription(id, source, run.subscription, logs, onUpdate, signal);
     }
   } catch (err) {
+    if (err === CANCELLED) {
+      onUpdate(id, { status: "skipped" });
+      return;
+    }
     const message = err instanceof Error ? err.message : String(err);
     onUpdate(id, {
       status: "fail",
@@ -142,6 +181,7 @@ async function runSubscription(
   sub: RunSubscription,
   logs: LogEntry[],
   onUpdate: (id: string, entry: TestEntry) => void,
+  signal?: AbortSignal,
 ): Promise<void> {
   const settle = (resolve: () => void) => {
     try {
@@ -173,17 +213,33 @@ async function runSubscription(
   };
 
   await new Promise<void>((resolve) => {
+    const cleanup = () => {
+      clearInterval(interval);
+      clearTimeout(deadline);
+      signal?.removeEventListener("abort", onAbort);
+    };
+    const onAbort = () => {
+      cleanup();
+      try {
+        sub.unsubscribe();
+      } catch {
+        /* benign */
+      }
+      onUpdate(id, { status: "skipped" });
+      resolve();
+    };
     const interval = setInterval(() => {
       if (logs.length > 0) {
-        clearInterval(interval);
-        clearTimeout(deadline);
+        cleanup();
         settle(resolve);
       }
     }, 50);
     const deadline = setTimeout(() => {
-      clearInterval(interval);
+      cleanup();
       settle(resolve);
     }, SUBSCRIPTION_TIMEOUT_MS);
+    if (signal?.aborted) onAbort();
+    else signal?.addEventListener("abort", onAbort, { once: true });
   });
 }
 
@@ -208,6 +264,9 @@ export async function runDiagnosis(
   services: ServiceInfo[],
   onUpdate: (id: string, entry: TestEntry) => void,
   signal?: AbortSignal,
+  // Receives a function that cancels the currently-running method (or null
+  // between methods), so the UI can skip a slow test without stopping the run.
+  onCancellable?: (cancel: (() => void) | null) => void,
 ): Promise<void> {
   const immediate: Array<{ serviceName: string; method: MethodInfo }> = [];
   const deferred: typeof immediate = [];
@@ -221,6 +280,17 @@ export async function runDiagnosis(
   }
   for (const { serviceName, method } of [...immediate, ...deferred]) {
     if (signal?.aborted) return;
-    await runOne({ serviceName, method, onUpdate });
+    // A per-method controller cancels just this method; a global Stop aborts it
+    // too (and the loop guard above then ends the run).
+    const controller = new AbortController();
+    const linkStop = () => controller.abort();
+    signal?.addEventListener("abort", linkStop, { once: true });
+    onCancellable?.(() => controller.abort());
+    try {
+      await runOne({ serviceName, method, onUpdate, signal: controller.signal });
+    } finally {
+      signal?.removeEventListener("abort", linkStop);
+      onCancellable?.(null);
+    }
   }
 }
