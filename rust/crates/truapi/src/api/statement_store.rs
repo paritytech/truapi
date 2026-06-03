@@ -30,7 +30,7 @@ pub trait StatementStore: Send + Sync {
     ///   },
     ///   statement: {
     ///     expiry,
-    ///     topics: [],
+    ///     topics: [topic],
     ///   },
     /// });
     /// assert(proofResult.isOk(), "createProof failed:", proofResult);
@@ -108,7 +108,6 @@ pub trait StatementStore: Send + Sync {
     /// const expiry = BigInt(Math.floor(Date.now() / 1000) + 86400) << 32n;
     /// const bytes = crypto.getRandomValues(new Uint8Array(32));
     /// const topic: `0x${string}` = `0x${bytes.toHex()}`;
-    /// const expiry = BigInt(Math.floor(Date.now() / 1000) + 86400) << 32n;
     ///
     /// const result = await truapi.statementStore.createProofAuthorized({
     ///   expiry,
@@ -146,7 +145,7 @@ pub trait StatementStore: Send + Sync {
     ///   },
     ///   statement: {
     ///     expiry,
-    ///     topics: [],
+    ///     topics: [topic],
     ///   },
     /// });
     /// assert(proofResult.isOk(), "createProof failed:", proofResult);
