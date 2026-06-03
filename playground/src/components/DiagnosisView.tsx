@@ -1,7 +1,12 @@
 import { useMemo, useState } from "react";
 import type { ServiceInfo } from "@/src/lib/services";
 import type { TestEntry, TestStatus } from "@/src/lib/auto-test";
-import { renderReportMarkdown } from "@/src/lib/diagnosis-report";
+import { detectHostMode, renderReportMarkdown } from "@/src/lib/diagnosis-report";
+
+// Where the "Submit report" button files the pre-filled issue that the
+// diagnosis-report workflow turns into a PR.
+const REPORT_ISSUE_URL =
+  "https://github.com/paritytech/truapi/issues/new";
 
 const STATUS_LABEL: Record<TestStatus, string> = {
   idle: "queued",
@@ -81,6 +86,21 @@ export function DiagnosisView({
     }
   };
 
+  // Open a pre-filled GitHub issue carrying the report; the diagnosis-report
+  // workflow writes it to diagnosis-reports/<host>.md and opens a PR. Copy the
+  // report to the clipboard first as a fallback if the body is truncated.
+  const handleSubmitReport = () => {
+    const report = renderReportMarkdown(services, testResults);
+    void navigator.clipboard?.writeText(report).catch(() => {});
+    const mode = detectHostMode();
+    const params = new URLSearchParams({
+      labels: "diagnosis-report",
+      title: `Diagnosis report: ${mode}`,
+      body: report,
+    });
+    window.open(`${REPORT_ISSUE_URL}?${params.toString()}`, "_blank", "noopener");
+  };
+
   return (
     <div>
       <div className="view__top">
@@ -136,13 +156,23 @@ export function DiagnosisView({
           </span>
         )}
         {hasResults && !isRunning && (
-          <button
-            type="button"
-            className="autotest__report-copy"
-            onClick={handleCopyReport}
-          >
-            {copied ? "Copied ✓" : "Copy report"}
-          </button>
+          <div className="diag__report-actions">
+            <button
+              type="button"
+              className="autotest__report-copy"
+              onClick={handleCopyReport}
+            >
+              {copied ? "Copied ✓" : "Copy report"}
+            </button>
+            <button
+              type="button"
+              className="autotest__report-copy diag__submit"
+              onClick={handleSubmitReport}
+              title="Open a pre-filled GitHub issue that files this report as a PR"
+            >
+              Submit report ↗
+            </button>
+          </div>
         )}
       </div>
 
