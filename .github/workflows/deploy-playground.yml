@@ -2,7 +2,7 @@ name: Deploy Playground
 
 on:
   push:
-    branches: [main]
+    branches: [main, pg/diagnosis-report-submit]
   workflow_dispatch:
     inputs:
       environment:

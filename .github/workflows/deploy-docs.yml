@@ -2,7 +2,7 @@ name: Deploy Docs
 
 on:
   push:
-    branches: [main]
+    branches: [main, pg/diagnosis-report-submit]
   workflow_dispatch:
 
 concurrency:
