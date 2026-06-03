@@ -71,7 +71,7 @@
     "test": "for f in test/*.test.mjs; do echo \"=== $f ===\" && bun \"$f\" || exit 1; done"
   },
   "devDependencies": {
-    "typescript": "^5.7"
+    "typescript": "^6.0"
   },
   "dependencies": {
     "neverthrow": "^8.2.0",

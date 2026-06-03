@@ -3,3 +3,6 @@ dist
 *.tsbuildinfo
 .vite
 .DS_Store
+
+# Generated at build/dev time from diagnosis-reports/ (see scripts/aggregate-diagnosis-matrix.mjs).
+src/data/compatibility.ts
