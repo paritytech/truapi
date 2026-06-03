@@ -20,7 +20,7 @@ pub trait Account: Send + Sync {
     /// import { from, take } from "rxjs";
     ///
     /// from(truapi.account.connectionStatusSubscribe())
-    ///   .pipe(take(3))
+    ///   .pipe(take(1))
     ///   .subscribe({
     ///     next: (status) => console.log(status),
     ///     error: (error) => console.error(error),
