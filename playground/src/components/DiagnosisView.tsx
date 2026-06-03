@@ -125,9 +125,9 @@ export function DiagnosisView({
         <p className="panel__desc">
           Runs every TrUAPI method against the connected host to build a coverage
           report — which methods work, which fail, and which aren&apos;t wired
-          yet. Methods run one at a time; those that need your approval (signing,
-          permission and resource requests) run last. When it finishes, copy the
-          report below.
+          yet. Methods run one at a time, in order; those that need your approval
+          (signing, permission and resource requests) wait on your response
+          before the run continues. When it finishes, copy the report below.
         </p>
         <p className="diag__callout">
           Before you start: make sure you are <strong>logged in</strong>, and

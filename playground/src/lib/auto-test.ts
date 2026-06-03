@@ -21,22 +21,6 @@ const SIGNING_TIMEOUT_MS = 30_000;
 
 // Services skipped wholesale in the diagnosis until hosts wire them up.
 const SKIPPED_SERVICES = new Set(["Coin Payment"]);
-// Methods run last, after the automatic checks: they prompt the user (signing,
-// permission/resource requests) or navigate away (`navigate_to`), so deferring
-// them keeps each interaction isolated at the end of the run.
-const DEFERRED_METHODS = new Set([
-  "System/navigate_to",
-  "Permissions/request_device_permission",
-  "Permissions/request_remote_permission",
-  "Resource Allocation/request",
-  "Signing/sign_payload",
-  "Signing/sign_raw",
-  "Signing/sign_raw_with_legacy_account",
-  "Signing/sign_payload_with_legacy_account",
-  "Signing/create_transaction",
-  "Signing/create_transaction_with_legacy_account",
-  "Account/get_account_alias",
-]);
 // Methods whose first call implicitly triggers a host permission/signing
 // prompt, so they need the longer signing-class timeout to allow for the user
 // to respond. `get_account_alias` and `Preimage/submit` prompt on first use.
@@ -134,27 +118,19 @@ export async function runSingleTest(
   await runOne({ serviceName, method, onUpdate });
 }
 
-// Full diagnosis: run every method one at a time. Automatic checks run first;
-// methods that prompt the user or navigate away are deferred to the end so each
-// runs in isolation. Produces a complete worked / failed / not-wired matrix
-// suitable for the copy-pasteable report.
+// Full diagnosis: run every method one at a time, in service order. Methods
+// that prompt the user (signing, permission/resource requests) block on their
+// host dialog before the run continues. Produces a complete worked / failed /
+// not-wired matrix suitable for the copy-pasteable report.
 export async function runDiagnosis(
   services: ServiceInfo[],
   onUpdate: (id: string, entry: TestEntry) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const immediate: Array<{ serviceName: string; method: MethodInfo }> = [];
-  const deferred: typeof immediate = [];
   for (const svc of services) {
     for (const method of svc.methods) {
-      const bucket = DEFERRED_METHODS.has(`${svc.name}/${method.name}`)
-        ? deferred
-        : immediate;
-      bucket.push({ serviceName: svc.name, method });
+      if (signal?.aborted) return;
+      await runOne({ serviceName: svc.name, method, onUpdate });
     }
-  }
-  for (const { serviceName, method } of [...immediate, ...deferred]) {
-    if (signal?.aborted) return;
-    await runOne({ serviceName, method, onUpdate });
   }
 }
