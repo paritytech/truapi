@@ -2,15 +2,15 @@ name: Deploy Playground
 
 on:
   push:
-    branches: [main, pg/diagnosis-report-submit]
+    branches: [main]
   workflow_dispatch:
     inputs:
       environment:
         description: bulletin-deploy environment to publish to (blank = CLI default)
         type: choice
-        default: ''
+        default: ""
         options:
-          - ''
+          - ""
           - paseo-next-v2
           - preview
           - paseo-next

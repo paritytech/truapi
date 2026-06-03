@@ -37,7 +37,11 @@ const DEFERRED_METHODS = new Set([
   "Signing/create_transaction_with_legacy_account",
   "Account/get_account_alias",
 ]);
+// Methods whose first call implicitly triggers a host permission/signing
+// prompt, so they need the longer signing-class timeout to allow for the user
+// to respond. `get_account_alias` and `Preimage/submit` prompt on first use.
 const LONG_TIMEOUT_METHODS = new Set([
+  "Account/get_account_alias",
   "Resource Allocation/request",
   "Signing/sign_payload",
   "Signing/sign_raw",
@@ -45,6 +49,7 @@ const LONG_TIMEOUT_METHODS = new Set([
   "Signing/sign_payload_with_legacy_account",
   "Signing/create_transaction",
   "Signing/create_transaction_with_legacy_account",
+  "Preimage/submit",
 ]);
 
 type RunOneOpts = {
