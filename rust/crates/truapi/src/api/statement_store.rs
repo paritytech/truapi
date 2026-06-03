@@ -58,6 +58,10 @@ pub trait StatementStore: Send + Sync {
 
     /// Create a proof for a statement.
     ///
+    /// **Deprecated:** use [`create_proof_authorized`](Self::create_proof_authorized)
+    /// instead, which uses a pre-allocated allowance account and does not
+    /// require a per-call signing prompt.
+    ///
     /// ```ts
     /// // Expiry packs a Unix-seconds timestamp in the high 32 bits; a day out
     /// // keeps the statement unexpired when it is submitted.
