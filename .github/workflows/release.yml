@@ -28,6 +28,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
 
       - name: Resolve target version
         id: version
@@ -70,8 +71,10 @@ jobs:
       - name: Tag release
         if: steps.version.outputs.proceed == 'true'
         run: |
-          git tag "${{ steps.version.outputs.tag }}"
-          git push origin "${{ steps.version.outputs.tag }}"
+          git tag "${STEPS_VERSION_OUTPUTS_TAG}"
+          git push origin "${STEPS_VERSION_OUTPUTS_TAG}"
+        env:
+          STEPS_VERSION_OUTPUTS_TAG: ${{ steps.version.outputs.tag }}
 
       # --ignore-scripts skips the `prepare` hook so we don't rebuild what
       # the Build step just produced.
@@ -102,8 +105,10 @@ jobs:
         if: steps.version.outputs.proceed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STEPS_VERSION_OUTPUTS_TAG: ${{ steps.version.outputs.tag }}
+          STEPS_VERSION_OUTPUTS_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          gh release create "${{ steps.version.outputs.tag }}" \
-            --title "@parity/truapi ${{ steps.version.outputs.version }}" \
+          gh release create "${STEPS_VERSION_OUTPUTS_TAG}" \
+            --title "@parity/truapi ${STEPS_VERSION_OUTPUTS_VERSION}" \
             --generate-notes \
             artifacts/*.tgz
