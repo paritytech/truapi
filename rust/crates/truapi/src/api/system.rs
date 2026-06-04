@@ -15,10 +15,8 @@ pub trait System: Send + Sync {
     ///
     /// ```ts
     /// const result = await truapi.system.handshake();
-    /// result.match(
-    ///   () => console.log("ok"),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "handshake failed:", result);
+    /// console.log("handshake succeeded");
     /// ```
     #[wire(request_id = 0)]
     async fn handshake(
@@ -47,10 +45,8 @@ pub trait System: Send + Sync {
     ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///   },
     /// });
-    /// result.match(
-    ///   (value) => console.log(value.supported),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "featureSupported failed:", result);
+    /// console.log("feature supported:", result.value.supported);
     /// ```
     #[wire(request_id = 2)]
     async fn feature_supported(
@@ -65,10 +61,8 @@ pub trait System: Send + Sync {
     /// const result = await truapi.system.navigateTo({
     ///   url: "https://example.com",
     /// });
-    /// result.match(
-    ///   () => console.log("ok"),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "navigateTo failed:", result);
+    /// console.log("navigation succeeded");
     /// ```
     #[wire(request_id = 6)]
     async fn navigate_to(

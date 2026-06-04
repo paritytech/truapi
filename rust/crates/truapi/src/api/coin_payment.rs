@@ -29,10 +29,8 @@ pub trait CoinPayment: Send + Sync {
     /// const result = await truapi.coinPayment.createPurse({
     ///   name: "Terminal purse",
     /// });
-    /// result.match(
-    ///   (value) => console.log(value.purse),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "createPurse failed:", result);
+    /// console.log("purse created:", result.value.purse);
     /// ```
     #[wire(request_id = 136)]
     async fn create_purse(
@@ -48,10 +46,8 @@ pub trait CoinPayment: Send + Sync {
     ///
     /// ```ts
     /// const result = await truapi.coinPayment.queryPurse({ purse: 1 });
-    /// result.match(
-    ///   (value) => console.log(value.info),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "queryPurse failed:", result);
+    /// console.log("purse info:", result.value.info);
     /// ```
     #[wire(request_id = 138)]
     async fn query_purse(
@@ -65,19 +61,16 @@ pub trait CoinPayment: Send + Sync {
     /// Transfer balance between local purses.
     ///
     /// ```ts
-    /// import { from, take } from "rxjs";
+    /// import { firstValueFrom, from } from "rxjs";
     ///
-    /// from(
-    ///   truapi.coinPayment.rebalancePurse({
-    ///     request: { from: 1, to: 2, amount: 1000 },
-    ///   }),
-    /// )
-    ///   .pipe(take(3))
-    ///   .subscribe({
-    ///     next: (status) => console.log(status),
-    ///     error: (error) => console.error(error),
-    ///     complete: () => console.log("completed"),
-    ///   });
+    /// const status = await firstValueFrom(
+    ///   from(
+    ///     truapi.coinPayment.rebalancePurse({
+    ///       request: { from: 1, to: 2, amount: 1000 },
+    ///     }),
+    ///   ),
+    /// );
+    /// console.log("rebalance status:", status);
     /// ```
     #[wire(start_id = 140)]
     async fn rebalance_purse(
@@ -94,19 +87,16 @@ pub trait CoinPayment: Send + Sync {
     /// Delete a purse after draining its balance into another local purse.
     ///
     /// ```ts
-    /// import { from, take } from "rxjs";
+    /// import { firstValueFrom, from } from "rxjs";
     ///
-    /// from(
-    ///   truapi.coinPayment.deletePurse({
-    ///     request: { target: 2, drainInto: 1 },
-    ///   }),
-    /// )
-    ///   .pipe(take(3))
-    ///   .subscribe({
-    ///     next: (status) => console.log(status),
-    ///     error: (error) => console.error(error),
-    ///     complete: () => console.log("completed"),
-    ///   });
+    /// const status = await firstValueFrom(
+    ///   from(
+    ///     truapi.coinPayment.deletePurse({
+    ///       request: { target: 2, drainInto: 1 },
+    ///     }),
+    ///   ),
+    /// );
+    /// console.log("delete status:", status);
     /// ```
     #[wire(start_id = 144)]
     async fn delete_purse(
@@ -124,10 +114,8 @@ pub trait CoinPayment: Send + Sync {
     ///
     /// ```ts
     /// const result = await truapi.coinPayment.createReceivable({ into: 1 });
-    /// result.match(
-    ///   (value) => console.log(value.receivable),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "createReceivable failed:", result);
+    /// console.log("receivable created:", result.value.receivable);
     /// ```
     #[wire(request_id = 148)]
     async fn create_receivable(
@@ -149,10 +137,8 @@ pub trait CoinPayment: Send + Sync {
     ///   to: "0x0000000000000000000000000000000000000000000000000000000000000000",
     ///   amount: 1000,
     /// });
-    /// result.match(
-    ///   (value) => console.log(value.cheque),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "createCheque failed:", result);
+    /// console.log("cheque created:", result.value.cheque);
     /// ```
     #[wire(request_id = 150)]
     async fn create_cheque(
@@ -168,7 +154,7 @@ pub trait CoinPayment: Send + Sync {
     ///
     /// ```ts
     /// import { type CoinPaymentCheque } from "@parity/truapi";
-    /// import { from, take } from "rxjs";
+    /// import { firstValueFrom, from } from "rxjs";
     ///
     /// const cheque: CoinPaymentCheque = {
     ///   id: "0x0000000000000000000000000000000000000000000000000000000000000000",
@@ -176,13 +162,10 @@ pub trait CoinPayment: Send + Sync {
     ///   encryptedSecrets: "0x",
     /// };
     ///
-    /// from(truapi.coinPayment.deposit({ request: { cheque } }))
-    ///   .pipe(take(3))
-    ///   .subscribe({
-    ///     next: (status) => console.log(status),
-    ///     error: (error) => console.error(error),
-    ///     complete: () => console.log("completed"),
-    ///   });
+    /// const status = await firstValueFrom(
+    ///   from(truapi.coinPayment.deposit({ request: { cheque } })),
+    /// );
+    /// console.log("deposit status:", status);
     /// ```
     #[wire(start_id = 152)]
     async fn deposit(
@@ -197,22 +180,19 @@ pub trait CoinPayment: Send + Sync {
     /// Attempt to return coins associated with a receivable.
     ///
     /// ```ts
-    /// import { from, take } from "rxjs";
+    /// import { firstValueFrom, from } from "rxjs";
     ///
-    /// from(
-    ///   truapi.coinPayment.refund({
-    ///     request: {
-    ///       receivable:
-    ///         "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///     },
-    ///   }),
-    /// )
-    ///   .pipe(take(3))
-    ///   .subscribe({
-    ///     next: (status) => console.log(status),
-    ///     error: (error) => console.error(error),
-    ///     complete: () => console.log("completed"),
-    ///   });
+    /// const status = await firstValueFrom(
+    ///   from(
+    ///     truapi.coinPayment.refund({
+    ///       request: {
+    ///         receivable:
+    ///           "0x0000000000000000000000000000000000000000000000000000000000000000",
+    ///       },
+    ///     }),
+    ///   ),
+    /// );
+    /// console.log("refund status:", status);
     /// ```
     #[wire(start_id = 156)]
     async fn refund(
@@ -227,22 +207,19 @@ pub trait CoinPayment: Send + Sync {
     /// Listen for a cheque delivered through a standard transmission channel.
     ///
     /// ```ts
-    /// import { from, take } from "rxjs";
+    /// import { firstValueFrom, from } from "rxjs";
     ///
-    /// from(
-    ///   truapi.coinPayment.listenForPayment({
-    ///     request: {
-    ///       receivable:
-    ///         "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///     },
-    ///   }),
-    /// )
-    ///   .pipe(take(3))
-    ///   .subscribe({
-    ///     next: (item) => console.log(item),
-    ///     error: (error) => console.error(error),
-    ///     complete: () => console.log("completed"),
-    ///   });
+    /// const item = await firstValueFrom(
+    ///   from(
+    ///     truapi.coinPayment.listenForPayment({
+    ///       request: {
+    ///         receivable:
+    ///           "0x0000000000000000000000000000000000000000000000000000000000000000",
+    ///       },
+    ///     }),
+    ///   ),
+    /// );
+    /// console.log("payment received:", item);
     /// ```
     #[wire(start_id = 160)]
     async fn listen_for_payment(
