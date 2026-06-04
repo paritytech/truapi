@@ -40,9 +40,9 @@
 | `Payment/status_subscribe` | ✅ |  |
 | `Permissions/request_device_permission` | ✅ |  |
 | `Permissions/request_remote_permission` | ✅ |  |
-| `Preimage/lookup_subscribe` | ❌ | timed out after 10s |
-| `Preimage/submit` | ❌ | submit failed: { "error": { "tag": "Unknown", "value": { "reason": "Error: The operation couldn’t be completed. (SubstrateSdk.JSONRPCError error 1.)" } } } |
-| `Resource Allocation/request` | ❌ | timed out after 30s |
+| `Preimage/lookup_subscribe` | ✅ |  |
+| `Preimage/submit` | ✅ |  |
+| `Resource Allocation/request` | ✅ |  |
 | `Signing/create_transaction` | ✅ |  |
 | `Signing/create_transaction_with_legacy_account` | ❌ | createTransactionWithLegacyAccount failed: { "error": { "tag": "Unknown", "value": { "reason": "Not implemented" } } } |
 | `Signing/sign_raw_with_legacy_account` | ❌ | signRawWithLegacyAccount failed: { "error": { "tag": "Unknown", "value": { "reason": "Not implemented" } } } |

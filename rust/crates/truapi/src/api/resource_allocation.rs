@@ -19,7 +19,7 @@ pub trait ResourceAllocation: Send + Sync {
     ///   ],
     /// });
     /// assert(result.isOk(), "request failed:", result);
-    /// console.log(result.value);
+    /// console.log("resource allocation result:", result.value);
     /// ```
     #[wire(request_id = 130)]
     async fn request(

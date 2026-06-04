@@ -33,7 +33,7 @@ pub trait Signing: Send + Sync {
     ///   txExtVersion: 0,
     /// });
     /// assert(result.isOk(), "createTransaction failed:", result);
-    /// console.log(result.value);
+    /// console.log("transaction created:", result.value);
     /// ```
     #[wire(request_id = 30)]
     async fn create_transaction(
@@ -57,7 +57,7 @@ pub trait Signing: Send + Sync {
     ///   txExtVersion: 0,
     /// });
     /// assert(result.isOk(), "createTransactionWithLegacyAccount failed:", result);
-    /// console.log(result.value);
+    /// console.log("transaction created:", result.value);
     /// ```
     #[wire(request_id = 32)]
     async fn create_transaction_with_legacy_account(
@@ -82,7 +82,7 @@ pub trait Signing: Send + Sync {
     ///   },
     /// });
     /// assert(result.isOk(), "signRawWithLegacyAccount failed:", result);
-    /// console.log(result.value);
+    /// console.log("raw bytes signed:", result.value);
     /// ```
     #[wire(request_id = 34)]
     async fn sign_raw_with_legacy_account(
@@ -116,7 +116,7 @@ pub trait Signing: Send + Sync {
     ///   },
     /// });
     /// assert(result.isOk(), "signPayloadWithLegacyAccount failed:", result);
-    /// console.log(result.value);
+    /// console.log("payload signed:", result.value);
     /// ```
     #[wire(request_id = 36)]
     async fn sign_payload_with_legacy_account(
@@ -143,7 +143,7 @@ pub trait Signing: Send + Sync {
     ///   },
     /// });
     /// assert(result.isOk(), "signRaw failed:", result);
-    /// console.log(result.value);
+    /// console.log("raw bytes signed:", result.value);
     /// ```
     #[wire(request_id = 114)]
     async fn sign_raw(
@@ -176,7 +176,7 @@ pub trait Signing: Send + Sync {
     ///   },
     /// });
     /// assert(result.isOk(), "signPayload failed:", result);
-    /// console.log(result.value);
+    /// console.log("payload signed:", result.value);
     /// ```
     #[wire(request_id = 116)]
     async fn sign_payload(

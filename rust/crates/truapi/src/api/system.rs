@@ -16,7 +16,7 @@ pub trait System: Send + Sync {
     /// ```ts
     /// const result = await truapi.system.handshake();
     /// assert(result.isOk(), "handshake failed:", result);
-    /// console.log("ok");
+    /// console.log("handshake succeeded");
     /// ```
     #[wire(request_id = 0)]
     async fn handshake(
@@ -46,7 +46,7 @@ pub trait System: Send + Sync {
     ///   },
     /// });
     /// assert(result.isOk(), "featureSupported failed:", result);
-    /// console.log(result.value.supported);
+    /// console.log("feature supported:", result.value.supported);
     /// ```
     #[wire(request_id = 2)]
     async fn feature_supported(
@@ -62,7 +62,7 @@ pub trait System: Send + Sync {
     ///   url: "https://example.com",
     /// });
     /// assert(result.isOk(), "navigateTo failed:", result);
-    /// console.log("ok");
+    /// console.log("navigation succeeded");
     /// ```
     #[wire(request_id = 6)]
     async fn navigate_to(

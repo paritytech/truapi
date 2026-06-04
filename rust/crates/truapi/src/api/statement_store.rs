@@ -18,9 +18,6 @@ pub trait StatementStore: Send + Sync {
     /// ```ts
     /// import { firstValueFrom, from } from "rxjs";
     ///
-    /// // Submit a statement under a fresh random topic, then match on it. The
-    /// // submitted statement must carry the same fields the proof was signed
-    /// // over, so the proof and the submission share one `statement`.
     /// const bytes = crypto.getRandomValues(new Uint8Array(32));
     /// const topic: `0x${string}` = `0x${bytes.toHex()}`;
     /// const expiry = BigInt(Math.floor(Date.now() / 1000) + 86400) << 32n;
@@ -50,7 +47,7 @@ pub trait StatementStore: Send + Sync {
     ///     }),
     ///   ),
     /// );
-    /// console.log(statements);
+    /// console.log("subscribe received", statements);
     /// ```
     #[wire(start_id = 56)]
     async fn subscribe(
@@ -82,7 +79,7 @@ pub trait StatementStore: Send + Sync {
     ///   statement,
     /// });
     /// assert(result.isOk(), "createProof failed:", result);
-    /// console.log(result.value);
+    /// console.log("proof created:", result.value);
     /// ```
     #[wire(request_id = 60)]
     async fn create_proof(
@@ -109,7 +106,7 @@ pub trait StatementStore: Send + Sync {
     ///
     /// const result = await truapi.statementStore.createProofAuthorized(statement);
     /// assert(result.isOk(), "createProof failed:", result);
-    /// console.log(result.value);
+    /// console.log("proof created:", result.value);
     /// ```
     #[wire(request_id = 132)]
     async fn create_proof_authorized(
@@ -147,7 +144,7 @@ pub trait StatementStore: Send + Sync {
     ///   ...statement,
     /// });
     /// assert(result.isOk(), "submit failed:", result);
-    /// console.log("ok");
+    /// console.log("statement submitted:", result.value);
     /// ```
     #[wire(request_id = 62)]
     async fn submit(
