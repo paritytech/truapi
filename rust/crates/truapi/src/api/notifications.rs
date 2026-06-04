@@ -25,7 +25,7 @@ pub trait Notifications: Send + Sync {
     ///   text: "Hello!",
     /// });
     /// assert(result.isOk(), "sendPushNotification failed:", result);
-    /// console.log(result.value);
+    /// console.log("notification sent:", result.value);
     /// ```
     #[wire(request_id = 4)]
     async fn send_push_notification(
@@ -46,7 +46,7 @@ pub trait Notifications: Send + Sync {
     ///   id: 1,
     /// });
     /// assert(result.isOk(), "cancelPushNotification failed:", result);
-    /// console.log("ok");
+    /// console.log("notification cancelled");
     /// ```
     #[wire(request_id = 134)]
     async fn cancel_push_notification(

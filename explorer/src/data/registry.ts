@@ -90,6 +90,11 @@ export function methodPath(
   return `/v/${versionId}/method/${svc}/${meth}`;
 }
 
+/** Route path for a type page within a version. */
+export function typePath(versionId: string, typeId: string): string {
+  return `/v/${versionId}/type/${encodeURIComponent(typeId)}`;
+}
+
 /** Find a data type by id in a version. */
 export function findType(version: VersionEntry, id: string): DataType | null {
   return version.types.find((t) => t.id === id) ?? null;

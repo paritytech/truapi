@@ -21,7 +21,7 @@ pub trait Chat: Send + Sync {
     ///   icon: "",
     /// });
     /// assert(result.isOk(), "createRoom failed:", result);
-    /// console.log(result.value);
+    /// console.log("room created:", result.value);
     /// ```
     #[wire(request_id = 38)]
     async fn create_room(
@@ -41,7 +41,7 @@ pub trait Chat: Send + Sync {
     ///   icon: "",
     /// });
     /// assert(result.isOk(), "registerBot failed:", result);
-    /// console.log(result.value);
+    /// console.log("bot registered:", result.value);
     /// ```
     #[wire(request_id = 40)]
     async fn register_bot(
@@ -60,7 +60,7 @@ pub trait Chat: Send + Sync {
     /// const item = await firstValueFrom(
     ///   from(truapi.chat.listSubscribe()),
     /// );
-    /// console.log(item);
+    /// console.log("room list received:", item);
     /// ```
     #[wire(start_id = 42)]
     async fn list_subscribe(&self, _cx: &CallContext) -> Subscription<HostChatListSubscribeItem> {
@@ -75,7 +75,7 @@ pub trait Chat: Send + Sync {
     ///   payload: { tag: "Text", value: { text: "Hello from playground!" } },
     /// });
     /// assert(result.isOk(), "postMessage failed:", result);
-    /// console.log(result.value);
+    /// console.log("message posted:", result.value);
     /// ```
     #[wire(request_id = 46)]
     async fn post_message(
@@ -94,7 +94,7 @@ pub trait Chat: Send + Sync {
     /// const item = await firstValueFrom(
     ///   from(truapi.chat.actionSubscribe()),
     /// );
-    /// console.log(item);
+    /// console.log("action received:", item);
     /// ```
     #[wire(start_id = 48)]
     async fn action_subscribe(
@@ -122,7 +122,7 @@ pub trait Chat: Send + Sync {
     ///     }),
     ///   ),
     /// );
-    /// console.log(item);
+    /// console.log("render request received:", item);
     /// ```
     #[wire(start_id = 52)]
     async fn custom_message_render_subscribe(

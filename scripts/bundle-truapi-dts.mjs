@@ -94,6 +94,18 @@ async function readFlat(relPath) {
 const scaleBody = await readFlat("scale.d.ts");
 const namespaceT = await readFileNamespace("T", "generated/types.d.ts");
 
+// The generated types live inside `declare namespace T`, but the real package's
+// `index.d.ts` re-exports them at the top level (`export * from "./generated"`).
+// That `export *` is dropped when relative imports are stripped, so mirror it
+// with one alias per type — otherwise `import { Statement } from "@parity/truapi"`
+// resolves against the real package (tsc) but not the Monaco bundle.
+const T_EXPORT_RE =
+  /\bexport\s+(?:interface|type|const|enum|function|class|namespace)\s+([A-Za-z_$][\w$]*)/g;
+const tExports = [...new Set([...namespaceT.matchAll(T_EXPORT_RE)].map((m) => m[1]))];
+const namespaceTReExports = tExports
+  .map((name) => `export import ${name} = T.${name};`)
+  .join("\n");
+
 const chunks = [];
 for (const [rel, path] of typeFiles) {
   const text = stripImports(await readFile(path, "utf8"));
@@ -115,6 +127,8 @@ const bundled = [
   scaleBody,
   "// generated/types.d.ts (namespace T)",
   namespaceT,
+  "// re-export namespace T at module top level (mirrors index.d.ts `export *`)",
+  namespaceTReExports,
   ...chunks,
 ].join("\n\n");
 

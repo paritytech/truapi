@@ -64,12 +64,14 @@ jobs:
           git commit -m "diagnosis: update $host report (from #$ISSUE)"
           git push -f origin "$branch"
 
-          # One PR per host branch: open it the first time, reuse it after.
-          url=$(gh pr view "$branch" --json url --jq .url 2>/dev/null || true)
+          # One open PR per host branch: reuse it while it is open, open a new
+          # one once the previous report has merged (a merged/closed PR for the
+          # branch must not suppress the next submission).
+          url=$(gh pr list --head "$branch" --state open --json url --jq '.[0].url // empty')
           if [ -z "$url" ]; then
             url=$(gh pr create --base main --head "$branch" \
               --title "diagnosis: $mode host report" \
-              --body "Updates \`$file\` from the playground Diagnosis. The compatibility matrix is regenerated from the reports at build time.")
+              --body "Updates \`$file\` from the diagnosis in #$ISSUE. The compatibility matrix is regenerated from the reports at build time.")
           fi
 
           gh issue comment "$ISSUE" --body "Filed in $url"

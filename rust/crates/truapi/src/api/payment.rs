@@ -20,7 +20,7 @@ pub trait Payment: Send + Sync {
     /// const balance = await firstValueFrom(
     ///   from(truapi.payment.balanceSubscribe({ request: {} })),
     /// );
-    /// console.log(balance);
+    /// console.log("balance received:", balance);
     /// ```
     #[wire(start_id = 118)]
     async fn balance_subscribe(
@@ -50,7 +50,7 @@ pub trait Payment: Send + Sync {
     ///     "0x0000000000000000000000000000000000000000000000000000000000000000",
     /// });
     /// assert(result.isOk(), "request failed:", result);
-    /// console.log(result.value);
+    /// console.log("payment requested:", result.value);
     /// ```
     #[wire(request_id = 124)]
     async fn request(
@@ -87,7 +87,7 @@ pub trait Payment: Send + Sync {
     ///     }),
     ///   ),
     /// );
-    /// console.log(status);
+    /// console.log("payment status received:", status);
     /// ```
     #[wire(start_id = 126)]
     async fn status_subscribe(
@@ -109,7 +109,7 @@ pub trait Payment: Send + Sync {
     ///   source: { tag: "ProductAccount", value: { derivationIndex: 0 } },
     /// });
     /// assert(result.isOk(), "topUp failed:", result);
-    /// console.log("ok");
+    /// console.log("balance topped up");
     /// ```
     #[wire(request_id = 122)]
     async fn top_up(
