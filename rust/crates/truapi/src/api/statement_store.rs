@@ -33,12 +33,13 @@ pub trait StatementStore: Send + Sync {
     /// assert(proofResult.isOk(), "createProof failed:", proofResult);
     ///
     /// console.log("submitting proof:", proofResult.value.proof);
-    /// const submitted = await truapi.statementStore.submit({
-    ///   proof: proofResult.value.proof,
-    ///   ...statement,
-    /// });
-    /// assert(submitted.isOk(), "failed to submit proof:", submitted);
-    /// console.log("proof submitted:", submitted.value);
+    /// truapi.statementStore
+    ///   .submit({
+    ///     proof: proofResult.value.proof,
+    ///     ...statement,
+    ///   })
+    ///   .andTee(() => console.log("proof submitted"))
+    ///   .orTee((err) => console.error("failed to submit proof:", err));
     ///
     /// const statements = await firstValueFrom(
     ///   from(
@@ -144,7 +145,7 @@ pub trait StatementStore: Send + Sync {
     ///   ...statement,
     /// });
     /// assert(result.isOk(), "submit failed:", result);
-    /// console.log("statement submitted:", result.value);
+    /// console.log("statement submitted");
     /// ```
     #[wire(request_id = 62)]
     async fn submit(

@@ -109,7 +109,7 @@ pub trait Payment: Send + Sync {
     ///   source: { tag: "ProductAccount", value: { derivationIndex: 0 } },
     /// });
     /// assert(result.isOk(), "topUp failed:", result);
-    /// console.log("balance topped up:", result.value);
+    /// console.log("balance topped up");
     /// ```
     #[wire(request_id = 122)]
     async fn top_up(

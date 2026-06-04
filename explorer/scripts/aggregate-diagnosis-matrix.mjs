@@ -79,7 +79,14 @@ function parseReport(file) {
     if (!statuses.has(method)) order.push(method);
     statuses.set(method, m[2].trim());
     const detail = (m[3] ?? "").trim();
-    if (detail) details.set(method, detail.replace(/\\\|/g, "|"));
+    // Reverse the report's cell escaping: unescape pipes and turn the `<br>`
+    // line breaks back into real newlines so the explorer's <pre> renders the
+    // console output across multiple lines.
+    if (detail)
+      details.set(
+        method,
+        detail.replace(/\\\|/g, "|").replace(/<br\s*\/?>/gi, "\n"),
+      );
   }
   return { file, mode, statuses, details, order };
 }
