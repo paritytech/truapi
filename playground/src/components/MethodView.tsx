@@ -66,6 +66,7 @@ export function MethodView({
   const [running, setRunning] = useState(false);
   const [error, setError] = useState("");
   const [tab, setTab] = useState<"example" | "output">("example");
+  const [copied, setCopied] = useState(false);
   const callAbortRef = useRef<((reason: string) => void) | null>(null);
   const cancelRunRef = useRef<(() => void) | null>(null);
 
@@ -148,6 +149,20 @@ export function MethodView({
 
   const handleStop = () => {
     callAbortRef.current?.("Call aborted");
+  };
+
+  const handleCopyLogs = async () => {
+    const text = [...logs.map((entry) => entry.text), ...(error ? [error] : [])]
+      .join("\n")
+      .trim();
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard unavailable */
+    }
   };
 
   const kind = methodInfo?.type ?? "unary";
@@ -305,41 +320,81 @@ export function MethodView({
           </>
         ) : (
           <div className="console console--inline" data-status={status}>
-            {error ? (
-              <div
-                className="console__body console__body--error"
-                data-testid="error-display"
-              >
-                {error}
-                {isHostMissingError(error) && (
-                  <div className="console__cta">
-                    <a
-                      className="open-in-dotli"
-                      href={hostedPlaygroundUrl(service, method)}
-                      target="_blank"
-                      rel="noreferrer"
-                      title="Open this example in the host-backed playground"
+            {logs.length > 0 || error ? (
+              <>
+                <button
+                  type="button"
+                  className="console__copy"
+                  data-copied={copied}
+                  onClick={handleCopyLogs}
+                  aria-label="Copy output to clipboard"
+                  title="Copy output"
+                >
+                  {copied ? (
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
                     >
-                      Run in hosted playground ↗
-                    </a>
+                      <path d="M20 6 9 17l-5-5" />
+                    </svg>
+                  ) : (
+                    <svg
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden
+                    >
+                      <rect x="8" y="8" width="14" height="14" rx="2" ry="2" />
+                      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+                    </svg>
+                  )}
+                </button>
+                {logs.length > 0 && (
+                  <div className="console__body" data-testid="stream-log">
+                    {logs.map((entry, i) => (
+                      <div
+                        key={i}
+                        className={`console__entry console__entry--${entry.level}`}
+                        data-testid="stream-entry"
+                      >
+                        <span className="console__entry-i">
+                          {String(i + 1).padStart(2, "0")}
+                        </span>
+                        <span className="console__entry-body">{entry.text}</span>
+                      </div>
+                    ))}
                   </div>
                 )}
-              </div>
-            ) : logs.length > 0 ? (
-              <div className="console__body" data-testid="stream-log">
-                {logs.map((entry, i) => (
+                {error && (
                   <div
-                    key={i}
-                    className={`console__entry console__entry--${entry.level}`}
-                    data-testid="stream-entry"
+                    className="console__body console__body--error"
+                    data-testid="error-display"
                   >
-                    <span className="console__entry-i">
-                      {String(i + 1).padStart(2, "0")}
-                    </span>
-                    <span className="console__entry-body">{entry.text}</span>
+                    {error}
+                    {isHostMissingError(error) && (
+                      <div className="console__cta">
+                        <a
+                          className="open-in-dotli"
+                          href={hostedPlaygroundUrl(service, method)}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="Open this example in the host-backed playground"
+                        >
+                          Run in hosted playground ↗
+                        </a>
+                      </div>
+                    )}
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             ) : (
               <div className="console__body console__body--empty">
                 {!runnable

@@ -17,11 +17,12 @@ pub trait StatementStore: Send + Sync {
     ///
     /// ```ts
     /// import { firstValueFrom, from } from "rxjs";
+    /// import type { Statement } from "@parity/truapi";
     ///
     /// const bytes = crypto.getRandomValues(new Uint8Array(32));
     /// const topic: `0x${string}` = `0x${bytes.toHex()}`;
     /// const expiry = BigInt(Math.floor(Date.now() / 1000) + 86400) << 32n;
-    /// const statement = { expiry, topics: [topic] };
+    /// const statement: Statement = { expiry, topics: [topic] };
     ///
     /// const proofResult = await truapi.statementStore.createProof({
     ///   productAccountId: {
@@ -32,13 +33,14 @@ pub trait StatementStore: Send + Sync {
     /// });
     /// assert(proofResult.isOk(), "createProof failed:", proofResult);
     ///
-    /// console.log("submitting proof:", proofResult.value.proof);
+    /// statement.proof = proofResult.value.proof;
+    /// console.log("submitting statement:", statement);
     /// const submitted = await truapi.statementStore.submit({
-    ///   proof: proofResult.value.proof,
     ///   ...statement,
+    ///   proof: proofResult.value.proof,
     /// });
-    /// assert(submitted.isOk(), "failed to submit proof:", submitted);
-    /// console.log("proof submitted:", submitted.value);
+    /// assert(submitted.isOk(), "failed to submit statement:", submitted);
+    /// console.log("statement submitted");
     ///
     /// const statements = await firstValueFrom(
     ///   from(
@@ -144,7 +146,7 @@ pub trait StatementStore: Send + Sync {
     ///   ...statement,
     /// });
     /// assert(result.isOk(), "submit failed:", result);
-    /// console.log("statement submitted:", result.value);
+    /// console.log("statement submitted");
     /// ```
     #[wire(request_id = 62)]
     async fn submit(
