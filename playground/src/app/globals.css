@@ -780,6 +780,7 @@ button {
 /* Inline console (no outer head, since the tab bar provides it) */
 
 .console--inline {
+  position: relative;
   background: var(--console-bg);
   border: 1px solid var(--console-rule);
   border-radius: var(--radius);
@@ -1003,6 +1004,43 @@ button {
   word-break: break-word;
   max-height: 420px;
   overflow: auto;
+}
+.console__copy {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  color: var(--console-mute);
+  background: color-mix(in srgb, var(--console-bg) 72%, transparent);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  opacity: 0.55;
+  backdrop-filter: blur(4px);
+  transition: opacity 120ms ease, color 120ms ease, background 120ms ease;
+}
+.console__copy svg {
+  width: 15px;
+  height: 15px;
+}
+.console--inline:hover .console__copy,
+.console__copy:focus-visible {
+  opacity: 1;
+}
+.console__copy:hover {
+  opacity: 1;
+  color: var(--console-ink);
+  background: color-mix(in srgb, var(--console-ink) 10%, transparent);
+}
+.console__copy[data-copied="true"] {
+  opacity: 1;
+  color: var(--good);
 }
 .console__body--error {
   color: #ffb4b4;
