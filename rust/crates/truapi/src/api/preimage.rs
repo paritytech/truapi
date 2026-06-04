@@ -21,7 +21,7 @@ pub trait Preimage: Send + Sync {
     /// const item = await firstValueFrom(
     ///   from(truapi.preimage.lookupSubscribe({ request: { key: submitted.value } })),
     /// );
-    /// console.log(item);
+    /// console.log("preimage lookup received:", item);
     /// ```
     #[wire(start_id = 64)]
     async fn lookup_subscribe(
@@ -37,7 +37,7 @@ pub trait Preimage: Send + Sync {
     /// ```ts
     /// const result = await truapi.preimage.submit("0xdeadbeef");
     /// assert(result.isOk(), "submit failed:", result);
-    /// console.log(result.value);
+    /// console.log("preimage submitted:", result.value);
     /// ```
     #[wire(request_id = 68)]
     async fn submit(
