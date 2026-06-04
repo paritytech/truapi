@@ -1,7 +1,12 @@
 import { useMemo, useState } from "react";
 import type { ServiceInfo } from "@/src/lib/services";
 import type { TestEntry, TestStatus } from "@/src/lib/auto-test";
-import { renderReportMarkdown } from "@/src/lib/diagnosis-report";
+import {
+  detectHostMode,
+  renderReportMarkdown,
+  reportIssueUrl,
+} from "@/src/lib/diagnosis-report";
+import { getClient } from "@/src/lib/transport";
 
 const STATUS_LABEL: Record<TestStatus, string> = {
   idle: "queued",
@@ -81,6 +86,22 @@ export function DiagnosisView({
     }
   };
 
+  // Open a pre-filled GitHub issue carrying the report; the diagnosis-report
+  // workflow writes it to diagnosis-reports/<host>.md and opens a PR. The host
+  // opens the link via `navigate_to` (a sandboxed app can't `window.open`).
+  // Copy the report to the clipboard first as a fallback if the body is
+  // truncated.
+  const handleSubmitReport = () => {
+    const report = renderReportMarkdown(services, testResults);
+    void navigator.clipboard?.writeText(report).catch(() => {});
+    const url = reportIssueUrl(report, detectHostMode());
+    try {
+      void getClient().system.navigateTo({ url });
+    } catch {
+      /* no host connection */
+    }
+  };
+
   return (
     <div>
       <div className="view__top">
@@ -104,14 +125,16 @@ export function DiagnosisView({
         <p className="panel__desc">
           Runs every TrUAPI method against the connected host to build a coverage
           report — which methods work, which fail, and which aren&apos;t wired
-          yet. Methods run one at a time; those that need your approval (signing,
-          permission and resource requests) run last. When it finishes, copy the
-          report below.
+          yet. Methods run one at a time, in order; those that need your approval
+          (signing, permission and resource requests) wait on your response
+          before the run continues. When it finishes, copy the report below.
         </p>
         <p className="diag__callout">
           Before you start: make sure you are <strong>logged in</strong>, and
           keep your <strong>phone nearby</strong> to sign transactions and
-          approve pop-ups from the Polkadot app as they appear.
+          approve pop-ups from the Polkadot app as they appear. Some payment
+          methods need an <strong>available balance</strong> in the Polkadot app
+          — without it they fail with an insufficient-balance error.
         </p>
       </div>
 
@@ -136,13 +159,23 @@ export function DiagnosisView({
           </span>
         )}
         {hasResults && !isRunning && (
-          <button
-            type="button"
-            className="autotest__report-copy"
-            onClick={handleCopyReport}
-          >
-            {copied ? "Copied ✓" : "Copy report"}
-          </button>
+          <div className="diag__report-actions">
+            <button
+              type="button"
+              className="autotest__report-copy"
+              onClick={handleCopyReport}
+            >
+              {copied ? "Copied ✓" : "Copy report"}
+            </button>
+            <button
+              type="button"
+              className="autotest__report-copy diag__submit"
+              onClick={handleSubmitReport}
+              title="Open a pre-filled GitHub issue that files this report as a PR"
+            >
+              Submit report ↗
+            </button>
+          </div>
         )}
       </div>
 

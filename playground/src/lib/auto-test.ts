@@ -1,10 +1,8 @@
 import {
   runExample,
   type LogEntry,
-  type RunSubscription,
+  type RunResult,
 } from "./example-runner";
-import { stringify } from "./host-api-bridge";
-import { errorTextFrom } from "./result-status";
 import { getClient } from "./transport";
 import type { MethodInfo, ServiceInfo } from "./services";
 
@@ -20,27 +18,14 @@ export interface TestEntry {
 
 const UNARY_TIMEOUT_MS = 10_000;
 const SIGNING_TIMEOUT_MS = 30_000;
-const SUBSCRIPTION_TIMEOUT_MS = 6_000;
 
 // Services skipped wholesale in the diagnosis until hosts wire them up.
 const SKIPPED_SERVICES = new Set(["Coin Payment"]);
-// Methods run last, after the automatic checks: they prompt the user (signing,
-// permission/resource requests) or navigate away (`navigate_to`), so deferring
-// them keeps each interaction isolated at the end of the run.
-const DEFERRED_METHODS = new Set([
-  "System/navigate_to",
-  "Permissions/request_device_permission",
-  "Permissions/request_remote_permission",
-  "Resource Allocation/request",
-  "Signing/sign_payload",
-  "Signing/sign_raw",
-  "Signing/sign_raw_with_legacy_account",
-  "Signing/sign_payload_with_legacy_account",
-  "Signing/create_transaction",
-  "Signing/create_transaction_with_legacy_account",
-  "Account/get_account_alias",
-]);
+// Methods whose first call implicitly triggers a host permission/signing
+// prompt, so they need the longer signing-class timeout to allow for the user
+// to respond. `get_account_alias` and `Preimage/submit` prompt on first use.
 const LONG_TIMEOUT_METHODS = new Set([
+  "Account/get_account_alias",
   "Resource Allocation/request",
   "Signing/sign_payload",
   "Signing/sign_raw",
@@ -48,6 +33,7 @@ const LONG_TIMEOUT_METHODS = new Set([
   "Signing/sign_payload_with_legacy_account",
   "Signing/create_transaction",
   "Signing/create_transaction_with_legacy_account",
+  "Preimage/submit",
 ]);
 
 type RunOneOpts = {
@@ -81,110 +67,42 @@ async function runOne({
     ? SIGNING_TIMEOUT_MS
     : UNARY_TIMEOUT_MS;
 
+  // The example decides pass/fail explicitly: it resolves on success and throws
+  // (via `assert(...)` or any uncaught error) on failure. `console.*` is pure
+  // output, captured into `logs` for the report but with no bearing on status.
+  let run: RunResult | undefined;
   try {
-    const run = await runExample({
-      source,
-      kind: method.type,
-      client: getClient(),
-      onLog,
-    });
-
-    if (run.kind === "unary") {
-      const value = await Promise.race([
-        run.promise,
-        new Promise<never>((_, reject) =>
-          setTimeout(
-            () => reject(new Error(`timed out after ${timeoutMs / 1000}s`)),
-            timeoutMs,
-          ),
+    run = await runExample({ source, client: getClient(), onLog });
+    await Promise.race([
+      run.promise,
+      new Promise<never>((_, reject) =>
+        setTimeout(
+          () => reject(new Error(`timed out after ${timeoutMs / 1000}s`)),
+          timeoutMs,
         ),
-      ]);
-      // Generated examples self-handle the Result via
-      // `result.match(v => console.log(v), e => console.error(e))`, so an Err
-      // surfaces as an error-level log rather than a thrown exception. Some
-      // examples instead `return result` / `console.log(result)`, leaving the
-      // neverthrow Err as the resolved value. Treat either as an errored call.
-      const errText = errorTextFrom(value, logs);
-      if (errText != null) {
-        onUpdate(id, {
-          status: "fail",
-          request: source,
-          output: errText,
-        });
-      } else {
-        onUpdate(id, {
-          status: "pass",
-          request: source,
-          output: stringify(value) ?? joinLogs(logs) ?? "null",
-        });
-      }
-    } else {
-      await runSubscription(id, source, run.subscription, logs, onUpdate);
-    }
+      ),
+    ]);
+    onUpdate(id, {
+      status: "pass",
+      request: source,
+      output: joinLogs(logs) ?? "ok",
+    });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    const log = joinLogs(logs);
     onUpdate(id, {
       status: "fail",
       request: source,
-      output: message,
+      output: log ? `${log}\n${message}` : message,
     });
+  } finally {
+    run?.cancel();
   }
 }
 
 function joinLogs(logs: LogEntry[]): string | undefined {
   if (logs.length === 0) return undefined;
   return logs.map((l) => l.text).join("\n");
-}
-
-async function runSubscription(
-  id: string,
-  source: string,
-  sub: RunSubscription,
-  logs: LogEntry[],
-  onUpdate: (id: string, entry: TestEntry) => void,
-): Promise<void> {
-  const settle = (resolve: () => void) => {
-    try {
-      sub.unsubscribe();
-    } catch {
-      /* benign */
-    }
-    const errText = errorTextFrom(undefined, logs);
-    if (errText != null) {
-      onUpdate(id, {
-        status: "fail",
-        request: source,
-        output: errText,
-      });
-    } else if (logs.length > 0) {
-      onUpdate(id, {
-        status: "pass",
-        request: source,
-        output: logs.map((l) => l.text).join("\n"),
-      });
-    } else {
-      onUpdate(id, {
-        status: "fail",
-        request: source,
-        output: `subscription delivered no events in ${SUBSCRIPTION_TIMEOUT_MS / 1000}s`,
-      });
-    }
-    resolve();
-  };
-
-  await new Promise<void>((resolve) => {
-    const interval = setInterval(() => {
-      if (logs.length > 0) {
-        clearInterval(interval);
-        clearTimeout(deadline);
-        settle(resolve);
-      }
-    }, 50);
-    const deadline = setTimeout(() => {
-      clearInterval(interval);
-      settle(resolve);
-    }, SUBSCRIPTION_TIMEOUT_MS);
-  });
 }
 
 // Re-run a single method, e.g. to replay a failed diagnosis row.
@@ -200,27 +118,19 @@ export async function runSingleTest(
   await runOne({ serviceName, method, onUpdate });
 }
 
-// Full diagnosis: run every method one at a time. Automatic checks run first;
-// methods that prompt the user or navigate away are deferred to the end so each
-// runs in isolation. Produces a complete worked / failed / not-wired matrix
-// suitable for the copy-pasteable report.
+// Full diagnosis: run every method one at a time, in service order. Methods
+// that prompt the user (signing, permission/resource requests) block on their
+// host dialog before the run continues. Produces a complete worked / failed /
+// not-wired matrix suitable for the copy-pasteable report.
 export async function runDiagnosis(
   services: ServiceInfo[],
   onUpdate: (id: string, entry: TestEntry) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const immediate: Array<{ serviceName: string; method: MethodInfo }> = [];
-  const deferred: typeof immediate = [];
   for (const svc of services) {
     for (const method of svc.methods) {
-      const bucket = DEFERRED_METHODS.has(`${svc.name}/${method.name}`)
-        ? deferred
-        : immediate;
-      bucket.push({ serviceName: svc.name, method });
+      if (signal?.aborted) return;
+      await runOne({ serviceName: svc.name, method, onUpdate });
     }
-  }
-  for (const { serviceName, method } of [...immediate, ...deferred]) {
-    if (signal?.aborted) return;
-    await runOne({ serviceName, method, onUpdate });
   }
 }

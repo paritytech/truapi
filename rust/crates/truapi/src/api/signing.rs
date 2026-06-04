@@ -32,10 +32,8 @@ pub trait Signing: Send + Sync {
     ///   extensions: [],
     ///   txExtVersion: 0,
     /// });
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "createTransaction failed:", result);
+    /// console.log("transaction created:", result.value);
     /// ```
     #[wire(request_id = 30)]
     async fn create_transaction(
@@ -58,10 +56,8 @@ pub trait Signing: Send + Sync {
     ///   extensions: [],
     ///   txExtVersion: 0,
     /// });
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "createTransactionWithLegacyAccount failed:", result);
+    /// console.log("transaction created:", result.value);
     /// ```
     #[wire(request_id = 32)]
     async fn create_transaction_with_legacy_account(
@@ -85,10 +81,8 @@ pub trait Signing: Send + Sync {
     ///     value: { bytes: "0x48656c6c6f" },
     ///   },
     /// });
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "signRawWithLegacyAccount failed:", result);
+    /// console.log("raw bytes signed:", result.value);
     /// ```
     #[wire(request_id = 34)]
     async fn sign_raw_with_legacy_account(
@@ -121,10 +115,8 @@ pub trait Signing: Send + Sync {
     ///     version: 4,
     ///   },
     /// });
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "signPayloadWithLegacyAccount failed:", result);
+    /// console.log("payload signed:", result.value);
     /// ```
     #[wire(request_id = 36)]
     async fn sign_payload_with_legacy_account(
@@ -150,10 +142,8 @@ pub trait Signing: Send + Sync {
     ///     },
     ///   },
     /// });
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "signRaw failed:", result);
+    /// console.log("raw bytes signed:", result.value);
     /// ```
     #[wire(request_id = 114)]
     async fn sign_raw(
@@ -185,10 +175,8 @@ pub trait Signing: Send + Sync {
     ///     version: 4,
     ///   },
     /// });
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "signPayload failed:", result);
+    /// console.log("payload signed:", result.value);
     /// ```
     #[wire(request_id = 116)]
     async fn sign_payload(

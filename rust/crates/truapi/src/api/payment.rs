@@ -15,15 +15,12 @@ pub trait Payment: Send + Sync {
     /// Subscribe to payment balance updates.
     ///
     /// ```ts
-    /// import { from, take } from "rxjs";
+    /// import { firstValueFrom, from } from "rxjs";
     ///
-    /// from(truapi.payment.balanceSubscribe({ request: {} }))
-    ///   .pipe(take(1))
-    ///   .subscribe({
-    ///     next: (balance) => console.log(balance),
-    ///     error: (error) => console.error(error),
-    ///     complete: () => console.log("completed"),
-    ///   });
+    /// const balance = await firstValueFrom(
+    ///   from(truapi.payment.balanceSubscribe({ request: {} })),
+    /// );
+    /// console.log("balance received:", balance);
     /// ```
     #[wire(start_id = 118)]
     async fn balance_subscribe(
@@ -45,20 +42,15 @@ pub trait Payment: Send + Sync {
     ///   amount: 1000n,
     ///   source: { tag: "ProductAccount", value: { derivationIndex: 0 } },
     /// });
+    /// assert(topUp.isOk(), "topUp failed:", topUp);
     ///
-    /// if (topUp.isErr()) {
-    ///   console.error("topUp failed:", topUp.error);
-    /// } else {
-    ///   const result = await truapi.payment.request({
-    ///     amount: 1000n,
-    ///     destination:
-    ///       "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///   });
-    ///   result.match(
-    ///     (value) => console.log(value),
-    ///     (error) => console.error("request failed:", error),
-    ///   );
-    /// }
+    /// const result = await truapi.payment.request({
+    ///   amount: 1000n,
+    ///   destination:
+    ///     "0x0000000000000000000000000000000000000000000000000000000000000000",
+    /// });
+    /// assert(result.isOk(), "request failed:", result);
+    /// console.log("payment requested:", result.value);
     /// ```
     #[wire(request_id = 124)]
     async fn request(
@@ -72,38 +64,30 @@ pub trait Payment: Send + Sync {
     /// Subscribe to payment lifecycle updates for a specific payment.
     ///
     /// ```ts
-    /// import { from, take } from "rxjs";
+    /// import { firstValueFrom, from } from "rxjs";
     ///
     /// // Fund the balance and start a payment first so there is a status to watch.
     /// const topUp = await truapi.payment.topUp({
     ///   amount: 1000n,
     ///   source: { tag: "ProductAccount", value: { derivationIndex: 0 } },
     /// });
+    /// assert(topUp.isOk(), "topUp failed:", topUp);
     ///
-    /// if (topUp.isErr()) {
-    ///   console.error("topUp failed:", topUp.error);
-    /// } else {
-    ///   const requested = await truapi.payment.request({
-    ///     amount: 1000n,
-    ///     destination:
-    ///       "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///   });
-    ///   if (requested.isErr()) {
-    ///     console.error("request failed:", requested.error);
-    ///   } else {
-    ///     from(
-    ///       truapi.payment.statusSubscribe({
-    ///         request: { paymentId: requested.value.id },
-    ///       }),
-    ///     )
-    ///       .pipe(take(1))
-    ///       .subscribe({
-    ///         next: (status) => console.log(status),
-    ///         error: (error) => console.error("statusSubscribe failed:", error),
-    ///         complete: () => console.log("completed"),
-    ///       });
-    ///   }
-    /// }
+    /// const requested = await truapi.payment.request({
+    ///   amount: 1000n,
+    ///   destination:
+    ///     "0x0000000000000000000000000000000000000000000000000000000000000000",
+    /// });
+    /// assert(requested.isOk(), "request failed:", requested);
+    ///
+    /// const status = await firstValueFrom(
+    ///   from(
+    ///     truapi.payment.statusSubscribe({
+    ///       request: { paymentId: requested.value.id },
+    ///     }),
+    ///   ),
+    /// );
+    /// console.log("payment status received:", status);
     /// ```
     #[wire(start_id = 126)]
     async fn status_subscribe(
@@ -124,10 +108,8 @@ pub trait Payment: Send + Sync {
     ///   amount: 1000n,
     ///   source: { tag: "ProductAccount", value: { derivationIndex: 0 } },
     /// });
-    /// result.match(
-    ///   () => console.log("ok"),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "topUp failed:", result);
+    /// console.log("balance topped up:", result.value);
     /// ```
     #[wire(request_id = 122)]
     async fn top_up(

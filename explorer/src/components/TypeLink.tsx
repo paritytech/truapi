@@ -1,6 +1,7 @@
 import { Fragment, useMemo } from "react";
 import { Link } from "react-router-dom";
 import type { DataType } from "../data/types";
+import { typePath } from "../data/registry";
 
 interface TypeStringProps {
   text: string;
@@ -80,7 +81,7 @@ export function TypeString({
         part.typeId ? (
           <Link
             key={i}
-            to={`/v/${versionId}/type/${part.typeId}`}
+            to={typePath(versionId, part.typeId)}
             className="text-sky-400 hover:text-sky-300 hover:underline underline-offset-2 transition-colors"
           >
             {part.text}

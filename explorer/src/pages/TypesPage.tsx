@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useOutletContext } from "react-router-dom";
 import { Search } from "lucide-react";
 import type { VersionEntry } from "../data/types";
-import { titleCase } from "../data/registry";
+import { titleCase, typePath } from "../data/registry";
 
 /** Types index: search bar + sections grouped by category. */
 export default function TypesPage() {
@@ -79,7 +79,7 @@ export default function TypesPage() {
             {types.map((t) => (
               <Link
                 key={t.id}
-                to={`/v/${version.id}/type/${t.id}`}
+                to={typePath(version.id, t.id)}
                 className="bg-slate-800/30 border border-slate-700/30 rounded-lg px-4 py-3 hover:border-slate-600/50 hover:bg-slate-800/50 transition-all duration-150 group hover:shadow-[0_4px_12px_rgba(0,0,0,0.2)]"
               >
                 <div className="flex items-start justify-between gap-4">
