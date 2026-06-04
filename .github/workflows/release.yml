@@ -1,6 +1,11 @@
 name: Release
 
-on:
+# workflow_run is the intended gate for "release only after green CI". It is
+# safe here: it fires only for CI runs on main (post-merge, trusted code), is
+# guarded by conclusion == success and a release: commit subject, and checks
+# out the pinned head_sha with persist-credentials: false. No untrusted PR code
+# ever runs in this privileged context.
+on:  # zizmor: ignore[dangerous-triggers]
   workflow_run:
     workflows: ["CI"]
     types: [completed]
@@ -24,10 +29,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
           ref: ${{ github.event.workflow_run.head_sha }}
+          persist-credentials: false
 
       - name: Resolve target version
         id: version
@@ -45,16 +51,20 @@ jobs:
           fi
 
       - if: steps.version.outputs.proceed == 'true'
-        uses: dtolnay/rust-toolchain@nightly
+        uses: dtolnay/rust-toolchain@5b842231ba77f5c045dba54ac5560fed2db780e2 # nightly
+        with:
+          toolchain: nightly
 
       - if: steps.version.outputs.proceed == 'true'
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
 
       - if: steps.version.outputs.proceed == 'true'
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
 
       - if: steps.version.outputs.proceed == 'true'
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
@@ -70,8 +80,10 @@ jobs:
       - name: Tag release
         if: steps.version.outputs.proceed == 'true'
         run: |
-          git tag "${{ steps.version.outputs.tag }}"
-          git push origin "${{ steps.version.outputs.tag }}"
+          git tag "${STEPS_VERSION_OUTPUTS_TAG}"
+          git push origin "${STEPS_VERSION_OUTPUTS_TAG}"
+        env:
+          STEPS_VERSION_OUTPUTS_TAG: ${{ steps.version.outputs.tag }}
 
       # --ignore-scripts skips the `prepare` hook so we don't rebuild what
       # the Build step just produced.
@@ -83,14 +95,14 @@ jobs:
 
       - name: Upload package artifacts
         if: steps.version.outputs.proceed == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: package
           path: artifacts/*.tgz
 
       - name: Publish via npm_publish_automation
         if: steps.version.outputs.proceed == 'true'
-        uses: octokit/request-action@v2.x
+        uses: octokit/request-action@dad4362715b7fb2ddedf9772c8670824af564f0d # v2.4.0
         with:
           route: POST /repos/paritytech/npm_publish_automation/actions/workflows/publish.yml/dispatches
           ref: main
@@ -102,8 +114,10 @@ jobs:
         if: steps.version.outputs.proceed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          STEPS_VERSION_OUTPUTS_TAG: ${{ steps.version.outputs.tag }}
+          STEPS_VERSION_OUTPUTS_VERSION: ${{ steps.version.outputs.version }}
         run: |
-          gh release create "${{ steps.version.outputs.tag }}" \
-            --title "@parity/truapi ${{ steps.version.outputs.version }}" \
+          gh release create "${STEPS_VERSION_OUTPUTS_TAG}" \
+            --title "@parity/truapi ${STEPS_VERSION_OUTPUTS_VERSION}" \
             --generate-notes \
             artifacts/*.tgz
