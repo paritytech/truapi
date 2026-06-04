@@ -66,16 +66,11 @@ export function renderReportMarkdown(
   return lines.join("\n");
 }
 
-// The failure reason for a method, escaped for a single table cell. Newlines
-// become `<br>` so the multi-line console output stays readable on GitHub and
-// survives into the compatibility matrix (a literal newline would break the
-// table row). Only failures carry details; other statuses leave the cell empty.
+// The failure reason for a method, flattened to a single escaped table cell.
+// Only failures carry details; other statuses leave the cell empty.
 function detailCell(entry: TestEntry | undefined): string {
   if (entry?.status !== "fail" || entry.output == null) return "";
-  return entry.output
-    .trim()
-    .replace(/\|/g, "\\|")
-    .replace(/\r?\n/g, "<br>");
+  return entry.output.replace(/\s+/g, " ").replace(/\|/g, "\\|").trim();
 }
 
 // Repo that receives the pre-filled diagnosis-report issues; the
