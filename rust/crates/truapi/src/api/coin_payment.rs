@@ -30,7 +30,7 @@ pub trait CoinPayment: Send + Sync {
     ///   name: "Terminal purse",
     /// });
     /// assert(result.isOk(), "createPurse failed:", result);
-    /// console.log(result.value.purse);
+    /// console.log("purse created:", result.value.purse);
     /// ```
     #[wire(request_id = 136)]
     async fn create_purse(
@@ -47,7 +47,7 @@ pub trait CoinPayment: Send + Sync {
     /// ```ts
     /// const result = await truapi.coinPayment.queryPurse({ purse: 1 });
     /// assert(result.isOk(), "queryPurse failed:", result);
-    /// console.log(result.value.info);
+    /// console.log("purse info:", result.value.info);
     /// ```
     #[wire(request_id = 138)]
     async fn query_purse(
@@ -70,7 +70,7 @@ pub trait CoinPayment: Send + Sync {
     ///     }),
     ///   ),
     /// );
-    /// console.log(status);
+    /// console.log("rebalance status:", status);
     /// ```
     #[wire(start_id = 140)]
     async fn rebalance_purse(
@@ -96,7 +96,7 @@ pub trait CoinPayment: Send + Sync {
     ///     }),
     ///   ),
     /// );
-    /// console.log(status);
+    /// console.log("delete status:", status);
     /// ```
     #[wire(start_id = 144)]
     async fn delete_purse(
@@ -115,7 +115,7 @@ pub trait CoinPayment: Send + Sync {
     /// ```ts
     /// const result = await truapi.coinPayment.createReceivable({ into: 1 });
     /// assert(result.isOk(), "createReceivable failed:", result);
-    /// console.log(result.value.receivable);
+    /// console.log("receivable created:", result.value.receivable);
     /// ```
     #[wire(request_id = 148)]
     async fn create_receivable(
@@ -138,7 +138,7 @@ pub trait CoinPayment: Send + Sync {
     ///   amount: 1000,
     /// });
     /// assert(result.isOk(), "createCheque failed:", result);
-    /// console.log(result.value.cheque);
+    /// console.log("cheque created:", result.value.cheque);
     /// ```
     #[wire(request_id = 150)]
     async fn create_cheque(
@@ -165,7 +165,7 @@ pub trait CoinPayment: Send + Sync {
     /// const status = await firstValueFrom(
     ///   from(truapi.coinPayment.deposit({ request: { cheque } })),
     /// );
-    /// console.log(status);
+    /// console.log("deposit status:", status);
     /// ```
     #[wire(start_id = 152)]
     async fn deposit(
@@ -192,7 +192,7 @@ pub trait CoinPayment: Send + Sync {
     ///     }),
     ///   ),
     /// );
-    /// console.log(status);
+    /// console.log("refund status:", status);
     /// ```
     #[wire(start_id = 156)]
     async fn refund(
@@ -219,7 +219,7 @@ pub trait CoinPayment: Send + Sync {
     ///     }),
     ///   ),
     /// );
-    /// console.log(item);
+    /// console.log("payment received:", item);
     /// ```
     #[wire(start_id = 160)]
     async fn listen_for_payment(

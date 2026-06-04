@@ -22,7 +22,7 @@ pub trait Account: Send + Sync {
     /// const status = await firstValueFrom(
     ///   from(truapi.account.connectionStatusSubscribe()),
     /// );
-    /// console.log(status);
+    /// console.log("connection status:", status);
     /// ```
     #[wire(start_id = 18)]
     async fn connection_status_subscribe(
@@ -42,7 +42,7 @@ pub trait Account: Send + Sync {
     ///   },
     /// });
     /// assert(result.isOk(), "getAccount failed:", result);
-    /// console.log(result.value);
+    /// console.log("account retrieved:", result.value);
     /// ```
     #[wire(request_id = 22)]
     async fn get_account(
@@ -63,7 +63,7 @@ pub trait Account: Send + Sync {
     ///   },
     /// });
     /// assert(result.isOk(), "getAccountAlias failed:", result);
-    /// console.log(result.value);
+    /// console.log("account alias:", result.value);
     /// ```
     #[wire(request_id = 24)]
     async fn get_account_alias(
@@ -92,7 +92,7 @@ pub trait Account: Send + Sync {
     ///   context: "0x",
     /// });
     /// assert(result.isOk(), "createAccountProof failed:", result);
-    /// console.log(result.value);
+    /// console.log("account proof created:", result.value);
     /// ```
     #[wire(request_id = 26)]
     async fn create_account_proof(
@@ -108,7 +108,7 @@ pub trait Account: Send + Sync {
     /// ```ts
     /// const result = await truapi.account.getLegacyAccounts();
     /// assert(result.isOk(), "getLegacyAccounts failed:", result);
-    /// console.log(result.value);
+    /// console.log("legacy accounts:", result.value);
     /// ```
     #[wire(request_id = 28)]
     async fn get_legacy_accounts(
@@ -124,7 +124,7 @@ pub trait Account: Send + Sync {
     /// ```ts
     /// const result = await truapi.account.getUserId();
     /// assert(result.isOk(), "getUserId failed:", result);
-    /// console.log(result.value);
+    /// console.log("user id:", result.value);
     /// ```
     #[wire(request_id = 110)]
     async fn get_user_id(
@@ -145,7 +145,7 @@ pub trait Account: Send + Sync {
     ///   reason: "Sign in to vote on Referendum #42",
     /// });
     /// assert(result.isOk(), "requestLogin failed:", result);
-    /// console.log(result.value);
+    /// console.log("login completed:", result.value);
     /// ```
     #[wire(request_id = 112)]
     async fn request_login(

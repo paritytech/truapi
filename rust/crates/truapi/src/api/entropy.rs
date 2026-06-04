@@ -15,7 +15,7 @@ pub trait Entropy: Send + Sync {
     ///   context: "0x70726f647563742d6b6579",
     /// });
     /// assert(result.isOk(), "derive failed:", result);
-    /// console.log(result.value);
+    /// console.log("entropy derived:", result.value);
     /// ```
     #[wire(request_id = 108)]
     async fn derive(

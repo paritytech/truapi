@@ -15,7 +15,7 @@ pub trait LocalStorage: Send + Sync {
     /// ```ts
     /// const result = await truapi.localStorage.read({ key: "test-key" });
     /// assert(result.isOk(), "read failed:", result);
-    /// console.log(result.value.value);
+    /// console.log("storage value read:", result.value.value);
     /// ```
     #[wire(request_id = 12)]
     async fn read(
@@ -32,7 +32,7 @@ pub trait LocalStorage: Send + Sync {
     ///   value: "0x48656c6c6f",
     /// });
     /// assert(result.isOk(), "write failed:", result);
-    /// console.log("ok");
+    /// console.log("storage write succeeded");
     /// ```
     #[wire(request_id = 14)]
     async fn write(
@@ -46,7 +46,7 @@ pub trait LocalStorage: Send + Sync {
     /// ```ts
     /// const result = await truapi.localStorage.clear({ key: "test-key" });
     /// assert(result.isOk(), "clear failed:", result);
-    /// console.log("ok");
+    /// console.log("storage clear succeeded");
     /// ```
     #[wire(request_id = 16)]
     async fn clear(
