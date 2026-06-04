@@ -9,13 +9,14 @@
 #   2. Creates a fresh empty next/ staging module.
 #   3. Takes an explorer version snapshot via snapshot-version.sh.
 #   4. Generates CHANGELOG.md from conventional commits and git tags.
-#   5. Bumps package.json and Cargo.toml to the next version.
+#
+# Version bumping is handled separately by the changeset release process:
+#   npm run changeset          # pick bump type + write summary
+#   npm run version-packages   # bump package.json, CHANGELOG.md, Cargo.toml
 #
 # Usage:
-#   scripts/cut-version.sh --bump patch   # 0.3.0 -> 0.3.1 (default)
-#   scripts/cut-version.sh --bump minor   # 0.3.0 -> 0.4.0
-#   scripts/cut-version.sh --bump major   # 0.3.0 -> 1.0.0
-#   scripts/cut-version.sh --dry-run      # show what would happen
+#   scripts/cut-version.sh            # cut the current version
+#   scripts/cut-version.sh --dry-run  # show what would happen
 #
 # Prerequisites:
 #   - Rust nightly toolchain (for rustdoc JSON)
@@ -36,18 +37,9 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 DRY_RUN=0
-BUMP="patch"
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=1; shift ;;
-    --bump)
-      BUMP="${2:-}"
-      case "$BUMP" in
-        patch|minor|major) ;;
-        *) echo "cut-version: --bump must be patch, minor, or major" >&2; exit 2 ;;
-      esac
-      shift 2
-      ;;
     -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
     *) echo "cut-version: unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -360,27 +352,4 @@ else
   echo "  (dry-run) Would generate CHANGELOG.md"
 fi
 
-# --- 5. Bump version ---
-
-IFS='.' read -r V_MAJOR V_MINOR V_PATCH <<< "$VERSION"
-case "$BUMP" in
-  patch) NEXT_VERSION="${V_MAJOR}.${V_MINOR}.$((V_PATCH + 1))" ;;
-  minor) NEXT_VERSION="${V_MAJOR}.$((V_MINOR + 1)).0" ;;
-  major) NEXT_VERSION="$((V_MAJOR + 1)).0.0" ;;
-esac
-
-echo "  Bumping version: $VERSION -> $NEXT_VERSION"
-if [ "$DRY_RUN" -eq 0 ]; then
-  node -e "
-    const fs = require('fs');
-    const path = './js/packages/truapi/package.json';
-    const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
-    pkg.version = '${NEXT_VERSION}';
-    fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
-  "
-
-  perl -pi -e "s/^version = \"${VERSION}\"/version = \"${NEXT_VERSION}\"/" \
-    rust/crates/truapi/Cargo.toml
-fi
-
-echo "Done. Review changes, commit, and tag v${VERSION}. Working version is now ${NEXT_VERSION}."
+echo "Done. Review changes, then run 'npm run changeset' and 'npm run version-packages' to bump the version."

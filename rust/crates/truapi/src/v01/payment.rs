@@ -39,14 +39,14 @@ pub enum PaymentTopUpSource {
     /// Fund from a one-time account represented by its private key. This is a
     /// standard account holding public funds, not a coin key.
     PrivateKey {
-        /// Ed25519 private key bytes.
-        ed25519_private_key: [u8; 32],
+        /// Sr25519 secret key bytes.
+        sr25519_secret_key: [u8; 64],
     },
     /// Fund directly from coin secret keys. Each key is an sr25519 secret
     /// controlling a single coin.
     Coins {
         /// Sr25519 secret keys, one per coin.
-        sr25519_secret_keys: Vec<[u8; 32]>,
+        sr25519_secret_keys: Vec<[u8; 64]>,
     },
 }
 
@@ -128,13 +128,13 @@ pub enum HostPaymentTopUpError {
     InsufficientFunds,
     /// The source account was not found or is invalid.
     InvalidSource,
+    /// Catch-all.
+    Unknown { reason: String },
     /// Some coins were claimed but the total fell short of the requested amount.
     PartialPayment {
         /// Amount that was successfully credited.
         credited: Balance,
     },
-    /// Catch-all.
-    Unknown { reason: String },
 }
 
 /// Error from [`crate::api::Payment::request`].
