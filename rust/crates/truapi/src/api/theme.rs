@@ -14,7 +14,7 @@ pub trait Theme: Send + Sync {
     /// const theme = await firstValueFrom(
     ///   from(truapi.theme.subscribe()),
     /// );
-    /// console.log(theme);
+    /// console.log("theme received:", theme);
     /// ```
     #[wire(start_id = 104)]
     async fn subscribe(&self, _cx: &CallContext) -> Subscription<HostThemeSubscribeItem> {
