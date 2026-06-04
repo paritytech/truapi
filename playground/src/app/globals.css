@@ -602,6 +602,18 @@ button {
   margin-bottom: 8px;
 }
 
+.view__breadcrumb--link {
+  display: inline-block;
+  padding: 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.view__breadcrumb--link:hover {
+  color: var(--accent);
+}
+
 .view__title {
   font-family: var(--font-serif), serif;
   font-style: italic;
@@ -614,6 +626,21 @@ button {
   word-break: break-word;
   overflow-wrap: anywhere;
   max-width: 100%;
+}
+
+.view__title-link {
+  display: inline;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.view__title-link:hover .view__method {
+  color: var(--accent);
 }
 
 .view__title .view__slash {
@@ -1304,13 +1331,6 @@ button {
   padding-bottom: 4px;
 }
 
-.autotest__mark {
-  color: var(--good);
-}
-.autotest__mark[data-running="true"] {
-  color: var(--warn);
-}
-
 .method[data-test-status]::after {
   content: "";
   position: absolute;
@@ -1326,48 +1346,6 @@ button {
 .method[data-test-status="running"]::after { background: var(--warn); animation: pulse-small 1s ease-in-out infinite; }
 .method[data-test-status="skipped"]::after { background: var(--rule-strong); }
 
-.autotest__controls {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  margin-bottom: 4px;
-}
-
-.autotest__mode {
-  display: inline-flex;
-  border: 1px solid var(--rule-strong);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  align-self: flex-start;
-}
-
-.autotest__mode-btn {
-  padding: 7px 16px;
-  font-family: var(--font-mono), monospace;
-  font-size: 11px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--ink-3);
-  background: transparent;
-  border-right: 1px solid var(--rule-strong);
-  transition: background 120ms ease, color 120ms ease;
-}
-.autotest__mode-btn:last-child {
-  border-right: none;
-}
-.autotest__mode-btn[data-active="true"] {
-  background: var(--ink);
-  color: var(--bg);
-}
-.autotest__mode-btn:hover:not([data-active="true"]):not(:disabled) {
-  background: var(--bg-tint);
-  color: var(--ink);
-}
-.autotest__mode-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
 .autotest__summary {
   font-family: var(--font-mono), monospace;
   font-size: 12px;
@@ -1378,38 +1356,6 @@ button {
 }
 .autotest__summary[data-has-fail="true"] {
   color: var(--danger);
-}
-
-.autotest {
-  margin-top: 24px;
-}
-
-.autotest__group {
-  margin-bottom: 24px;
-}
-
-.autotest__group-head {
-  font-family: var(--font-sans), sans-serif;
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--ink-3);
-  padding-bottom: 6px;
-  margin-bottom: 2px;
-  border-bottom: 1px solid var(--rule);
-}
-
-.autotest__row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 0;
-  border-bottom: 1px solid var(--rule);
-  min-height: 36px;
-}
-.autotest__row:last-child {
-  border-bottom: none;
 }
 
 .autotest__dot {
@@ -1424,29 +1370,6 @@ button {
 .autotest__dot[data-status="fail"]    { background: var(--danger); opacity: 1; }
 .autotest__dot[data-status="running"] { background: var(--warn);   opacity: 1; animation: pulse-small 1s ease-in-out infinite; }
 .autotest__dot[data-status="skipped"] { background: var(--ink-4);  opacity: 0.3; }
-
-.autotest__name {
-  flex: 1;
-  font-family: var(--font-mono), monospace;
-  font-size: 13px;
-  color: var(--ink);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.autotest__row[data-status="skipped"] .autotest__name {
-  color: var(--ink-4);
-  text-decoration: line-through;
-  text-decoration-color: var(--ink-4);
-  text-decoration-thickness: 1px;
-}
-
-.autotest__row[data-expandable="true"] {
-  cursor: pointer;
-}
-.autotest__row[data-expandable="true"]:hover {
-  background: var(--bg-tint);
-}
 
 .autotest__chevron {
   flex-shrink: 0;
@@ -1497,26 +1420,8 @@ button {
   color: var(--ink-4);
   margin: 0 0 4px;
 }
-.autotest__detail-label + .autotest__detail-body,
-.autotest__detail-label + .autotest__detail-edit {
+.autotest__detail-label + .autotest__detail-body {
   margin-bottom: 12px;
-}
-.autotest__detail-edit {
-  width: 100%;
-  font-family: var(--font-mono), monospace;
-  font-size: 12px;
-  line-height: 1.55;
-  color: var(--console-ink);
-  background: transparent;
-  border: 1px solid var(--rule);
-  outline: none;
-  resize: none;
-  overflow: hidden;
-  padding: 8px 10px;
-  box-sizing: border-box;
-}
-.autotest__detail-edit:focus {
-  border-color: var(--rule-strong);
 }
 .autotest__retry {
   margin-top: 4px;
@@ -1540,20 +1445,9 @@ button {
   cursor: not-allowed;
 }
 
-.autotest__report {
-  margin-top: 28px;
-  border: 1px solid var(--rule);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-}
-.autotest__report-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--rule);
-}
 .autotest__report-copy {
+  margin-left: auto;
+  align-self: center;
   padding: 6px 14px;
   font-family: var(--font-mono), monospace;
   font-size: 11px;
@@ -1562,6 +1456,7 @@ button {
   color: var(--ink-3);
   background: transparent;
   border: 1px solid var(--rule-strong);
+  border-radius: var(--radius);
   cursor: pointer;
   transition: background 120ms ease, color 120ms ease;
 }
@@ -1569,18 +1464,24 @@ button {
   background: var(--bg-tint);
   color: var(--ink);
 }
-.autotest__report-body {
-  margin: 0;
-  padding: 14px;
-  font-family: var(--font-mono), monospace;
-  font-size: 12px;
-  line-height: 1.55;
-  color: var(--console-ink);
-  background: var(--console-bg);
-  white-space: pre-wrap;
-  word-break: break-word;
-  max-height: 360px;
-  overflow-y: auto;
+
+.diag__report-actions {
+  margin-left: auto;
+  align-self: center;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.diag__report-actions .autotest__report-copy {
+  margin-left: 0;
+}
+.diag__submit {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.diag__submit:hover {
+  background: var(--accent);
+  color: var(--bg);
 }
 
 .diag__callout {
@@ -1606,6 +1507,13 @@ button {
   padding: 7px 0;
   border-bottom: 1px solid var(--rule);
   min-height: 34px;
+}
+
+.diag__row[data-expandable="true"] {
+  cursor: pointer;
+}
+.diag__row[data-expandable="true"]:hover {
+  background: var(--bg-tint);
 }
 
 .diag__name {

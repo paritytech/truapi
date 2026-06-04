@@ -1,7 +1,12 @@
 import { useMemo, useState } from "react";
 import type { ServiceInfo } from "@/src/lib/services";
 import type { TestEntry, TestStatus } from "@/src/lib/auto-test";
-import { renderReportMarkdown } from "@/src/lib/diagnosis-report";
+import {
+  detectHostMode,
+  renderReportMarkdown,
+  reportIssueUrl,
+} from "@/src/lib/diagnosis-report";
+import { getClient } from "@/src/lib/transport";
 
 const STATUS_LABEL: Record<TestStatus, string> = {
   idle: "queued",
@@ -13,7 +18,10 @@ const STATUS_LABEL: Record<TestStatus, string> = {
 
 interface Row {
   id: string;
+  service: string;
+  method: string;
   status: TestStatus;
+  output?: string;
 }
 
 export function DiagnosisView({
@@ -22,6 +30,7 @@ export function DiagnosisView({
   isRunning,
   onRun,
   onStop,
+  onRetry,
   onBack,
 }: {
   services: ServiceInfo[];
@@ -29,42 +38,67 @@ export function DiagnosisView({
   isRunning: boolean;
   onRun: () => void;
   onStop: () => void;
+  onRetry: (service: string, method: string) => void;
   onBack: () => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  const rows: Row[] = useMemo(() => {
+  const { rows, hasResults, passCount, failCount } = useMemo(() => {
     const out: Row[] = [];
+    let pass = 0;
+    let fail = 0;
     for (const svc of services) {
       for (const m of svc.methods) {
         const id = `${svc.name}/${m.name}`;
-        out.push({ id, status: testResults[id]?.status ?? "idle" });
+        const entry = testResults[id];
+        const status = entry?.status ?? "idle";
+        if (status === "pass") pass++;
+        else if (status === "fail") fail++;
+        out.push({
+          id,
+          service: svc.name,
+          method: m.name,
+          status,
+          output: entry?.output,
+        });
       }
     }
-    return out;
-  }, [services, testResults]);
-
-  const { hasResults, passCount, failCount } = useMemo(() => {
-    const entries = Object.values(testResults);
     return {
-      hasResults: entries.length > 0,
-      passCount: entries.filter((e) => e.status === "pass").length,
-      failCount: entries.filter((e) => e.status === "fail").length,
+      rows: out,
+      hasResults: Object.keys(testResults).length > 0,
+      passCount: pass,
+      failCount: fail,
     };
-  }, [testResults]);
-
-  const reportMarkdown = useMemo(
-    () => renderReportMarkdown(services, testResults),
-    [services, testResults],
-  );
+  }, [services, testResults]);
 
   const handleCopyReport = async () => {
     try {
-      await navigator.clipboard.writeText(reportMarkdown);
+      // Rendered on demand: the full report is only needed on copy, not on
+      // every per-method result update during a run.
+      await navigator.clipboard.writeText(
+        renderReportMarkdown(services, testResults),
+      );
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
       /* clipboard unavailable */
+    }
+  };
+
+  // Open a pre-filled GitHub issue carrying the report; the diagnosis-report
+  // workflow writes it to diagnosis-reports/<host>.md and opens a PR. The host
+  // opens the link via `navigate_to` (a sandboxed app can't `window.open`).
+  // Copy the report to the clipboard first as a fallback if the body is
+  // truncated.
+  const handleSubmitReport = () => {
+    const report = renderReportMarkdown(services, testResults);
+    void navigator.clipboard?.writeText(report).catch(() => {});
+    const url = reportIssueUrl(report, detectHostMode());
+    try {
+      void getClient().system.navigateTo({ url });
+    } catch {
+      /* no host connection */
     }
   };
 
@@ -91,14 +125,16 @@ export function DiagnosisView({
         <p className="panel__desc">
           Runs every TrUAPI method against the connected host to build a coverage
           report — which methods work, which fail, and which aren&apos;t wired
-          yet. Non-disruptive methods run first in parallel, then methods that
-          need your approval (signing, permission and resource requests) run one
-          at a time. When it finishes, copy the report below.
+          yet. Methods run one at a time, in order; those that need your approval
+          (signing, permission and resource requests) wait on your response
+          before the run continues. When it finishes, copy the report below.
         </p>
         <p className="diag__callout">
           Before you start: make sure you are <strong>logged in</strong>, and
           keep your <strong>phone nearby</strong> to sign transactions and
-          approve pop-ups from the Polkadot app as they appear.
+          approve pop-ups from the Polkadot app as they appear. Some payment
+          methods need an <strong>available balance</strong> in the Polkadot app
+          — without it they fail with an insufficient-balance error.
         </p>
       </div>
 
@@ -122,12 +158,8 @@ export function DiagnosisView({
             {passCount} success · {failCount} failed
           </span>
         )}
-      </div>
-
-      {hasResults && !isRunning && (
-        <div className="autotest__report">
-          <div className="autotest__report-head">
-            <span className="panel__label">Report</span>
+        {hasResults && !isRunning && (
+          <div className="diag__report-actions">
             <button
               type="button"
               className="autotest__report-copy"
@@ -135,22 +167,70 @@ export function DiagnosisView({
             >
               {copied ? "Copied ✓" : "Copy report"}
             </button>
+            <button
+              type="button"
+              className="autotest__report-copy diag__submit"
+              onClick={handleSubmitReport}
+              title="Open a pre-filled GitHub issue that files this report as a PR"
+            >
+              Submit report ↗
+            </button>
           </div>
-          <pre className="autotest__report-body">{reportMarkdown}</pre>
-        </div>
-      )}
+        )}
+      </div>
 
       {hasResults && (
         <div className="diag__log">
-          {rows.map((r) => (
-            <div key={r.id} className="diag__row" data-status={r.status}>
-              <span className="autotest__dot" data-status={r.status} />
-              <span className="diag__name">{r.id}</span>
-              <span className="autotest__status" data-status={r.status}>
-                {STATUS_LABEL[r.status]}
-              </span>
-            </div>
-          ))}
+          {rows.map((r) => {
+            const expandable = r.output != null;
+            const isExpanded = expandedId === r.id;
+            return (
+              <div key={r.id}>
+                <div
+                  className="diag__row"
+                  data-status={r.status}
+                  data-expandable={expandable}
+                  onClick={
+                    expandable
+                      ? () => setExpandedId(isExpanded ? null : r.id)
+                      : undefined
+                  }
+                >
+                  <span className="autotest__dot" data-status={r.status} />
+                  <span className="diag__name">{r.id}</span>
+                  {expandable && (
+                    <span className="autotest__chevron">
+                      {isExpanded ? "▲" : "▼"}
+                    </span>
+                  )}
+                  <span className="autotest__status" data-status={r.status}>
+                    {STATUS_LABEL[r.status]}
+                  </span>
+                </div>
+                {isExpanded && r.output != null && (
+                  <div className="autotest__detail">
+                    <div className="autotest__detail-label">
+                      {r.status === "fail" ? "Error" : "Response"}
+                    </div>
+                    <pre className="autotest__detail-body">{r.output}</pre>
+                    <button
+                      type="button"
+                      className="autotest__retry"
+                      disabled={isRunning}
+                      title={
+                        isRunning
+                          ? "Wait for the diagnosis run to finish before replaying"
+                          : "Re-run this method"
+                      }
+                      onClick={() => onRetry(r.service, r.method)}
+                    >
+                      ▶ Replay
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

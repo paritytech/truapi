@@ -18,6 +18,21 @@ const nextConfig = {
   typescript: {
     ignoreBuildErrors: false,
   },
+  // Sandboxed hosts (dot.li) serve this static export from a CAR via a service
+  // worker, and `monaco-editor` lazily `import()`s a chunk per language —
+  // hundreds of files, any one of which 404s if the CAR doesn't surface it
+  // (ChunkLoadError). Collapse the client build into a handful of chunks so the
+  // whole bundle ships and loads reliably.
+  webpack: (config, { webpack, isServer, dev }) => {
+    if (!isServer && !dev) {
+      config.optimization.runtimeChunk = false;
+      config.optimization.splitChunks = false;
+      config.plugins.push(
+        new webpack.optimize.LimitChunkCountPlugin({ maxChunks: 1 }),
+      );
+    }
+    return config;
+  },
 }
 
 export default nextConfig

@@ -8,9 +8,9 @@ on:
       environment:
         description: bulletin-deploy environment to publish to (blank = CLI default)
         type: choice
-        default: ''
+        default: ""
         options:
-          - ''
+          - ""
           - paseo-next-v2
           - preview
           - paseo-next
