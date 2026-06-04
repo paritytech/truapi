@@ -634,8 +634,7 @@ export const services: ServiceInfo[] = [
           "createProof(request: RemoteStatementStoreCreateProofRequest): Promise<Result<RemoteStatementStoreCreateProofResponse, RemoteStatementStoreCreateProofError>>",
         docUrl:
           "api/statement_store/trait.StatementStore.html#method.create_proof",
-        description:
-          "Create a proof for a statement.\n\n**Deprecated:** use [`create_proof_authorized`](Self::create_proof_authorized)\ninstead, which uses a pre-allocated allowance account and does not\nrequire a per-call signing prompt.",
+        description: "Create a proof for a statement.",
         requestDescription: "RemoteStatementStoreCreateProofRequest",
         requestType: "remote-statement-store-create-proof-request",
         responseType: "remote-statement-store-create-proof-response",

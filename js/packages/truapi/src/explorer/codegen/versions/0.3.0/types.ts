@@ -1863,7 +1863,7 @@ export const types: DataType[] = [
     name: "HostPaymentTopUpError",
     category: "payment",
     definition:
-      'export type HostPaymentTopUpError =\n  | { tag: "InsufficientFunds"; value?: undefined }\n  | { tag: "InvalidSource"; value?: undefined }\n  | { tag: "Unknown"; value: { reason: string } }\n  | { tag: "PartialPayment"; value: { credited: Balance } }\n;',
+      'export type HostPaymentTopUpError =\n  | { tag: "InsufficientFunds"; value?: undefined }\n  | { tag: "InvalidSource"; value?: undefined }\n  | { tag: "PartialPayment"; value: { credited: Balance } }\n  | { tag: "Unknown"; value: { reason: string } }\n;',
     description:
       "Error from [`crate::api::Payment::top_up`].\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
     variants: [
@@ -1878,15 +1878,15 @@ export const types: DataType[] = [
         description: "The source account was not found or is invalid.",
       },
       {
-        name: "Unknown",
-        type: '{ tag: "Unknown"; value: { reason: string } }',
-        description: "Catch-all.",
-      },
-      {
         name: "PartialPayment",
         type: '{ tag: "PartialPayment"; value: { credited: Balance } }',
         description:
           "Some coins were claimed but the total fell short of the requested amount.",
+      },
+      {
+        name: "Unknown",
+        type: '{ tag: "Unknown"; value: { reason: string } }',
+        description: "Catch-all.",
       },
     ],
   },
@@ -2476,7 +2476,7 @@ export const types: DataType[] = [
     name: "PaymentTopUpSource",
     category: "payment",
     definition:
-      'export type PaymentTopUpSource =\n  | { tag: "ProductAccount"; value: { derivationIndex: number } }\n  | { tag: "PrivateKey"; value: { sr25519SecretKey: HexString } }\n  | { tag: "Coins"; value: { sr25519SecretKeys: Array<HexString> } }\n;',
+      'export type PaymentTopUpSource =\n  | { tag: "ProductAccount"; value: { derivationIndex: number } }\n  | { tag: "PrivateKey"; value: { ed25519PrivateKey: HexString } }\n  | { tag: "Coins"; value: { sr25519SecretKeys: Array<HexString> } }\n;',
     description:
       "Source for a payment top-up operation.\n\nSee [RFC 0006].\n\n[RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94",
     variants: [
@@ -2487,7 +2487,7 @@ export const types: DataType[] = [
       },
       {
         name: "PrivateKey",
-        type: '{ tag: "PrivateKey"; value: { sr25519SecretKey: HexString } }',
+        type: '{ tag: "PrivateKey"; value: { ed25519PrivateKey: HexString } }',
         description:
           "Fund from a one-time account represented by its private key. This is a\nstandard account holding public funds, not a coin key.",
       },
@@ -3718,18 +3718,18 @@ export const types: DataType[] = [
     name: "ThemeName",
     category: "theme",
     definition:
-      'export type ThemeName =\n  | { tag: "Custom"; value: string }\n  | { tag: "Default"; value?: undefined }\n;',
+      'export type ThemeName =\n  | { tag: "Default"; value?: undefined }\n  | { tag: "Custom"; value: string }\n;',
     description: "Identifies a named theme.",
     variants: [
-      {
-        name: "Custom",
-        type: '{ tag: "Custom"; value: string }',
-        description: "A custom named theme.",
-      },
       {
         name: "Default",
         type: '{ tag: "Default"; value?: undefined }',
         description: "The host's default theme.",
+      },
+      {
+        name: "Custom",
+        type: '{ tag: "Custom"; value: string }',
+        description: "A custom named theme.",
       },
     ],
   },
