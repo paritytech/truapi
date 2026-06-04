@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ChevronDown } from "lucide-react";
 import type { VersionEntry } from "../data/types";
-import { findMethod, findType, methodPath } from "../data/registry";
+import { findMethod, findType, methodPath, typePath } from "../data/registry";
 
 interface VersionSelectorProps {
   versions: VersionEntry[];
@@ -53,7 +53,7 @@ export default function VersionSelector({
     if (typeMatch) {
       const id = typeMatch[1];
       if (findType(target, id)) {
-        navigate(`${nextPrefix}/type/${id}`);
+        navigate(typePath(target.id, id));
         return;
       }
       navigate(`${nextPrefix}/types`);
