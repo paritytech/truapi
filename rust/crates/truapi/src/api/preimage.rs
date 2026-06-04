@@ -12,21 +12,16 @@ pub trait Preimage: Send + Sync {
     /// Subscribe to preimage lookups for a given key.
     ///
     /// ```ts
-    /// import { from, take } from "rxjs";
+    /// import { firstValueFrom, from } from "rxjs";
     ///
     /// // Submit a preimage first so the lookup resolves to a value.
     /// const submitted = await truapi.preimage.submit("0xdeadbeef");
-    /// if (submitted.isErr()) {
-    ///   console.error("submit failed:", submitted.error);
-    /// } else {
-    ///   from(truapi.preimage.lookupSubscribe({ request: { key: submitted.value } }))
-    ///     .pipe(take(1))
-    ///     .subscribe({
-    ///       next: (item) => console.log(item),
-    ///       error: (error) => console.error("lookupSubscribe failed:", error),
-    ///       complete: () => console.log("completed"),
-    ///     });
-    /// }
+    /// assert(submitted.isOk(), "submit failed:", submitted);
+    ///
+    /// const item = await firstValueFrom(
+    ///   from(truapi.preimage.lookupSubscribe({ request: { key: submitted.value } })),
+    /// );
+    /// console.log(item);
     /// ```
     #[wire(start_id = 64)]
     async fn lookup_subscribe(
@@ -41,10 +36,8 @@ pub trait Preimage: Send + Sync {
     ///
     /// ```ts
     /// const result = await truapi.preimage.submit("0xdeadbeef");
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "submit failed:", result);
+    /// console.log(result.value);
     /// ```
     #[wire(request_id = 68)]
     async fn submit(

@@ -91,7 +91,6 @@ export default function CompatibilityPage() {
                 <th
                   key={h.label}
                   className="sticky top-0 z-20 text-center text-[11px] font-semibold uppercase tracking-wider text-slate-400 font-display px-5 py-3 w-28 whitespace-nowrap bg-slate-900 border-b border-l border-slate-700/60"
-                  title={`Reported ${h.reportedAt || "(unknown time)"}`}
                 >
                   {h.label}
                 </th>

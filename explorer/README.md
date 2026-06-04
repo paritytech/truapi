@@ -4,20 +4,15 @@ Docs-only browser for the TrUAPI service surface. All trait and type data is sou
 
 ## Host compatibility matrix
 
-The **Compatibility** page (`/v/<version>/compatibility`) renders a host × method matrix aggregated from the playground's per-host Diagnosis reports. The matrix data is committed at [`src/data/compatibility.ts`](src/data/compatibility.ts) — a typed module emitted by [`scripts/aggregate-diagnosis-matrix.mjs`](scripts/aggregate-diagnosis-matrix.mjs). It is the **only** runtime-derived data in the explorer; everything else flows from Rust via codegen.
+The **Compatibility** page (`/v/<version>/compatibility`) renders a host × method matrix aggregated from the playground's per-host Diagnosis reports. The committed per-host reports under [`diagnosis-reports/`](diagnosis-reports/) are the source of truth; [`src/data/compatibility.ts`](src/data/compatibility.ts) is a generated artifact (git-ignored) that [`scripts/aggregate-diagnosis-matrix.mjs`](scripts/aggregate-diagnosis-matrix.mjs) rebuilds from those reports at `dev` / `build` / `lint` time (via the `predev` / `prebuild` / `prelint` scripts). It is the **only** runtime-derived data in the explorer; everything else flows from Rust via codegen.
 
 ### Updating the matrix
 
-1. **Collect reports.** For each host you want to (re)measure, open the playground in that host, run the Diagnosis, and click **Copy report** (see [`../playground/README.md#diagnosis`](../playground/README.md#diagnosis)). Save each report to a host-named markdown file (e.g. `web.md`, `desktop.md`, `android.md`, `ios.md`).
-2. **Drop them in.** Place each host-named `*.md` into [`diagnosis-reports/`](diagnosis-reports/), overwriting that host's previous report.
-3. **Regenerate.** From the `explorer/` directory:
+Because the matrix is regenerated from `diagnosis-reports/` on every `dev` / `build` / `lint`, you only ever commit reports, never `src/data/compatibility.ts`.
 
-   ```bash
-   npm run generate-matrix
-   ```
+**From the playground (recommended).** Open the playground in the host you want to (re)measure, run the Diagnosis, and click **Submit report ↗**. That files a pre-filled `diagnosis-report` issue; the [`diagnosis-report`](../.github/workflows/diagnosis-report.yml) workflow writes the report to `diagnosis-reports/<host>.md` and opens (or updates) that host's PR.
 
-   That **rebuilds** `src/data/compatibility.ts` from every report in `diagnosis-reports/` — one column per report — leaving the inputs in place. Because the matrix is always built from the reports alone, the committed reports are the source of truth: to refresh a host, overwrite its `*.md` and regenerate. The Compatibility page (and each method's Host support row) picks up the new data on the next build / Vite HMR.
-4. **Commit** the updated `src/data/compatibility.ts` together with the reports under `diagnosis-reports/`. Keeping the raw per-host reports in version control makes each run diffable against the last.
+**By hand.** Click **Copy report** instead (see [`../playground/README.md#diagnosis`](../playground/README.md#diagnosis)), save the markdown to a host-named file (e.g. `web.md`, `desktop.md`, `android.md`, `ios.md`), drop it into [`diagnosis-reports/`](diagnosis-reports/) overwriting that host's previous report, and commit. Run `npm run generate-matrix` from `explorer/` to preview locally (or just `npm run dev`, which regenerates first). The Compatibility page and each method's Host support row pick up the new data on the next build / Vite HMR.
 
 ### Data shape
 
