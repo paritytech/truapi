@@ -66,6 +66,10 @@ export function ExampleEditor({
         options={{
           minimap: { enabled: false },
           fontSize: 13,
+          lineNumbers: "off",
+          lineDecorationsWidth: 0,
+          lineNumbersMinChars: 0,
+          glyphMargin: false,
           scrollBeyondLastLine: false,
           tabSize: 2,
           padding: { top: 12, bottom: 12 },
