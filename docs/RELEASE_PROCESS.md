@@ -13,9 +13,17 @@ publish, and only when they bump the package version.
 
 ## How to release
 
-### 1. Open a release PR
+### 1. Cut the protocol version
 
-From the repo root:
+Run `scripts/cut-version.sh` to crystallize wire types, take an explorer
+snapshot, and generate the root `CHANGELOG.md`:
+
+```bash
+scripts/cut-version.sh            # crystallize next/, snapshot, changelog
+scripts/cut-version.sh --dry-run  # preview without making changes
+```
+
+### 2. Bump the package version
 
 ```bash
 npm run changeset            # interactive: pick patch / minor / major + a short summary
@@ -29,6 +37,8 @@ runs `scripts/sync-cargo-version.mjs` to bump
 `rust/crates/truapi/Cargo.toml` to the same version. All three files
 should appear in the resulting diff.
 
+### 3. Open a release PR
+
 Commit the resulting diff and open a PR using the **release** template:
 
 ```
@@ -41,7 +51,7 @@ The PR title must start with `release:`. Convention:
 release: @parity/truapi 0.1.1
 ```
 
-### 2. Get the PR reviewed and merged
+### 4. Get the PR reviewed and merged
 
 Merge via squash merge (the repo's default). The squash commit subject
 defaults to the PR title, so the `release:` prefix carries over to
@@ -51,7 +61,7 @@ prefix will silently skip the publish. If that does happen, open a
 follow-up `release:` PR with any trivial change (a CHANGELOG note tweak,
 say); the tag-already-exists guard makes re-runs safe.
 
-### 3. Watch the publish
+### 5. Watch the publish
 
 On merge, CI runs as usual. When CI passes, the `Release` workflow:
 
