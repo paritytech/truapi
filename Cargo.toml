@@ -4,3 +4,4 @@ members = ["rust/crates/*"]
 
 [workspace.package]
 edition = "2024"
+license = "MIT"
