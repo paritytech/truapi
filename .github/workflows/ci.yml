@@ -70,7 +70,7 @@ jobs:
           node-version: 22
 
       - name: Install workspace deps
-        run: npm ci --ignore-scripts
+        run: npm ci
 
       - name: Run codegen
         run: ./scripts/codegen.sh
