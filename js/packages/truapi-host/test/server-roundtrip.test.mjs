@@ -1,0 +1,187 @@
+// End-to-end smoke test for the @parity/truapi-host dispatcher.
+//
+// Wires a host server and a @parity/truapi client to a shared in-memory
+// provider duo and asserts a request method round-trips, including the
+// versioned envelope wrap/unwrap on both sides. Handlers receive and return
+// the full versioned wrapper; the dispatcher is a thin SCALE codec wrapper.
+
+import assert from "node:assert/strict";
+import { okAsync } from "neverthrow";
+
+import { createTransport, createClient } from "../../truapi/src/index.ts";
+import { createTrUApiServer } from "../src/index.ts";
+
+/**
+ * Build a synchronous in-memory provider pair. Messages posted through one
+ * end arrive at the other end's listeners in the same tick. No multiplexing,
+ * no batching, no ordering tricks.
+ */
+function makeProviderPair() {
+  const aListeners = new Set();
+  const bListeners = new Set();
+  return {
+    a: {
+      postMessage(message) {
+        for (const listener of [...bListeners]) listener(message);
+      },
+      subscribe(callback) {
+        aListeners.add(callback);
+        return () => aListeners.delete(callback);
+      },
+      dispose() {
+        aListeners.clear();
+      },
+    },
+    b: {
+      postMessage(message) {
+        for (const listener of [...aListeners]) listener(message);
+      },
+      subscribe(callback) {
+        bListeners.add(callback);
+        return () => bListeners.delete(callback);
+      },
+      dispose() {
+        bListeners.clear();
+      },
+    },
+  };
+}
+
+/**
+ * Wrap a partial map of handlers with a Proxy-based stub for every other
+ * service the generated `TrUApiHostHandlers` requires. Lets a test register
+ * just the methods it exercises.
+ */
+function makeStubHandlers(partial) {
+  const stub = new Proxy(
+    {},
+    {
+      get(_, prop) {
+        return () => {
+          throw new Error(`unimplemented stub: ${String(prop)}`);
+        };
+      },
+    },
+  );
+  const services = [
+    "account",
+    "chain",
+    "chat",
+    "entropy",
+    "jsonRpc",
+    "localStorage",
+    "payment",
+    "permissions",
+    "preimage",
+    "resourceAllocation",
+    "signing",
+    "statementStore",
+    "system",
+    "theme",
+  ];
+  const result = {};
+  for (const name of services) {
+    result[name] = partial[name] ?? stub;
+  }
+  return result;
+}
+
+// Request round-trip: client.account.getAccount → host handler → typed response.
+{
+  const { a, b } = makeProviderPair();
+  const transport = createTransport(a);
+  const client = createClient(transport);
+
+  let observed;
+  const accountStub = {
+    getAccount(ctx, request) {
+      observed = { request, requestId: ctx.requestId };
+      assert.equal(request.tag, "V1");
+      return okAsync({
+        tag: "V1",
+        value: { account: { publicKey: "0x" + "01".repeat(32) } },
+      });
+    },
+    connectionStatusSubscribe: () => ({
+      subscribe: () => ({ unsubscribe: () => {}, subscriptionId: "" }),
+    }),
+  };
+
+  const server = createTrUApiServer(b, makeStubHandlers({ account: accountStub }));
+
+  const expectedRequest = {
+    productAccountId: {
+      dotNsIdentifier: "my-product.dot",
+      derivationIndex: 0,
+    },
+  };
+  const result = await client.account.getAccount(expectedRequest);
+  assert.ok(
+    result.isOk(),
+    `expected getAccount to succeed: ${JSON.stringify(result.error ?? null)}`,
+  );
+  assert.deepEqual(result.value.account.publicKey, "0x" + "01".repeat(32));
+  assert.deepEqual(observed.request, { tag: "V1", value: expectedRequest });
+  assert.equal(typeof observed.requestId, "string");
+
+  server.dispose();
+  transport.dispose();
+}
+
+// Subscription round-trip: handler returns an ObservableLike; client receives
+// items via the standard `subscribe({next, complete})` shape on its side. The
+// host emits one item then calls `observer.complete()` to terminate.
+await new Promise((resolveTest, rejectTest) => {
+  const { a, b } = makeProviderPair();
+  const transport = createTransport(a);
+  const client = createClient(transport);
+
+  let lastSent;
+  const accountStub = {
+    connectionStatusSubscribe(ctx, request) {
+      assert.equal(typeof ctx.requestId, "string");
+      assert.equal(request.tag, "V1");
+      return {
+        subscribe(observer) {
+          const item = { tag: "V1", value: "Connected" };
+          lastSent = item;
+          queueMicrotask(() => {
+            observer.next?.(item);
+            queueMicrotask(() => observer.complete?.());
+          });
+          return { unsubscribe: () => {}, subscriptionId: "" };
+        },
+      };
+    },
+  };
+
+  const server = createTrUApiServer(b, makeStubHandlers({ account: accountStub }));
+
+  const received = [];
+  client.account.connectionStatusSubscribe().subscribe({
+    next(value) {
+      received.push(value);
+    },
+    error(error) {
+      server.dispose();
+      transport.dispose();
+      rejectTest(new Error(`unexpected error: ${error.message}`));
+    },
+    complete() {
+      try {
+        assert.equal(received.length, 1);
+        // The client unwraps the versioned envelope; it sees the inner value.
+        assert.deepEqual(received[0], lastSent.value);
+        server.dispose();
+        transport.dispose();
+        resolveTest();
+      } catch (error) {
+        server.dispose();
+        transport.dispose();
+        rejectTest(error);
+      }
+    },
+  });
+});
+
+console.log("server-roundtrip: ok");

@@ -1,0 +1,109 @@
+name: Release
+
+on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    # Only run on green CI and only for commits whose subject starts with
+    # "release:" — guards against accidental version bumps in unrelated PRs.
+    if: |
+      github.event.workflow_run.conclusion == 'success' &&
+      startsWith(github.event.workflow_run.head_commit.message, 'release:')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Resolve target version
+        id: version
+        run: |
+          version=$(jq -r '.version' js/packages/truapi/package.json)
+          tag="@parity/truapi@${version}"
+          if git rev-parse --verify --quiet "refs/tags/${tag}" >/dev/null; then
+            echo "Tag ${tag} already exists; nothing to publish."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "Publishing ${tag}."
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+            echo "version=${version}" >> "$GITHUB_OUTPUT"
+            echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.version.outputs.proceed == 'true'
+        uses: dtolnay/rust-toolchain@nightly
+
+      - if: steps.version.outputs.proceed == 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - if: steps.version.outputs.proceed == 'true'
+        uses: Swatinem/rust-cache@v2
+
+      - if: steps.version.outputs.proceed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        if: steps.version.outputs.proceed == 'true'
+        run: npm ci
+
+      - name: Build @parity/truapi
+        if: steps.version.outputs.proceed == 'true'
+        run: ./scripts/codegen.sh
+
+      - name: Tag release
+        if: steps.version.outputs.proceed == 'true'
+        run: |
+          git tag "${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"
+
+      # --ignore-scripts skips the `prepare` hook so we don't rebuild what
+      # the Build step just produced.
+      - name: Pack package
+        if: steps.version.outputs.proceed == 'true'
+        run: |
+          mkdir -p artifacts
+          (cd js/packages/truapi && npm pack --ignore-scripts --pack-destination "$GITHUB_WORKSPACE/artifacts/")
+
+      - name: Upload package artifacts
+        if: steps.version.outputs.proceed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: package
+          path: artifacts/*.tgz
+
+      - name: Publish via npm_publish_automation
+        if: steps.version.outputs.proceed == 'true'
+        uses: octokit/request-action@v2.x
+        with:
+          route: POST /repos/paritytech/npm_publish_automation/actions/workflows/publish.yml/dispatches
+          ref: main
+          inputs: '${{ format(''{{ "repo": "{0}", "run_id": "{1}" }}'', github.repository, github.run_id) }}'
+        env:
+          GITHUB_TOKEN: ${{ secrets.NPM_PUBLISH_AUTOMATION_TOKEN }}
+
+      - name: Create GitHub Release
+        if: steps.version.outputs.proceed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --title "@parity/truapi ${{ steps.version.outputs.version }}" \
+            --generate-notes \
+            artifacts/*.tgz

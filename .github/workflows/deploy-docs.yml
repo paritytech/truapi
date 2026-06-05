@@ -1,0 +1,110 @@
+name: Deploy Docs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - name: Install workspace dependencies
+        run: npm ci
+
+      - name: Run codegen (cargo + rust → ts + truapi build + dts bundle)
+        run: ./scripts/codegen.sh
+
+      - name: Build Rust API docs (HTML)
+        run: cargo doc -p truapi --no-deps
+
+      - name: Install playground dependencies
+        working-directory: playground
+        run: yarn install --frozen-lockfile
+
+      - name: Cache Next.js build
+        uses: actions/cache@v4
+        with:
+          path: playground/.next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('playground/yarn.lock') }}-${{ hashFiles('playground/src/**', 'playground/scripts/**', 'playground/public/**', 'playground/next.config.js', 'playground/tsconfig.json', 'playground/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-${{ hashFiles('playground/yarn.lock') }}-
+
+      - name: Build playground (static export)
+        working-directory: playground
+        env:
+          NEXT_PUBLIC_BASE_PATH: /truapi/playground
+        run: yarn build
+
+      - name: Install explorer dependencies
+        working-directory: explorer
+        run: npm ci
+
+      - name: Build explorer (static export)
+        working-directory: explorer
+        env:
+          EXPLORER_BASE_PATH: /truapi/
+        run: npm run build
+
+      - name: Assemble GitHub Pages site
+        run: |
+          rm -rf site
+          mkdir -p site
+          # Explorer SPA at the site root.
+          cp -R explorer/dist/. site/
+          # GitHub Pages serves the site-root 404.html for every missing path.
+          # Serving a copy of the SPA index lets React Router resolve explorer
+          # deep links (e.g. /truapi/v/main/method/foo) on a fresh load.
+          cp site/index.html site/404.html
+          # Playground mounted at /playground/ (its Next.js basePath).
+          mkdir -p site/playground
+          cp -R playground/out/. site/playground/
+          # truapi crate's cargo doc mounted at /cargo_doc/ with the crate's
+          # pages flattened (no /truapi/ prefix). rustdoc HTMLs reference
+          # static.files via `../../../static.files/`, which from
+          # /cargo_doc/api/<mod>/ resolves to the site root, so static.files
+          # must be a sibling of cargo_doc/ (not inside it).
+          mkdir -p site/cargo_doc
+          cp -RL target/doc/truapi/. site/cargo_doc/
+          cp -RL target/doc/static.files site/static.files
+          touch site/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

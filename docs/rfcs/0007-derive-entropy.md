@@ -1,11 +1,11 @@
 # RFC-0007: Deterministic Entropy Derivation for Products
 
-| Field  | Value                          |
-|--------|--------------------------------|
-| RFC    | 0007                           |
-| Status | Draft                          |
-| Author | Valentin Sergeev               |
-| Date   | 2026-03-30                     |
+| Field  | Value            |
+| ------ | ---------------- |
+| RFC    | 0007             |
+| Status | Draft            |
+| Author | Valentin Sergeev |
+| Date   | 2026-03-30       |
 
 ## Summary
 
@@ -32,7 +32,7 @@ type Entropy = [u8; 32];
 
 enum DeriveEntropyError {
     /// An unexpected error occurred in the host (e.g., an internal bug).
-    Unknown,
+    Unknown(GenericErr),
 }
 
 /// Derives 32 bytes of deterministic entropy scoped to the calling product
@@ -58,11 +58,11 @@ Two modes of BLAKE2b are used and must be clearly distinguished:
 
 #### Inputs
 
-| Name                | Description                                                        |
-|---------------------|--------------------------------------------------------------------|
+| Name                | Description                                                                                                                    |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `productId`         | The identifier of the product that invoked `host_derive_entropy`. Arbitrary-length string; hashed before use as a BLAKE2b key. |
-| `rootAccountSecret` | The raw BIP-39 entropy bytes of the root account (NOT the 64-byte PBKDF2-derived seed). |
-| `key`               | The `key` argument passed to `host_derive_entropy`. Up to 32 bytes; passed directly as the BLAKE2b key without hashing. |
+| `rootAccountSecret` | The raw BIP-39 entropy bytes of the root account (NOT the 64-byte PBKDF2-derived seed).                                        |
+| `key`               | The `key` argument passed to `host_derive_entropy`. Up to 32 bytes; passed directly as the BLAKE2b key without hashing.        |
 
 #### Steps
 
@@ -107,12 +107,12 @@ The Polkadot Host security model operates on a triangle of trust: **Account Hold
 
 Four options were evaluated for where the derivation is performed:
 
-| Option | What is shared | When | Host knowledge |
-|--------|---------------|------|----------------|
-| 1 | `rootEntropySource` | During SSO handshake | Host can compute all possible entropies for any product and any key. No round trips at runtime. |
-| 2 | `perProductEntropy` | On-demand, per product | Host learns all possible entropies for a given product. Round-trip to Account Holder on first request per product. |
-| 3 | `requestedEntropy` | On-demand, per request | Host learns only the specific requested entropy. Round-trip to Account Holder for every request. |
-| 3.1 | `requestedEntropy` (e2e encrypted) | On-demand, per request | Same as option 3, but the entropy is end-to-end encrypted between Account Holder and Product -- Host cannot read it. Round-trip for every request. |
+| Option | What is shared                     | When                   | Host knowledge                                                                                                                                     |
+| ------ | ---------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1      | `rootEntropySource`                | During SSO handshake   | Host can compute all possible entropies for any product and any key. No round trips at runtime.                                                    |
+| 2      | `perProductEntropy`                | On-demand, per product | Host learns all possible entropies for a given product. Round-trip to Account Holder on first request per product.                                 |
+| 3      | `requestedEntropy`                 | On-demand, per request | Host learns only the specific requested entropy. Round-trip to Account Holder for every request.                                                   |
+| 3.1    | `requestedEntropy` (e2e encrypted) | On-demand, per request | Same as option 3, but the entropy is end-to-end encrypted between Account Holder and Product -- Host cannot read it. Round-trip for every request. |
 
 **Option 1 is selected** for the following reasons:
 

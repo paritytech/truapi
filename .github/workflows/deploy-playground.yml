@@ -1,0 +1,71 @@
+name: Deploy Playground
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: bulletin-deploy environment to publish to (blank = CLI default)
+        type: choice
+        default: ""
+        options:
+          - ""
+          - paseo-next-v2
+          - preview
+          - paseo-next
+          - paseo-review
+
+concurrency:
+  group: deploy-truapi-playground
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-playground:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: dtolnay/rust-toolchain@nightly
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build @parity/truapi
+        run: npm ci && ./scripts/codegen.sh
+
+      - name: Install playground dependencies
+        working-directory: playground
+        run: yarn install --frozen-lockfile
+
+      - name: Cache Next.js build
+        uses: actions/cache@v4
+        with:
+          path: playground/.next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('playground/yarn.lock') }}-${{ hashFiles('playground/src/**', 'playground/scripts/**', 'playground/public/**', 'playground/next.config.js', 'playground/tsconfig.json', 'playground/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-${{ hashFiles('playground/yarn.lock') }}-
+
+      - name: Build playground
+        working-directory: playground
+        run: yarn build
+
+      - name: Install bulletin-deploy
+        run: npm install -g bulletin-deploy
+
+      - name: Deploy to DotNS
+        uses: nick-fields/retry@ce71cc2ab81d554ebbe88c79ab5975992d79ba08 # v3.0.2
+        env:
+          BULLETIN_ENV: ${{ inputs.environment }}
+        with:
+          timeout_minutes: 10
+          max_attempts: 3
+          command: cd playground && bulletin-deploy ./out truapi-playground.dot --js-merkle ${BULLETIN_ENV:+--env "$BULLETIN_ENV"}
