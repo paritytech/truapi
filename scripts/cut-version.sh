@@ -4,11 +4,8 @@
 # This script performs the release steps for crystallizing the current
 # protocol surface:
 #
-#   1. Moves rust/crates/truapi/src/next/ contents into a new vNN module
-#      (only if next/ has types beyond the mod.rs header).
-#   2. Creates a fresh empty next/ staging module.
-#   3. Takes an explorer version snapshot via snapshot-version.sh.
-#   4. Generates CHANGELOG.md from conventional commits and git tags.
+#   1. Takes an explorer version snapshot via snapshot-version.sh.
+#   2. Generates CHANGELOG.md from conventional commits and git tags.
 #
 # Version bumping is handled separately by the changeset release process:
 #   npm run changeset          # pick bump type + write summary
@@ -54,58 +51,14 @@ fi
 TODAY="$(date +%Y-%m-%d)"
 echo "Cutting version $VERSION ($TODAY)"
 
-# --- 1. Crystallize next/ into vNN (if it has content) ---
-
-NEXT_DIR="rust/crates/truapi/src/next"
-NEXT_FILES=$(find "$NEXT_DIR" -name '*.rs' ! -name 'mod.rs' 2>/dev/null | wc -l | tr -d ' ')
-
-EXISTING_MAX=0
-for d in rust/crates/truapi/src/v[0-9][0-9]; do
-  [ -d "$d" ] || continue
-  NUM=$(basename "$d" | sed 's/^v0*//')
-  [ "${NUM:-0}" -gt "$EXISTING_MAX" ] && EXISTING_MAX="$NUM"
-done
-NEXT_V_NUM=$((EXISTING_MAX + 1))
-NEXT_V_MOD=$(printf 'v%02d' "$NEXT_V_NUM")
-NEXT_V_DIR="rust/crates/truapi/src/$NEXT_V_MOD"
-
-if [ "$NEXT_FILES" -gt 0 ]; then
-  echo "  Crystallizing next/ -> $NEXT_V_MOD/ ($NEXT_FILES type files)"
-  if [ "$DRY_RUN" -eq 0 ]; then
-    cp -r "$NEXT_DIR" "$NEXT_V_DIR"
-    cat > "$NEXT_V_DIR/mod.rs" <<MODEOF
-//! TrUAPI Protocol $NEXT_V_MOD type definitions.
-MODEOF
-    awk 'NR > 1 && !/^\/\/!/' "$NEXT_DIR/mod.rs" >> "$NEXT_V_DIR/mod.rs" || true
-  fi
-else
-  echo "  next/ has no type files to crystallize (v01 types unchanged for $VERSION)"
-fi
-
-# --- 2. Reset next/ ---
-
-echo "  Resetting next/ staging module"
-if [ "$DRY_RUN" -eq 0 ]; then
-  rm -rf "$NEXT_DIR"
-  mkdir -p "$NEXT_DIR"
-  cat > "$NEXT_DIR/mod.rs" <<'NEXTEOF'
-//! Staging area for wire types targeting the next protocol release.
-//!
-//! Types here are under active development and not yet crystallized.
-//! When a version is cut (`scripts/cut-version.sh`), this module's
-//! contents are moved into a new `vNN` module and a fresh empty
-//! `next` is created.
-NEXTEOF
-fi
-
-# --- 3. Explorer snapshot ---
+# --- 1. Explorer snapshot ---
 
 echo "  Taking explorer snapshot for $VERSION"
 if [ "$DRY_RUN" -eq 0 ]; then
   bash "$ROOT/scripts/snapshot-version.sh" --force
 fi
 
-# --- 4. Generate CHANGELOG.md from conventional commits ---
+# --- 2. Generate CHANGELOG.md from conventional commits ---
 
 echo "  Generating CHANGELOG.md"
 
