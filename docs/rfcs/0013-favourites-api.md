@@ -1,26 +1,17 @@
-# RFC-0013: Favourites API
+---
+title: "Favourites API"
+owner: "@filippovecchiato"
+---
 
-|                 |                                                                 |
-| --------------- | --------------------------------------------------------------- |
-| **Start Date**  | 2026-04-21                                                      |
-| **Description** | Let products read and manage the user's bookmarked apps         |
-| **Authors**     | Filippo Vecchiato                                               |
+# RFC 0013 — Favourites API
 
 ## Summary
 
-Products can query, add and remove bookmarked apps from the host's local product catalogue. The host exposes a subscription for the installed-product list and two mutations for adding/removing entries. Browse (the on-chain discovery product) receives privileged access without an explicit permission prompt, because it is the default discovery surface for users to find and manage products.
+Products can query, add, and remove bookmarked apps from the host's local product catalogue. The host exposes a subscription for the bookmarked-product list and two mutations for adding/removing entries.
 
 ## Motivation
 
-Hosts store data that products don't have access to but would benefit from. Bookmarked apps are one such example — some hosts maintain a local catalogue of products the user has bookmarked (starred), but this data is inaccessible to products. Browse — the primary discovery surface — cannot show which apps are already installed or let the user bookmark new ones without direct database access.
-
-Since DotNS is permissionless and anyone can publish a product, discovery is essential. Browse and other products should be able to help users find and keep track of apps that solve their problems.
-
-Exposing this catalogue:
-
-1. **Enables discovery UIs** — Browse can render install/uninstall affordances inline, showing which apps are already bookmarked and letting users add or remove them directly from the discovery surface.
-2. **Keeps the host authoritative** — mutations go through the host, which owns the storage schema and can enforce invariants.
-3. **Supports other products** — any product with permission can read the installed list (e.g. a dashboard, launcher, or analytics tool). Because DotNS is permissionless and anyone can publish a product, discovery tools beyond Browse may emerge and benefit from the same API.
+Hosts maintain a local catalogue of products the user has bookmarked, but this data is inaccessible to products. Discovery surfaces like Browse cannot show which apps are already bookmarked or let the user add new ones without this API.
 
 ## Detailed Design
 
@@ -28,87 +19,60 @@ Exposing this catalogue:
 
 ```rust
 struct FavouriteProduct {
-  product_id: DotNsIdentifier,
-  installed: bool,
-  source: ProductSource,
-  created_at: Timestamp,
-  updated_at: Timestamp
+    product_id: String,
+    source: FavouriteProductSource,
+    created_at: u64,
+    updated_at: u64,
 }
 
-enum ProductSource {
-  Remote,   // discovered via on-chain registry
-  Local     // sideloaded or manually added
+enum FavouriteProductSource {
+    Remote,
+    Local,
 }
 ```
 
-Exposing only the fields relevant to products, this mirrors the existing `ProductRecord` in the host's `products` table (see e.g. [polkadot-desktop products table](https://github.com/nickvdao/polkadot-desktop)).
+`product_id` is a DotNS identifier. `source` distinguishes on-chain registry discoveries (`Remote`) from sideloaded entries (`Local`). Timestamps are Unix seconds.
 
 ### API
 
+Three methods on a `Favourites` trait:
+
+**`subscribe`** — streams the full bookmarked-product list on each change. Hosts MAY debounce.
+
+**`add`** — upserts a product with `source: Remote`, setting `created_at` on first add and `updated_at` on every call. Returns the resulting record.
+
+**`forget`** — removes the product from the catalogue.
+
+### Error Handling
+
+Subscription errors and mutation errors use `CallError` with a domain enum:
+
 ```rust
-enum FavouritesErr {
-  NotConnected,
-  Rejected,
-  NotSupported,       // host does not implement a favourites catalogue
-  Unknown(GenericErr)
+enum HostFavouritesSubscribeError {
+    Unknown { reason: String },
 }
 
-fn host_favourites_subscribe(
-  callback: fn(Vec<FavouriteProduct>)
-) -> Result<Subscriber, FavouritesErr>;
+enum HostFavouritesAddError {
+    Unknown { reason: String },
+}
 
-fn host_favourites_add(
-  product_id: DotNsIdentifier
-) -> Result<FavouriteProduct, FavouritesErr>;
-
-fn host_favourites_forget(
-  product_id: DotNsIdentifier
-) -> Result<void, FavouritesErr>;
+enum HostFavouritesForgetError {
+    NotFound,
+    Unknown { reason: String },
+}
 ```
 
-- `host_favourites_subscribe` delivers the full list on each callback; hosts MAY debounce.
-- `host_favourites_add` upserts a `FavouriteProduct` with `source: Remote`, setting `created_at` on first install and `updated_at` on every call. Returns the resulting record.
-- `host_favourites_forget` removes the product from the catalogue entirely.
-
-All methods require authentication (RFC-0009).
+Permission denial and unsupported-host cases are handled by `CallError::Denied` and `CallError::Unsupported`.
 
 ### Permission Model
 
-Extends `DevicePermission` from RFC-0002:
-
-```rust
-enum DevicePermission {
-  // ... existing variants ...
-  Favourites
-}
-```
-
-| Permission | Grants |
-|-----------|--------|
-| `Favourites` | Read, add, and forget bookmarked products |
-
-**Browse privilege:** The host MAY grant implicit `Favourites` to Browse (the built-in discovery product) without prompting. This is analogous to how Browse currently writes directly to the products table.
+The host SHOULD prompt the user before granting a product access to the favourites catalogue. The host MAY grant implicit access to Browse (the built-in discovery product) without prompting.
 
 ### Host Behaviour
 
-On `host_favourites_add`:
-1. Upsert row in the products table with `installed: true`, `source: 'remote'`.
-2. Set `created_at` if new, `updated_at` on every call.
-3. Notify all active subscribers.
-
-On `host_favourites_forget`:
-1. Delete the row from the products table.
-2. Notify all active subscribers.
-
-The host SHOULD display a brief confirmation toast on install/forget for products other than Browse.
-
-Favourites are local to the host instance. Cross-host sync is out of scope for this RFC.
+Favourites are local to the host instance. Cross-host sync is out of scope.
 
 ## Drawbacks
 
 - **Full-list delivery.** No pagination or filtered subscriptions. Acceptable for typical catalogue sizes (tens to low hundreds).
-- **Browse coupling.** Implicit privilege for Browse assumes a well-known product identity. If Browse's DotNS identifier changes, the host must update its allowlist.
-
-## Unresolved Questions
-
-1. **Batch operations.** Should `host_favourites_add` accept multiple product IDs?
+- **Browse coupling.** Implicit privilege for Browse assumes a well-known product identity.
