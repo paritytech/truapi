@@ -70,7 +70,7 @@ jobs:
           node-version: 22
 
       - name: Install workspace deps
-        run: npm ci
+        run: TRUAPI_SKIP_PACKAGE_BUILD=1 npm ci --ignore-scripts
 
       - name: Run codegen
         run: ./scripts/codegen.sh
