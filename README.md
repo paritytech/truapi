@@ -106,8 +106,7 @@ This repopulates the ignored generated TS under `js/packages/truapi/`, including
 ## Protocol versions
 
 - **v0.1**: initial protocol version.
-- **v0.2**: See [`docs/design/v02-changes.md`](docs/design/v02-changes.md) for the rationale behind each change.
-- **v0.3**: current protocol version. Adds the Favourites API ([RFC 0013](docs/rfcs/0013-favourites-api.md)).
+- **v0.2**: current protocol version. See [`docs/design/v02-changes.md`](docs/design/v02-changes.md) for the rationale behind each change.
 
 ## Deploy
 
