@@ -64,7 +64,6 @@
     "ensure-generated": "./scripts/ensure-generated.sh",
     "build": "tsc",
     "prebuild": "npm run ensure-generated",
-    "prepare": "if [ \"${TRUAPI_SKIP_PACKAGE_BUILD:-0}\" != \"1\" ]; then npm run build; fi",
     "codegen": "cargo run -p truapi-codegen -- --input ../../../target/doc/truapi.json --output src/generated --playground-output src/playground --explorer-output src/explorer",
     "typecheck": "npm run build",
     "pretest": "npm run ensure-generated",
