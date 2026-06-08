@@ -228,6 +228,7 @@ impl NativeTrUApiCore {
             .session_state()
             .set_session(crate::host_logic::session::SessionInfo {
                 public_key,
+                sso: None,
                 entropy_secret: None,
                 lite_username,
                 full_username,

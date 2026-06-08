@@ -19,9 +19,12 @@ use crate::host_logic::permissions::{Decision, PermissionsService};
 use crate::host_logic::product_account::{
     derive_product_public_key, is_product_identifier, product_public_key_to_address,
 };
-use crate::host_logic::session::{SessionInfo, SessionState, decode_persisted_session};
+use crate::host_logic::session::{
+    SessionInfo, SessionState, decode_persisted_session, encode_persisted_session,
+};
 use crate::host_logic::sso_pairing::{
-    AppHandshakeData, create_pairing_bootstrap, decode_app_handshake_data, decrypt_handshake_answer,
+    AppHandshakeData, create_pairing_bootstrap, decode_app_handshake_data,
+    decrypt_handshake_answer, establish_sso_session_info,
 };
 use crate::host_logic::statement_store::{
     decode_statement_data, parse_new_statements, parse_subscribe_ack, subscribe_match_all_request,
@@ -655,9 +658,11 @@ where
             &[bootstrap.topic],
         ));
         let core_encryption_secret_key = bootstrap.encryption_secret_key;
-        let presenter =
-            PlatformPairingPresenter::present_pairing(self.platform.as_ref(), bootstrap.deeplink)
-                .fuse();
+        let presenter = PlatformPairingPresenter::present_pairing(
+            self.platform.as_ref(),
+            bootstrap.deeplink.clone(),
+        )
+        .fuse();
         let pairing_statement = wait_for_pairing_statement(statement_store.responses()).fuse();
         pin_mut!(presenter, pairing_statement);
 
@@ -690,15 +695,27 @@ where
                     &encrypted_message,
                 )
                 .map_err(|reason| CallError::HostFailure { reason })?;
-                Err(CallError::Domain(HostRequestLoginError::V1(
-                    v01::HostRequestLoginError::Unknown {
-                        reason: format!(
-                            "SSO session establishment not implemented (root_user_account_id={}, identity_account_id={})",
-                            hex::encode(answer.root_user_account_id),
-                            hex::encode(answer.identity_account_id)
-                        ),
-                    },
-                )))
+                let sso = establish_sso_session_info(&bootstrap, &answer)
+                    .map_err(|reason| CallError::HostFailure { reason })?;
+                let session = SessionInfo {
+                    public_key: answer.root_user_account_id,
+                    sso: Some(sso),
+                    entropy_secret: Some(bootstrap.statement_store_secret_seed.to_vec()),
+                    lite_username: None,
+                    full_username: None,
+                };
+                PlatformSessionStore::write_session(
+                    self.platform.as_ref(),
+                    encode_persisted_session(&session),
+                )
+                .await
+                .map_err(|err| CallError::HostFailure {
+                    reason: format!("session persist failed: {err:?}"),
+                })?;
+                self.session_state.set_session(session);
+                Ok(HostRequestLoginResponse::V1(
+                    v01::HostRequestLoginResponse::Success,
+                ))
             }
         }
     }
@@ -1483,6 +1500,7 @@ mod tests {
                 0xb8, 0xf5, 0x81, 0xaa, 0x99, 0xe3, 0x49, 0x3b, 0xf4, 0x96, 0xed, 0xf1, 0x51, 0xab,
                 0xc1, 0xd7, 0x20, 0x23,
             ],
+            sso: None,
             entropy_secret: Some((0..32).map(|i| i as u8).collect()),
             lite_username: Some("alice".to_string()),
             full_username: Some("Alice Smith".to_string()),

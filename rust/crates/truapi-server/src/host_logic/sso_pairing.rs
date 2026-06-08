@@ -16,9 +16,15 @@ use sha2::Sha256;
 use thiserror::Error;
 use truapi_platform::{PairingDeeplinkScheme, RuntimeConfig};
 
+use crate::host_logic::session::SsoSessionInfo;
+
 const HANDSHAKE_TOPIC_SUFFIX: &[u8] = b"topic";
 const MAX_P256_SECRET_ATTEMPTS: usize = 64;
 const AES_GCM_NONCE_LEN: usize = 12;
+const SESSION_PREFIX: &[u8] = b"session";
+const PIN_SEPARATOR: &[u8] = b"/";
+const REQUEST_CHANNEL_SUFFIX: &[u8] = b"request";
+const RESPONSE_CHANNEL_SUFFIX: &[u8] = b"response";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PairingBootstrap {
@@ -93,6 +99,40 @@ pub fn decrypt_handshake_answer(
     Ok(value)
 }
 
+pub fn establish_sso_session_info(
+    bootstrap: &PairingBootstrap,
+    answer: &SsoHandshakeAnswerSensitiveData,
+) -> Result<SsoSessionInfo, String> {
+    let shared_secret = shared_secret(
+        bootstrap.encryption_secret_key,
+        answer.shared_secret_derivation_key,
+    )?;
+    let shared_secret_bytes: [u8; 32] = (*shared_secret.raw_secret_bytes()).into();
+    let session_id_own = create_session_id(
+        shared_secret_bytes,
+        bootstrap.statement_store_public_key,
+        answer.identity_account_id,
+    );
+    let session_id_peer = create_session_id(
+        shared_secret_bytes,
+        answer.identity_account_id,
+        bootstrap.statement_store_public_key,
+    );
+
+    Ok(SsoSessionInfo {
+        ss_secret: bootstrap.statement_store_secret_seed,
+        ss_public_key: bootstrap.statement_store_public_key,
+        enc_secret: bootstrap.encryption_secret_key,
+        peer_enc_pubkey: answer.shared_secret_derivation_key,
+        identity_account_id: answer.identity_account_id,
+        session_id_own,
+        session_id_peer,
+        request_channel: keyed_hash(session_id_own, REQUEST_CHANNEL_SUFFIX),
+        response_channel: keyed_hash(session_id_own, RESPONSE_CHANNEL_SUFFIX),
+        peer_request_channel: keyed_hash(session_id_peer, REQUEST_CHANNEL_SUFFIX),
+    })
+}
+
 fn decrypt_p256_hkdf_aes_gcm(
     own_secret_key: [u8; 32],
     peer_public_key: [u8; 65],
@@ -101,11 +141,7 @@ fn decrypt_p256_hkdf_aes_gcm(
     if encrypted_message.len() < AES_GCM_NONCE_LEN {
         return Err("encrypted SSO handshake answer is too short".to_string());
     }
-    let secret = SecretKey::from_slice(&own_secret_key)
-        .map_err(|err| format!("invalid P-256 secret key: {err}"))?;
-    let peer_public = PublicKey::from_sec1_bytes(&peer_public_key)
-        .map_err(|err| format!("invalid P-256 public key: {err}"))?;
-    let shared_secret = diffie_hellman(secret.to_nonzero_scalar(), peer_public.as_affine());
+    let shared_secret = shared_secret(own_secret_key, peer_public_key)?;
 
     let hkdf = Hkdf::<Sha256>::new(None, shared_secret.raw_secret_bytes());
     let mut aes_key = [0u8; 32];
@@ -118,6 +154,41 @@ fn decrypt_p256_hkdf_aes_gcm(
     cipher
         .decrypt(Nonce::from_slice(nonce), ciphertext)
         .map_err(|err| format!("failed to decrypt SSO handshake answer: {err}"))
+}
+
+fn shared_secret(
+    own_secret_key: [u8; 32],
+    peer_public_key: [u8; 65],
+) -> Result<p256::ecdh::SharedSecret, String> {
+    let secret = SecretKey::from_slice(&own_secret_key)
+        .map_err(|err| format!("invalid P-256 secret key: {err}"))?;
+    let peer_public = PublicKey::from_sec1_bytes(&peer_public_key)
+        .map_err(|err| format!("invalid P-256 public key: {err}"))?;
+    Ok(diffie_hellman(
+        secret.to_nonzero_scalar(),
+        peer_public.as_affine(),
+    ))
+}
+
+fn create_session_id(
+    shared_secret: [u8; 32],
+    account_a: [u8; 32],
+    account_b: [u8; 32],
+) -> [u8; 32] {
+    let mut message = Vec::with_capacity(SESSION_PREFIX.len() + 32 + 32 + 2);
+    message.extend_from_slice(SESSION_PREFIX);
+    message.extend_from_slice(&account_a);
+    message.extend_from_slice(&account_b);
+    message.extend_from_slice(PIN_SEPARATOR);
+    message.extend_from_slice(PIN_SEPARATOR);
+    keyed_hash(shared_secret, &message)
+}
+
+fn keyed_hash(key: [u8; 32], message: &[u8]) -> [u8; 32] {
+    let digest = blake2b(32, &key, message);
+    let mut output = [0u8; 32];
+    output.copy_from_slice(digest.as_bytes());
+    output
 }
 
 pub fn create_pairing_bootstrap(
@@ -368,6 +439,50 @@ mod tests {
         assert_eq!(
             decrypt_handshake_answer([1; 32], ENC_PUBLIC, &[0; AES_GCM_NONCE_LEN - 1]).unwrap_err(),
             "encrypted SSO handshake answer is too short"
+        );
+    }
+
+    #[test]
+    fn establishes_session_ids_and_channels() {
+        let core_secret = SecretKey::from_slice(&[1; 32]).unwrap();
+        let core_public = core_secret.public_key().to_encoded_point(false);
+        let mut core_public_bytes = [0u8; 65];
+        core_public_bytes.copy_from_slice(core_public.as_bytes());
+        let bootstrap = PairingBootstrap {
+            deeplink: "polkadotapp://pair?handshake=00".to_string(),
+            topic: [0x11; 32],
+            statement_store_public_key: [0x22; 32],
+            statement_store_secret_seed: [0x33; 32],
+            encryption_public_key: core_public_bytes,
+            encryption_secret_key: [1; 32],
+        };
+        let peer_secret = SecretKey::from_slice(&[2; 32]).unwrap();
+        let peer_public = peer_secret.public_key().to_encoded_point(false);
+        let answer = SsoHandshakeAnswerSensitiveData {
+            shared_secret_derivation_key: peer_public.as_bytes().try_into().unwrap(),
+            root_user_account_id: [0x44; 32],
+            identity_account_id: [0x55; 32],
+        };
+
+        let info = establish_sso_session_info(&bootstrap, &answer).unwrap();
+
+        assert_eq!(info.ss_secret, [0x33; 32]);
+        assert_eq!(info.ss_public_key, [0x22; 32]);
+        assert_eq!(info.enc_secret, [1; 32]);
+        assert_eq!(info.peer_enc_pubkey, answer.shared_secret_derivation_key);
+        assert_eq!(info.identity_account_id, [0x55; 32]);
+        assert_ne!(info.session_id_own, info.session_id_peer);
+        assert_eq!(
+            info.request_channel,
+            keyed_hash(info.session_id_own, b"request")
+        );
+        assert_eq!(
+            info.response_channel,
+            keyed_hash(info.session_id_own, b"response")
+        );
+        assert_eq!(
+            info.peer_request_channel,
+            keyed_hash(info.session_id_peer, b"request")
         );
     }
 }

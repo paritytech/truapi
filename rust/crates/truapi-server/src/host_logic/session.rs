@@ -17,6 +17,9 @@ use truapi::versioned::account::HostAccountConnectionStatusSubscribeItem as Vers
 pub struct SessionInfo {
     /// 32-byte sr25519 root public key of the paired session.
     pub public_key: [u8; 32],
+    /// Core-owned SSO channel state. Transitional account-only session
+    /// injection paths leave this empty; core-run pairing always fills it.
+    pub sso: Option<SsoSessionInfo>,
     /// Current dotli entropy source: host-papp session `ssSecret` bytes.
     /// This is optional while transitional bridge code still pushes only
     /// identity/account state.
@@ -25,6 +28,30 @@ pub struct SessionInfo {
     pub lite_username: Option<String>,
     /// Fully qualified username (e.g. `Alice Smith`).
     pub full_username: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct SsoSessionInfo {
+    /// Core's own session sr25519 statement-store secret seed.
+    pub ss_secret: [u8; 32],
+    /// Core's own session sr25519 statement-store public key.
+    pub ss_public_key: [u8; 32],
+    /// Core's P-256 ECDH private key.
+    pub enc_secret: [u8; 32],
+    /// Wallet persistent P-256 public key.
+    pub peer_enc_pubkey: [u8; 65],
+    /// Wallet identity sr25519 account id.
+    pub identity_account_id: [u8; 32],
+    /// Core -> wallet topic id.
+    pub session_id_own: [u8; 32],
+    /// Wallet -> core topic id.
+    pub session_id_peer: [u8; 32],
+    /// Statement channel for core requests.
+    pub request_channel: [u8; 32],
+    /// Statement channel for wallet responses to core requests.
+    pub response_channel: [u8; 32],
+    /// Statement channel for wallet-initiated requests.
+    pub peer_request_channel: [u8; 32],
 }
 
 const PERSISTED_SESSION_VERSION: u8 = 1;
@@ -152,6 +179,7 @@ mod tests {
     fn info(pubkey_byte: u8) -> SessionInfo {
         SessionInfo {
             public_key: [pubkey_byte; 32],
+            sso: None,
             entropy_secret: None,
             lite_username: Some("alice".to_string()),
             full_username: None,
@@ -178,6 +206,28 @@ mod tests {
         let mut session = info(0x42);
         session.entropy_secret = Some(vec![1, 2, 3]);
         session.full_username = Some("Alice Smith".to_string());
+
+        let blob = encode_persisted_session(&session);
+        let decoded = decode_persisted_session(&blob).expect("session should decode");
+
+        assert_eq!(decoded, session);
+    }
+
+    #[test]
+    fn persisted_sso_session_round_trips() {
+        let mut session = info(0x42);
+        session.sso = Some(SsoSessionInfo {
+            ss_secret: [1; 32],
+            ss_public_key: [2; 32],
+            enc_secret: [3; 32],
+            peer_enc_pubkey: [4; 65],
+            identity_account_id: [5; 32],
+            session_id_own: [6; 32],
+            session_id_peer: [7; 32],
+            request_channel: [8; 32],
+            response_channel: [9; 32],
+            peer_request_channel: [10; 32],
+        });
 
         let blob = encode_persisted_session(&session);
         let decoded = decode_persisted_session(&blob).expect("session should decode");

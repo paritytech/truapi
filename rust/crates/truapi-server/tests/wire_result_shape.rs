@@ -361,6 +361,7 @@ fn subscription_start_receive_stop_through_wire_boundary() {
     core.session_state()
         .set_session(truapi_server::host_logic::session::SessionInfo {
             public_key: [7u8; 32],
+            sso: None,
             entropy_secret: None,
             lite_username: None,
             full_username: None,
