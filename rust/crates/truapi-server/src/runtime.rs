@@ -23,6 +23,7 @@ use crate::host_logic::session::{SessionInfo, SessionState};
 use crate::subscription::Spawner;
 
 use futures::StreamExt;
+use parity_scale_codec::Encode;
 use truapi::api::{
     Account, Chain, Chat, CoinPayment, Entropy, LocalStorage, Notifications, Payment, Permissions,
     Preimage, ResourceAllocation, Signing, StatementStore, System, Theme,
@@ -73,6 +74,10 @@ use truapi::versioned::preimage::{
     RemotePreimageLookupSubscribeItem, RemotePreimageLookupSubscribeRequest,
     RemotePreimageSubmitError, RemotePreimageSubmitRequest, RemotePreimageSubmitResponse,
 };
+use truapi::versioned::resource_allocation::{
+    HostRequestResourceAllocationError, HostRequestResourceAllocationRequest,
+    HostRequestResourceAllocationResponse,
+};
 use truapi::versioned::signing::{
     HostCreateTransactionError, HostCreateTransactionRequest, HostCreateTransactionResponse,
     HostCreateTransactionWithLegacyAccountError, HostCreateTransactionWithLegacyAccountRequest,
@@ -92,6 +97,7 @@ use truapi_platform::{
     ChainProvider as PlatformChainProvider, JsonRpcConnection, Navigation as PlatformNavigation,
     Notifications as PlatformNotifications, Platform, PreimageHost as PlatformPreimageHost,
     RuntimeConfig, Storage as PlatformStorage, ThemeHost as PlatformThemeHost,
+    UserConfirmation as PlatformUserConfirmation,
 };
 
 /// Adapter that exposes a [`truapi_platform::Platform`] through the
@@ -951,7 +957,7 @@ where
 // ---------------------------------------------------------------------------
 // Traits that defer entirely to default "unavailable" trait bodies.
 //
-// These API surfaces (Chat, CoinPayment, Payment, ResourceAllocation, Theme)
+// These API surfaces (Chat, CoinPayment, Payment)
 // are not part of the v0.1 platform contract, so we leave every method at its
 // default `Err(CallError::unavailable())` body and supply empty trait impls
 // here. Adding a method later only requires implementing the relevant
@@ -960,7 +966,49 @@ where
 impl<P> Chat for PlatformRuntimeHost<P> where P: Platform + 'static {}
 impl<P> CoinPayment for PlatformRuntimeHost<P> where P: Platform + 'static {}
 impl<P> Payment for PlatformRuntimeHost<P> where P: Platform + 'static {}
-impl<P> ResourceAllocation for PlatformRuntimeHost<P> where P: Platform + 'static {}
+
+impl<P> ResourceAllocation for PlatformRuntimeHost<P>
+where
+    P: Platform + 'static,
+{
+    async fn request(
+        &self,
+        _cx: &CallContext,
+        request: HostRequestResourceAllocationRequest,
+    ) -> Result<HostRequestResourceAllocationResponse, CallError<HostRequestResourceAllocationError>>
+    {
+        let HostRequestResourceAllocationRequest::V1(inner) = request;
+        if self.session_state.current().is_none() {
+            return Err(CallError::Domain(HostRequestResourceAllocationError::V1(
+                v01::ResourceAllocationError::Unknown {
+                    reason: "No active session".to_string(),
+                },
+            )));
+        }
+
+        let confirmed = PlatformUserConfirmation::confirm_resource_allocation(
+            self.platform.as_ref(),
+            inner.encode(),
+        )
+        .await
+        .map_err(|err| CallError::HostFailure {
+            reason: format!("resource allocation confirmation failed: {err:?}"),
+        })?;
+        if !confirmed {
+            return Err(CallError::Domain(HostRequestResourceAllocationError::V1(
+                v01::ResourceAllocationError::Unknown {
+                    reason: "User rejected resource allocation".to_string(),
+                },
+            )));
+        }
+
+        Err(CallError::Domain(HostRequestResourceAllocationError::V1(
+            v01::ResourceAllocationError::Unknown {
+                reason: "SSO resource allocation not implemented".to_string(),
+            },
+        )))
+    }
+}
 // ---------------------------------------------------------------------------
 // Entropy
 // ---------------------------------------------------------------------------
@@ -1133,12 +1181,16 @@ mod tests {
     /// can exercise its delegation paths without pulling in a real backend.
     struct StubPlatform {
         remote_permission_granted: bool,
+        resource_allocation_confirmed: bool,
+        resource_allocation_error: Option<&'static str>,
     }
 
     impl Default for StubPlatform {
         fn default() -> Self {
             Self {
                 remote_permission_granted: true,
+                resource_allocation_confirmed: false,
+                resource_allocation_error: None,
             }
         }
     }
@@ -1212,6 +1264,15 @@ mod tests {
             extensions: vec![],
             tx_ext_version: 0,
         }
+    }
+
+    fn resource_allocation_request() -> HostRequestResourceAllocationRequest {
+        HostRequestResourceAllocationRequest::V1(v01::HostRequestResourceAllocationRequest {
+            resources: vec![
+                v01::AllocatableResource::StatementStoreAllowance,
+                v01::AllocatableResource::AutoSigning,
+            ],
+        })
     }
 
     impl PlatformStorage for StubPlatform {
@@ -1339,7 +1400,13 @@ mod tests {
             &self,
             _review: Vec<u8>,
         ) -> Result<bool, v01::GenericError> {
-            Ok(false)
+            if let Some(reason) = self.resource_allocation_error {
+                Err(v01::GenericError {
+                    reason: reason.to_string(),
+                })
+            } else {
+                Ok(self.resource_allocation_confirmed)
+            }
         }
     }
 
@@ -1517,6 +1584,7 @@ mod tests {
         let host = PlatformRuntimeHost::new_compat(
             Arc::new(StubPlatform {
                 remote_permission_granted: false,
+                ..Default::default()
             }),
             test_spawner(),
         );
@@ -1681,6 +1749,7 @@ mod tests {
         let host = PlatformRuntimeHost::new(
             Arc::new(StubPlatform {
                 remote_permission_granted: false,
+                ..Default::default()
             }),
             runtime_config("myapp.dot"),
             test_spawner(),
@@ -1781,6 +1850,90 @@ mod tests {
                 v01::HostCreateTransactionError::PermissionDenied
             ))
         ));
+    }
+
+    #[test]
+    fn resource_allocation_rejects_without_session() {
+        let host = PlatformRuntimeHost::new_compat(stub_platform(), test_spawner());
+        let cx = CallContext::new();
+        let err = futures::executor::block_on(ResourceAllocation::request(
+            &host,
+            &cx,
+            resource_allocation_request(),
+        ))
+        .unwrap_err();
+        match err {
+            CallError::Domain(HostRequestResourceAllocationError::V1(
+                v01::ResourceAllocationError::Unknown { reason },
+            )) => assert_eq!(reason, "No active session"),
+            other => panic!("expected no-session resource allocation error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resource_allocation_rejects_when_user_declines() {
+        let host = PlatformRuntimeHost::new_compat(stub_platform(), test_spawner());
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let err = futures::executor::block_on(ResourceAllocation::request(
+            &host,
+            &cx,
+            resource_allocation_request(),
+        ))
+        .unwrap_err();
+        match err {
+            CallError::Domain(HostRequestResourceAllocationError::V1(
+                v01::ResourceAllocationError::Unknown { reason },
+            )) => assert_eq!(reason, "User rejected resource allocation"),
+            other => panic!("expected user-rejected resource allocation error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn resource_allocation_maps_confirmation_failure_to_host_failure() {
+        let host = PlatformRuntimeHost::new_compat(
+            Arc::new(StubPlatform {
+                resource_allocation_error: Some("modal failed"),
+                ..Default::default()
+            }),
+            test_spawner(),
+        );
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let err = futures::executor::block_on(ResourceAllocation::request(
+            &host,
+            &cx,
+            resource_allocation_request(),
+        ))
+        .unwrap_err();
+        assert!(
+            matches!(err, CallError::HostFailure { reason } if reason.contains("modal failed"))
+        );
+    }
+
+    #[test]
+    fn resource_allocation_accepts_confirmation_then_reaches_sso_boundary() {
+        let host = PlatformRuntimeHost::new_compat(
+            Arc::new(StubPlatform {
+                resource_allocation_confirmed: true,
+                ..Default::default()
+            }),
+            test_spawner(),
+        );
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let err = futures::executor::block_on(ResourceAllocation::request(
+            &host,
+            &cx,
+            resource_allocation_request(),
+        ))
+        .unwrap_err();
+        match err {
+            CallError::Domain(HostRequestResourceAllocationError::V1(
+                v01::ResourceAllocationError::Unknown { reason },
+            )) => assert_eq!(reason, "SSO resource allocation not implemented"),
+            other => panic!("expected SSO boundary error, got {other:?}"),
+        }
     }
 
     #[test]
