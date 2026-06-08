@@ -20,7 +20,7 @@ use crate::host_logic::session::SsoSessionInfo;
 
 const HANDSHAKE_TOPIC_SUFFIX: &[u8] = b"topic";
 const MAX_P256_SECRET_ATTEMPTS: usize = 64;
-const AES_GCM_NONCE_LEN: usize = 12;
+pub const AES_GCM_NONCE_LEN: usize = 12;
 const SESSION_PREFIX: &[u8] = b"session";
 const PIN_SEPARATOR: &[u8] = b"/";
 const REQUEST_CHANNEL_SUFFIX: &[u8] = b"request";
