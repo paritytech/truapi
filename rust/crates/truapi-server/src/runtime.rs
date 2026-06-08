@@ -20,11 +20,12 @@ use crate::host_logic::product_account::{
     derive_product_public_key, is_product_identifier, product_public_key_to_address,
 };
 use crate::host_logic::session::{
-    SessionInfo, SessionState, decode_persisted_session, encode_persisted_session,
+    SessionInfo, SessionState, SsoSessionInfo, decode_persisted_session, encode_persisted_session,
 };
 use crate::host_logic::sso_messages::{
-    OnExistingAllowancePolicy, RemoteMessage, alias_request_message,
-    build_outgoing_request_statement, create_transaction_message, resource_allocation_message,
+    OnExistingAllowancePolicy, RemoteMessage, SsoAllocationOutcome, SsoRemoteResponse,
+    SsoSessionStatement, alias_request_message, build_outgoing_request_statement,
+    create_transaction_message, decode_sso_session_statement, resource_allocation_message,
     sign_payload_message, sign_raw_message,
 };
 use crate::host_logic::sso_pairing::{
@@ -230,7 +231,7 @@ where
         session: &SessionInfo,
         action: &str,
         message: RemoteMessage,
-    ) -> Result<(), String> {
+    ) -> Result<SsoRemoteResponse, String> {
         let sso = session
             .sso
             .as_ref()
@@ -248,11 +249,29 @@ where
         )
         .await
         .map_err(|err| format!("SSO statement-store connect failed: {err:?}"))?;
+        let own_subscription_request_id = format!("truapi:sso-sub-own:{message_id}");
+        let peer_subscription_request_id = format!("truapi:sso-sub-peer:{message_id}");
+        connection.send(subscribe_match_all_request(
+            &own_subscription_request_id,
+            &[sso.session_id_own],
+        ));
+        connection.send(subscribe_match_all_request(
+            &peer_subscription_request_id,
+            &[sso.session_id_peer],
+        ));
         connection.send(submit_statement_request(
             &format!("truapi:sso-submit:{message_id}"),
             &statement,
         ));
-        Ok(())
+        wait_for_sso_remote_response(
+            connection.responses(),
+            sso,
+            &own_subscription_request_id,
+            &peer_subscription_request_id,
+            &message_id,
+            &message_id,
+        )
+        .await
     }
 
     fn validate_legacy_address_signer(
@@ -289,6 +308,86 @@ where
             })
         }
     }
+}
+
+async fn wait_for_sso_remote_response(
+    mut responses: BoxStream<'static, String>,
+    session: &SsoSessionInfo,
+    own_subscription_request_id: &str,
+    peer_subscription_request_id: &str,
+    statement_request_id: &str,
+    remote_message_id: &str,
+) -> Result<SsoRemoteResponse, String> {
+    let mut own_remote_subscription_id = None;
+    let mut peer_remote_subscription_id = None;
+    let mut request_accepted = false;
+    let mut pending_remote_response = None;
+
+    while let Some(frame) = responses.next().await {
+        if own_remote_subscription_id.is_none() {
+            if let Some(id) = parse_subscribe_ack(&frame, own_subscription_request_id)
+                .map_err(|err| err.to_string())?
+            {
+                own_remote_subscription_id = Some(id);
+                continue;
+            }
+        }
+        if peer_remote_subscription_id.is_none() {
+            if let Some(id) = parse_subscribe_ack(&frame, peer_subscription_request_id)
+                .map_err(|err| err.to_string())?
+            {
+                peer_remote_subscription_id = Some(id);
+                continue;
+            }
+        }
+
+        let Some(page) = parse_new_statements(&frame).map_err(|err| err.to_string())? else {
+            continue;
+        };
+        if !subscription_id_matches(
+            &page.remote_subscription_id,
+            own_remote_subscription_id.as_deref(),
+            peer_remote_subscription_id.as_deref(),
+        ) {
+            continue;
+        }
+
+        for statement in page.statements {
+            match decode_sso_session_statement(
+                session,
+                &statement,
+                statement_request_id,
+                remote_message_id,
+            )? {
+                Some(SsoSessionStatement::RequestAccepted) => {
+                    request_accepted = true;
+                    if let Some(response) = pending_remote_response.take() {
+                        return Ok(response);
+                    }
+                }
+                Some(SsoSessionStatement::RemoteResponse(response)) => {
+                    if request_accepted {
+                        return Ok(response);
+                    }
+                    pending_remote_response = Some(response);
+                }
+                None => {}
+            }
+        }
+    }
+
+    Err(format!(
+        "SSO response stream ended before response for {remote_message_id}"
+    ))
+}
+
+fn subscription_id_matches(
+    remote_subscription_id: &str,
+    own_remote_subscription_id: Option<&str>,
+    peer_remote_subscription_id: Option<&str>,
+) -> bool {
+    own_remote_subscription_id == Some(remote_subscription_id)
+        || peer_remote_subscription_id == Some(remote_subscription_id)
 }
 
 fn sso_message_id(cx: &CallContext, action: &str) -> String {
@@ -589,19 +688,29 @@ where
             product_account_id,
             self.runtime_config.product_id.clone(),
         );
-        self.submit_sso_remote_message(cx, &session, "account-alias", message)
+        let response = self
+            .submit_sso_remote_message(cx, &session, "account-alias", message)
             .await
             .map_err(|reason| {
                 CallError::Domain(HostAccountGetAliasError::V1(
                     v01::HostAccountGetError::Unknown { reason },
                 ))
             })?;
-
-        Err(CallError::Domain(HostAccountGetAliasError::V1(
-            v01::HostAccountGetError::Unknown {
-                reason: "SSO account alias response wait not implemented".to_string(),
-            },
-        )))
+        let SsoRemoteResponse::RingVrfAlias(response) = response else {
+            return Err(CallError::Domain(HostAccountGetAliasError::V1(
+                v01::HostAccountGetError::Unknown {
+                    reason: "Unexpected SSO response for account alias request".to_string(),
+                },
+            )));
+        };
+        response
+            .payload
+            .map(HostAccountGetAliasResponse::V1)
+            .map_err(|reason| {
+                CallError::Domain(HostAccountGetAliasError::V1(
+                    v01::HostAccountGetError::Unknown { reason },
+                ))
+            })
     }
 
     async fn get_legacy_accounts(
@@ -876,18 +985,34 @@ where
         }
         let message_id = sso_message_id(cx, "sign-payload");
         let message = sign_payload_message(message_id, inner);
-        self.submit_sso_remote_message(cx, &session, "sign-payload", message)
+        let response = self
+            .submit_sso_remote_message(cx, &session, "sign-payload", message)
             .await
             .map_err(|reason| {
                 CallError::Domain(HostSignPayloadError::V1(
                     v01::HostSignPayloadError::Unknown { reason },
                 ))
             })?;
-        Err(CallError::Domain(HostSignPayloadError::V1(
-            v01::HostSignPayloadError::Unknown {
-                reason: "SSO signing response wait not implemented".to_string(),
-            },
-        )))
+        let SsoRemoteResponse::Sign(response) = response else {
+            return Err(CallError::Domain(HostSignPayloadError::V1(
+                v01::HostSignPayloadError::Unknown {
+                    reason: "Unexpected SSO response for signing request".to_string(),
+                },
+            )));
+        };
+        response
+            .payload
+            .map(|payload| {
+                HostSignPayloadResponse::V1(v01::HostSignPayloadResponse {
+                    signature: payload.signature,
+                    signed_transaction: payload.signed_transaction,
+                })
+            })
+            .map_err(|reason| {
+                CallError::Domain(HostSignPayloadError::V1(
+                    v01::HostSignPayloadError::Unknown { reason },
+                ))
+            })
     }
 
     async fn sign_raw(
@@ -921,18 +1046,34 @@ where
         }
         let message_id = sso_message_id(cx, "sign-raw");
         let message = sign_raw_message(message_id, inner);
-        self.submit_sso_remote_message(cx, &session, "sign-raw", message)
+        let response = self
+            .submit_sso_remote_message(cx, &session, "sign-raw", message)
             .await
             .map_err(|reason| {
                 CallError::Domain(HostSignRawError::V1(v01::HostSignPayloadError::Unknown {
                     reason,
                 }))
             })?;
-        Err(CallError::Domain(HostSignRawError::V1(
-            v01::HostSignPayloadError::Unknown {
-                reason: "SSO signing response wait not implemented".to_string(),
-            },
-        )))
+        let SsoRemoteResponse::Sign(response) = response else {
+            return Err(CallError::Domain(HostSignRawError::V1(
+                v01::HostSignPayloadError::Unknown {
+                    reason: "Unexpected SSO response for signing request".to_string(),
+                },
+            )));
+        };
+        response
+            .payload
+            .map(|payload| {
+                HostSignRawResponse::V1(v01::HostSignPayloadResponse {
+                    signature: payload.signature,
+                    signed_transaction: payload.signed_transaction,
+                })
+            })
+            .map_err(|reason| {
+                CallError::Domain(HostSignRawError::V1(v01::HostSignPayloadError::Unknown {
+                    reason,
+                }))
+            })
     }
 
     async fn create_transaction(
@@ -975,18 +1116,33 @@ where
         }
         let message_id = sso_message_id(cx, "create-transaction");
         let message = create_transaction_message(message_id, inner);
-        self.submit_sso_remote_message(cx, &session, "create-transaction", message)
+        let response = self
+            .submit_sso_remote_message(cx, &session, "create-transaction", message)
             .await
             .map_err(|reason| {
                 CallError::Domain(HostCreateTransactionError::V1(
                     v01::HostCreateTransactionError::Unknown { reason },
                 ))
             })?;
-        Err(CallError::Domain(HostCreateTransactionError::V1(
-            v01::HostCreateTransactionError::Unknown {
-                reason: "SSO transaction response wait not implemented".to_string(),
-            },
-        )))
+        let SsoRemoteResponse::CreateTransaction(response) = response else {
+            return Err(CallError::Domain(HostCreateTransactionError::V1(
+                v01::HostCreateTransactionError::Unknown {
+                    reason: "Unexpected SSO response for transaction request".to_string(),
+                },
+            )));
+        };
+        response
+            .signed_transaction
+            .map(|transaction| {
+                HostCreateTransactionResponse::V1(v01::HostCreateTransactionResponse {
+                    transaction,
+                })
+            })
+            .map_err(|reason| {
+                CallError::Domain(HostCreateTransactionError::V1(
+                    v01::HostCreateTransactionError::Unknown { reason },
+                ))
+            })
     }
 
     async fn sign_payload_with_legacy_account(
@@ -1040,18 +1196,34 @@ where
                 payload: inner.payload,
             },
         );
-        self.submit_sso_remote_message(cx, &session, "legacy-sign-payload", message)
+        let response = self
+            .submit_sso_remote_message(cx, &session, "legacy-sign-payload", message)
             .await
             .map_err(|reason| {
                 CallError::Domain(HostSignPayloadWithLegacyAccountError::V1(
                     v01::HostSignPayloadError::Unknown { reason },
                 ))
             })?;
-        Err(CallError::Domain(
-            HostSignPayloadWithLegacyAccountError::V1(v01::HostSignPayloadError::Unknown {
-                reason: "SSO signing response wait not implemented".to_string(),
-            }),
-        ))
+        let SsoRemoteResponse::Sign(response) = response else {
+            return Err(CallError::Domain(
+                HostSignPayloadWithLegacyAccountError::V1(v01::HostSignPayloadError::Unknown {
+                    reason: "Unexpected SSO response for signing request".to_string(),
+                }),
+            ));
+        };
+        response
+            .payload
+            .map(|payload| {
+                HostSignPayloadWithLegacyAccountResponse::V1(v01::HostSignPayloadResponse {
+                    signature: payload.signature,
+                    signed_transaction: payload.signed_transaction,
+                })
+            })
+            .map_err(|reason| {
+                CallError::Domain(HostSignPayloadWithLegacyAccountError::V1(
+                    v01::HostSignPayloadError::Unknown { reason },
+                ))
+            })
     }
 
     async fn sign_raw_with_legacy_account(
@@ -1092,18 +1264,34 @@ where
                 payload: inner.payload,
             },
         );
-        self.submit_sso_remote_message(cx, &session, "legacy-sign-raw", message)
+        let response = self
+            .submit_sso_remote_message(cx, &session, "legacy-sign-raw", message)
             .await
             .map_err(|reason| {
                 CallError::Domain(HostSignRawWithLegacyAccountError::V1(
                     v01::HostSignPayloadError::Unknown { reason },
                 ))
             })?;
-        Err(CallError::Domain(HostSignRawWithLegacyAccountError::V1(
-            v01::HostSignPayloadError::Unknown {
-                reason: "SSO signing response wait not implemented".to_string(),
-            },
-        )))
+        let SsoRemoteResponse::Sign(response) = response else {
+            return Err(CallError::Domain(HostSignRawWithLegacyAccountError::V1(
+                v01::HostSignPayloadError::Unknown {
+                    reason: "Unexpected SSO response for signing request".to_string(),
+                },
+            )));
+        };
+        response
+            .payload
+            .map(|payload| {
+                HostSignRawWithLegacyAccountResponse::V1(v01::HostSignPayloadResponse {
+                    signature: payload.signature,
+                    signed_transaction: payload.signed_transaction,
+                })
+            })
+            .map_err(|reason| {
+                CallError::Domain(HostSignRawWithLegacyAccountError::V1(
+                    v01::HostSignPayloadError::Unknown { reason },
+                ))
+            })
     }
 
     async fn create_transaction_with_legacy_account(
@@ -1166,20 +1354,35 @@ where
                 tx_ext_version: inner.tx_ext_version,
             },
         );
-        self.submit_sso_remote_message(cx, &session, "legacy-create-transaction", message)
+        let response = self
+            .submit_sso_remote_message(cx, &session, "legacy-create-transaction", message)
             .await
             .map_err(|reason| {
                 CallError::Domain(HostCreateTransactionWithLegacyAccountError::V1(
                     v01::HostCreateTransactionError::Unknown { reason },
                 ))
             })?;
-        Err(CallError::Domain(
-            HostCreateTransactionWithLegacyAccountError::V1(
-                v01::HostCreateTransactionError::Unknown {
-                    reason: "SSO transaction response wait not implemented".to_string(),
-                },
-            ),
-        ))
+        let SsoRemoteResponse::CreateTransaction(response) = response else {
+            return Err(CallError::Domain(
+                HostCreateTransactionWithLegacyAccountError::V1(
+                    v01::HostCreateTransactionError::Unknown {
+                        reason: "Unexpected SSO response for transaction request".to_string(),
+                    },
+                ),
+            ));
+        };
+        response
+            .signed_transaction
+            .map(|transaction| {
+                HostCreateTransactionWithLegacyAccountResponse::V1(
+                    v01::HostCreateTransactionWithLegacyAccountResponse { transaction },
+                )
+            })
+            .map_err(|reason| {
+                CallError::Domain(HostCreateTransactionWithLegacyAccountError::V1(
+                    v01::HostCreateTransactionError::Unknown { reason },
+                ))
+            })
     }
 }
 
@@ -1431,19 +1634,46 @@ where
             inner.resources,
             OnExistingAllowancePolicy::Increase,
         );
-        self.submit_sso_remote_message(cx, &session, "resource-allocation", message)
+        let response = self
+            .submit_sso_remote_message(cx, &session, "resource-allocation", message)
             .await
             .map_err(|reason| {
                 CallError::Domain(HostRequestResourceAllocationError::V1(
                     v01::ResourceAllocationError::Unknown { reason },
                 ))
             })?;
+        let SsoRemoteResponse::ResourceAllocation(response) = response else {
+            return Err(CallError::Domain(HostRequestResourceAllocationError::V1(
+                v01::ResourceAllocationError::Unknown {
+                    reason: "Unexpected SSO response for resource allocation request".to_string(),
+                },
+            )));
+        };
+        response
+            .payload
+            .map(|outcomes| {
+                HostRequestResourceAllocationResponse::V1(
+                    v01::HostRequestResourceAllocationResponse {
+                        outcomes: outcomes
+                            .into_iter()
+                            .map(resource_allocation_outcome)
+                            .collect(),
+                    },
+                )
+            })
+            .map_err(|reason| {
+                CallError::Domain(HostRequestResourceAllocationError::V1(
+                    v01::ResourceAllocationError::Unknown { reason },
+                ))
+            })
+    }
+}
 
-        Err(CallError::Domain(HostRequestResourceAllocationError::V1(
-            v01::ResourceAllocationError::Unknown {
-                reason: "SSO resource allocation response wait not implemented".to_string(),
-            },
-        )))
+fn resource_allocation_outcome(outcome: SsoAllocationOutcome) -> v01::AllocationOutcome {
+    match outcome {
+        SsoAllocationOutcome::Allocated(_) => v01::AllocationOutcome::Allocated,
+        SsoAllocationOutcome::Rejected => v01::AllocationOutcome::Rejected,
+        SsoAllocationOutcome::NotAvailable => v01::AllocationOutcome::NotAvailable,
     }
 }
 // ---------------------------------------------------------------------------
@@ -1748,6 +1978,120 @@ mod tests {
         };
         crate::host_logic::sso_messages::RemoteMessage::decode(&mut data[0].as_slice())
             .expect("remote message should decode")
+    }
+
+    fn sso_success_responses(
+        session: &crate::host_logic::session::SessionInfo,
+        message_id: &str,
+        response: crate::host_logic::sso_messages::RemoteMessage,
+    ) -> Vec<String> {
+        let own_subscription_id = format!("own-sub-{message_id}");
+        let peer_subscription_id = format!("peer-sub-{message_id}");
+        vec![
+            subscribe_ack_frame(
+                &format!("truapi:sso-sub-own:{message_id}"),
+                &own_subscription_id,
+            ),
+            subscribe_ack_frame(
+                &format!("truapi:sso-sub-peer:{message_id}"),
+                &peer_subscription_id,
+            ),
+            new_statements_frame(
+                &own_subscription_id,
+                vec![sso_statement(
+                    session,
+                    crate::host_logic::sso_pairing::SsoStatementData::Response {
+                        request_id: message_id.to_string(),
+                        response_code: 0,
+                    },
+                    1,
+                )],
+            ),
+            new_statements_frame(
+                &peer_subscription_id,
+                vec![sso_statement(
+                    session,
+                    crate::host_logic::sso_pairing::SsoStatementData::Request {
+                        request_id: format!("wallet-response-{message_id}"),
+                        data: vec![response.encode()],
+                    },
+                    2,
+                )],
+            ),
+        ]
+    }
+
+    fn subscribe_ack_frame(request_id: &str, subscription_id: &str) -> String {
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": request_id,
+            "result": subscription_id,
+        })
+        .to_string()
+    }
+
+    fn new_statements_frame(subscription_id: &str, statements: Vec<Vec<u8>>) -> String {
+        let statements = statements
+            .into_iter()
+            .map(|statement| format!("0x{}", hex::encode(statement)))
+            .collect::<Vec<_>>();
+        serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "statement_subscribeStatement",
+            "params": {
+                "subscription": subscription_id,
+                "result": {
+                    "event": "newStatements",
+                    "data": {
+                        "statements": statements,
+                        "remaining": 0,
+                    },
+                },
+            },
+        })
+        .to_string()
+    }
+
+    fn sso_statement(
+        session: &crate::host_logic::session::SessionInfo,
+        data: crate::host_logic::sso_pairing::SsoStatementData,
+        nonce_seed: u8,
+    ) -> Vec<u8> {
+        let mut nonce = [0; crate::host_logic::sso_pairing::AES_GCM_NONCE_LEN];
+        nonce[0] = nonce_seed;
+        let encrypted = crate::host_logic::sso_pairing::encrypt_session_statement_data_with_nonce(
+            session.sso.as_ref().unwrap(),
+            &data,
+            nonce,
+        )
+        .unwrap();
+        vec![crate::host_logic::statement_store::StatementField::Data(
+            encrypted,
+        )]
+        .encode()
+    }
+
+    fn sign_response_message(
+        message_id: &str,
+        signature: Vec<u8>,
+        signed_transaction: Option<Vec<u8>>,
+    ) -> crate::host_logic::sso_messages::RemoteMessage {
+        crate::host_logic::sso_messages::RemoteMessage {
+            message_id: format!("wallet-{message_id}"),
+            data: crate::host_logic::sso_messages::RemoteMessageData::V1(
+                crate::host_logic::sso_messages::RemoteMessageV1::SignResponse(
+                    crate::host_logic::sso_messages::SigningResponse {
+                        responding_to: message_id.to_string(),
+                        payload: Ok(
+                            crate::host_logic::sso_messages::SigningPayloadResponseData {
+                                signature,
+                                signed_transaction,
+                            },
+                        ),
+                    },
+                ),
+            ),
+        }
     }
 
     fn account_id(identifier: &str, derivation_index: u32) -> v01::ProductAccountId {
@@ -2163,26 +2507,43 @@ mod tests {
     }
 
     #[test]
-    fn get_account_alias_same_domain_reaches_sso_boundary() {
-        let platform = stub_platform();
+    fn get_account_alias_same_domain_returns_sso_response() {
+        let session = sso_session_info();
+        let platform = Arc::new(StubPlatform {
+            rpc_responses: sso_success_responses(
+                &session,
+                "alias-1",
+                crate::host_logic::sso_messages::RemoteMessage {
+                    message_id: "wallet-alias-1".to_string(),
+                    data: crate::host_logic::sso_messages::RemoteMessageData::V1(
+                        crate::host_logic::sso_messages::RemoteMessageV1::RingVrfAliasResponse(
+                            crate::host_logic::sso_messages::RingVrfAliasResponse {
+                                responding_to: "alias-1".to_string(),
+                                payload: Ok(v01::HostAccountGetAliasResponse {
+                                    context: [9; 32],
+                                    alias: vec![1, 2, 3],
+                                }),
+                            },
+                        ),
+                    ),
+                },
+            ),
+            ..Default::default()
+        });
         let host = PlatformRuntimeHost::new(
             platform.clone(),
             runtime_config("myapp.dot"),
             test_spawner(),
         );
-        let session = sso_session_info();
         host.session_state().set_session(session.clone());
         let cx = CallContext::with_request_id("alias-1".to_string());
-        let err = futures::executor::block_on(
+        let response = futures::executor::block_on(
             host.get_account_alias(&cx, account_alias_request("myapp.dot")),
         )
-        .unwrap_err();
-        match err {
-            CallError::Domain(HostAccountGetAliasError::V1(
-                v01::HostAccountGetError::Unknown { reason },
-            )) => assert_eq!(reason, "SSO account alias response wait not implemented"),
-            other => panic!("expected SSO alias boundary error, got {other:?}"),
-        }
+        .unwrap();
+        let HostAccountGetAliasResponse::V1(inner) = response;
+        assert_eq!(inner.context, [9; 32]);
+        assert_eq!(inner.alias, vec![1, 2, 3]);
         let message = submitted_remote_message(&platform, &session);
         assert!(matches!(
             message.data,
@@ -2232,9 +2593,28 @@ mod tests {
     }
 
     #[test]
-    fn get_account_alias_cross_domain_accepts_confirmation_then_reaches_sso_boundary() {
+    fn get_account_alias_cross_domain_accepts_confirmation_then_returns_sso_response() {
+        let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
             account_alias_confirmed: true,
+            rpc_responses: sso_success_responses(
+                &session,
+                "alias-2",
+                crate::host_logic::sso_messages::RemoteMessage {
+                    message_id: "wallet-alias-2".to_string(),
+                    data: crate::host_logic::sso_messages::RemoteMessageData::V1(
+                        crate::host_logic::sso_messages::RemoteMessageV1::RingVrfAliasResponse(
+                            crate::host_logic::sso_messages::RingVrfAliasResponse {
+                                responding_to: "alias-2".to_string(),
+                                payload: Ok(v01::HostAccountGetAliasResponse {
+                                    context: [8; 32],
+                                    alias: vec![4, 5, 6],
+                                }),
+                            },
+                        ),
+                    ),
+                },
+            ),
             ..Default::default()
         });
         let host = PlatformRuntimeHost::new(
@@ -2242,19 +2622,15 @@ mod tests {
             runtime_config("myapp.dot"),
             test_spawner(),
         );
-        let session = sso_session_info();
         host.session_state().set_session(session.clone());
         let cx = CallContext::with_request_id("alias-2".to_string());
-        let err = futures::executor::block_on(
+        let response = futures::executor::block_on(
             host.get_account_alias(&cx, account_alias_request("other.dot")),
         )
-        .unwrap_err();
-        match err {
-            CallError::Domain(HostAccountGetAliasError::V1(
-                v01::HostAccountGetError::Unknown { reason },
-            )) => assert_eq!(reason, "SSO account alias response wait not implemented"),
-            other => panic!("expected SSO alias boundary error, got {other:?}"),
-        }
+        .unwrap();
+        let HostAccountGetAliasResponse::V1(inner) = response;
+        assert_eq!(inner.context, [8; 32]);
+        assert_eq!(inner.alias, vec![4, 5, 6]);
         let message = submitted_remote_message(&platform, &session);
         assert!(matches!(
             message.data,
@@ -2492,9 +2868,15 @@ mod tests {
     }
 
     #[test]
-    fn sign_raw_accepts_confirmation_then_reaches_sso_boundary() {
+    fn sign_raw_accepts_confirmation_then_returns_sso_response() {
+        let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
             sign_raw_confirmed: true,
+            rpc_responses: sso_success_responses(
+                &session,
+                "sign-raw-1",
+                sign_response_message("sign-raw-1", vec![7, 7], None),
+            ),
             ..Default::default()
         });
         let host = PlatformRuntimeHost::new(
@@ -2502,20 +2884,16 @@ mod tests {
             runtime_config("myapp.dot"),
             test_spawner(),
         );
-        let session = sso_session_info();
         host.session_state().set_session(session.clone());
         let cx = CallContext::with_request_id("sign-raw-1".to_string());
         let request = HostSignRawRequest::V1(v01::HostSignRawRequest {
             account: account_id("myapp.dot", 0),
             payload: raw_payload(),
         });
-        let err = futures::executor::block_on(host.sign_raw(&cx, request)).unwrap_err();
-        match err {
-            CallError::Domain(HostSignRawError::V1(v01::HostSignPayloadError::Unknown {
-                reason,
-            })) => assert_eq!(reason, "SSO signing response wait not implemented"),
-            other => panic!("expected SSO boundary error, got {other:?}"),
-        }
+        let response = futures::executor::block_on(host.sign_raw(&cx, request)).unwrap();
+        let HostSignRawResponse::V1(inner) = response;
+        assert_eq!(inner.signature, vec![7, 7]);
+        assert_eq!(inner.signed_transaction, None);
         let message = submitted_remote_message(&platform, &session);
         assert!(matches!(
             message.data,
@@ -2575,9 +2953,15 @@ mod tests {
     }
 
     #[test]
-    fn sign_payload_accepts_confirmation_then_reaches_sso_boundary() {
+    fn sign_payload_accepts_confirmation_then_returns_sso_response() {
+        let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
             sign_payload_confirmed: true,
+            rpc_responses: sso_success_responses(
+                &session,
+                "sign-payload-1",
+                sign_response_message("sign-payload-1", vec![8, 8], Some(vec![0xab, 0xcd])),
+            ),
             ..Default::default()
         });
         let host = PlatformRuntimeHost::new(
@@ -2585,7 +2969,6 @@ mod tests {
             runtime_config("myapp.dot"),
             test_spawner(),
         );
-        let session = sso_session_info();
         host.session_state().set_session(session.clone());
         let cx = CallContext::with_request_id("sign-payload-1".to_string());
         let request = HostSignPayloadRequest::V1(v01::HostSignPayloadRequest {
@@ -2593,14 +2976,11 @@ mod tests {
             payload: sign_payload_data(),
         });
 
-        let err = futures::executor::block_on(host.sign_payload(&cx, request)).unwrap_err();
+        let response = futures::executor::block_on(host.sign_payload(&cx, request)).unwrap();
 
-        match err {
-            CallError::Domain(HostSignPayloadError::V1(v01::HostSignPayloadError::Unknown {
-                reason,
-            })) => assert_eq!(reason, "SSO signing response wait not implemented"),
-            other => panic!("expected SSO boundary error, got {other:?}"),
-        }
+        let HostSignPayloadResponse::V1(inner) = response;
+        assert_eq!(inner.signature, vec![8, 8]);
+        assert_eq!(inner.signed_transaction, Some(vec![0xab, 0xcd]));
         let message = submitted_remote_message(&platform, &session);
         assert!(matches!(
             message.data,
@@ -2613,9 +2993,25 @@ mod tests {
     }
 
     #[test]
-    fn create_transaction_accepts_confirmation_then_reaches_sso_boundary() {
+    fn create_transaction_accepts_confirmation_then_returns_sso_response() {
+        let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
             create_transaction_confirmed: true,
+            rpc_responses: sso_success_responses(
+                &session,
+                "create-tx-1",
+                crate::host_logic::sso_messages::RemoteMessage {
+                    message_id: "wallet-create-tx-1".to_string(),
+                    data: crate::host_logic::sso_messages::RemoteMessageData::V1(
+                        crate::host_logic::sso_messages::RemoteMessageV1::CreateTransactionResponse(
+                            crate::host_logic::sso_messages::CreateTransactionResponse {
+                                responding_to: "create-tx-1".to_string(),
+                                signed_transaction: Ok(vec![0xca, 0xfe]),
+                            },
+                        ),
+                    ),
+                },
+            ),
             ..Default::default()
         });
         let host = PlatformRuntimeHost::new(
@@ -2623,17 +3019,12 @@ mod tests {
             runtime_config("myapp.dot"),
             test_spawner(),
         );
-        let session = sso_session_info();
         host.session_state().set_session(session.clone());
         let cx = CallContext::with_request_id("create-tx-1".to_string());
         let request = HostCreateTransactionRequest::V1(product_tx_payload("myapp.dot"));
-        let err = futures::executor::block_on(host.create_transaction(&cx, request)).unwrap_err();
-        match err {
-            CallError::Domain(HostCreateTransactionError::V1(
-                v01::HostCreateTransactionError::Unknown { reason },
-            )) => assert_eq!(reason, "SSO transaction response wait not implemented"),
-            other => panic!("expected SSO transaction boundary error, got {other:?}"),
-        }
+        let response = futures::executor::block_on(host.create_transaction(&cx, request)).unwrap();
+        let HostCreateTransactionResponse::V1(inner) = response;
+        assert_eq!(inner.transaction, vec![0xca, 0xfe]);
         let message = submitted_remote_message(&platform, &session);
         assert!(matches!(
             message.data,
@@ -2665,9 +3056,15 @@ mod tests {
     }
 
     #[test]
-    fn legacy_sign_raw_accepts_derived_ss58_then_reaches_sso_boundary() {
+    fn legacy_sign_raw_accepts_derived_ss58_then_returns_sso_response() {
+        let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
             sign_raw_confirmed: true,
+            rpc_responses: sso_success_responses(
+                &session,
+                "legacy-sign-raw-1",
+                sign_response_message("legacy-sign-raw-1", vec![9, 9], None),
+            ),
             ..Default::default()
         });
         let host = PlatformRuntimeHost::new(
@@ -2675,7 +3072,6 @@ mod tests {
             runtime_config("myapp.dot"),
             test_spawner(),
         );
-        let session = sso_session_info();
         host.session_state().set_session(session.clone());
         let cx = CallContext::with_request_id("legacy-sign-raw-1".to_string());
         let request =
@@ -2683,14 +3079,11 @@ mod tests {
                 signer: "5CyFsdhwjXy7wWpDEM6isungQ3LfGnu9UXkt7paBQ6DYRxk1".to_string(),
                 payload: raw_payload(),
             });
-        let err = futures::executor::block_on(host.sign_raw_with_legacy_account(&cx, request))
-            .unwrap_err();
-        match err {
-            CallError::Domain(HostSignRawWithLegacyAccountError::V1(
-                v01::HostSignPayloadError::Unknown { reason },
-            )) => assert_eq!(reason, "SSO signing response wait not implemented"),
-            other => panic!("expected SSO boundary error, got {other:?}"),
-        }
+        let response =
+            futures::executor::block_on(host.sign_raw_with_legacy_account(&cx, request)).unwrap();
+        let HostSignRawWithLegacyAccountResponse::V1(inner) = response;
+        assert_eq!(inner.signature, vec![9, 9]);
+        assert_eq!(inner.signed_transaction, None);
         let message = submitted_remote_message(&platform, &session);
         assert!(matches!(
             message.data,
@@ -2803,30 +3196,53 @@ mod tests {
     }
 
     #[test]
-    fn resource_allocation_accepts_confirmation_then_reaches_sso_boundary() {
+    fn resource_allocation_accepts_confirmation_then_returns_sso_response() {
+        let session = sso_session_info();
         let platform = Arc::new(StubPlatform {
             resource_allocation_confirmed: true,
+            rpc_responses: sso_success_responses(
+                &session,
+                "alloc-1",
+                crate::host_logic::sso_messages::RemoteMessage {
+                    message_id: "wallet-alloc-1".to_string(),
+                    data: crate::host_logic::sso_messages::RemoteMessageData::V1(
+                        crate::host_logic::sso_messages::RemoteMessageV1::ResourceAllocationResponse(
+                            crate::host_logic::sso_messages::ResourceAllocationResponse {
+                                responding_to: "alloc-1".to_string(),
+                                payload: Ok(vec![
+                                    crate::host_logic::sso_messages::SsoAllocationOutcome::Allocated(
+                                        crate::host_logic::sso_messages::SsoAllocatedResource::StatementStoreAllowance {
+                                            slot_account_key: vec![1],
+                                        },
+                                    ),
+                                    crate::host_logic::sso_messages::SsoAllocationOutcome::Rejected,
+                                    crate::host_logic::sso_messages::SsoAllocationOutcome::NotAvailable,
+                                ]),
+                            },
+                        ),
+                    ),
+                },
+            ),
             ..Default::default()
         });
         let host = PlatformRuntimeHost::new_compat(platform.clone(), test_spawner());
-        let session = sso_session_info();
         host.session_state().set_session(session.clone());
         let cx = CallContext::with_request_id("alloc-1".to_string());
-        let err = futures::executor::block_on(ResourceAllocation::request(
+        let response = futures::executor::block_on(ResourceAllocation::request(
             &host,
             &cx,
             resource_allocation_request(),
         ))
-        .unwrap_err();
-        match err {
-            CallError::Domain(HostRequestResourceAllocationError::V1(
-                v01::ResourceAllocationError::Unknown { reason },
-            )) => assert_eq!(
-                reason,
-                "SSO resource allocation response wait not implemented"
-            ),
-            other => panic!("expected SSO boundary error, got {other:?}"),
-        }
+        .unwrap();
+        let HostRequestResourceAllocationResponse::V1(inner) = response;
+        assert_eq!(
+            inner.outcomes,
+            vec![
+                v01::AllocationOutcome::Allocated,
+                v01::AllocationOutcome::Rejected,
+                v01::AllocationOutcome::NotAvailable,
+            ]
+        );
         let message = submitted_remote_message(&platform, &session);
         assert!(matches!(
             message.data,

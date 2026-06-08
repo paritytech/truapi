@@ -8,10 +8,14 @@ use truapi::v01;
 
 use crate::host_logic::session::SsoSessionInfo;
 use crate::host_logic::sso_pairing::{
-    AES_GCM_NONCE_LEN, SsoStatementData, encrypt_session_statement_data,
-    encrypt_session_statement_data_with_nonce,
+    AES_GCM_NONCE_LEN, SsoStatementData, decrypt_session_statement_data,
+    encrypt_session_statement_data, encrypt_session_statement_data_with_nonce,
 };
-use crate::host_logic::statement_store::build_signed_session_request_statement;
+use crate::host_logic::statement_store::{
+    build_signed_session_request_statement, decode_statement_data,
+};
+
+const SSO_RESPONSE_CODE_SUCCESS: u8 = 0;
 
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct RemoteMessage {
@@ -275,6 +279,97 @@ pub enum CreateTransactionPayload {
 pub struct CreateTransactionResponse {
     pub responding_to: String,
     pub signed_transaction: Result<Vec<u8>, String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SsoSessionStatement {
+    RequestAccepted,
+    RemoteResponse(SsoRemoteResponse),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SsoRemoteResponse {
+    Sign(SigningResponse),
+    RingVrfAlias(RingVrfAliasResponse),
+    ResourceAllocation(ResourceAllocationResponse),
+    CreateTransaction(CreateTransactionResponse),
+}
+
+pub fn decode_sso_session_statement(
+    session: &SsoSessionInfo,
+    statement: &[u8],
+    expected_statement_request_id: &str,
+    expected_remote_message_id: &str,
+) -> Result<Option<SsoSessionStatement>, String> {
+    let encrypted = decode_statement_data(statement).map_err(|err| err.to_string())?;
+    let data = decrypt_session_statement_data(session, &encrypted)?;
+    match data {
+        SsoStatementData::Response {
+            request_id,
+            response_code,
+        } if request_id == expected_statement_request_id => {
+            if response_code == SSO_RESPONSE_CODE_SUCCESS {
+                Ok(Some(SsoSessionStatement::RequestAccepted))
+            } else {
+                Err(format!(
+                    "SSO request {request_id} was rejected: {}",
+                    sso_response_code_name(response_code)
+                ))
+            }
+        }
+        SsoStatementData::Response { .. } => Ok(None),
+        SsoStatementData::Request { data, .. } => {
+            for message in data {
+                let message = RemoteMessage::decode(&mut message.as_slice())
+                    .map_err(|err| format!("invalid SSO remote message: {err}"))?;
+                if let Some(response) =
+                    remote_response_for_message(message, expected_remote_message_id)
+                {
+                    return Ok(Some(SsoSessionStatement::RemoteResponse(response)));
+                }
+            }
+            Ok(None)
+        }
+    }
+}
+
+fn remote_response_for_message(
+    message: RemoteMessage,
+    expected_remote_message_id: &str,
+) -> Option<SsoRemoteResponse> {
+    let RemoteMessageData::V1(data) = message.data;
+    match data {
+        RemoteMessageV1::SignResponse(response)
+            if response.responding_to == expected_remote_message_id =>
+        {
+            Some(SsoRemoteResponse::Sign(response))
+        }
+        RemoteMessageV1::RingVrfAliasResponse(response)
+            if response.responding_to == expected_remote_message_id =>
+        {
+            Some(SsoRemoteResponse::RingVrfAlias(response))
+        }
+        RemoteMessageV1::ResourceAllocationResponse(response)
+            if response.responding_to == expected_remote_message_id =>
+        {
+            Some(SsoRemoteResponse::ResourceAllocation(response))
+        }
+        RemoteMessageV1::CreateTransactionResponse(response)
+            if response.responding_to == expected_remote_message_id =>
+        {
+            Some(SsoRemoteResponse::CreateTransaction(response))
+        }
+        _ => None,
+    }
+}
+
+fn sso_response_code_name(code: u8) -> &'static str {
+    match code {
+        1 => "decodingFailed",
+        2 => "decryptionFailed",
+        3 => "unknown",
+        _ => "unrecognized response code",
+    }
 }
 
 pub fn sign_payload_message(
