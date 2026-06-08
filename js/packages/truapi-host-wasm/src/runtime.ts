@@ -5,10 +5,9 @@ import type { Provider } from "@parity/truapi";
 // They are the host-author-facing surface: each method takes/returns
 // typed wrappers (`HostDevicePermissionRequest`, etc.) rather than raw
 // SCALE bytes. The `WasmRawCallbacks` interface declared further down
-// is the byte-oriented wire surface the WASM core invokes; the SCALE
-// adapter that sits between the typed `HostCallbacks` and the raw
-// callbacks is not yet in this package, but consumers can already build
-// against the typed surface.
+// is the byte-oriented wire surface the WASM core invokes; use
+// `createWasmRawCallbacks` to adapt this typed surface into the raw
+// callback surface consumed by `createWasmProvider`.
 export type {
   ChainProvider,
   Features,
