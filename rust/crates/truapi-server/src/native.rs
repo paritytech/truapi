@@ -7,8 +7,9 @@
 //! of the dispatcher pipeline behaves identically to the WS-bridge and wasm
 //! flavors.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
+use futures::channel::mpsc;
 use futures::executor::ThreadPool;
 use futures::future::BoxFuture;
 use futures::stream::{self, BoxStream, StreamExt};
@@ -274,6 +275,7 @@ pub trait HostCallbacks: Send + Sync {
 #[derive(uniffi::Object)]
 pub struct NativeTrUApiCore {
     core: Arc<TrUApiCore>,
+    events: Arc<NativeEventBus>,
     #[cfg(feature = "ws-bridge")]
     callbacks: Arc<dyn HostCallbacks>,
     #[cfg(feature = "ws-bridge")]
@@ -314,6 +316,26 @@ impl NativeTrUApiCore {
     pub fn disconnect(&self) {
         self.core.disconnect();
     }
+
+    /// Notify this core that host-global session storage changed outside a
+    /// direct core write/clear. Native hosts call this after cross-process or
+    /// platform storage notifications so the core re-reads `SessionStore`.
+    pub fn notify_session_store_changed(&self) {
+        self.events.notify_session_store_changed();
+    }
+
+    /// Push a host theme update to active TrUAPI theme subscriptions.
+    pub fn notify_theme_changed(&self, theme: HostTheme) {
+        self.events.notify_theme_changed(theme.into());
+    }
+
+    /// Push a preimage lookup update to active subscriptions for `key`.
+    ///
+    /// `value == None` represents a known miss; `Some(bytes)` represents the
+    /// current preimage value.
+    pub fn notify_preimage_changed(&self, key: Vec<u8>, value: Option<Vec<u8>>) {
+        self.events.notify_preimage_changed(&key, value);
+    }
 }
 
 fn native_core_from_platform_config(
@@ -326,8 +348,10 @@ fn native_core_from_platform_config(
         "core ready".to_string(),
     );
 
+    let events = Arc::new(NativeEventBus::default());
     let platform = Arc::new(CallbackPlatform {
         callbacks: callbacks.clone(),
+        events: events.clone(),
     });
     let spawner = native_thread_pool_spawner(&callbacks);
     Arc::new(NativeTrUApiCore {
@@ -336,6 +360,7 @@ fn native_core_from_platform_config(
             runtime_config,
             spawner,
         )),
+        events,
         #[cfg(feature = "ws-bridge")]
         callbacks,
         #[cfg(feature = "ws-bridge")]
@@ -401,6 +426,81 @@ fn native_thread_pool_spawner(callbacks: &Arc<dyn HostCallbacks>) -> Spawner {
 
 struct CallbackPlatform {
     callbacks: Arc<dyn HostCallbacks>,
+    events: Arc<NativeEventBus>,
+}
+
+#[derive(Default)]
+struct NativeEventBus {
+    session_store_ticks: Mutex<Vec<mpsc::UnboundedSender<Result<(), v01::GenericError>>>>,
+    theme_changes: Mutex<Vec<mpsc::UnboundedSender<Result<v01::Theme, v01::GenericError>>>>,
+    preimage_changes: Mutex<Vec<PreimageSubscription>>,
+}
+
+struct PreimageSubscription {
+    key: Vec<u8>,
+    tx: mpsc::UnboundedSender<Result<Option<Vec<u8>>, v01::GenericError>>,
+}
+
+impl NativeEventBus {
+    fn subscribe_session_store(&self) -> BoxStream<'static, Result<(), v01::GenericError>> {
+        let (tx, rx) = mpsc::unbounded();
+        self.session_store_ticks
+            .lock()
+            .expect("native session store subscribers mutex poisoned")
+            .push(tx);
+        stream::once(async { Ok(()) }).chain(rx).boxed()
+    }
+
+    fn notify_session_store_changed(&self) {
+        self.session_store_ticks
+            .lock()
+            .expect("native session store subscribers mutex poisoned")
+            .retain(|tx| tx.unbounded_send(Ok(())).is_ok());
+    }
+
+    fn subscribe_theme(
+        &self,
+        current: Result<v01::Theme, v01::GenericError>,
+    ) -> BoxStream<'static, Result<v01::Theme, v01::GenericError>> {
+        let (tx, rx) = mpsc::unbounded();
+        self.theme_changes
+            .lock()
+            .expect("native theme subscribers mutex poisoned")
+            .push(tx);
+        stream::once(async move { current }).chain(rx).boxed()
+    }
+
+    fn notify_theme_changed(&self, theme: v01::Theme) {
+        self.theme_changes
+            .lock()
+            .expect("native theme subscribers mutex poisoned")
+            .retain(|tx| tx.unbounded_send(Ok(theme)).is_ok());
+    }
+
+    fn subscribe_preimage(
+        &self,
+        key: Vec<u8>,
+        current: Result<Option<Vec<u8>>, v01::GenericError>,
+    ) -> BoxStream<'static, Result<Option<Vec<u8>>, v01::GenericError>> {
+        let (tx, rx) = mpsc::unbounded();
+        self.preimage_changes
+            .lock()
+            .expect("native preimage subscribers mutex poisoned")
+            .push(PreimageSubscription { key, tx });
+        stream::once(async move { current }).chain(rx).boxed()
+    }
+
+    fn notify_preimage_changed(&self, key: &[u8], value: Option<Vec<u8>>) {
+        self.preimage_changes
+            .lock()
+            .expect("native preimage subscribers mutex poisoned")
+            .retain(|sub| {
+                if sub.key != key {
+                    return true;
+                }
+                sub.tx.unbounded_send(Ok(value.clone())).is_ok()
+            });
+    }
 }
 
 impl Navigation for CallbackPlatform {
@@ -546,17 +646,21 @@ impl SessionStore for CallbackPlatform {
     async fn write_session(&self, value: Vec<u8>) -> Result<(), v01::GenericError> {
         self.callbacks
             .write_session(value)
-            .map_err(v01::GenericError::from)
+            .map_err(v01::GenericError::from)?;
+        self.events.notify_session_store_changed();
+        Ok(())
     }
 
     async fn clear_session(&self) -> Result<(), v01::GenericError> {
         self.callbacks
             .clear_session()
-            .map_err(v01::GenericError::from)
+            .map_err(v01::GenericError::from)?;
+        self.events.notify_session_store_changed();
+        Ok(())
     }
 
     fn subscribe_session_store(&self) -> BoxStream<'static, Result<(), v01::GenericError>> {
-        stream::once(async { Ok(()) }).boxed()
+        self.events.subscribe_session_store()
     }
 }
 
@@ -617,14 +721,12 @@ impl UserConfirmation for CallbackPlatform {
 
 impl ThemeHost for CallbackPlatform {
     fn subscribe_theme(&self) -> BoxStream<'static, Result<v01::Theme, v01::GenericError>> {
-        let callbacks = self.callbacks.clone();
-        stream::once(async move {
-            callbacks
-                .current_theme()
-                .map(v01::Theme::from)
-                .map_err(v01::GenericError::from)
-        })
-        .boxed()
+        let current = self
+            .callbacks
+            .current_theme()
+            .map(v01::Theme::from)
+            .map_err(v01::GenericError::from);
+        self.events.subscribe_theme(current)
     }
 }
 
@@ -649,19 +751,169 @@ impl PreimageHost for CallbackPlatform {
         &self,
         key: Vec<u8>,
     ) -> BoxStream<'static, Result<Option<Vec<u8>>, v01::GenericError>> {
-        let callbacks = self.callbacks.clone();
-        stream::once(async move {
-            callbacks
-                .lookup_preimage(key)
-                .map_err(v01::GenericError::from)
-        })
-        .boxed()
+        let current = self
+            .callbacks
+            .lookup_preimage(key.clone())
+            .map_err(v01::GenericError::from);
+        self.events.subscribe_preimage(key, current)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    type PreimageFixtureEntries = Vec<(Vec<u8>, Option<Vec<u8>>)>;
+
+    struct EventCallbacks {
+        theme: Mutex<HostTheme>,
+        preimages: Mutex<PreimageFixtureEntries>,
+    }
+
+    impl EventCallbacks {
+        fn new() -> Self {
+            Self {
+                theme: Mutex::new(HostTheme::Light),
+                preimages: Mutex::new(Vec::new()),
+            }
+        }
+    }
+
+    impl HostCallbacks for EventCallbacks {
+        fn on_core_log(&self, _marker: String, _detail: String) {}
+        fn navigate_to(&self, _url: String) -> Result<(), HostNavigateRejection> {
+            Ok(())
+        }
+        fn push_notification(&self, _payload: Vec<u8>) -> Result<u32, HostRejection> {
+            Ok(0)
+        }
+        fn cancel_notification(&self, _id: u32) -> Result<(), HostRejection> {
+            Ok(())
+        }
+        fn device_permission(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
+            Ok(false)
+        }
+        fn remote_permission(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
+            Ok(false)
+        }
+        fn present_pairing(&self, _deeplink: String) -> Result<(), HostRejection> {
+            Ok(())
+        }
+        fn read_session(&self) -> Result<Option<Vec<u8>>, HostRejection> {
+            Ok(None)
+        }
+        fn write_session(&self, _value: Vec<u8>) -> Result<(), HostRejection> {
+            Ok(())
+        }
+        fn clear_session(&self) -> Result<(), HostRejection> {
+            Ok(())
+        }
+        fn confirm_sign_payload(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
+            Ok(false)
+        }
+        fn confirm_sign_raw(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
+            Ok(false)
+        }
+        fn confirm_create_transaction(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
+            Ok(false)
+        }
+        fn confirm_account_alias(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
+            Ok(false)
+        }
+        fn confirm_resource_allocation(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
+            Ok(false)
+        }
+        fn confirm_preimage_submit(&self, _size: u64) -> Result<(), HostRejection> {
+            Ok(())
+        }
+        fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, HostRejection> {
+            Ok(value)
+        }
+        fn lookup_preimage(&self, key: Vec<u8>) -> Result<Option<Vec<u8>>, HostRejection> {
+            Ok(self
+                .preimages
+                .lock()
+                .expect("preimage map mutex poisoned")
+                .iter()
+                .find(|(stored_key, _)| stored_key == &key)
+                .and_then(|(_, value)| value.clone()))
+        }
+        fn current_theme(&self) -> Result<HostTheme, HostRejection> {
+            Ok(*self.theme.lock().expect("theme mutex poisoned"))
+        }
+        fn feature_supported(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
+            Ok(false)
+        }
+        fn local_storage_read(&self, _key: String) -> Result<Option<Vec<u8>>, HostStorageError> {
+            Ok(None)
+        }
+        fn local_storage_write(
+            &self,
+            _key: String,
+            _value: Vec<u8>,
+        ) -> Result<(), HostStorageError> {
+            Ok(())
+        }
+        fn local_storage_clear(&self, _key: String) -> Result<(), HostStorageError> {
+            Ok(())
+        }
+    }
+
+    fn event_platform() -> (Arc<EventCallbacks>, Arc<NativeEventBus>, CallbackPlatform) {
+        let callbacks = Arc::new(EventCallbacks::new());
+        let events = Arc::new(NativeEventBus::default());
+        let platform = CallbackPlatform {
+            callbacks: callbacks.clone(),
+            events: events.clone(),
+        };
+        (callbacks, events, platform)
+    }
+
+    #[test]
+    fn native_session_store_subscription_emits_current_then_notified_ticks() {
+        let (_callbacks, events, platform) = event_platform();
+        let mut stream = platform.subscribe_session_store();
+
+        let first = futures::executor::block_on(stream.next()).unwrap();
+        events.notify_session_store_changed();
+        let second = futures::executor::block_on(stream.next()).unwrap();
+
+        assert!(first.is_ok());
+        assert!(second.is_ok());
+    }
+
+    #[test]
+    fn native_theme_subscription_emits_current_then_notified_changes() {
+        let (callbacks, events, platform) = event_platform();
+        let mut stream = platform.subscribe_theme();
+
+        let first = futures::executor::block_on(stream.next()).unwrap();
+        *callbacks.theme.lock().expect("theme mutex poisoned") = HostTheme::Dark;
+        events.notify_theme_changed(v01::Theme::Dark);
+        let second = futures::executor::block_on(stream.next()).unwrap();
+
+        assert_eq!(first.unwrap(), v01::Theme::Light);
+        assert_eq!(second.unwrap(), v01::Theme::Dark);
+    }
+
+    #[test]
+    fn native_preimage_subscription_emits_current_then_notified_value() {
+        let (callbacks, events, platform) = event_platform();
+        let key = vec![7; 32];
+        callbacks
+            .preimages
+            .lock()
+            .expect("preimage map mutex poisoned")
+            .push((key.clone(), Some(vec![1, 2, 3])));
+        let mut stream = platform.lookup_preimage(key.clone());
+
+        let first = futures::executor::block_on(stream.next()).unwrap();
+        events.notify_preimage_changed(&key, Some(vec![4, 5, 6]));
+        let second = futures::executor::block_on(stream.next()).unwrap();
+
+        assert_eq!(first.unwrap(), Some(vec![1, 2, 3]));
+        assert_eq!(second.unwrap(), Some(vec![4, 5, 6]));
+    }
 
     #[test]
     fn runtime_config_rejects_wrong_size_genesis_hash() {

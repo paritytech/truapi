@@ -26,7 +26,7 @@ dependencies {
 }
 ```
 
-JitPack fetches the tag `0.1.0` from `paritytech/truapi`, runs `gradle :truapi-host:publishReleasePublicationToMavenLocal` against it (driven by `jitpack.yml` at the repo root), and serves the resulting AAR + POM + sources jar. First fetch takes ~1 minute while JitPack builds; subsequent consumers hit the cache.
+JitPack fetches the tag `0.1.0` from `paritytech/truapi`, runs `make android-publish-local` against it (driven by `jitpack.yml` at the repo root, including UniFFI binding generation), and serves the resulting AAR + POM + sources jar. First fetch takes ~1 minute while JitPack builds; subsequent consumers hit the cache.
 
 The artifact bundles the Kotlin host adapter (`io.parity.truapi.*`) and the generated UniFFI bindings (`uniffi.truapi_server.*`). It does **not** bundle the native `libtruapi_server.so` cdylib, integrators build that per Android ABI and drop it into their app's `src/main/jniLibs/<abi>/` (see "Linking the cdylib" below).
 
@@ -43,7 +43,7 @@ The public surface lives in [`src/main/kotlin/io/parity/truapi/TrUAPIHost.kt`](s
 
 - `HostBridge` - callback bundle the embedding app implements. Splits device permissions, remote permissions, navigation, push, feature support, and scoped storage.
 - `HostStorage` - read/write/clear interface the host backs with its own persistence.
-- `TrUAPIHostCore` - owning wrapper around the UniFFI-generated `NativeTrUApiCore`. Holds the bridge alive for the lifetime of the core and exposes the localhost WebSocket bridge plus core-owned disconnect.
+- `TrUAPIHostCore` - owning wrapper around the UniFFI-generated `NativeTrUApiCore`. Holds the bridge alive for the lifetime of the core and exposes the localhost WebSocket bridge, core-owned disconnect, and native change notifications for session storage, theme, and preimage updates.
 
 ## Architecture
 
@@ -57,7 +57,7 @@ TrUAPIHostCore.startWsBridge()
   → Rust dispatcher
 ```
 
-The product running in the `WebView` opens a `WebSocket` to the localhost port + token returned by `startWsBridge`. From there the Rust core handles the wire protocol directly. Outbound responses and host-side capability callbacks (`navigateTo`, `pushNotification`, `devicePermission`, `remotePermission`, `featureSupported`, `storage`) reach the embedder through `HostBridge`.
+The product running in the `WebView` opens a `WebSocket` to the localhost port + token returned by `startWsBridge`. From there the Rust core handles the wire protocol directly. Outbound responses and host-side capability callbacks (`navigateTo`, `pushNotification`, `cancelNotification`, `devicePermission`, `remotePermission`, `presentPairing`, session storage, confirmations, preimage, theme, `featureSupported`, `storage`) reach the embedder through `HostBridge`.
 
 ## Permissions split
 
@@ -85,6 +85,7 @@ import android.webkit.WebView
 import io.parity.truapi.HostBridge
 import io.parity.truapi.HostStorage
 import io.parity.truapi.TrUAPIHostCore
+import uniffi.truapi_server.HostTheme
 import java.util.concurrent.CountDownLatch
 
 class MyStorage : HostStorage {
@@ -103,8 +104,14 @@ class MyBridge(private val webView: WebView) : HostBridge {
         main.post { /* startActivity(Intent(ACTION_VIEW, Uri.parse(url))) */ }
     }
 
-    override fun pushNotification(payload: ByteArray) {
+    override fun pushNotification(payload: ByteArray): UInt {
+        val id = 1u
         main.post { /* show notification */ }
+        return id
+    }
+
+    override fun cancelNotification(id: UInt) {
+        main.post { /* cancel notification */ }
     }
 
     override fun devicePermission(request: ByteArray): Boolean {
@@ -124,6 +131,12 @@ val webView: WebView = existingWebView
 val core = TrUAPIHostCore(MyBridge(webView))
 val endpoint = core.startWsBridge()
 val wsUrl = "ws://127.0.0.1:${endpoint.port.toInt()}/?t=${endpoint.token}"
+
+// Call these from host/platform observers so native subscriptions see updates
+// after their immediate current item.
+core.notifySessionStoreChanged()
+core.notifyThemeChanged(HostTheme.DARK)
+core.notifyPreimageChanged(preimageKey, preimageBytesOrNull)
 
 // Inject `wsUrl` into the product page; product JS calls
 // `@parity/truapi`'s `createWebSocketProvider(wsUrl)` to open the wire.

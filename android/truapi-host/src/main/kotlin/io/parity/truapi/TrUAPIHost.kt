@@ -26,6 +26,7 @@ import uniffi.truapi_server.HostCallbacks
 import uniffi.truapi_server.HostNavigateRejection
 import uniffi.truapi_server.HostRejection
 import uniffi.truapi_server.HostStorageException
+import uniffi.truapi_server.HostTheme
 import uniffi.truapi_server.NativeTrUApiCore
 import uniffi.truapi_server.WsBridgeEndpoint
 import uniffi.truapi_server.WsBridgeStartException
@@ -88,12 +89,17 @@ interface HostBridge {
     fun navigateTo(url: String)
 
     /**
-     * Deliver a push notification (SCALE-encoded `HostPushNotificationRequest`).
+     * Deliver a push notification (SCALE-encoded `HostPushNotificationRequest`)
+     * and return the host-assigned notification id.
      * Invoked on the `truapi-ws-bridge` worker thread; marshal any UI work to
      * the main thread.
      */
     @Throws(HostRejection::class)
-    fun pushNotification(payload: ByteArray)
+    fun pushNotification(payload: ByteArray): UInt = 0u
+
+    /** Cancel a previously scheduled notification id. */
+    @Throws(HostRejection::class)
+    fun cancelNotification(id: UInt) {}
 
     /**
      * Prompt for a device-level permission. Returns whether it was granted.
@@ -110,6 +116,60 @@ interface HostBridge {
      */
     @Throws(HostRejection::class)
     fun remotePermission(request: ByteArray): Boolean
+
+    /** Present an SSO pairing deeplink or QR payload built by the Rust core. */
+    @Throws(HostRejection::class)
+    fun presentPairing(deeplink: String) {
+        throw HostRejection.Rejected("pairing presenter unavailable")
+    }
+
+    /** Read the opaque core-owned SSO session blob from host-global storage. */
+    @Throws(HostRejection::class)
+    fun readSession(): ByteArray? = null
+
+    /** Persist the opaque core-owned SSO session blob in host-global storage. */
+    @Throws(HostRejection::class)
+    fun writeSession(value: ByteArray) {}
+
+    /** Clear the persisted core-owned SSO session blob. */
+    @Throws(HostRejection::class)
+    fun clearSession() {}
+
+    /** Confirm a sign-payload request before the core asks the SSO peer. */
+    @Throws(HostRejection::class)
+    fun confirmSignPayload(review: ByteArray): Boolean = false
+
+    /** Confirm a sign-raw request before the core asks the SSO peer. */
+    @Throws(HostRejection::class)
+    fun confirmSignRaw(review: ByteArray): Boolean = false
+
+    /** Confirm a create-transaction request before the core asks the SSO peer. */
+    @Throws(HostRejection::class)
+    fun confirmCreateTransaction(review: ByteArray): Boolean = false
+
+    /** Confirm a cross-domain account-alias request before the core asks the SSO peer. */
+    @Throws(HostRejection::class)
+    fun confirmAccountAlias(review: ByteArray): Boolean = false
+
+    /** Confirm a resource-allocation request before the core asks the SSO peer. */
+    @Throws(HostRejection::class)
+    fun confirmResourceAllocation(review: ByteArray): Boolean = false
+
+    /** Confirm preimage submission before the host stores it. */
+    @Throws(HostRejection::class)
+    fun confirmPreimageSubmit(size: ULong) {}
+
+    /** Submit a preimage through the host backend and return its key. */
+    @Throws(HostRejection::class)
+    fun submitPreimage(value: ByteArray): ByteArray = value
+
+    /** Return the current preimage value for [key], or null for a miss. */
+    @Throws(HostRejection::class)
+    fun lookupPreimage(key: ByteArray): ByteArray? = null
+
+    /** Return the current host theme. */
+    @Throws(HostRejection::class)
+    fun currentTheme(): HostTheme = HostTheme.DARK
 
     /**
      * Answer a feature-support query. Invoked on the `truapi-ws-bridge` worker
@@ -134,14 +194,56 @@ private class HostCallbackAdapter(private val bridge: HostBridge) : HostCallback
     override fun navigateTo(url: String) =
         bridge.navigateTo(url)
 
-    override fun pushNotification(payload: ByteArray) =
+    override fun pushNotification(payload: ByteArray): UInt =
         bridge.pushNotification(payload)
+
+    override fun cancelNotification(id: UInt) =
+        bridge.cancelNotification(id)
 
     override fun devicePermission(request: ByteArray): Boolean =
         bridge.devicePermission(request)
 
     override fun remotePermission(request: ByteArray): Boolean =
         bridge.remotePermission(request)
+
+    override fun presentPairing(deeplink: String) =
+        bridge.presentPairing(deeplink)
+
+    override fun readSession(): ByteArray? =
+        bridge.readSession()
+
+    override fun writeSession(value: ByteArray) =
+        bridge.writeSession(value)
+
+    override fun clearSession() =
+        bridge.clearSession()
+
+    override fun confirmSignPayload(review: ByteArray): Boolean =
+        bridge.confirmSignPayload(review)
+
+    override fun confirmSignRaw(review: ByteArray): Boolean =
+        bridge.confirmSignRaw(review)
+
+    override fun confirmCreateTransaction(review: ByteArray): Boolean =
+        bridge.confirmCreateTransaction(review)
+
+    override fun confirmAccountAlias(review: ByteArray): Boolean =
+        bridge.confirmAccountAlias(review)
+
+    override fun confirmResourceAllocation(review: ByteArray): Boolean =
+        bridge.confirmResourceAllocation(review)
+
+    override fun confirmPreimageSubmit(size: ULong) =
+        bridge.confirmPreimageSubmit(size)
+
+    override fun submitPreimage(value: ByteArray): ByteArray =
+        bridge.submitPreimage(value)
+
+    override fun lookupPreimage(key: ByteArray): ByteArray? =
+        bridge.lookupPreimage(key)
+
+    override fun currentTheme(): HostTheme =
+        bridge.currentTheme()
 
     override fun featureSupported(request: ByteArray): Boolean =
         bridge.featureSupported(request)
@@ -194,6 +296,21 @@ class TrUAPIHostCore(bridge: HostBridge) : AutoCloseable {
      */
     fun disconnect() {
         inner.disconnect()
+    }
+
+    /** Notify the core that host-global session storage changed externally. */
+    fun notifySessionStoreChanged() {
+        inner.notifySessionStoreChanged()
+    }
+
+    /** Push a host theme update to active TrUAPI theme subscriptions. */
+    fun notifyThemeChanged(theme: HostTheme) {
+        inner.notifyThemeChanged(theme)
+    }
+
+    /** Push a preimage lookup update to active subscriptions for [key]. */
+    fun notifyPreimageChanged(key: ByteArray, value: ByteArray?) {
+        inner.notifyPreimageChanged(key, value)
     }
 
     override fun close() {

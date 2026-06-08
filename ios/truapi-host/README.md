@@ -8,7 +8,7 @@ The public surface lives in [`Sources/TrUAPIHost/TrUAPIHost.swift`](Sources/TrUA
 
 - `HostBridge` - callback bundle the embedding app implements. Split into device permissions, remote permissions, navigation, push, feature support, and scoped storage.
 - `HostStorageBackend` - simple read/write/clear protocol the host backs with its own persistence.
-- `TrUAPIHostCore` - owning wrapper around the UniFFI-generated `NativeTrUApiCore`. Holds the bridge alive for the lifetime of the core and exposes the localhost WebSocket bridge plus core-owned disconnect.
+- `TrUAPIHostCore` - owning wrapper around the UniFFI-generated `NativeTrUApiCore`. Holds the bridge alive for the lifetime of the core and exposes the localhost WebSocket bridge, core-owned disconnect, and native change notifications for session storage, theme, and preimage updates.
 - `LocalhostBridgeBootstrap` - helper that produces a JS snippet publishing the WS bridge endpoint to the product page so it can dial back in.
 
 The generated UniFFI bindings live alongside the shell in `Sources/TrUAPIHost/truapi_server.swift` and the C header / module map in `Sources/truapi_serverFFI/include/`. They are ignored build outputs; regenerate them before building or publishing the Swift package.
@@ -25,7 +25,7 @@ TrUAPIHostCore.startWsBridge()
   → Rust dispatcher
 ```
 
-The product running in the `WKWebView` opens a `WebSocket` to the localhost port + token returned by `startWsBridge`. From there the Rust core handles the wire protocol directly. Outbound responses and host-side capability callbacks (`navigateTo`, `pushNotification`, `devicePermission`, `remotePermission`, `featureSupported`, `storage`) reach the embedder through `HostBridge`.
+The product running in the `WKWebView` opens a `WebSocket` to the localhost port + token returned by `startWsBridge`. From there the Rust core handles the wire protocol directly. Outbound responses and host-side capability callbacks (`navigateTo`, `pushNotification`, `cancelNotification`, `devicePermission`, `remotePermission`, `presentPairing`, session storage, confirmations, preimage, theme, `featureSupported`, `storage`) reach the embedder through `HostBridge`.
 
 ## Permissions split
 
@@ -66,8 +66,14 @@ final class MyBridge: HostBridge, @unchecked Sendable {
         DispatchQueue.main.async { /* UIApplication.shared.open(...) */ }
     }
 
-    func pushNotification(payload: Data) throws {
+    func pushNotification(payload: Data) throws -> UInt32 {
+        let id: UInt32 = 1
         DispatchQueue.main.async { /* schedule notification */ }
+        return id
+    }
+
+    func cancelNotification(id: UInt32) throws {
+        DispatchQueue.main.async { /* cancel notification */ }
     }
 
     func devicePermission(request: Data) throws -> Bool {
@@ -85,6 +91,12 @@ final class MyBridge: HostBridge, @unchecked Sendable {
 let bridge = MyBridge()
 let core = TrUAPIHostCore(bridge: bridge)
 let endpoint = try core.startWsBridge()
+
+// Call these from host/platform observers so native subscriptions see updates
+// after their immediate current item.
+core.notifySessionStoreChanged()
+core.notifyThemeChanged(theme: .dark)
+core.notifyPreimageChanged(key: preimageKey, value: preimageBytesOrNil)
 
 let contentController = WKUserContentController()
 let bootstrapScript = LocalhostBridgeBootstrap.script(port: endpoint.port, token: endpoint.token)

@@ -10,4 +10,4 @@ jdk:
   - openjdk17
 
 install:
-  - gradle :truapi-host:publishReleasePublicationToMavenLocal
+  - make android-publish-local

@@ -102,10 +102,13 @@ public protocol HostBridge: AnyObject, Sendable {
     /// worker thread; hop to the main thread to present UI.
     func navigateTo(url: String) throws
 
-    /// Deliver a push notification (SCALE-encoded `HostPushNotificationRequest`).
-    /// Invoked on the `truapi-ws-bridge` worker thread; hop to the main thread
-    /// for any UI work.
-    func pushNotification(payload: Data) throws
+    /// Deliver a push notification (SCALE-encoded `HostPushNotificationRequest`)
+    /// and return the host-assigned notification id. Invoked on the
+    /// `truapi-ws-bridge` worker thread; hop to the main thread for any UI work.
+    func pushNotification(payload: Data) throws -> UInt32
+
+    /// Cancel a previously scheduled notification id.
+    func cancelNotification(id: UInt32) throws
 
     /// Prompt for a device-level permission. Returns the granted flag. Invoked
     /// on the `truapi-ws-bridge` worker thread; present the prompt on the main
@@ -116,6 +119,45 @@ public protocol HostBridge: AnyObject, Sendable {
     /// `truapi-ws-bridge` worker thread; present the prompt on the main thread
     /// and block this thread until the user decides.
     func remotePermission(request: Data) throws -> Bool
+
+    /// Present an SSO pairing deeplink or QR payload built by the Rust core.
+    func presentPairing(deeplink: String) throws
+
+    /// Read the opaque core-owned SSO session blob from host-global storage.
+    func readSession() throws -> Data?
+
+    /// Persist the opaque core-owned SSO session blob in host-global storage.
+    func writeSession(value: Data) throws
+
+    /// Clear the persisted core-owned SSO session blob.
+    func clearSession() throws
+
+    /// Confirm a sign-payload request before the core asks the SSO peer.
+    func confirmSignPayload(review: Data) throws -> Bool
+
+    /// Confirm a sign-raw request before the core asks the SSO peer.
+    func confirmSignRaw(review: Data) throws -> Bool
+
+    /// Confirm a create-transaction request before the core asks the SSO peer.
+    func confirmCreateTransaction(review: Data) throws -> Bool
+
+    /// Confirm a cross-domain account-alias request before the core asks the SSO peer.
+    func confirmAccountAlias(review: Data) throws -> Bool
+
+    /// Confirm a resource-allocation request before the core asks the SSO peer.
+    func confirmResourceAllocation(review: Data) throws -> Bool
+
+    /// Confirm preimage submission before the host stores it.
+    func confirmPreimageSubmit(size: UInt64) throws
+
+    /// Submit a preimage through the host backend and return its key.
+    func submitPreimage(value: Data) throws -> Data
+
+    /// Return the current preimage value for `key`, or nil for a miss.
+    func lookupPreimage(key: Data) throws -> Data?
+
+    /// Return the current host theme.
+    func currentTheme() throws -> HostTheme
 
     /// Answer a feature-support query. Invoked on the `truapi-ws-bridge` worker
     /// thread.
@@ -128,6 +170,23 @@ public protocol HostBridge: AnyObject, Sendable {
 public extension HostBridge {
     /// Default no-op logger. Override to plumb into your logging framework.
     func onCoreLog(marker: String, detail: String) {}
+    func pushNotification(payload: Data) throws -> UInt32 { 0 }
+    func cancelNotification(id: UInt32) throws {}
+    func presentPairing(deeplink: String) throws {
+        throw HostRejection.Rejected(reason: "pairing presenter unavailable")
+    }
+    func readSession() throws -> Data? { nil }
+    func writeSession(value: Data) throws {}
+    func clearSession() throws {}
+    func confirmSignPayload(review: Data) throws -> Bool { false }
+    func confirmSignRaw(review: Data) throws -> Bool { false }
+    func confirmCreateTransaction(review: Data) throws -> Bool { false }
+    func confirmAccountAlias(review: Data) throws -> Bool { false }
+    func confirmResourceAllocation(review: Data) throws -> Bool { false }
+    func confirmPreimageSubmit(size: UInt64) throws {}
+    func submitPreimage(value: Data) throws -> Data { value }
+    func lookupPreimage(key: Data) throws -> Data? { nil }
+    func currentTheme() throws -> HostTheme { .dark }
 }
 
 /// Adapter that bridges the public `HostBridge` to the generated UniFFI
@@ -148,8 +207,12 @@ private final class HostCallbackAdapter: HostCallbacks, @unchecked Sendable {
         try bridge.navigateTo(url: url)
     }
 
-    func pushNotification(payload: Data) throws {
+    func pushNotification(payload: Data) throws -> UInt32 {
         try bridge.pushNotification(payload: payload)
+    }
+
+    func cancelNotification(id: UInt32) throws {
+        try bridge.cancelNotification(id: id)
     }
 
     func devicePermission(request: Data) throws -> Bool {
@@ -158,6 +221,58 @@ private final class HostCallbackAdapter: HostCallbacks, @unchecked Sendable {
 
     func remotePermission(request: Data) throws -> Bool {
         try bridge.remotePermission(request: request)
+    }
+
+    func presentPairing(deeplink: String) throws {
+        try bridge.presentPairing(deeplink: deeplink)
+    }
+
+    func readSession() throws -> Data? {
+        try bridge.readSession()
+    }
+
+    func writeSession(value: Data) throws {
+        try bridge.writeSession(value: value)
+    }
+
+    func clearSession() throws {
+        try bridge.clearSession()
+    }
+
+    func confirmSignPayload(review: Data) throws -> Bool {
+        try bridge.confirmSignPayload(review: review)
+    }
+
+    func confirmSignRaw(review: Data) throws -> Bool {
+        try bridge.confirmSignRaw(review: review)
+    }
+
+    func confirmCreateTransaction(review: Data) throws -> Bool {
+        try bridge.confirmCreateTransaction(review: review)
+    }
+
+    func confirmAccountAlias(review: Data) throws -> Bool {
+        try bridge.confirmAccountAlias(review: review)
+    }
+
+    func confirmResourceAllocation(review: Data) throws -> Bool {
+        try bridge.confirmResourceAllocation(review: review)
+    }
+
+    func confirmPreimageSubmit(size: UInt64) throws {
+        try bridge.confirmPreimageSubmit(size: size)
+    }
+
+    func submitPreimage(value: Data) throws -> Data {
+        try bridge.submitPreimage(value: value)
+    }
+
+    func lookupPreimage(key: Data) throws -> Data? {
+        try bridge.lookupPreimage(key: key)
+    }
+
+    func currentTheme() throws -> HostTheme {
+        try bridge.currentTheme()
     }
 
     func featureSupported(request: Data) throws -> Bool {
@@ -215,5 +330,20 @@ public final class TrUAPIHostCore {
     /// broadcasts `Disconnected` to active account-status subscribers.
     public func disconnect() {
         inner.disconnect()
+    }
+
+    /// Notify the core that host-global session storage changed externally.
+    public func notifySessionStoreChanged() {
+        inner.notifySessionStoreChanged()
+    }
+
+    /// Push a host theme update to active TrUAPI theme subscriptions.
+    public func notifyThemeChanged(theme: HostTheme) {
+        inner.notifyThemeChanged(theme: theme)
+    }
+
+    /// Push a preimage lookup update to active subscriptions for `key`.
+    public func notifyPreimageChanged(key: Data, value: Data?) {
+        inner.notifyPreimageChanged(key: key, value: value)
     }
 }
