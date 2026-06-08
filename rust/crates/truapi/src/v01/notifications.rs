@@ -1,5 +1,7 @@
 use parity_scale_codec::{Decode, Encode};
 
+use super::{AccountId, Topic};
+
 /// Opaque identifier for a push notification, unique per product.
 pub type NotificationId = u32;
 
@@ -45,4 +47,138 @@ pub enum HostPushNotificationError {
 pub struct HostPushNotificationCancelRequest {
     /// The notification identifier returned by [`HostPushNotificationResponse`].
     pub id: NotificationId,
+}
+
+/// Request to register one or more `(signer, topic)` rules the user wants to be
+/// woken up for. Each topic is added independently; existing rules are not
+/// touched.
+///
+/// `signer` is mandatory: the subscriber always names the publisher whose
+/// statements should trigger a push.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostPushAddRulesRequest {
+    /// Topics to register.
+    pub topics: Vec<Topic>,
+    /// Public key of the publisher whose statements should trigger a push.
+    pub signer: AccountId,
+}
+
+/// Failure modes for [`HostPushAddRulesRequest`].
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum HostPushAddRulesError {
+    /// The user has not granted `DevicePermission::Notifications`.
+    PermissionDenied,
+    /// The notification system is currently unavailable; the rule was not
+    /// registered. The product MAY retry later.
+    NotificationSystemUnavailable(String),
+    /// Catch-all.
+    Unknown { reason: String },
+}
+
+/// Request to remove one or more previously registered `(signer, topic)` rules.
+/// Rules not currently active are ignored.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostPushRemoveRulesRequest {
+    /// Topics to remove.
+    pub topics: Vec<Topic>,
+    /// Public key of the publisher whose rules to remove. Mandatory.
+    pub signer: AccountId,
+}
+
+/// Failure modes for [`HostPushRemoveRulesRequest`].
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum HostPushRemoveRulesError {
+    /// The notification system is currently unavailable; the rule may still
+    /// be active. The product MAY retry later.
+    NotificationSystemUnavailable(String),
+    /// Catch-all.
+    Unknown { reason: String },
+}
+
+/// Request to list the calling product's currently registered subscription
+/// rules. Has no fields; the host scopes results by the calling product
+/// identity.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostPushListRulesRequest {}
+
+/// Snapshot of the calling product's currently registered topics.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostPushListRulesResponse {
+    /// Currently registered topics for this product, in unspecified order.
+    pub topics: Vec<Topic>,
+}
+
+/// Failure modes for [`HostPushListRulesRequest`].
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum HostPushListRulesError {
+    /// The notification system is currently unavailable. The product MAY
+    /// retry later.
+    NotificationSystemUnavailable(String),
+    /// Catch-all.
+    Unknown { reason: String },
+}
+
+/// Atomic replace of the full topic set for the given signer with the
+/// supplied vector. After a successful call, the active topics for that signer
+/// are exactly `topics`.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostPushSetRulesRequest {
+    /// Topics that should be active after the call.
+    pub topics: Vec<Topic>,
+    /// Public key of the publisher whose rule set is being replaced. Mandatory.
+    pub signer: AccountId,
+}
+
+/// Failure modes for [`HostPushSetRulesRequest`].
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum HostPushSetRulesError {
+    /// The user has not granted `DevicePermission::Notifications`.
+    PermissionDenied,
+    /// The notification system is currently unavailable; no change was
+    /// applied. The product MAY retry later.
+    NotificationSystemUnavailable(String),
+    /// Catch-all.
+    Unknown { reason: String },
+}
+
+/// Structured announcement content rendered on the device. Plaintext —
+/// announcements are authenticity-only, not confidential.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct PushBroadcastContent {
+    /// Notification title.
+    pub title: String,
+    /// Notification body.
+    pub body: String,
+    /// Route or URL to open on tap.
+    pub deeplink: Option<String>,
+}
+
+/// Request to publish an announcement to subscribers via the interim direct
+/// transport. The host sets the publisher `signer` to the calling product's
+/// identity and submits the announcement to the push backend; the product
+/// supplies only the topics and content.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostPushBroadcastRequest {
+    /// Topics to publish on; matched against subscriber rules with the caller
+    /// as signer.
+    pub topics: Vec<Topic>,
+    /// Announcement content carried to the device.
+    pub content: PushBroadcastContent,
+}
+
+/// Result of a successful [`HostPushBroadcastRequest`].
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostPushBroadcastResponse {
+    /// Blake2b-256 hash of the broadcast, for dedup and audit.
+    pub message_hash: [u8; 32],
+}
+
+/// Failure modes for [`HostPushBroadcastRequest`].
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum HostPushBroadcastError {
+    /// The notification system is currently unavailable; nothing was published.
+    /// The product MAY retry later.
+    NotificationSystemUnavailable(String),
+    /// Catch-all.
+    Unknown { reason: String },
 }
