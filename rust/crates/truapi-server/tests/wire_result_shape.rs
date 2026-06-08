@@ -24,6 +24,7 @@ use parity_scale_codec::{Decode, Encode};
 
 use truapi::v01;
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
+use truapi::versioned::{account, payment};
 
 use truapi_platform::{
     ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, PairingPresenter,
@@ -258,6 +259,156 @@ fn local_storage_read_err_response_uses_err_discriminant() {
     domain.encode_to(&mut expected);
     assert_eq!(response.payload.value, expected);
     assert_eq!(response.payload.value.first(), Some(&0x01));
+}
+
+fn assert_request_returns_unsupported(
+    core: &TrUApiCore,
+    request_id: &str,
+    method: &str,
+    value: Vec<u8>,
+) {
+    let response = dispatch(
+        core,
+        ProtocolMessage {
+            request_id: request_id.into(),
+            payload: Payload {
+                tag: compose_action(method, FrameKind::Request),
+                value,
+            },
+        },
+    );
+    assert_eq!(response.request_id, request_id);
+    assert_eq!(
+        response.payload.tag,
+        compose_action(method, FrameKind::Response),
+    );
+    assert_eq!(
+        response.payload.value,
+        vec![0x01, 0x02],
+        "{method} must remain explicitly unavailable for current dotli parity"
+    );
+}
+
+fn assert_subscription_start_interrupts_unsupported(
+    core: &TrUApiCore,
+    request_id: &str,
+    method: &str,
+    value: Vec<u8>,
+) {
+    use std::sync::Mutex;
+    use truapi_server::Transport;
+
+    #[derive(Default)]
+    struct RecordingTransport {
+        sent: Mutex<Vec<ProtocolMessage>>,
+    }
+    impl Transport for RecordingTransport {
+        fn send(&self, message: ProtocolMessage) {
+            self.sent.lock().unwrap().push(message);
+        }
+        fn on_message(
+            &self,
+            _handler: Box<dyn Fn(ProtocolMessage) + Send + Sync>,
+        ) -> Box<dyn FnOnce()> {
+            Box::new(|| {})
+        }
+    }
+
+    let transport = Arc::new(RecordingTransport::default());
+    futures::executor::block_on(core.dispatch(
+        ProtocolMessage {
+            request_id: request_id.into(),
+            payload: Payload {
+                tag: compose_action(method, FrameKind::Start),
+                value,
+            },
+        },
+        transport.clone(),
+    ));
+
+    let sent = transport.sent.lock().unwrap();
+    assert_eq!(sent.len(), 1);
+    assert_eq!(sent[0].request_id, request_id);
+    assert_eq!(
+        sent[0].payload.tag,
+        compose_action(method, FrameKind::Interrupt),
+    );
+    assert_eq!(
+        sent[0].payload.value,
+        vec![0x02],
+        "{method} subscription must remain explicitly unavailable for current dotli parity"
+    );
+}
+
+#[test]
+fn deferred_account_proof_returns_unsupported() {
+    let core = make_core();
+    let request = account::HostAccountCreateProofRequest::V1(v01::HostAccountCreateProofRequest {
+        product_account_id: v01::ProductAccountId {
+            dot_ns_identifier: "myapp.dot".to_string(),
+            derivation_index: 0,
+        },
+        ring_location: v01::RingLocation {
+            genesis_hash: vec![0u8; 32],
+            ring_root_hash: vec![1u8; 32],
+            hints: None,
+        },
+        context: Vec::new(),
+    });
+
+    assert_request_returns_unsupported(
+        &core,
+        "p:account-proof",
+        "account_create_account_proof",
+        request.encode(),
+    );
+}
+
+#[test]
+fn deferred_payment_requests_return_unsupported() {
+    let core = make_core();
+    let request = payment::HostPaymentRequest::V1(v01::HostPaymentRequest {
+        from: None,
+        amount: 1,
+        destination: [0u8; 32],
+    });
+
+    assert_request_returns_unsupported(&core, "p:payment", "payment_request", request.encode());
+
+    let top_up = payment::HostPaymentTopUpRequest::V1(v01::HostPaymentTopUpRequest {
+        into: None,
+        amount: 1,
+        source: v01::PaymentTopUpSource::ProductAccount {
+            derivation_index: 0,
+        },
+    });
+    assert_request_returns_unsupported(&core, "p:top-up", "payment_top_up", top_up.encode());
+}
+
+#[test]
+fn deferred_payment_subscriptions_interrupt_unsupported() {
+    let core = make_core();
+    let balance =
+        payment::HostPaymentBalanceSubscribeRequest::V1(v01::HostPaymentBalanceSubscribeRequest {
+            purse: None,
+        });
+    assert_subscription_start_interrupts_unsupported(
+        &core,
+        "p:balance",
+        "payment_balance_subscribe",
+        balance.encode(),
+    );
+
+    let status =
+        payment::HostPaymentStatusSubscribeRequest::V1(v01::HostPaymentStatusSubscribeRequest {
+            payment_id: "payment-id".to_string(),
+        });
+    assert_subscription_start_interrupts_unsupported(
+        &core,
+        "p:status",
+        "payment_status_subscribe",
+        status.encode(),
+    );
 }
 
 fn make_core() -> TrUApiCore {

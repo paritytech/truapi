@@ -52,11 +52,13 @@ use truapi::api::{
 };
 use truapi::v01;
 use truapi::versioned::account::{
-    HostAccountConnectionStatusSubscribeItem, HostAccountGetAliasError, HostAccountGetAliasRequest,
-    HostAccountGetAliasResponse, HostAccountGetError, HostAccountGetRequest,
-    HostAccountGetResponse, HostGetLegacyAccountsError, HostGetLegacyAccountsRequest,
-    HostGetLegacyAccountsResponse, HostGetUserIdError, HostGetUserIdRequest, HostGetUserIdResponse,
-    HostRequestLoginError, HostRequestLoginRequest, HostRequestLoginResponse,
+    HostAccountConnectionStatusSubscribeItem, HostAccountCreateProofError,
+    HostAccountCreateProofRequest, HostAccountCreateProofResponse, HostAccountGetAliasError,
+    HostAccountGetAliasRequest, HostAccountGetAliasResponse, HostAccountGetError,
+    HostAccountGetRequest, HostAccountGetResponse, HostGetLegacyAccountsError,
+    HostGetLegacyAccountsRequest, HostGetLegacyAccountsResponse, HostGetUserIdError,
+    HostGetUserIdRequest, HostGetUserIdResponse, HostRequestLoginError, HostRequestLoginRequest,
+    HostRequestLoginResponse,
 };
 use truapi::versioned::chain::{
     RemoteChainHeadBodyError, RemoteChainHeadBodyRequest, RemoteChainHeadBodyResponse,
@@ -88,6 +90,13 @@ use truapi::versioned::notifications::{
     HostPushNotificationCancelError, HostPushNotificationCancelRequest,
     HostPushNotificationCancelResponse, HostPushNotificationError, HostPushNotificationRequest,
     HostPushNotificationResponse,
+};
+use truapi::versioned::payment::{
+    HostPaymentBalanceSubscribeError, HostPaymentBalanceSubscribeItem,
+    HostPaymentBalanceSubscribeRequest, HostPaymentError, HostPaymentRequest, HostPaymentResponse,
+    HostPaymentStatusSubscribeError, HostPaymentStatusSubscribeItem,
+    HostPaymentStatusSubscribeRequest, HostPaymentTopUpError, HostPaymentTopUpRequest,
+    HostPaymentTopUpResponse,
 };
 use truapi::versioned::permissions::{
     HostDevicePermissionError, HostDevicePermissionRequest, HostDevicePermissionResponse,
@@ -919,6 +928,14 @@ where
                     v01::HostAccountGetError::Unknown { reason },
                 ))
             })
+    }
+
+    async fn create_account_proof(
+        &self,
+        _cx: &CallContext,
+        _request: HostAccountCreateProofRequest,
+    ) -> Result<HostAccountCreateProofResponse, CallError<HostAccountCreateProofError>> {
+        Err(CallError::Unsupported)
     }
 
     async fn get_legacy_accounts(
@@ -2098,17 +2115,57 @@ where
 }
 
 // ---------------------------------------------------------------------------
-// Traits that defer entirely to default "unavailable" trait bodies.
+// Deferred product surfaces.
 //
-// These API surfaces (Chat, CoinPayment, Payment)
-// are not part of the v0.1 platform contract, so we leave every method at its
-// default `Err(CallError::unavailable())` body and supply empty trait impls
-// here. Adding a method later only requires implementing the relevant
-// `truapi_platform::*` extension trait.
+// Payment and full account proof are explicitly out of current dotli parity,
+// but products should still observe `Unsupported` rather than a host failure.
+// Chat and CoinPayment remain outside this milestone and keep their generated
+// trait defaults until another host/product needs real implementations.
 
 impl<P> Chat for PlatformRuntimeHost<P> where P: Platform + 'static {}
 impl<P> CoinPayment for PlatformRuntimeHost<P> where P: Platform + 'static {}
-impl<P> Payment for PlatformRuntimeHost<P> where P: Platform + 'static {}
+impl<P> Payment for PlatformRuntimeHost<P>
+where
+    P: Platform + 'static,
+{
+    async fn balance_subscribe(
+        &self,
+        _cx: &CallContext,
+        _request: HostPaymentBalanceSubscribeRequest,
+    ) -> Result<
+        Subscription<HostPaymentBalanceSubscribeItem>,
+        CallError<HostPaymentBalanceSubscribeError>,
+    > {
+        Err(CallError::Unsupported)
+    }
+
+    async fn request(
+        &self,
+        _cx: &CallContext,
+        _request: HostPaymentRequest,
+    ) -> Result<HostPaymentResponse, CallError<HostPaymentError>> {
+        Err(CallError::Unsupported)
+    }
+
+    async fn status_subscribe(
+        &self,
+        _cx: &CallContext,
+        _request: HostPaymentStatusSubscribeRequest,
+    ) -> Result<
+        Subscription<HostPaymentStatusSubscribeItem>,
+        CallError<HostPaymentStatusSubscribeError>,
+    > {
+        Err(CallError::Unsupported)
+    }
+
+    async fn top_up(
+        &self,
+        _cx: &CallContext,
+        _request: HostPaymentTopUpRequest,
+    ) -> Result<HostPaymentTopUpResponse, CallError<HostPaymentTopUpError>> {
+        Err(CallError::Unsupported)
+    }
+}
 
 impl<P> ResourceAllocation for PlatformRuntimeHost<P>
 where

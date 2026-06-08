@@ -57,7 +57,7 @@ them.
 - [x] `truapi-server` WASM/UniFFI surfaces: remove `setActiveSession` / `clearActiveSession` as product
       lifecycle APIs after core-owned SSO restore/logout lands. They are account-only PR-104 scaffolding
       and cannot restore `ss_secret`, P-256 key material, peer keys, or session topics.
-- [ ] Keep explicit unavailable behavior for current dotli-unimplemented handlers: payment and full
+- [x] Keep explicit unavailable behavior for current dotli-unimplemented handlers: payment and full
       `create_account_proof`.
 - [x] `packages/auth/src/auth.ts`: remove `createPappAdapter`, `PappAdapter`, `PairingStatus`,
       `Identity`, `UserSession`, `createLazyClient`, `createPapiStatementStoreAdapter`,
