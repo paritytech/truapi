@@ -1036,17 +1036,22 @@ where
             ));
         }
         match PlatformSessionStore::read_session(self.platform.as_ref()).await {
-            Ok(Some(blob)) => {
-                let session = decode_persisted_session(&blob).map_err(|reason| {
-                    CallError::Domain(HostRequestLoginError::V1(
-                        v01::HostRequestLoginError::Unknown { reason },
-                    ))
-                })?;
-                self.session_state.set_session(session);
-                return Ok(HostRequestLoginResponse::V1(
-                    v01::HostRequestLoginResponse::Success,
-                ));
-            }
+            Ok(Some(blob)) => match decode_persisted_session(&blob) {
+                Ok(session) => {
+                    self.session_state.set_session(session);
+                    return Ok(HostRequestLoginResponse::V1(
+                        v01::HostRequestLoginResponse::Success,
+                    ));
+                }
+                Err(_) => {
+                    self.session_state.clear_session();
+                    PlatformSessionStore::clear_session(self.platform.as_ref())
+                        .await
+                        .map_err(|err| CallError::HostFailure {
+                            reason: format!("invalid session clear failed: {err:?}"),
+                        })?;
+                }
+            },
             Ok(None) => {}
             Err(err) => {
                 return Err(CallError::Domain(HostRequestLoginError::V1(
@@ -4307,25 +4312,26 @@ mod tests {
     }
 
     #[test]
-    fn request_login_rejects_corrupt_persisted_session() {
+    fn request_login_clears_corrupt_persisted_session_and_pairs_from_empty() {
+        let session_clears = Arc::new(Mutex::new(0));
         let host = PlatformRuntimeHost::new_compat(
             Arc::new(StubPlatform {
                 session_blob: Some(vec![0xff]),
+                session_clears: session_clears.clone(),
                 ..Default::default()
             }),
             test_spawner(),
         );
         let cx = CallContext::new();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
-        let err = futures::executor::block_on(host.request_login(&cx, request)).unwrap_err();
+        let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
 
-        match err {
-            CallError::Domain(HostRequestLoginError::V1(v01::HostRequestLoginError::Unknown {
-                reason,
-            })) => assert!(reason.contains("invalid session blob")),
-            other => panic!("expected corrupt session login error, got {other:?}"),
-        }
+        assert_eq!(
+            response,
+            HostRequestLoginResponse::V1(v01::HostRequestLoginResponse::Rejected)
+        );
         assert!(host.session_state().current().is_none());
+        assert_eq!(*session_clears.lock().unwrap(), 1);
     }
 
     #[test]
