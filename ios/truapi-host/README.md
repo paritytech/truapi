@@ -8,7 +8,7 @@ The public surface lives in [`Sources/TrUAPIHost/TrUAPIHost.swift`](Sources/TrUA
 
 - `HostBridge` - callback bundle the embedding app implements. Split into device permissions, remote permissions, navigation, push, feature support, and scoped storage.
 - `HostStorageBackend` - simple read/write/clear protocol the host backs with its own persistence.
-- `TrUAPIHostCore` - owning wrapper around the UniFFI-generated `NativeTrUApiCore`. Holds the bridge alive for the lifetime of the core and exposes the localhost WebSocket bridge.
+- `TrUAPIHostCore` - owning wrapper around the UniFFI-generated `NativeTrUApiCore`. Holds the bridge alive for the lifetime of the core and exposes the localhost WebSocket bridge plus core-owned disconnect.
 - `LocalhostBridgeBootstrap` - helper that produces a JS snippet publishing the WS bridge endpoint to the product page so it can dial back in.
 
 The generated UniFFI bindings live alongside the shell in `Sources/TrUAPIHost/truapi_server.swift` and the C header / module map in `Sources/truapi_serverFFI/include/`. They are ignored build outputs; regenerate them before building or publishing the Swift package.
@@ -99,6 +99,9 @@ let configuration = WKWebViewConfiguration()
 configuration.userContentController = contentController
 let webView = WKWebView(frame: .zero, configuration: configuration)
 webView.load(URLRequest(url: URL(string: "https://your-product.example/")!))
+
+// On logout:
+core.disconnect()
 ```
 
 The product page reads `window.__truapi_localhost.url` (set by the bootstrap script) and passes it to `@parity/truapi`'s `createWebSocketProvider(url)`.

@@ -43,7 +43,7 @@ The public surface lives in [`src/main/kotlin/io/parity/truapi/TrUAPIHost.kt`](s
 
 - `HostBridge` - callback bundle the embedding app implements. Splits device permissions, remote permissions, navigation, push, feature support, and scoped storage.
 - `HostStorage` - read/write/clear interface the host backs with its own persistence.
-- `TrUAPIHostCore` - owning wrapper around the UniFFI-generated `NativeTrUApiCore`. Holds the bridge alive for the lifetime of the core and exposes the localhost WebSocket bridge.
+- `TrUAPIHostCore` - owning wrapper around the UniFFI-generated `NativeTrUApiCore`. Holds the bridge alive for the lifetime of the core and exposes the localhost WebSocket bridge plus core-owned disconnect.
 
 ## Architecture
 
@@ -128,6 +128,9 @@ val wsUrl = "ws://127.0.0.1:${endpoint.port.toInt()}/?t=${endpoint.token}"
 // Inject `wsUrl` into the product page; product JS calls
 // `@parity/truapi`'s `createWebSocketProvider(wsUrl)` to open the wire.
 webView.loadUrl("https://your-product.example/?truapi=${java.net.URLEncoder.encode(wsUrl, "UTF-8")}")
+
+// On logout:
+core.disconnect()
 ```
 
 ## Linking the cdylib

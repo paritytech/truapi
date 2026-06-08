@@ -209,4 +209,11 @@ public final class TrUAPIHostCore {
     public func stopWsBridge() {
         inner.stopWsBridge()
     }
+
+    /// Core-owned logout/disconnect path. Best-effort notifies the SSO peer,
+    /// clears in-memory session state, clears `HostBridge.sessionStore`, and
+    /// broadcasts `Disconnected` to active account-status subscribers.
+    public func disconnect() {
+        inner.disconnect()
+    }
 }

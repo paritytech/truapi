@@ -187,6 +187,15 @@ class TrUAPIHostCore(bridge: HostBridge) : AutoCloseable {
         inner.stopWsBridge()
     }
 
+    /**
+     * Core-owned logout/disconnect path. Best-effort notifies the SSO peer,
+     * clears in-memory session state, clears [HostBridge.sessionStore], and
+     * broadcasts `Disconnected` to active account-status subscribers.
+     */
+    fun disconnect() {
+        inner.disconnect()
+    }
+
     override fun close() {
         inner.close()
     }
