@@ -3,7 +3,7 @@ title: "Use Sr25519 Secret Keys in PaymentTopUpSource"
 owner: "@filippovecchiato"
 ---
 
-# RFC — Use Sr25519 Secret Keys in PaymentTopUpSource
+# RFC 0023 — Use Sr25519 Secret Keys in PaymentTopUpSource
 
 ## Summary
 
