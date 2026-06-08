@@ -34,6 +34,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           BODY: ${{ github.event.issue.body }}
           ISSUE: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
 
@@ -64,7 +65,7 @@ jobs:
           fi
           git add "$file"
           git commit -m "diagnosis: update $host report (from #$ISSUE)"
-          git push -f origin "$branch"
+          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "$branch"
 
           # One open PR per host branch: reuse it while it is open, open a new
           # one once the previous report has merged (a merged/closed PR for the
