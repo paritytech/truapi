@@ -2,9 +2,9 @@
 //!
 //! Each trait covers a single OS-primitive surface the Rust core cannot reach
 //! from its own process (key-value persistence, URL launching, push
-//! notifications, permission UI, chain RPC). Account management, signing,
-//! statement-store and preimage flows live in the Rust core itself and are not
-//! part of this trait set.
+//! notifications, permission UI, chain RPC, host-selected preimage backends).
+//! Account management, signing, and statement-store protocol flows live in the
+//! Rust core itself and are not part of this trait set.
 //!
 //! Host implementations may use `async fn` in trait bodies directly. The
 //! consumers (`truapi-server::runtime::PlatformRuntimeHost<P>`) are generic

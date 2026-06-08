@@ -132,6 +132,15 @@ public protocol HostBridge: AnyObject, Sendable {
     /// Clear the persisted core-owned SSO session blob.
     func clearSession() throws
 
+    /// Open a JSON-RPC chain connection and return a host-assigned id, or nil if unsupported.
+    func chainConnect(genesisHash: Data) throws -> UInt32?
+
+    /// Send one JSON-RPC request on a native chain connection.
+    func chainSend(connectionId: UInt32, request: String) throws
+
+    /// Close a native chain connection.
+    func chainClose(connectionId: UInt32) throws
+
     /// Confirm a sign-payload request before the core asks the SSO peer.
     func confirmSignPayload(review: Data) throws -> Bool
 
@@ -178,6 +187,9 @@ public extension HostBridge {
     func readSession() throws -> Data? { nil }
     func writeSession(value: Data) throws {}
     func clearSession() throws {}
+    func chainConnect(genesisHash: Data) throws -> UInt32? { nil }
+    func chainSend(connectionId: UInt32, request: String) throws {}
+    func chainClose(connectionId: UInt32) throws {}
     func confirmSignPayload(review: Data) throws -> Bool { false }
     func confirmSignRaw(review: Data) throws -> Bool { false }
     func confirmCreateTransaction(review: Data) throws -> Bool { false }
@@ -237,6 +249,18 @@ private final class HostCallbackAdapter: HostCallbacks, @unchecked Sendable {
 
     func clearSession() throws {
         try bridge.clearSession()
+    }
+
+    func chainConnect(genesisHash: Data) throws -> UInt32? {
+        try bridge.chainConnect(genesisHash: genesisHash)
+    }
+
+    func chainSend(connectionId: UInt32, request: String) throws {
+        try bridge.chainSend(connectionId: connectionId, request: request)
+    }
+
+    func chainClose(connectionId: UInt32) throws {
+        try bridge.chainClose(connectionId: connectionId)
     }
 
     func confirmSignPayload(review: Data) throws -> Bool {
@@ -345,5 +369,15 @@ public final class TrUAPIHostCore {
     /// Push a preimage lookup update to active subscriptions for `key`.
     public func notifyPreimageChanged(key: Data, value: Data?) {
         inner.notifyPreimageChanged(key: key, value: value)
+    }
+
+    /// Push a JSON-RPC response from a native chain connection into the core.
+    public func notifyChainResponse(connectionId: UInt32, json: String) {
+        inner.notifyChainResponse(connectionId: connectionId, json: json)
+    }
+
+    /// Notify the core that a native chain connection closed externally.
+    public func notifyChainClosed(connectionId: UInt32) {
+        inner.notifyChainClosed(connectionId: connectionId)
     }
 }

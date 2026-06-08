@@ -135,6 +135,18 @@ interface HostBridge {
     @Throws(HostRejection::class)
     fun clearSession() {}
 
+    /** Open a JSON-RPC chain connection and return a host-assigned id, or null if unsupported. */
+    @Throws(HostRejection::class)
+    fun chainConnect(genesisHash: ByteArray): UInt? = null
+
+    /** Send one JSON-RPC request on a native chain connection. */
+    @Throws(HostRejection::class)
+    fun chainSend(connectionId: UInt, request: String) {}
+
+    /** Close a native chain connection. */
+    @Throws(HostRejection::class)
+    fun chainClose(connectionId: UInt) {}
+
     /** Confirm a sign-payload request before the core asks the SSO peer. */
     @Throws(HostRejection::class)
     fun confirmSignPayload(review: ByteArray): Boolean = false
@@ -217,6 +229,15 @@ private class HostCallbackAdapter(private val bridge: HostBridge) : HostCallback
 
     override fun clearSession() =
         bridge.clearSession()
+
+    override fun chainConnect(genesisHash: ByteArray): UInt? =
+        bridge.chainConnect(genesisHash)
+
+    override fun chainSend(connectionId: UInt, request: String) =
+        bridge.chainSend(connectionId, request)
+
+    override fun chainClose(connectionId: UInt) =
+        bridge.chainClose(connectionId)
 
     override fun confirmSignPayload(review: ByteArray): Boolean =
         bridge.confirmSignPayload(review)
@@ -311,6 +332,16 @@ class TrUAPIHostCore(bridge: HostBridge) : AutoCloseable {
     /** Push a preimage lookup update to active subscriptions for [key]. */
     fun notifyPreimageChanged(key: ByteArray, value: ByteArray?) {
         inner.notifyPreimageChanged(key, value)
+    }
+
+    /** Push a JSON-RPC response from a native chain connection into the core. */
+    fun notifyChainResponse(connectionId: UInt, json: String) {
+        inner.notifyChainResponse(connectionId, json)
+    }
+
+    /** Notify the core that a native chain connection closed externally. */
+    fun notifyChainClosed(connectionId: UInt) {
+        inner.notifyChainClosed(connectionId)
     }
 
     override fun close() {

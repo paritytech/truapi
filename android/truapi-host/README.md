@@ -57,7 +57,7 @@ TrUAPIHostCore.startWsBridge()
   → Rust dispatcher
 ```
 
-The product running in the `WebView` opens a `WebSocket` to the localhost port + token returned by `startWsBridge`. From there the Rust core handles the wire protocol directly. Outbound responses and host-side capability callbacks (`navigateTo`, `pushNotification`, `cancelNotification`, `devicePermission`, `remotePermission`, `presentPairing`, session storage, confirmations, preimage, theme, `featureSupported`, `storage`) reach the embedder through `HostBridge`.
+The product running in the `WebView` opens a `WebSocket` to the localhost port + token returned by `startWsBridge`. From there the Rust core handles the wire protocol directly. Outbound responses and host-side capability callbacks (`navigateTo`, `pushNotification`, `cancelNotification`, `devicePermission`, `remotePermission`, `presentPairing`, session storage, chain JSON-RPC, confirmations, preimage, theme, `featureSupported`, `storage`) reach the embedder through `HostBridge`.
 
 ## Permissions split
 
@@ -125,6 +125,20 @@ class MyBridge(private val webView: WebView) : HostBridge {
 
     override fun remotePermission(request: ByteArray): Boolean = TODO("prompt user")
     override fun featureSupported(request: ByteArray): Boolean = false
+
+    override fun chainConnect(genesisHash: ByteArray): UInt? {
+        val id = 1u
+        main.post { /* open JSON-RPC connection, forward responses via core.notifyChainResponse */ }
+        return id
+    }
+
+    override fun chainSend(connectionId: UInt, request: String) {
+        /* send JSON-RPC request on the host connection */
+    }
+
+    override fun chainClose(connectionId: UInt) {
+        /* close host connection */
+    }
 }
 
 val webView: WebView = existingWebView
@@ -137,6 +151,8 @@ val wsUrl = "ws://127.0.0.1:${endpoint.port.toInt()}/?t=${endpoint.token}"
 core.notifySessionStoreChanged()
 core.notifyThemeChanged(HostTheme.DARK)
 core.notifyPreimageChanged(preimageKey, preimageBytesOrNull)
+core.notifyChainResponse(chainConnectionId, jsonRpcResponse)
+core.notifyChainClosed(chainConnectionId)
 
 // Inject `wsUrl` into the product page; product JS calls
 // `@parity/truapi`'s `createWebSocketProvider(wsUrl)` to open the wire.

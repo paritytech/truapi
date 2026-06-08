@@ -25,7 +25,7 @@ TrUAPIHostCore.startWsBridge()
   → Rust dispatcher
 ```
 
-The product running in the `WKWebView` opens a `WebSocket` to the localhost port + token returned by `startWsBridge`. From there the Rust core handles the wire protocol directly. Outbound responses and host-side capability callbacks (`navigateTo`, `pushNotification`, `cancelNotification`, `devicePermission`, `remotePermission`, `presentPairing`, session storage, confirmations, preimage, theme, `featureSupported`, `storage`) reach the embedder through `HostBridge`.
+The product running in the `WKWebView` opens a `WebSocket` to the localhost port + token returned by `startWsBridge`. From there the Rust core handles the wire protocol directly. Outbound responses and host-side capability callbacks (`navigateTo`, `pushNotification`, `cancelNotification`, `devicePermission`, `remotePermission`, `presentPairing`, session storage, chain JSON-RPC, confirmations, preimage, theme, `featureSupported`, `storage`) reach the embedder through `HostBridge`.
 
 ## Permissions split
 
@@ -86,6 +86,20 @@ final class MyBridge: HostBridge, @unchecked Sendable {
     }
 
     func featureSupported(request: Data) throws -> Bool { false }
+
+    func chainConnect(genesisHash: Data) throws -> UInt32? {
+        let id: UInt32 = 1
+        DispatchQueue.main.async { /* open JSON-RPC connection, forward responses via core.notifyChainResponse */ }
+        return id
+    }
+
+    func chainSend(connectionId: UInt32, request: String) throws {
+        /* send JSON-RPC request on the host connection */
+    }
+
+    func chainClose(connectionId: UInt32) throws {
+        /* close host connection */
+    }
 }
 
 let bridge = MyBridge()
@@ -97,6 +111,8 @@ let endpoint = try core.startWsBridge()
 core.notifySessionStoreChanged()
 core.notifyThemeChanged(theme: .dark)
 core.notifyPreimageChanged(key: preimageKey, value: preimageBytesOrNil)
+core.notifyChainResponse(connectionId: chainConnectionId, json: jsonRpcResponse)
+core.notifyChainClosed(connectionId: chainConnectionId)
 
 let contentController = WKUserContentController()
 let bootstrapScript = LocalhostBridgeBootstrap.script(port: endpoint.port, token: endpoint.token)

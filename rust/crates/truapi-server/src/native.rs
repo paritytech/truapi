@@ -7,6 +7,8 @@
 //! of the dispatcher pipeline behaves identically to the WS-bridge and wasm
 //! flavors.
 
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use futures::channel::mpsc;
@@ -225,6 +227,16 @@ pub trait HostCallbacks: Send + Sync {
     /// Clear the persisted core-owned SSO session blob.
     fn clear_session(&self) -> Result<(), HostRejection>;
 
+    /// Open a JSON-RPC connection for a chain. Return a host-assigned
+    /// connection id, or `None` when unsupported.
+    fn chain_connect(&self, genesis_hash: Vec<u8>) -> Result<Option<u32>, HostRejection>;
+
+    /// Send one JSON-RPC request over a previously opened chain connection.
+    fn chain_send(&self, connection_id: u32, request: String) -> Result<(), HostRejection>;
+
+    /// Close a previously opened chain connection.
+    fn chain_close(&self, connection_id: u32) -> Result<(), HostRejection>;
+
     /// Confirm a sign-payload request. `review` is a SCALE-encoded review
     /// payload owned by the Rust core.
     fn confirm_sign_payload(&self, review: Vec<u8>) -> Result<bool, HostRejection>;
@@ -336,6 +348,16 @@ impl NativeTrUApiCore {
     pub fn notify_preimage_changed(&self, key: Vec<u8>, value: Option<Vec<u8>>) {
         self.events.notify_preimage_changed(&key, value);
     }
+
+    /// Push a JSON-RPC response from a native chain connection into the core.
+    pub fn notify_chain_response(&self, connection_id: u32, json: String) {
+        self.events.notify_chain_response(connection_id, json);
+    }
+
+    /// Notify the core that a native chain connection closed externally.
+    pub fn notify_chain_closed(&self, connection_id: u32) {
+        self.events.notify_chain_closed(connection_id);
+    }
 }
 
 fn native_core_from_platform_config(
@@ -434,6 +456,7 @@ struct NativeEventBus {
     session_store_ticks: Mutex<Vec<mpsc::UnboundedSender<Result<(), v01::GenericError>>>>,
     theme_changes: Mutex<Vec<mpsc::UnboundedSender<Result<v01::Theme, v01::GenericError>>>>,
     preimage_changes: Mutex<Vec<PreimageSubscription>>,
+    chain_responses: Mutex<HashMap<u32, mpsc::UnboundedSender<String>>>,
 }
 
 struct PreimageSubscription {
@@ -500,6 +523,35 @@ impl NativeEventBus {
                 }
                 sub.tx.unbounded_send(Ok(value.clone())).is_ok()
             });
+    }
+
+    fn register_chain(&self, connection_id: u32) -> mpsc::UnboundedReceiver<String> {
+        let (tx, rx) = mpsc::unbounded();
+        self.chain_responses
+            .lock()
+            .expect("native chain subscribers mutex poisoned")
+            .insert(connection_id, tx);
+        rx
+    }
+
+    fn notify_chain_response(&self, connection_id: u32, json: String) {
+        let mut responses = self
+            .chain_responses
+            .lock()
+            .expect("native chain subscribers mutex poisoned");
+        let Some(tx) = responses.get(&connection_id) else {
+            return;
+        };
+        if tx.unbounded_send(json).is_err() {
+            responses.remove(&connection_id);
+        }
+    }
+
+    fn notify_chain_closed(&self, connection_id: u32) {
+        self.chain_responses
+            .lock()
+            .expect("native chain subscribers mutex poisoned")
+            .remove(&connection_id);
     }
 }
 
@@ -607,20 +659,79 @@ impl Storage for CallbackPlatform {
     }
 }
 
-// `ChainProvider` is not exposed through the callback surface. The trait
-// is required for `Platform`, so the impl stubs `connect` as
-// `Unavailable`. Hosts that need chain access wire it directly into the
-// Rust core (e.g. via `RuntimeChainProvider`) rather than through the
-// JNI/Swift callback boundary.
+struct NativeJsonRpcConnection {
+    id: u32,
+    callbacks: Arc<dyn HostCallbacks>,
+    events: Arc<NativeEventBus>,
+    response_rx: Mutex<Option<mpsc::UnboundedReceiver<String>>>,
+    closed: AtomicBool,
+}
+
+impl JsonRpcConnection for NativeJsonRpcConnection {
+    fn send(&self, request: String) {
+        if self.closed.load(Ordering::Relaxed) {
+            return;
+        }
+        if let Err(err) = self.callbacks.chain_send(self.id, request) {
+            self.callbacks.on_core_log(
+                "truapi.native.callback.chain_send_failed".to_string(),
+                err.to_string(),
+            );
+        }
+    }
+
+    fn responses(&self) -> BoxStream<'static, String> {
+        let mut guard = self.response_rx.lock().unwrap();
+        match guard.take() {
+            Some(rx) => rx.boxed(),
+            None => {
+                self.callbacks.on_core_log(
+                    "truapi.native.chain.responses_reused".to_string(),
+                    "responses() called more than once".to_string(),
+                );
+                stream::empty().boxed()
+            }
+        }
+    }
+}
+
+impl Drop for NativeJsonRpcConnection {
+    fn drop(&mut self) {
+        if self.closed.swap(true, Ordering::Relaxed) {
+            return;
+        }
+        self.events.notify_chain_closed(self.id);
+        if let Err(err) = self.callbacks.chain_close(self.id) {
+            self.callbacks.on_core_log(
+                "truapi.native.callback.chain_close_failed".to_string(),
+                err.to_string(),
+            );
+        }
+    }
+}
 
 impl ChainProvider for CallbackPlatform {
     async fn connect(
         &self,
-        _genesis_hash: Vec<u8>,
+        genesis_hash: Vec<u8>,
     ) -> Result<Box<dyn JsonRpcConnection>, v01::GenericError> {
-        Err(v01::GenericError {
-            reason: "chain provider not wired through native callbacks".into(),
-        })
+        let Some(connection_id) = self
+            .callbacks
+            .chain_connect(genesis_hash)
+            .map_err(v01::GenericError::from)?
+        else {
+            return Err(v01::GenericError {
+                reason: "chain provider unavailable".to_string(),
+            });
+        };
+        let response_rx = self.events.register_chain(connection_id);
+        Ok(Box::new(NativeJsonRpcConnection {
+            id: connection_id,
+            callbacks: self.callbacks.clone(),
+            events: self.events.clone(),
+            response_rx: Mutex::new(Some(response_rx)),
+            closed: AtomicBool::new(false),
+        }))
     }
 }
 
@@ -768,6 +879,10 @@ mod tests {
     struct EventCallbacks {
         theme: Mutex<HostTheme>,
         preimages: Mutex<PreimageFixtureEntries>,
+        chain_id: Mutex<Option<u32>>,
+        chain_connects: Mutex<Vec<Vec<u8>>>,
+        chain_sends: Mutex<Vec<(u32, String)>>,
+        chain_closes: Mutex<Vec<u32>>,
     }
 
     impl EventCallbacks {
@@ -775,6 +890,10 @@ mod tests {
             Self {
                 theme: Mutex::new(HostTheme::Light),
                 preimages: Mutex::new(Vec::new()),
+                chain_id: Mutex::new(None),
+                chain_connects: Mutex::new(Vec::new()),
+                chain_sends: Mutex::new(Vec::new()),
+                chain_closes: Mutex::new(Vec::new()),
             }
         }
     }
@@ -806,6 +925,27 @@ mod tests {
             Ok(())
         }
         fn clear_session(&self) -> Result<(), HostRejection> {
+            Ok(())
+        }
+        fn chain_connect(&self, genesis_hash: Vec<u8>) -> Result<Option<u32>, HostRejection> {
+            self.chain_connects
+                .lock()
+                .expect("chain connects mutex poisoned")
+                .push(genesis_hash);
+            Ok(*self.chain_id.lock().expect("chain id mutex poisoned"))
+        }
+        fn chain_send(&self, connection_id: u32, request: String) -> Result<(), HostRejection> {
+            self.chain_sends
+                .lock()
+                .expect("chain sends mutex poisoned")
+                .push((connection_id, request));
+            Ok(())
+        }
+        fn chain_close(&self, connection_id: u32) -> Result<(), HostRejection> {
+            self.chain_closes
+                .lock()
+                .expect("chain closes mutex poisoned")
+                .push(connection_id);
             Ok(())
         }
         fn confirm_sign_payload(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
@@ -916,6 +1056,49 @@ mod tests {
     }
 
     #[test]
+    fn native_chain_provider_forwards_send_response_and_close() {
+        let (callbacks, events, platform) = event_platform();
+        *callbacks.chain_id.lock().expect("chain id mutex poisoned") = Some(42);
+        let genesis = vec![9; 32];
+
+        let connection =
+            futures::executor::block_on(ChainProvider::connect(&platform, genesis.clone()))
+                .expect("chain connection should open");
+        connection.send(r#"{"jsonrpc":"2.0","id":1}"#.to_string());
+        let mut responses = connection.responses();
+        events.notify_chain_response(42, r#"{"jsonrpc":"2.0","id":1,"result":true}"#.to_string());
+        let response = futures::executor::block_on(responses.next()).unwrap();
+        drop(responses);
+        drop(connection);
+
+        assert_eq!(
+            callbacks
+                .chain_connects
+                .lock()
+                .expect("chain connects mutex poisoned")
+                .as_slice(),
+            &[genesis]
+        );
+        assert_eq!(
+            callbacks
+                .chain_sends
+                .lock()
+                .expect("chain sends mutex poisoned")
+                .as_slice(),
+            &[(42, r#"{"jsonrpc":"2.0","id":1}"#.to_string())]
+        );
+        assert_eq!(response, r#"{"jsonrpc":"2.0","id":1,"result":true}"#);
+        assert_eq!(
+            callbacks
+                .chain_closes
+                .lock()
+                .expect("chain closes mutex poisoned")
+                .as_slice(),
+            &[42]
+        );
+    }
+
+    #[test]
     fn runtime_config_rejects_wrong_size_genesis_hash() {
         let err = RuntimeConfig::try_from(NativeRuntimeConfig {
             product_label: "app".to_string(),
@@ -968,6 +1151,19 @@ mod tests {
                 Ok(())
             }
             fn clear_session(&self) -> Result<(), HostRejection> {
+                Ok(())
+            }
+            fn chain_connect(&self, _genesis_hash: Vec<u8>) -> Result<Option<u32>, HostRejection> {
+                Ok(None)
+            }
+            fn chain_send(
+                &self,
+                _connection_id: u32,
+                _request: String,
+            ) -> Result<(), HostRejection> {
+                Ok(())
+            }
+            fn chain_close(&self, _connection_id: u32) -> Result<(), HostRejection> {
                 Ok(())
             }
             fn confirm_sign_payload(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
