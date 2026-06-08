@@ -22,7 +22,8 @@ use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupporte
 use truapi_platform::PairingDeeplinkScheme as PlatformPairingDeeplinkScheme;
 use truapi_platform::{
     ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, PairingPresenter,
-    Permissions, PreimageHost, RuntimeConfig, SessionStore, Storage, ThemeHost, UserConfirmation,
+    Permissions, PreimageHost, RuntimeConfig, RuntimeConfigValidationError, SessionStore, Storage,
+    ThemeHost, UserConfirmation,
 };
 
 use crate::TrUApiCore;
@@ -153,6 +154,18 @@ pub enum NativeRuntimeConfigError {
         /// Supplied byte length.
         actual: u64,
     },
+    /// Metadata URL could not be parsed.
+    #[error("host_metadata_url must be an absolute HTTPS URL: {reason}")]
+    InvalidHostMetadataUrl {
+        /// Parse failure reason.
+        reason: String,
+    },
+    /// Metadata URL used a non-HTTPS scheme.
+    #[error("host_metadata_url must use https scheme, got {scheme:?}")]
+    InsecureHostMetadataUrl {
+        /// Actual URL scheme.
+        scheme: String,
+    },
 }
 
 impl TryFrom<NativeRuntimeConfig> for RuntimeConfig {
@@ -165,14 +178,29 @@ impl TryFrom<NativeRuntimeConfig> for RuntimeConfig {
                     actual: config.people_chain_genesis_hash.len() as u64,
                 }
             })?;
-        Ok(Self {
+        let runtime_config = Self {
             product_label: config.product_label,
             product_id: config.product_id,
             site_id: config.site_id,
             host_metadata_url: config.host_metadata_url,
             people_chain_genesis_hash,
             pairing_deeplink_scheme: config.pairing_deeplink_scheme.into(),
-        })
+        };
+        runtime_config.validate()?;
+        Ok(runtime_config)
+    }
+}
+
+impl From<RuntimeConfigValidationError> for NativeRuntimeConfigError {
+    fn from(err: RuntimeConfigValidationError) -> Self {
+        match err {
+            RuntimeConfigValidationError::InvalidHostMetadataUrl { reason } => {
+                Self::InvalidHostMetadataUrl { reason }
+            }
+            RuntimeConfigValidationError::InsecureHostMetadataUrl { scheme } => {
+                Self::InsecureHostMetadataUrl { scheme }
+            }
+        }
     }
 }
 
@@ -1113,6 +1141,42 @@ mod tests {
         assert!(matches!(
             err,
             NativeRuntimeConfigError::InvalidPeopleChainGenesisHash { actual: 31 }
+        ));
+    }
+
+    #[test]
+    fn runtime_config_rejects_relative_metadata_url() {
+        let err = RuntimeConfig::try_from(NativeRuntimeConfig {
+            product_label: "app".to_string(),
+            product_id: "app.dot".to_string(),
+            site_id: "dot.li".to_string(),
+            host_metadata_url: "/metadata.json".to_string(),
+            people_chain_genesis_hash: vec![0; 32],
+            pairing_deeplink_scheme: NativePairingDeeplinkScheme::PolkadotApp,
+        })
+        .unwrap_err();
+
+        assert!(matches!(
+            err,
+            NativeRuntimeConfigError::InvalidHostMetadataUrl { .. }
+        ));
+    }
+
+    #[test]
+    fn runtime_config_rejects_non_https_metadata_url() {
+        let err = RuntimeConfig::try_from(NativeRuntimeConfig {
+            product_label: "app".to_string(),
+            product_id: "app.dot".to_string(),
+            site_id: "dot.li".to_string(),
+            host_metadata_url: "http://localhost:3000/metadata.json".to_string(),
+            people_chain_genesis_hash: vec![0; 32],
+            pairing_deeplink_scheme: NativePairingDeeplinkScheme::PolkadotApp,
+        })
+        .unwrap_err();
+
+        assert!(matches!(
+            err,
+            NativeRuntimeConfigError::InsecureHostMetadataUrl { scheme } if scheme == "http"
         ));
     }
 

@@ -3103,6 +3103,7 @@ version = "0.1.0"
 dependencies = [
  "futures",
  "truapi",
+ "url",
 ]
 
 [[package]]

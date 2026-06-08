@@ -21,6 +21,7 @@ use truapi::v01::{
     RemotePermissionResponse, Theme,
 };
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
+use url::Url;
 
 /// Re-export of `truapi::v01` for host implementations.
 pub use truapi::v01;
@@ -58,7 +59,56 @@ impl RuntimeConfig {
             pairing_deeplink_scheme: PairingDeeplinkScheme::PolkadotApp,
         }
     }
+
+    /// Validate fields whose representation cannot be made invalid by Rust
+    /// types alone.
+    pub fn validate(&self) -> Result<(), RuntimeConfigValidationError> {
+        let parsed = Url::parse(&self.host_metadata_url).map_err(|err| {
+            RuntimeConfigValidationError::InvalidHostMetadataUrl {
+                reason: err.to_string(),
+            }
+        })?;
+        if parsed.scheme() != "https" {
+            return Err(RuntimeConfigValidationError::InsecureHostMetadataUrl {
+                scheme: parsed.scheme().to_string(),
+            });
+        }
+        Ok(())
+    }
 }
+
+/// Runtime config validation error.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RuntimeConfigValidationError {
+    /// Metadata URL could not be parsed as an absolute URL.
+    InvalidHostMetadataUrl {
+        /// Parse failure reason.
+        reason: String,
+    },
+    /// Metadata URL used a non-HTTPS scheme.
+    InsecureHostMetadataUrl {
+        /// Actual URL scheme.
+        scheme: String,
+    },
+}
+
+impl std::fmt::Display for RuntimeConfigValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RuntimeConfigValidationError::InvalidHostMetadataUrl { reason } => {
+                write!(
+                    f,
+                    "host_metadata_url must be an absolute HTTPS URL: {reason}"
+                )
+            }
+            RuntimeConfigValidationError::InsecureHostMetadataUrl { scheme } => {
+                write!(f, "host_metadata_url must use https scheme, got {scheme:?}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for RuntimeConfigValidationError {}
 
 /// SSO wallet deeplink scheme.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

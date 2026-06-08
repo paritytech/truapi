@@ -24,8 +24,8 @@ use truapi::v01;
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use truapi_platform::{
     ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, PairingDeeplinkScheme,
-    PairingPresenter, Permissions, PreimageHost, RuntimeConfig, SessionStore, Storage, ThemeHost,
-    UserConfirmation,
+    PairingPresenter, Permissions, PreimageHost, RuntimeConfig, RuntimeConfigValidationError,
+    SessionStore, Storage, ThemeHost, UserConfirmation,
 };
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -858,7 +858,19 @@ fn runtime_config_from_js(value: &JsValue) -> Result<RuntimeConfig, JsValue> {
             }
         };
     }
+    config.validate().map_err(runtime_config_validation_to_js)?;
     Ok(config)
+}
+
+fn runtime_config_validation_to_js(err: RuntimeConfigValidationError) -> JsValue {
+    match err {
+        RuntimeConfigValidationError::InvalidHostMetadataUrl { reason } => JsValue::from_str(
+            &format!("runtimeConfig.hostMetadataUrl must be an absolute HTTPS URL: {reason}"),
+        ),
+        RuntimeConfigValidationError::InsecureHostMetadataUrl { scheme } => JsValue::from_str(
+            &format!("runtimeConfig.hostMetadataUrl must use https scheme, got {scheme:?}"),
+        ),
+    }
 }
 
 fn get_optional_string(value: &JsValue, name: &str) -> Result<Option<String>, JsValue> {

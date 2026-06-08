@@ -78,6 +78,18 @@ test("createNodeWasmProvider validates runtimeConfig in the WASM core", async ()
   );
 });
 
+test("createNodeWasmProvider rejects non-HTTPS runtime metadata URLs", async () => {
+  await assert.rejects(
+    () =>
+      createNodeWasmProvider(makeCallbacks(), {
+        runtimeConfig: {
+          hostMetadataUrl: "http://localhost:3000/metadata.json",
+        },
+      }),
+    /runtimeConfig\.hostMetadataUrl must use https scheme/,
+  );
+});
+
 test("createNodeWasmProvider dispose is idempotent", async () => {
   const provider = await createNodeWasmProvider(makeCallbacks());
   provider.dispose();

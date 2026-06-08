@@ -8,3 +8,4 @@ license = "MIT"
 [dependencies]
 truapi = { path = "../truapi" }
 futures = "0.3"
+url = "2"
