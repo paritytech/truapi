@@ -1364,7 +1364,14 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     fn spawner_for_tests() -> Spawner {
-        thread_per_task_spawner()
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            thread_per_task_spawner()
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            Arc::new(futures::executor::block_on)
+        }
     }
 
     /// Provider that echoes a canned response for every request it sees,
@@ -1655,6 +1662,7 @@ mod tests {
         assert!(matches!(items[1], RemoteChainHeadFollowItem::Stop));
     }
 
+    #[cfg_attr(target_arch = "wasm32", ignore)]
     #[test]
     fn drop_follow_stream_sends_unfollow() {
         let provider = Arc::new(ChannelProvider::new());

@@ -199,6 +199,17 @@ mod tests {
 
     use crate::frame::{FrameKind, Payload, compose_action};
 
+    fn test_spawner() -> crate::subscription::Spawner {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            crate::subscription::thread_per_subscription_spawner()
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            Arc::new(futures::executor::block_on)
+        }
+    }
+
     struct StubPlatform;
 
     impl Storage for StubPlatform {
@@ -359,10 +370,7 @@ mod tests {
 
     #[test]
     fn from_platform_dispatches_feature_supported() {
-        let core = TrUApiCore::from_platform(
-            Arc::new(StubPlatform),
-            crate::subscription::thread_per_subscription_spawner(),
-        );
+        let core = TrUApiCore::from_platform(Arc::new(StubPlatform), test_spawner());
         let request = HostFeatureSupportedRequest::V1(v01::HostFeatureSupportedRequest::Chain {
             genesis_hash: vec![0u8; 32],
         });
@@ -413,10 +421,7 @@ mod tests {
     }
 
     fn make_core() -> TrUApiCore {
-        TrUApiCore::from_platform(
-            Arc::new(StubPlatform),
-            crate::subscription::thread_per_subscription_spawner(),
-        )
+        TrUApiCore::from_platform(Arc::new(StubPlatform), test_spawner())
     }
 
     #[test]

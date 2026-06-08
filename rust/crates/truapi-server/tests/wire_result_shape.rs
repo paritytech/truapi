@@ -191,12 +191,20 @@ fn dispatch(core: &TrUApiCore, frame: ProtocolMessage) -> ProtocolMessage {
     ProtocolMessage::decode(&mut &response_bytes[..]).expect("decode response")
 }
 
+fn test_spawner() -> truapi_server::subscription::Spawner {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        truapi_server::subscription::thread_per_subscription_spawner()
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        Arc::new(futures::executor::block_on)
+    }
+}
+
 #[test]
 fn feature_supported_ok_response_uses_ok_discriminant() {
-    let core = TrUApiCore::from_platform(
-        Arc::new(StubPlatform),
-        truapi_server::subscription::thread_per_subscription_spawner(),
-    );
+    let core = TrUApiCore::from_platform(Arc::new(StubPlatform), test_spawner());
     let request = HostFeatureSupportedRequest::V1(v01::HostFeatureSupportedRequest::Chain {
         genesis_hash: vec![0u8; 32],
     });
@@ -225,10 +233,7 @@ fn feature_supported_ok_response_uses_ok_discriminant() {
 
 #[test]
 fn local_storage_read_err_response_uses_err_discriminant() {
-    let core = TrUApiCore::from_platform(
-        Arc::new(StubPlatform),
-        truapi_server::subscription::thread_per_subscription_spawner(),
-    );
+    let core = TrUApiCore::from_platform(Arc::new(StubPlatform), test_spawner());
     let request = truapi::versioned::local_storage::HostLocalStorageReadRequest::V1(
         v01::HostLocalStorageReadRequest {
             key: "missing".to_string(),
@@ -412,10 +417,7 @@ fn deferred_payment_subscriptions_interrupt_unsupported() {
 }
 
 fn make_core() -> TrUApiCore {
-    TrUApiCore::from_platform(
-        Arc::new(StubPlatform),
-        truapi_server::subscription::thread_per_subscription_spawner(),
-    )
+    TrUApiCore::from_platform(Arc::new(StubPlatform), test_spawner())
 }
 
 /// Untrusted product input that is not a decodable frame must be dropped

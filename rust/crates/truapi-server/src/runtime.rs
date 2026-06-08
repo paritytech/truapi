@@ -2413,6 +2413,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(not(target_arch = "wasm32"))]
     use crate::chain_runtime::thread_per_task_spawner;
     use futures::stream::{self, BoxStream};
     use p256::SecretKey as P256SecretKey;
@@ -2429,7 +2430,14 @@ mod tests {
     };
 
     fn test_spawner() -> Spawner {
-        thread_per_task_spawner()
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            thread_per_task_spawner()
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            immediate_spawner()
+        }
     }
 
     fn immediate_spawner() -> Spawner {

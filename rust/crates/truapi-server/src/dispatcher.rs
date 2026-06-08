@@ -188,6 +188,17 @@ mod tests {
 
     use crate::frame::{FrameKind, Payload, compose_action};
 
+    fn test_spawner() -> Spawner {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            crate::subscription::thread_per_subscription_spawner()
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            Arc::new(futures::executor::block_on)
+        }
+    }
+
     #[derive(Default)]
     struct RecordingTransport {
         sent: Mutex<Vec<ProtocolMessage>>,
@@ -227,7 +238,7 @@ mod tests {
     /// instead of hanging on a response that never arrives.
     #[test]
     fn dispatch_unregistered_request_replies_unsupported() {
-        let dispatcher = Dispatcher::new(crate::subscription::thread_per_subscription_spawner());
+        let dispatcher = Dispatcher::new(test_spawner());
         let transport = Arc::new(RecordingTransport::default());
         let transport_dyn: Arc<dyn Transport> = transport.clone();
         let frame = make_frame(
@@ -248,7 +259,7 @@ mod tests {
     /// emit an `_interrupt` carrying `Unsupported`, not drop silently.
     #[test]
     fn dispatch_unregistered_subscription_interrupts_unsupported() {
-        let dispatcher = Dispatcher::new(crate::subscription::thread_per_subscription_spawner());
+        let dispatcher = Dispatcher::new(test_spawner());
         let transport = Arc::new(RecordingTransport::default());
         let transport_dyn: Arc<dyn Transport> = transport.clone();
         let frame = make_frame(&compose_action("missing_sub", FrameKind::Start), Vec::new());
@@ -267,8 +278,7 @@ mod tests {
     /// discriminant byte (the Result wire shape).
     #[test]
     fn dispatch_request_handler_error_emits_response_with_err_discriminant() {
-        let mut dispatcher =
-            Dispatcher::new(crate::subscription::thread_per_subscription_spawner());
+        let mut dispatcher = Dispatcher::new(test_spawner());
         dispatcher.on_request("fake_method", |_request_id, _bytes| {
             Box::pin(async move {
                 let err: CallError<()> = CallError::Denied;
@@ -303,8 +313,7 @@ mod tests {
     /// returns the previous handler, so callers can detect collisions.
     #[test]
     fn register_request_twice_returns_previous_handler() {
-        let mut dispatcher =
-            Dispatcher::new(crate::subscription::thread_per_subscription_spawner());
+        let mut dispatcher = Dispatcher::new(test_spawner());
         let prev = dispatcher.on_request("fake_method", |_request_id, _bytes| {
             Box::pin(async move { Ok(Vec::new()) })
         });
