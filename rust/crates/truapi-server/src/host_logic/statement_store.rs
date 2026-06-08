@@ -9,6 +9,7 @@ use schnorrkel::SecretKey;
 use serde_json::Value;
 use serde_json::json;
 use thiserror::Error;
+use truapi::v01;
 
 use crate::host_logic::session::SsoSessionInfo;
 
@@ -283,6 +284,95 @@ pub fn statement_signing_payload(fields: &[StatementField]) -> Result<Vec<u8>, S
         Decode::decode(&mut input).map_err(|err| format!("invalid statement vector: {err}"))?;
     let compact_len = encoded.len() - input.len();
     Ok(encoded[compact_len..].to_vec())
+}
+
+pub fn statement_fields_from_v01(statement: v01::Statement) -> Result<Vec<StatementField>, String> {
+    let mut fields = Vec::new();
+    if let Some(proof) = statement.proof {
+        fields.push(StatementField::Proof(statement_proof_from_v01(proof)));
+    }
+    if let Some(decryption_key) = statement.decryption_key {
+        fields.push(StatementField::DecryptionKey(decryption_key));
+    }
+    if let Some(expiry) = statement.expiry {
+        fields.push(StatementField::Expiry(expiry));
+    }
+    if let Some(channel) = statement.channel {
+        fields.push(StatementField::Channel(channel));
+    }
+    push_statement_topics(&mut fields, statement.topics)?;
+    if let Some(data) = statement.data {
+        fields.push(StatementField::Data(data));
+    }
+    Ok(fields)
+}
+
+pub fn statement_proof_to_v01(proof: StatementProof) -> v01::StatementProof {
+    match proof {
+        StatementProof::Sr25519 { signature, signer } => {
+            v01::StatementProof::Sr25519 { signature, signer }
+        }
+        StatementProof::Ed25519 { signature, signer } => {
+            v01::StatementProof::Ed25519 { signature, signer }
+        }
+        StatementProof::Ecdsa { signature, signer } => {
+            v01::StatementProof::Ecdsa { signature, signer }
+        }
+        StatementProof::OnChain {
+            who,
+            block_hash,
+            event,
+        } => v01::StatementProof::OnChain {
+            who,
+            block_hash,
+            event,
+        },
+    }
+}
+
+fn statement_proof_from_v01(proof: v01::StatementProof) -> StatementProof {
+    match proof {
+        v01::StatementProof::Sr25519 { signature, signer } => {
+            StatementProof::Sr25519 { signature, signer }
+        }
+        v01::StatementProof::Ed25519 { signature, signer } => {
+            StatementProof::Ed25519 { signature, signer }
+        }
+        v01::StatementProof::Ecdsa { signature, signer } => {
+            StatementProof::Ecdsa { signature, signer }
+        }
+        v01::StatementProof::OnChain {
+            who,
+            block_hash,
+            event,
+        } => StatementProof::OnChain {
+            who,
+            block_hash,
+            event,
+        },
+    }
+}
+
+fn push_statement_topics(
+    fields: &mut Vec<StatementField>,
+    topics: Vec<[u8; 32]>,
+) -> Result<(), String> {
+    if topics.len() > 4 {
+        return Err(format!(
+            "statement has {} topics, maximum is 4",
+            topics.len()
+        ));
+    }
+    for (index, topic) in topics.into_iter().enumerate() {
+        fields.push(match index {
+            0 => StatementField::Topic1(topic),
+            1 => StatementField::Topic2(topic),
+            2 => StatementField::Topic3(topic),
+            3 => StatementField::Topic4(topic),
+            _ => unreachable!("topic count checked above"),
+        });
+    }
+    Ok(())
 }
 
 fn statement_field_sort_index(field: &StatementField) -> u8 {

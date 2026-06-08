@@ -33,7 +33,8 @@ use crate::host_logic::sso_pairing::{
     decrypt_handshake_answer, establish_sso_session_info,
 };
 use crate::host_logic::statement_store::{
-    decode_statement_data, parse_new_statements, parse_subscribe_ack, submit_statement_request,
+    decode_statement_data, parse_new_statements, parse_subscribe_ack, sign_statement_fields,
+    statement_fields_from_v01, statement_proof_to_v01, submit_statement_request,
     subscribe_match_all_request,
 };
 use crate::subscription::Spawner;
@@ -104,6 +105,12 @@ use truapi::versioned::signing::{
     HostSignPayloadWithLegacyAccountRequest, HostSignPayloadWithLegacyAccountResponse,
     HostSignRawError, HostSignRawRequest, HostSignRawResponse, HostSignRawWithLegacyAccountError,
     HostSignRawWithLegacyAccountRequest, HostSignRawWithLegacyAccountResponse,
+};
+use truapi::versioned::statement_store::{
+    RemoteStatementStoreCreateProofAuthorizedError,
+    RemoteStatementStoreCreateProofAuthorizedRequest,
+    RemoteStatementStoreCreateProofAuthorizedResponse, RemoteStatementStoreCreateProofError,
+    RemoteStatementStoreCreateProofRequest, RemoteStatementStoreCreateProofResponse,
 };
 use truapi::versioned::system::{
     HostFeatureSupportedError, HostFeatureSupportedRequest, HostFeatureSupportedResponse,
@@ -1386,7 +1393,131 @@ where
     }
 }
 
-impl<P> StatementStore for PlatformRuntimeHost<P> where P: Platform + 'static {}
+impl<P> StatementStore for PlatformRuntimeHost<P>
+where
+    P: Platform + 'static,
+{
+    async fn create_proof(
+        &self,
+        _cx: &CallContext,
+        request: RemoteStatementStoreCreateProofRequest,
+    ) -> Result<
+        RemoteStatementStoreCreateProofResponse,
+        CallError<RemoteStatementStoreCreateProofError>,
+    > {
+        let RemoteStatementStoreCreateProofRequest::V1(inner) = request;
+        if !self.is_product_account_valid_for_caller(&inner.product_account_id.dot_ns_identifier) {
+            return Err(CallError::Domain(RemoteStatementStoreCreateProofError::V1(
+                v01::RemoteStatementStoreCreateProofError::UnknownAccount,
+            )));
+        }
+        let proof = self
+            .create_statement_proof(inner.statement)
+            .map_err(statement_proof_error)?;
+        Ok(RemoteStatementStoreCreateProofResponse::V1(
+            v01::RemoteStatementStoreCreateProofResponse { proof },
+        ))
+    }
+
+    async fn create_proof_authorized(
+        &self,
+        _cx: &CallContext,
+        request: RemoteStatementStoreCreateProofAuthorizedRequest,
+    ) -> Result<
+        RemoteStatementStoreCreateProofAuthorizedResponse,
+        CallError<RemoteStatementStoreCreateProofAuthorizedError>,
+    > {
+        let RemoteStatementStoreCreateProofAuthorizedRequest::V1(statement) = request;
+        let proof = self
+            .create_statement_proof(statement)
+            .map_err(statement_proof_authorized_error)?;
+        Ok(RemoteStatementStoreCreateProofAuthorizedResponse::V1(
+            v01::RemoteStatementStoreCreateProofResponse { proof },
+        ))
+    }
+}
+
+impl<P> PlatformRuntimeHost<P>
+where
+    P: Platform + 'static,
+{
+    fn create_statement_proof(
+        &self,
+        statement: v01::Statement,
+    ) -> Result<v01::StatementProof, StatementProofFailure> {
+        let session = self
+            .session_state
+            .current()
+            .ok_or(StatementProofFailure::NoSession)?;
+        let sso = session
+            .sso
+            .as_ref()
+            .ok_or(StatementProofFailure::NoSession)?;
+        let fields = statement_fields_from_v01(statement)
+            .map_err(StatementProofFailure::InvalidStatement)?;
+        let signed = sign_statement_fields(sso.ss_secret, sso.ss_public_key, fields)
+            .map_err(StatementProofFailure::UnableToSign)?;
+        signed
+            .into_iter()
+            .find_map(|field| match field {
+                crate::host_logic::statement_store::StatementField::Proof(proof) => {
+                    Some(statement_proof_to_v01(proof))
+                }
+                _ => None,
+            })
+            .ok_or_else(|| StatementProofFailure::UnableToSign("missing proof".to_string()))
+    }
+}
+
+enum StatementProofFailure {
+    NoSession,
+    InvalidStatement(String),
+    UnableToSign(String),
+}
+
+fn statement_proof_error(
+    failure: StatementProofFailure,
+) -> CallError<RemoteStatementStoreCreateProofError> {
+    match failure {
+        StatementProofFailure::NoSession => {
+            CallError::Domain(RemoteStatementStoreCreateProofError::V1(
+                v01::RemoteStatementStoreCreateProofError::UnableToSign,
+            ))
+        }
+        StatementProofFailure::UnableToSign(_reason) => {
+            CallError::Domain(RemoteStatementStoreCreateProofError::V1(
+                v01::RemoteStatementStoreCreateProofError::UnableToSign,
+            ))
+        }
+        StatementProofFailure::InvalidStatement(reason) => {
+            CallError::Domain(RemoteStatementStoreCreateProofError::V1(
+                v01::RemoteStatementStoreCreateProofError::Unknown { reason },
+            ))
+        }
+    }
+}
+
+fn statement_proof_authorized_error(
+    failure: StatementProofFailure,
+) -> CallError<RemoteStatementStoreCreateProofAuthorizedError> {
+    match failure {
+        StatementProofFailure::NoSession => {
+            CallError::Domain(RemoteStatementStoreCreateProofAuthorizedError::V1(
+                v01::RemoteStatementStoreCreateProofError::UnableToSign,
+            ))
+        }
+        StatementProofFailure::UnableToSign(_reason) => {
+            CallError::Domain(RemoteStatementStoreCreateProofAuthorizedError::V1(
+                v01::RemoteStatementStoreCreateProofError::UnableToSign,
+            ))
+        }
+        StatementProofFailure::InvalidStatement(reason) => {
+            CallError::Domain(RemoteStatementStoreCreateProofAuthorizedError::V1(
+                v01::RemoteStatementStoreCreateProofError::Unknown { reason },
+            ))
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Chain
@@ -2152,6 +2283,17 @@ mod tests {
         })
     }
 
+    fn statement() -> v01::Statement {
+        v01::Statement {
+            proof: None,
+            decryption_key: None,
+            expiry: Some(99),
+            channel: Some([1; 32]),
+            topics: vec![[2; 32], [3; 32]],
+            data: Some(vec![4, 5, 6]),
+        }
+    }
+
     impl PlatformStorage for StubPlatform {
         async fn read(
             &self,
@@ -2704,6 +2846,78 @@ mod tests {
                 v01::HostGetUserIdError::PermissionDenied
             ))
         ));
+    }
+
+    #[test]
+    fn statement_store_create_proof_signs_with_session_key() {
+        let host =
+            PlatformRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
+        let session = sso_session_info();
+        let expected_signer = session.sso.as_ref().unwrap().ss_public_key;
+        host.session_state().set_session(session);
+        let cx = CallContext::new();
+        let request = RemoteStatementStoreCreateProofRequest::V1(
+            v01::RemoteStatementStoreCreateProofRequest {
+                product_account_id: account_id("myapp.dot", 0),
+                statement: statement(),
+            },
+        );
+
+        let response =
+            futures::executor::block_on(StatementStore::create_proof(&host, &cx, request)).unwrap();
+
+        let RemoteStatementStoreCreateProofResponse::V1(inner) = response;
+        let v01::StatementProof::Sr25519 { signer, signature } = inner.proof else {
+            panic!("expected sr25519 statement proof");
+        };
+        assert_eq!(signer, expected_signer);
+        assert_ne!(signature, [0; 64]);
+    }
+
+    #[test]
+    fn statement_store_create_proof_rejects_wrong_product_account() {
+        let host =
+            PlatformRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
+        host.session_state().set_session(sso_session_info());
+        let cx = CallContext::new();
+        let request = RemoteStatementStoreCreateProofRequest::V1(
+            v01::RemoteStatementStoreCreateProofRequest {
+                product_account_id: account_id("other.dot", 0),
+                statement: statement(),
+            },
+        );
+
+        let err = futures::executor::block_on(StatementStore::create_proof(&host, &cx, request))
+            .unwrap_err();
+
+        assert!(matches!(
+            err,
+            CallError::Domain(RemoteStatementStoreCreateProofError::V1(
+                v01::RemoteStatementStoreCreateProofError::UnknownAccount
+            ))
+        ));
+    }
+
+    #[test]
+    fn statement_store_create_proof_authorized_signs_with_session_key() {
+        let host =
+            PlatformRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
+        let session = sso_session_info();
+        let expected_signer = session.sso.as_ref().unwrap().ss_public_key;
+        host.session_state().set_session(session);
+        let cx = CallContext::new();
+        let request = RemoteStatementStoreCreateProofAuthorizedRequest::V1(statement());
+
+        let response = futures::executor::block_on(StatementStore::create_proof_authorized(
+            &host, &cx, request,
+        ))
+        .unwrap();
+
+        let RemoteStatementStoreCreateProofAuthorizedResponse::V1(inner) = response;
+        let v01::StatementProof::Sr25519 { signer, .. } = inner.proof else {
+            panic!("expected sr25519 statement proof");
+        };
+        assert_eq!(signer, expected_signer);
     }
 
     #[test]
