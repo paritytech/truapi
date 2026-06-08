@@ -2,11 +2,11 @@
 
 > Part of the [host-contract & core-impl spec](<index.md>).
 
-Implement the stubbed wire methods on `PlatformRuntimeHost<P>` (`runtime.rs`). `Signing`,
-`StatementStore`, `Preimage`, `ResourceAllocation`, `Entropy`, `Theme`, and `Payment` are empty `impl`
-blocks today (`runtime.rs:341-553`); `Notifications` is explicitly unavailable; `Account` is partially
-overridden (`runtime.rs:321-339`). Every un-overridden method falls back to the trait default
-`Err(CallError::unavailable())` / `Subscription::empty()`.
+This page tracks the wire methods migrated onto `PlatformRuntimeHost<P>` (`runtime.rs`). The current Rust
+core implements the dotli parity surface for `Account`, `Signing`, `StatementStore`,
+`ResourceAllocation`, `Entropy`, `Theme`, `Notifications`, and `Preimage`. `Payment::*`, `Chat`,
+`CoinPayment`, and full `Account::create_account_proof` stay intentionally deferred because those
+handlers are not implemented in current dotli parity.
 
 Use the [override template + error-mapping rules in the annex](<G - annex.md>) for the per-method
 implementation shape (destructure `::V1`, UFCS-call the platform, map domain errors to
@@ -17,21 +17,21 @@ Strategy tags below: **pure-core** (no host help) · **core+session** (reads `Se
 (a request/response over the SSO session channel, [H §5](<H - sso-pairing-protocol.md>)) · **core protocol**
 (the pairing handshake or the statement-store client).
 
-| Wire method (id) | Strategy | Tier |
+| Wire method (id) | Strategy | Status |
 |---|---|---|
-| `get_legacy_accounts`(28), `get_user_id`(110) | core+session + runtime product config | 1 |
-| `get_account`(22) | pure-core + crypto | 1 |
-| `request_login`(112) | core protocol (SSO handshake, [H](<H - sso-pairing-protocol.md>)) | 2 |
-| `sign_payload`(116), `sign_raw`(114), `sign_*_with_legacy_account`(34/36) | core+chan (signingRequest) | 3 |
-| `create_transaction`(30), `create_transaction_with_legacy_account`(32) | core+chan (createTransactionRequest) | 3 |
-| `create_proof`(60), `create_proof_authorized`(132) | core+session + crypto | 3 |
-| `get_account_alias`(24) | core+chan (aliasRequest) | 3 |
-| `subscribe`(56), `submit`(62) | core-native (statement client) | 3 |
-| `ResourceAllocation::request`(130) | host-confirm + core+chan (resourceAllocationRequest) | 3 |
-| `Entropy::derive`(108) | core+session + crypto | 3.5 |
-| `Theme::subscribe`(104) | host-side primitive/subscription | 3.5 |
-| `Notifications::send_push_notification`(4), `cancel_push_notification`(134) | host-side primitive, extend current trait | 3.5 |
-| `lookup_subscribe`(64), `submit`(68) [preimage] | host-side primitive/callback | 3.5 |
+| `get_legacy_accounts`(28), `get_user_id`(110) | core+session + runtime product config | implemented |
+| `get_account`(22) | pure-core + crypto | implemented |
+| `request_login`(112) | core protocol (SSO handshake, [H](<H - sso-pairing-protocol.md>)) | implemented |
+| `sign_payload`(116), `sign_raw`(114), `sign_*_with_legacy_account`(34/36) | core+chan (signingRequest) | implemented |
+| `create_transaction`(30), `create_transaction_with_legacy_account`(32) | core+chan (createTransactionRequest) | implemented |
+| `create_proof`(60), `create_proof_authorized`(132) | core+session + crypto | implemented |
+| `get_account_alias`(24) | core+chan (aliasRequest) | implemented |
+| `subscribe`(56), `submit`(62) | core-native (statement client) | implemented |
+| `ResourceAllocation::request`(130) | host-confirm + core+chan (resourceAllocationRequest) | implemented |
+| `Entropy::derive`(108) | core+session + crypto | implemented |
+| `Theme::subscribe`(104) | host-side primitive/subscription | implemented |
+| `Notifications::send_push_notification`(4), `cancel_push_notification`(134) | host-side primitive | implemented |
+| `lookup_subscribe`(64), `submit`(68) [preimage] | host-side primitive/callback | implemented |
 | `create_account_proof`(26) | core+chan (full ring-VRF; needs new message) | deferred (unimplemented by dotli) |
 | `Payment::*` | intentionally unavailable | deferred (dotli returns typed "not implemented" errors) |
 
@@ -80,10 +80,9 @@ golden vectors.
 
 ### `request_login` (#112): core protocol (SSO handshake) **(L)**
 
-Replace the current override body (`runtime.rs:321-339`). `request_login` runs the SSO pairing handshake
-over the People-chain statement store and establishes the session. The full protocol (QR payload, topic
-derivation, channel encryption, handshake messages) is in [H](<H - sso-pairing-protocol.md>); below is
-the wire contract + control flow.
+`request_login` runs the SSO pairing handshake over the People-chain statement store and establishes the
+session. The full protocol (QR payload, topic derivation, channel encryption, handshake messages) is in
+[H](<H - sso-pairing-protocol.md>); below is the wire contract + control flow.
 
 ```rust
 async fn request_login(&self, cx, request: HostRequestLoginRequest)
@@ -234,9 +233,9 @@ filters by topic and streams pages. **Paging contract** (RFC-0008) the implement
 ```
 
 The on-chain `Statement` SCALE shape + the `statement_submit`/`statement_subscribeStatement` RPC are
-known from the iOS peer ([H](<H - sso-pairing-protocol.md>)). Because the pairing client already exists,
-this is no longer an XL pallet port; the remaining work is the product-facing topic-filtered subscription
-+ the dump-then-live paging. [E1](<E - open-questions.md>) resolves this in-core.
+known from the iOS peer ([H](<H - sso-pairing-protocol.md>)). The implementation shares the statement
+client used by pairing and exposes the product-facing topic-filtered subscription plus dump-then-live
+paging in-core. [E1](<E - open-questions.md>) resolves this in-core.
 
 ---
 
@@ -245,7 +244,7 @@ this is no longer an XL pallet port; the remaining work is the product-facing to
 ### `Entropy::derive` (#108): core+session + crypto **(S-M)**
 
 Current dotli reads `ssSecret` and calls `deriveProductEntropy(secret, "${label}.dot", key)`
-(`~/github/dotli/packages/ui/src/container.ts:769-794`). Implement in-core using the same algorithm from
+(`~/github/dotli/packages/ui/src/container.ts:769-794`). Rust implements the same algorithm from
 `@novasamatech/host-container` vectors and the runtime `product_label` parity input. No session/secret =>
 `Unknown { reason:"Not connected" }` / `"Session secret missing"` parity unless the Rust error type is
 more specific.
@@ -253,25 +252,24 @@ more specific.
 ### `Theme::subscribe` (#104): host-side **(S)**
 
 Current dotli emits `{ name: Default, variant: Light|Dark }` and listens for
-`dotli:theme-changed` (`~/github/dotli/packages/ui/src/container.ts:1194-1214`). Add a small platform
-theme subscription or a runtime host callback; this is not Nova-specific, but it is implemented dotli
-behavior once `host-container` is removed.
+`dotli:theme-changed` (`~/github/dotli/packages/ui/src/container.ts:1194-1214`). Rust delegates to the
+platform theme subscription so the host adapter owns the browser/UI source while the core preserves the
+typed TrUAPI stream.
 
 ### Notifications (#4/#134): extend platform primitive **(M)**
 
 Current dotli schedules/cancels local notifications and returns a host-assigned id
-(`~/github/dotli/packages/ui/src/container.ts:929-975`). `truapi-platform::Notifications` currently only
-has `push_notification(...) -> Result<(), GenericError>`, while the TrUAPI wire requires
-`HostPushNotificationResponse { id }` and `cancel_push_notification`. Extend the platform trait/bridge so
-the host can return ids and cancel scheduled notifications.
+(`~/github/dotli/packages/ui/src/container.ts:929-975`). `truapi-platform::Notifications` exposes both
+`push_notification(...) -> HostPushNotificationResponse { id }` and `cancel_notification(...)`; Rust
+delegates scheduling/cancellation to the host adapter.
 
 ### `lookup_subscribe` (#64) · `submit` (#68) [preimage]: host-side **(M)**
 
 Current dotli implements preimage submit/lookup with the selected content backend and local cache
 (`~/github/dotli/packages/ui/src/container.ts:1081-1192`). It does not use Nova packages, but it must still
-be exposed through the Rust host once `host-container` is removed. Keep the implementation host-side for
-v1 ([E4](<E - open-questions.md>)); add platform callbacks/traits rather than moving IPFS/Bulletin logic
-into `truapi-server`.
+be exposed through the Rust host once `host-container` is removed. The v1 Rust implementation keeps this
+host-side ([E4](<E - open-questions.md>)): the platform callbacks own IPFS/Bulletin/cache behavior and
+the core exposes the typed TrUAPI subscription/request surface.
 
 ---
 

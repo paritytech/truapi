@@ -37,7 +37,7 @@ land.
 |---|---|
 | [H - SSO pairing protocol](<H - sso-pairing-protocol.md>) | **Foundational.** The one transport (People-chain statement store) that pairing + signing + transaction construction + resource allocation + ring-VRF + statements all ride |
 | [A - Host primitives](<A - host-primitives.md>) | The new SSO callback (QR presenter), runtime product config, and host-container parity surfaces |
-| [B - Core implementations](<B - core-impls.md>) | The stubbed wire methods, per-method ticket + diagrams |
+| [B - Core implementations](<B - core-impls.md>) | The migrated wire methods, current deferred set, per-method tickets + diagrams |
 | [C - Session contract](<C - session-contract.md>) | `SessionState` extension, persistence/restore, the JS package gap |
 | [D - Crypto foundation](<D - crypto-foundation.md>) | wasm32 deps, the `get_account` derivation, the proof scheme, golden vectors |
 | [E - Decision log / deferred questions](<E - open-questions.md>) | Resolved audit decisions plus non-parity deferred items |
@@ -139,22 +139,24 @@ proof signing, or session persistence semantics outside Rust.
 
 ## The gap at a glance
 
-| Domain | Stubbed wire methods (`CallError::unavailable()`) | Live today |
+| Domain | Deferred/unsupported in current dotli parity | Implemented in Rust core today |
 |---|---|---|
-| `Account` | `get_account`(22), `get_account_alias`(24), `create_account_proof`(26), `get_legacy_accounts`(28), `get_user_id`(110), `request_login`(112) | `connection_status_subscribe`(18) |
-| `Signing` | `create_transaction`(30), `create_transaction_with_legacy_account`(32), `sign_payload`(116), `sign_payload_with_legacy_account`(36), `sign_raw`(114), `sign_raw_with_legacy_account`(34) | none |
-| `StatementStore` | `subscribe`(56), `submit`(62), `create_proof`(60), `create_proof_authorized`(132) | none |
-| `ResourceAllocation` | `request`(130) | none |
-| `Entropy` | `derive`(108) | none |
-| `Theme` | `subscribe`(104) | none (`Subscription::empty()`) |
-| `Notifications` | `send_push_notification`(4), `cancel_push_notification`(134) | none (`unavailable`) |
-| `Preimage` | `lookup_subscribe`(64), `submit`(68) | none |
+| `Account` | `create_account_proof`(26) | `connection_status_subscribe`(18), `get_account`(22), `get_account_alias`(24), `get_legacy_accounts`(28), `get_user_id`(110), `request_login`(112), logout/disconnect |
+| `Signing` | none | `create_transaction`(30), `create_transaction_with_legacy_account`(32), `sign_payload`(116), `sign_payload_with_legacy_account`(36), `sign_raw`(114), `sign_raw_with_legacy_account`(34) |
+| `StatementStore` | none | `subscribe`(56), `submit`(62), `create_proof`(60), `create_proof_authorized`(132) |
+| `ResourceAllocation` | none | `request`(130) |
+| `Entropy` | none | `derive`(108) |
+| `Theme` | none | `subscribe`(104) |
+| `Notifications` | none | `send_push_notification`(4), `cancel_push_notification`(134) |
+| `Preimage` | none | `lookup_subscribe`(64), `submit`(68) |
 | `Payment` | `balance_subscribe`(118), `top_up`(122), `request`(124), `status_subscribe`(126) | none, and dotli intentionally returns typed "not implemented" errors |
 
-`Signing`, `StatementStore`, `Preimage`, `ResourceAllocation`, `Entropy`, `Theme`, and `Payment` are empty
-`impl` blocks today (`runtime.rs:341-553`), so their methods fall through to trait defaults. `Notifications`
-spells out unavailable stubs because the trait has no defaults. `Account` is partially overridden
-(`connection_status_subscribe`, `request_login`); the rest use defaults.
+`Chat` and `CoinPayment` remain outside this milestone and keep generated trait defaults until another
+host/product requires them. `Payment` and full `create_account_proof` deliberately return
+`Unsupported`; handlers that are unimplemented in dotli can stay that way until the other hosts need them.
+The current Rust core owns the dotli parity paths: SSO-only pairing/restore/logout, product-account
+derivation, signing and transaction SSO proxying, statement-store submit/subscribe/proofs, allocation
+requests, entropy, theme, notifications, and preimage callbacks.
 
 Current dotli backs its host bridge with `@novasamatech/host-api` + `host-container`, and auth/session
 flows with `host-papp`, `statement-store`, `sdk-statement`, and `storage-adapter`. The packages are **not
