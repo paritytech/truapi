@@ -63,9 +63,11 @@ them.
       `Identity`, `UserSession`, `createLazyClient`, `createPapiStatementStoreAdapter`,
       `StatementStoreAdapter`, `Statement`, and `toHex` once pairing/session restore/statement-store are
       core-owned. The migrated submodule deletes `packages/auth`.
-- [ ] dotli logout/disconnect UI: call the Rust core public logout/disconnect API. Do not clear the
+- [x] dotli logout/disconnect UI: call the Rust core public logout/disconnect API. Do not clear the
       `SessionStore` directly from UI code; core owns teardown, storage clear, and `Disconnected`
-      broadcast.
+      broadcast. `packages/ui/src/topbar.ts` emits `dotli:truapi-disconnect-request`,
+      `packages/ui/src/bridge.ts` routes that to `coreProvider.disconnect()`, and
+      `packages/ui/tests/topbar.test.ts` locks the topbar event path.
 - [x] `packages/auth/src/signing.ts`: remove `UserSession` and `host-api` error/type imports once signing,
       legacy signing, and `create_transaction` are core session-channel requests. Keep or rewrite only the
       dotli confirmation modals if they remain host UI around core calls. The migrated submodule deletes
