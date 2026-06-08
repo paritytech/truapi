@@ -15,6 +15,7 @@ use crate::chain_runtime::{
 use crate::host_logic::dotns::{NavigateDecision, parse_navigate};
 use crate::host_logic::features::feature_supported;
 use crate::host_logic::permissions::{Decision, PermissionsService};
+use crate::host_logic::product_account::{derive_product_public_key, is_product_identifier};
 use crate::host_logic::session::SessionState;
 use crate::subscription::Spawner;
 
@@ -25,8 +26,10 @@ use truapi::api::{
 };
 use truapi::v01;
 use truapi::versioned::account::{
-    HostAccountConnectionStatusSubscribeItem, HostRequestLoginError, HostRequestLoginRequest,
-    HostRequestLoginResponse,
+    HostAccountConnectionStatusSubscribeItem, HostAccountGetError, HostAccountGetRequest,
+    HostAccountGetResponse, HostGetLegacyAccountsError, HostGetLegacyAccountsRequest,
+    HostGetLegacyAccountsResponse, HostGetUserIdError, HostGetUserIdRequest, HostGetUserIdResponse,
+    HostRequestLoginError, HostRequestLoginRequest, HostRequestLoginResponse,
 };
 use truapi::versioned::chain::{
     RemoteChainHeadBodyError, RemoteChainHeadBodyRequest, RemoteChainHeadBodyResponse,
@@ -67,13 +70,14 @@ use truapi::versioned::system::{
 use truapi::{CallContext, CallError, Subscription};
 use truapi_platform::{
     ChainProvider as PlatformChainProvider, JsonRpcConnection, Navigation as PlatformNavigation,
-    Platform, Storage as PlatformStorage,
+    Notifications as PlatformNotifications, Platform, RuntimeConfig, Storage as PlatformStorage,
 };
 
 /// Adapter that exposes a [`truapi_platform::Platform`] through the
 /// `truapi::api::*` trait set the generated dispatcher routes to.
 pub struct PlatformRuntimeHost<P> {
     platform: Arc<P>,
+    runtime_config: RuntimeConfig,
     /// chainHead-v1 state machine. The provider adapter forwards
     /// [`PlatformChainProvider::connect`] into the json-rpc layer.
     chain: ChainRuntime,
@@ -87,16 +91,26 @@ impl<P> PlatformRuntimeHost<P> {
     /// Wrap a platform implementation. The runtime takes ownership via `Arc`.
     /// `spawner` is used by the embedded chain runtime to drive json-rpc
     /// response loops and follow-setup futures.
-    pub fn new(platform: Arc<P>, spawner: Spawner) -> Self
+    pub fn new(platform: Arc<P>, runtime_config: RuntimeConfig, spawner: Spawner) -> Self
     where
         P: Platform + 'static,
     {
         let chain_provider = Self::chain_provider(platform.clone());
         Self {
             platform,
+            runtime_config,
             chain: ChainRuntime::new(chain_provider, spawner),
             session_state: SessionState::new(),
         }
+    }
+
+    /// Compatibility constructor used by existing tests and bridge surfaces
+    /// until they pass real product runtime config.
+    pub fn new_compat(platform: Arc<P>, spawner: Spawner) -> Self
+    where
+        P: Platform + 'static,
+    {
+        Self::new(platform, RuntimeConfig::compatibility_default(), spawner)
     }
 
     /// Chain provider backing the chainHead-v1 runtime. Without the `smoldot`
@@ -127,6 +141,11 @@ impl<P> PlatformRuntimeHost<P> {
     /// (`setActiveSession` / `clearActiveSession`) routes through this handle.
     pub fn session_state(&self) -> Arc<SessionState> {
         self.session_state.clone()
+    }
+
+    /// Static product/host configuration for this runtime instance.
+    pub fn runtime_config(&self) -> &RuntimeConfig {
+        &self.runtime_config
     }
 }
 
@@ -316,12 +335,125 @@ where
 // `Err(CallError::unavailable())` until those in-core implementations
 // land. `PlatformRuntimeHost` only overrides
 // `connection_status_subscribe` (fed by the session-state holder) and
-// `request_login` (no useful default).
+// `request_login` (currently only the already-connected short-circuit; full
+// pairing lands with the SSO service).
 
 impl<P> Account for PlatformRuntimeHost<P>
 where
     P: Platform + 'static,
 {
+    async fn get_account(
+        &self,
+        _cx: &CallContext,
+        request: HostAccountGetRequest,
+    ) -> Result<HostAccountGetResponse, CallError<HostAccountGetError>> {
+        let HostAccountGetRequest::V1(v01::HostAccountGetRequest { product_account_id }) = request;
+
+        if !is_product_identifier(&product_account_id.dot_ns_identifier) {
+            return Err(CallError::Domain(HostAccountGetError::V1(
+                v01::HostAccountGetError::DomainNotValid,
+            )));
+        }
+
+        let Some(session) = self.session_state.current() else {
+            return Err(CallError::Domain(HostAccountGetError::V1(
+                v01::HostAccountGetError::NotConnected,
+            )));
+        };
+
+        let public_key = derive_product_public_key(
+            session.public_key,
+            &product_account_id.dot_ns_identifier,
+            product_account_id.derivation_index,
+        )
+        .map_err(|err| {
+            CallError::Domain(HostAccountGetError::V1(v01::HostAccountGetError::Unknown {
+                reason: err.to_string(),
+            }))
+        })?;
+
+        Ok(HostAccountGetResponse::V1(v01::HostAccountGetResponse {
+            account: v01::ProductAccount {
+                public_key: public_key.to_vec(),
+            },
+        }))
+    }
+
+    async fn get_legacy_accounts(
+        &self,
+        _cx: &CallContext,
+        _request: HostGetLegacyAccountsRequest,
+    ) -> Result<HostGetLegacyAccountsResponse, CallError<HostGetLegacyAccountsError>> {
+        let Some(session) = self.session_state.current() else {
+            return Ok(HostGetLegacyAccountsResponse::V1(
+                v01::HostGetLegacyAccountsResponse { accounts: vec![] },
+            ));
+        };
+
+        if !is_product_identifier(&self.runtime_config.product_id) {
+            return Err(CallError::Domain(HostGetLegacyAccountsError::V1(
+                v01::HostAccountGetError::DomainNotValid,
+            )));
+        }
+
+        let public_key =
+            derive_product_public_key(session.public_key, &self.runtime_config.product_id, 0)
+                .map_err(|err| {
+                    CallError::Domain(HostGetLegacyAccountsError::V1(
+                        v01::HostAccountGetError::Unknown {
+                            reason: err.to_string(),
+                        },
+                    ))
+                })?;
+
+        Ok(HostGetLegacyAccountsResponse::V1(
+            v01::HostGetLegacyAccountsResponse {
+                accounts: vec![v01::LegacyAccount {
+                    public_key: public_key.to_vec(),
+                    name: session.lite_username,
+                }],
+            },
+        ))
+    }
+
+    async fn get_user_id(
+        &self,
+        _cx: &CallContext,
+        _request: HostGetUserIdRequest,
+    ) -> Result<HostGetUserIdResponse, CallError<HostGetUserIdError>> {
+        let Some(session) = self.session_state.current() else {
+            return Err(CallError::Domain(HostGetUserIdError::V1(
+                v01::HostGetUserIdError::NotConnected,
+            )));
+        };
+
+        let primary_username = session
+            .full_username
+            .filter(|value| !value.is_empty())
+            .or_else(|| session.lite_username.filter(|value| !value.is_empty()))
+            .ok_or_else(|| {
+                CallError::Domain(HostGetUserIdError::V1(v01::HostGetUserIdError::Unknown {
+                    reason: "No primary username for this session".to_string(),
+                }))
+            })?;
+
+        let service = PermissionsService::new(self.platform.as_ref(), self.platform.as_ref());
+        let permission = v01::RemotePermissionRequest {
+            permission: v01::RemotePermission::UserId,
+        };
+        match service.check_or_prompt_remote(permission).await {
+            Ok(Decision::Granted) => Ok(HostGetUserIdResponse::V1(v01::HostGetUserIdResponse {
+                primary_username,
+            })),
+            Ok(Decision::Denied) => Err(CallError::Domain(HostGetUserIdError::V1(
+                v01::HostGetUserIdError::PermissionDenied,
+            ))),
+            Err(err) => Err(CallError::HostFailure {
+                reason: format!("permission storage failed: {err:?}"),
+            }),
+        }
+    }
+
     async fn connection_status_subscribe(
         &self,
         _cx: &CallContext,
@@ -334,6 +466,11 @@ where
         _cx: &CallContext,
         _request: HostRequestLoginRequest,
     ) -> Result<HostRequestLoginResponse, CallError<HostRequestLoginError>> {
+        if self.session_state.current().is_some() {
+            return Ok(HostRequestLoginResponse::V1(
+                v01::HostRequestLoginResponse::AlreadyConnected,
+            ));
+        }
         Err(CallError::unavailable())
     }
 }
@@ -562,18 +699,35 @@ where
     async fn send_push_notification(
         &self,
         _cx: &CallContext,
-        _request: HostPushNotificationRequest,
+        request: HostPushNotificationRequest,
     ) -> Result<HostPushNotificationResponse, CallError<HostPushNotificationError>> {
-        Err(CallError::unavailable())
+        let HostPushNotificationRequest::V1(inner) = request;
+        PlatformNotifications::push_notification(self.platform.as_ref(), inner)
+            .await
+            .map(HostPushNotificationResponse::V1)
+            .map_err(|err| {
+                CallError::Domain(HostPushNotificationError::V1(
+                    v01::HostPushNotificationError::Unknown { reason: err.reason },
+                ))
+            })
     }
 
     async fn cancel_push_notification(
         &self,
         _cx: &CallContext,
-        _request: HostPushNotificationCancelRequest,
+        request: HostPushNotificationCancelRequest,
     ) -> Result<HostPushNotificationCancelResponse, CallError<HostPushNotificationCancelError>>
     {
-        Err(CallError::unavailable())
+        let HostPushNotificationCancelRequest::V1(v01::HostPushNotificationCancelRequest { id }) =
+            request;
+        PlatformNotifications::cancel_notification(self.platform.as_ref(), id)
+            .await
+            .map(|()| HostPushNotificationCancelResponse::V1)
+            .map_err(|err| {
+                CallError::Domain(HostPushNotificationCancelError::V1(v01::GenericError {
+                    reason: err.reason,
+                }))
+            })
     }
 }
 
@@ -586,8 +740,9 @@ mod tests {
     use truapi::v01;
     use truapi_platform::{
         ChainProvider, Features as PlatformFeatures, JsonRpcConnection,
-        Navigation as PlatformNavigation, Notifications as PlatformNotifications,
-        Permissions as PlatformPermissions, Storage as PlatformStorage,
+        Navigation as PlatformNavigation, Notifications as PlatformNotifications, PairingPresenter,
+        Permissions as PlatformPermissions, PreimageHost, SessionStore, Storage as PlatformStorage,
+        ThemeHost, UserConfirmation,
     };
 
     fn test_spawner() -> Spawner {
@@ -597,7 +752,44 @@ mod tests {
     /// Minimal Platform impl that only answers `feature_supported`. Every
     /// other callback returns a unit value or empty stream, so the runtime
     /// can exercise its delegation paths without pulling in a real backend.
-    struct StubPlatform;
+    struct StubPlatform {
+        remote_permission_granted: bool,
+    }
+
+    impl Default for StubPlatform {
+        fn default() -> Self {
+            Self {
+                remote_permission_granted: true,
+            }
+        }
+    }
+
+    fn stub_platform() -> Arc<StubPlatform> {
+        Arc::new(StubPlatform::default())
+    }
+
+    fn runtime_config(product_id: &str) -> RuntimeConfig {
+        RuntimeConfig {
+            product_label: product_id.trim_end_matches(".dot").to_string(),
+            product_id: product_id.to_string(),
+            site_id: "test".to_string(),
+            host_metadata_url: "https://example.invalid/metadata.json".to_string(),
+            people_chain_genesis_hash: [0; 32],
+            pairing_deeplink_scheme: truapi_platform::PairingDeeplinkScheme::PolkadotApp,
+        }
+    }
+
+    fn session_info() -> crate::host_logic::session::SessionInfo {
+        crate::host_logic::session::SessionInfo {
+            public_key: [
+                0x80, 0x05, 0x28, 0xc9, 0x55, 0x87, 0x3e, 0x4c, 0x78, 0xb7, 0xdf, 0x24, 0xf7, 0x1d,
+                0xb8, 0xf5, 0x81, 0xaa, 0x99, 0xe3, 0x49, 0x3b, 0xf4, 0x96, 0xed, 0xf1, 0x51, 0xab,
+                0xc1, 0xd7, 0x20, 0x23,
+            ],
+            lite_username: Some("alice".to_string()),
+            full_username: Some("Alice Smith".to_string()),
+        }
+    }
 
     impl PlatformStorage for StubPlatform {
         async fn read(
@@ -628,7 +820,11 @@ mod tests {
         async fn push_notification(
             &self,
             _notification: v01::HostPushNotificationRequest,
-        ) -> Result<(), v01::GenericError> {
+        ) -> Result<v01::HostPushNotificationResponse, v01::GenericError> {
+            Ok(v01::HostPushNotificationResponse { id: 0 })
+        }
+
+        async fn cancel_notification(&self, _id: u32) -> Result<(), v01::GenericError> {
             Ok(())
         }
     }
@@ -645,7 +841,9 @@ mod tests {
             &self,
             _request: v01::RemotePermissionRequest,
         ) -> Result<v01::RemotePermissionResponse, v01::GenericError> {
-            Ok(v01::RemotePermissionResponse { granted: true })
+            Ok(v01::RemotePermissionResponse {
+                granted: self.remote_permission_granted,
+            })
         }
     }
 
@@ -678,9 +876,80 @@ mod tests {
         }
     }
 
+    impl PairingPresenter for StubPlatform {
+        async fn present_pairing(&self, _deeplink: String) -> Result<(), v01::GenericError> {
+            Err(v01::GenericError {
+                reason: "pairing presenter callback not provided by host".to_string(),
+            })
+        }
+    }
+
+    impl SessionStore for StubPlatform {
+        async fn read_session(&self) -> Result<Option<Vec<u8>>, v01::GenericError> {
+            Ok(None)
+        }
+        async fn write_session(&self, _value: Vec<u8>) -> Result<(), v01::GenericError> {
+            Ok(())
+        }
+        async fn clear_session(&self) -> Result<(), v01::GenericError> {
+            Ok(())
+        }
+        fn subscribe_session_store(&self) -> BoxStream<'static, Result<(), v01::GenericError>> {
+            Box::pin(stream::once(async { Ok(()) }))
+        }
+    }
+
+    impl UserConfirmation for StubPlatform {
+        async fn confirm_sign_payload(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
+            Ok(false)
+        }
+        async fn confirm_sign_raw(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
+            Ok(false)
+        }
+        async fn confirm_create_transaction(
+            &self,
+            _review: Vec<u8>,
+        ) -> Result<bool, v01::GenericError> {
+            Ok(false)
+        }
+        async fn confirm_resource_allocation(
+            &self,
+            _review: Vec<u8>,
+        ) -> Result<bool, v01::GenericError> {
+            Ok(false)
+        }
+    }
+
+    impl ThemeHost for StubPlatform {
+        fn subscribe_theme(&self) -> BoxStream<'static, Result<v01::Theme, v01::GenericError>> {
+            Box::pin(stream::empty())
+        }
+    }
+
+    impl PreimageHost for StubPlatform {
+        async fn confirm_preimage_submit(
+            &self,
+            _size: u64,
+        ) -> Result<(), v01::PreimageSubmitError> {
+            Ok(())
+        }
+        async fn submit_preimage(
+            &self,
+            value: Vec<u8>,
+        ) -> Result<Vec<u8>, v01::PreimageSubmitError> {
+            Ok(value)
+        }
+        fn lookup_preimage(
+            &self,
+            _key: Vec<u8>,
+        ) -> BoxStream<'static, Result<Option<Vec<u8>>, v01::GenericError>> {
+            Box::pin(stream::empty())
+        }
+    }
+
     #[test]
     fn feature_supported_round_trips_through_runtime() {
-        let host = PlatformRuntimeHost::new(Arc::new(StubPlatform), test_spawner());
+        let host = PlatformRuntimeHost::new_compat(stub_platform(), test_spawner());
         let cx = CallContext::new();
         let request = HostFeatureSupportedRequest::V1(v01::HostFeatureSupportedRequest::Chain {
             genesis_hash: vec![0u8; 32],
@@ -692,7 +961,7 @@ mod tests {
 
     #[test]
     fn navigate_to_uses_dotns_decision_and_then_platform() {
-        let host = PlatformRuntimeHost::new(Arc::new(StubPlatform), test_spawner());
+        let host = PlatformRuntimeHost::new_compat(stub_platform(), test_spawner());
         let cx = CallContext::new();
         let request = HostNavigateToRequest::V1(v01::HostNavigateToRequest {
             url: "mytestapp.dot".to_string(),
@@ -703,7 +972,7 @@ mod tests {
 
     #[test]
     fn navigate_to_rejects_empty_input_without_calling_platform() {
-        let host = PlatformRuntimeHost::new(Arc::new(StubPlatform), test_spawner());
+        let host = PlatformRuntimeHost::new_compat(stub_platform(), test_spawner());
         let cx = CallContext::new();
         let request = HostNavigateToRequest::V1(v01::HostNavigateToRequest {
             url: "".to_string(),
@@ -718,8 +987,131 @@ mod tests {
     }
 
     #[test]
+    fn get_account_requires_session() {
+        let host = PlatformRuntimeHost::new_compat(stub_platform(), test_spawner());
+        let cx = CallContext::new();
+        let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
+            product_account_id: v01::ProductAccountId {
+                dot_ns_identifier: "myapp.dot".to_string(),
+                derivation_index: 0,
+            },
+        });
+        let err = futures::executor::block_on(host.get_account(&cx, request)).unwrap_err();
+        assert!(matches!(
+            err,
+            CallError::Domain(HostAccountGetError::V1(
+                v01::HostAccountGetError::NotConnected
+            ))
+        ));
+    }
+
+    #[test]
+    fn get_account_rejects_invalid_product_identifier() {
+        let host = PlatformRuntimeHost::new_compat(stub_platform(), test_spawner());
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
+            product_account_id: v01::ProductAccountId {
+                dot_ns_identifier: "example.com".to_string(),
+                derivation_index: 0,
+            },
+        });
+        let err = futures::executor::block_on(host.get_account(&cx, request)).unwrap_err();
+        assert!(matches!(
+            err,
+            CallError::Domain(HostAccountGetError::V1(
+                v01::HostAccountGetError::DomainNotValid
+            ))
+        ));
+    }
+
+    #[test]
+    fn get_account_derives_dotli_product_key() {
+        let host = PlatformRuntimeHost::new_compat(stub_platform(), test_spawner());
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
+            product_account_id: v01::ProductAccountId {
+                dot_ns_identifier: "myapp.dot".to_string(),
+                derivation_index: 0,
+            },
+        });
+        let response = futures::executor::block_on(host.get_account(&cx, request)).unwrap();
+        let HostAccountGetResponse::V1(inner) = response;
+        assert_eq!(
+            hex::encode(inner.account.public_key),
+            "281489e3dd1c4dbe88cd670a59edcc9c44d64f510d302bd527ec306f10292f08"
+        );
+    }
+
+    #[test]
+    fn get_legacy_accounts_returns_derived_slot_zero_when_connected() {
+        let host = PlatformRuntimeHost::new(
+            stub_platform(),
+            runtime_config("localhost:3000"),
+            test_spawner(),
+        );
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let response = futures::executor::block_on(
+            host.get_legacy_accounts(&cx, HostGetLegacyAccountsRequest::V1),
+        )
+        .unwrap();
+        let HostGetLegacyAccountsResponse::V1(inner) = response;
+        assert_eq!(inner.accounts.len(), 1);
+        assert_eq!(inner.accounts[0].name.as_deref(), Some("alice"));
+        assert_eq!(
+            hex::encode(&inner.accounts[0].public_key),
+            "1c822b488297fde8c60d9cbc5585839f70a69fb2c5c69daa66b6043c75184467"
+        );
+    }
+
+    #[test]
+    fn get_legacy_accounts_returns_empty_when_disconnected() {
+        let host = PlatformRuntimeHost::new_compat(stub_platform(), test_spawner());
+        let cx = CallContext::new();
+        let response = futures::executor::block_on(
+            host.get_legacy_accounts(&cx, HostGetLegacyAccountsRequest::V1),
+        )
+        .unwrap();
+        let HostGetLegacyAccountsResponse::V1(inner) = response;
+        assert!(inner.accounts.is_empty());
+    }
+
+    #[test]
+    fn get_user_id_returns_primary_username_after_permission() {
+        let host = PlatformRuntimeHost::new_compat(stub_platform(), test_spawner());
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let response =
+            futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1)).unwrap();
+        let HostGetUserIdResponse::V1(inner) = response;
+        assert_eq!(inner.primary_username, "Alice Smith");
+    }
+
+    #[test]
+    fn get_user_id_denies_when_permission_denied() {
+        let host = PlatformRuntimeHost::new_compat(
+            Arc::new(StubPlatform {
+                remote_permission_granted: false,
+            }),
+            test_spawner(),
+        );
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let err = futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1))
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            CallError::Domain(HostGetUserIdError::V1(
+                v01::HostGetUserIdError::PermissionDenied
+            ))
+        ));
+    }
+
+    #[test]
     fn request_login_returns_unavailable() {
-        let host = PlatformRuntimeHost::new(Arc::new(StubPlatform), test_spawner());
+        let host = PlatformRuntimeHost::new_compat(stub_platform(), test_spawner());
         let cx = CallContext::new();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
         let err = futures::executor::block_on(host.request_login(&cx, request)).unwrap_err();
@@ -727,8 +1119,21 @@ mod tests {
     }
 
     #[test]
+    fn request_login_returns_already_connected_when_session_exists() {
+        let host = PlatformRuntimeHost::new_compat(stub_platform(), test_spawner());
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
+        let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
+        assert_eq!(
+            response,
+            HostRequestLoginResponse::V1(v01::HostRequestLoginResponse::AlreadyConnected)
+        );
+    }
+
+    #[test]
     fn permissions_grants_and_caches() {
-        let host = PlatformRuntimeHost::new(Arc::new(StubPlatform), test_spawner());
+        let host = PlatformRuntimeHost::new_compat(stub_platform(), test_spawner());
         let cx = CallContext::new();
         let request = HostDevicePermissionRequest::V1(v01::HostDevicePermissionRequest::Camera);
         let response =
@@ -739,7 +1144,7 @@ mod tests {
 
     #[test]
     fn feature_supported_encodes_response_to_known_bytes() {
-        let host = PlatformRuntimeHost::new(Arc::new(StubPlatform), test_spawner());
+        let host = PlatformRuntimeHost::new_compat(stub_platform(), test_spawner());
         let cx = CallContext::new();
         let request = HostFeatureSupportedRequest::V1(v01::HostFeatureSupportedRequest::Chain {
             genesis_hash: vec![0u8; 32],

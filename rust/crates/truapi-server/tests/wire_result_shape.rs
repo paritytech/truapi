@@ -26,7 +26,8 @@ use truapi::v01;
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 
 use truapi_platform::{
-    ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, Permissions, Storage,
+    ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, PairingPresenter,
+    Permissions, PreimageHost, SessionStore, Storage, ThemeHost, UserConfirmation,
 };
 
 use truapi_server::{FrameKind, Payload, ProtocolMessage, TrUApiCore, compose_action};
@@ -61,7 +62,11 @@ impl Notifications for StubPlatform {
     async fn push_notification(
         &self,
         _notification: v01::HostPushNotificationRequest,
-    ) -> Result<(), v01::GenericError> {
+    ) -> Result<v01::HostPushNotificationResponse, v01::GenericError> {
+        Ok(v01::HostPushNotificationResponse { id: 0 })
+    }
+
+    async fn cancel_notification(&self, _id: u32) -> Result<(), v01::GenericError> {
         Ok(())
     }
 }
@@ -106,6 +111,71 @@ impl ChainProvider for StubPlatform {
         _genesis_hash: Vec<u8>,
     ) -> Result<Box<dyn JsonRpcConnection>, v01::GenericError> {
         Ok(Box::new(DeadConnection))
+    }
+}
+
+impl PairingPresenter for StubPlatform {
+    async fn present_pairing(&self, _deeplink: String) -> Result<(), v01::GenericError> {
+        Err(v01::GenericError {
+            reason: "pairing presenter callback not provided by host".to_string(),
+        })
+    }
+}
+
+impl SessionStore for StubPlatform {
+    async fn read_session(&self) -> Result<Option<Vec<u8>>, v01::GenericError> {
+        Ok(None)
+    }
+    async fn write_session(&self, _value: Vec<u8>) -> Result<(), v01::GenericError> {
+        Ok(())
+    }
+    async fn clear_session(&self) -> Result<(), v01::GenericError> {
+        Ok(())
+    }
+    fn subscribe_session_store(&self) -> BoxStream<'static, Result<(), v01::GenericError>> {
+        Box::pin(stream::once(async { Ok(()) }))
+    }
+}
+
+impl UserConfirmation for StubPlatform {
+    async fn confirm_sign_payload(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
+        Ok(false)
+    }
+    async fn confirm_sign_raw(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
+        Ok(false)
+    }
+    async fn confirm_create_transaction(
+        &self,
+        _review: Vec<u8>,
+    ) -> Result<bool, v01::GenericError> {
+        Ok(false)
+    }
+    async fn confirm_resource_allocation(
+        &self,
+        _review: Vec<u8>,
+    ) -> Result<bool, v01::GenericError> {
+        Ok(false)
+    }
+}
+
+impl ThemeHost for StubPlatform {
+    fn subscribe_theme(&self) -> BoxStream<'static, Result<v01::Theme, v01::GenericError>> {
+        Box::pin(stream::empty())
+    }
+}
+
+impl PreimageHost for StubPlatform {
+    async fn confirm_preimage_submit(&self, _size: u64) -> Result<(), v01::PreimageSubmitError> {
+        Ok(())
+    }
+    async fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, v01::PreimageSubmitError> {
+        Ok(value)
+    }
+    fn lookup_preimage(
+        &self,
+        _key: Vec<u8>,
+    ) -> BoxStream<'static, Result<Option<Vec<u8>>, v01::GenericError>> {
+        Box::pin(stream::empty())
     }
 }
 

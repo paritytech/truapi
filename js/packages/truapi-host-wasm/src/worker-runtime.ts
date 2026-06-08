@@ -19,7 +19,7 @@ interface WasmCore {
 
 interface WasmModuleShape {
   default: (input?: unknown) => Promise<unknown>;
-  WasmTrUApiCore: new (callbacks: unknown) => WasmCore;
+  WasmTrUApiCore: new (callbacks: unknown, runtimeConfig?: unknown) => WasmCore;
   setDebugEnabled: (enabled: boolean) => void;
 }
 
@@ -132,7 +132,7 @@ const rawCallbacks = {
   remotePermission: (payload: Uint8Array) =>
     callbackRequest("remotePermission", [payload]) as Promise<boolean>,
   featureSupported: (payload: Uint8Array) =>
-    callbackRequest("featureSupported", [payload]) as Promise<Uint8Array>,
+    callbackRequest("featureSupported", [payload]) as Promise<boolean>,
   localStorageRead: (key: string) =>
     callbackRequest("localStorageRead", [key]) as Promise<
       Uint8Array | null | undefined

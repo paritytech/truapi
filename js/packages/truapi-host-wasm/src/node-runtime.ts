@@ -7,7 +7,7 @@ import {
 } from "./runtime.js";
 
 interface NodeWasmModuleShape {
-  WasmTrUApiCore: new (callbacks: unknown) => WasmCoreLike;
+  WasmTrUApiCore: new (callbacks: unknown, runtimeConfig?: unknown) => WasmCoreLike;
   setDebugEnabled: (enabled: boolean) => void;
 }
 

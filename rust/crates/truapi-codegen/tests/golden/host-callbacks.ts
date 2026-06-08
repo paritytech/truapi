@@ -5,13 +5,18 @@
 // `HostCallbacks` interface that mirrors the `Platform` super-trait.
 
 import type {
+  GenericError,
   HostDevicePermissionRequest,
   HostDevicePermissionResponse,
   HostFeatureSupportedRequest,
   HostFeatureSupportedResponse,
   HostPushNotificationRequest,
+  HostPushNotificationResponse,
+  NotificationId,
   RemotePermissionRequest,
   RemotePermissionResponse,
+  Result,
+  Theme,
 } from "@parity/truapi";
 
 /**
@@ -71,9 +76,27 @@ export interface Navigation {
  */
 export interface Notifications {
   /**
-   * Push the given notification to the user.
+   * Schedule or immediately display the given notification and return the
+   * host-assigned id.
    */
-  pushNotification(notification: HostPushNotificationRequest): Promise<void>;
+  pushNotification(notification: HostPushNotificationRequest): Promise<HostPushNotificationResponse>;
+
+  /**
+   * Cancel a notification by id. Idempotent: cancelling an already-fired or
+   * unknown id still returns `Ok(())`.
+   */
+  cancelNotification(id: NotificationId): Promise<void>;
+}
+
+/**
+ * Show the pairing deeplink/QR built by the core.
+ */
+export interface PairingPresenter {
+  /**
+   * Resolve when the user cancels/dismisses the presentation. The core owns
+   * success and timeout; dropping the future should close the host UI.
+   */
+  presentPairing(deeplink: string): Promise<void>;
 }
 
 /**
@@ -91,6 +114,52 @@ export interface Permissions {
    * Prompt the user for a remote (product-scoped) permission bundle.
    */
   remotePermission(request: RemotePermissionRequest): Promise<RemotePermissionResponse>;
+}
+
+/**
+ * Host preimage backend. The core owns wire mapping and subscription
+ * lifecycle; the host owns the selected backend.
+ */
+export interface PreimageHost {
+  /**
+   * Prompt before submitting a preimage.
+   */
+  confirmPreimageSubmit(size: bigint): Promise<void>;
+
+  /**
+   * Submit the preimage and return its key.
+   */
+  submitPreimage(value: Uint8Array): Promise<Uint8Array>;
+
+  /**
+   * Emits current value/miss immediately, then future updates.
+   */
+  lookupPreimage(key: Uint8Array): AsyncIterable<Result<Uint8Array | undefined, GenericError>>;
+}
+
+/**
+ * Host-global opaque session persistence for core-owned SSO state.
+ */
+export interface SessionStore {
+  /**
+   * Read the currently persisted core session blob.
+   */
+  readSession(): Promise<Uint8Array | undefined>;
+
+  /**
+   * Persist the core session blob.
+   */
+  writeSession(value: Uint8Array): Promise<void>;
+
+  /**
+   * Clear the persisted core session blob.
+   */
+  clearSession(): Promise<void>;
+
+  /**
+   * Emit once immediately, then on future local/cross-runtime changes.
+   */
+  subscribeSessionStore(): AsyncIterable<Result<void, GenericError>>;
 }
 
 /**
@@ -115,6 +184,41 @@ export interface Storage {
 }
 
 /**
+ * Host theme source.
+ */
+export interface ThemeHost {
+  /**
+   * Emits current theme immediately, then future changes.
+   */
+  subscribeTheme(): AsyncIterable<Result<Theme, GenericError>>;
+}
+
+/**
+ * Local user confirmation UI for session-channel operations.
+ */
+export interface UserConfirmation {
+  /**
+   * Confirm a sign-payload request before the core asks the SSO peer.
+   */
+  confirmSignPayload(review: Uint8Array): Promise<boolean>;
+
+  /**
+   * Confirm a sign-raw request before the core asks the SSO peer.
+   */
+  confirmSignRaw(review: Uint8Array): Promise<boolean>;
+
+  /**
+   * Confirm a create-transaction request before the core asks the SSO peer.
+   */
+  confirmCreateTransaction(review: Uint8Array): Promise<boolean>;
+
+  /**
+   * Confirm resource allocation before the core asks the SSO peer.
+   */
+  confirmResourceAllocation(review: Uint8Array): Promise<boolean>;
+}
+
+/**
  * Combined platform interface. A host must provide all capability traits.
  */
-export interface HostCallbacks extends Navigation, Notifications, Permissions, Features, Storage, ChainProvider {}
+export interface HostCallbacks extends Navigation, Notifications, Permissions, Features, Storage, ChainProvider, PairingPresenter, SessionStore, UserConfirmation, ThemeHost, PreimageHost {}

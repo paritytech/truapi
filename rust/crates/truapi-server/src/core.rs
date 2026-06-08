@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 
 use parity_scale_codec::{Decode, Encode};
 use truapi::api::TrUApi;
-use truapi_platform::Platform;
+use truapi_platform::{Platform, RuntimeConfig};
 
 use crate::generated::dispatcher;
 use crate::host_logic::session::SessionState;
@@ -57,7 +57,24 @@ impl TrUApiCore {
     where
         P: Platform + 'static,
     {
-        let runtime = Arc::new(PlatformRuntimeHost::new(platform, spawner.clone()));
+        Self::from_platform_with_config(platform, RuntimeConfig::compatibility_default(), spawner)
+    }
+
+    /// Build a core around a [`Platform`] implementation and explicit product
+    /// runtime configuration.
+    pub fn from_platform_with_config<P>(
+        platform: Arc<P>,
+        runtime_config: RuntimeConfig,
+        spawner: Spawner,
+    ) -> Self
+    where
+        P: Platform + 'static,
+    {
+        let runtime = Arc::new(PlatformRuntimeHost::new(
+            platform,
+            runtime_config,
+            spawner.clone(),
+        ));
         let session_state = runtime.session_state();
         let mut dispatcher = Dispatcher::new(spawner);
         dispatcher::register(&mut dispatcher, runtime);
@@ -143,7 +160,8 @@ mod tests {
     use truapi::versioned::permissions::RemotePermissionRequest;
     use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
     use truapi_platform::{
-        ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, Permissions, Storage,
+        ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, PairingPresenter,
+        Permissions, PreimageHost, SessionStore, Storage, ThemeHost, UserConfirmation,
     };
 
     use crate::frame::{FrameKind, Payload, compose_action};
@@ -179,7 +197,11 @@ mod tests {
         async fn push_notification(
             &self,
             _notification: v01::HostPushNotificationRequest,
-        ) -> Result<(), v01::GenericError> {
+        ) -> Result<v01::HostPushNotificationResponse, v01::GenericError> {
+            Ok(v01::HostPushNotificationResponse { id: 0 })
+        }
+
+        async fn cancel_notification(&self, _id: u32) -> Result<(), v01::GenericError> {
             Ok(())
         }
     }
@@ -225,6 +247,77 @@ mod tests {
             _genesis_hash: Vec<u8>,
         ) -> Result<Box<dyn JsonRpcConnection>, v01::GenericError> {
             Ok(Box::new(DeadConnection))
+        }
+    }
+
+    impl PairingPresenter for StubPlatform {
+        async fn present_pairing(&self, _deeplink: String) -> Result<(), v01::GenericError> {
+            Err(v01::GenericError {
+                reason: "pairing presenter callback not provided by host".to_string(),
+            })
+        }
+    }
+
+    impl SessionStore for StubPlatform {
+        async fn read_session(&self) -> Result<Option<Vec<u8>>, v01::GenericError> {
+            Ok(None)
+        }
+        async fn write_session(&self, _value: Vec<u8>) -> Result<(), v01::GenericError> {
+            Ok(())
+        }
+        async fn clear_session(&self) -> Result<(), v01::GenericError> {
+            Ok(())
+        }
+        fn subscribe_session_store(&self) -> BoxStream<'static, Result<(), v01::GenericError>> {
+            Box::pin(stream::once(async { Ok(()) }))
+        }
+    }
+
+    impl UserConfirmation for StubPlatform {
+        async fn confirm_sign_payload(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
+            Ok(false)
+        }
+        async fn confirm_sign_raw(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
+            Ok(false)
+        }
+        async fn confirm_create_transaction(
+            &self,
+            _review: Vec<u8>,
+        ) -> Result<bool, v01::GenericError> {
+            Ok(false)
+        }
+        async fn confirm_resource_allocation(
+            &self,
+            _review: Vec<u8>,
+        ) -> Result<bool, v01::GenericError> {
+            Ok(false)
+        }
+    }
+
+    impl ThemeHost for StubPlatform {
+        fn subscribe_theme(&self) -> BoxStream<'static, Result<v01::Theme, v01::GenericError>> {
+            Box::pin(stream::empty())
+        }
+    }
+
+    impl PreimageHost for StubPlatform {
+        async fn confirm_preimage_submit(
+            &self,
+            _size: u64,
+        ) -> Result<(), v01::PreimageSubmitError> {
+            Ok(())
+        }
+        async fn submit_preimage(
+            &self,
+            value: Vec<u8>,
+        ) -> Result<Vec<u8>, v01::PreimageSubmitError> {
+            Ok(value)
+        }
+        fn lookup_preimage(
+            &self,
+            _key: Vec<u8>,
+        ) -> BoxStream<'static, Result<Option<Vec<u8>>, v01::GenericError>> {
+            Box::pin(stream::empty())
         }
     }
 
@@ -324,7 +417,7 @@ mod tests {
     }
 
     #[test]
-    fn send_push_notification_is_unavailable() {
+    fn send_push_notification_delegates_to_platform() {
         let core = make_core();
         let request = HostPushNotificationRequest::V1(v01::HostPushNotificationRequest {
             text: "hi".into(),
@@ -336,11 +429,12 @@ mod tests {
             "notifications_send_push_notification",
             request.encode(),
         );
-        // Notifications are not modeled by the v0.1 platform contract, so the
-        // runtime returns CallError::unavailable(): Err disc 0x01, HostFailure
-        // variant 0x04, then the SCALE-encoded "unavailable" reason.
-        let mut expected = vec![0x01u8, 0x04u8];
-        "unavailable".to_string().encode_to(&mut expected);
+        // Ok disc 0x00, V1 variant 0x00, notification id 0.
+        let mut expected = vec![0x00u8];
+        truapi::versioned::notifications::HostPushNotificationResponse::V1(
+            v01::HostPushNotificationResponse { id: 0 },
+        )
+        .encode_to(&mut expected);
         assert_eq!(payload, expected);
     }
 

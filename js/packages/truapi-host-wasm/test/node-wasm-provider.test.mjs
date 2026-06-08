@@ -24,10 +24,10 @@ function makeCallbacks() {
   const noopSubscribe = () => () => {};
   return {
     navigateTo: async () => {},
-    pushNotification: async () => {},
+    pushNotification: async () => 0,
     devicePermission: async () => false,
     remotePermission: async () => false,
-    featureSupported: async () => new Uint8Array(),
+    featureSupported: async () => false,
     localStorageRead: async () => undefined,
     localStorageWrite: async () => {},
     localStorageClear: async () => {},

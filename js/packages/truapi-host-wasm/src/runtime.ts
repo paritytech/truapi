@@ -62,10 +62,11 @@ export interface ChainConnection {
  */
 export interface WasmRawCallbacks {
   navigateTo(url: string): Promise<void>;
-  pushNotification(payload: Uint8Array): Promise<void>;
+  pushNotification(payload: Uint8Array): Promise<number>;
+  cancelNotification?(id: number): Promise<void>;
   devicePermission(payload: Uint8Array): Promise<boolean>;
   remotePermission(payload: Uint8Array): Promise<boolean>;
-  featureSupported(payload: Uint8Array): Promise<Uint8Array>;
+  featureSupported(payload: Uint8Array): Promise<boolean>;
   localStorageRead(key: string): Promise<Uint8Array | null | undefined>;
   localStorageWrite(key: string, value: Uint8Array): Promise<void>;
   localStorageClear(key: string): Promise<void>;
@@ -115,7 +116,7 @@ export function createUnavailableCallbacks(): Omit<
   const noopSubscribe = (): void => {};
   return {
     navigateTo: unavailable("navigateTo"),
-    pushNotification: unavailable("pushNotification"),
+    pushNotification: async () => 0,
     devicePermission: async () => false,
     remotePermission: async () => false,
     featureSupported: unavailable("featureSupported"),

@@ -11,12 +11,14 @@ use std::sync::Arc;
 
 use futures::executor::ThreadPool;
 use futures::future::BoxFuture;
+use futures::stream::{self, BoxStream, StreamExt};
 use futures::task::SpawnExt;
 use parity_scale_codec::Encode;
 use truapi::v01;
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use truapi_platform::{
-    ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, Permissions, Storage,
+    ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, PairingPresenter,
+    Permissions, PreimageHost, SessionStore, Storage, ThemeHost, UserConfirmation,
 };
 
 use crate::TrUApiCore;
@@ -107,7 +109,10 @@ pub trait HostCallbacks: Send + Sync {
 
     /// Deliver a push notification. The payload is the SCALE-encoded
     /// [`v01::HostPushNotificationRequest`].
-    fn push_notification(&self, payload: Vec<u8>) -> Result<(), HostRejection>;
+    fn push_notification(&self, payload: Vec<u8>) -> Result<u32, HostRejection>;
+
+    /// Cancel a notification by id.
+    fn cancel_notification(&self, id: u32) -> Result<(), HostRejection>;
 
     /// Prompt the user for a device-level permission (camera, mic, ...).
     /// `request` is the SCALE-encoded
@@ -278,14 +283,26 @@ impl Notifications for CallbackPlatform {
     async fn push_notification(
         &self,
         notification: v01::HostPushNotificationRequest,
-    ) -> Result<(), v01::GenericError> {
+    ) -> Result<v01::HostPushNotificationResponse, v01::GenericError> {
         self.callbacks.on_core_log(
             "truapi.native.callback.push_notification".to_string(),
             notification.text.clone(),
         );
-        self.callbacks
+        let id = self
+            .callbacks
             .push_notification(notification.encode())
-            .map_err(Into::into)
+            .map_err(v01::GenericError::from)?;
+        Ok(v01::HostPushNotificationResponse { id })
+    }
+
+    async fn cancel_notification(&self, id: u32) -> Result<(), v01::GenericError> {
+        self.callbacks.on_core_log(
+            "truapi.native.callback.cancel_notification".to_string(),
+            id.to_string(),
+        );
+        self.callbacks
+            .cancel_notification(id)
+            .map_err(v01::GenericError::from)
     }
 }
 
@@ -373,6 +390,87 @@ impl ChainProvider for CallbackPlatform {
     }
 }
 
+impl PairingPresenter for CallbackPlatform {
+    async fn present_pairing(&self, deeplink: String) -> Result<(), v01::GenericError> {
+        self.callbacks.on_core_log(
+            "truapi.native.callback.present_pairing.unavailable".to_string(),
+            deeplink,
+        );
+        Err(v01::GenericError {
+            reason: "pairing presenter callback not wired through native callbacks".to_string(),
+        })
+    }
+}
+
+impl SessionStore for CallbackPlatform {
+    async fn read_session(&self) -> Result<Option<Vec<u8>>, v01::GenericError> {
+        Ok(None)
+    }
+
+    async fn write_session(&self, _value: Vec<u8>) -> Result<(), v01::GenericError> {
+        Ok(())
+    }
+
+    async fn clear_session(&self) -> Result<(), v01::GenericError> {
+        Ok(())
+    }
+
+    fn subscribe_session_store(&self) -> BoxStream<'static, Result<(), v01::GenericError>> {
+        stream::once(async { Ok(()) }).boxed()
+    }
+}
+
+impl UserConfirmation for CallbackPlatform {
+    async fn confirm_sign_payload(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
+        Ok(false)
+    }
+
+    async fn confirm_sign_raw(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
+        Ok(false)
+    }
+
+    async fn confirm_create_transaction(
+        &self,
+        _review: Vec<u8>,
+    ) -> Result<bool, v01::GenericError> {
+        Ok(false)
+    }
+
+    async fn confirm_resource_allocation(
+        &self,
+        _review: Vec<u8>,
+    ) -> Result<bool, v01::GenericError> {
+        Ok(false)
+    }
+}
+
+impl ThemeHost for CallbackPlatform {
+    fn subscribe_theme(&self) -> BoxStream<'static, Result<v01::Theme, v01::GenericError>> {
+        stream::empty().boxed()
+    }
+}
+
+impl PreimageHost for CallbackPlatform {
+    async fn confirm_preimage_submit(&self, _size: u64) -> Result<(), v01::PreimageSubmitError> {
+        Err(v01::PreimageSubmitError::Unknown {
+            reason: "preimage confirmation callback not wired through native callbacks".to_string(),
+        })
+    }
+
+    async fn submit_preimage(&self, _value: Vec<u8>) -> Result<Vec<u8>, v01::PreimageSubmitError> {
+        Err(v01::PreimageSubmitError::Unknown {
+            reason: "preimage submit callback not wired through native callbacks".to_string(),
+        })
+    }
+
+    fn lookup_preimage(
+        &self,
+        _key: Vec<u8>,
+    ) -> BoxStream<'static, Result<Option<Vec<u8>>, v01::GenericError>> {
+        stream::empty().boxed()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -385,7 +483,10 @@ mod tests {
             fn navigate_to(&self, _url: String) -> Result<(), HostNavigateRejection> {
                 Ok(())
             }
-            fn push_notification(&self, _payload: Vec<u8>) -> Result<(), HostRejection> {
+            fn push_notification(&self, _payload: Vec<u8>) -> Result<u32, HostRejection> {
+                Ok(0)
+            }
+            fn cancel_notification(&self, _id: u32) -> Result<(), HostRejection> {
                 Ok(())
             }
             fn device_permission(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
@@ -434,7 +535,10 @@ mod tests {
             fn navigate_to(&self, _url: String) -> Result<(), HostNavigateRejection> {
                 Ok(())
             }
-            fn push_notification(&self, _payload: Vec<u8>) -> Result<(), HostRejection> {
+            fn push_notification(&self, _payload: Vec<u8>) -> Result<u32, HostRejection> {
+                Ok(0)
+            }
+            fn cancel_notification(&self, _id: u32) -> Result<(), HostRejection> {
                 Ok(())
             }
             fn device_permission(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {

@@ -7,4 +7,5 @@
 pub mod dotns;
 pub mod features;
 pub mod permissions;
+pub mod product_account;
 pub mod session;

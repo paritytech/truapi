@@ -17,7 +17,8 @@ use futures::stream::BoxStream;
 use truapi::v01::{
     GenericError, HostDevicePermissionRequest, HostDevicePermissionResponse,
     HostLocalStorageReadError, HostNavigateToError, HostPushNotificationRequest,
-    RemotePermissionRequest, RemotePermissionResponse,
+    HostPushNotificationResponse, NotificationId, PreimageSubmitError, RemotePermissionRequest,
+    RemotePermissionResponse, Theme,
 };
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 
@@ -25,6 +26,48 @@ use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupporte
 pub use truapi::v01;
 /// Re-export of `truapi::versioned` for host implementations.
 pub use truapi::versioned;
+
+/// Static runtime configuration supplied by the embedding host before the
+/// core handles product-scoped calls.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RuntimeConfig {
+    /// Human-readable dotli label, e.g. `my-app`.
+    pub product_label: String,
+    /// Canonical product identifier used for account derivation.
+    pub product_id: String,
+    /// Host deployment/site identifier, e.g. `dot.li`.
+    pub site_id: String,
+    /// HTTPS metadata URL the SSO peer can fetch for display.
+    pub host_metadata_url: String,
+    /// People-chain genesis hash used for statement-store SSO.
+    pub people_chain_genesis_hash: [u8; 32],
+    /// Deeplink scheme used in pairing QR payloads.
+    pub pairing_deeplink_scheme: PairingDeeplinkScheme,
+}
+
+impl RuntimeConfig {
+    /// Compatibility config used by old constructors and tests until every
+    /// host bridge passes real product config.
+    pub fn compatibility_default() -> Self {
+        Self {
+            product_label: "unknown".to_string(),
+            product_id: "unknown.dot".to_string(),
+            site_id: "unknown".to_string(),
+            host_metadata_url: "https://example.invalid/metadata.json".to_string(),
+            people_chain_genesis_hash: [0; 32],
+            pairing_deeplink_scheme: PairingDeeplinkScheme::PolkadotApp,
+        }
+    }
+}
+
+/// SSO wallet deeplink scheme.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PairingDeeplinkScheme {
+    /// Production Polkadot app.
+    PolkadotApp,
+    /// Development Polkadot app.
+    PolkadotAppDev,
+}
 
 /// Scoped key-value storage. The platform namespaces keys so different products
 /// cannot read each other's data.
@@ -62,10 +105,18 @@ pub trait Navigation: Send + Sync {
 
 /// Deliver push notifications.
 pub trait Notifications: Send + Sync {
-    /// Push the given notification to the user.
+    /// Schedule or immediately display the given notification and return the
+    /// host-assigned id.
     fn push_notification(
         &self,
         notification: HostPushNotificationRequest,
+    ) -> impl Future<Output = Result<HostPushNotificationResponse, GenericError>> + Send;
+
+    /// Cancel a notification by id. Idempotent: cancelling an already-fired or
+    /// unknown id still returns `Ok(())`.
+    fn cancel_notification(
+        &self,
+        id: NotificationId,
     ) -> impl Future<Output = Result<(), GenericError>> + Send;
 }
 
@@ -118,13 +169,116 @@ pub trait JsonRpcConnection: Send + Sync {
     fn responses(&self) -> BoxStream<'static, String>;
 }
 
+/// Show the pairing deeplink/QR built by the core.
+pub trait PairingPresenter: Send + Sync {
+    /// Resolve when the user cancels/dismisses the presentation. The core owns
+    /// success and timeout; dropping the future should close the host UI.
+    fn present_pairing(
+        &self,
+        deeplink: String,
+    ) -> impl Future<Output = Result<(), GenericError>> + Send;
+}
+
+/// Host-global opaque session persistence for core-owned SSO state.
+pub trait SessionStore: Send + Sync {
+    /// Read the currently persisted core session blob.
+    fn read_session(&self) -> impl Future<Output = Result<Option<Vec<u8>>, GenericError>> + Send;
+
+    /// Persist the core session blob.
+    fn write_session(
+        &self,
+        value: Vec<u8>,
+    ) -> impl Future<Output = Result<(), GenericError>> + Send;
+
+    /// Clear the persisted core session blob.
+    fn clear_session(&self) -> impl Future<Output = Result<(), GenericError>> + Send;
+
+    /// Emit once immediately, then on future local/cross-runtime changes.
+    fn subscribe_session_store(&self) -> BoxStream<'static, Result<(), GenericError>>;
+}
+
+/// Local user confirmation UI for session-channel operations.
+pub trait UserConfirmation: Send + Sync {
+    /// Confirm a sign-payload request before the core asks the SSO peer.
+    fn confirm_sign_payload(
+        &self,
+        review: Vec<u8>,
+    ) -> impl Future<Output = Result<bool, GenericError>> + Send;
+
+    /// Confirm a sign-raw request before the core asks the SSO peer.
+    fn confirm_sign_raw(
+        &self,
+        review: Vec<u8>,
+    ) -> impl Future<Output = Result<bool, GenericError>> + Send;
+
+    /// Confirm a create-transaction request before the core asks the SSO peer.
+    fn confirm_create_transaction(
+        &self,
+        review: Vec<u8>,
+    ) -> impl Future<Output = Result<bool, GenericError>> + Send;
+
+    /// Confirm resource allocation before the core asks the SSO peer.
+    fn confirm_resource_allocation(
+        &self,
+        review: Vec<u8>,
+    ) -> impl Future<Output = Result<bool, GenericError>> + Send;
+}
+
+/// Host theme source.
+pub trait ThemeHost: Send + Sync {
+    /// Emits current theme immediately, then future changes.
+    fn subscribe_theme(&self) -> BoxStream<'static, Result<Theme, GenericError>>;
+}
+
+/// Host preimage backend. The core owns wire mapping and subscription
+/// lifecycle; the host owns the selected backend.
+pub trait PreimageHost: Send + Sync {
+    /// Prompt before submitting a preimage.
+    fn confirm_preimage_submit(
+        &self,
+        size: u64,
+    ) -> impl Future<Output = Result<(), PreimageSubmitError>> + Send;
+
+    /// Submit the preimage and return its key.
+    fn submit_preimage(
+        &self,
+        value: Vec<u8>,
+    ) -> impl Future<Output = Result<Vec<u8>, PreimageSubmitError>> + Send;
+
+    /// Emits current value/miss immediately, then future updates.
+    fn lookup_preimage(
+        &self,
+        key: Vec<u8>,
+    ) -> BoxStream<'static, Result<Option<Vec<u8>>, GenericError>>;
+}
+
 /// Combined platform interface. A host must provide all capability traits.
 pub trait Platform:
-    Navigation + Notifications + Permissions + Features + Storage + ChainProvider
+    Navigation
+    + Notifications
+    + Permissions
+    + Features
+    + Storage
+    + ChainProvider
+    + PairingPresenter
+    + SessionStore
+    + UserConfirmation
+    + ThemeHost
+    + PreimageHost
 {
 }
 
 impl<T> Platform for T where
-    T: Navigation + Notifications + Permissions + Features + Storage + ChainProvider
+    T: Navigation
+        + Notifications
+        + Permissions
+        + Features
+        + Storage
+        + ChainProvider
+        + PairingPresenter
+        + SessionStore
+        + UserConfirmation
+        + ThemeHost
+        + PreimageHost
 {
 }

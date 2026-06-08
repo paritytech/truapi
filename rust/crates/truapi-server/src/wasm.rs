@@ -14,14 +14,16 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use futures::channel::mpsc;
-use futures::stream::{BoxStream, StreamExt};
+use futures::stream::{self, BoxStream, StreamExt};
 use js_sys::{Function, Reflect, Uint8Array};
 use parity_scale_codec::{Decode, Encode};
 use send_wrapper::SendWrapper;
 use truapi::v01;
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use truapi_platform::{
-    ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, Permissions, Storage,
+    ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, PairingDeeplinkScheme,
+    PairingPresenter, Permissions, PreimageHost, RuntimeConfig, SessionStore, Storage, ThemeHost,
+    UserConfirmation,
 };
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -36,6 +38,7 @@ use crate::transport::Transport;
 struct JsBridge {
     navigate_to: Function,
     push_notification: Function,
+    cancel_notification: Option<Function>,
     device_permission: Function,
     remote_permission: Function,
     feature_supported: Function,
@@ -55,6 +58,7 @@ impl JsBridge {
         Ok(Self {
             navigate_to: get_function(callbacks, "navigateTo")?,
             push_notification: get_function(callbacks, "pushNotification")?,
+            cancel_notification: get_optional_function(callbacks, "cancelNotification")?,
             device_permission: get_function(callbacks, "devicePermission")?,
             remote_permission: get_function(callbacks, "remotePermission")?,
             feature_supported: get_function(callbacks, "featureSupported")?,
@@ -116,10 +120,18 @@ impl Notifications for WasmPlatform {
     async fn push_notification(
         &self,
         notification: v01::HostPushNotificationRequest,
-    ) -> Result<(), v01::GenericError> {
-        invoke_unit(&self.bridge.push_notification, notification.encode())
+    ) -> Result<v01::HostPushNotificationResponse, v01::GenericError> {
+        let id = invoke_u32(&self.bridge.push_notification, notification.encode())
             .await
-            .map_err(generic)
+            .map_err(generic)?;
+        Ok(v01::HostPushNotificationResponse { id })
+    }
+
+    async fn cancel_notification(&self, id: v01::NotificationId) -> Result<(), v01::GenericError> {
+        let Some(fn_) = self.bridge.cancel_notification.as_ref() else {
+            return Ok(());
+        };
+        invoke_u32_unit(fn_, id).await.map_err(generic)
     }
 }
 
@@ -253,6 +265,83 @@ impl ChainProvider for WasmPlatform {
     }
 }
 
+impl PairingPresenter for WasmPlatform {
+    async fn present_pairing(&self, _deeplink: String) -> Result<(), v01::GenericError> {
+        Err(v01::GenericError {
+            reason: "pairing presenter callback not provided by host".to_string(),
+        })
+    }
+}
+
+impl SessionStore for WasmPlatform {
+    async fn read_session(&self) -> Result<Option<Vec<u8>>, v01::GenericError> {
+        Ok(None)
+    }
+
+    async fn write_session(&self, _value: Vec<u8>) -> Result<(), v01::GenericError> {
+        Ok(())
+    }
+
+    async fn clear_session(&self) -> Result<(), v01::GenericError> {
+        Ok(())
+    }
+
+    fn subscribe_session_store(&self) -> BoxStream<'static, Result<(), v01::GenericError>> {
+        stream::once(async { Ok(()) }).boxed()
+    }
+}
+
+impl UserConfirmation for WasmPlatform {
+    async fn confirm_sign_payload(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
+        Ok(false)
+    }
+
+    async fn confirm_sign_raw(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
+        Ok(false)
+    }
+
+    async fn confirm_create_transaction(
+        &self,
+        _review: Vec<u8>,
+    ) -> Result<bool, v01::GenericError> {
+        Ok(false)
+    }
+
+    async fn confirm_resource_allocation(
+        &self,
+        _review: Vec<u8>,
+    ) -> Result<bool, v01::GenericError> {
+        Ok(false)
+    }
+}
+
+impl ThemeHost for WasmPlatform {
+    fn subscribe_theme(&self) -> BoxStream<'static, Result<v01::Theme, v01::GenericError>> {
+        stream::empty().boxed()
+    }
+}
+
+impl PreimageHost for WasmPlatform {
+    async fn confirm_preimage_submit(&self, _size: u64) -> Result<(), v01::PreimageSubmitError> {
+        Err(v01::PreimageSubmitError::Unknown {
+            reason: "preimage confirmation callback not provided by host".to_string(),
+        })
+    }
+
+    async fn submit_preimage(&self, _value: Vec<u8>) -> Result<Vec<u8>, v01::PreimageSubmitError> {
+        Err(v01::PreimageSubmitError::Unknown {
+            reason: "preimage submit callback not provided by host".to_string(),
+        })
+    }
+
+    fn lookup_preimage(
+        &self,
+        _key: Vec<u8>,
+    ) -> BoxStream<'static, Result<Option<Vec<u8>>, v01::GenericError>> {
+        stream::empty().boxed()
+    }
+}
+
 // Account, signing, statement-store, and preimage flows live in the Rust
 // core itself. Their `truapi::api::*` trait defaults return `Unsupported`
 // until those in-core implementations land. The JS bridge only carries
@@ -329,18 +418,6 @@ fn invoke_navigate_to(
     })
 }
 
-fn invoke_unit(
-    fn_: &Function,
-    payload: Vec<u8>,
-) -> impl std::future::Future<Output = Result<(), String>> + Send {
-    let fn_ = fn_.clone();
-    SendWrapper::new(async move {
-        let arg = Uint8Array::from(payload.as_slice());
-        let returned = fn_.call1(&JsValue::NULL, &arg).map_err(js_to_string)?;
-        await_optional_promise(returned).await.map(|_| ())
-    })
-}
-
 fn invoke_bool(
     fn_: &Function,
     payload: Vec<u8>,
@@ -356,6 +433,38 @@ fn invoke_bool(
         resolved
             .as_bool()
             .ok_or_else(|| "callback must resolve to a boolean".to_string())
+    })
+}
+
+fn invoke_u32(
+    fn_: &Function,
+    payload: Vec<u8>,
+) -> impl std::future::Future<Output = Result<u32, String>> + Send {
+    let fn_ = fn_.clone();
+    SendWrapper::new(async move {
+        let arg = Uint8Array::from(payload.as_slice());
+        let returned = fn_.call1(&JsValue::NULL, &arg).map_err(js_to_string)?;
+        let resolved = await_optional_promise(returned).await?;
+        let n = resolved
+            .as_f64()
+            .ok_or_else(|| "callback must resolve to a u32 notification id".to_string())?;
+        if n.is_finite() && n >= 0.0 && n <= f64::from(u32::MAX) && n.fract() == 0.0 {
+            Ok(n as u32)
+        } else {
+            Err("callback must resolve to a u32 notification id".to_string())
+        }
+    })
+}
+
+fn invoke_u32_unit(
+    fn_: &Function,
+    value: u32,
+) -> impl std::future::Future<Output = Result<(), String>> + Send {
+    let fn_ = fn_.clone();
+    SendWrapper::new(async move {
+        let arg = JsValue::from_f64(f64::from(value));
+        let returned = fn_.call1(&JsValue::NULL, &arg).map_err(js_to_string)?;
+        await_optional_promise(returned).await.map(|_| ())
     })
 }
 
@@ -443,6 +552,93 @@ fn noop_function() -> Function {
     Function::new_no_args("")
 }
 
+fn runtime_config_from_js(value: &JsValue) -> Result<RuntimeConfig, JsValue> {
+    if value.is_null() || value.is_undefined() {
+        return Ok(RuntimeConfig::compatibility_default());
+    }
+
+    let mut config = RuntimeConfig::compatibility_default();
+    if let Some(product_label) = get_optional_string(value, "productLabel")? {
+        config.product_label = product_label;
+    }
+    if let Some(product_id) = get_optional_string(value, "productId")? {
+        config.product_id = product_id;
+    }
+    if let Some(site_id) = get_optional_string(value, "siteId")? {
+        config.site_id = site_id;
+    }
+    if let Some(host_metadata_url) = get_optional_string(value, "hostMetadataUrl")? {
+        config.host_metadata_url = host_metadata_url;
+    }
+    if let Some(hash) = get_optional_bytes32(value, "peopleChainGenesisHash")? {
+        config.people_chain_genesis_hash = hash;
+    }
+    if let Some(scheme) = get_optional_string(value, "pairingDeeplinkScheme")? {
+        config.pairing_deeplink_scheme = match scheme.as_str() {
+            "polkadotapp" | "polkadotApp" | "PolkadotApp" => PairingDeeplinkScheme::PolkadotApp,
+            "polkadotappdev" | "polkadotAppDev" | "PolkadotAppDev" => {
+                PairingDeeplinkScheme::PolkadotAppDev
+            }
+            other => {
+                return Err(JsValue::from_str(&format!(
+                    "runtimeConfig.pairingDeeplinkScheme has unsupported value {other:?}"
+                )));
+            }
+        };
+    }
+    Ok(config)
+}
+
+fn get_optional_string(value: &JsValue, name: &str) -> Result<Option<String>, JsValue> {
+    let property = Reflect::get(value, &JsValue::from_str(name))?;
+    if property.is_null() || property.is_undefined() {
+        return Ok(None);
+    }
+    property
+        .as_string()
+        .map(Some)
+        .ok_or_else(|| JsValue::from_str(&format!("runtimeConfig.{name} must be a string")))
+}
+
+fn get_optional_bytes32(value: &JsValue, name: &str) -> Result<Option<[u8; 32]>, JsValue> {
+    let property = Reflect::get(value, &JsValue::from_str(name))?;
+    if property.is_null() || property.is_undefined() {
+        return Ok(None);
+    }
+    if let Some(hex) = property.as_string() {
+        return parse_hex32(&hex)
+            .map(Some)
+            .map_err(|reason| JsValue::from_str(&format!("runtimeConfig.{name}: {reason}")));
+    }
+    let array = property.dyn_into::<Uint8Array>().map_err(|_| {
+        JsValue::from_str(&format!("runtimeConfig.{name} must be hex or Uint8Array"))
+    })?;
+    let bytes = array.to_vec();
+    bytes.try_into().map(Some).map_err(|bytes: Vec<u8>| {
+        JsValue::from_str(&format!(
+            "runtimeConfig.{name} must be exactly 32 bytes, got {}",
+            bytes.len()
+        ))
+    })
+}
+
+fn parse_hex32(value: &str) -> Result<[u8; 32], String> {
+    let hex = value.strip_prefix("0x").unwrap_or(value);
+    if hex.len() != 64 {
+        return Err(format!(
+            "expected 32-byte hex string, got {} hex chars",
+            hex.len()
+        ));
+    }
+    let mut out = [0u8; 32];
+    for (idx, byte) in out.iter_mut().enumerate() {
+        let start = idx * 2;
+        *byte = u8::from_str_radix(&hex[start..start + 2], 16)
+            .map_err(|_| "invalid hex".to_string())?;
+    }
+    Ok(out)
+}
+
 struct WasmCoreInner {
     core: TrUApiCore,
     transport: Arc<WasmCallbackTransport>,
@@ -471,7 +667,7 @@ impl WasmTrUApiCore {
     /// requires (camelCase property names; see the source for the full
     /// list).
     #[wasm_bindgen(constructor)]
-    pub fn new(callbacks: JsValue) -> Result<WasmTrUApiCore, JsValue> {
+    pub fn new(callbacks: JsValue, runtime_config: JsValue) -> Result<WasmTrUApiCore, JsValue> {
         // Surface Rust panics to the browser console. A panic mid-dispatch
         // aborts the call as a wasm trap; the host should treat a thrown error
         // from `receiveFromProduct` as a fatal-instance signal and rebuild the
@@ -488,7 +684,8 @@ impl WasmTrUApiCore {
         let spawner: Spawner = Arc::new(|fut| {
             wasm_bindgen_futures::spawn_local(fut);
         });
-        let core = TrUApiCore::from_platform(platform, spawner);
+        let runtime_config = runtime_config_from_js(&runtime_config)?;
+        let core = TrUApiCore::from_platform_with_config(platform, runtime_config, spawner);
         Ok(Self {
             inner: Rc::new(WasmCoreInner {
                 core,
