@@ -85,13 +85,11 @@ jobs:
         env:
           STEPS_VERSION_OUTPUTS_TAG: ${{ steps.version.outputs.tag }}
 
-      # --ignore-scripts skips the `prepare` hook so we don't rebuild what
-      # the Build step just produced.
       - name: Pack package
         if: steps.version.outputs.proceed == 'true'
         run: |
           mkdir -p artifacts
-          (cd js/packages/truapi && npm pack --ignore-scripts --pack-destination "$GITHUB_WORKSPACE/artifacts/")
+          (cd js/packages/truapi && npm pack --pack-destination "$GITHUB_WORKSPACE/artifacts/")
 
       - name: Upload package artifacts
         if: steps.version.outputs.proceed == 'true'

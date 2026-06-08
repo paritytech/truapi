@@ -1,0 +1,12 @@
+# cargo-deny configuration. Run `cargo deny check licenses`.
+# Outbound licence is MIT; only permissive inbound licences are allowed.
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+confidence-threshold = 0.8
