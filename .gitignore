@@ -11,6 +11,11 @@ lerna-debug.log*
 node_modules
 target
 
+# Environment / secrets (never commit real env files; keep example templates)
+.env
+.env.*
+!.env.example
+
 # Editor / OS
 .vscode/*
 !.vscode/extensions.json
