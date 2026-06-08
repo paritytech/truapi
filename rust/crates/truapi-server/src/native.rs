@@ -148,6 +148,12 @@ pub struct NativeRuntimeConfig {
 /// Native runtime config validation error.
 #[derive(Debug, Clone, thiserror::Error, uniffi::Error)]
 pub enum NativeRuntimeConfigError {
+    /// Required string field was empty or whitespace-only.
+    #[error("{field} must not be empty")]
+    EmptyField {
+        /// Field name.
+        field: String,
+    },
     /// People-chain genesis hash was not exactly 32 bytes.
     #[error("people_chain_genesis_hash must be exactly 32 bytes, got {actual}")]
     InvalidPeopleChainGenesisHash {
@@ -194,6 +200,9 @@ impl TryFrom<NativeRuntimeConfig> for RuntimeConfig {
 impl From<RuntimeConfigValidationError> for NativeRuntimeConfigError {
     fn from(err: RuntimeConfigValidationError) -> Self {
         match err {
+            RuntimeConfigValidationError::EmptyField { field } => Self::EmptyField {
+                field: field.to_string(),
+            },
             RuntimeConfigValidationError::InvalidHostMetadataUrl { reason } => {
                 Self::InvalidHostMetadataUrl { reason }
             }
@@ -1141,6 +1150,24 @@ mod tests {
         assert!(matches!(
             err,
             NativeRuntimeConfigError::InvalidPeopleChainGenesisHash { actual: 31 }
+        ));
+    }
+
+    #[test]
+    fn runtime_config_rejects_empty_required_fields() {
+        let err = RuntimeConfig::try_from(NativeRuntimeConfig {
+            product_label: "app".to_string(),
+            product_id: " ".to_string(),
+            site_id: "dot.li".to_string(),
+            host_metadata_url: "https://example.invalid/metadata.json".to_string(),
+            people_chain_genesis_hash: vec![0; 32],
+            pairing_deeplink_scheme: NativePairingDeeplinkScheme::PolkadotApp,
+        })
+        .unwrap_err();
+
+        assert!(matches!(
+            err,
+            NativeRuntimeConfigError::EmptyField { field } if field == "product_id"
         ));
     }
 

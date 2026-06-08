@@ -864,12 +864,27 @@ fn runtime_config_from_js(value: &JsValue) -> Result<RuntimeConfig, JsValue> {
 
 fn runtime_config_validation_to_js(err: RuntimeConfigValidationError) -> JsValue {
     match err {
+        RuntimeConfigValidationError::EmptyField { field } => JsValue::from_str(&format!(
+            "runtimeConfig.{} must not be empty",
+            runtime_config_field_to_js(field)
+        )),
         RuntimeConfigValidationError::InvalidHostMetadataUrl { reason } => JsValue::from_str(
             &format!("runtimeConfig.hostMetadataUrl must be an absolute HTTPS URL: {reason}"),
         ),
         RuntimeConfigValidationError::InsecureHostMetadataUrl { scheme } => JsValue::from_str(
             &format!("runtimeConfig.hostMetadataUrl must use https scheme, got {scheme:?}"),
         ),
+    }
+}
+
+fn runtime_config_field_to_js(field: &str) -> &str {
+    match field {
+        "product_label" => "productLabel",
+        "product_id" => "productId",
+        "site_id" => "siteId",
+        "host_metadata_url" => "hostMetadataUrl",
+        "people_chain_genesis_hash" => "peopleChainGenesisHash",
+        other => other,
     }
 }
 

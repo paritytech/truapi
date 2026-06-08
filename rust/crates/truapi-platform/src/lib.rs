@@ -63,6 +63,9 @@ impl RuntimeConfig {
     /// Validate fields whose representation cannot be made invalid by Rust
     /// types alone.
     pub fn validate(&self) -> Result<(), RuntimeConfigValidationError> {
+        require_non_empty("product_label", &self.product_label)?;
+        require_non_empty("product_id", &self.product_id)?;
+        require_non_empty("site_id", &self.site_id)?;
         let parsed = Url::parse(&self.host_metadata_url).map_err(|err| {
             RuntimeConfigValidationError::InvalidHostMetadataUrl {
                 reason: err.to_string(),
@@ -77,9 +80,21 @@ impl RuntimeConfig {
     }
 }
 
+fn require_non_empty(field: &'static str, value: &str) -> Result<(), RuntimeConfigValidationError> {
+    if value.trim().is_empty() {
+        return Err(RuntimeConfigValidationError::EmptyField { field });
+    }
+    Ok(())
+}
+
 /// Runtime config validation error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RuntimeConfigValidationError {
+    /// Required string field was empty or whitespace-only.
+    EmptyField {
+        /// Field name.
+        field: &'static str,
+    },
     /// Metadata URL could not be parsed as an absolute URL.
     InvalidHostMetadataUrl {
         /// Parse failure reason.
@@ -95,6 +110,9 @@ pub enum RuntimeConfigValidationError {
 impl std::fmt::Display for RuntimeConfigValidationError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            RuntimeConfigValidationError::EmptyField { field } => {
+                write!(f, "{field} must not be empty")
+            }
             RuntimeConfigValidationError::InvalidHostMetadataUrl { reason } => {
                 write!(
                     f,

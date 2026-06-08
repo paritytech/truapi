@@ -16,6 +16,34 @@ fn runtime_config_accepts_https_metadata_url() {
 }
 
 #[test]
+fn runtime_config_rejects_empty_required_fields() {
+    let mut config = RuntimeConfig::compatibility_default();
+    config.product_label = " ".to_string();
+    assert_eq!(
+        config.validate(),
+        Err(RuntimeConfigValidationError::EmptyField {
+            field: "product_label"
+        })
+    );
+
+    let mut config = RuntimeConfig::compatibility_default();
+    config.product_id = String::new();
+    assert_eq!(
+        config.validate(),
+        Err(RuntimeConfigValidationError::EmptyField {
+            field: "product_id"
+        })
+    );
+
+    let mut config = RuntimeConfig::compatibility_default();
+    config.site_id = "\t".to_string();
+    assert_eq!(
+        config.validate(),
+        Err(RuntimeConfigValidationError::EmptyField { field: "site_id" })
+    );
+}
+
+#[test]
 fn runtime_config_rejects_relative_metadata_url() {
     let mut config = RuntimeConfig::compatibility_default();
     config.host_metadata_url = "/metadata.json".to_string();

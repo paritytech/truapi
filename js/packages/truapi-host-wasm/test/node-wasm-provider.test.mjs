@@ -78,6 +78,18 @@ test("createNodeWasmProvider validates runtimeConfig in the WASM core", async ()
   );
 });
 
+test("createNodeWasmProvider rejects empty runtime config identity fields", async () => {
+  await assert.rejects(
+    () =>
+      createNodeWasmProvider(makeCallbacks(), {
+        runtimeConfig: {
+          productId: " ",
+        },
+      }),
+    /runtimeConfig\.productId must not be empty/,
+  );
+});
+
 test("createNodeWasmProvider rejects non-HTTPS runtime metadata URLs", async () => {
   await assert.rejects(
     () =>
