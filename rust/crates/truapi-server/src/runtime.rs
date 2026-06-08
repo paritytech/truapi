@@ -23,10 +23,10 @@ use crate::host_logic::session::{
     SessionInfo, SessionState, SsoSessionInfo, decode_persisted_session, encode_persisted_session,
 };
 use crate::host_logic::sso_messages::{
-    OnExistingAllowancePolicy, RemoteMessage, SsoAllocationOutcome, SsoRemoteResponse,
-    SsoSessionStatement, alias_request_message, build_outgoing_request_statement,
-    create_transaction_message, decode_sso_session_statement, resource_allocation_message,
-    sign_payload_message, sign_raw_message,
+    OnExistingAllowancePolicy, RemoteMessage, RemoteMessageData, RemoteMessageV1,
+    SsoAllocationOutcome, SsoRemoteResponse, SsoSessionStatement, alias_request_message,
+    build_outgoing_request_statement, create_transaction_message, decode_sso_session_statement,
+    resource_allocation_message, sign_payload_message, sign_raw_message,
 };
 use crate::host_logic::sso_pairing::{
     AppHandshakeData, create_pairing_bootstrap, decode_app_handshake_data,
@@ -233,6 +233,21 @@ impl<P> PlatformRuntimeHost<P> {
         }));
     }
 
+    /// Core-owned logout/disconnect path. It best-effort notifies the SSO
+    /// peer, then clears in-memory and persisted session state regardless of
+    /// any transport failure.
+    pub(crate) async fn disconnect(&self)
+    where
+        P: Platform + 'static,
+    {
+        let session = self.session_state.current();
+        if let Some(session) = session.as_ref() {
+            let _ = self.submit_sso_disconnected(session).await;
+        }
+        self.session_state.clear_session();
+        let _ = PlatformSessionStore::clear_session(self.platform.as_ref()).await;
+    }
+
     /// Static product/host configuration for this runtime instance.
     pub fn runtime_config(&self) -> &RuntimeConfig {
         &self.runtime_config
@@ -264,6 +279,35 @@ where
             })
             .await
             .map_err(|err| format!("permission storage failed: {err:?}"))
+    }
+
+    async fn submit_sso_disconnected(&self, session: &SessionInfo) -> Result<(), String> {
+        let sso = session
+            .sso
+            .as_ref()
+            .ok_or_else(|| "No SSO session state".to_string())?;
+        let message_id = "truapi:sso:disconnect".to_string();
+        let message = RemoteMessage {
+            message_id: message_id.clone(),
+            data: RemoteMessageData::V1(RemoteMessageV1::Disconnected),
+        };
+        let statement = build_outgoing_request_statement(
+            sso,
+            message_id.clone(),
+            vec![message],
+            fresh_statement_expiry(),
+        )?;
+        let connection = PlatformChainProvider::connect(
+            self.platform.as_ref(),
+            self.runtime_config.people_chain_genesis_hash.to_vec(),
+        )
+        .await
+        .map_err(|err| format!("SSO statement-store connect failed: {err:?}"))?;
+        connection.send(submit_statement_request(
+            &format!("truapi:sso-submit:{message_id}"),
+            &statement,
+        ));
+        Ok(())
     }
 
     async fn submit_sso_remote_message(
@@ -2218,6 +2262,7 @@ mod tests {
         resource_allocation_error: Option<&'static str>,
         session_blob: Option<Vec<u8>>,
         session_error: Option<&'static str>,
+        session_clears: Arc<Mutex<usize>>,
         pairing_error: Option<&'static str>,
         pairing_pending: bool,
         presented_pairings: Arc<Mutex<Vec<String>>>,
@@ -2241,6 +2286,7 @@ mod tests {
                 resource_allocation_error: None,
                 session_blob: None,
                 session_error: None,
+                session_clears: Arc::new(Mutex::new(0)),
                 pairing_error: None,
                 pairing_pending: false,
                 presented_pairings: Arc::new(Mutex::new(Vec::new())),
@@ -2665,6 +2711,10 @@ mod tests {
             Ok(())
         }
         async fn clear_session(&self) -> Result<(), v01::GenericError> {
+            *self
+                .session_clears
+                .lock()
+                .expect("session clear counter mutex poisoned") += 1;
             Ok(())
         }
         fn subscribe_session_store(&self) -> BoxStream<'static, Result<(), v01::GenericError>> {
@@ -3946,6 +3996,81 @@ mod tests {
         host.start_session_store_sync(immediate_spawner());
 
         assert!(host.session_state().current().is_none());
+    }
+
+    #[test]
+    fn disconnect_submits_disconnected_message_best_effort() {
+        let platform = Arc::new(StubPlatform::default());
+        let host = PlatformRuntimeHost::new_compat(platform.clone(), test_spawner());
+        let session = sso_session_info();
+        host.session_state().set_session(session.clone());
+
+        futures::executor::block_on(host.disconnect());
+
+        assert!(host.session_state().current().is_none());
+        assert_eq!(
+            *platform
+                .session_clears
+                .lock()
+                .expect("session clear counter mutex poisoned"),
+            1
+        );
+        let message = submitted_remote_message(&platform, &session);
+        assert_eq!(message.message_id, "truapi:sso:disconnect");
+        assert!(matches!(
+            message.data,
+            RemoteMessageData::V1(RemoteMessageV1::Disconnected)
+        ));
+    }
+
+    #[test]
+    fn disconnect_clears_session_store_and_broadcasts_disconnected() {
+        let platform = Arc::new(StubPlatform::default());
+        let host = PlatformRuntimeHost::new_compat(platform.clone(), test_spawner());
+        host.session_state().set_session(sso_session_info());
+        let mut statuses = host.session_state().subscribe();
+        assert_eq!(
+            futures::executor::block_on(statuses.next()).unwrap(),
+            HostAccountConnectionStatusSubscribeItem::V1(
+                v01::HostAccountConnectionStatusSubscribeItem::Connected
+            )
+        );
+
+        futures::executor::block_on(host.disconnect());
+
+        assert!(host.session_state().current().is_none());
+        assert_eq!(
+            *platform
+                .session_clears
+                .lock()
+                .expect("session clear counter mutex poisoned"),
+            1
+        );
+        assert_eq!(
+            futures::executor::block_on(statuses.next()).unwrap(),
+            HostAccountConnectionStatusSubscribeItem::V1(
+                v01::HostAccountConnectionStatusSubscribeItem::Disconnected
+            )
+        );
+    }
+
+    #[test]
+    fn disconnect_tolerates_repeated_logout_when_already_disconnected() {
+        let platform = Arc::new(StubPlatform::default());
+        let host = PlatformRuntimeHost::new_compat(platform.clone(), test_spawner());
+
+        futures::executor::block_on(host.disconnect());
+        futures::executor::block_on(host.disconnect());
+
+        assert!(host.session_state().current().is_none());
+        assert_eq!(
+            *platform
+                .session_clears
+                .lock()
+                .expect("session clear counter mutex poisoned"),
+            2
+        );
+        assert!(platform.sent_rpc.lock().unwrap().is_empty());
     }
 
     #[test]

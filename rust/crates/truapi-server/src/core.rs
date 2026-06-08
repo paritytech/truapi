@@ -14,6 +14,7 @@
 
 use std::sync::{Arc, Mutex};
 
+use futures::future::BoxFuture;
 use parity_scale_codec::{Decode, Encode};
 use truapi::api::TrUApi;
 use truapi_platform::{Platform, RuntimeConfig};
@@ -24,6 +25,8 @@ use crate::runtime::PlatformRuntimeHost;
 use crate::subscription::Spawner;
 use crate::{Dispatcher, ProtocolMessage, Transport};
 
+type DisconnectFn = Arc<dyn Fn() -> BoxFuture<'static, ()> + Send + Sync>;
+
 /// Top-level core. Owns the dispatcher and, on the platform path, the shared
 /// session-state holder.
 pub struct TrUApiCore {
@@ -31,6 +34,7 @@ pub struct TrUApiCore {
     /// Always present; empty for [`Self::new`] (no platform feeding it),
     /// connected to a [`PlatformRuntimeHost`] for [`Self::from_platform`].
     session_state: Arc<SessionState>,
+    disconnect: DisconnectFn,
 }
 
 impl TrUApiCore {
@@ -44,9 +48,17 @@ impl TrUApiCore {
     {
         let mut dispatcher = Dispatcher::new(spawner);
         dispatcher::register(&mut dispatcher, host);
+        let session_state = SessionState::new();
+        let disconnect_state = session_state.clone();
         Self {
             dispatcher,
-            session_state: SessionState::new(),
+            session_state,
+            disconnect: Arc::new(move || {
+                let state = disconnect_state.clone();
+                Box::pin(async move {
+                    state.clear_session();
+                })
+            }),
         }
     }
 
@@ -77,11 +89,18 @@ impl TrUApiCore {
         ));
         runtime.start_session_store_sync(spawner.clone());
         let session_state = runtime.session_state();
+        let disconnect_runtime = runtime.clone();
         let mut dispatcher = Dispatcher::new(spawner);
         dispatcher::register(&mut dispatcher, runtime);
         Self {
             dispatcher,
             session_state,
+            disconnect: Arc::new(move || {
+                let runtime = disconnect_runtime.clone();
+                Box::pin(async move {
+                    runtime.disconnect().await;
+                })
+            }),
         }
     }
 
@@ -89,6 +108,18 @@ impl TrUApiCore {
     /// `setActiveSession` / `clearActiveSession` notifications through this.
     pub fn session_state(&self) -> Arc<SessionState> {
         self.session_state.clone()
+    }
+
+    /// Core-owned logout/disconnect. Platform-backed cores best-effort notify
+    /// the SSO peer and clear the host-global session store; direct cores only
+    /// clear their in-memory session state.
+    pub async fn disconnect_async(&self) {
+        (self.disconnect)().await;
+    }
+
+    /// Blocking wrapper for embedders that do not drive async directly.
+    pub fn disconnect(&self) {
+        futures::executor::block_on(self.disconnect_async());
     }
 
     /// Asynchronous form of [`Self::receive_from_product`]. Decodes the

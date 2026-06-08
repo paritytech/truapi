@@ -161,6 +161,7 @@ export interface WasmCoreLike {
   ): void;
   setActiveSessionEntropySecret?(secret: Uint8Array): boolean;
   clearActiveSession?(): void;
+  disconnect?(): Promise<void>;
   dispose(): void;
   free(): void;
 }

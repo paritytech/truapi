@@ -245,7 +245,14 @@ impl NativeTrUApiCore {
     /// Drop the currently-paired session. Mirrors the JS
     /// `clearActiveSession`.
     pub fn clear_active_session(&self) {
-        self.core.session_state().clear_session();
+        self.core.disconnect();
+    }
+
+    /// Core-owned logout/disconnect. Best-effort notifies the SSO peer when
+    /// the session has channel material, then clears in-memory and persisted
+    /// session state.
+    pub fn disconnect(&self) {
+        self.core.disconnect();
     }
 }
 

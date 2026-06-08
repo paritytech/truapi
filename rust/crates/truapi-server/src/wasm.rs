@@ -875,4 +875,13 @@ impl WasmTrUApiCore {
     pub fn clear_active_session(&self) {
         self.inner.core.session_state().clear_session();
     }
+
+    /// Core-owned logout/disconnect. Best-effort notifies the SSO peer when
+    /// the session has channel material, then clears in-memory and persisted
+    /// session state.
+    #[wasm_bindgen(js_name = disconnect)]
+    pub async fn disconnect(&self) -> Result<(), JsValue> {
+        self.inner.core.disconnect_async().await;
+        Ok(())
+    }
 }
