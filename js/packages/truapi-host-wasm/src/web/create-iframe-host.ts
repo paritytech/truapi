@@ -33,6 +33,7 @@ export interface IframeHost {
 }
 
 const DEFAULT_IFRAME_SANDBOX = "allow-forms allow-same-origin allow-scripts";
+type CredentiallessIframe = HTMLIFrameElement & { credentialless?: boolean };
 
 function resolveAllowedOrigin(
   iframeUrl: string,
@@ -88,9 +89,16 @@ export function createIframeHost(options: IframeHostOptions): IframeHost {
   iframe.style.width = "100%";
   iframe.style.height = "100%";
   iframe.style.border = "none";
-  iframe.src = iframeUrl;
+  // COEP hosts need credentialless product iframes when the product origin
+  // does not serve matching embedder headers.
+  const credentiallessIframe = iframe as CredentiallessIframe;
+  credentiallessIframe.credentialless = true;
   iframe.setAttribute("sandbox", sandbox);
   iframe.referrerPolicy = "no-referrer";
+  iframe.src = iframeUrl;
+  const initTargetOrigin = credentiallessIframe.credentialless
+    ? "*"
+    : targetOrigin;
 
   let initSent = false;
   const sendInit = (): void => {
@@ -98,16 +106,14 @@ export function createIframeHost(options: IframeHostOptions): IframeHost {
     const contentWindow = iframe.contentWindow;
     if (!contentWindow) return;
     initSent = true;
-    contentWindow.postMessage({ type: "truapi-init" }, targetOrigin, [
+    contentWindow.postMessage({ type: "truapi-init" }, initTargetOrigin, [
       productPort,
     ]);
   };
 
-  iframe.addEventListener("load", sendInit);
-
   const onWindowMessage = (event: MessageEvent): void => {
     if (event.source !== iframe.contentWindow) return;
-    if (event.origin !== targetOrigin) return;
+    if (event.origin !== targetOrigin && event.origin !== "null") return;
     if (event.data?.type === "truapi-playground-ready") {
       sendInit();
     }

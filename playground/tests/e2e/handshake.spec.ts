@@ -12,6 +12,8 @@ test.describe("handshake", () => {
 
     // Once connected, the splash unmounts and the service rail mounts.
     // The Auto-Test entry button is the simplest stable proof of that.
-    await expect(frame.locator(".method--autotest")).toBeVisible();
+    await expect(
+      frame.getByRole("button", { name: /Auto-Test Run all methods/ }),
+    ).toBeVisible();
   });
 });

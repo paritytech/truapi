@@ -1,6 +1,6 @@
 // Verify that `createIframeHost` hands a MessagePort back through `onPort`,
 // constructs an iframe with the expected attributes, and posts the
-// `truapi-init` handshake to the iframe's contentWindow on load.
+// `truapi-init` handshake after the iframe reports readiness.
 
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -28,6 +28,7 @@ function setupFakeDom() {
     removeEventListener: () => {},
     remove: test.mock.fn(),
     referrerPolicy: "",
+    credentialless: false,
     src: "",
     contentWindow,
   };
@@ -79,11 +80,10 @@ function teardownFakeDom() {
   delete globalThis.MessageChannel;
 }
 
-test("createIframeHost hands back a MessagePort and posts truapi-init on load", () => {
+test("createIframeHost hands back a MessagePort and configures the iframe", () => {
   const {
     iframe,
     container,
-    contentPostMessage,
     iframeListeners,
     windowRemove,
     port1,
@@ -104,22 +104,13 @@ test("createIframeHost hands back a MessagePort and posts truapi-init on load", 
     assert.equal(typeof receivedPort.postMessage, "function");
     assert.equal(container.appendChild.mock.callCount(), 1);
     assert.equal(host.iframe, iframe);
+    assert.equal(iframe.credentialless, true);
     assert.equal(iframe.src, "http://localhost:5174/");
-
-    // Simulate the iframe finishing load.
-    const onLoad = iframeListeners.get("load");
-    assert.ok(onLoad, "load handler must be registered");
-    onLoad();
-
-    assert.equal(contentPostMessage.mock.callCount(), 1);
-    const [body, origin, transferList] = contentPostMessage.mock.calls[0].arguments;
-    assert.deepEqual(body, { type: "truapi-init" });
-    assert.equal(origin, "http://localhost:5174");
-    assert.equal(transferList.length, 1);
-
-    // Idempotent, a second load event must not send another init.
-    onLoad();
-    assert.equal(contentPostMessage.mock.callCount(), 1);
+    assert.equal(
+      iframeListeners.has("load"),
+      false,
+      "port transfer waits for explicit iframe readiness",
+    );
 
     host.dispose();
     assert.equal(iframe.remove.mock.callCount(), 1);
@@ -190,15 +181,45 @@ test("createIframeHost sends truapi-init on a same-origin playground-ready messa
     assert.equal(contentPostMessage.mock.callCount(), 1, "ready triggers init");
     const [body, origin] = contentPostMessage.mock.calls[0].arguments;
     assert.deepEqual(body, { type: "truapi-init" });
-    assert.equal(origin, "http://localhost:5174");
+    assert.equal(origin, "*");
 
-    // The handshake is idempotent across a later load event too.
+    // The handshake is idempotent across repeated ready events too.
     onMessage({
       source: contentWindow,
       origin: "http://localhost:5174",
       data: { type: "truapi-playground-ready" },
     });
     assert.equal(contentPostMessage.mock.callCount(), 1, "init sent only once");
+  } finally {
+    teardownFakeDom();
+  }
+});
+
+test("createIframeHost accepts playground-ready from a credentialless opaque origin", () => {
+  const { contentPostMessage, windowListeners, contentWindow } = setupFakeDom();
+
+  try {
+    createIframeHost({
+      iframeUrl: "http://localhost:5174/",
+      container: { appendChild: () => {} },
+      onPort: () => {},
+    });
+
+    const onMessage = windowListeners.get("message");
+    assert.ok(onMessage, "window message listener must be registered");
+
+    onMessage({
+      source: contentWindow,
+      origin: "null",
+      data: { type: "truapi-playground-ready" },
+    });
+    assert.equal(
+      contentPostMessage.mock.callCount(),
+      1,
+      "opaque credentialless origin triggers init",
+    );
+    const [, origin] = contentPostMessage.mock.calls[0].arguments;
+    assert.equal(origin, "*");
   } finally {
     teardownFakeDom();
   }

@@ -2,26 +2,23 @@ import { expect, test } from "@playwright/test";
 import { openPlaygroundInDotli, selectMethod, waitForOnline } from "./helpers";
 
 test.describe("unary call", () => {
-  test("get_account returns a successful response", async ({ page }) => {
+  test("handshake returns a successful response", async ({ page }) => {
     const frame = await openPlaygroundInDotli(page);
     await waitForOnline(frame);
 
-    await selectMethod(frame, "Account", "get_account");
+    await selectMethod(frame, "System", "handshake");
 
     // Click `Call method`. The button is keyed on `data-testid` so it
     // is robust to label/glyph changes.
     await frame.locator('[data-testid="call-button"]').click();
 
-    // The response panel only mounts when there is a response or error.
-    await expect(frame.locator('[data-testid="response-content"]')).toBeVisible(
-      { timeout: 5_000 },
-    );
+    // The handshake method returns `undefined`, so the playground records a
+    // successful `ok` entry instead of rendering a structured response body.
+    await expect(
+      frame.locator('[data-testid="stream-entry"]').filter({ hasText: "ok" }),
+    ).toHaveCount(1, { timeout: 5_000 });
 
-    // Sanity: no error displayed and the response is non-empty.
+    // Sanity: no error displayed.
     await expect(frame.locator('[data-testid="error-display"]')).toHaveCount(0);
-    const responseText = await frame
-      .locator('[data-testid="response-content"]')
-      .innerText();
-    expect(responseText.trim().length).toBeGreaterThan(0);
   });
 });

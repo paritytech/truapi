@@ -18,10 +18,16 @@ test.describe("subscription", () => {
     const streamEntries = frame.locator('[data-testid="stream-entry"]');
     await expect(streamEntries.first()).toBeVisible({ timeout: 6_000 });
 
+    // The output tab opens while streaming; switch back to Example where the
+    // stop control lives.
+    await frame.getByRole("tab", { name: "Example" }).click();
+
     // The subscribe button has been replaced by the stop button.
     const stopButton = frame.locator('[data-testid="stop-button"]');
     await expect(stopButton).toBeVisible();
     await stopButton.click();
+
+    await frame.getByRole("tab", { name: "Output" }).click();
 
     await expect(
       frame
@@ -33,6 +39,8 @@ test.describe("subscription", () => {
         .locator('[data-testid="stream-entry"]')
         .filter({ hasText: "--- stream ended ---" }),
     ).toHaveCount(0);
+
+    await frame.getByRole("tab", { name: "Example" }).click();
 
     // After stopping, the subscribe button comes back and the UI records a
     // local stop instead of synthesizing a normal stream completion.
