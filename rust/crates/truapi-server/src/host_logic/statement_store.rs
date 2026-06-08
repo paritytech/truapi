@@ -16,6 +16,8 @@ use crate::host_logic::session::SsoSessionInfo;
 pub const SUBSCRIBE_STATEMENT_METHOD: &str = "statement_subscribeStatement";
 pub const UNSUBSCRIBE_STATEMENT_METHOD: &str = "statement_unsubscribeStatement";
 pub const SUBMIT_STATEMENT_METHOD: &str = "statement_submit";
+pub const MAX_MATCH_ALL_TOPICS: usize = 4;
+pub const MAX_MATCH_ANY_TOPICS: usize = 128;
 const SR25519_SIGNING_CONTEXT: &[u8] = b"substrate";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -35,6 +37,12 @@ pub enum StatementStoreParseError {
     InvalidStatementScale(String),
     #[error("malformed statement-store frame: {0}")]
     Malformed(String),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TopicFilterKind {
+    MatchAll,
+    MatchAny,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
@@ -85,14 +93,29 @@ pub enum StatementField {
 }
 
 pub fn subscribe_match_all_request(id: &str, topics: &[[u8; 32]]) -> String {
-    json!({
-        "jsonrpc": "2.0",
-        "id": id,
-        "method": SUBSCRIBE_STATEMENT_METHOD,
-        "params": [{
-            "matchAll": topics.iter().map(hex_topic).collect::<Vec<_>>(),
-        }],
-    })
+    subscribe_request(id, TopicFilterKind::MatchAll, topics)
+}
+
+pub fn subscribe_match_any_request(id: &str, topics: &[[u8; 32]]) -> String {
+    subscribe_request(id, TopicFilterKind::MatchAny, topics)
+}
+
+pub fn subscribe_request(id: &str, kind: TopicFilterKind, topics: &[[u8; 32]]) -> String {
+    let topics = topics.iter().map(hex_topic).collect::<Vec<_>>();
+    match kind {
+        TopicFilterKind::MatchAll => json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": SUBSCRIBE_STATEMENT_METHOD,
+            "params": [{ "matchAll": topics }],
+        }),
+        TopicFilterKind::MatchAny => json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": SUBSCRIBE_STATEMENT_METHOD,
+            "params": [{ "matchAny": topics }],
+        }),
+    }
     .to_string()
 }
 
@@ -139,6 +162,31 @@ pub fn parse_subscribe_ack(
         ));
     };
     Ok(Some(result.to_string()))
+}
+
+pub fn parse_submit_ack(
+    frame: &str,
+    expected_id: &str,
+) -> Result<Option<()>, StatementStoreParseError> {
+    let value = parse_frame(frame)?;
+    if value.get("id").and_then(Value::as_str) != Some(expected_id) {
+        return Ok(None);
+    }
+    if let Some(error) = value.get("error") {
+        return Err(StatementStoreParseError::Malformed(
+            error
+                .get("message")
+                .and_then(Value::as_str)
+                .unwrap_or("statement-store submit failed")
+                .to_string(),
+        ));
+    }
+    if value.get("result").is_none() {
+        return Err(StatementStoreParseError::Malformed(
+            "missing submit result".to_string(),
+        ));
+    }
+    Ok(Some(()))
 }
 
 pub fn parse_new_statements(
@@ -210,6 +258,20 @@ pub fn decode_statement_data(statement: &[u8]) -> Result<Vec<u8>, StatementStore
             _ => None,
         })
         .ok_or_else(|| StatementStoreParseError::Malformed("statement has no data".to_string()))
+}
+
+pub fn decode_signed_statement(
+    statement: &[u8],
+) -> Result<v01::SignedStatement, StatementStoreParseError> {
+    let mut input = statement;
+    let fields: Vec<StatementField> = Decode::decode(&mut input)
+        .map_err(|err| StatementStoreParseError::InvalidStatementScale(err.to_string()))?;
+    if !input.is_empty() {
+        return Err(StatementStoreParseError::Malformed(
+            "statement has trailing bytes".to_string(),
+        ));
+    }
+    signed_statement_from_fields(fields)
 }
 
 pub fn build_signed_session_request_statement(
@@ -305,6 +367,97 @@ pub fn statement_fields_from_v01(statement: v01::Statement) -> Result<Vec<Statem
         fields.push(StatementField::Data(data));
     }
     Ok(fields)
+}
+
+pub fn signed_statement_to_scale(statement: v01::SignedStatement) -> Result<Vec<u8>, String> {
+    Ok(signed_statement_fields(statement)?.encode())
+}
+
+fn signed_statement_fields(statement: v01::SignedStatement) -> Result<Vec<StatementField>, String> {
+    let mut fields = vec![StatementField::Proof(statement_proof_from_v01(
+        statement.proof,
+    ))];
+    if let Some(decryption_key) = statement.decryption_key {
+        fields.push(StatementField::DecryptionKey(decryption_key));
+    }
+    if let Some(expiry) = statement.expiry {
+        fields.push(StatementField::Expiry(expiry));
+    }
+    if let Some(channel) = statement.channel {
+        fields.push(StatementField::Channel(channel));
+    }
+    push_statement_topics(&mut fields, statement.topics)?;
+    if let Some(data) = statement.data {
+        fields.push(StatementField::Data(data));
+    }
+    fields.sort_by_key(statement_field_sort_index);
+    Ok(fields)
+}
+
+fn signed_statement_from_fields(
+    fields: Vec<StatementField>,
+) -> Result<v01::SignedStatement, StatementStoreParseError> {
+    let mut proof = None;
+    let mut decryption_key = None;
+    let mut expiry = None;
+    let mut channel = None;
+    let mut topics = Vec::new();
+    let mut data = None;
+
+    for field in fields {
+        match field {
+            StatementField::Proof(value) => {
+                if proof.replace(statement_proof_to_v01(value)).is_some() {
+                    return Err(StatementStoreParseError::Malformed(
+                        "statement has duplicate proof".to_string(),
+                    ));
+                }
+            }
+            StatementField::DecryptionKey(value) => {
+                if decryption_key.replace(value).is_some() {
+                    return Err(StatementStoreParseError::Malformed(
+                        "statement has duplicate decryption key".to_string(),
+                    ));
+                }
+            }
+            StatementField::Expiry(value) => {
+                if expiry.replace(value).is_some() {
+                    return Err(StatementStoreParseError::Malformed(
+                        "statement has duplicate expiry".to_string(),
+                    ));
+                }
+            }
+            StatementField::Channel(value) => {
+                if channel.replace(value).is_some() {
+                    return Err(StatementStoreParseError::Malformed(
+                        "statement has duplicate channel".to_string(),
+                    ));
+                }
+            }
+            StatementField::Topic1(value)
+            | StatementField::Topic2(value)
+            | StatementField::Topic3(value)
+            | StatementField::Topic4(value) => topics.push(value),
+            StatementField::Data(value) => {
+                if data.replace(value).is_some() {
+                    return Err(StatementStoreParseError::Malformed(
+                        "statement has duplicate data".to_string(),
+                    ));
+                }
+            }
+        }
+    }
+
+    let proof = proof
+        .ok_or_else(|| StatementStoreParseError::Malformed("statement has no proof".to_string()))?;
+    Ok(v01::SignedStatement {
+        proof,
+        decryption_key,
+        expiry,
+        channel,
+        topics,
+        data,
+    })
 }
 
 pub fn statement_proof_to_v01(proof: StatementProof) -> v01::StatementProof {
@@ -443,6 +596,19 @@ mod tests {
     }
 
     #[test]
+    fn builds_match_any_subscribe_request_like_dotli_sdk() {
+        let topic = [8u8; 32];
+        let request = subscribe_match_any_request("truapi:ss:any", &[topic]);
+        let value: Value = serde_json::from_str(&request).unwrap();
+
+        assert_eq!(value["method"], SUBSCRIBE_STATEMENT_METHOD);
+        assert_eq!(
+            value["params"][0]["matchAny"][0],
+            "0x0808080808080808080808080808080808080808080808080808080808080808"
+        );
+    }
+
+    #[test]
     fn builds_unsubscribe_request_with_remote_id() {
         let request = unsubscribe_request("truapi:ss:2", "remote-sub");
         let value: Value = serde_json::from_str(&request).unwrap();
@@ -469,6 +635,17 @@ mod tests {
             Some("remote-sub".to_string())
         );
         assert_eq!(parse_subscribe_ack(frame, "other").unwrap(), None);
+    }
+
+    #[test]
+    fn parses_submit_ack_for_expected_request_id() {
+        let frame = r#"{"jsonrpc":"2.0","id":"truapi:ss:submit","result":"0xabc"}"#;
+
+        assert_eq!(
+            parse_submit_ack(frame, "truapi:ss:submit").unwrap(),
+            Some(())
+        );
+        assert_eq!(parse_submit_ack(frame, "other").unwrap(), None);
     }
 
     #[test]
@@ -532,6 +709,25 @@ mod tests {
             decode_statement_data(&statement).unwrap(),
             vec![0xde, 0xad, 0xbe, 0xef]
         );
+    }
+
+    #[test]
+    fn signed_statement_scale_round_trips_public_shape() {
+        let signed = v01::SignedStatement {
+            proof: v01::StatementProof::Sr25519 {
+                signature: [9; 64],
+                signer: [8; 32],
+            },
+            decryption_key: Some([7; 32]),
+            expiry: Some(99),
+            channel: Some([6; 32]),
+            topics: vec![[1; 32], [2; 32]],
+            data: Some(vec![3, 4, 5]),
+        };
+
+        let encoded = signed_statement_to_scale(signed.clone()).unwrap();
+
+        assert_eq!(decode_signed_statement(&encoded).unwrap(), signed);
     }
 
     #[test]

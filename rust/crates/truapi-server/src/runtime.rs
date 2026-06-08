@@ -33,13 +33,15 @@ use crate::host_logic::sso_pairing::{
     decrypt_handshake_answer, establish_sso_session_info,
 };
 use crate::host_logic::statement_store::{
-    decode_statement_data, parse_new_statements, parse_subscribe_ack, sign_statement_fields,
-    statement_fields_from_v01, statement_proof_to_v01, submit_statement_request,
-    subscribe_match_all_request,
+    MAX_MATCH_ALL_TOPICS, MAX_MATCH_ANY_TOPICS, TopicFilterKind, decode_signed_statement,
+    decode_statement_data, parse_new_statements, parse_submit_ack, parse_subscribe_ack,
+    sign_statement_fields, signed_statement_to_scale, statement_fields_from_v01,
+    statement_proof_to_v01, submit_statement_request, subscribe_match_all_request,
+    subscribe_match_any_request,
 };
 use crate::subscription::Spawner;
 
-use futures::stream::BoxStream;
+use futures::stream::{self, BoxStream};
 use futures::{FutureExt, StreamExt, pin_mut};
 use parity_scale_codec::Encode;
 use truapi::api::{
@@ -111,6 +113,8 @@ use truapi::versioned::statement_store::{
     RemoteStatementStoreCreateProofAuthorizedRequest,
     RemoteStatementStoreCreateProofAuthorizedResponse, RemoteStatementStoreCreateProofError,
     RemoteStatementStoreCreateProofRequest, RemoteStatementStoreCreateProofResponse,
+    RemoteStatementStoreSubmitError, RemoteStatementStoreSubmitRequest,
+    RemoteStatementStoreSubscribeItem, RemoteStatementStoreSubscribeRequest,
 };
 use truapi::versioned::system::{
     HostFeatureSupportedError, HostFeatureSupportedRequest, HostFeatureSupportedResponse,
@@ -1397,6 +1401,38 @@ impl<P> StatementStore for PlatformRuntimeHost<P>
 where
     P: Platform + 'static,
 {
+    async fn subscribe(
+        &self,
+        cx: &CallContext,
+        request: RemoteStatementStoreSubscribeRequest,
+    ) -> Subscription<RemoteStatementStoreSubscribeItem> {
+        let (kind, topics) = match statement_store_topic_filter(request) {
+            Ok(value) => value,
+            Err(_) => return Subscription::empty(),
+        };
+        let request_id = if cx.request_id().is_empty() {
+            "truapi:ss-subscribe".to_string()
+        } else {
+            cx.request_id().to_string()
+        };
+        let connection = match PlatformChainProvider::connect(
+            self.platform.as_ref(),
+            self.runtime_config.people_chain_genesis_hash.to_vec(),
+        )
+        .await
+        {
+            Ok(connection) => connection,
+            Err(_) => return Subscription::empty(),
+        };
+        connection.send(match kind {
+            TopicFilterKind::MatchAll => subscribe_match_all_request(&request_id, &topics),
+            TopicFilterKind::MatchAny => subscribe_match_any_request(&request_id, &topics),
+        });
+        let responses = connection.responses();
+        let stream = statement_store_subscription_stream(connection, responses, request_id);
+        Subscription::new(Box::pin(stream))
+    }
+
     async fn create_proof(
         &self,
         _cx: &CallContext,
@@ -1435,6 +1471,159 @@ where
             v01::RemoteStatementStoreCreateProofResponse { proof },
         ))
     }
+
+    async fn submit(
+        &self,
+        cx: &CallContext,
+        request: RemoteStatementStoreSubmitRequest,
+    ) -> Result<(), CallError<RemoteStatementStoreSubmitError>> {
+        let RemoteStatementStoreSubmitRequest::V1(statement) = request;
+        let statement = signed_statement_to_scale(statement).map_err(|reason| {
+            CallError::Domain(RemoteStatementStoreSubmitError::V1(v01::GenericError {
+                reason,
+            }))
+        })?;
+        let request_id = if cx.request_id().is_empty() {
+            "truapi:ss-submit".to_string()
+        } else {
+            cx.request_id().to_string()
+        };
+        let connection = PlatformChainProvider::connect(
+            self.platform.as_ref(),
+            self.runtime_config.people_chain_genesis_hash.to_vec(),
+        )
+        .await
+        .map_err(|err| {
+            CallError::Domain(RemoteStatementStoreSubmitError::V1(v01::GenericError {
+                reason: format!("statement-store connect failed: {err:?}"),
+            }))
+        })?;
+        connection.send(submit_statement_request(&request_id, &statement));
+        wait_for_statement_submit_ack(connection.responses(), &request_id)
+            .await
+            .map_err(|reason| {
+                CallError::Domain(RemoteStatementStoreSubmitError::V1(v01::GenericError {
+                    reason,
+                }))
+            })
+    }
+}
+
+fn statement_store_topic_filter(
+    request: RemoteStatementStoreSubscribeRequest,
+) -> Result<(TopicFilterKind, Vec<[u8; 32]>), String> {
+    match request {
+        RemoteStatementStoreSubscribeRequest::V1(
+            v01::RemoteStatementStoreSubscribeRequest::MatchAll(topics),
+        ) => {
+            if topics.len() > MAX_MATCH_ALL_TOPICS {
+                return Err(format!(
+                    "MatchAll has {} topics, maximum is {}",
+                    topics.len(),
+                    MAX_MATCH_ALL_TOPICS
+                ));
+            }
+            Ok((TopicFilterKind::MatchAll, topics))
+        }
+        RemoteStatementStoreSubscribeRequest::V1(
+            v01::RemoteStatementStoreSubscribeRequest::MatchAny(topics),
+        ) => {
+            if topics.len() > MAX_MATCH_ANY_TOPICS {
+                return Err(format!(
+                    "MatchAny has {} topics, maximum is {}",
+                    topics.len(),
+                    MAX_MATCH_ANY_TOPICS
+                ));
+            }
+            Ok((TopicFilterKind::MatchAny, topics))
+        }
+    }
+}
+
+async fn wait_for_statement_submit_ack(
+    mut responses: BoxStream<'static, String>,
+    request_id: &str,
+) -> Result<(), String> {
+    while let Some(frame) = responses.next().await {
+        if parse_submit_ack(&frame, request_id)
+            .map_err(|err| err.to_string())?
+            .is_some()
+        {
+            return Ok(());
+        }
+    }
+    Err("statement-store submit response stream ended".to_string())
+}
+
+fn statement_store_subscription_stream(
+    connection: Box<dyn JsonRpcConnection>,
+    responses: BoxStream<'static, String>,
+    request_id: String,
+) -> impl futures::Stream<Item = RemoteStatementStoreSubscribeItem> + Send {
+    struct State {
+        _connection: Box<dyn JsonRpcConnection>,
+        responses: BoxStream<'static, String>,
+        request_id: String,
+        remote_subscription_id: Option<String>,
+        is_complete: bool,
+    }
+
+    stream::unfold(
+        State {
+            _connection: connection,
+            responses,
+            request_id,
+            remote_subscription_id: None,
+            is_complete: false,
+        },
+        |mut state| async move {
+            while let Some(frame) = state.responses.next().await {
+                if state.remote_subscription_id.is_none() {
+                    match parse_subscribe_ack(&frame, &state.request_id) {
+                        Ok(Some(id)) => {
+                            state.remote_subscription_id = Some(id);
+                            continue;
+                        }
+                        Ok(None) => {}
+                        Err(_) => return None,
+                    }
+                }
+
+                let page = match parse_new_statements(&frame) {
+                    Ok(Some(page)) => page,
+                    Ok(None) => continue,
+                    Err(_) => return None,
+                };
+                if state
+                    .remote_subscription_id
+                    .as_ref()
+                    .is_some_and(|id| id != &page.remote_subscription_id)
+                {
+                    continue;
+                }
+
+                let is_complete = state.is_complete || page.remaining == Some(0);
+                state.is_complete = is_complete;
+                let statements = page
+                    .statements
+                    .into_iter()
+                    .filter_map(|statement| decode_signed_statement(&statement).ok())
+                    .collect::<Vec<_>>();
+                if statements.is_empty() {
+                    continue;
+                }
+
+                return Some((
+                    RemoteStatementStoreSubscribeItem::V1(v01::RemoteStatementStoreSubscribeItem {
+                        statements,
+                        is_complete,
+                    }),
+                    state,
+                ));
+            }
+            None
+        },
+    )
 }
 
 impl<P> PlatformRuntimeHost<P>
@@ -2294,6 +2483,20 @@ mod tests {
         }
     }
 
+    fn signed_statement(topic: [u8; 32]) -> v01::SignedStatement {
+        v01::SignedStatement {
+            proof: v01::StatementProof::Sr25519 {
+                signature: [9; 64],
+                signer: [8; 32],
+            },
+            decryption_key: None,
+            expiry: Some(99),
+            channel: Some([1; 32]),
+            topics: vec![topic],
+            data: Some(vec![4, 5, 6]),
+        }
+    }
+
     impl PlatformStorage for StubPlatform {
         async fn read(
             &self,
@@ -2918,6 +3121,80 @@ mod tests {
             panic!("expected sr25519 statement proof");
         };
         assert_eq!(signer, expected_signer);
+    }
+
+    #[test]
+    fn statement_store_submit_posts_signed_statement_and_waits_for_ack() {
+        let platform = Arc::new(StubPlatform {
+            rpc_responses: vec![r#"{"jsonrpc":"2.0","id":"submit-1","result":"0xok"}"#.to_string()],
+            ..Default::default()
+        });
+        let host = PlatformRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        let cx = CallContext::with_request_id("submit-1".to_string());
+        let request = RemoteStatementStoreSubmitRequest::V1(signed_statement([7; 32]));
+
+        futures::executor::block_on(StatementStore::submit(&host, &cx, request)).unwrap();
+
+        let sent = platform.sent_rpc.lock().expect("rpc list mutex poisoned");
+        assert_eq!(sent.len(), 1);
+        let request: serde_json::Value = serde_json::from_str(&sent[0]).unwrap();
+        assert_eq!(request["method"], "statement_submit");
+        let statement_hex = request["params"][0].as_str().unwrap();
+        let statement =
+            hex::decode(statement_hex.strip_prefix("0x").unwrap_or(statement_hex)).unwrap();
+        assert_eq!(
+            crate::host_logic::statement_store::decode_signed_statement(&statement).unwrap(),
+            signed_statement([7; 32])
+        );
+    }
+
+    #[test]
+    fn statement_store_subscribe_maps_signed_pages() {
+        let signed = crate::host_logic::statement_store::signed_statement_to_scale(
+            signed_statement([7; 32]),
+        )
+        .unwrap();
+        let unsigned = vec![crate::host_logic::statement_store::StatementField::Data(
+            vec![1],
+        )]
+        .encode();
+        let platform = Arc::new(StubPlatform {
+            rpc_responses: vec![
+                subscribe_ack_frame("sub-1", "remote-sub"),
+                new_statements_frame("remote-sub", vec![unsigned, signed]),
+            ],
+            ..Default::default()
+        });
+        let host = PlatformRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        let cx = CallContext::with_request_id("sub-1".to_string());
+        let mut subscription = futures::executor::block_on(StatementStore::subscribe(
+            &host,
+            &cx,
+            RemoteStatementStoreSubscribeRequest::V1(
+                v01::RemoteStatementStoreSubscribeRequest::MatchAny(vec![[7; 32]]),
+            ),
+        ));
+
+        let item = futures::executor::block_on(subscription.next()).expect("statement page");
+
+        let RemoteStatementStoreSubscribeItem::V1(inner) = item;
+        assert!(inner.is_complete);
+        assert_eq!(inner.statements, vec![signed_statement([7; 32])]);
+        let sent = platform.sent_rpc.lock().expect("rpc list mutex poisoned");
+        let request: serde_json::Value = serde_json::from_str(&sent[0]).unwrap();
+        assert_eq!(request["method"], "statement_subscribeStatement");
+        assert_eq!(
+            request["params"][0]["matchAny"][0],
+            "0x0707070707070707070707070707070707070707070707070707070707070707"
+        );
     }
 
     #[test]
