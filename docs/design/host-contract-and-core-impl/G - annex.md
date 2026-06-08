@@ -1,6 +1,6 @@
 # G - Annex: conventions & wiring reference
 
-> Part of the [host-contract & core-impl spec](<index.md>). Shared mechanics referenced by
+> Part of the [host-contract & core-impl spec](index.md). Shared mechanics referenced by
 > [A](<A - host-primitives.md>) (host primitives) and [B](<B - core-impls.md>) (wire methods). Read the
 > relevant spec first; come here for the recipe.
 
@@ -64,13 +64,28 @@ primitive.
 
 Per-primitive checklist:
 
-- [ ] Trait in `truapi-platform/src/lib.rs`; add to `Platform` supertrait + blanket impl (lib.rs:122-130).
-- [ ] `WasmPlatform` impl (wasm.rs:95-254) + `JsBridge` field (wasm.rs:36-51) + `from_js` key (wasm.rs:54-68) + invoker.
-- [ ] `HostCallbacks` method (native.rs:100-132) + `CallbackPlatform` impl (native.rs:263-374); run `make uniffi`; re-implement on iOS/Android.
-- [ ] `WasmRawCallbacks` field (runtime.ts:63-98) + `createUnavailableCallbacks` stub (runtime.ts:106-138).
-- [ ] `CallbackName`/`SubscriptionName` (worker-protocol.ts:12-44) + `worker-runtime.ts` forward + main `handleCallbackRequest` (create-worker-host-runtime.ts:27-73).
-- [ ] Update both test stubs (runtime.rs:600-679, core.rs:151-229) so they still satisfy `Platform`.
-- [ ] Wire the `truapi::api::*` method to the new trait in `runtime.rs` (the [B](<B - core-impls.md>) side).
+- [x] Trait in `truapi-platform/src/lib.rs`; add to `Platform` supertrait + blanket impl.
+      Current traits cover `SessionStore`, `UserConfirmation`, `ThemeHost`, `PreimageHost`, notification
+      id/cancel, and the existing storage/navigation/permission/feature/chain surfaces.
+- [x] `WasmPlatform` impl + `JsBridge` field + `from_js` key + invoker.
+      `truapi-server/src/wasm.rs` now extracts the callback keys, invokes optional stream callbacks, and
+      maps notification ids, session store, theme, preimage, and confirmation callbacks.
+- [x] `HostCallbacks` method + `CallbackPlatform` impl; native shells expose the same host primitive set.
+      `truapi-server/src/native.rs` has UniFFI callback methods plus `CallbackPlatform` delegation for
+      notification id/cancel, session store, theme, preimage, confirmation, feature, and storage callbacks.
+- [x] `WasmRawCallbacks` field + `createUnavailableCallbacks` stub.
+      `js/packages/truapi-host-wasm/src/runtime.ts` exposes only platform callbacks plus chain/frame
+      transport; removed product-owned account/signing/statement raw routes stay deleted.
+- [x] `CallbackName`/`SubscriptionName` + `worker-runtime.ts` forward + main-thread callback dispatch.
+      `js/packages/truapi-host-wasm/src/worker-protocol.ts`,
+      `js/packages/truapi-host-wasm/src/worker-runtime.ts`, and
+      `js/packages/truapi-host-wasm/src/web/create-worker-host-runtime.ts` forward request and subscription
+      callbacks that cannot run inside the worker.
+- [x] Update both test stubs (`runtime.rs`, `core.rs`, plus `wire_result_shape.rs`) so they still satisfy
+      `Platform`.
+- [x] Wire the `truapi::api::*` method to the new trait in `runtime.rs` (the [B](<B - core-impls.md>) side).
+      Product-visible methods call platform traits only for host-owned primitives; account, signing,
+      statement-store, pairing/session, entropy, and chain runtime logic remain core-owned.
 
 ## Implementing a core-owned wire method
 
