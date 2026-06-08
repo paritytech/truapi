@@ -1861,7 +1861,8 @@ impl futures::Stream for StatementStoreSubscriptionStream {
                 continue;
             }
 
-            let is_complete = state.is_complete || page.remaining == Some(0);
+            let was_complete = state.is_complete;
+            let is_complete = was_complete || page.remaining == Some(0);
             state.is_complete = is_complete;
             let statements = page
                 .statements
@@ -1869,6 +1870,14 @@ impl futures::Stream for StatementStoreSubscriptionStream {
                 .filter_map(|statement| decode_signed_statement(&statement).ok())
                 .collect::<Vec<_>>();
             if statements.is_empty() {
+                if is_complete && !was_complete {
+                    return Poll::Ready(Some(RemoteStatementStoreSubscribeItem::V1(
+                        v01::RemoteStatementStoreSubscribeItem {
+                            statements,
+                            is_complete,
+                        },
+                    )));
+                }
                 continue;
             }
 
@@ -3683,6 +3692,36 @@ mod tests {
         let unsubscribe: serde_json::Value = serde_json::from_str(&sent[1]).unwrap();
         assert_eq!(unsubscribe["method"], "statement_unsubscribeStatement");
         assert_eq!(unsubscribe["params"][0], "remote-sub-drop");
+    }
+
+    #[test]
+    fn statement_store_subscribe_emits_empty_completion_page_after_filtering() {
+        let unsigned = vec![crate::host_logic::statement_store::StatementField::Data(
+            vec![1],
+        )]
+        .encode();
+        let platform = Arc::new(StubPlatform {
+            rpc_responses: vec![
+                subscribe_ack_frame("sub-empty-complete", "remote-sub-empty"),
+                new_statements_frame("remote-sub-empty", vec![unsigned]),
+            ],
+            ..Default::default()
+        });
+        let host = PlatformRuntimeHost::new(platform, runtime_config("myapp.dot"), test_spawner());
+        let cx = CallContext::with_request_id("sub-empty-complete".to_string());
+        let mut subscription = futures::executor::block_on(StatementStore::subscribe(
+            &host,
+            &cx,
+            RemoteStatementStoreSubscribeRequest::V1(
+                v01::RemoteStatementStoreSubscribeRequest::MatchAny(vec![[7; 32]]),
+            ),
+        ));
+
+        let item = futures::executor::block_on(subscription.next()).expect("completion page");
+
+        let RemoteStatementStoreSubscribeItem::V1(inner) = item;
+        assert!(inner.is_complete);
+        assert!(inner.statements.is_empty());
     }
 
     #[test]
