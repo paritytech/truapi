@@ -115,8 +115,8 @@ export interface WasmRawCallbacks {
 /**
  * Stubs every required callback so a host can spread them over its own
  * implementation and override only what it supports. Unavailable methods
- * reject with a descriptive error; unavailable subscriptions resolve to
- * no-op start handlers.
+ * reject with a descriptive error; unavailable subscriptions emit a current
+ * default item where the platform contract requires one.
  */
 export function createUnavailableCallbacks(): Omit<
   WasmRawCallbacks,
@@ -125,9 +125,19 @@ export function createUnavailableCallbacks(): Omit<
   const unavailable = (method: string) => async (): Promise<never> => {
     throw new Error(`${method} unavailable on this host`);
   };
-  const noopSubscribe = (): void => {};
   const emitCurrentTick = (sendItem: () => void): void => {
     sendItem();
+  };
+  const emitCurrentTheme = (
+    sendItem: (theme: "Light" | "Dark" | 0 | 1 | Uint8Array) => void,
+  ): void => {
+    sendItem("Dark");
+  };
+  const emitCurrentPreimageMiss = (
+    _key: Uint8Array,
+    sendItem: (value: Uint8Array | null | undefined) => void,
+  ): void => {
+    sendItem(undefined);
   };
   return {
     navigateTo: unavailable("navigateTo"),
@@ -141,8 +151,8 @@ export function createUnavailableCallbacks(): Omit<
     confirmPreimageSubmit: unavailable("confirmPreimageSubmit"),
     submitPreimage: unavailable("submitPreimage"),
     subscribeSessionStore: emitCurrentTick,
-    themeSubscribe: noopSubscribe,
-    preimageLookupSubscribe: noopSubscribe,
+    themeSubscribe: emitCurrentTheme,
+    preimageLookupSubscribe: emitCurrentPreimageMiss,
   };
 }
 

@@ -385,7 +385,7 @@ impl UserConfirmation for WasmPlatform {
 impl ThemeHost for WasmPlatform {
     fn subscribe_theme(&self) -> BoxStream<'static, Result<v01::Theme, v01::GenericError>> {
         let Some(fn_) = self.bridge.subscribe_theme.as_ref() else {
-            return stream::empty().boxed();
+            return stream::once(async { Ok(v01::Theme::Dark) }).boxed();
         };
         invoke_js_subscription(fn_, None, parse_theme_item).boxed()
     }
@@ -419,7 +419,7 @@ impl PreimageHost for WasmPlatform {
         key: Vec<u8>,
     ) -> BoxStream<'static, Result<Option<Vec<u8>>, v01::GenericError>> {
         let Some(fn_) = self.bridge.lookup_preimage.as_ref() else {
-            return stream::empty().boxed();
+            return stream::once(async { Ok(None) }).boxed();
         };
         invoke_js_subscription(fn_, Some(key), parse_preimage_lookup_item).boxed()
     }

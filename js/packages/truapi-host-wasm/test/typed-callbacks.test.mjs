@@ -188,6 +188,19 @@ test("createWasmRawCallbacks default session-store subscription emits current ti
   assert.deepEqual(ticks, ["tick"]);
 });
 
+test("createWasmRawCallbacks default theme and preimage subscriptions emit current values", () => {
+  const raw = createWasmRawCallbacks({});
+  const themes = [];
+  raw.themeSubscribe?.((theme) => themes.push(theme));
+  assert.deepEqual(themes, ["Dark"]);
+
+  const preimages = [];
+  raw.preimageLookupSubscribe(new Uint8Array([1]), (value) =>
+    preimages.push(value),
+  );
+  assert.deepEqual(preimages, [undefined]);
+});
+
 test("createWasmRawCallbacks adapts typed result subscriptions", async () => {
   async function* themes() {
     yield { success: true, value: "Dark" };
