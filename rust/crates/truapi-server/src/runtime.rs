@@ -134,7 +134,7 @@ use truapi::versioned::system::{
     HostNavigateToError, HostNavigateToRequest, HostNavigateToResponse,
 };
 use truapi::versioned::theme::HostThemeSubscribeItem;
-use truapi::{CallContext, CallError, Subscription};
+use truapi::{CallContext, CallError, CancellationToken, Subscription};
 use truapi_platform::{
     ChainProvider as PlatformChainProvider, JsonRpcConnection, Navigation as PlatformNavigation,
     Notifications as PlatformNotifications, PairingPresenter as PlatformPairingPresenter, Platform,
@@ -1210,9 +1210,12 @@ where
 
     async fn request_login(
         &self,
-        _cx: &CallContext,
+        cx: &CallContext,
         _request: HostRequestLoginRequest,
     ) -> Result<HostRequestLoginResponse, CallError<HostRequestLoginError>> {
+        if cx.cancel().is_cancelled() {
+            return Err(request_login_cancelled());
+        }
         if self.session_state.current().is_some() {
             return Ok(HostRequestLoginResponse::V1(
                 v01::HostRequestLoginResponse::AlreadyConnected,
@@ -1275,9 +1278,11 @@ where
         let pairing_statement =
             wait_for_pairing_statement(responses, subscription_guard.remote_subscription_id())
                 .fuse();
-        pin_mut!(presenter, pairing_statement);
+        let cancellation = wait_for_call_cancelled(cx.cancel().clone()).fuse();
+        pin_mut!(presenter, pairing_statement, cancellation);
 
         futures::select! {
+            reason = cancellation => Err(request_login_cancelled_with_reason(reason)),
             presenter_result = presenter => {
                 presenter_result.map_err(|err| CallError::HostFailure {
                     reason: format!("pairing presentation failed: {err:?}"),
@@ -1336,6 +1341,26 @@ where
             }
         }
     }
+}
+
+const CALL_CANCELLATION_POLL: Duration = Duration::from_millis(10);
+const CALL_CANCELLED_REASON: &str = "request cancelled";
+
+async fn wait_for_call_cancelled(cancel: CancellationToken) -> String {
+    while !cancel.is_cancelled() {
+        futures_timer::Delay::new(CALL_CANCELLATION_POLL).await;
+    }
+    CALL_CANCELLED_REASON.to_string()
+}
+
+fn request_login_cancelled() -> CallError<HostRequestLoginError> {
+    request_login_cancelled_with_reason(CALL_CANCELLED_REASON.to_string())
+}
+
+fn request_login_cancelled_with_reason(reason: String) -> CallError<HostRequestLoginError> {
+    CallError::Domain(HostRequestLoginError::V1(
+        v01::HostRequestLoginError::Unknown { reason },
+    ))
 }
 
 async fn wait_for_pairing_statement(
@@ -4682,6 +4707,39 @@ mod tests {
             }
             other => panic!("expected presenter host failure, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn request_login_observes_call_cancellation() {
+        let platform = Arc::new(StubPlatform {
+            pairing_pending: true,
+            ..Default::default()
+        });
+        let host = PlatformRuntimeHost::new_compat(platform.clone(), test_spawner());
+        let cancel = CancellationToken::new();
+        let cancel_from_thread = cancel.clone();
+        let cx = CallContext::with_parts("login-cancel".to_string(), cancel);
+        std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(25));
+            cancel_from_thread.cancel();
+        });
+        let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
+
+        let err = futures::executor::block_on(host.request_login(&cx, request)).unwrap_err();
+
+        match err {
+            CallError::Domain(HostRequestLoginError::V1(v01::HostRequestLoginError::Unknown {
+                reason,
+            })) => assert_eq!(reason, CALL_CANCELLED_REASON),
+            other => panic!("expected cancellation domain error, got {other:?}"),
+        }
+        let sent_rpc = platform.sent_rpc.lock().expect("rpc list mutex poisoned");
+        assert_eq!(sent_rpc.len(), 1);
+        let presented = platform
+            .presented_pairings
+            .lock()
+            .expect("pairing list mutex poisoned");
+        assert_eq!(presented.len(), 1);
     }
 
     #[test]
