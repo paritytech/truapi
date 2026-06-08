@@ -75,6 +75,7 @@ impl TrUApiCore {
             runtime_config,
             spawner.clone(),
         ));
+        runtime.start_session_store_sync(spawner.clone());
         let session_state = runtime.session_state();
         let mut dispatcher = Dispatcher::new(spawner);
         dispatcher::register(&mut dispatcher, runtime);

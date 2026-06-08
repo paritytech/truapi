@@ -203,6 +203,36 @@ impl<P> PlatformRuntimeHost<P> {
         self.session_state.clone()
     }
 
+    /// Start syncing the in-memory session from the host-global session store.
+    /// The store emits coarse ticks; each tick triggers a fresh read so same-
+    /// runtime writes and cross-runtime logout/re-pair take the same path.
+    pub(crate) fn start_session_store_sync(&self, spawner: Spawner)
+    where
+        P: Platform + 'static,
+    {
+        let platform = self.platform.clone();
+        let session_state = self.session_state.clone();
+        spawner(Box::pin(async move {
+            let mut ticks = PlatformSessionStore::subscribe_session_store(platform.as_ref());
+            while let Some(tick) = ticks.next().await {
+                if tick.is_err() {
+                    continue;
+                }
+                match PlatformSessionStore::read_session(platform.as_ref()).await {
+                    Ok(Some(blob)) => match decode_persisted_session(&blob) {
+                        Ok(session) => session_state.set_session(session),
+                        Err(_) => {
+                            session_state.clear_session();
+                            let _ = PlatformSessionStore::clear_session(platform.as_ref()).await;
+                        }
+                    },
+                    Ok(None) => session_state.clear_session(),
+                    Err(_) => {}
+                }
+            }
+        }));
+    }
+
     /// Static product/host configuration for this runtime instance.
     pub fn runtime_config(&self) -> &RuntimeConfig {
         &self.runtime_config
@@ -2167,6 +2197,10 @@ mod tests {
         thread_per_task_spawner()
     }
 
+    fn immediate_spawner() -> Spawner {
+        Arc::new(|future| futures::executor::block_on(future))
+    }
+
     /// Minimal Platform impl that only answers `feature_supported`. Every
     /// other callback returns a unit value or empty stream, so the runtime
     /// can exercise its delegation paths without pulling in a real backend.
@@ -3877,6 +3911,40 @@ mod tests {
             })) => assert!(reason.contains("invalid session blob")),
             other => panic!("expected corrupt session login error, got {other:?}"),
         }
+        assert!(host.session_state().current().is_none());
+    }
+
+    #[test]
+    fn session_store_sync_restores_valid_blob_from_tick() {
+        let stored = sso_session_info();
+        let host = PlatformRuntimeHost::new_compat(
+            Arc::new(StubPlatform {
+                session_blob: Some(crate::host_logic::session::encode_persisted_session(
+                    &stored,
+                )),
+                ..Default::default()
+            }),
+            test_spawner(),
+        );
+
+        host.start_session_store_sync(immediate_spawner());
+
+        assert_eq!(host.session_state().current(), Some(stored));
+    }
+
+    #[test]
+    fn session_store_sync_clears_invalid_blob() {
+        let host = PlatformRuntimeHost::new_compat(
+            Arc::new(StubPlatform {
+                session_blob: Some(vec![0xff]),
+                ..Default::default()
+            }),
+            test_spawner(),
+        );
+        host.session_state().set_session(sso_session_info());
+
+        host.start_session_store_sync(immediate_spawner());
+
         assert!(host.session_state().current().is_none());
     }
 
