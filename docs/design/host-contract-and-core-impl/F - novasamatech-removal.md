@@ -2,8 +2,9 @@
 
 > Part of the [host-contract & core-impl spec](<index.md>).
 
-Source of truth for this checklist is the current dotli checkout at `~/github/dotli` (`85c9733`, dirty
-worktree ignored). Do not use the `hosts/dotli` submodule for parity decisions.
+Source of truth for the original audit was the current dotli checkout at `~/github/dotli` (`85c9733`,
+dirty worktree ignored). Implementation status below tracks the migrated `hosts/dotli` submodule on this
+branch.
 
 Current dotli depends on:
 
@@ -35,11 +36,11 @@ them.
 
 ## Checklist (exact refs)
 
-- [ ] `packages/ui/src/container.ts`: replace `createIframeProvider`, `createContainer`,
+- [x] `packages/ui/src/container.ts`: replace `createIframeProvider`, `createContainer`,
       `createRateLimiter`, `deriveProductEntropy`, `Container`, `Provider`, and all `host-api` error/type
-      imports with the Rust worker bridge and generated TrUAPI codecs. This file is the active current
-      dotli bridge.
-- [ ] Nested dApps: do not port `setupNestedBridgeDetector` as separate Rust runtimes/sessions/product
+      imports with the Rust worker bridge and generated TrUAPI codecs. The migrated submodule no longer
+      has `container.ts`; `packages/ui/src/bridge.ts` uses the Rust worker bridge.
+- [x] Nested dApps: do not port `setupNestedBridgeDetector` as separate Rust runtimes/sessions/product
       identities for v1. If nested message forwarding remains, route it through the shared top-level Rust
       core. Track future nested-product usefulness in [I](<I - nested-dapps.md>).
 - [ ] Preserve current `container.ts` handler coverage in Rust before removing the JS handlers:
@@ -58,39 +59,42 @@ them.
       and cannot restore `ss_secret`, P-256 key material, peer keys, or session topics.
 - [ ] Keep explicit unavailable behavior for current dotli-unimplemented handlers: payment and full
       `create_account_proof`.
-- [ ] `packages/auth/src/auth.ts`: remove `createPappAdapter`, `PappAdapter`, `PairingStatus`,
+- [x] `packages/auth/src/auth.ts`: remove `createPappAdapter`, `PappAdapter`, `PairingStatus`,
       `Identity`, `UserSession`, `createLazyClient`, `createPapiStatementStoreAdapter`,
       `StatementStoreAdapter`, `Statement`, and `toHex` once pairing/session restore/statement-store are
-      core-owned. Keep only dotli UI state wiring or replace it with the Rust session facade.
+      core-owned. The migrated submodule deletes `packages/auth`.
 - [ ] dotli logout/disconnect UI: call the Rust core public logout/disconnect API. Do not clear the
       `SessionStore` directly from UI code; core owns teardown, storage clear, and `Disconnected`
       broadcast.
-- [ ] `packages/auth/src/signing.ts`: remove `UserSession` and `host-api` error/type imports once signing,
+- [x] `packages/auth/src/signing.ts`: remove `UserSession` and `host-api` error/type imports once signing,
       legacy signing, and `create_transaction` are core session-channel requests. Keep or rewrite only the
-      dotli confirmation modals if they remain host UI around core calls.
-- [ ] `packages/auth/src/account.ts`: port product account derivation to Rust and vector-test it. Match the
+      dotli confirmation modals if they remain host UI around core calls. The migrated submodule deletes
+      `packages/auth`; confirmation UI lives in Rust host callbacks.
+- [x] `packages/auth/src/account.ts`: port product account derivation to Rust and vector-test it. Match the
       current chain-code rule exactly: numeric junctions use SCALE `u64`, string junctions use SCALE `str`,
       values longer than 32 bytes are `blake2b(..., dkLen=32)`, and shorter values are right-padded to 32.
-- [ ] `packages/auth/src/shared-storage.ts`: replace the type-only `StorageAdapter` import with a local or
+      The migrated submodule deletes `packages/auth`; product derivation is in `truapi-server`.
+- [x] `packages/auth/src/shared-storage.ts`: replace the type-only `StorageAdapter` import with a local or
       core-owned storage interface. Core session persistence is not host-papp session-list compatible and
-      cutover requires one-time re-pair ([E5](<E - open-questions.md>)).
-- [ ] `packages/ui/src/statement-store-mapping.ts`: delete the SDK<->host mapping once Rust emits/accepts
+      cutover requires one-time re-pair ([E5](<E - open-questions.md>)). The migrated submodule deletes
+      `packages/auth` and uses the Rust-owned `SessionStore`.
+- [x] `packages/ui/src/statement-store-mapping.ts`: delete the SDK<->host mapping once Rust emits/accepts
       the final TrUAPI statement-store wire types directly.
-- [ ] `packages/ui/src/permissions.ts`, `packages/ui/src/allocation-modal.ts`, and any modal code importing
+- [x] `packages/ui/src/permissions.ts`, `packages/ui/src/allocation-modal.ts`, and any modal code importing
       `@novasamatech/host-api`: replace SDK enum/error/types with generated Rust/TrUAPI-facing types.
-- [ ] `packages/ui/src/topbar.ts`: remove type-only `Identity`, `__NOVASAMATECH_VERSIONS__`, and the
+- [x] `packages/ui/src/topbar.ts`: remove type-only `Identity`, `__NOVASAMATECH_VERSIONS__`, and the
       `NOVASAMATECH_ALLOWLIST` diagnostics once auth/debug data comes from the Rust bridge.
-- [ ] `packages/truapi-debug`: replace `onHostApiDebugMessage` and `onHostPappDebugMessage` with Rust
+- [x] `packages/truapi-debug`: replace `onHostApiDebugMessage` and `onHostPappDebugMessage` with Rust
       bridge debug events, then drop the debug package dependencies on `host-api`, `host-container`, and
-      `host-papp`.
-- [ ] `apps/host/vite.config.ts`: delete `define.__NOVASAMATECH_VERSIONS__` and the `manualChunks` branch
+      `host-papp`. The migrated submodule no longer has this package or runtime Nova debug imports.
+- [x] `apps/host/vite.config.ts`: delete `define.__NOVASAMATECH_VERSIONS__` and the `manualChunks` branch
       that returns `"nova-scale"` for `@novasamatech/scale`.
-- [ ] `packages/protocol/src/auth-storage.ts`: delete `EMPTY_SHARED_AUTH_SESSION_LIST = "0x00"` and
+- [x] `packages/protocol/src/auth-storage.ts`: delete `EMPTY_SHARED_AUTH_SESSION_LIST = "0x00"` and
       host-papp session-list compatibility notes; the core uses its own persisted `SessionInfo` through a
       host-global `SessionStore`, not product-scoped local storage. dotli web should keep the shared
       host-origin storage route but move to a Rust-owned key/prefix such as `TRUAPI_SESSION_<siteId>`,
       not `PAPP_*` / `SsoSessions`, and preserve cross-tab change notifications for logout/re-pair.
-- [ ] `package.json` deps: remove `@novasamatech/host-api`, `host-container`, `host-papp`,
+- [x] `package.json` deps: remove `@novasamatech/host-api`, `host-container`, `host-papp`,
       `sdk-statement`, `statement-store`, and `storage-adapter` from `packages/ui`, `packages/auth`, and
       `packages/truapi-debug` when no `rg "@novasamatech"` value/type imports remain.
 - [ ] Docs and README: update `README.md` host-container/debug descriptions and any dotli migration notes
