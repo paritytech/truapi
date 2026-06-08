@@ -7,7 +7,7 @@ import {
 } from "./runtime.js";
 
 interface NodeWasmModuleShape {
-  WasmTrUApiCore: new (callbacks: unknown, runtimeConfig?: unknown) => WasmCoreLike;
+  WasmTrUApiCore: new (callbacks: unknown, runtimeConfig: unknown) => WasmCoreLike;
   setDebugEnabled: (enabled: boolean) => void;
 }
 
@@ -18,7 +18,7 @@ export interface CreateNodeWasmProviderOptions {
   /** Toggle the wasm core's debug logging. Default: `false`. */
   debug?: boolean;
   /** Static product/pairing config passed to the Rust core. */
-  runtimeConfig?: WasmRuntimeConfig;
+  runtimeConfig: WasmRuntimeConfig;
 }
 
 /**
@@ -30,8 +30,12 @@ export interface CreateNodeWasmProviderOptions {
  */
 export async function createNodeWasmProvider(
   partial: Omit<WasmRawCallbacks, "emitFrame">,
-  options: CreateNodeWasmProviderOptions = {},
+  options: CreateNodeWasmProviderOptions,
 ): Promise<TrUApiHostWasmProvider> {
+  if (!options?.runtimeConfig) {
+    throw new Error("runtimeConfig is required");
+  }
+
   // Dynamic import keeps the WASM module out of the package's static
   // dependency graph and out of the tsc rootDir. Indirected through a
   // variable so TS skips the static module-existence check.

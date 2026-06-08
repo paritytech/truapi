@@ -826,38 +826,30 @@ fn noop_function() -> Function {
 
 fn runtime_config_from_js(value: &JsValue) -> Result<RuntimeConfig, JsValue> {
     if value.is_null() || value.is_undefined() {
-        return Ok(RuntimeConfig::compatibility_default());
+        return Err(JsValue::from_str("runtimeConfig is required"));
     }
 
-    let mut config = RuntimeConfig::compatibility_default();
-    if let Some(product_label) = get_optional_string(value, "productLabel")? {
-        config.product_label = product_label;
-    }
-    if let Some(product_id) = get_optional_string(value, "productId")? {
-        config.product_id = product_id;
-    }
-    if let Some(site_id) = get_optional_string(value, "siteId")? {
-        config.site_id = site_id;
-    }
-    if let Some(host_metadata_url) = get_optional_string(value, "hostMetadataUrl")? {
-        config.host_metadata_url = host_metadata_url;
-    }
-    if let Some(hash) = get_optional_bytes32(value, "peopleChainGenesisHash")? {
-        config.people_chain_genesis_hash = hash;
-    }
-    if let Some(scheme) = get_optional_string(value, "pairingDeeplinkScheme")? {
-        config.pairing_deeplink_scheme = match scheme.as_str() {
-            "polkadotapp" | "polkadotApp" | "PolkadotApp" => PairingDeeplinkScheme::PolkadotApp,
-            "polkadotappdev" | "polkadotAppDev" | "PolkadotAppDev" => {
-                PairingDeeplinkScheme::PolkadotAppDev
+    let config = RuntimeConfig {
+        product_label: get_required_string(value, "productLabel")?,
+        product_id: get_required_string(value, "productId")?,
+        site_id: get_required_string(value, "siteId")?,
+        host_metadata_url: get_required_string(value, "hostMetadataUrl")?,
+        people_chain_genesis_hash: get_required_bytes32(value, "peopleChainGenesisHash")?,
+        pairing_deeplink_scheme: {
+            let scheme = get_required_string(value, "pairingDeeplinkScheme")?;
+            match scheme.as_str() {
+                "polkadotapp" | "polkadotApp" | "PolkadotApp" => PairingDeeplinkScheme::PolkadotApp,
+                "polkadotappdev" | "polkadotAppDev" | "PolkadotAppDev" => {
+                    PairingDeeplinkScheme::PolkadotAppDev
+                }
+                other => {
+                    return Err(JsValue::from_str(&format!(
+                        "runtimeConfig.pairingDeeplinkScheme has unsupported value {other:?}"
+                    )));
+                }
             }
-            other => {
-                return Err(JsValue::from_str(&format!(
-                    "runtimeConfig.pairingDeeplinkScheme has unsupported value {other:?}"
-                )));
-            }
-        };
-    }
+        },
+    };
     config.validate().map_err(runtime_config_validation_to_js)?;
     Ok(config)
 }
@@ -899,6 +891,11 @@ fn get_optional_string(value: &JsValue, name: &str) -> Result<Option<String>, Js
         .ok_or_else(|| JsValue::from_str(&format!("runtimeConfig.{name} must be a string")))
 }
 
+fn get_required_string(value: &JsValue, name: &str) -> Result<String, JsValue> {
+    get_optional_string(value, name)?
+        .ok_or_else(|| JsValue::from_str(&format!("runtimeConfig.{name} is required")))
+}
+
 fn get_optional_bytes32(value: &JsValue, name: &str) -> Result<Option<[u8; 32]>, JsValue> {
     let property = Reflect::get(value, &JsValue::from_str(name))?;
     if property.is_null() || property.is_undefined() {
@@ -919,6 +916,11 @@ fn get_optional_bytes32(value: &JsValue, name: &str) -> Result<Option<[u8; 32]>,
             bytes.len()
         ))
     })
+}
+
+fn get_required_bytes32(value: &JsValue, name: &str) -> Result<[u8; 32], JsValue> {
+    get_optional_bytes32(value, name)?
+        .ok_or_else(|| JsValue::from_str(&format!("runtimeConfig.{name} is required")))
 }
 
 fn parse_hex32(value: &str) -> Result<[u8; 32], String> {

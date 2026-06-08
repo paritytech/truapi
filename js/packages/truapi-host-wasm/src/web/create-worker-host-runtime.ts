@@ -289,7 +289,7 @@ export interface CreateWebWorkerProviderOptions {
   /** Toggle the wasm core's debug logging. Default: `false`. */
   debug?: boolean;
   /** Static product/pairing config passed to the Rust core. */
-  runtimeConfig?: WasmRuntimeConfig;
+  runtimeConfig: WasmRuntimeConfig;
 }
 
 /**
@@ -303,7 +303,9 @@ export interface CreateWebWorkerProviderOptions {
  * ```ts
  * import HostWorker from "@parity/truapi-host-wasm/worker-runtime?worker";
  * const worker = new HostWorker();
- * const provider = await createWebWorkerProvider(worker, callbacks);
+ * const provider = await createWebWorkerProvider(worker, callbacks, {
+ *   runtimeConfig,
+ * });
  * ```
  *
  * Resolves once the worker reports `ready` and rejects if the WASM
@@ -312,8 +314,12 @@ export interface CreateWebWorkerProviderOptions {
 export function createWebWorkerProvider(
   worker: Worker,
   callbacks: Omit<WasmRawCallbacks, "emitFrame">,
-  options: CreateWebWorkerProviderOptions = {},
+  options: CreateWebWorkerProviderOptions,
 ): Promise<TrUApiHostWasmProvider> {
+  if (!options?.runtimeConfig) {
+    return Promise.reject(new Error("runtimeConfig is required"));
+  }
+
   return new Promise((resolve, reject) => {
     const state: WorkerProviderState = {
       worker,

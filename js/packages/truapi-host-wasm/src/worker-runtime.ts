@@ -21,7 +21,7 @@ interface WasmCore {
 
 interface WasmModuleShape {
   default: (input?: unknown) => Promise<unknown>;
-  WasmTrUApiCore: new (callbacks: unknown, runtimeConfig?: unknown) => WasmCore;
+  WasmTrUApiCore: new (callbacks: unknown, runtimeConfig: unknown) => WasmCore;
   setDebugEnabled: (enabled: boolean) => void;
 }
 

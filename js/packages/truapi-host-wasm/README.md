@@ -55,6 +55,15 @@ const provider = await createNodeWasmProvider({
   localStorageClear: async () => {},
   // Optional: presentPairing, readSession/writeSession/clearSession,
   // subscribeSessionStore, confirmation, preimage, theme, and chain callbacks.
+}, {
+  runtimeConfig: {
+    productLabel: "example",
+    productId: "example.dot",
+    siteId: "dot.li",
+    hostMetadataUrl: "https://dot.li/metadata.json",
+    peopleChainGenesisHash: "0xa22a2424d2cbf561eaecf7da8b1b548fa9d1939f60265e942b1049616a012f71",
+    pairingDeeplinkScheme: "polkadotapp",
+  },
 });
 
 const server = createHostServer(provider, [
@@ -68,7 +77,9 @@ const server = createHostServer(provider, [
 import HostWorker from "@parity/truapi-host-wasm/worker-runtime?worker";
 import { createWebWorkerProvider } from "@parity/truapi-host-wasm/web";
 
-const provider = await createWebWorkerProvider(new HostWorker(), callbacks);
+const provider = await createWebWorkerProvider(new HostWorker(), callbacks, {
+  runtimeConfig,
+});
 ```
 
 `@parity/truapi-host-wasm/web` also exports `createIframeHost` for the protocol-iframe

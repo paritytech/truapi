@@ -338,20 +338,6 @@ pub struct NativeTrUApiCore {
 
 #[uniffi::export]
 impl NativeTrUApiCore {
-    /// Construct the core from a callback object. The native shell hands
-    /// over its [`HostCallbacks`] trait object; the core wraps it in a
-    /// [`CallbackPlatform`] and feeds the result into
-    /// [`TrUApiCore::from_platform`].
-    ///
-    /// Subscriptions registered through this core run on a shared
-    /// `futures::executor::ThreadPool`. The pool sticks around for the
-    /// lifetime of the core; new subscriptions never spawn a fresh OS
-    /// thread each.
-    #[uniffi::constructor]
-    pub fn new(callbacks: Box<dyn HostCallbacks>) -> Arc<Self> {
-        native_core_from_platform_config(callbacks, RuntimeConfig::compatibility_default())
-    }
-
     /// Construct the core with explicit product and pairing runtime config.
     #[uniffi::constructor]
     pub fn with_runtime_config(
@@ -1417,7 +1403,18 @@ mod tests {
             }
         }
 
-        let core = NativeTrUApiCore::new(Box::new(Noop));
+        let core = NativeTrUApiCore::with_runtime_config(
+            Box::new(Noop),
+            NativeRuntimeConfig {
+                product_label: "dotli".to_string(),
+                product_id: "dotli.dot".to_string(),
+                site_id: "dot.li".to_string(),
+                host_metadata_url: "https://dot.li/metadata.json".to_string(),
+                people_chain_genesis_hash: [0xa2; 32].to_vec(),
+                pairing_deeplink_scheme: NativePairingDeeplinkScheme::PolkadotApp,
+            },
+        )
+        .expect("runtime config should be valid");
         let _first = core.start_ws_bridge(0).expect("first start must succeed");
         let err = core
             .start_ws_bridge(0)

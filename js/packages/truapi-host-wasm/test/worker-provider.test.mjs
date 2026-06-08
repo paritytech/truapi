@@ -55,21 +55,26 @@ function makeCallbacks(overrides = {}) {
   };
 }
 
+function runtimeConfig(overrides = {}) {
+  return {
+    productLabel: "dotli",
+    productId: "dotli.dot",
+    siteId: "dot.li",
+    hostMetadataUrl: "https://dot.li/metadata.json",
+    peopleChainGenesisHash:
+      "0xa22a2424d2cbf561eaecf7da8b1b548fa9d1939f60265e942b1049616a012f71",
+    pairingDeeplinkScheme: "polkadotapp",
+    ...overrides,
+  };
+}
+
 async function settle() {
   await new Promise((resolve) => setImmediate(resolve));
 }
 
 test("createWebWorkerProvider advertises only supplied optional hooks", async () => {
   const worker = new FakeWorker();
-  const runtimeConfig = {
-    productLabel: "dotli",
-    productId: "dotli",
-    siteId: "dotli.app",
-    hostMetadataUrl: "https://dotli.app/metadata.json",
-    peopleChainGenesisHash:
-      "0xa22a2424d2cbf561eaecf7da8b1b548fa9d1939f60265e942b1049616a012f71",
-    pairingDeeplinkScheme: "polkadotapp",
-  };
+  const config = runtimeConfig();
   const providerPromise = createWebWorkerProvider(
     worker,
     makeCallbacks({
@@ -81,7 +86,7 @@ test("createWebWorkerProvider advertises only supplied optional hooks", async ()
     }),
     {
       debug: true,
-      runtimeConfig,
+      runtimeConfig: config,
     },
   );
 
@@ -90,7 +95,7 @@ test("createWebWorkerProvider advertises only supplied optional hooks", async ()
   assert.deepEqual(worker.messages[0], {
     kind: "init",
     debug: true,
-    runtimeConfig,
+    runtimeConfig: config,
     optionalCallbacks: ["readSession", "clearSession"],
     optionalSubscriptions: [
       "sessionStoreSubscribe",
@@ -108,7 +113,9 @@ test("createWebWorkerProvider advertises only supplied optional hooks", async ()
 
 test("worker provider resolves disconnect responses", async () => {
   const worker = new FakeWorker();
-  const providerPromise = createWebWorkerProvider(worker, makeCallbacks());
+  const providerPromise = createWebWorkerProvider(worker, makeCallbacks(), {
+    runtimeConfig: runtimeConfig(),
+  });
   worker.emit({ kind: "loaded" });
   worker.emit({ kind: "ready" });
   const provider = await providerPromise;
@@ -134,6 +141,9 @@ test("worker provider dispatches optional callback requests to host hooks", asyn
         clears += 1;
       },
     }),
+    {
+      runtimeConfig: runtimeConfig(),
+    },
   );
   worker.emit({ kind: "loaded" });
   worker.emit({ kind: "ready" });

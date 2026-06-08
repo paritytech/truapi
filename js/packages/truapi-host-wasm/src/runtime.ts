@@ -48,12 +48,12 @@ export interface ChainConnection {
 }
 
 export interface WasmRuntimeConfig {
-  productLabel?: string;
-  productId?: string;
-  siteId?: string;
-  hostMetadataUrl?: string;
-  peopleChainGenesisHash?: string | Uint8Array;
-  pairingDeeplinkScheme?:
+  productLabel: string;
+  productId: string;
+  siteId: string;
+  hostMetadataUrl: string;
+  peopleChainGenesisHash: string | Uint8Array;
+  pairingDeeplinkScheme:
     | "polkadotapp"
     | "polkadotApp"
     | "PolkadotApp"

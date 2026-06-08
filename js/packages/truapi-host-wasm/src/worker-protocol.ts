@@ -64,7 +64,7 @@ export type MainToWorker =
   | {
       kind: "init";
       debug: boolean;
-      runtimeConfig?: unknown;
+      runtimeConfig: unknown;
       optionalCallbacks?: readonly OptionalCallbackName[];
       optionalSubscriptions?: readonly SubscriptionName[];
       chainConnect?: boolean;

@@ -35,8 +35,23 @@ function makeCallbacks(overrides = {}) {
   };
 }
 
+function runtimeConfig(overrides = {}) {
+  return {
+    productLabel: "dotli",
+    productId: "dotli.dot",
+    siteId: "dot.li",
+    hostMetadataUrl: "https://dot.li/metadata.json",
+    peopleChainGenesisHash:
+      "0xa22a2424d2cbf561eaecf7da8b1b548fa9d1939f60265e942b1049616a012f71",
+    pairingDeeplinkScheme: "polkadotapp",
+    ...overrides,
+  };
+}
+
 test("createNodeWasmProvider returns a usable Provider", async () => {
-  const provider = await createNodeWasmProvider(makeCallbacks());
+  const provider = await createNodeWasmProvider(makeCallbacks(), {
+    runtimeConfig: runtimeConfig(),
+  });
   assert.equal(typeof provider.postMessage, "function");
   assert.equal(typeof provider.subscribe, "function");
   assert.equal(typeof provider.disconnect, "function");
@@ -58,6 +73,9 @@ test("createNodeWasmProvider exposes core disconnect", async () => {
         clears += 1;
       },
     }),
+    {
+      runtimeConfig: runtimeConfig(),
+    },
   );
 
   await provider.disconnect();
@@ -70,11 +88,18 @@ test("createNodeWasmProvider validates runtimeConfig in the WASM core", async ()
   await assert.rejects(
     () =>
       createNodeWasmProvider(makeCallbacks(), {
-        runtimeConfig: {
+        runtimeConfig: runtimeConfig({
           peopleChainGenesisHash: "0x1234",
-        },
+        }),
       }),
     /runtimeConfig\.peopleChainGenesisHash: expected 32-byte hex string/,
+  );
+});
+
+test("createNodeWasmProvider requires runtimeConfig", async () => {
+  await assert.rejects(
+    () => createNodeWasmProvider(makeCallbacks(), undefined),
+    /runtimeConfig is required/,
   );
 });
 
@@ -82,9 +107,9 @@ test("createNodeWasmProvider rejects empty runtime config identity fields", asyn
   await assert.rejects(
     () =>
       createNodeWasmProvider(makeCallbacks(), {
-        runtimeConfig: {
+        runtimeConfig: runtimeConfig({
           productId: " ",
-        },
+        }),
       }),
     /runtimeConfig\.productId must not be empty/,
   );
@@ -94,16 +119,18 @@ test("createNodeWasmProvider rejects non-HTTPS runtime metadata URLs", async () 
   await assert.rejects(
     () =>
       createNodeWasmProvider(makeCallbacks(), {
-        runtimeConfig: {
+        runtimeConfig: runtimeConfig({
           hostMetadataUrl: "http://localhost:3000/metadata.json",
-        },
+        }),
       }),
     /runtimeConfig\.hostMetadataUrl must use https scheme/,
   );
 });
 
 test("createNodeWasmProvider dispose is idempotent", async () => {
-  const provider = await createNodeWasmProvider(makeCallbacks());
+  const provider = await createNodeWasmProvider(makeCallbacks(), {
+    runtimeConfig: runtimeConfig(),
+  });
   provider.dispose();
   // Second call must not throw.
   provider.dispose();
@@ -112,7 +139,9 @@ test("createNodeWasmProvider dispose is idempotent", async () => {
 test("createNodeWasmProvider round-trips a featureSupported request through the WASM core", async () => {
   const callbacks = makeCallbacks();
   callbacks.featureSupported = async () => true;
-  const provider = await createNodeWasmProvider(callbacks);
+  const provider = await createNodeWasmProvider(callbacks, {
+    runtimeConfig: runtimeConfig(),
+  });
 
   const frames = [];
   provider.subscribe((bytes) => frames.push(bytes));
@@ -150,7 +179,9 @@ test("createNodeWasmProvider round-trips a featureSupported request through the 
 });
 
 test("createNodeWasmProvider surfaces a rejected receiveFromProduct through subscribeClose", async () => {
-  const provider = await createNodeWasmProvider(makeCallbacks());
+  const provider = await createNodeWasmProvider(makeCallbacks(), {
+    runtimeConfig: runtimeConfig(),
+  });
 
   const closes = [];
   provider.subscribeClose((error) => closes.push(error));
