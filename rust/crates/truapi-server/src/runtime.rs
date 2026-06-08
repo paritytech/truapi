@@ -393,6 +393,35 @@ where
         action: &str,
         message: RemoteMessage,
     ) -> Result<SsoRemoteResponse, String> {
+        self.submit_sso_remote_message_with_timeout(
+            cx,
+            session,
+            action,
+            message,
+            Some(DEFAULT_SSO_RESPONSE_TIMEOUT),
+        )
+        .await
+    }
+
+    async fn submit_sso_remote_message_without_timeout(
+        &self,
+        cx: &CallContext,
+        session: &SessionInfo,
+        action: &str,
+        message: RemoteMessage,
+    ) -> Result<SsoRemoteResponse, String> {
+        self.submit_sso_remote_message_with_timeout(cx, session, action, message, None)
+            .await
+    }
+
+    async fn submit_sso_remote_message_with_timeout(
+        &self,
+        cx: &CallContext,
+        session: &SessionInfo,
+        action: &str,
+        message: RemoteMessage,
+        timeout: Option<Duration>,
+    ) -> Result<SsoRemoteResponse, String> {
         let sso = session
             .sso
             .as_ref()
@@ -439,7 +468,7 @@ where
                 peer_subscription_request_id: &peer_subscription_request_id,
                 statement_request_id: &message_id,
                 remote_message_id: &message_id,
-                timeout: DEFAULT_SSO_RESPONSE_TIMEOUT,
+                timeout,
                 disconnect: Some(disconnect),
                 own_remote_subscription_id: subscription_guard.own_remote_subscription_id(),
                 peer_remote_subscription_id: subscription_guard.peer_remote_subscription_id(),
@@ -496,7 +525,7 @@ struct SsoRemoteResponseWait<'a> {
     peer_subscription_request_id: &'a str,
     statement_request_id: &'a str,
     remote_message_id: &'a str,
-    timeout: Duration,
+    timeout: Option<Duration>,
     disconnect: Option<oneshot::Receiver<String>>,
     own_remote_subscription_id: SharedRemoteSubscriptionId,
     peer_remote_subscription_id: SharedRemoteSubscriptionId,
@@ -613,11 +642,13 @@ async fn wait_for_sso_remote_response(
     responses: BoxStream<'static, String>,
     wait: SsoRemoteResponseWait<'_>,
 ) -> Result<SsoRemoteResponse, String> {
-    let timeout_reason = format!(
-        "SSO response timed out after {} for {}",
-        format_timeout_duration(wait.timeout),
-        wait.remote_message_id
-    );
+    let timeout_reason = wait.timeout.map(|timeout| {
+        format!(
+            "SSO response timed out after {} for {}",
+            format_timeout_duration(timeout),
+            wait.remote_message_id
+        )
+    });
     let response = wait_for_sso_remote_response_inner(
         responses,
         SsoRemoteResponseTarget {
@@ -631,7 +662,16 @@ async fn wait_for_sso_remote_response(
         },
     )
     .fuse();
-    let timeout = futures_timer::Delay::new(wait.timeout).fuse();
+    let timeout = async move {
+        match (wait.timeout, timeout_reason) {
+            (Some(timeout), Some(reason)) => {
+                futures_timer::Delay::new(timeout).await;
+                reason
+            }
+            _ => futures::future::pending::<String>().await,
+        }
+    }
+    .fuse();
     let disconnect = async move {
         match wait.disconnect {
             Some(rx) => rx
@@ -644,7 +684,7 @@ async fn wait_for_sso_remote_response(
     pin_mut!(response, timeout, disconnect);
     futures::select! {
         result = response => result,
-        _ = timeout => Err(timeout_reason),
+        reason = timeout => Err(reason),
         reason = disconnect => Err(reason),
     }
 }
@@ -1042,7 +1082,7 @@ where
             self.runtime_config.product_id.clone(),
         );
         let response = self
-            .submit_sso_remote_message(cx, &session, "account-alias", message)
+            .submit_sso_remote_message_without_timeout(cx, &session, "account-alias", message)
             .await
             .map_err(|reason| {
                 CallError::Domain(HostAccountGetAliasError::V1(
@@ -4866,7 +4906,7 @@ mod tests {
                 peer_subscription_request_id: "peer-sub",
                 statement_request_id: "request-1",
                 remote_message_id: "request-1",
-                timeout: Duration::from_millis(1),
+                timeout: Some(Duration::from_millis(1)),
                 disconnect: None,
                 own_remote_subscription_id: remote_subscription_slot(),
                 peer_remote_subscription_id: remote_subscription_slot(),
@@ -4890,7 +4930,31 @@ mod tests {
                 peer_subscription_request_id: "peer-sub",
                 statement_request_id: "request-1",
                 remote_message_id: "request-1",
-                timeout: Duration::from_secs(60),
+                timeout: Some(Duration::from_secs(60)),
+                disconnect: Some(rx),
+                own_remote_subscription_id: remote_subscription_slot(),
+                peer_remote_subscription_id: remote_subscription_slot(),
+            },
+        ))
+        .unwrap_err();
+
+        assert_eq!(err, SSO_LOCAL_DISCONNECT_REASON);
+    }
+
+    #[test]
+    fn sso_remote_response_waiter_without_timeout_stops_on_local_disconnect_signal() {
+        let session = sso_session_info();
+        let (tx, rx) = oneshot::channel();
+        tx.send(SSO_LOCAL_DISCONNECT_REASON.to_string()).unwrap();
+        let err = futures::executor::block_on(wait_for_sso_remote_response(
+            stream::pending().boxed(),
+            SsoRemoteResponseWait {
+                session: session.sso.as_ref().unwrap(),
+                own_subscription_request_id: "own-sub",
+                peer_subscription_request_id: "peer-sub",
+                statement_request_id: "request-1",
+                remote_message_id: "request-1",
+                timeout: None,
                 disconnect: Some(rx),
                 own_remote_subscription_id: remote_subscription_slot(),
                 peer_remote_subscription_id: remote_subscription_slot(),
