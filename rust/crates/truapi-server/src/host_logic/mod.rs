@@ -10,3 +10,4 @@ pub mod features;
 pub mod permissions;
 pub mod product_account;
 pub mod session;
+pub mod sso_pairing;

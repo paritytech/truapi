@@ -20,6 +20,7 @@ use crate::host_logic::product_account::{
     derive_product_public_key, is_product_identifier, product_public_key_to_address,
 };
 use crate::host_logic::session::{SessionInfo, SessionState, decode_persisted_session};
+use crate::host_logic::sso_pairing::create_pairing_bootstrap;
 use crate::subscription::Spawner;
 
 use futures::StreamExt;
@@ -96,9 +97,10 @@ use truapi::versioned::theme::HostThemeSubscribeItem;
 use truapi::{CallContext, CallError, Subscription};
 use truapi_platform::{
     ChainProvider as PlatformChainProvider, JsonRpcConnection, Navigation as PlatformNavigation,
-    Notifications as PlatformNotifications, Platform, PreimageHost as PlatformPreimageHost,
-    RuntimeConfig, SessionStore as PlatformSessionStore, Storage as PlatformStorage,
-    ThemeHost as PlatformThemeHost, UserConfirmation as PlatformUserConfirmation,
+    Notifications as PlatformNotifications, PairingPresenter as PlatformPairingPresenter, Platform,
+    PreimageHost as PlatformPreimageHost, RuntimeConfig, SessionStore as PlatformSessionStore,
+    Storage as PlatformStorage, ThemeHost as PlatformThemeHost,
+    UserConfirmation as PlatformUserConfirmation,
 };
 
 /// Adapter that exposes a [`truapi_platform::Platform`] through the
@@ -624,7 +626,23 @@ where
                 )));
             }
         }
-        Err(CallError::unavailable())
+
+        let bootstrap = create_pairing_bootstrap(&self.runtime_config).map_err(|err| {
+            CallError::Domain(HostRequestLoginError::V1(
+                v01::HostRequestLoginError::Unknown {
+                    reason: err.to_string(),
+                },
+            ))
+        })?;
+        PlatformPairingPresenter::present_pairing(self.platform.as_ref(), bootstrap.deeplink)
+            .await
+            .map_err(|err| CallError::HostFailure {
+                reason: format!("pairing presentation failed: {err:?}"),
+            })?;
+
+        Ok(HostRequestLoginResponse::V1(
+            v01::HostRequestLoginResponse::Rejected,
+        ))
     }
 }
 
@@ -1291,6 +1309,7 @@ mod tests {
     use crate::chain_runtime::thread_per_task_spawner;
     use futures::stream::{self, BoxStream};
     use parity_scale_codec::Encode;
+    use std::sync::Mutex;
     use truapi::v01;
     use truapi_platform::{
         ChainProvider, Features as PlatformFeatures, JsonRpcConnection,
@@ -1320,6 +1339,8 @@ mod tests {
         resource_allocation_error: Option<&'static str>,
         session_blob: Option<Vec<u8>>,
         session_error: Option<&'static str>,
+        pairing_error: Option<&'static str>,
+        presented_pairings: Arc<Mutex<Vec<String>>>,
     }
 
     impl Default for StubPlatform {
@@ -1338,6 +1359,8 @@ mod tests {
                 resource_allocation_error: None,
                 session_blob: None,
                 session_error: None,
+                pairing_error: None,
+                presented_pairings: Arc::new(Mutex::new(Vec::new())),
             }
         }
     }
@@ -1514,10 +1537,18 @@ mod tests {
     }
 
     impl PairingPresenter for StubPlatform {
-        async fn present_pairing(&self, _deeplink: String) -> Result<(), v01::GenericError> {
-            Err(v01::GenericError {
-                reason: "pairing presenter callback not provided by host".to_string(),
-            })
+        async fn present_pairing(&self, deeplink: String) -> Result<(), v01::GenericError> {
+            self.presented_pairings
+                .lock()
+                .expect("pairing list mutex poisoned")
+                .push(deeplink);
+            if let Some(reason) = self.pairing_error {
+                Err(v01::GenericError {
+                    reason: reason.to_string(),
+                })
+            } else {
+                Ok(())
+            }
         }
     }
 
@@ -2331,12 +2362,44 @@ mod tests {
     }
 
     #[test]
-    fn request_login_returns_unavailable() {
-        let host = PlatformRuntimeHost::new_compat(stub_platform(), test_spawner());
+    fn request_login_presents_pairing_and_rejects_when_dismissed() {
+        let platform = stub_platform();
+        let host = PlatformRuntimeHost::new_compat(platform.clone(), test_spawner());
+        let cx = CallContext::new();
+        let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
+        let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
+
+        assert_eq!(
+            response,
+            HostRequestLoginResponse::V1(v01::HostRequestLoginResponse::Rejected)
+        );
+        let presented = platform
+            .presented_pairings
+            .lock()
+            .expect("pairing list mutex poisoned");
+        assert_eq!(presented.len(), 1);
+        assert!(presented[0].starts_with("polkadotapp://pair?handshake="));
+    }
+
+    #[test]
+    fn request_login_maps_pairing_presenter_failure() {
+        let host = PlatformRuntimeHost::new_compat(
+            Arc::new(StubPlatform {
+                pairing_error: Some("present failed"),
+                ..Default::default()
+            }),
+            test_spawner(),
+        );
         let cx = CallContext::new();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
         let err = futures::executor::block_on(host.request_login(&cx, request)).unwrap_err();
-        assert!(matches!(err, CallError::HostFailure { reason } if reason == "unavailable"));
+
+        match err {
+            CallError::HostFailure { reason } => {
+                assert!(reason.contains("present failed"));
+            }
+            other => panic!("expected presenter host failure, got {other:?}"),
+        }
     }
 
     #[test]
