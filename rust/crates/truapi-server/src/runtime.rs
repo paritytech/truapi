@@ -21,6 +21,7 @@ use crate::host_logic::product_account::{
 };
 use crate::host_logic::session::{SessionInfo, SessionState, decode_persisted_session};
 use crate::host_logic::sso_pairing::create_pairing_bootstrap;
+use crate::host_logic::statement_store::subscribe_match_all_request;
 use crate::subscription::Spawner;
 
 use futures::StreamExt;
@@ -634,6 +635,18 @@ where
                 },
             ))
         })?;
+        let statement_store = PlatformChainProvider::connect(
+            self.platform.as_ref(),
+            self.runtime_config.people_chain_genesis_hash.to_vec(),
+        )
+        .await
+        .map_err(|err| CallError::HostFailure {
+            reason: format!("pairing statement-store connect failed: {err:?}"),
+        })?;
+        statement_store.send(subscribe_match_all_request(
+            "truapi:sso-pairing:1",
+            &[bootstrap.topic],
+        ));
         PlatformPairingPresenter::present_pairing(self.platform.as_ref(), bootstrap.deeplink)
             .await
             .map_err(|err| CallError::HostFailure {
@@ -1341,6 +1354,7 @@ mod tests {
         session_error: Option<&'static str>,
         pairing_error: Option<&'static str>,
         presented_pairings: Arc<Mutex<Vec<String>>>,
+        sent_rpc: Arc<Mutex<Vec<String>>>,
     }
 
     impl Default for StubPlatform {
@@ -1361,6 +1375,7 @@ mod tests {
                 session_error: None,
                 pairing_error: None,
                 presented_pairings: Arc::new(Mutex::new(Vec::new())),
+                sent_rpc: Arc::new(Mutex::new(Vec::new())),
             }
         }
     }
@@ -1519,9 +1534,17 @@ mod tests {
         }
     }
 
-    struct DeadConnection;
-    impl JsonRpcConnection for DeadConnection {
-        fn send(&self, _request: String) {}
+    struct RecordingConnection {
+        sent: Arc<Mutex<Vec<String>>>,
+    }
+
+    impl JsonRpcConnection for RecordingConnection {
+        fn send(&self, request: String) {
+            self.sent
+                .lock()
+                .expect("rpc list mutex poisoned")
+                .push(request);
+        }
         fn responses(&self) -> BoxStream<'static, String> {
             Box::pin(stream::empty())
         }
@@ -1532,7 +1555,9 @@ mod tests {
             &self,
             _genesis_hash: Vec<u8>,
         ) -> Result<Box<dyn JsonRpcConnection>, v01::GenericError> {
-            Ok(Box::new(DeadConnection))
+            Ok(Box::new(RecordingConnection {
+                sent: self.sent_rpc.clone(),
+            }))
         }
     }
 
@@ -2379,6 +2404,15 @@ mod tests {
             .expect("pairing list mutex poisoned");
         assert_eq!(presented.len(), 1);
         assert!(presented[0].starts_with("polkadotapp://pair?handshake="));
+
+        let sent_rpc = platform.sent_rpc.lock().expect("rpc list mutex poisoned");
+        assert_eq!(sent_rpc.len(), 1);
+        let request: serde_json::Value = serde_json::from_str(&sent_rpc[0]).unwrap();
+        assert_eq!(request["method"], "statement_subscribeStatement");
+        assert_eq!(
+            request["params"][0]["matchAll"][0].as_str().unwrap().len(),
+            66
+        );
     }
 
     #[test]
