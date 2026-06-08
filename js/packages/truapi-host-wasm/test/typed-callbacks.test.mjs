@@ -181,6 +181,13 @@ test("createWasmRawCallbacks bridges lifecycle, confirmations, and preimage call
   disposePreimages?.();
 });
 
+test("createWasmRawCallbacks default session-store subscription emits current tick", () => {
+  const raw = createWasmRawCallbacks({});
+  const ticks = [];
+  raw.subscribeSessionStore?.(() => ticks.push("tick"));
+  assert.deepEqual(ticks, ["tick"]);
+});
+
 test("createWasmRawCallbacks adapts typed result subscriptions", async () => {
   async function* themes() {
     yield { success: true, value: "Dark" };

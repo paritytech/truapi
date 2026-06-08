@@ -122,12 +122,13 @@ export function createUnavailableCallbacks(): Omit<
   WasmRawCallbacks,
   "emitFrame" | "dispose" | "chainConnect"
 > {
-  const unavailable =
-    (method: string) =>
-    async (): Promise<never> => {
-      throw new Error(`${method} unavailable on this host`);
-    };
+  const unavailable = (method: string) => async (): Promise<never> => {
+    throw new Error(`${method} unavailable on this host`);
+  };
   const noopSubscribe = (): void => {};
+  const emitCurrentTick = (sendItem: () => void): void => {
+    sendItem();
+  };
   return {
     navigateTo: unavailable("navigateTo"),
     pushNotification: async () => 0,
@@ -139,7 +140,7 @@ export function createUnavailableCallbacks(): Omit<
     localStorageClear: async () => {},
     confirmPreimageSubmit: unavailable("confirmPreimageSubmit"),
     submitPreimage: unavailable("submitPreimage"),
-    subscribeSessionStore: noopSubscribe,
+    subscribeSessionStore: emitCurrentTick,
     themeSubscribe: noopSubscribe,
     preimageLookupSubscribe: noopSubscribe,
   };
