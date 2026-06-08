@@ -253,63 +253,161 @@ typedef void (*UniffiForeignFutureCompleteVoid)(uint64_t, UniffiForeignFutureStr
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD0
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD0
-typedef void (*UniffiCallbackInterfaceHostCallbacksMethod0)(uint64_t, RustBuffer, RustBuffer, void* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod0)(uint64_t, RustBuffer, RustBuffer, void* _Nonnull,
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD1
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD1
-typedef void (*UniffiCallbackInterfaceHostCallbacksMethod1)(uint64_t, RustBuffer, void* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod1)(uint64_t, RustBuffer, void* _Nonnull,
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD2
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD2
-typedef void (*UniffiCallbackInterfaceHostCallbacksMethod2)(uint64_t, RustBuffer, void* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod2)(uint64_t, RustBuffer, uint32_t* _Nonnull,
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD3
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD3
-typedef void (*UniffiCallbackInterfaceHostCallbacksMethod3)(uint64_t, RustBuffer, int8_t* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod3)(uint64_t, uint32_t, void* _Nonnull,
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD4
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD4
-typedef void (*UniffiCallbackInterfaceHostCallbacksMethod4)(uint64_t, RustBuffer, int8_t* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod4)(uint64_t, RustBuffer, int8_t* _Nonnull,
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD5
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD5
-typedef void (*UniffiCallbackInterfaceHostCallbacksMethod5)(uint64_t, RustBuffer, int8_t* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod5)(uint64_t, RustBuffer, int8_t* _Nonnull,
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD6
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD6
-typedef void (*UniffiCallbackInterfaceHostCallbacksMethod6)(uint64_t, RustBuffer, RustBuffer* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod6)(uint64_t, RustBuffer, void* _Nonnull,
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD7
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD7
-typedef void (*UniffiCallbackInterfaceHostCallbacksMethod7)(uint64_t, RustBuffer, RustBuffer, void* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod7)(uint64_t, RustBuffer* _Nonnull,
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
 #endif
 #ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD8
 #define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD8
-typedef void (*UniffiCallbackInterfaceHostCallbacksMethod8)(uint64_t, RustBuffer, void* _Nonnull, 
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod8)(uint64_t, RustBuffer, void* _Nonnull,
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD9
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD9
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod9)(uint64_t, void* _Nonnull,
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD10
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD10
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod10)(uint64_t, RustBuffer, int8_t* _Nonnull,
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD11
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD11
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod11)(uint64_t, RustBuffer, int8_t* _Nonnull,
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD12
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD12
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod12)(uint64_t, RustBuffer, int8_t* _Nonnull,
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD13
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD13
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod13)(uint64_t, RustBuffer, int8_t* _Nonnull,
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD14
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD14
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod14)(uint64_t, RustBuffer, int8_t* _Nonnull,
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD15
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD15
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod15)(uint64_t, uint64_t, void* _Nonnull,
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD16
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD16
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod16)(uint64_t, RustBuffer, RustBuffer* _Nonnull,
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD17
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD17
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod17)(uint64_t, RustBuffer, RustBuffer* _Nonnull,
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD18
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD18
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod18)(uint64_t, RustBuffer* _Nonnull,
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD19
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD19
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod19)(uint64_t, RustBuffer, int8_t* _Nonnull,
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD20
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD20
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod20)(uint64_t, RustBuffer, RustBuffer* _Nonnull,
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD21
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD21
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod21)(uint64_t, RustBuffer, RustBuffer, void* _Nonnull,
+        RustCallStatus *_Nonnull uniffiCallStatus
+    );
+
+#endif
+#ifndef UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD22
+#define UNIFFI_FFIDEF_CALLBACK_INTERFACE_HOST_CALLBACKS_METHOD22
+typedef void (*UniffiCallbackInterfaceHostCallbacksMethod22)(uint64_t, RustBuffer, void* _Nonnull,
         RustCallStatus *_Nonnull uniffiCallStatus
     );
 
@@ -320,12 +418,26 @@ typedef struct UniffiVTableCallbackInterfaceHostCallbacks {
     UniffiCallbackInterfaceHostCallbacksMethod0 _Nonnull onCoreLog;
     UniffiCallbackInterfaceHostCallbacksMethod1 _Nonnull navigateTo;
     UniffiCallbackInterfaceHostCallbacksMethod2 _Nonnull pushNotification;
-    UniffiCallbackInterfaceHostCallbacksMethod3 _Nonnull devicePermission;
-    UniffiCallbackInterfaceHostCallbacksMethod4 _Nonnull remotePermission;
-    UniffiCallbackInterfaceHostCallbacksMethod5 _Nonnull featureSupported;
-    UniffiCallbackInterfaceHostCallbacksMethod6 _Nonnull localStorageRead;
-    UniffiCallbackInterfaceHostCallbacksMethod7 _Nonnull localStorageWrite;
-    UniffiCallbackInterfaceHostCallbacksMethod8 _Nonnull localStorageClear;
+    UniffiCallbackInterfaceHostCallbacksMethod3 _Nonnull cancelNotification;
+    UniffiCallbackInterfaceHostCallbacksMethod4 _Nonnull devicePermission;
+    UniffiCallbackInterfaceHostCallbacksMethod5 _Nonnull remotePermission;
+    UniffiCallbackInterfaceHostCallbacksMethod6 _Nonnull presentPairing;
+    UniffiCallbackInterfaceHostCallbacksMethod7 _Nonnull readSession;
+    UniffiCallbackInterfaceHostCallbacksMethod8 _Nonnull writeSession;
+    UniffiCallbackInterfaceHostCallbacksMethod9 _Nonnull clearSession;
+    UniffiCallbackInterfaceHostCallbacksMethod10 _Nonnull confirmSignPayload;
+    UniffiCallbackInterfaceHostCallbacksMethod11 _Nonnull confirmSignRaw;
+    UniffiCallbackInterfaceHostCallbacksMethod12 _Nonnull confirmCreateTransaction;
+    UniffiCallbackInterfaceHostCallbacksMethod13 _Nonnull confirmAccountAlias;
+    UniffiCallbackInterfaceHostCallbacksMethod14 _Nonnull confirmResourceAllocation;
+    UniffiCallbackInterfaceHostCallbacksMethod15 _Nonnull confirmPreimageSubmit;
+    UniffiCallbackInterfaceHostCallbacksMethod16 _Nonnull submitPreimage;
+    UniffiCallbackInterfaceHostCallbacksMethod17 _Nonnull lookupPreimage;
+    UniffiCallbackInterfaceHostCallbacksMethod18 _Nonnull currentTheme;
+    UniffiCallbackInterfaceHostCallbacksMethod19 _Nonnull featureSupported;
+    UniffiCallbackInterfaceHostCallbacksMethod20 _Nonnull localStorageRead;
+    UniffiCallbackInterfaceHostCallbacksMethod21 _Nonnull localStorageWrite;
+    UniffiCallbackInterfaceHostCallbacksMethod22 _Nonnull localStorageClear;
     UniffiCallbackInterfaceFree _Nonnull uniffiFree;
 } UniffiVTableCallbackInterfaceHostCallbacks;
 
@@ -345,14 +457,14 @@ void uniffi_truapi_server_fn_free_nativetruapicore(void*_Nonnull ptr, RustCallSt
 void*_Nonnull uniffi_truapi_server_fn_constructor_nativetruapicore_new(uint64_t callbacks, RustCallStatus *_Nonnull out_status
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_NATIVETRUAPICORE_CLEAR_ACTIVE_SESSION
-#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_NATIVETRUAPICORE_CLEAR_ACTIVE_SESSION
-void uniffi_truapi_server_fn_method_nativetruapicore_clear_active_session(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_CONSTRUCTOR_NATIVETRUAPICORE_WITH_RUNTIME_CONFIG
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_CONSTRUCTOR_NATIVETRUAPICORE_WITH_RUNTIME_CONFIG
+void*_Nonnull uniffi_truapi_server_fn_constructor_nativetruapicore_with_runtime_config(uint64_t callbacks, RustBuffer runtime_config, RustCallStatus *_Nonnull out_status
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_NATIVETRUAPICORE_SET_ACTIVE_SESSION
-#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_NATIVETRUAPICORE_SET_ACTIVE_SESSION
-int8_t uniffi_truapi_server_fn_method_nativetruapicore_set_active_session(void*_Nonnull ptr, RustBuffer pubkey, RustBuffer lite_username, RustBuffer full_username, RustCallStatus *_Nonnull out_status
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_NATIVETRUAPICORE_DISCONNECT
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_NATIVETRUAPICORE_DISCONNECT
+void uniffi_truapi_server_fn_method_nativetruapicore_disconnect(void*_Nonnull ptr, RustCallStatus *_Nonnull out_status
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_FN_METHOD_NATIVETRUAPICORE_START_WS_BRIDGE
@@ -650,94 +762,178 @@ void ffi_truapi_server_rust_future_free_void(uint64_t handle
 void ffi_truapi_server_rust_future_complete_void(uint64_t handle, RustCallStatus *_Nonnull out_status
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_NATIVETRUAPICORE_CLEAR_ACTIVE_SESSION
-#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_NATIVETRUAPICORE_CLEAR_ACTIVE_SESSION
-uint16_t uniffi_truapi_server_checksum_method_nativetruapicore_clear_active_session(void
-    
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_NATIVETRUAPICORE_SET_ACTIVE_SESSION
-#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_NATIVETRUAPICORE_SET_ACTIVE_SESSION
-uint16_t uniffi_truapi_server_checksum_method_nativetruapicore_set_active_session(void
-    
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_NATIVETRUAPICORE_DISCONNECT
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_NATIVETRUAPICORE_DISCONNECT
+uint16_t uniffi_truapi_server_checksum_method_nativetruapicore_disconnect(void
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_NATIVETRUAPICORE_START_WS_BRIDGE
 #define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_NATIVETRUAPICORE_START_WS_BRIDGE
 uint16_t uniffi_truapi_server_checksum_method_nativetruapicore_start_ws_bridge(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_NATIVETRUAPICORE_STOP_WS_BRIDGE
 #define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_NATIVETRUAPICORE_STOP_WS_BRIDGE
 uint16_t uniffi_truapi_server_checksum_method_nativetruapicore_stop_ws_bridge(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_CONSTRUCTOR_NATIVETRUAPICORE_NEW
 #define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_CONSTRUCTOR_NATIVETRUAPICORE_NEW
 uint16_t uniffi_truapi_server_checksum_constructor_nativetruapicore_new(void
-    
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_CONSTRUCTOR_NATIVETRUAPICORE_WITH_RUNTIME_CONFIG
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_CONSTRUCTOR_NATIVETRUAPICORE_WITH_RUNTIME_CONFIG
+uint16_t uniffi_truapi_server_checksum_constructor_nativetruapicore_with_runtime_config(void
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_ON_CORE_LOG
 #define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_ON_CORE_LOG
 uint16_t uniffi_truapi_server_checksum_method_hostcallbacks_on_core_log(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_NAVIGATE_TO
 #define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_NAVIGATE_TO
 uint16_t uniffi_truapi_server_checksum_method_hostcallbacks_navigate_to(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_PUSH_NOTIFICATION
 #define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_PUSH_NOTIFICATION
 uint16_t uniffi_truapi_server_checksum_method_hostcallbacks_push_notification(void
-    
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_CANCEL_NOTIFICATION
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_CANCEL_NOTIFICATION
+uint16_t uniffi_truapi_server_checksum_method_hostcallbacks_cancel_notification(void
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_DEVICE_PERMISSION
 #define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_DEVICE_PERMISSION
 uint16_t uniffi_truapi_server_checksum_method_hostcallbacks_device_permission(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_REMOTE_PERMISSION
 #define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_REMOTE_PERMISSION
 uint16_t uniffi_truapi_server_checksum_method_hostcallbacks_remote_permission(void
-    
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_PRESENT_PAIRING
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_PRESENT_PAIRING
+uint16_t uniffi_truapi_server_checksum_method_hostcallbacks_present_pairing(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_READ_SESSION
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_READ_SESSION
+uint16_t uniffi_truapi_server_checksum_method_hostcallbacks_read_session(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_WRITE_SESSION
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_WRITE_SESSION
+uint16_t uniffi_truapi_server_checksum_method_hostcallbacks_write_session(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_CLEAR_SESSION
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_CLEAR_SESSION
+uint16_t uniffi_truapi_server_checksum_method_hostcallbacks_clear_session(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_CONFIRM_SIGN_PAYLOAD
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_CONFIRM_SIGN_PAYLOAD
+uint16_t uniffi_truapi_server_checksum_method_hostcallbacks_confirm_sign_payload(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_CONFIRM_SIGN_RAW
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_CONFIRM_SIGN_RAW
+uint16_t uniffi_truapi_server_checksum_method_hostcallbacks_confirm_sign_raw(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_CONFIRM_CREATE_TRANSACTION
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_CONFIRM_CREATE_TRANSACTION
+uint16_t uniffi_truapi_server_checksum_method_hostcallbacks_confirm_create_transaction(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_CONFIRM_ACCOUNT_ALIAS
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_CONFIRM_ACCOUNT_ALIAS
+uint16_t uniffi_truapi_server_checksum_method_hostcallbacks_confirm_account_alias(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_CONFIRM_RESOURCE_ALLOCATION
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_CONFIRM_RESOURCE_ALLOCATION
+uint16_t uniffi_truapi_server_checksum_method_hostcallbacks_confirm_resource_allocation(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_CONFIRM_PREIMAGE_SUBMIT
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_CONFIRM_PREIMAGE_SUBMIT
+uint16_t uniffi_truapi_server_checksum_method_hostcallbacks_confirm_preimage_submit(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_SUBMIT_PREIMAGE
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_SUBMIT_PREIMAGE
+uint16_t uniffi_truapi_server_checksum_method_hostcallbacks_submit_preimage(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_LOOKUP_PREIMAGE
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_LOOKUP_PREIMAGE
+uint16_t uniffi_truapi_server_checksum_method_hostcallbacks_lookup_preimage(void
+
+);
+#endif
+#ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_CURRENT_THEME
+#define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_CURRENT_THEME
+uint16_t uniffi_truapi_server_checksum_method_hostcallbacks_current_theme(void
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_FEATURE_SUPPORTED
 #define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_FEATURE_SUPPORTED
 uint16_t uniffi_truapi_server_checksum_method_hostcallbacks_feature_supported(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_LOCAL_STORAGE_READ
 #define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_LOCAL_STORAGE_READ
 uint16_t uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_read(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_LOCAL_STORAGE_WRITE
 #define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_LOCAL_STORAGE_WRITE
 uint16_t uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_write(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_LOCAL_STORAGE_CLEAR
 #define UNIFFI_FFIDEF_UNIFFI_TRUAPI_SERVER_CHECKSUM_METHOD_HOSTCALLBACKS_LOCAL_STORAGE_CLEAR
 uint16_t uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_clear(void
-    
+
 );
 #endif
 #ifndef UNIFFI_FFIDEF_FFI_TRUAPI_SERVER_UNIFFI_CONTRACT_VERSION
 #define UNIFFI_FFIDEF_FFI_TRUAPI_SERVER_UNIFFI_CONTRACT_VERSION
 uint32_t ffi_truapi_server_uniffi_contract_version(void
-    
+
 );
 #endif
 

@@ -1002,49 +1002,6 @@ impl WasmTrUApiCore {
         result
     }
 
-    /// Push the currently-paired session into the core. Called by the
-    /// host shell whenever the user pairs / unpairs. `pubkey` must be
-    /// exactly 32 bytes (sr25519 root public key); usernames may be
-    /// null / undefined when the identity record carries no value.
-    #[wasm_bindgen(js_name = setActiveSession)]
-    pub fn set_active_session(
-        &self,
-        pubkey: Vec<u8>,
-        lite_username: Option<String>,
-        full_username: Option<String>,
-    ) -> Result<(), JsValue> {
-        let public_key: [u8; 32] = pubkey.as_slice().try_into().map_err(|_| {
-            JsValue::from_str(&format!(
-                "setActiveSession: pubkey must be 32 bytes, got {}",
-                pubkey.len()
-            ))
-        })?;
-        self.inner
-            .core
-            .session_state()
-            .set_session(crate::host_logic::session::SessionInfo {
-                public_key,
-                sso: None,
-                entropy_secret: None,
-                lite_username,
-                full_username,
-            });
-        Ok(())
-    }
-
-    /// Attach the host-papp session `ssSecret` used by current dotli entropy
-    /// derivation. Returns false when no active session has been pushed yet.
-    #[wasm_bindgen(js_name = setActiveSessionEntropySecret)]
-    pub fn set_active_session_entropy_secret(&self, secret: Vec<u8>) -> bool {
-        self.inner.core.session_state().set_entropy_secret(secret)
-    }
-
-    /// Drop the currently-paired session.
-    #[wasm_bindgen(js_name = clearActiveSession)]
-    pub fn clear_active_session(&self) {
-        self.inner.core.session_state().clear_session();
-    }
-
     /// Core-owned logout/disconnect. Best-effort notifies the SSO peer when
     /// the session has channel material, then clears in-memory and persisted
     /// session state.

@@ -8,9 +8,11 @@ export class WasmTrUApiCore {
     free(): void;
     [Symbol.dispose](): void;
     /**
-     * Drop the currently-paired session.
+     * Core-owned logout/disconnect. Best-effort notifies the SSO peer when
+     * the session has channel material, then clears in-memory and persisted
+     * session state.
      */
-    clearActiveSession(): void;
+    disconnect(): Promise<void>;
     /**
      * Tear down the bridge. Invokes the JS-side `dispose` callback so the
      * host can drop its end of the wiring.
@@ -22,20 +24,13 @@ export class WasmTrUApiCore {
      * requires (camelCase property names; see the source for the full
      * list).
      */
-    constructor(callbacks: any);
+    constructor(callbacks: any, runtime_config: any);
     /**
      * Push a SCALE-encoded protocol frame into the dispatcher. Responses
      * (and subscription items) flow back through the `emitFrame`
      * callback.
      */
     receiveFromProduct(frame: Uint8Array): Promise<void>;
-    /**
-     * Push the currently-paired session into the core. Called by the
-     * host shell whenever the user pairs / unpairs. `pubkey` must be
-     * exactly 32 bytes (sr25519 root public key); usernames may be
-     * null / undefined when the identity record carries no value.
-     */
-    setActiveSession(pubkey: Uint8Array, lite_username?: string | null, full_username?: string | null): void;
 }
 
 /**

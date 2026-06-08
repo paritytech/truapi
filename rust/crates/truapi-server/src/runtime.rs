@@ -250,8 +250,9 @@ impl<P> PlatformRuntimeHost<P> {
         }
     }
 
-    /// Clone of the shared session-state holder. The platform bridge layer
-    /// (`setActiveSession` / `clearActiveSession`) routes through this handle.
+    /// Clone of the shared session-state holder used by core subscriptions
+    /// and tests. Real host lifecycle flows through `SessionStore` and
+    /// `disconnect`.
     pub fn session_state(&self) -> Arc<SessionState> {
         self.session_state.clone()
     }

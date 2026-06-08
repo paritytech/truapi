@@ -104,8 +104,9 @@ impl TrUApiCore {
         }
     }
 
-    /// Handle to the shared session-state holder. Platform bridges push
-    /// `setActiveSession` / `clearActiveSession` notifications through this.
+    /// Handle to the shared session-state holder used by subscriptions and
+    /// tests. Real host lifecycle flows through `SessionStore` and
+    /// `disconnect`.
     pub fn session_state(&self) -> Arc<SessionState> {
         self.session_state.clone()
     }

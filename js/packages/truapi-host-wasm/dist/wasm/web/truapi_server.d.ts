@@ -8,9 +8,11 @@ export class WasmTrUApiCore {
     free(): void;
     [Symbol.dispose](): void;
     /**
-     * Drop the currently-paired session.
+     * Core-owned logout/disconnect. Best-effort notifies the SSO peer when
+     * the session has channel material, then clears in-memory and persisted
+     * session state.
      */
-    clearActiveSession(): void;
+    disconnect(): Promise<void>;
     /**
      * Tear down the bridge. Invokes the JS-side `dispose` callback so the
      * host can drop its end of the wiring.
@@ -22,20 +24,13 @@ export class WasmTrUApiCore {
      * requires (camelCase property names; see the source for the full
      * list).
      */
-    constructor(callbacks: any);
+    constructor(callbacks: any, runtime_config: any);
     /**
      * Push a SCALE-encoded protocol frame into the dispatcher. Responses
      * (and subscription items) flow back through the `emitFrame`
      * callback.
      */
     receiveFromProduct(frame: Uint8Array): Promise<void>;
-    /**
-     * Push the currently-paired session into the core. Called by the
-     * host shell whenever the user pairs / unpairs. `pubkey` must be
-     * exactly 32 bytes (sr25519 root public key); usernames may be
-     * null / undefined when the identity record carries no value.
-     */
-    setActiveSession(pubkey: Uint8Array, lite_username?: string | null, full_username?: string | null): void;
 }
 
 /**
@@ -107,14 +102,14 @@ export interface InitOutput {
     readonly ffi_truapi_server_uniffi_contract_version: () => number;
     readonly __wbg_wasmtruapicore_free: (a: number, b: number) => void;
     readonly setDebugEnabled: (a: number) => void;
-    readonly wasmtruapicore_clearActiveSession: (a: number) => void;
+    readonly wasmtruapicore_disconnect: (a: number) => any;
     readonly wasmtruapicore_dispose: (a: number) => [number, number];
-    readonly wasmtruapicore_new: (a: any) => [number, number, number];
+    readonly wasmtruapicore_new: (a: any, b: any) => [number, number, number];
     readonly wasmtruapicore_receiveFromProduct: (a: number, b: number, c: number) => any;
-    readonly wasmtruapicore_setActiveSession: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number];
     readonly wasm_bindgen__convert__closures_____invoke__h7f23ba22e0948386: (a: number, b: number, c: any) => [number, number];
     readonly wasm_bindgen__convert__closures_____invoke__h03479e65e098429f: (a: number, b: number, c: any, d: any) => void;
-    readonly wasm_bindgen__convert__closures_____invoke__h0e369f98e8ad4df9: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen__convert__closures_____invoke__h186d87a9aff3a5e4: (a: number, b: number, c: any) => void;
+    readonly wasm_bindgen__convert__closures_____invoke__hd44cd8ec8372fdb4: (a: number, b: number) => void;
     readonly __wbindgen_malloc: (a: number, b: number) => number;
     readonly __wbindgen_realloc: (a: number, b: number, c: number, d: number) => number;
     readonly __wbindgen_exn_store: (a: number) => void;

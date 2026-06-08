@@ -158,7 +158,7 @@ private class HostCallbackAdapter(private val bridge: HostBridge) : HostCallback
 
 /**
  * Owning wrapper around the Rust-backed [NativeTrUApiCore]. Holds the bridge
- * alive for the lifetime of the core and exposes session + WS-bridge
+ * alive for the lifetime of the core and exposes core lifecycle + WS-bridge
  * controls.
  *
  * Hosts integrating with a `WebView`-based product call [startWsBridge] and
@@ -171,18 +171,6 @@ class TrUAPIHostCore(bridge: HostBridge) : AutoCloseable {
     // which is what actually keeps the callback object alive for the core.
     private val callbackRetainer: HostCallbacks = HostCallbackAdapter(bridge)
     private val inner: NativeTrUApiCore = NativeTrUApiCore(callbackRetainer)
-
-    /** Set the currently-paired session. `pubkey` must be exactly 32 bytes. */
-    fun setActiveSession(
-        pubkey: ByteArray,
-        liteUsername: String? = null,
-        fullUsername: String? = null,
-    ): Boolean = inner.setActiveSession(pubkey, liteUsername, fullUsername)
-
-    /** Drop the currently-paired session. */
-    fun clearActiveSession() {
-        inner.clearActiveSession()
-    }
 
     /**
      * Start the localhost WebSocket bridge (requires the `ws-bridge` feature

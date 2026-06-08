@@ -53,7 +53,7 @@ them.
       `statementStoreCreateProof`, and any preimage route that has moved behind the final host-side
       primitive). The final bridge should expose only true platform callbacks plus `chainConnect` and
       frame transport.
-- [ ] `truapi-server` WASM/UniFFI surfaces: remove `setActiveSession` / `clearActiveSession` as product
+- [x] `truapi-server` WASM/UniFFI surfaces: remove `setActiveSession` / `clearActiveSession` as product
       lifecycle APIs after core-owned SSO restore/logout lands. They are account-only PR-104 scaffolding
       and cannot restore `ss_secret`, P-256 key material, peer keys, or session topics.
 - [ ] Keep explicit unavailable behavior for current dotli-unimplemented handlers: payment and full

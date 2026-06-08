@@ -422,6 +422,38 @@ fileprivate struct FfiConverterUInt16: FfiConverterPrimitive {
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
+fileprivate struct FfiConverterUInt32: FfiConverterPrimitive {
+    typealias FfiType = UInt32
+    typealias SwiftType = UInt32
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt32 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+fileprivate struct FfiConverterUInt64: FfiConverterPrimitive {
+    typealias FfiType = UInt64
+    typealias SwiftType = UInt64
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> UInt64 {
+        return try lift(readInt(&buf))
+    }
+
+    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
+        writeInt(&buf, lower(value))
+    }
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 fileprivate struct FfiConverterBool : FfiConverter {
     typealias FfiType = Int8
     typealias SwiftType = Bool
@@ -509,31 +541,25 @@ fileprivate struct FfiConverterData: FfiConverterRustBuffer {
  * UniFFI object exposing the TrUAPI core to native hosts.
  */
 public protocol NativeTrUApiCoreProtocol: AnyObject, Sendable {
-    
+
     /**
-     * Drop the currently-paired session. Mirrors the JS
-     * `clearActiveSession`.
+     * Core-owned logout/disconnect. Best-effort notifies the SSO peer when
+     * the session has channel material, then clears in-memory and persisted
+     * session state.
      */
-    func clearActiveSession() 
-    
-    /**
-     * Push the currently-paired session into the core. Mirrors the JS
-     * `setActiveSession`. `pubkey` must be exactly 32 bytes (sr25519 root
-     * public key).
-     */
-    func setActiveSession(pubkey: Data, liteUsername: String?, fullUsername: String?)  -> Bool
-    
+    func disconnect()
+
     /**
      * Start the localhost WebSocket bridge. Returns the descriptor the
      * host hands to the product so it can dial back in.
      */
     func startWsBridge(bindPort: UInt16) throws  -> WsBridgeEndpoint
-    
+
     /**
      * Stop the localhost WebSocket bridge (if running).
      */
-    func stopWsBridge() 
-    
+    func stopWsBridge()
+
 }
 /**
  * UniFFI object exposing the TrUAPI core to native hosts.
@@ -606,34 +632,32 @@ public convenience init(callbacks: HostCallbacks) {
         try! rustCall { uniffi_truapi_server_fn_free_nativetruapicore(pointer, $0) }
     }
 
-    
 
-    
     /**
-     * Drop the currently-paired session. Mirrors the JS
-     * `clearActiveSession`.
+     * Construct the core with explicit product and pairing runtime config.
      */
-open func clearActiveSession()  {try! rustCall() {
-    uniffi_truapi_server_fn_method_nativetruapicore_clear_active_session(self.uniffiClonePointer(),$0
-    )
-}
-}
-    
-    /**
-     * Push the currently-paired session into the core. Mirrors the JS
-     * `setActiveSession`. `pubkey` must be exactly 32 bytes (sr25519 root
-     * public key).
-     */
-open func setActiveSession(pubkey: Data, liteUsername: String?, fullUsername: String?) -> Bool  {
-    return try!  FfiConverterBool.lift(try! rustCall() {
-    uniffi_truapi_server_fn_method_nativetruapicore_set_active_session(self.uniffiClonePointer(),
-        FfiConverterData.lower(pubkey),
-        FfiConverterOptionString.lower(liteUsername),
-        FfiConverterOptionString.lower(fullUsername),$0
+public static func withRuntimeConfig(callbacks: HostCallbacks, runtimeConfig: NativeRuntimeConfig)throws  -> NativeTrUApiCore  {
+    return try  FfiConverterTypeNativeTrUApiCore_lift(try rustCallWithError(FfiConverterTypeNativeRuntimeConfigError_lift) {
+    uniffi_truapi_server_fn_constructor_nativetruapicore_with_runtime_config(
+        FfiConverterCallbackInterfaceHostCallbacks_lower(callbacks),
+        FfiConverterTypeNativeRuntimeConfig_lower(runtimeConfig),$0
     )
 })
 }
-    
+
+
+
+    /**
+     * Core-owned logout/disconnect. Best-effort notifies the SSO peer when
+     * the session has channel material, then clears in-memory and persisted
+     * session state.
+     */
+open func disconnect()  {try! rustCall() {
+    uniffi_truapi_server_fn_method_nativetruapicore_disconnect(self.uniffiClonePointer(),$0
+    )
+}
+}
+
     /**
      * Start the localhost WebSocket bridge. Returns the descriptor the
      * host hands to the product so it can dial back in.
@@ -645,7 +669,7 @@ open func startWsBridge(bindPort: UInt16)throws  -> WsBridgeEndpoint  {
     )
 })
 }
-    
+
     /**
      * Stop the localhost WebSocket bridge (if running).
      */
@@ -654,7 +678,7 @@ open func stopWsBridge()  {try! rustCall() {
     )
 }
 }
-    
+
 
 }
 
@@ -712,6 +736,147 @@ public func FfiConverterTypeNativeTrUApiCore_lower(_ value: NativeTrUApiCore) ->
 
 
 /**
+ * Native runtime configuration supplied before product calls are handled.
+ */
+public struct NativeRuntimeConfig {
+    /**
+     * Human-readable dotli label, e.g. `my-app`.
+     */
+    public var productLabel: String
+    /**
+     * Canonical product identifier used for account derivation.
+     */
+    public var productId: String
+    /**
+     * Host deployment/site identifier.
+     */
+    public var siteId: String
+    /**
+     * HTTPS metadata URL the SSO peer can fetch for display.
+     */
+    public var hostMetadataUrl: String
+    /**
+     * People-chain genesis hash. Must be exactly 32 bytes.
+     */
+    public var peopleChainGenesisHash: Data
+    /**
+     * Deeplink scheme used in pairing QR payloads.
+     */
+    public var pairingDeeplinkScheme: NativePairingDeeplinkScheme
+
+    // Default memberwise initializers are never public by default, so we
+    // declare one manually.
+    public init(
+        /**
+         * Human-readable dotli label, e.g. `my-app`.
+         */productLabel: String,
+        /**
+         * Canonical product identifier used for account derivation.
+         */productId: String,
+        /**
+         * Host deployment/site identifier.
+         */siteId: String,
+        /**
+         * HTTPS metadata URL the SSO peer can fetch for display.
+         */hostMetadataUrl: String,
+        /**
+         * People-chain genesis hash. Must be exactly 32 bytes.
+         */peopleChainGenesisHash: Data,
+        /**
+         * Deeplink scheme used in pairing QR payloads.
+         */pairingDeeplinkScheme: NativePairingDeeplinkScheme) {
+        self.productLabel = productLabel
+        self.productId = productId
+        self.siteId = siteId
+        self.hostMetadataUrl = hostMetadataUrl
+        self.peopleChainGenesisHash = peopleChainGenesisHash
+        self.pairingDeeplinkScheme = pairingDeeplinkScheme
+    }
+}
+
+#if compiler(>=6)
+extension NativeRuntimeConfig: Sendable {}
+#endif
+
+
+extension NativeRuntimeConfig: Equatable, Hashable {
+    public static func ==(lhs: NativeRuntimeConfig, rhs: NativeRuntimeConfig) -> Bool {
+        if lhs.productLabel != rhs.productLabel {
+            return false
+        }
+        if lhs.productId != rhs.productId {
+            return false
+        }
+        if lhs.siteId != rhs.siteId {
+            return false
+        }
+        if lhs.hostMetadataUrl != rhs.hostMetadataUrl {
+            return false
+        }
+        if lhs.peopleChainGenesisHash != rhs.peopleChainGenesisHash {
+            return false
+        }
+        if lhs.pairingDeeplinkScheme != rhs.pairingDeeplinkScheme {
+            return false
+        }
+        return true
+    }
+
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(productLabel)
+        hasher.combine(productId)
+        hasher.combine(siteId)
+        hasher.combine(hostMetadataUrl)
+        hasher.combine(peopleChainGenesisHash)
+        hasher.combine(pairingDeeplinkScheme)
+    }
+}
+
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeRuntimeConfig: FfiConverterRustBuffer {
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeRuntimeConfig {
+        return
+            try NativeRuntimeConfig(
+                productLabel: FfiConverterString.read(from: &buf),
+                productId: FfiConverterString.read(from: &buf),
+                siteId: FfiConverterString.read(from: &buf),
+                hostMetadataUrl: FfiConverterString.read(from: &buf),
+                peopleChainGenesisHash: FfiConverterData.read(from: &buf),
+                pairingDeeplinkScheme: FfiConverterTypeNativePairingDeeplinkScheme.read(from: &buf)
+        )
+    }
+
+    public static func write(_ value: NativeRuntimeConfig, into buf: inout [UInt8]) {
+        FfiConverterString.write(value.productLabel, into: &buf)
+        FfiConverterString.write(value.productId, into: &buf)
+        FfiConverterString.write(value.siteId, into: &buf)
+        FfiConverterString.write(value.hostMetadataUrl, into: &buf)
+        FfiConverterData.write(value.peopleChainGenesisHash, into: &buf)
+        FfiConverterTypeNativePairingDeeplinkScheme.write(value.pairingDeeplinkScheme, into: &buf)
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeRuntimeConfig_lift(_ buf: RustBuffer) throws -> NativeRuntimeConfig {
+    return try FfiConverterTypeNativeRuntimeConfig.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeRuntimeConfig_lower(_ value: NativeRuntimeConfig) -> RustBuffer {
+    return FfiConverterTypeNativeRuntimeConfig.lower(value)
+}
+
+
+/**
  * Per-session descriptor returned to the host: product uses `port + token`
  * to build its WebSocket URL (e.g. `ws://127.0.0.1:<port>/?t=<token>`).
  */
@@ -731,7 +896,7 @@ public struct WsBridgeEndpoint {
     public init(
         /**
          * Localhost port the bridge is listening on.
-         */port: UInt16, 
+         */port: UInt16,
         /**
          * Session token; the connecting client must supply this as the
          * `?t=<token>` query parameter to be accepted.
@@ -772,7 +937,7 @@ public struct FfiConverterTypeWsBridgeEndpoint: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> WsBridgeEndpoint {
         return
             try WsBridgeEndpoint(
-                port: FfiConverterUInt16.read(from: &buf), 
+                port: FfiConverterUInt16.read(from: &buf),
                 token: FfiConverterString.read(from: &buf)
         )
     }
@@ -804,8 +969,8 @@ public func FfiConverterTypeWsBridgeEndpoint_lower(_ value: WsBridgeEndpoint) ->
  */
 public enum HostNavigateRejection: Swift.Error {
 
-    
-    
+
+
     /**
      * User declined the navigation.
      */
@@ -831,9 +996,9 @@ public struct FfiConverterTypeHostNavigateRejection: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
 
-        
 
-        
+
+
         case 1: return .PermissionDenied
         case 2: return .Unknown(
             reason: try FfiConverterString.read(from: &buf)
@@ -846,18 +1011,18 @@ public struct FfiConverterTypeHostNavigateRejection: FfiConverterRustBuffer {
     public static func write(_ value: HostNavigateRejection, into buf: inout [UInt8]) {
         switch value {
 
-        
 
-        
-        
+
+
+
         case .PermissionDenied:
             writeInt(&buf, Int32(1))
-        
-        
+
+
         case let .Unknown(reason):
             writeInt(&buf, Int32(2))
             FfiConverterString.write(reason, into: &buf)
-            
+
         }
     }
 }
@@ -899,8 +1064,8 @@ extension HostNavigateRejection: Foundation.LocalizedError {
  */
 public enum HostRejection: Swift.Error {
 
-    
-    
+
+
     /**
      * Caller rejected the operation.
      */
@@ -922,9 +1087,9 @@ public struct FfiConverterTypeHostRejection: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
 
-        
 
-        
+
+
         case 1: return .Rejected(
             reason: try FfiConverterString.read(from: &buf)
             )
@@ -936,14 +1101,14 @@ public struct FfiConverterTypeHostRejection: FfiConverterRustBuffer {
     public static func write(_ value: HostRejection, into buf: inout [UInt8]) {
         switch value {
 
-        
 
-        
-        
+
+
+
         case let .Rejected(reason):
             writeInt(&buf, Int32(1))
             FfiConverterString.write(reason, into: &buf)
-            
+
         }
     }
 }
@@ -985,8 +1150,8 @@ extension HostRejection: Foundation.LocalizedError {
  */
 public enum HostStorageError: Swift.Error {
 
-    
-    
+
+
     /**
      * Quota exhausted.
      */
@@ -1012,9 +1177,9 @@ public struct FfiConverterTypeHostStorageError: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
 
-        
 
-        
+
+
         case 1: return .Full
         case 2: return .Unknown(
             reason: try FfiConverterString.read(from: &buf)
@@ -1027,18 +1192,18 @@ public struct FfiConverterTypeHostStorageError: FfiConverterRustBuffer {
     public static func write(_ value: HostStorageError, into buf: inout [UInt8]) {
         switch value {
 
-        
 
-        
-        
+
+
+
         case .Full:
             writeInt(&buf, Int32(1))
-        
-        
+
+
         case let .Unknown(reason):
             writeInt(&buf, Int32(2))
             FfiConverterString.write(reason, into: &buf)
-            
+
         }
     }
 }
@@ -1073,24 +1238,267 @@ extension HostStorageError: Foundation.LocalizedError {
 
 
 
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Native-friendly theme enum.
+ */
+
+public enum HostTheme {
+
+    /**
+     * Light host theme.
+     */
+    case light
+    /**
+     * Dark host theme.
+     */
+    case dark
+}
+
+
+#if compiler(>=6)
+extension HostTheme: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeHostTheme: FfiConverterRustBuffer {
+    typealias SwiftType = HostTheme
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> HostTheme {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .light
+
+        case 2: return .dark
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: HostTheme, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case .light:
+            writeInt(&buf, Int32(1))
+
+
+        case .dark:
+            writeInt(&buf, Int32(2))
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHostTheme_lift(_ buf: RustBuffer) throws -> HostTheme {
+    return try FfiConverterTypeHostTheme.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeHostTheme_lower(_ value: HostTheme) -> RustBuffer {
+    return FfiConverterTypeHostTheme.lower(value)
+}
+
+
+extension HostTheme: Equatable, Hashable {}
+
+
+
+
+
+
+// Note that we don't yet support `indirect` for enums.
+// See https://github.com/mozilla/uniffi-rs/issues/396 for further discussion.
+/**
+ * Native-friendly SSO deeplink scheme.
+ */
+
+public enum NativePairingDeeplinkScheme {
+
+    /**
+     * Production Polkadot app.
+     */
+    case polkadotApp
+    /**
+     * Development Polkadot app.
+     */
+    case polkadotAppDev
+}
+
+
+#if compiler(>=6)
+extension NativePairingDeeplinkScheme: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativePairingDeeplinkScheme: FfiConverterRustBuffer {
+    typealias SwiftType = NativePairingDeeplinkScheme
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativePairingDeeplinkScheme {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+        case 1: return .polkadotApp
+
+        case 2: return .polkadotAppDev
+
+        default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativePairingDeeplinkScheme, into buf: inout [UInt8]) {
+        switch value {
+
+
+        case .polkadotApp:
+            writeInt(&buf, Int32(1))
+
+
+        case .polkadotAppDev:
+            writeInt(&buf, Int32(2))
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativePairingDeeplinkScheme_lift(_ buf: RustBuffer) throws -> NativePairingDeeplinkScheme {
+    return try FfiConverterTypeNativePairingDeeplinkScheme.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativePairingDeeplinkScheme_lower(_ value: NativePairingDeeplinkScheme) -> RustBuffer {
+    return FfiConverterTypeNativePairingDeeplinkScheme.lower(value)
+}
+
+
+extension NativePairingDeeplinkScheme: Equatable, Hashable {}
+
+
+
+
+
+
+
+/**
+ * Native runtime config validation error.
+ */
+public enum NativeRuntimeConfigError: Swift.Error {
+
+
+
+    /**
+     * People-chain genesis hash was not exactly 32 bytes.
+     */
+    case InvalidPeopleChainGenesisHash(
+        /**
+         * Supplied byte length.
+         */actual: UInt64
+    )
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public struct FfiConverterTypeNativeRuntimeConfigError: FfiConverterRustBuffer {
+    typealias SwiftType = NativeRuntimeConfigError
+
+    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> NativeRuntimeConfigError {
+        let variant: Int32 = try readInt(&buf)
+        switch variant {
+
+
+
+
+        case 1: return .InvalidPeopleChainGenesisHash(
+            actual: try FfiConverterUInt64.read(from: &buf)
+            )
+
+         default: throw UniffiInternalError.unexpectedEnumCase
+        }
+    }
+
+    public static func write(_ value: NativeRuntimeConfigError, into buf: inout [UInt8]) {
+        switch value {
+
+
+
+
+
+        case let .InvalidPeopleChainGenesisHash(actual):
+            writeInt(&buf, Int32(1))
+            FfiConverterUInt64.write(actual, into: &buf)
+
+        }
+    }
+}
+
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeRuntimeConfigError_lift(_ buf: RustBuffer) throws -> NativeRuntimeConfigError {
+    return try FfiConverterTypeNativeRuntimeConfigError.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func FfiConverterTypeNativeRuntimeConfigError_lower(_ value: NativeRuntimeConfigError) -> RustBuffer {
+    return FfiConverterTypeNativeRuntimeConfigError.lower(value)
+}
+
+
+extension NativeRuntimeConfigError: Equatable, Hashable {}
+
+
+
+
+extension NativeRuntimeConfigError: Foundation.LocalizedError {
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+}
+
+
+
+
 
 /**
  * Failure modes returned from host-facing `start_ws_bridge` wrappers.
  */
 public enum WsBridgeStartError: Swift.Error {
 
-    
-    
+
+
     /**
      * A bridge is already running for this host.
      */
     case AlreadyRunning(message: String)
-    
+
     /**
      * Anything else (bind failure, runtime spin-up failure, ...).
      */
     case Io(message: String)
-    
+
 }
 
 
@@ -1104,17 +1512,17 @@ public struct FfiConverterTypeWsBridgeStartError: FfiConverterRustBuffer {
         let variant: Int32 = try readInt(&buf)
         switch variant {
 
-        
 
-        
+
+
         case 1: return .AlreadyRunning(
             message: try FfiConverterString.read(from: &buf)
         )
-        
+
         case 2: return .Io(
             message: try FfiConverterString.read(from: &buf)
         )
-        
+
 
         default: throw UniffiInternalError.unexpectedEnumCase
         }
@@ -1123,15 +1531,15 @@ public struct FfiConverterTypeWsBridgeStartError: FfiConverterRustBuffer {
     public static func write(_ value: WsBridgeStartError, into buf: inout [UInt8]) {
         switch value {
 
-        
 
-        
+
+
         case .AlreadyRunning(_ /* message is ignored*/):
             writeInt(&buf, Int32(1))
         case .Io(_ /* message is ignored*/):
             writeInt(&buf, Int32(2))
 
-        
+
         }
     }
 }
@@ -1175,23 +1583,28 @@ extension WsBridgeStartError: Foundation.LocalizedError {
  * UniFFI because every callback hop is short-lived and reentrant.
  */
 public protocol HostCallbacks: AnyObject, Sendable {
-    
+
     /**
      * Lifecycle logger. Marker is a stable slug, detail is free-form.
      */
-    func onCoreLog(marker: String, detail: String) 
-    
+    func onCoreLog(marker: String, detail: String)
+
     /**
      * Open a URL in the system browser.
      */
-    func navigateTo(url: String) throws 
-    
+    func navigateTo(url: String) throws
+
     /**
      * Deliver a push notification. The payload is the SCALE-encoded
      * [`v01::HostPushNotificationRequest`].
      */
-    func pushNotification(payload: Data) throws 
-    
+    func pushNotification(payload: Data) throws  -> UInt32
+
+    /**
+     * Cancel a notification by id.
+     */
+    func cancelNotification(id: UInt32) throws
+
     /**
      * Prompt the user for a device-level permission (camera, mic, ...).
      * `request` is the SCALE-encoded
@@ -1199,34 +1612,106 @@ public protocol HostCallbacks: AnyObject, Sendable {
      * permission was granted.
      */
     func devicePermission(request: Data) throws  -> Bool
-    
+
     /**
      * Prompt the user for a remote (product-scoped) permission bundle.
      * `request` is the SCALE-encoded [`v01::RemotePermissionRequest`].
      */
     func remotePermission(request: Data) throws  -> Bool
-    
+
+    /**
+     * Present an SSO pairing deeplink or QR payload built by the Rust core.
+     */
+    func presentPairing(deeplink: String) throws
+
+    /**
+     * Read the opaque core-owned SSO session blob from host-global storage.
+     */
+    func readSession() throws  -> Data?
+
+    /**
+     * Persist the opaque core-owned SSO session blob in host-global storage.
+     */
+    func writeSession(value: Data) throws
+
+    /**
+     * Clear the persisted core-owned SSO session blob.
+     */
+    func clearSession() throws
+
+    /**
+     * Confirm a sign-payload request. `review` is a SCALE-encoded review
+     * payload owned by the Rust core.
+     */
+    func confirmSignPayload(review: Data) throws  -> Bool
+
+    /**
+     * Confirm a sign-raw request. `review` is a SCALE-encoded review payload
+     * owned by the Rust core.
+     */
+    func confirmSignRaw(review: Data) throws  -> Bool
+
+    /**
+     * Confirm a create-transaction request. `review` is a SCALE-encoded
+     * review payload owned by the Rust core.
+     */
+    func confirmCreateTransaction(review: Data) throws  -> Bool
+
+    /**
+     * Confirm a cross-domain account-alias request. `review` is a
+     * SCALE-encoded review payload owned by the Rust core.
+     */
+    func confirmAccountAlias(review: Data) throws  -> Bool
+
+    /**
+     * Confirm a resource-allocation request. `review` is a SCALE-encoded
+     * review payload owned by the Rust core.
+     */
+    func confirmResourceAllocation(review: Data) throws  -> Bool
+
+    /**
+     * Confirm preimage submission before the host stores it.
+     */
+    func confirmPreimageSubmit(size: UInt64) throws
+
+    /**
+     * Submit the preimage through the host backend and return its key.
+     */
+    func submitPreimage(value: Data) throws  -> Data
+
+    /**
+     * Look up one preimage value by key. The native shim emits this as the
+     * current item in its subscription stream.
+     */
+    func lookupPreimage(key: Data) throws  -> Data?
+
+    /**
+     * Current host theme. The native shim emits this as the current item in
+     * its subscription stream.
+     */
+    func currentTheme() throws  -> HostTheme
+
     /**
      * Answer a feature-support query. `request` is the SCALE-encoded
      * [`HostFeatureSupportedRequest`].
      */
     func featureSupported(request: Data) throws  -> Bool
-    
+
     /**
      * Read a value from the host's scoped key-value store.
      */
     func localStorageRead(key: String) throws  -> Data?
-    
+
     /**
      * Write a value to the host's scoped key-value store.
      */
-    func localStorageWrite(key: String, value: Data) throws 
-    
+    func localStorageWrite(key: String, value: Data) throws
+
     /**
      * Clear a value from the host's scoped key-value store.
      */
-    func localStorageClear(key: String) throws 
-    
+    func localStorageClear(key: String) throws
+
 }
 
 
@@ -1257,7 +1742,7 @@ fileprivate struct UniffiCallbackInterfaceHostCallbacks {
                 )
             }
 
-            
+
             let writeReturn = { () }
             uniffiTraitInterfaceCall(
                 callStatus: uniffiCallStatus,
@@ -1281,7 +1766,7 @@ fileprivate struct UniffiCallbackInterfaceHostCallbacks {
                 )
             }
 
-            
+
             let writeReturn = { () }
             uniffiTraitInterfaceCallWithError(
                 callStatus: uniffiCallStatus,
@@ -1293,11 +1778,11 @@ fileprivate struct UniffiCallbackInterfaceHostCallbacks {
         pushNotification: { (
             uniffiHandle: UInt64,
             payload: RustBuffer,
-            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiOutReturn: UnsafeMutablePointer<UInt32>,
             uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
         ) in
             let makeCall = {
-                () throws -> () in
+                () throws -> UInt32 in
                 guard let uniffiObj = try? FfiConverterCallbackInterfaceHostCallbacks.handleMap.get(handle: uniffiHandle) else {
                     throw UniffiInternalError.unexpectedStaleHandle
                 }
@@ -1306,7 +1791,32 @@ fileprivate struct UniffiCallbackInterfaceHostCallbacks {
                 )
             }
 
-            
+
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterUInt32.lower($0) }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeHostRejection_lower
+            )
+        },
+        cancelNotification: { (
+            uniffiHandle: UInt64,
+            id: UInt32,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceHostCallbacks.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.cancelNotification(
+                     id: try FfiConverterUInt32.lift(id)
+                )
+            }
+
+
             let writeReturn = { () }
             uniffiTraitInterfaceCallWithError(
                 callStatus: uniffiCallStatus,
@@ -1331,7 +1841,7 @@ fileprivate struct UniffiCallbackInterfaceHostCallbacks {
                 )
             }
 
-            
+
             let writeReturn = { uniffiOutReturn.pointee = FfiConverterBool.lower($0) }
             uniffiTraitInterfaceCallWithError(
                 callStatus: uniffiCallStatus,
@@ -1356,8 +1866,327 @@ fileprivate struct UniffiCallbackInterfaceHostCallbacks {
                 )
             }
 
-            
+
             let writeReturn = { uniffiOutReturn.pointee = FfiConverterBool.lower($0) }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeHostRejection_lower
+            )
+        },
+        presentPairing: { (
+            uniffiHandle: UInt64,
+            deeplink: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceHostCallbacks.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.presentPairing(
+                     deeplink: try FfiConverterString.lift(deeplink)
+                )
+            }
+
+
+            let writeReturn = { () }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeHostRejection_lower
+            )
+        },
+        readSession: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> Data? in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceHostCallbacks.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.readSession(
+                )
+            }
+
+
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterOptionData.lower($0) }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeHostRejection_lower
+            )
+        },
+        writeSession: { (
+            uniffiHandle: UInt64,
+            value: RustBuffer,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceHostCallbacks.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.writeSession(
+                     value: try FfiConverterData.lift(value)
+                )
+            }
+
+
+            let writeReturn = { () }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeHostRejection_lower
+            )
+        },
+        clearSession: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceHostCallbacks.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.clearSession(
+                )
+            }
+
+
+            let writeReturn = { () }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeHostRejection_lower
+            )
+        },
+        confirmSignPayload: { (
+            uniffiHandle: UInt64,
+            review: RustBuffer,
+            uniffiOutReturn: UnsafeMutablePointer<Int8>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> Bool in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceHostCallbacks.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.confirmSignPayload(
+                     review: try FfiConverterData.lift(review)
+                )
+            }
+
+
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterBool.lower($0) }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeHostRejection_lower
+            )
+        },
+        confirmSignRaw: { (
+            uniffiHandle: UInt64,
+            review: RustBuffer,
+            uniffiOutReturn: UnsafeMutablePointer<Int8>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> Bool in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceHostCallbacks.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.confirmSignRaw(
+                     review: try FfiConverterData.lift(review)
+                )
+            }
+
+
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterBool.lower($0) }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeHostRejection_lower
+            )
+        },
+        confirmCreateTransaction: { (
+            uniffiHandle: UInt64,
+            review: RustBuffer,
+            uniffiOutReturn: UnsafeMutablePointer<Int8>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> Bool in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceHostCallbacks.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.confirmCreateTransaction(
+                     review: try FfiConverterData.lift(review)
+                )
+            }
+
+
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterBool.lower($0) }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeHostRejection_lower
+            )
+        },
+        confirmAccountAlias: { (
+            uniffiHandle: UInt64,
+            review: RustBuffer,
+            uniffiOutReturn: UnsafeMutablePointer<Int8>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> Bool in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceHostCallbacks.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.confirmAccountAlias(
+                     review: try FfiConverterData.lift(review)
+                )
+            }
+
+
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterBool.lower($0) }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeHostRejection_lower
+            )
+        },
+        confirmResourceAllocation: { (
+            uniffiHandle: UInt64,
+            review: RustBuffer,
+            uniffiOutReturn: UnsafeMutablePointer<Int8>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> Bool in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceHostCallbacks.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.confirmResourceAllocation(
+                     review: try FfiConverterData.lift(review)
+                )
+            }
+
+
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterBool.lower($0) }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeHostRejection_lower
+            )
+        },
+        confirmPreimageSubmit: { (
+            uniffiHandle: UInt64,
+            size: UInt64,
+            uniffiOutReturn: UnsafeMutableRawPointer,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> () in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceHostCallbacks.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.confirmPreimageSubmit(
+                     size: try FfiConverterUInt64.lift(size)
+                )
+            }
+
+
+            let writeReturn = { () }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeHostRejection_lower
+            )
+        },
+        submitPreimage: { (
+            uniffiHandle: UInt64,
+            value: RustBuffer,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> Data in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceHostCallbacks.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.submitPreimage(
+                     value: try FfiConverterData.lift(value)
+                )
+            }
+
+
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterData.lower($0) }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeHostRejection_lower
+            )
+        },
+        lookupPreimage: { (
+            uniffiHandle: UInt64,
+            key: RustBuffer,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> Data? in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceHostCallbacks.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.lookupPreimage(
+                     key: try FfiConverterData.lift(key)
+                )
+            }
+
+
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterOptionData.lower($0) }
+            uniffiTraitInterfaceCallWithError(
+                callStatus: uniffiCallStatus,
+                makeCall: makeCall,
+                writeReturn: writeReturn,
+                lowerError: FfiConverterTypeHostRejection_lower
+            )
+        },
+        currentTheme: { (
+            uniffiHandle: UInt64,
+            uniffiOutReturn: UnsafeMutablePointer<RustBuffer>,
+            uniffiCallStatus: UnsafeMutablePointer<RustCallStatus>
+        ) in
+            let makeCall = {
+                () throws -> HostTheme in
+                guard let uniffiObj = try? FfiConverterCallbackInterfaceHostCallbacks.handleMap.get(handle: uniffiHandle) else {
+                    throw UniffiInternalError.unexpectedStaleHandle
+                }
+                return try uniffiObj.currentTheme(
+                )
+            }
+
+
+            let writeReturn = { uniffiOutReturn.pointee = FfiConverterTypeHostTheme_lower($0) }
             uniffiTraitInterfaceCallWithError(
                 callStatus: uniffiCallStatus,
                 makeCall: makeCall,
@@ -1381,7 +2210,7 @@ fileprivate struct UniffiCallbackInterfaceHostCallbacks {
                 )
             }
 
-            
+
             let writeReturn = { uniffiOutReturn.pointee = FfiConverterBool.lower($0) }
             uniffiTraitInterfaceCallWithError(
                 callStatus: uniffiCallStatus,
@@ -1406,7 +2235,7 @@ fileprivate struct UniffiCallbackInterfaceHostCallbacks {
                 )
             }
 
-            
+
             let writeReturn = { uniffiOutReturn.pointee = FfiConverterOptionData.lower($0) }
             uniffiTraitInterfaceCallWithError(
                 callStatus: uniffiCallStatus,
@@ -1433,7 +2262,7 @@ fileprivate struct UniffiCallbackInterfaceHostCallbacks {
                 )
             }
 
-            
+
             let writeReturn = { () }
             uniffiTraitInterfaceCallWithError(
                 callStatus: uniffiCallStatus,
@@ -1458,7 +2287,7 @@ fileprivate struct UniffiCallbackInterfaceHostCallbacks {
                 )
             }
 
-            
+
             let writeReturn = { () }
             uniffiTraitInterfaceCallWithError(
                 callStatus: uniffiCallStatus,
@@ -1543,30 +2372,6 @@ public func FfiConverterCallbackInterfaceHostCallbacks_lower(_ v: HostCallbacks)
 #if swift(>=5.8)
 @_documentation(visibility: private)
 #endif
-fileprivate struct FfiConverterOptionString: FfiConverterRustBuffer {
-    typealias SwiftType = String?
-
-    public static func write(_ value: SwiftType, into buf: inout [UInt8]) {
-        guard let value = value else {
-            writeInt(&buf, Int8(0))
-            return
-        }
-        writeInt(&buf, Int8(1))
-        FfiConverterString.write(value, into: &buf)
-    }
-
-    public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> SwiftType {
-        switch try readInt(&buf) as Int8 {
-        case 0: return nil
-        case 1: return try FfiConverterString.read(from: &buf)
-        default: throw UniffiInternalError.unexpectedOptionalTag
-        }
-    }
-}
-
-#if swift(>=5.8)
-@_documentation(visibility: private)
-#endif
 fileprivate struct FfiConverterOptionData: FfiConverterRustBuffer {
     typealias SwiftType = Data?
 
@@ -1603,10 +2408,7 @@ private let initializationResult: InitializationResult = {
     if bindings_contract_version != scaffolding_contract_version {
         return InitializationResult.contractVersionMismatch
     }
-    if (uniffi_truapi_server_checksum_method_nativetruapicore_clear_active_session() != 49688) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_truapi_server_checksum_method_nativetruapicore_set_active_session() != 33211) {
+    if (uniffi_truapi_server_checksum_method_nativetruapicore_disconnect() != 36157) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_truapi_server_checksum_method_nativetruapicore_start_ws_bridge() != 64697) {
@@ -1618,31 +2420,76 @@ private let initializationResult: InitializationResult = {
     if (uniffi_truapi_server_checksum_constructor_nativetruapicore_new() != 3488) {
         return InitializationResult.apiChecksumMismatch
     }
+    if (uniffi_truapi_server_checksum_constructor_nativetruapicore_with_runtime_config() != 6798) {
+        return InitializationResult.apiChecksumMismatch
+    }
     if (uniffi_truapi_server_checksum_method_hostcallbacks_on_core_log() != 50767) {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_truapi_server_checksum_method_hostcallbacks_navigate_to() != 30730) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_push_notification() != 8367) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_push_notification() != 28188) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_device_permission() != 3079) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_cancel_notification() != 218) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_remote_permission() != 1103) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_device_permission() != 3805) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_feature_supported() != 22483) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_remote_permission() != 10542) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_read() != 16214) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_present_pairing() != 9722) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_write() != 61540) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_read_session() != 19045) {
         return InitializationResult.apiChecksumMismatch
     }
-    if (uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_clear() != 19429) {
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_write_session() != 58056) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_clear_session() != 47376) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_confirm_sign_payload() != 64585) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_confirm_sign_raw() != 20731) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_confirm_create_transaction() != 42200) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_confirm_account_alias() != 33473) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_confirm_resource_allocation() != 27655) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_confirm_preimage_submit() != 46420) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_submit_preimage() != 1778) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_lookup_preimage() != 32362) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_current_theme() != 29853) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_feature_supported() != 51854) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_read() != 58883) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_write() != 60369) {
+        return InitializationResult.apiChecksumMismatch
+    }
+    if (uniffi_truapi_server_checksum_method_hostcallbacks_local_storage_clear() != 34610) {
         return InitializationResult.apiChecksumMismatch
     }
 

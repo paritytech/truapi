@@ -274,6 +274,7 @@ pub trait HostCallbacks: Send + Sync {
 #[derive(uniffi::Object)]
 pub struct NativeTrUApiCore {
     core: Arc<TrUApiCore>,
+    #[cfg(feature = "ws-bridge")]
     callbacks: Arc<dyn HostCallbacks>,
     #[cfg(feature = "ws-bridge")]
     bridge: std::sync::Mutex<Option<WsBridge>>,
@@ -307,46 +308,6 @@ impl NativeTrUApiCore {
         ))
     }
 
-    /// Push the currently-paired session into the core. Mirrors the JS
-    /// `setActiveSession`. `pubkey` must be exactly 32 bytes (sr25519 root
-    /// public key).
-    pub fn set_active_session(
-        &self,
-        pubkey: Vec<u8>,
-        lite_username: Option<String>,
-        full_username: Option<String>,
-    ) -> bool {
-        let Ok(public_key) = <[u8; 32]>::try_from(pubkey.as_slice()) else {
-            self.callbacks.on_core_log(
-                "truapi.native.core.session.invalid_pubkey".to_string(),
-                format!("expected 32 bytes, got {}", pubkey.len()),
-            );
-            return false;
-        };
-        self.core
-            .session_state()
-            .set_session(crate::host_logic::session::SessionInfo {
-                public_key,
-                sso: None,
-                entropy_secret: None,
-                lite_username,
-                full_username,
-            });
-        true
-    }
-
-    /// Attach the host-papp session `ssSecret` used by current dotli entropy
-    /// derivation. Returns false when no active session has been pushed yet.
-    pub fn set_active_session_entropy_secret(&self, secret: Vec<u8>) -> bool {
-        self.core.session_state().set_entropy_secret(secret)
-    }
-
-    /// Drop the currently-paired session. Mirrors the JS
-    /// `clearActiveSession`.
-    pub fn clear_active_session(&self) {
-        self.core.disconnect();
-    }
-
     /// Core-owned logout/disconnect. Best-effort notifies the SSO peer when
     /// the session has channel material, then clears in-memory and persisted
     /// session state.
@@ -375,6 +336,7 @@ fn native_core_from_platform_config(
             runtime_config,
             spawner,
         )),
+        #[cfg(feature = "ws-bridge")]
         callbacks,
         #[cfg(feature = "ws-bridge")]
         bridge: std::sync::Mutex::new(None),
@@ -700,92 +662,6 @@ impl PreimageHost for CallbackPlatform {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn set_active_session_rejects_wrong_size_pubkey() {
-        struct Noop;
-        impl HostCallbacks for Noop {
-            fn on_core_log(&self, _marker: String, _detail: String) {}
-            fn navigate_to(&self, _url: String) -> Result<(), HostNavigateRejection> {
-                Ok(())
-            }
-            fn push_notification(&self, _payload: Vec<u8>) -> Result<u32, HostRejection> {
-                Ok(0)
-            }
-            fn cancel_notification(&self, _id: u32) -> Result<(), HostRejection> {
-                Ok(())
-            }
-            fn device_permission(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
-                Ok(false)
-            }
-            fn remote_permission(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
-                Ok(false)
-            }
-            fn present_pairing(&self, _deeplink: String) -> Result<(), HostRejection> {
-                Ok(())
-            }
-            fn read_session(&self) -> Result<Option<Vec<u8>>, HostRejection> {
-                Ok(None)
-            }
-            fn write_session(&self, _value: Vec<u8>) -> Result<(), HostRejection> {
-                Ok(())
-            }
-            fn clear_session(&self) -> Result<(), HostRejection> {
-                Ok(())
-            }
-            fn confirm_sign_payload(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
-                Ok(false)
-            }
-            fn confirm_sign_raw(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
-                Ok(false)
-            }
-            fn confirm_create_transaction(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
-                Ok(false)
-            }
-            fn confirm_account_alias(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
-                Ok(false)
-            }
-            fn confirm_resource_allocation(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
-                Ok(false)
-            }
-            fn confirm_preimage_submit(&self, _size: u64) -> Result<(), HostRejection> {
-                Ok(())
-            }
-            fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, HostRejection> {
-                Ok(value)
-            }
-            fn lookup_preimage(&self, _key: Vec<u8>) -> Result<Option<Vec<u8>>, HostRejection> {
-                Ok(None)
-            }
-            fn current_theme(&self) -> Result<HostTheme, HostRejection> {
-                Ok(HostTheme::Light)
-            }
-            fn feature_supported(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
-                Ok(false)
-            }
-            fn local_storage_read(
-                &self,
-                _key: String,
-            ) -> Result<Option<Vec<u8>>, HostStorageError> {
-                Ok(None)
-            }
-            fn local_storage_write(
-                &self,
-                _key: String,
-                _value: Vec<u8>,
-            ) -> Result<(), HostStorageError> {
-                Ok(())
-            }
-            fn local_storage_clear(&self, _key: String) -> Result<(), HostStorageError> {
-                Ok(())
-            }
-        }
-
-        let core = NativeTrUApiCore::new(Box::new(Noop));
-        assert!(!core.set_active_session(vec![0u8; 16], None, None));
-        assert!(core.set_active_session(vec![0u8; 32], None, None));
-        core.clear_active_session();
-    }
 
     #[test]
     fn runtime_config_rejects_wrong_size_genesis_hash() {

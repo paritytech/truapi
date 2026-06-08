@@ -17,12 +17,11 @@ use truapi::versioned::account::HostAccountConnectionStatusSubscribeItem as Vers
 pub struct SessionInfo {
     /// 32-byte sr25519 root public key of the paired session.
     pub public_key: [u8; 32],
-    /// Core-owned SSO channel state. Transitional account-only session
-    /// injection paths leave this empty; core-run pairing always fills it.
+    /// Core-owned SSO channel state. Core-run pairing fills this; unavailable
+    /// sessions restored from older test fixtures may leave it empty.
     pub sso: Option<SsoSessionInfo>,
-    /// Current dotli entropy source: host-papp session `ssSecret` bytes.
-    /// This is optional while transitional bridge code still pushes only
-    /// identity/account state.
+    /// Current dotli entropy source: core session statement-store secret.
+    /// Core-run pairing fills it; older or account-only test fixtures may not.
     pub entropy_secret: Option<Vec<u8>>,
     /// Short username (e.g. `alice`).
     pub lite_username: Option<String>,
@@ -129,17 +128,6 @@ impl SessionState {
             .expect("session-state mutex poisoned")
             .current
             .clone()
-    }
-
-    /// Attach or replace the current session's entropy secret. Returns false
-    /// if there is no active session to update.
-    pub fn set_entropy_secret(&self, secret: Vec<u8>) -> bool {
-        let mut inner = self.inner.lock().expect("session-state mutex poisoned");
-        let Some(current) = inner.current.as_mut() else {
-            return false;
-        };
-        current.entropy_secret = Some(secret);
-        true
     }
 
     /// Stream of connection-status events. The first item emitted is the
@@ -253,21 +241,6 @@ mod tests {
         let err = decode_persisted_session(&blob).unwrap_err();
 
         assert_eq!(err, "invalid session blob: trailing bytes");
-    }
-
-    #[test]
-    fn set_entropy_secret_updates_current_session() {
-        let state = SessionState::new();
-        state.set_session(info(0x42));
-        assert!(state.set_entropy_secret(vec![1, 2, 3]));
-        let got = state.current().expect("session should be present");
-        assert_eq!(got.entropy_secret.as_deref(), Some(&[1, 2, 3][..]));
-    }
-
-    #[test]
-    fn set_entropy_secret_without_session_returns_false() {
-        let state = SessionState::new();
-        assert!(!state.set_entropy_secret(vec![1, 2, 3]));
     }
 
     #[test]

@@ -197,21 +197,6 @@ public final class TrUAPIHostCore {
         self.inner = NativeTrUApiCore(callbacks: adapter)
     }
 
-    /// Set the currently-paired session. `pubkey` must be exactly 32 bytes.
-    @discardableResult
-    public func setActiveSession(
-        pubkey: Data,
-        liteUsername: String? = nil,
-        fullUsername: String? = nil
-    ) -> Bool {
-        inner.setActiveSession(pubkey: pubkey, liteUsername: liteUsername, fullUsername: fullUsername)
-    }
-
-    /// Drop the currently-paired session.
-    public func clearActiveSession() {
-        inner.clearActiveSession()
-    }
-
     /// Start the localhost WebSocket bridge. Requires the `ws-bridge`
     /// feature in the cdylib. Pair the returned `WsBridgeEndpoint` with
     /// `LocalhostBridgeBootstrap.script(...)` to hand the URL to the
