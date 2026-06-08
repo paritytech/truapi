@@ -61,6 +61,15 @@ async function settle() {
 
 test("createWebWorkerProvider advertises only supplied optional hooks", async () => {
   const worker = new FakeWorker();
+  const runtimeConfig = {
+    productLabel: "dotli",
+    productId: "dotli",
+    siteId: "dotli.app",
+    hostMetadataUrl: "https://dotli.app/metadata.json",
+    peopleChainGenesisHash:
+      "0xa22a2424d2cbf561eaecf7da8b1b548fa9d1939f60265e942b1049616a012f71",
+    pairingDeeplinkScheme: "polkadotapp",
+  };
   const providerPromise = createWebWorkerProvider(
     worker,
     makeCallbacks({
@@ -72,7 +81,7 @@ test("createWebWorkerProvider advertises only supplied optional hooks", async ()
     }),
     {
       debug: true,
-      runtimeConfig: { productId: "dotli" },
+      runtimeConfig,
     },
   );
 
@@ -81,7 +90,7 @@ test("createWebWorkerProvider advertises only supplied optional hooks", async ()
   assert.deepEqual(worker.messages[0], {
     kind: "init",
     debug: true,
-    runtimeConfig: { productId: "dotli" },
+    runtimeConfig,
     optionalCallbacks: ["readSession", "clearSession"],
     optionalSubscriptions: [
       "sessionStoreSubscribe",
