@@ -616,8 +616,8 @@ where
         _cx: &CallContext,
         request: HostSignPayloadRequest,
     ) -> Result<HostSignPayloadResponse, CallError<HostSignPayloadError>> {
-        let HostSignPayloadRequest::V1(v01::HostSignPayloadRequest { account, .. }) = request;
-        if !self.is_product_account_valid_for_caller(&account.dot_ns_identifier) {
+        let HostSignPayloadRequest::V1(inner) = request;
+        if !self.is_product_account_valid_for_caller(&inner.account.dot_ns_identifier) {
             return Err(CallError::Domain(HostSignPayloadError::V1(
                 v01::HostSignPayloadError::PermissionDenied,
             )));
@@ -636,6 +636,17 @@ where
                 v01::HostSignPayloadError::Rejected,
             )));
         }
+        let confirmed =
+            PlatformUserConfirmation::confirm_sign_payload(self.platform.as_ref(), inner.encode())
+                .await
+                .map_err(|err| CallError::HostFailure {
+                    reason: format!("sign payload confirmation failed: {err:?}"),
+                })?;
+        if !confirmed {
+            return Err(CallError::Domain(HostSignPayloadError::V1(
+                v01::HostSignPayloadError::Rejected,
+            )));
+        }
         Err(CallError::Domain(HostSignPayloadError::V1(
             v01::HostSignPayloadError::Unknown {
                 reason: "SSO signing not implemented".to_string(),
@@ -648,13 +659,24 @@ where
         _cx: &CallContext,
         request: HostSignRawRequest,
     ) -> Result<HostSignRawResponse, CallError<HostSignRawError>> {
-        let HostSignRawRequest::V1(v01::HostSignRawRequest { account, .. }) = request;
-        if !self.is_product_account_valid_for_caller(&account.dot_ns_identifier) {
+        let HostSignRawRequest::V1(inner) = request;
+        if !self.is_product_account_valid_for_caller(&inner.account.dot_ns_identifier) {
             return Err(CallError::Domain(HostSignRawError::V1(
                 v01::HostSignPayloadError::PermissionDenied,
             )));
         }
         if self.session_state.current().is_none() {
+            return Err(CallError::Domain(HostSignRawError::V1(
+                v01::HostSignPayloadError::Rejected,
+            )));
+        }
+        let confirmed =
+            PlatformUserConfirmation::confirm_sign_raw(self.platform.as_ref(), inner.encode())
+                .await
+                .map_err(|err| CallError::HostFailure {
+                    reason: format!("sign raw confirmation failed: {err:?}"),
+                })?;
+        if !confirmed {
             return Err(CallError::Domain(HostSignRawError::V1(
                 v01::HostSignPayloadError::Rejected,
             )));
@@ -671,8 +693,8 @@ where
         _cx: &CallContext,
         request: HostCreateTransactionRequest,
     ) -> Result<HostCreateTransactionResponse, CallError<HostCreateTransactionError>> {
-        let HostCreateTransactionRequest::V1(v01::ProductAccountTxPayload { signer, .. }) = request;
-        if !self.is_product_account_valid_for_caller(&signer.dot_ns_identifier) {
+        let HostCreateTransactionRequest::V1(inner) = request;
+        if !self.is_product_account_valid_for_caller(&inner.signer.dot_ns_identifier) {
             return Err(CallError::Domain(HostCreateTransactionError::V1(
                 v01::HostCreateTransactionError::PermissionDenied,
             )));
@@ -687,6 +709,19 @@ where
             Err(reason) => return Err(CallError::HostFailure { reason }),
         }
         if self.session_state.current().is_none() {
+            return Err(CallError::Domain(HostCreateTransactionError::V1(
+                v01::HostCreateTransactionError::Rejected,
+            )));
+        }
+        let confirmed = PlatformUserConfirmation::confirm_create_transaction(
+            self.platform.as_ref(),
+            inner.encode(),
+        )
+        .await
+        .map_err(|err| CallError::HostFailure {
+            reason: format!("create transaction confirmation failed: {err:?}"),
+        })?;
+        if !confirmed {
             return Err(CallError::Domain(HostCreateTransactionError::V1(
                 v01::HostCreateTransactionError::Rejected,
             )));
@@ -706,15 +741,13 @@ where
         HostSignPayloadWithLegacyAccountResponse,
         CallError<HostSignPayloadWithLegacyAccountError>,
     > {
-        let HostSignPayloadWithLegacyAccountRequest::V1(
-            v01::HostSignPayloadWithLegacyAccountRequest { signer, .. },
-        ) = request;
+        let HostSignPayloadWithLegacyAccountRequest::V1(inner) = request;
         let Some(session) = self.session_state.current() else {
             return Err(CallError::Domain(
                 HostSignPayloadWithLegacyAccountError::V1(v01::HostSignPayloadError::Rejected),
             ));
         };
-        self.validate_legacy_address_signer(&session, &signer)
+        self.validate_legacy_address_signer(&session, &inner.signer)
             .map_err(|err| CallError::Domain(HostSignPayloadWithLegacyAccountError::V1(err)))?;
         match self.chain_submit_decision().await {
             Ok(Decision::Granted) => {}
@@ -726,6 +759,17 @@ where
                 ));
             }
             Err(reason) => return Err(CallError::HostFailure { reason }),
+        }
+        let confirmed =
+            PlatformUserConfirmation::confirm_sign_payload(self.platform.as_ref(), inner.encode())
+                .await
+                .map_err(|err| CallError::HostFailure {
+                    reason: format!("sign payload confirmation failed: {err:?}"),
+                })?;
+        if !confirmed {
+            return Err(CallError::Domain(
+                HostSignPayloadWithLegacyAccountError::V1(v01::HostSignPayloadError::Rejected),
+            ));
         }
         Err(CallError::Domain(
             HostSignPayloadWithLegacyAccountError::V1(v01::HostSignPayloadError::Unknown {
@@ -740,17 +784,25 @@ where
         request: HostSignRawWithLegacyAccountRequest,
     ) -> Result<HostSignRawWithLegacyAccountResponse, CallError<HostSignRawWithLegacyAccountError>>
     {
-        let HostSignRawWithLegacyAccountRequest::V1(v01::HostSignRawWithLegacyAccountRequest {
-            signer,
-            ..
-        }) = request;
+        let HostSignRawWithLegacyAccountRequest::V1(inner) = request;
         let Some(session) = self.session_state.current() else {
             return Err(CallError::Domain(HostSignRawWithLegacyAccountError::V1(
                 v01::HostSignPayloadError::Rejected,
             )));
         };
-        self.validate_legacy_address_signer(&session, &signer)
+        self.validate_legacy_address_signer(&session, &inner.signer)
             .map_err(|err| CallError::Domain(HostSignRawWithLegacyAccountError::V1(err)))?;
+        let confirmed =
+            PlatformUserConfirmation::confirm_sign_raw(self.platform.as_ref(), inner.encode())
+                .await
+                .map_err(|err| CallError::HostFailure {
+                    reason: format!("sign raw confirmation failed: {err:?}"),
+                })?;
+        if !confirmed {
+            return Err(CallError::Domain(HostSignRawWithLegacyAccountError::V1(
+                v01::HostSignPayloadError::Rejected,
+            )));
+        }
         Err(CallError::Domain(HostSignRawWithLegacyAccountError::V1(
             v01::HostSignPayloadError::Unknown {
                 reason: "SSO signing not implemented".to_string(),
@@ -766,10 +818,7 @@ where
         HostCreateTransactionWithLegacyAccountResponse,
         CallError<HostCreateTransactionWithLegacyAccountError>,
     > {
-        let HostCreateTransactionWithLegacyAccountRequest::V1(v01::LegacyAccountTxPayload {
-            signer,
-            ..
-        }) = request;
+        let HostCreateTransactionWithLegacyAccountRequest::V1(inner) = request;
         let Some(session) = self.session_state.current() else {
             return Err(CallError::Domain(
                 HostCreateTransactionWithLegacyAccountError::V1(
@@ -777,7 +826,7 @@ where
                 ),
             ));
         };
-        self.validate_legacy_public_key_signer(&session, signer)
+        self.validate_legacy_public_key_signer(&session, inner.signer)
             .map_err(|err| {
                 CallError::Domain(HostCreateTransactionWithLegacyAccountError::V1(err))
             })?;
@@ -791,6 +840,21 @@ where
                 ));
             }
             Err(reason) => return Err(CallError::HostFailure { reason }),
+        }
+        let confirmed = PlatformUserConfirmation::confirm_create_transaction(
+            self.platform.as_ref(),
+            inner.encode(),
+        )
+        .await
+        .map_err(|err| CallError::HostFailure {
+            reason: format!("create transaction confirmation failed: {err:?}"),
+        })?;
+        if !confirmed {
+            return Err(CallError::Domain(
+                HostCreateTransactionWithLegacyAccountError::V1(
+                    v01::HostCreateTransactionError::Rejected,
+                ),
+            ));
         }
         Err(CallError::Domain(
             HostCreateTransactionWithLegacyAccountError::V1(
@@ -1225,6 +1289,12 @@ mod tests {
         remote_permission_granted: bool,
         account_alias_confirmed: bool,
         account_alias_error: Option<&'static str>,
+        sign_payload_confirmed: bool,
+        sign_payload_error: Option<&'static str>,
+        sign_raw_confirmed: bool,
+        sign_raw_error: Option<&'static str>,
+        create_transaction_confirmed: bool,
+        create_transaction_error: Option<&'static str>,
         resource_allocation_confirmed: bool,
         resource_allocation_error: Option<&'static str>,
     }
@@ -1235,6 +1305,12 @@ mod tests {
                 remote_permission_granted: true,
                 account_alias_confirmed: false,
                 account_alias_error: None,
+                sign_payload_confirmed: false,
+                sign_payload_error: None,
+                sign_raw_confirmed: false,
+                sign_raw_error: None,
+                create_transaction_confirmed: false,
+                create_transaction_error: None,
                 resource_allocation_confirmed: false,
                 resource_allocation_error: None,
             }
@@ -1437,16 +1513,34 @@ mod tests {
 
     impl UserConfirmation for StubPlatform {
         async fn confirm_sign_payload(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
-            Ok(false)
+            if let Some(reason) = self.sign_payload_error {
+                Err(v01::GenericError {
+                    reason: reason.to_string(),
+                })
+            } else {
+                Ok(self.sign_payload_confirmed)
+            }
         }
         async fn confirm_sign_raw(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
-            Ok(false)
+            if let Some(reason) = self.sign_raw_error {
+                Err(v01::GenericError {
+                    reason: reason.to_string(),
+                })
+            } else {
+                Ok(self.sign_raw_confirmed)
+            }
         }
         async fn confirm_create_transaction(
             &self,
             _review: Vec<u8>,
         ) -> Result<bool, v01::GenericError> {
-            Ok(false)
+            if let Some(reason) = self.create_transaction_error {
+                Err(v01::GenericError {
+                    reason: reason.to_string(),
+                })
+            } else {
+                Ok(self.create_transaction_confirmed)
+            }
         }
         async fn confirm_account_alias(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
             if let Some(reason) = self.account_alias_error {
@@ -1922,6 +2016,48 @@ mod tests {
     }
 
     #[test]
+    fn sign_raw_rejects_when_user_declines_confirmation() {
+        let host =
+            PlatformRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let request = HostSignRawRequest::V1(v01::HostSignRawRequest {
+            account: account_id("myapp.dot", 0),
+            payload: raw_payload(),
+        });
+        let err = futures::executor::block_on(host.sign_raw(&cx, request)).unwrap_err();
+        assert!(matches!(
+            err,
+            CallError::Domain(HostSignRawError::V1(v01::HostSignPayloadError::Rejected))
+        ));
+    }
+
+    #[test]
+    fn sign_raw_accepts_confirmation_then_reaches_sso_boundary() {
+        let host = PlatformRuntimeHost::new(
+            Arc::new(StubPlatform {
+                sign_raw_confirmed: true,
+                ..Default::default()
+            }),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let request = HostSignRawRequest::V1(v01::HostSignRawRequest {
+            account: account_id("myapp.dot", 0),
+            payload: raw_payload(),
+        });
+        let err = futures::executor::block_on(host.sign_raw(&cx, request)).unwrap_err();
+        match err {
+            CallError::Domain(HostSignRawError::V1(v01::HostSignPayloadError::Unknown {
+                reason,
+            })) => assert_eq!(reason, "SSO signing not implemented"),
+            other => panic!("expected SSO boundary error, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn sign_payload_denies_when_chain_submit_denied() {
         let host = PlatformRuntimeHost::new(
             Arc::new(StubPlatform {
@@ -1947,6 +2083,50 @@ mod tests {
     }
 
     #[test]
+    fn sign_payload_maps_confirmation_failure_to_host_failure() {
+        let host = PlatformRuntimeHost::new(
+            Arc::new(StubPlatform {
+                sign_payload_error: Some("modal failed"),
+                ..Default::default()
+            }),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let request = HostSignPayloadRequest::V1(v01::HostSignPayloadRequest {
+            account: account_id("myapp.dot", 0),
+            payload: sign_payload_data(),
+        });
+        let err = futures::executor::block_on(host.sign_payload(&cx, request)).unwrap_err();
+        assert!(
+            matches!(err, CallError::HostFailure { reason } if reason.contains("modal failed"))
+        );
+    }
+
+    #[test]
+    fn create_transaction_accepts_confirmation_then_reaches_sso_boundary() {
+        let host = PlatformRuntimeHost::new(
+            Arc::new(StubPlatform {
+                create_transaction_confirmed: true,
+                ..Default::default()
+            }),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let request = HostCreateTransactionRequest::V1(product_tx_payload("myapp.dot"));
+        let err = futures::executor::block_on(host.create_transaction(&cx, request)).unwrap_err();
+        match err {
+            CallError::Domain(HostCreateTransactionError::V1(
+                v01::HostCreateTransactionError::Unknown { reason },
+            )) => assert_eq!(reason, "SSO transaction creation not implemented"),
+            other => panic!("expected SSO transaction boundary error, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn legacy_sign_raw_rejects_signer_mismatch() {
         let host =
             PlatformRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
@@ -1969,8 +2149,14 @@ mod tests {
 
     #[test]
     fn legacy_sign_raw_accepts_derived_ss58_then_reaches_sso_boundary() {
-        let host =
-            PlatformRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
+        let host = PlatformRuntimeHost::new(
+            Arc::new(StubPlatform {
+                sign_raw_confirmed: true,
+                ..Default::default()
+            }),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
         host.session_state().set_session(session_info());
         let cx = CallContext::new();
         let request =
