@@ -9,12 +9,14 @@
 //! single-threaded.
 
 use std::cell::Cell;
+use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::task::{Context, Poll};
 
 use futures::channel::mpsc;
-use futures::stream::{self, BoxStream, StreamExt};
+use futures::stream::{self, BoxStream, Stream, StreamExt};
 use js_sys::{Function, Reflect, Uint8Array};
 use parity_scale_codec::{Decode, Encode};
 use send_wrapper::SendWrapper;
@@ -50,6 +52,10 @@ struct JsBridge {
     confirm_create_transaction: Option<Function>,
     confirm_account_alias: Option<Function>,
     confirm_resource_allocation: Option<Function>,
+    confirm_preimage_submit: Option<Function>,
+    submit_preimage: Option<Function>,
+    lookup_preimage: Option<Function>,
+    subscribe_theme: Option<Function>,
     present_pairing: Option<Function>,
     read_session: Option<Function>,
     write_session: Option<Function>,
@@ -85,6 +91,10 @@ impl JsBridge {
                 callbacks,
                 "confirmResourceAllocation",
             )?,
+            confirm_preimage_submit: get_optional_function(callbacks, "confirmPreimageSubmit")?,
+            submit_preimage: get_optional_function(callbacks, "submitPreimage")?,
+            lookup_preimage: get_optional_function(callbacks, "preimageLookupSubscribe")?,
+            subscribe_theme: get_optional_function(callbacks, "themeSubscribe")?,
             present_pairing: get_optional_function(callbacks, "presentPairing")?,
             read_session: get_optional_function(callbacks, "readSession")?,
             write_session: get_optional_function(callbacks, "writeSession")?,
@@ -369,35 +379,119 @@ impl UserConfirmation for WasmPlatform {
 
 impl ThemeHost for WasmPlatform {
     fn subscribe_theme(&self) -> BoxStream<'static, Result<v01::Theme, v01::GenericError>> {
-        stream::empty().boxed()
+        let Some(fn_) = self.bridge.subscribe_theme.as_ref() else {
+            return stream::empty().boxed();
+        };
+        invoke_js_subscription(fn_, None, parse_theme_item).boxed()
     }
 }
 
 impl PreimageHost for WasmPlatform {
-    async fn confirm_preimage_submit(&self, _size: u64) -> Result<(), v01::PreimageSubmitError> {
-        Err(v01::PreimageSubmitError::Unknown {
-            reason: "preimage confirmation callback not provided by host".to_string(),
-        })
+    async fn confirm_preimage_submit(&self, size: u64) -> Result<(), v01::PreimageSubmitError> {
+        let Some(fn_) = self.bridge.confirm_preimage_submit.as_ref() else {
+            return Err(v01::PreimageSubmitError::Unknown {
+                reason: "confirmPreimageSubmit callback not provided by host".to_string(),
+            });
+        };
+        invoke_u64_unit(fn_, size)
+            .await
+            .map_err(|reason| v01::PreimageSubmitError::Unknown { reason })
     }
 
-    async fn submit_preimage(&self, _value: Vec<u8>) -> Result<Vec<u8>, v01::PreimageSubmitError> {
-        Err(v01::PreimageSubmitError::Unknown {
-            reason: "preimage submit callback not provided by host".to_string(),
-        })
+    async fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, v01::PreimageSubmitError> {
+        let Some(fn_) = self.bridge.submit_preimage.as_ref() else {
+            return Err(v01::PreimageSubmitError::Unknown {
+                reason: "submitPreimage callback not provided by host".to_string(),
+            });
+        };
+        invoke_bytes_return(fn_, value)
+            .await
+            .map_err(|reason| v01::PreimageSubmitError::Unknown { reason })
     }
 
     fn lookup_preimage(
         &self,
-        _key: Vec<u8>,
+        key: Vec<u8>,
     ) -> BoxStream<'static, Result<Option<Vec<u8>>, v01::GenericError>> {
-        stream::empty().boxed()
+        let Some(fn_) = self.bridge.lookup_preimage.as_ref() else {
+            return stream::empty().boxed();
+        };
+        invoke_js_subscription(fn_, Some(key), parse_preimage_lookup_item).boxed()
     }
 }
 
-// Account, signing, statement-store, and preimage flows live in the Rust
+// Account, signing, and statement-store flows live in the Rust
 // core itself. Their `truapi::api::*` trait defaults return `Unsupported`
 // until those in-core implementations land. The JS bridge only carries
 // callbacks for the platform capabilities the core cannot satisfy alone.
+
+struct JsSubscriptionStream<T> {
+    rx: mpsc::UnboundedReceiver<T>,
+    _send_item: SendWrapper<Closure<dyn FnMut(JsValue)>>,
+    dispose: Option<SendWrapper<Function>>,
+}
+
+impl<T> Stream for JsSubscriptionStream<T> {
+    type Item = T;
+
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        Pin::new(&mut self.rx).poll_next(cx)
+    }
+}
+
+impl<T> Drop for JsSubscriptionStream<T> {
+    fn drop(&mut self) {
+        if let Some(dispose) = self.dispose.take() {
+            let _ = dispose.call0(&JsValue::NULL);
+        }
+    }
+}
+
+fn invoke_js_subscription<T>(
+    fn_: &Function,
+    payload: Option<Vec<u8>>,
+    parse_item: fn(JsValue) -> Result<T, String>,
+) -> BoxStream<'static, Result<T, v01::GenericError>>
+where
+    T: Send + 'static,
+{
+    let (tx, rx) = mpsc::unbounded::<Result<T, v01::GenericError>>();
+    let send_item = Closure::wrap(Box::new(move |value: JsValue| {
+        let item = parse_item(value).map_err(generic);
+        let _ = tx.unbounded_send(item);
+    }) as Box<dyn FnMut(JsValue)>);
+
+    let call_result = match payload {
+        Some(payload) => {
+            let arg = Uint8Array::from(payload.as_slice());
+            fn_.call2(&JsValue::NULL, &arg, send_item.as_ref().unchecked_ref())
+        }
+        None => fn_.call1(&JsValue::NULL, send_item.as_ref().unchecked_ref()),
+    };
+
+    let dispose = match call_result {
+        Ok(value) if value.is_null() || value.is_undefined() => None,
+        Ok(value) => match value.dyn_into::<Function>() {
+            Ok(dispose) => Some(SendWrapper::new(dispose)),
+            Err(_) => {
+                return stream::once(async {
+                    Err(generic(
+                        "subscription callback must return a dispose function, null, or undefined"
+                            .to_string(),
+                    ))
+                })
+                .boxed();
+            }
+        },
+        Err(err) => return stream::once(async { Err(generic(js_to_string(err))) }).boxed(),
+    };
+
+    Box::pin(JsSubscriptionStream {
+        rx,
+        _send_item: SendWrapper::new(send_item),
+        dispose,
+    })
+}
 
 struct JsCallbackJsonRpcConnection {
     send_fn: SendWrapper<Function>,
@@ -520,6 +614,22 @@ fn invoke_u32_unit(
     })
 }
 
+fn invoke_u64_unit(
+    fn_: &Function,
+    value: u64,
+) -> impl std::future::Future<Output = Result<(), String>> + Send {
+    let fn_ = fn_.clone();
+    SendWrapper::new(async move {
+        const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
+        if value > MAX_SAFE_INTEGER {
+            return Err("callback numeric argument exceeds JS safe integer range".to_string());
+        }
+        let arg = JsValue::from_f64(value as f64);
+        let returned = fn_.call1(&JsValue::NULL, &arg).map_err(js_to_string)?;
+        await_optional_promise(returned).await.map(|_| ())
+    })
+}
+
 fn invoke_string_unit(
     fn_: &Function,
     value: String,
@@ -529,6 +639,22 @@ fn invoke_string_unit(
         let arg = JsValue::from_str(&value);
         let returned = fn_.call1(&JsValue::NULL, &arg).map_err(js_to_string)?;
         await_optional_promise(returned).await.map(|_| ())
+    })
+}
+
+fn invoke_bytes_return(
+    fn_: &Function,
+    value: Vec<u8>,
+) -> impl std::future::Future<Output = Result<Vec<u8>, String>> + Send {
+    let fn_ = fn_.clone();
+    SendWrapper::new(async move {
+        let arg = Uint8Array::from(value.as_slice());
+        let returned = fn_.call1(&JsValue::NULL, &arg).map_err(js_to_string)?;
+        let resolved = await_optional_promise(returned).await?;
+        resolved
+            .dyn_into::<Uint8Array>()
+            .map(|array| array.to_vec())
+            .map_err(|_| "callback must resolve to Uint8Array".to_string())
     })
 }
 
@@ -542,6 +668,40 @@ fn invoke_bytes_unit(
         let returned = fn_.call1(&JsValue::NULL, &arg).map_err(js_to_string)?;
         await_optional_promise(returned).await.map(|_| ())
     })
+}
+
+fn parse_preimage_lookup_item(value: JsValue) -> Result<Option<Vec<u8>>, String> {
+    if value.is_null() || value.is_undefined() {
+        return Ok(None);
+    }
+    value
+        .dyn_into::<Uint8Array>()
+        .map(|array| Some(array.to_vec()))
+        .map_err(|_| "preimage lookup item must be Uint8Array, null, or undefined".to_string())
+}
+
+fn parse_theme_item(value: JsValue) -> Result<v01::Theme, String> {
+    if let Some(theme) = value.as_string() {
+        return match theme.as_str() {
+            "Light" | "light" => Ok(v01::Theme::Light),
+            "Dark" | "dark" => Ok(v01::Theme::Dark),
+            _ => Err("theme item string must be Light or Dark".to_string()),
+        };
+    }
+    if let Some(theme) = value.as_f64() {
+        return match theme as u8 {
+            0 if theme == 0.0 => Ok(v01::Theme::Light),
+            1 if theme == 1.0 => Ok(v01::Theme::Dark),
+            _ => Err("theme item number must be 0 or 1".to_string()),
+        };
+    }
+    value
+        .dyn_into::<Uint8Array>()
+        .map_err(|_| "theme item must be Light, Dark, 0, 1, or encoded Theme".to_string())
+        .and_then(|array| {
+            v01::Theme::decode(&mut array.to_vec().as_slice())
+                .map_err(|_| "encoded Theme item did not decode".to_string())
+        })
 }
 
 fn invoke_no_args_unit(

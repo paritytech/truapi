@@ -55,7 +55,7 @@ const pendingCallbacks = new Map<
 let nextSubId = 0;
 const subscriptionItemListeners = new Map<
   number,
-  (bytes: Uint8Array) => void
+  (value: unknown) => void
 >();
 
 let nextConnId = 0;
@@ -77,13 +77,13 @@ function callbackRequest(
   });
 }
 
-function startSubscription(
+function startSubscription<T>(
   name: SubscriptionName,
   payload: Uint8Array | null,
-  sendItem: (bytes: Uint8Array) => void,
+  sendItem: (value: T) => void,
 ): () => void {
   const subId = ++nextSubId;
-  subscriptionItemListeners.set(subId, sendItem);
+  subscriptionItemListeners.set(subId, sendItem as (value: unknown) => void);
   postToMain({ kind: "subscriptionStart", subId, name, payload });
   return () => {
     subscriptionItemListeners.delete(subId);
@@ -168,10 +168,17 @@ const rawCallbacks = {
       "statementStoreCreateProof",
       [payload],
     ) as Promise<Uint8Array>,
+  confirmPreimageSubmit: (size: number) =>
+    callbackRequest("confirmPreimageSubmit", [size]) as Promise<void>,
+  submitPreimage: (value: Uint8Array) =>
+    callbackRequest("submitPreimage", [value]) as Promise<Uint8Array>,
   preimageLookupSubscribe: (
-    payload: Uint8Array,
-    sendItem: (bytes: Uint8Array) => void,
-  ) => startSubscription("preimageLookupSubscribe", payload, sendItem),
+    key: Uint8Array,
+    sendItem: (value: Uint8Array | null | undefined) => void,
+  ) => startSubscription("preimageLookupSubscribe", key, sendItem),
+  themeSubscribe: (
+    sendItem: (theme: "Light" | "Dark" | 0 | 1 | Uint8Array) => void,
+  ) => startSubscription("themeSubscribe", null, sendItem),
   chainConnect,
   emitFrame(frame: Uint8Array): void {
     postToMain({ kind: "frame", bytes: frame });
@@ -218,7 +225,7 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
     }
     case "subscriptionItem": {
       const listener = subscriptionItemListeners.get(msg.subId);
-      if (listener) listener(msg.bytes);
+      if (listener) listener(msg.value);
       break;
     }
     case "chainConnectAck": {

@@ -17,7 +17,9 @@ export type {
   Navigation,
   Notifications,
   Permissions,
+  PreimageHost,
   Storage,
+  ThemeHost,
 } from "./generated/host-callbacks.js";
 
 /**
@@ -79,6 +81,11 @@ export interface WasmRawCallbacks {
   confirmCreateTransaction?(payload: Uint8Array): Promise<boolean>;
   confirmAccountAlias?(payload: Uint8Array): Promise<boolean>;
   confirmResourceAllocation?(payload: Uint8Array): Promise<boolean>;
+  confirmPreimageSubmit?(size: number): Promise<void>;
+  submitPreimage?(value: Uint8Array): Promise<Uint8Array>;
+  themeSubscribe?(
+    sendItem: (theme: "Light" | "Dark" | 0 | 1 | Uint8Array) => void,
+  ): (() => void) | void;
   accountGet(payload: Uint8Array): Promise<Uint8Array>;
   accountGetAlias(payload: Uint8Array): Promise<Uint8Array>;
   accountCreateProof(payload: Uint8Array): Promise<Uint8Array>;
@@ -96,8 +103,8 @@ export interface WasmRawCallbacks {
   statementStoreSubmit(payload: Uint8Array): Promise<Uint8Array>;
   statementStoreCreateProof(payload: Uint8Array): Promise<Uint8Array>;
   preimageLookupSubscribe(
-    payload: Uint8Array,
-    sendItem: (bytes: Uint8Array) => void,
+    key: Uint8Array,
+    sendItem: (value: Uint8Array | null | undefined) => void,
   ): (() => void) | void;
   /** Optional. When omitted, the WASM bridge reports chain calls as
    * "unavailable". Hosts that own chain access (e.g. dotli's
@@ -143,6 +150,9 @@ export function createUnavailableCallbacks(): Omit<
     statementStoreSubscribe: noopSubscribe,
     statementStoreSubmit: unavailable("statementStoreSubmit"),
     statementStoreCreateProof: unavailable("statementStoreCreateProof"),
+    confirmPreimageSubmit: unavailable("confirmPreimageSubmit"),
+    submitPreimage: unavailable("submitPreimage"),
+    themeSubscribe: noopSubscribe,
     preimageLookupSubscribe: noopSubscribe,
   };
 }

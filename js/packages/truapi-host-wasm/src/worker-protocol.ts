@@ -26,7 +26,9 @@ export type CallbackName =
   | "signPayload"
   | "signRaw"
   | "statementStoreSubmit"
-  | "statementStoreCreateProof";
+  | "statementStoreCreateProof"
+  | "confirmPreimageSubmit"
+  | "submitPreimage";
 
 /**
  * Names of every subscription host callback. Each has the shape
@@ -35,7 +37,8 @@ export type CallbackName =
 export type SubscriptionName =
   | "accountConnectionStatusSubscribe"
   | "statementStoreSubscribe"
-  | "preimageLookupSubscribe";
+  | "preimageLookupSubscribe"
+  | "themeSubscribe";
 
 /**
  * Positional arguments for a callback. The wasm core calls each callback
@@ -48,7 +51,7 @@ export type MainToWorker =
   | { kind: "frame"; bytes: Uint8Array }
   | { kind: "callbackResponse"; requestId: number; ok: true; value: unknown }
   | { kind: "callbackResponse"; requestId: number; ok: false; error: string }
-  | { kind: "subscriptionItem"; subId: number; bytes: Uint8Array }
+  | { kind: "subscriptionItem"; subId: number; value: unknown }
   | { kind: "chainConnectAck"; connId: number; ok: true }
   | { kind: "chainConnectAck"; connId: number; ok: false; error: string }
   | { kind: "chainResponse"; connId: number; json: string }

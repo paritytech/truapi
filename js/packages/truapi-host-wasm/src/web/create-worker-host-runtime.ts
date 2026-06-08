@@ -80,25 +80,37 @@ function handleSubscriptionStart(
     payload: Uint8Array | null;
   },
 ): void {
-  const sendItem = (bytes: Uint8Array): void => {
+  const sendItem = (value: unknown): void => {
     if (state.disposed) return;
     const post: MainToWorker = {
       kind: "subscriptionItem",
       subId: msg.subId,
-      bytes,
+      value,
     };
     state.worker.postMessage(post);
   };
   let dispose: unknown;
   try {
     if (msg.name === "accountConnectionStatusSubscribe") {
-      dispose = state.rawCallbacks.accountConnectionStatusSubscribe(sendItem);
+      dispose = state.rawCallbacks.accountConnectionStatusSubscribe(
+        sendItem as (bytes: Uint8Array) => void,
+      );
+    } else if (msg.name === "themeSubscribe") {
+      dispose = state.rawCallbacks.themeSubscribe?.(
+        sendItem as (theme: "Light" | "Dark" | 0 | 1 | Uint8Array) => void,
+      );
     } else if (msg.payload !== null) {
-      const fn =
-        msg.name === "statementStoreSubscribe"
-          ? state.rawCallbacks.statementStoreSubscribe
-          : state.rawCallbacks.preimageLookupSubscribe;
-      dispose = fn(msg.payload, sendItem);
+      if (msg.name === "statementStoreSubscribe") {
+        dispose = state.rawCallbacks.statementStoreSubscribe(
+          msg.payload,
+          sendItem as (bytes: Uint8Array) => void,
+        );
+      } else {
+        dispose = state.rawCallbacks.preimageLookupSubscribe(
+          msg.payload,
+          sendItem as (value: Uint8Array | null | undefined) => void,
+        );
+      }
     } else {
       console.warn(
         `[truapi worker] ${msg.name} requires payload, none received`,

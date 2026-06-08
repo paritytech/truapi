@@ -85,6 +85,24 @@ pub enum HostNavigateRejection {
     },
 }
 
+/// Native-friendly theme enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum HostTheme {
+    /// Light host theme.
+    Light,
+    /// Dark host theme.
+    Dark,
+}
+
+impl From<HostTheme> for v01::Theme {
+    fn from(theme: HostTheme) -> Self {
+        match theme {
+            HostTheme::Light => v01::Theme::Light,
+            HostTheme::Dark => v01::Theme::Dark,
+        }
+    }
+}
+
 impl From<HostNavigateRejection> for v01::HostNavigateToError {
     fn from(err: HostNavigateRejection) -> Self {
         match err {
@@ -155,6 +173,20 @@ pub trait HostCallbacks: Send + Sync {
     /// Confirm a resource-allocation request. `review` is a SCALE-encoded
     /// review payload owned by the Rust core.
     fn confirm_resource_allocation(&self, review: Vec<u8>) -> Result<bool, HostRejection>;
+
+    /// Confirm preimage submission before the host stores it.
+    fn confirm_preimage_submit(&self, size: u64) -> Result<(), HostRejection>;
+
+    /// Submit the preimage through the host backend and return its key.
+    fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, HostRejection>;
+
+    /// Look up one preimage value by key. The native shim emits this as the
+    /// current item in its subscription stream.
+    fn lookup_preimage(&self, key: Vec<u8>) -> Result<Option<Vec<u8>>, HostRejection>;
+
+    /// Current host theme. The native shim emits this as the current item in
+    /// its subscription stream.
+    fn current_theme(&self) -> Result<HostTheme, HostRejection>;
 
     /// Answer a feature-support query. `request` is the SCALE-encoded
     /// [`HostFeatureSupportedRequest`].
@@ -530,28 +562,45 @@ impl UserConfirmation for CallbackPlatform {
 
 impl ThemeHost for CallbackPlatform {
     fn subscribe_theme(&self) -> BoxStream<'static, Result<v01::Theme, v01::GenericError>> {
-        stream::empty().boxed()
+        let callbacks = self.callbacks.clone();
+        stream::once(async move {
+            callbacks
+                .current_theme()
+                .map(v01::Theme::from)
+                .map_err(v01::GenericError::from)
+        })
+        .boxed()
     }
 }
 
 impl PreimageHost for CallbackPlatform {
-    async fn confirm_preimage_submit(&self, _size: u64) -> Result<(), v01::PreimageSubmitError> {
-        Err(v01::PreimageSubmitError::Unknown {
-            reason: "preimage confirmation callback not wired through native callbacks".to_string(),
+    async fn confirm_preimage_submit(&self, size: u64) -> Result<(), v01::PreimageSubmitError> {
+        self.callbacks.confirm_preimage_submit(size).map_err(|err| {
+            v01::PreimageSubmitError::Unknown {
+                reason: err.to_string(),
+            }
         })
     }
 
-    async fn submit_preimage(&self, _value: Vec<u8>) -> Result<Vec<u8>, v01::PreimageSubmitError> {
-        Err(v01::PreimageSubmitError::Unknown {
-            reason: "preimage submit callback not wired through native callbacks".to_string(),
-        })
+    async fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, v01::PreimageSubmitError> {
+        self.callbacks
+            .submit_preimage(value)
+            .map_err(|err| v01::PreimageSubmitError::Unknown {
+                reason: err.to_string(),
+            })
     }
 
     fn lookup_preimage(
         &self,
-        _key: Vec<u8>,
+        key: Vec<u8>,
     ) -> BoxStream<'static, Result<Option<Vec<u8>>, v01::GenericError>> {
-        stream::empty().boxed()
+        let callbacks = self.callbacks.clone();
+        stream::once(async move {
+            callbacks
+                .lookup_preimage(key)
+                .map_err(v01::GenericError::from)
+        })
+        .boxed()
     }
 }
 
@@ -605,6 +654,18 @@ mod tests {
             }
             fn confirm_resource_allocation(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
                 Ok(false)
+            }
+            fn confirm_preimage_submit(&self, _size: u64) -> Result<(), HostRejection> {
+                Ok(())
+            }
+            fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, HostRejection> {
+                Ok(value)
+            }
+            fn lookup_preimage(&self, _key: Vec<u8>) -> Result<Option<Vec<u8>>, HostRejection> {
+                Ok(None)
+            }
+            fn current_theme(&self) -> Result<HostTheme, HostRejection> {
+                Ok(HostTheme::Light)
             }
             fn feature_supported(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
                 Ok(false)
@@ -684,6 +745,18 @@ mod tests {
             }
             fn confirm_resource_allocation(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
                 Ok(false)
+            }
+            fn confirm_preimage_submit(&self, _size: u64) -> Result<(), HostRejection> {
+                Ok(())
+            }
+            fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, HostRejection> {
+                Ok(value)
+            }
+            fn lookup_preimage(&self, _key: Vec<u8>) -> Result<Option<Vec<u8>>, HostRejection> {
+                Ok(None)
+            }
+            fn current_theme(&self) -> Result<HostTheme, HostRejection> {
+                Ok(HostTheme::Light)
             }
             fn feature_supported(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
                 Ok(false)
