@@ -21,7 +21,7 @@ use crate::host_logic::product_account::{
 };
 use crate::host_logic::session::{SessionInfo, SessionState, decode_persisted_session};
 use crate::host_logic::sso_pairing::{
-    AppHandshakeData, create_pairing_bootstrap, decode_app_handshake_data,
+    AppHandshakeData, create_pairing_bootstrap, decode_app_handshake_data, decrypt_handshake_answer,
 };
 use crate::host_logic::statement_store::{
     decode_statement_data, parse_new_statements, parse_subscribe_ack, subscribe_match_all_request,
@@ -654,6 +654,7 @@ where
             PAIRING_SUBSCRIBE_REQUEST_ID,
             &[bootstrap.topic],
         ));
+        let core_encryption_secret_key = bootstrap.encryption_secret_key;
         let presenter =
             PlatformPairingPresenter::present_pairing(self.platform.as_ref(), bootstrap.deeplink)
                 .fuse();
@@ -683,12 +684,18 @@ where
                     encrypted_message,
                     public_key,
                 } = handshake;
+                let answer = decrypt_handshake_answer(
+                    core_encryption_secret_key,
+                    public_key,
+                    &encrypted_message,
+                )
+                .map_err(|reason| CallError::HostFailure { reason })?;
                 Err(CallError::Domain(HostRequestLoginError::V1(
                     v01::HostRequestLoginError::Unknown {
                         reason: format!(
-                            "SSO handshake decryption not implemented (encrypted_message={} bytes, public_key={} bytes)",
-                            encrypted_message.len(),
-                            public_key.len()
+                            "SSO session establishment not implemented (root_user_account_id={}, identity_account_id={})",
+                            hex::encode(answer.root_user_account_id),
+                            hex::encode(answer.identity_account_id)
                         ),
                     },
                 )))
@@ -1390,6 +1397,7 @@ mod tests {
     use super::*;
     use crate::chain_runtime::thread_per_task_spawner;
     use futures::stream::{self, BoxStream};
+    use p256::elliptic_curve::sec1::ToEncodedPoint;
     use parity_scale_codec::Encode;
     use std::sync::Mutex;
     use truapi::v01;
@@ -2520,9 +2528,13 @@ mod tests {
 
     #[test]
     fn request_login_waits_for_pairing_statement() {
+        let wallet_ephemeral_secret = p256::SecretKey::from_slice(&[2; 32]).unwrap();
+        let wallet_ephemeral_public = wallet_ephemeral_secret.public_key().to_encoded_point(false);
+        let mut wallet_ephemeral_public_bytes = [0u8; 65];
+        wallet_ephemeral_public_bytes.copy_from_slice(wallet_ephemeral_public.as_bytes());
         let handshake = crate::host_logic::sso_pairing::AppHandshakeData::V1 {
             encrypted_message: vec![0xde, 0xad],
-            public_key: [4; 65],
+            public_key: wallet_ephemeral_public_bytes,
         };
         let statement = vec![crate::host_logic::statement_store::StatementField::Data(
             handshake.encode(),
@@ -2549,15 +2561,10 @@ mod tests {
         let err = futures::executor::block_on(host.request_login(&cx, request)).unwrap_err();
 
         match err {
-            CallError::Domain(HostRequestLoginError::V1(v01::HostRequestLoginError::Unknown {
-                reason,
-            })) => {
-                assert_eq!(
-                    reason,
-                    "SSO handshake decryption not implemented (encrypted_message=2 bytes, public_key=65 bytes)"
-                );
+            CallError::HostFailure { reason } => {
+                assert_eq!(reason, "encrypted SSO handshake answer is too short");
             }
-            other => panic!("expected handshake decode boundary, got {other:?}"),
+            other => panic!("expected handshake decrypt failure, got {other:?}"),
         }
     }
 

@@ -3,16 +3,22 @@
 //! This module owns the byte shape of the QR/deeplink payload described in
 //! `docs/design/host-contract-and-core-impl/H - sso-pairing-protocol.md`.
 
+use aes_gcm::aead::{Aead, KeyInit};
+use aes_gcm::{Aes256Gcm, Nonce};
 use blake2_rfc::blake2b::blake2b;
-use p256::SecretKey;
+use hkdf::Hkdf;
+use p256::ecdh::diffie_hellman;
 use p256::elliptic_curve::sec1::ToEncodedPoint;
+use p256::{PublicKey, SecretKey};
 use parity_scale_codec::{Decode, Encode};
 use schnorrkel::{ExpansionMode, MiniSecretKey};
+use sha2::Sha256;
 use thiserror::Error;
 use truapi_platform::{PairingDeeplinkScheme, RuntimeConfig};
 
 const HANDSHAKE_TOPIC_SUFFIX: &[u8] = b"topic";
 const MAX_P256_SECRET_ATTEMPTS: usize = 64;
+const AES_GCM_NONCE_LEN: usize = 12;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PairingBootstrap {
@@ -51,6 +57,13 @@ pub enum AppHandshakeData {
     },
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct SsoHandshakeAnswerSensitiveData {
+    pub shared_secret_derivation_key: [u8; 65],
+    pub root_user_account_id: [u8; 32],
+    pub identity_account_id: [u8; 32],
+}
+
 pub fn decode_app_handshake_data(blob: &[u8]) -> Result<AppHandshakeData, String> {
     let mut input = blob;
     let value: AppHandshakeData =
@@ -59,6 +72,52 @@ pub fn decode_app_handshake_data(blob: &[u8]) -> Result<AppHandshakeData, String
         return Err("invalid app handshake data: trailing bytes".to_string());
     }
     Ok(value)
+}
+
+pub fn decrypt_handshake_answer(
+    core_encryption_secret_key: [u8; 32],
+    wallet_ephemeral_public_key: [u8; 65],
+    encrypted_message: &[u8],
+) -> Result<SsoHandshakeAnswerSensitiveData, String> {
+    let plaintext = decrypt_p256_hkdf_aes_gcm(
+        core_encryption_secret_key,
+        wallet_ephemeral_public_key,
+        encrypted_message,
+    )?;
+    let mut input = plaintext.as_slice();
+    let value = SsoHandshakeAnswerSensitiveData::decode(&mut input)
+        .map_err(|err| format!("invalid SSO handshake answer: {err}"))?;
+    if !input.is_empty() {
+        return Err("invalid SSO handshake answer: trailing bytes".to_string());
+    }
+    Ok(value)
+}
+
+fn decrypt_p256_hkdf_aes_gcm(
+    own_secret_key: [u8; 32],
+    peer_public_key: [u8; 65],
+    encrypted_message: &[u8],
+) -> Result<Vec<u8>, String> {
+    if encrypted_message.len() < AES_GCM_NONCE_LEN {
+        return Err("encrypted SSO handshake answer is too short".to_string());
+    }
+    let secret = SecretKey::from_slice(&own_secret_key)
+        .map_err(|err| format!("invalid P-256 secret key: {err}"))?;
+    let peer_public = PublicKey::from_sec1_bytes(&peer_public_key)
+        .map_err(|err| format!("invalid P-256 public key: {err}"))?;
+    let shared_secret = diffie_hellman(secret.to_nonzero_scalar(), peer_public.as_affine());
+
+    let hkdf = Hkdf::<Sha256>::new(None, shared_secret.raw_secret_bytes());
+    let mut aes_key = [0u8; 32];
+    hkdf.expand(&[], &mut aes_key)
+        .map_err(|err| format!("failed to derive AES key: {err}"))?;
+
+    let (nonce, ciphertext) = encrypted_message.split_at(AES_GCM_NONCE_LEN);
+    let cipher = Aes256Gcm::new_from_slice(&aes_key)
+        .map_err(|err| format!("failed to initialize AES-GCM: {err}"))?;
+    cipher
+        .decrypt(Nonce::from_slice(nonce), ciphertext)
+        .map_err(|err| format!("failed to decrypt SSO handshake answer: {err}"))
 }
 
 pub fn create_pairing_bootstrap(
@@ -260,6 +319,55 @@ mod tests {
         assert_eq!(
             decode_app_handshake_data(&encoded).unwrap_err(),
             "invalid app handshake data: trailing bytes"
+        );
+    }
+
+    #[test]
+    fn decrypts_handshake_answer() {
+        let core_secret = SecretKey::from_slice(&[1; 32]).unwrap();
+        let wallet_ephemeral_secret = SecretKey::from_slice(&[2; 32]).unwrap();
+        let wallet_ephemeral_public = wallet_ephemeral_secret.public_key().to_encoded_point(false);
+        let mut wallet_ephemeral_public_bytes = [0u8; 65];
+        wallet_ephemeral_public_bytes.copy_from_slice(wallet_ephemeral_public.as_bytes());
+
+        let shared_secret = diffie_hellman(
+            wallet_ephemeral_secret.to_nonzero_scalar(),
+            core_secret.public_key().as_affine(),
+        );
+        let hkdf = Hkdf::<Sha256>::new(None, shared_secret.raw_secret_bytes());
+        let mut aes_key = [0u8; 32];
+        hkdf.expand(&[], &mut aes_key).unwrap();
+
+        let sensitive = SsoHandshakeAnswerSensitiveData {
+            shared_secret_derivation_key: ENC_PUBLIC,
+            root_user_account_id: [7; 32],
+            identity_account_id: [8; 32],
+        };
+        let nonce = [9u8; AES_GCM_NONCE_LEN];
+        let cipher = Aes256Gcm::new_from_slice(&aes_key).unwrap();
+        let mut encrypted = nonce.to_vec();
+        encrypted.extend(
+            cipher
+                .encrypt(Nonce::from_slice(&nonce), sensitive.encode().as_slice())
+                .unwrap(),
+        );
+
+        assert_eq!(
+            decrypt_handshake_answer(
+                core_secret.to_bytes().into(),
+                wallet_ephemeral_public_bytes,
+                &encrypted
+            )
+            .unwrap(),
+            sensitive
+        );
+    }
+
+    #[test]
+    fn rejects_short_handshake_ciphertext() {
+        assert_eq!(
+            decrypt_handshake_answer([1; 32], ENC_PUBLIC, &[0; AES_GCM_NONCE_LEN - 1]).unwrap_err(),
+            "encrypted SSO handshake answer is too short"
         );
     }
 }
