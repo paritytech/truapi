@@ -393,12 +393,6 @@ public final class TrUAPIHostCore {
     // which is what actually keeps the callback object alive for the core.
     private let callbackRetainer: HostCallbacks
 
-    public init(bridge: HostBridge) {
-        let adapter = HostCallbackAdapter(bridge: bridge)
-        self.callbackRetainer = adapter
-        self.inner = NativeTrUApiCore(callbacks: adapter)
-    }
-
     public init(bridge: HostBridge, runtimeConfig: RuntimeConfig) throws {
         let adapter = HostCallbackAdapter(bridge: bridge)
         self.callbackRetainer = adapter

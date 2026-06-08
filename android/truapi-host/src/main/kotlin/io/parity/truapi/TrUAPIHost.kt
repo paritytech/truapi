@@ -339,10 +339,8 @@ private class HostCallbackAdapter(private val bridge: HostBridge) : HostCallback
  */
 class TrUAPIHostCore private constructor(
     bridge: HostBridge,
-    runtimeConfig: UniFfiNativeRuntimeConfig?,
+    runtimeConfig: UniFfiNativeRuntimeConfig,
 ) : AutoCloseable {
-    constructor(bridge: HostBridge) : this(bridge, null)
-
     @Throws(NativeRuntimeConfigException::class)
     constructor(bridge: HostBridge, runtimeConfig: RuntimeConfig) : this(
         bridge,
@@ -353,8 +351,7 @@ class TrUAPIHostCore private constructor(
     // which is what actually keeps the callback object alive for the core.
     private val callbackRetainer: HostCallbacks = HostCallbackAdapter(bridge)
     private val inner: NativeTrUApiCore =
-        runtimeConfig?.let { NativeTrUApiCore.withRuntimeConfig(callbackRetainer, it) }
-            ?: NativeTrUApiCore(callbackRetainer)
+        NativeTrUApiCore.withRuntimeConfig(callbackRetainer, runtimeConfig)
 
     /**
      * Start the localhost WebSocket bridge (requires the `ws-bridge` feature
