@@ -8,6 +8,7 @@
 //! `CallError::unavailable()`.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::chain_runtime::{
     ChainRuntime, RuntimeChainProvider, RuntimeFailure, RuntimeFailureKind,
@@ -132,6 +133,7 @@ use truapi_platform::{
 
 const PAIRING_SUBSCRIBE_REQUEST_ID: &str = "truapi:sso-pairing:1";
 const DEFAULT_SSO_STATEMENT_EXPIRY_SECS: u64 = 7 * 24 * 60 * 60;
+const DEFAULT_SSO_RESPONSE_TIMEOUT: Duration = Duration::from_secs(180);
 
 /// Adapter that exposes a [`truapi_platform::Platform`] through the
 /// `truapi::api::*` trait set the generated dispatcher routes to.
@@ -355,6 +357,7 @@ where
             &peer_subscription_request_id,
             &message_id,
             &message_id,
+            DEFAULT_SSO_RESPONSE_TIMEOUT,
         )
         .await
     }
@@ -396,6 +399,36 @@ where
 }
 
 async fn wait_for_sso_remote_response(
+    responses: BoxStream<'static, String>,
+    session: &SsoSessionInfo,
+    own_subscription_request_id: &str,
+    peer_subscription_request_id: &str,
+    statement_request_id: &str,
+    remote_message_id: &str,
+    timeout: Duration,
+) -> Result<SsoRemoteResponse, String> {
+    let timeout_reason = format!(
+        "SSO response timed out after {} for {remote_message_id}",
+        format_timeout_duration(timeout)
+    );
+    let response = wait_for_sso_remote_response_inner(
+        responses,
+        session,
+        own_subscription_request_id,
+        peer_subscription_request_id,
+        statement_request_id,
+        remote_message_id,
+    )
+    .fuse();
+    let timeout = futures_timer::Delay::new(timeout).fuse();
+    pin_mut!(response, timeout);
+    futures::select! {
+        result = response => result,
+        _ = timeout => Err(timeout_reason),
+    }
+}
+
+async fn wait_for_sso_remote_response_inner(
     mut responses: BoxStream<'static, String>,
     session: &SsoSessionInfo,
     own_subscription_request_id: &str,
@@ -464,6 +497,14 @@ async fn wait_for_sso_remote_response(
     Err(format!(
         "SSO response stream ended before response for {remote_message_id}"
     ))
+}
+
+fn format_timeout_duration(duration: Duration) -> String {
+    if duration.subsec_millis() == 0 {
+        format!("{}s", duration.as_secs())
+    } else {
+        format!("{}ms", duration.as_millis())
+    }
 }
 
 fn subscription_id_matches(
@@ -4071,6 +4112,23 @@ mod tests {
             2
         );
         assert!(platform.sent_rpc.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn sso_remote_response_waiter_times_out() {
+        let session = sso_session_info();
+        let err = futures::executor::block_on(wait_for_sso_remote_response(
+            stream::pending().boxed(),
+            session.sso.as_ref().unwrap(),
+            "own-sub",
+            "peer-sub",
+            "request-1",
+            "request-1",
+            Duration::from_millis(1),
+        ))
+        .unwrap_err();
+
+        assert_eq!(err, "SSO response timed out after 1ms for request-1");
     }
 
     #[test]
