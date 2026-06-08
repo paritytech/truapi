@@ -43,11 +43,18 @@ them.
 - [x] Nested dApps: do not port `setupNestedBridgeDetector` as separate Rust runtimes/sessions/product
       identities for v1. If nested message forwarding remains, route it through the shared top-level Rust
       core. Track future nested-product usefulness in [I](<I - nested-dapps.md>).
-- [ ] Preserve current `container.ts` handler coverage in Rust before removing the JS handlers:
+- [x] Preserve current `container.ts` handler coverage in Rust before removing the JS handlers:
       account get/legacy/user-id/login/alias, signing, legacy signing, `create_transaction`, resource
       allocation, local storage, entropy, navigation, device/product permissions, notifications,
       statement-store submit/subscribe/proof, preimage submit/lookup, theme subscription, feature support,
-      and chain connection/status.
+      and chain connection/status. Evidence: product-visible core methods are implemented on
+      `PlatformRuntimeHost` in `rust/crates/truapi-server/src/runtime.rs`; host-owned primitives are
+      exposed as platform traits in `rust/crates/truapi-platform/src/lib.rs`; WASM/TS callback coverage is
+      generated and adapted in `js/packages/truapi-host-wasm/src/generated/host-callbacks.ts`,
+      `js/packages/truapi-host-wasm/src/runtime.ts`, and
+      `js/packages/truapi-host-wasm/src/typed-callbacks.ts`; dotli wires the concrete host callbacks
+      through `packages/ui/src/host-callbacks/handlers.ts`. Payment and full `create_account_proof` remain
+      explicit `Unsupported` per the separate deferred checklist item below.
 - [x] `js/packages/truapi-host-wasm`: delete transitional raw callback routes for methods now owned by
       Rust (`accountGet`, `accountGetAlias`, `accountCreateProof` if still unavailable, `getLegacyAccounts`,
       `getUserId`, `signPayload`, `signRaw`, `statementStoreSubscribe`, `statementStoreSubmit`,
