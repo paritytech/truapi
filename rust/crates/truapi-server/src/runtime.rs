@@ -67,14 +67,20 @@ use truapi::versioned::permissions::{
     HostDevicePermissionError, HostDevicePermissionRequest, HostDevicePermissionResponse,
     RemotePermissionError, RemotePermissionRequest, RemotePermissionResponse,
 };
+use truapi::versioned::preimage::{
+    RemotePreimageLookupSubscribeItem, RemotePreimageLookupSubscribeRequest,
+    RemotePreimageSubmitError, RemotePreimageSubmitRequest, RemotePreimageSubmitResponse,
+};
 use truapi::versioned::system::{
     HostFeatureSupportedError, HostFeatureSupportedRequest, HostFeatureSupportedResponse,
     HostNavigateToError, HostNavigateToRequest, HostNavigateToResponse,
 };
+use truapi::versioned::theme::HostThemeSubscribeItem;
 use truapi::{CallContext, CallError, Subscription};
 use truapi_platform::{
     ChainProvider as PlatformChainProvider, JsonRpcConnection, Navigation as PlatformNavigation,
-    Notifications as PlatformNotifications, Platform, RuntimeConfig, Storage as PlatformStorage,
+    Notifications as PlatformNotifications, Platform, PreimageHost as PlatformPreimageHost,
+    RuntimeConfig, Storage as PlatformStorage, ThemeHost as PlatformThemeHost,
 };
 
 /// Adapter that exposes a [`truapi_platform::Platform`] through the
@@ -483,8 +489,6 @@ impl<P> Signing for PlatformRuntimeHost<P> where P: Platform + 'static {}
 
 impl<P> StatementStore for PlatformRuntimeHost<P> where P: Platform + 'static {}
 
-impl<P> Preimage for PlatformRuntimeHost<P> where P: Platform + 'static {}
-
 // ---------------------------------------------------------------------------
 // Chain
 // ---------------------------------------------------------------------------
@@ -734,7 +738,68 @@ where
         ))
     }
 }
-impl<P> Theme for PlatformRuntimeHost<P> where P: Platform + 'static {}
+
+// ---------------------------------------------------------------------------
+// Preimage
+// ---------------------------------------------------------------------------
+
+impl<P> Preimage for PlatformRuntimeHost<P>
+where
+    P: Platform + 'static,
+{
+    async fn lookup_subscribe(
+        &self,
+        _cx: &CallContext,
+        request: RemotePreimageLookupSubscribeRequest,
+    ) -> Subscription<RemotePreimageLookupSubscribeItem> {
+        let RemotePreimageLookupSubscribeRequest::V1(v01::RemotePreimageLookupSubscribeRequest {
+            key,
+        }) = request;
+        let stream = PlatformPreimageHost::lookup_preimage(self.platform.as_ref(), key).filter_map(
+            |item| async move {
+                item.ok().map(|value| {
+                    RemotePreimageLookupSubscribeItem::V1(v01::RemotePreimageLookupSubscribeItem {
+                        value,
+                    })
+                })
+            },
+        );
+        Subscription::new(Box::pin(stream))
+    }
+
+    async fn submit(
+        &self,
+        _cx: &CallContext,
+        request: RemotePreimageSubmitRequest,
+    ) -> Result<RemotePreimageSubmitResponse, CallError<RemotePreimageSubmitError>> {
+        let RemotePreimageSubmitRequest::V1(value) = request;
+        PlatformPreimageHost::confirm_preimage_submit(self.platform.as_ref(), value.len() as u64)
+            .await
+            .map_err(|err| CallError::Domain(RemotePreimageSubmitError::V1(err)))?;
+        PlatformPreimageHost::submit_preimage(self.platform.as_ref(), value)
+            .await
+            .map(RemotePreimageSubmitResponse::V1)
+            .map_err(|err| CallError::Domain(RemotePreimageSubmitError::V1(err)))
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Theme
+// ---------------------------------------------------------------------------
+
+impl<P> Theme for PlatformRuntimeHost<P>
+where
+    P: Platform + 'static,
+{
+    async fn subscribe(&self, _cx: &CallContext) -> Subscription<HostThemeSubscribeItem> {
+        let stream =
+            PlatformThemeHost::subscribe_theme(self.platform.as_ref()).filter_map(|item| async {
+                item.ok()
+                    .map(|theme| HostThemeSubscribeItem::V1(v01::HostThemeSubscribeItem { theme }))
+            });
+        Subscription::new(Box::pin(stream))
+    }
+}
 
 // `Notifications` methods are required (no default bodies), so the
 // unavailable stubs are spelled out. The v0.1 platform contract does not
@@ -970,7 +1035,7 @@ mod tests {
 
     impl ThemeHost for StubPlatform {
         fn subscribe_theme(&self) -> BoxStream<'static, Result<v01::Theme, v01::GenericError>> {
-            Box::pin(stream::empty())
+            Box::pin(stream::once(async { Ok(v01::Theme::Dark) }))
         }
     }
 
@@ -991,7 +1056,7 @@ mod tests {
             &self,
             _key: Vec<u8>,
         ) -> BoxStream<'static, Result<Option<Vec<u8>>, v01::GenericError>> {
-            Box::pin(stream::empty())
+            Box::pin(stream::once(async { Ok(Some(vec![9, 8, 7])) }))
         }
     }
 
@@ -1223,6 +1288,47 @@ mod tests {
             )) => assert_eq!(reason, "\"key\" must be between 1 and 32 bytes, got 0"),
             other => panic!("expected Unknown entropy error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn preimage_submit_confirms_and_delegates_to_platform() {
+        let host = PlatformRuntimeHost::new_compat(stub_platform(), test_spawner());
+        let cx = CallContext::new();
+        let request = RemotePreimageSubmitRequest::V1(vec![1, 2, 3]);
+        let response = futures::executor::block_on(Preimage::submit(&host, &cx, request)).unwrap();
+        assert_eq!(response, RemotePreimageSubmitResponse::V1(vec![1, 2, 3]));
+    }
+
+    #[test]
+    fn preimage_lookup_subscribe_maps_platform_values() {
+        let host = PlatformRuntimeHost::new_compat(stub_platform(), test_spawner());
+        let cx = CallContext::new();
+        let request =
+            RemotePreimageLookupSubscribeRequest::V1(v01::RemotePreimageLookupSubscribeRequest {
+                key: vec![0; 32],
+            });
+        let mut subscription = futures::executor::block_on(host.lookup_subscribe(&cx, request));
+        let item = futures::executor::block_on(subscription.next()).expect("preimage item");
+        assert_eq!(
+            item,
+            RemotePreimageLookupSubscribeItem::V1(v01::RemotePreimageLookupSubscribeItem {
+                value: Some(vec![9, 8, 7])
+            })
+        );
+    }
+
+    #[test]
+    fn theme_subscribe_maps_platform_values() {
+        let host = PlatformRuntimeHost::new_compat(stub_platform(), test_spawner());
+        let cx = CallContext::new();
+        let mut subscription = futures::executor::block_on(Theme::subscribe(&host, &cx));
+        let item = futures::executor::block_on(subscription.next()).expect("theme item");
+        assert_eq!(
+            item,
+            HostThemeSubscribeItem::V1(v01::HostThemeSubscribeItem {
+                theme: v01::Theme::Dark
+            })
+        );
     }
 
     #[test]
