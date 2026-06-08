@@ -5,7 +5,7 @@
 //! `@novasamatech/sdk-statement` request shapes in one place.
 
 use parity_scale_codec::{Compact, Decode, Encode};
-use schnorrkel::SecretKey;
+use schnorrkel::{PublicKey, SecretKey, Signature};
 use serde_json::Value;
 use serde_json::json;
 use thiserror::Error;
@@ -37,12 +37,20 @@ pub enum StatementStoreParseError {
     InvalidStatementScale(String),
     #[error("malformed statement-store frame: {0}")]
     Malformed(String),
+    #[error("invalid statement proof: {0}")]
+    InvalidStatementProof(String),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TopicFilterKind {
     MatchAll,
     MatchAny,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VerifiedStatementData {
+    pub data: Vec<u8>,
+    pub signer: [u8; 32],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
@@ -243,35 +251,23 @@ pub fn parse_new_statements(
 }
 
 pub fn decode_statement_data(statement: &[u8]) -> Result<Vec<u8>, StatementStoreParseError> {
-    let mut input = statement;
-    let fields: Vec<StatementField> = Decode::decode(&mut input)
-        .map_err(|err| StatementStoreParseError::InvalidStatementScale(err.to_string()))?;
-    if !input.is_empty() {
-        return Err(StatementStoreParseError::Malformed(
-            "statement has trailing bytes".to_string(),
-        ));
-    }
-    fields
-        .into_iter()
-        .find_map(|field| match field {
-            StatementField::Data(value) => Some(value),
-            _ => None,
-        })
-        .ok_or_else(|| StatementStoreParseError::Malformed("statement has no data".to_string()))
+    statement_data_from_fields(decode_statement_fields(statement)?)
+}
+
+pub fn decode_verified_statement_data(
+    statement: &[u8],
+    expected_signer: Option<[u8; 32]>,
+) -> Result<VerifiedStatementData, StatementStoreParseError> {
+    let fields = decode_statement_fields(statement)?;
+    let signer = verify_statement_proof(&fields, expected_signer)?;
+    let data = statement_data_from_fields(fields)?;
+    Ok(VerifiedStatementData { data, signer })
 }
 
 pub fn decode_signed_statement(
     statement: &[u8],
 ) -> Result<v01::SignedStatement, StatementStoreParseError> {
-    let mut input = statement;
-    let fields: Vec<StatementField> = Decode::decode(&mut input)
-        .map_err(|err| StatementStoreParseError::InvalidStatementScale(err.to_string()))?;
-    if !input.is_empty() {
-        return Err(StatementStoreParseError::Malformed(
-            "statement has trailing bytes".to_string(),
-        ));
-    }
-    signed_statement_from_fields(fields)
+    signed_statement_from_fields(decode_statement_fields(statement)?)
 }
 
 pub fn build_signed_session_request_statement(
@@ -346,6 +342,85 @@ pub fn statement_signing_payload(fields: &[StatementField]) -> Result<Vec<u8>, S
         Decode::decode(&mut input).map_err(|err| format!("invalid statement vector: {err}"))?;
     let compact_len = encoded.len() - input.len();
     Ok(encoded[compact_len..].to_vec())
+}
+
+fn decode_statement_fields(
+    statement: &[u8],
+) -> Result<Vec<StatementField>, StatementStoreParseError> {
+    let mut input = statement;
+    let fields: Vec<StatementField> = Decode::decode(&mut input)
+        .map_err(|err| StatementStoreParseError::InvalidStatementScale(err.to_string()))?;
+    if !input.is_empty() {
+        return Err(StatementStoreParseError::Malformed(
+            "statement has trailing bytes".to_string(),
+        ));
+    }
+    Ok(fields)
+}
+
+fn statement_data_from_fields(
+    fields: Vec<StatementField>,
+) -> Result<Vec<u8>, StatementStoreParseError> {
+    fields
+        .into_iter()
+        .find_map(|field| match field {
+            StatementField::Data(value) => Some(value),
+            _ => None,
+        })
+        .ok_or_else(|| StatementStoreParseError::Malformed("statement has no data".to_string()))
+}
+
+fn verify_statement_proof(
+    fields: &[StatementField],
+    expected_signer: Option<[u8; 32]>,
+) -> Result<[u8; 32], StatementStoreParseError> {
+    let mut proof = None;
+    let mut unsigned_fields = Vec::with_capacity(fields.len().saturating_sub(1));
+    for field in fields {
+        match field {
+            StatementField::Proof(StatementProof::Sr25519 { signature, signer }) => {
+                if proof.replace((*signature, *signer)).is_some() {
+                    return Err(StatementStoreParseError::InvalidStatementProof(
+                        "statement has duplicate proof".to_string(),
+                    ));
+                }
+            }
+            StatementField::Proof(_) => {
+                return Err(StatementStoreParseError::InvalidStatementProof(
+                    "statement proof is not sr25519".to_string(),
+                ));
+            }
+            field => unsigned_fields.push(field.clone()),
+        }
+    }
+    let (signature, signer) = proof.ok_or_else(|| {
+        StatementStoreParseError::InvalidStatementProof("statement has no proof".to_string())
+    })?;
+    if let Some(expected) = expected_signer
+        && signer != expected
+    {
+        return Err(StatementStoreParseError::InvalidStatementProof(
+            "statement proof signer does not match expected peer".to_string(),
+        ));
+    }
+
+    unsigned_fields.sort_by_key(statement_field_sort_index);
+    let payload =
+        statement_signing_payload(&unsigned_fields).map_err(StatementStoreParseError::Malformed)?;
+    let public = PublicKey::from_bytes(&signer).map_err(|err| {
+        StatementStoreParseError::InvalidStatementProof(format!("invalid sr25519 signer: {err}"))
+    })?;
+    let signature = Signature::from_bytes(&signature).map_err(|err| {
+        StatementStoreParseError::InvalidStatementProof(format!("invalid sr25519 signature: {err}"))
+    })?;
+    public
+        .verify_simple(SR25519_SIGNING_CONTEXT, &payload, &signature)
+        .map_err(|err| {
+            StatementStoreParseError::InvalidStatementProof(format!(
+                "sr25519 signature verification failed: {err}"
+            ))
+        })?;
+    Ok(signer)
 }
 
 pub fn statement_fields_from_v01(statement: v01::Statement) -> Result<Vec<StatementField>, String> {
@@ -770,6 +845,53 @@ mod tests {
         public
             .verify_simple(SR25519_SIGNING_CONTEXT, &payload, &signature)
             .unwrap();
+    }
+
+    #[test]
+    fn verified_statement_data_accepts_valid_sr25519_proof() {
+        let session = test_session();
+        let statement =
+            build_signed_session_request_statement(&session, vec![0xde, 0xad], 42).unwrap();
+
+        let verified =
+            decode_verified_statement_data(&statement, Some(session.ss_public_key)).unwrap();
+
+        assert_eq!(verified.signer, session.ss_public_key);
+        assert_eq!(verified.data, vec![0xde, 0xad]);
+    }
+
+    #[test]
+    fn verified_statement_data_rejects_tampered_signature() {
+        let session = test_session();
+        let statement =
+            build_signed_session_request_statement(&session, vec![0xde, 0xad], 42).unwrap();
+        let mut fields = Vec::<StatementField>::decode(&mut statement.as_slice()).unwrap();
+        let StatementField::Proof(StatementProof::Sr25519 { signature, .. }) = &mut fields[0]
+        else {
+            panic!("expected sr25519 proof");
+        };
+        signature[0] ^= 0xff;
+
+        let err = decode_verified_statement_data(&fields.encode(), Some(session.ss_public_key))
+            .unwrap_err();
+
+        assert!(
+            matches!(err, StatementStoreParseError::InvalidStatementProof(reason) if reason.contains("signature verification failed"))
+        );
+    }
+
+    #[test]
+    fn verified_statement_data_rejects_wrong_expected_signer() {
+        let session = test_session();
+        let statement =
+            build_signed_session_request_statement(&session, vec![0xde, 0xad], 42).unwrap();
+
+        assert_eq!(
+            decode_verified_statement_data(&statement, Some([0xaa; 32])).unwrap_err(),
+            StatementStoreParseError::InvalidStatementProof(
+                "statement proof signer does not match expected peer".to_string()
+            )
+        );
     }
 
     #[test]

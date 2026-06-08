@@ -37,7 +37,7 @@ use crate::host_logic::sso_pairing::{
 };
 use crate::host_logic::statement_store::{
     MAX_MATCH_ALL_TOPICS, MAX_MATCH_ANY_TOPICS, TopicFilterKind, decode_signed_statement,
-    decode_statement_data, parse_new_statements, parse_submit_ack, parse_subscribe_ack,
+    decode_verified_statement_data, parse_new_statements, parse_submit_ack, parse_subscribe_ack,
     sign_statement_fields, signed_statement_to_scale, statement_fields_from_v01,
     statement_proof_to_v01, submit_statement_request, subscribe_match_all_request,
     subscribe_match_any_request, unsubscribe_request,
@@ -1198,9 +1198,10 @@ where
                 let statement = statement_result.map_err(|reason| CallError::HostFailure {
                     reason,
                 })?;
-                let payload = decode_statement_data(&statement).map_err(|err| CallError::HostFailure {
+                let verified = decode_verified_statement_data(&statement, None).map_err(|err| CallError::HostFailure {
                     reason: err.to_string(),
                 })?;
+                let payload = verified.data;
                 let handshake = decode_app_handshake_data(&payload).map_err(|reason| CallError::HostFailure {
                     reason,
                 })?;
@@ -1214,6 +1215,11 @@ where
                     &encrypted_message,
                 )
                 .map_err(|reason| CallError::HostFailure { reason })?;
+                if verified.signer != answer.identity_account_id {
+                    return Err(CallError::HostFailure {
+                        reason: "pairing statement proof signer does not match wallet identity".to_string(),
+                    });
+                }
                 let sso = establish_sso_session_info(&bootstrap, &answer)
                     .map_err(|reason| CallError::HostFailure { reason })?;
                 let session = SessionInfo {
@@ -2678,6 +2684,7 @@ mod tests {
         let mut session = session_info();
         let mini_secret = MiniSecretKey::from_bytes(&[7; 32]).unwrap();
         let keypair = mini_secret.expand_to_keypair(ExpansionMode::Ed25519);
+        let (_, peer_public_key) = peer_statement_keypair();
         let core_secret = P256SecretKey::from_slice(&[1; 32]).unwrap();
         let peer_secret = P256SecretKey::from_slice(&[2; 32]).unwrap();
         session.sso = Some(crate::host_logic::session::SsoSessionInfo {
@@ -2690,7 +2697,7 @@ mod tests {
                 .as_bytes()
                 .try_into()
                 .unwrap(),
-            identity_account_id: [3; 32],
+            identity_account_id: peer_public_key,
             session_id_own: [4; 32],
             session_id_peer: [5; 32],
             request_channel: [6; 32],
@@ -2699,6 +2706,25 @@ mod tests {
         });
         session.entropy_secret = Some(keypair.secret.to_bytes().to_vec());
         session
+    }
+
+    fn peer_statement_keypair() -> ([u8; 64], [u8; 32]) {
+        let mini_secret = MiniSecretKey::from_bytes(&[9; 32]).unwrap();
+        let keypair = mini_secret.expand_to_keypair(ExpansionMode::Ed25519);
+        (keypair.secret.to_bytes(), keypair.public.to_bytes())
+    }
+
+    fn signed_test_statement(data: Vec<u8>) -> Vec<u8> {
+        let (secret, public) = peer_statement_keypair();
+        crate::host_logic::statement_store::sign_statement_fields(
+            secret,
+            public,
+            vec![crate::host_logic::statement_store::StatementField::Data(
+                data,
+            )],
+        )
+        .unwrap()
+        .encode()
     }
 
     fn submitted_remote_message(
@@ -2862,10 +2888,7 @@ mod tests {
             nonce,
         )
         .unwrap();
-        vec![crate::host_logic::statement_store::StatementField::Data(
-            encrypted,
-        )]
-        .encode()
+        signed_test_statement(encrypted)
     }
 
     fn sign_response_message(
@@ -4558,10 +4581,7 @@ mod tests {
             encrypted_message: vec![0xde, 0xad],
             public_key: wallet_ephemeral_public_bytes,
         };
-        let statement = vec![crate::host_logic::statement_store::StatementField::Data(
-            handshake.encode(),
-        )]
-        .encode();
+        let statement = signed_test_statement(handshake.encode());
         let notification = format!(
             r#"{{"jsonrpc":"2.0","method":"statement_subscribeStatement","params":{{"subscription":"remote-sub","result":{{"event":"newStatements","data":{{"statements":["0x{}"],"remaining":0}}}}}}}}"#,
             hex::encode(statement)

@@ -12,7 +12,7 @@ use crate::host_logic::sso_pairing::{
     encrypt_session_statement_data, encrypt_session_statement_data_with_nonce,
 };
 use crate::host_logic::statement_store::{
-    build_signed_session_request_statement, decode_statement_data,
+    build_signed_session_request_statement, decode_verified_statement_data,
 };
 
 const SSO_RESPONSE_CODE_SUCCESS: u8 = 0;
@@ -302,7 +302,9 @@ pub fn decode_sso_session_statement(
     expected_statement_request_id: &str,
     expected_remote_message_id: &str,
 ) -> Result<Option<SsoSessionStatement>, String> {
-    let encrypted = decode_statement_data(statement).map_err(|err| err.to_string())?;
+    let encrypted = decode_verified_statement_data(statement, Some(session.identity_account_id))
+        .map_err(|err| err.to_string())?
+        .data;
     let data = decrypt_session_statement_data(session, &encrypted)?;
     match data {
         SsoStatementData::Response {
