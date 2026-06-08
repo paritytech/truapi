@@ -27,6 +27,59 @@ public enum TrUAPIHost {
     public static let version = "0.1.0"
 }
 
+/// Deeplink scheme used when the Rust core builds SSO pairing payloads.
+public enum PairingDeeplinkScheme: Sendable {
+    case polkadotApp
+    case polkadotAppDev
+
+    fileprivate var native: NativePairingDeeplinkScheme {
+        switch self {
+        case .polkadotApp:
+            return .polkadotApp
+        case .polkadotAppDev:
+            return .polkadotAppDev
+        }
+    }
+}
+
+/// Static product and pairing config supplied before the Rust core handles
+/// product calls. One core instance represents one product identity.
+public struct RuntimeConfig: Sendable {
+    public let productLabel: String
+    public let productId: String
+    public let siteId: String
+    public let hostMetadataUrl: String
+    public let peopleChainGenesisHash: Data
+    public let pairingDeeplinkScheme: PairingDeeplinkScheme
+
+    public init(
+        productLabel: String,
+        productId: String,
+        siteId: String,
+        hostMetadataUrl: String,
+        peopleChainGenesisHash: Data,
+        pairingDeeplinkScheme: PairingDeeplinkScheme = .polkadotApp
+    ) {
+        self.productLabel = productLabel
+        self.productId = productId
+        self.siteId = siteId
+        self.hostMetadataUrl = hostMetadataUrl
+        self.peopleChainGenesisHash = peopleChainGenesisHash
+        self.pairingDeeplinkScheme = pairingDeeplinkScheme
+    }
+
+    fileprivate var native: NativeRuntimeConfig {
+        NativeRuntimeConfig(
+            productLabel: productLabel,
+            productId: productId,
+            siteId: siteId,
+            hostMetadataUrl: hostMetadataUrl,
+            peopleChainGenesisHash: peopleChainGenesisHash,
+            pairingDeeplinkScheme: pairingDeeplinkScheme.native
+        )
+    }
+}
+
 /// Bootstrap helper for the native localhost WebSocket bridge that the Rust
 /// core stands up via `NativeTrUApiCore.startWsBridge(bindPort:)` when the
 /// cdylib is built with the `ws-bridge` feature.
@@ -334,6 +387,15 @@ public final class TrUAPIHostCore {
         let adapter = HostCallbackAdapter(bridge: bridge)
         self.callbackRetainer = adapter
         self.inner = NativeTrUApiCore(callbacks: adapter)
+    }
+
+    public init(bridge: HostBridge, runtimeConfig: RuntimeConfig) throws {
+        let adapter = HostCallbackAdapter(bridge: bridge)
+        self.callbackRetainer = adapter
+        self.inner = try NativeTrUApiCore.withRuntimeConfig(
+            callbacks: adapter,
+            runtimeConfig: runtimeConfig.native
+        )
     }
 
     /// Start the localhost WebSocket bridge. Requires the `ws-bridge`

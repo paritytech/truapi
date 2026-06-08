@@ -84,6 +84,8 @@ import android.os.Looper
 import android.webkit.WebView
 import io.parity.truapi.HostBridge
 import io.parity.truapi.HostStorage
+import io.parity.truapi.PairingDeeplinkScheme
+import io.parity.truapi.RuntimeConfig
 import io.parity.truapi.TrUAPIHostCore
 import uniffi.truapi_server.HostTheme
 import java.util.concurrent.CountDownLatch
@@ -142,7 +144,15 @@ class MyBridge(private val webView: WebView) : HostBridge {
 }
 
 val webView: WebView = existingWebView
-val core = TrUAPIHostCore(MyBridge(webView))
+val runtimeConfig = RuntimeConfig(
+    productLabel = "my-product",
+    productId = "my-product.dot",
+    siteId = "host.example",
+    hostMetadataUrl = "https://host.example/metadata.json",
+    peopleChainGenesisHash = ByteArray(32),
+    pairingDeeplinkScheme = PairingDeeplinkScheme.POLKADOT_APP,
+)
+val core = TrUAPIHostCore(MyBridge(webView), runtimeConfig)
 val endpoint = core.startWsBridge()
 val wsUrl = "ws://127.0.0.1:${endpoint.port.toInt()}/?t=${endpoint.token}"
 

@@ -28,12 +28,50 @@ import uniffi.truapi_server.HostRejection
 import uniffi.truapi_server.HostStorageException
 import uniffi.truapi_server.HostTheme
 import uniffi.truapi_server.NativeTrUApiCore
+import uniffi.truapi_server.NativePairingDeeplinkScheme as UniFfiNativePairingDeeplinkScheme
+import uniffi.truapi_server.NativeRuntimeConfig as UniFfiNativeRuntimeConfig
+import uniffi.truapi_server.NativeRuntimeConfigException
 import uniffi.truapi_server.WsBridgeEndpoint
 import uniffi.truapi_server.WsBridgeStartException
 
 /** Package metadata. */
 object TrUAPIHost {
     const val VERSION = "0.1.0"
+}
+
+/** Deeplink scheme used when the Rust core builds SSO pairing payloads. */
+enum class PairingDeeplinkScheme {
+    POLKADOT_APP,
+    POLKADOT_APP_DEV;
+
+    internal fun toNative(): UniFfiNativePairingDeeplinkScheme =
+        when (this) {
+            POLKADOT_APP -> UniFfiNativePairingDeeplinkScheme.POLKADOT_APP
+            POLKADOT_APP_DEV -> UniFfiNativePairingDeeplinkScheme.POLKADOT_APP_DEV
+        }
+}
+
+/**
+ * Static product and pairing config supplied before the Rust core handles
+ * product calls. One core instance represents one product identity.
+ */
+data class RuntimeConfig(
+    val productLabel: String,
+    val productId: String,
+    val siteId: String,
+    val hostMetadataUrl: String,
+    val peopleChainGenesisHash: ByteArray,
+    val pairingDeeplinkScheme: PairingDeeplinkScheme = PairingDeeplinkScheme.POLKADOT_APP,
+) {
+    internal fun toNative(): UniFfiNativeRuntimeConfig =
+        UniFfiNativeRuntimeConfig(
+            productLabel = productLabel,
+            productId = productId,
+            siteId = siteId,
+            hostMetadataUrl = hostMetadataUrl,
+            peopleChainGenesisHash = peopleChainGenesisHash,
+            pairingDeeplinkScheme = pairingDeeplinkScheme.toNative(),
+        )
 }
 
 /**
@@ -289,11 +327,24 @@ private class HostCallbackAdapter(private val bridge: HostBridge) : HostCallback
  * (typically via a query string or page-bootstrap hook). The product wires
  * that URL into `@parity/truapi`'s `createWebSocketProvider`.
  */
-class TrUAPIHostCore(bridge: HostBridge) : AutoCloseable {
+class TrUAPIHostCore private constructor(
+    bridge: HostBridge,
+    runtimeConfig: UniFfiNativeRuntimeConfig?,
+) : AutoCloseable {
+    constructor(bridge: HostBridge) : this(bridge, null)
+
+    @Throws(NativeRuntimeConfigException::class)
+    constructor(bridge: HostBridge, runtimeConfig: RuntimeConfig) : this(
+        bridge,
+        runtimeConfig.toNative(),
+    )
+
     // Co-owns the adapter alongside the generated FfiConverter handle map,
     // which is what actually keeps the callback object alive for the core.
     private val callbackRetainer: HostCallbacks = HostCallbackAdapter(bridge)
-    private val inner: NativeTrUApiCore = NativeTrUApiCore(callbackRetainer)
+    private val inner: NativeTrUApiCore =
+        runtimeConfig?.let { NativeTrUApiCore.withRuntimeConfig(callbackRetainer, it) }
+            ?: NativeTrUApiCore(callbackRetainer)
 
     /**
      * Start the localhost WebSocket bridge (requires the `ws-bridge` feature

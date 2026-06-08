@@ -103,7 +103,15 @@ final class MyBridge: HostBridge, @unchecked Sendable {
 }
 
 let bridge = MyBridge()
-let core = TrUAPIHostCore(bridge: bridge)
+let runtimeConfig = RuntimeConfig(
+    productLabel: "my-product",
+    productId: "my-product.dot",
+    siteId: "host.example",
+    hostMetadataUrl: "https://host.example/metadata.json",
+    peopleChainGenesisHash: Data(repeating: 0, count: 32),
+    pairingDeeplinkScheme: .polkadotApp
+)
+let core = try TrUAPIHostCore(bridge: bridge, runtimeConfig: runtimeConfig)
 let endpoint = try core.startWsBridge()
 
 // Call these from host/platform observers so native subscriptions see updates
