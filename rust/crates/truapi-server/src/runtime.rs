@@ -22,12 +22,18 @@ use crate::host_logic::product_account::{
 use crate::host_logic::session::{
     SessionInfo, SessionState, decode_persisted_session, encode_persisted_session,
 };
+use crate::host_logic::sso_messages::{
+    OnExistingAllowancePolicy, RemoteMessage, alias_request_message,
+    build_outgoing_request_statement, create_transaction_message, resource_allocation_message,
+    sign_payload_message, sign_raw_message,
+};
 use crate::host_logic::sso_pairing::{
     AppHandshakeData, create_pairing_bootstrap, decode_app_handshake_data,
     decrypt_handshake_answer, establish_sso_session_info,
 };
 use crate::host_logic::statement_store::{
-    decode_statement_data, parse_new_statements, parse_subscribe_ack, subscribe_match_all_request,
+    decode_statement_data, parse_new_statements, parse_subscribe_ack, submit_statement_request,
+    subscribe_match_all_request,
 };
 use crate::subscription::Spawner;
 
@@ -113,6 +119,7 @@ use truapi_platform::{
 };
 
 const PAIRING_SUBSCRIBE_REQUEST_ID: &str = "truapi:sso-pairing:1";
+const DEFAULT_SSO_STATEMENT_EXPIRY_SECS: u64 = 7 * 24 * 60 * 60;
 
 /// Adapter that exposes a [`truapi_platform::Platform`] through the
 /// `truapi::api::*` trait set the generated dispatcher routes to.
@@ -217,6 +224,37 @@ where
             .map_err(|err| format!("permission storage failed: {err:?}"))
     }
 
+    async fn submit_sso_remote_message(
+        &self,
+        cx: &CallContext,
+        session: &SessionInfo,
+        action: &str,
+        message: RemoteMessage,
+    ) -> Result<(), String> {
+        let sso = session
+            .sso
+            .as_ref()
+            .ok_or_else(|| "No SSO session state".to_string())?;
+        let message_id = sso_message_id(cx, action);
+        let statement = build_outgoing_request_statement(
+            sso,
+            message_id.clone(),
+            vec![message],
+            fresh_statement_expiry(),
+        )?;
+        let connection = PlatformChainProvider::connect(
+            self.platform.as_ref(),
+            self.runtime_config.people_chain_genesis_hash.to_vec(),
+        )
+        .await
+        .map_err(|err| format!("SSO statement-store connect failed: {err:?}"))?;
+        connection.send(submit_statement_request(
+            &format!("truapi:sso-submit:{message_id}"),
+            &statement,
+        ));
+        Ok(())
+    }
+
     fn validate_legacy_address_signer(
         &self,
         session: &SessionInfo,
@@ -251,6 +289,34 @@ where
             })
         }
     }
+}
+
+fn sso_message_id(cx: &CallContext, action: &str) -> String {
+    if cx.request_id().is_empty() {
+        format!("truapi:sso:{action}")
+    } else {
+        cx.request_id().to_string()
+    }
+}
+
+fn fresh_statement_expiry() -> u64 {
+    let timestamp = current_unix_secs().saturating_add(DEFAULT_SSO_STATEMENT_EXPIRY_SECS);
+    timestamp << 32
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn current_unix_secs() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn current_unix_secs() -> u64 {
+    (js_sys::Date::now() / 1000.0) as u64
 }
 
 /// Adapter from `truapi_platform::ChainProvider` into the
@@ -479,17 +545,17 @@ where
 
     async fn get_account_alias(
         &self,
-        _cx: &CallContext,
+        cx: &CallContext,
         request: HostAccountGetAliasRequest,
     ) -> Result<HostAccountGetAliasResponse, CallError<HostAccountGetAliasError>> {
         let HostAccountGetAliasRequest::V1(v01::HostAccountGetAliasRequest { product_account_id }) =
             request;
 
-        if self.session_state.current().is_none() {
+        let Some(session) = self.session_state.current() else {
             return Err(CallError::Domain(HostAccountGetAliasError::V1(
                 v01::HostAccountGetError::NotConnected,
             )));
-        }
+        };
 
         if !is_product_identifier(&product_account_id.dot_ns_identifier) {
             return Err(CallError::Domain(HostAccountGetAliasError::V1(
@@ -517,9 +583,23 @@ where
             }
         }
 
+        let message_id = sso_message_id(cx, "account-alias");
+        let message = alias_request_message(
+            message_id.clone(),
+            product_account_id,
+            self.runtime_config.product_id.clone(),
+        );
+        self.submit_sso_remote_message(cx, &session, "account-alias", message)
+            .await
+            .map_err(|reason| {
+                CallError::Domain(HostAccountGetAliasError::V1(
+                    v01::HostAccountGetError::Unknown { reason },
+                ))
+            })?;
+
         Err(CallError::Domain(HostAccountGetAliasError::V1(
             v01::HostAccountGetError::Unknown {
-                reason: "SSO account alias not implemented".to_string(),
+                reason: "SSO account alias response wait not implemented".to_string(),
             },
         )))
     }
@@ -758,7 +838,7 @@ where
 {
     async fn sign_payload(
         &self,
-        _cx: &CallContext,
+        cx: &CallContext,
         request: HostSignPayloadRequest,
     ) -> Result<HostSignPayloadResponse, CallError<HostSignPayloadError>> {
         let HostSignPayloadRequest::V1(inner) = request;
@@ -776,32 +856,43 @@ where
             }
             Err(reason) => return Err(CallError::HostFailure { reason }),
         }
-        if self.session_state.current().is_none() {
+        let Some(session) = self.session_state.current() else {
             return Err(CallError::Domain(HostSignPayloadError::V1(
                 v01::HostSignPayloadError::Rejected,
             )));
-        }
-        let confirmed =
-            PlatformUserConfirmation::confirm_sign_payload(self.platform.as_ref(), inner.encode())
-                .await
-                .map_err(|err| CallError::HostFailure {
-                    reason: format!("sign payload confirmation failed: {err:?}"),
-                })?;
+        };
+        let confirmed = PlatformUserConfirmation::confirm_sign_payload(
+            self.platform.as_ref(),
+            inner.clone().encode(),
+        )
+        .await
+        .map_err(|err| CallError::HostFailure {
+            reason: format!("sign payload confirmation failed: {err:?}"),
+        })?;
         if !confirmed {
             return Err(CallError::Domain(HostSignPayloadError::V1(
                 v01::HostSignPayloadError::Rejected,
             )));
         }
+        let message_id = sso_message_id(cx, "sign-payload");
+        let message = sign_payload_message(message_id, inner);
+        self.submit_sso_remote_message(cx, &session, "sign-payload", message)
+            .await
+            .map_err(|reason| {
+                CallError::Domain(HostSignPayloadError::V1(
+                    v01::HostSignPayloadError::Unknown { reason },
+                ))
+            })?;
         Err(CallError::Domain(HostSignPayloadError::V1(
             v01::HostSignPayloadError::Unknown {
-                reason: "SSO signing not implemented".to_string(),
+                reason: "SSO signing response wait not implemented".to_string(),
             },
         )))
     }
 
     async fn sign_raw(
         &self,
-        _cx: &CallContext,
+        cx: &CallContext,
         request: HostSignRawRequest,
     ) -> Result<HostSignRawResponse, CallError<HostSignRawError>> {
         let HostSignRawRequest::V1(inner) = request;
@@ -810,32 +901,43 @@ where
                 v01::HostSignPayloadError::PermissionDenied,
             )));
         }
-        if self.session_state.current().is_none() {
+        let Some(session) = self.session_state.current() else {
             return Err(CallError::Domain(HostSignRawError::V1(
                 v01::HostSignPayloadError::Rejected,
             )));
-        }
-        let confirmed =
-            PlatformUserConfirmation::confirm_sign_raw(self.platform.as_ref(), inner.encode())
-                .await
-                .map_err(|err| CallError::HostFailure {
-                    reason: format!("sign raw confirmation failed: {err:?}"),
-                })?;
+        };
+        let confirmed = PlatformUserConfirmation::confirm_sign_raw(
+            self.platform.as_ref(),
+            inner.clone().encode(),
+        )
+        .await
+        .map_err(|err| CallError::HostFailure {
+            reason: format!("sign raw confirmation failed: {err:?}"),
+        })?;
         if !confirmed {
             return Err(CallError::Domain(HostSignRawError::V1(
                 v01::HostSignPayloadError::Rejected,
             )));
         }
+        let message_id = sso_message_id(cx, "sign-raw");
+        let message = sign_raw_message(message_id, inner);
+        self.submit_sso_remote_message(cx, &session, "sign-raw", message)
+            .await
+            .map_err(|reason| {
+                CallError::Domain(HostSignRawError::V1(v01::HostSignPayloadError::Unknown {
+                    reason,
+                }))
+            })?;
         Err(CallError::Domain(HostSignRawError::V1(
             v01::HostSignPayloadError::Unknown {
-                reason: "SSO signing not implemented".to_string(),
+                reason: "SSO signing response wait not implemented".to_string(),
             },
         )))
     }
 
     async fn create_transaction(
         &self,
-        _cx: &CallContext,
+        cx: &CallContext,
         request: HostCreateTransactionRequest,
     ) -> Result<HostCreateTransactionResponse, CallError<HostCreateTransactionError>> {
         let HostCreateTransactionRequest::V1(inner) = request;
@@ -853,14 +955,14 @@ where
             }
             Err(reason) => return Err(CallError::HostFailure { reason }),
         }
-        if self.session_state.current().is_none() {
+        let Some(session) = self.session_state.current() else {
             return Err(CallError::Domain(HostCreateTransactionError::V1(
                 v01::HostCreateTransactionError::Rejected,
             )));
-        }
+        };
         let confirmed = PlatformUserConfirmation::confirm_create_transaction(
             self.platform.as_ref(),
-            inner.encode(),
+            inner.clone().encode(),
         )
         .await
         .map_err(|err| CallError::HostFailure {
@@ -871,16 +973,25 @@ where
                 v01::HostCreateTransactionError::Rejected,
             )));
         }
+        let message_id = sso_message_id(cx, "create-transaction");
+        let message = create_transaction_message(message_id, inner);
+        self.submit_sso_remote_message(cx, &session, "create-transaction", message)
+            .await
+            .map_err(|reason| {
+                CallError::Domain(HostCreateTransactionError::V1(
+                    v01::HostCreateTransactionError::Unknown { reason },
+                ))
+            })?;
         Err(CallError::Domain(HostCreateTransactionError::V1(
             v01::HostCreateTransactionError::Unknown {
-                reason: "SSO transaction creation not implemented".to_string(),
+                reason: "SSO transaction response wait not implemented".to_string(),
             },
         )))
     }
 
     async fn sign_payload_with_legacy_account(
         &self,
-        _cx: &CallContext,
+        cx: &CallContext,
         request: HostSignPayloadWithLegacyAccountRequest,
     ) -> Result<
         HostSignPayloadWithLegacyAccountResponse,
@@ -905,27 +1016,47 @@ where
             }
             Err(reason) => return Err(CallError::HostFailure { reason }),
         }
-        let confirmed =
-            PlatformUserConfirmation::confirm_sign_payload(self.platform.as_ref(), inner.encode())
-                .await
-                .map_err(|err| CallError::HostFailure {
-                    reason: format!("sign payload confirmation failed: {err:?}"),
-                })?;
+        let confirmed = PlatformUserConfirmation::confirm_sign_payload(
+            self.platform.as_ref(),
+            inner.clone().encode(),
+        )
+        .await
+        .map_err(|err| CallError::HostFailure {
+            reason: format!("sign payload confirmation failed: {err:?}"),
+        })?;
         if !confirmed {
             return Err(CallError::Domain(
                 HostSignPayloadWithLegacyAccountError::V1(v01::HostSignPayloadError::Rejected),
             ));
         }
+        let message_id = sso_message_id(cx, "legacy-sign-payload");
+        let message = sign_payload_message(
+            message_id,
+            v01::HostSignPayloadRequest {
+                account: v01::ProductAccountId {
+                    dot_ns_identifier: self.runtime_config.product_id.clone(),
+                    derivation_index: 0,
+                },
+                payload: inner.payload,
+            },
+        );
+        self.submit_sso_remote_message(cx, &session, "legacy-sign-payload", message)
+            .await
+            .map_err(|reason| {
+                CallError::Domain(HostSignPayloadWithLegacyAccountError::V1(
+                    v01::HostSignPayloadError::Unknown { reason },
+                ))
+            })?;
         Err(CallError::Domain(
             HostSignPayloadWithLegacyAccountError::V1(v01::HostSignPayloadError::Unknown {
-                reason: "SSO signing not implemented".to_string(),
+                reason: "SSO signing response wait not implemented".to_string(),
             }),
         ))
     }
 
     async fn sign_raw_with_legacy_account(
         &self,
-        _cx: &CallContext,
+        cx: &CallContext,
         request: HostSignRawWithLegacyAccountRequest,
     ) -> Result<HostSignRawWithLegacyAccountResponse, CallError<HostSignRawWithLegacyAccountError>>
     {
@@ -937,27 +1068,47 @@ where
         };
         self.validate_legacy_address_signer(&session, &inner.signer)
             .map_err(|err| CallError::Domain(HostSignRawWithLegacyAccountError::V1(err)))?;
-        let confirmed =
-            PlatformUserConfirmation::confirm_sign_raw(self.platform.as_ref(), inner.encode())
-                .await
-                .map_err(|err| CallError::HostFailure {
-                    reason: format!("sign raw confirmation failed: {err:?}"),
-                })?;
+        let confirmed = PlatformUserConfirmation::confirm_sign_raw(
+            self.platform.as_ref(),
+            inner.clone().encode(),
+        )
+        .await
+        .map_err(|err| CallError::HostFailure {
+            reason: format!("sign raw confirmation failed: {err:?}"),
+        })?;
         if !confirmed {
             return Err(CallError::Domain(HostSignRawWithLegacyAccountError::V1(
                 v01::HostSignPayloadError::Rejected,
             )));
         }
+        let message_id = sso_message_id(cx, "legacy-sign-raw");
+        let message = sign_raw_message(
+            message_id,
+            v01::HostSignRawRequest {
+                account: v01::ProductAccountId {
+                    dot_ns_identifier: self.runtime_config.product_id.clone(),
+                    derivation_index: 0,
+                },
+                payload: inner.payload,
+            },
+        );
+        self.submit_sso_remote_message(cx, &session, "legacy-sign-raw", message)
+            .await
+            .map_err(|reason| {
+                CallError::Domain(HostSignRawWithLegacyAccountError::V1(
+                    v01::HostSignPayloadError::Unknown { reason },
+                ))
+            })?;
         Err(CallError::Domain(HostSignRawWithLegacyAccountError::V1(
             v01::HostSignPayloadError::Unknown {
-                reason: "SSO signing not implemented".to_string(),
+                reason: "SSO signing response wait not implemented".to_string(),
             },
         )))
     }
 
     async fn create_transaction_with_legacy_account(
         &self,
-        _cx: &CallContext,
+        cx: &CallContext,
         request: HostCreateTransactionWithLegacyAccountRequest,
     ) -> Result<
         HostCreateTransactionWithLegacyAccountResponse,
@@ -988,7 +1139,7 @@ where
         }
         let confirmed = PlatformUserConfirmation::confirm_create_transaction(
             self.platform.as_ref(),
-            inner.encode(),
+            inner.clone().encode(),
         )
         .await
         .map_err(|err| CallError::HostFailure {
@@ -1001,10 +1152,31 @@ where
                 ),
             ));
         }
+        let message_id = sso_message_id(cx, "legacy-create-transaction");
+        let message = create_transaction_message(
+            message_id,
+            v01::ProductAccountTxPayload {
+                signer: v01::ProductAccountId {
+                    dot_ns_identifier: self.runtime_config.product_id.clone(),
+                    derivation_index: 0,
+                },
+                genesis_hash: inner.genesis_hash,
+                call_data: inner.call_data,
+                extensions: inner.extensions,
+                tx_ext_version: inner.tx_ext_version,
+            },
+        );
+        self.submit_sso_remote_message(cx, &session, "legacy-create-transaction", message)
+            .await
+            .map_err(|reason| {
+                CallError::Domain(HostCreateTransactionWithLegacyAccountError::V1(
+                    v01::HostCreateTransactionError::Unknown { reason },
+                ))
+            })?;
         Err(CallError::Domain(
             HostCreateTransactionWithLegacyAccountError::V1(
                 v01::HostCreateTransactionError::Unknown {
-                    reason: "SSO transaction creation not implemented".to_string(),
+                    reason: "SSO transaction response wait not implemented".to_string(),
                 },
             ),
         ))
@@ -1224,22 +1396,22 @@ where
 {
     async fn request(
         &self,
-        _cx: &CallContext,
+        cx: &CallContext,
         request: HostRequestResourceAllocationRequest,
     ) -> Result<HostRequestResourceAllocationResponse, CallError<HostRequestResourceAllocationError>>
     {
         let HostRequestResourceAllocationRequest::V1(inner) = request;
-        if self.session_state.current().is_none() {
+        let Some(session) = self.session_state.current() else {
             return Err(CallError::Domain(HostRequestResourceAllocationError::V1(
                 v01::ResourceAllocationError::Unknown {
                     reason: "No active session".to_string(),
                 },
             )));
-        }
+        };
 
         let confirmed = PlatformUserConfirmation::confirm_resource_allocation(
             self.platform.as_ref(),
-            inner.encode(),
+            inner.clone().encode(),
         )
         .await
         .map_err(|err| CallError::HostFailure {
@@ -1252,10 +1424,24 @@ where
                 },
             )));
         }
+        let message_id = sso_message_id(cx, "resource-allocation");
+        let message = resource_allocation_message(
+            message_id,
+            self.runtime_config.product_id.clone(),
+            inner.resources,
+            OnExistingAllowancePolicy::Increase,
+        );
+        self.submit_sso_remote_message(cx, &session, "resource-allocation", message)
+            .await
+            .map_err(|reason| {
+                CallError::Domain(HostRequestResourceAllocationError::V1(
+                    v01::ResourceAllocationError::Unknown { reason },
+                ))
+            })?;
 
         Err(CallError::Domain(HostRequestResourceAllocationError::V1(
             v01::ResourceAllocationError::Unknown {
-                reason: "SSO resource allocation not implemented".to_string(),
+                reason: "SSO resource allocation response wait not implemented".to_string(),
             },
         )))
     }
@@ -1414,8 +1600,10 @@ mod tests {
     use super::*;
     use crate::chain_runtime::thread_per_task_spawner;
     use futures::stream::{self, BoxStream};
+    use p256::SecretKey as P256SecretKey;
     use p256::elliptic_curve::sec1::ToEncodedPoint;
-    use parity_scale_codec::Encode;
+    use parity_scale_codec::{Decode, Encode};
+    use schnorrkel::{ExpansionMode, MiniSecretKey};
     use std::sync::Mutex;
     use truapi::v01;
     use truapi_platform::{
@@ -1505,6 +1693,61 @@ mod tests {
             lite_username: Some("alice".to_string()),
             full_username: Some("Alice Smith".to_string()),
         }
+    }
+
+    fn sso_session_info() -> crate::host_logic::session::SessionInfo {
+        let mut session = session_info();
+        let mini_secret = MiniSecretKey::from_bytes(&[7; 32]).unwrap();
+        let keypair = mini_secret.expand_to_keypair(ExpansionMode::Ed25519);
+        let core_secret = P256SecretKey::from_slice(&[1; 32]).unwrap();
+        let peer_secret = P256SecretKey::from_slice(&[2; 32]).unwrap();
+        session.sso = Some(crate::host_logic::session::SsoSessionInfo {
+            ss_secret: keypair.secret.to_bytes(),
+            ss_public_key: keypair.public.to_bytes(),
+            enc_secret: core_secret.to_bytes().into(),
+            peer_enc_pubkey: peer_secret
+                .public_key()
+                .to_encoded_point(false)
+                .as_bytes()
+                .try_into()
+                .unwrap(),
+            identity_account_id: [3; 32],
+            session_id_own: [4; 32],
+            session_id_peer: [5; 32],
+            request_channel: [6; 32],
+            response_channel: [7; 32],
+            peer_request_channel: [8; 32],
+        });
+        session.entropy_secret = Some(keypair.secret.to_bytes().to_vec());
+        session
+    }
+
+    fn submitted_remote_message(
+        platform: &Arc<StubPlatform>,
+        session: &crate::host_logic::session::SessionInfo,
+    ) -> crate::host_logic::sso_messages::RemoteMessage {
+        let sent = platform.sent_rpc.lock().expect("rpc list mutex poisoned");
+        let submit = sent
+            .iter()
+            .rev()
+            .find(|request| request.contains("\"statement_submit\""))
+            .expect("statement_submit request should be sent");
+        let value: serde_json::Value = serde_json::from_str(submit).unwrap();
+        let statement_hex = value["params"][0].as_str().unwrap();
+        let statement =
+            hex::decode(statement_hex.strip_prefix("0x").unwrap_or(statement_hex)).unwrap();
+        let encrypted = crate::host_logic::statement_store::decode_statement_data(&statement)
+            .expect("statement data should decode");
+        let data = crate::host_logic::sso_pairing::decrypt_session_statement_data(
+            session.sso.as_ref().unwrap(),
+            &encrypted,
+        )
+        .expect("statement data should decrypt");
+        let crate::host_logic::sso_pairing::SsoStatementData::Request { data, .. } = data else {
+            panic!("expected request statement data");
+        };
+        crate::host_logic::sso_messages::RemoteMessage::decode(&mut data[0].as_slice())
+            .expect("remote message should decode")
     }
 
     fn account_id(identifier: &str, derivation_index: u32) -> v01::ProductAccountId {
@@ -1921,10 +2164,15 @@ mod tests {
 
     #[test]
     fn get_account_alias_same_domain_reaches_sso_boundary() {
-        let host =
-            PlatformRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
-        host.session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let platform = stub_platform();
+        let host = PlatformRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        let session = sso_session_info();
+        host.session_state().set_session(session.clone());
+        let cx = CallContext::with_request_id("alias-1".to_string());
         let err = futures::executor::block_on(
             host.get_account_alias(&cx, account_alias_request("myapp.dot")),
         )
@@ -1932,9 +2180,16 @@ mod tests {
         match err {
             CallError::Domain(HostAccountGetAliasError::V1(
                 v01::HostAccountGetError::Unknown { reason },
-            )) => assert_eq!(reason, "SSO account alias not implemented"),
+            )) => assert_eq!(reason, "SSO account alias response wait not implemented"),
             other => panic!("expected SSO alias boundary error, got {other:?}"),
         }
+        let message = submitted_remote_message(&platform, &session);
+        assert!(matches!(
+            message.data,
+            crate::host_logic::sso_messages::RemoteMessageData::V1(
+                crate::host_logic::sso_messages::RemoteMessageV1::RingVrfAliasRequest(_)
+            )
+        ));
     }
 
     #[test]
@@ -1978,16 +2233,18 @@ mod tests {
 
     #[test]
     fn get_account_alias_cross_domain_accepts_confirmation_then_reaches_sso_boundary() {
+        let platform = Arc::new(StubPlatform {
+            account_alias_confirmed: true,
+            ..Default::default()
+        });
         let host = PlatformRuntimeHost::new(
-            Arc::new(StubPlatform {
-                account_alias_confirmed: true,
-                ..Default::default()
-            }),
+            platform.clone(),
             runtime_config("myapp.dot"),
             test_spawner(),
         );
-        host.session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let session = sso_session_info();
+        host.session_state().set_session(session.clone());
+        let cx = CallContext::with_request_id("alias-2".to_string());
         let err = futures::executor::block_on(
             host.get_account_alias(&cx, account_alias_request("other.dot")),
         )
@@ -1995,9 +2252,16 @@ mod tests {
         match err {
             CallError::Domain(HostAccountGetAliasError::V1(
                 v01::HostAccountGetError::Unknown { reason },
-            )) => assert_eq!(reason, "SSO account alias not implemented"),
+            )) => assert_eq!(reason, "SSO account alias response wait not implemented"),
             other => panic!("expected SSO alias boundary error, got {other:?}"),
         }
+        let message = submitted_remote_message(&platform, &session);
+        assert!(matches!(
+            message.data,
+            crate::host_logic::sso_messages::RemoteMessageData::V1(
+                crate::host_logic::sso_messages::RemoteMessageV1::RingVrfAliasRequest(_)
+            )
+        ));
     }
 
     #[test]
@@ -2229,16 +2493,18 @@ mod tests {
 
     #[test]
     fn sign_raw_accepts_confirmation_then_reaches_sso_boundary() {
+        let platform = Arc::new(StubPlatform {
+            sign_raw_confirmed: true,
+            ..Default::default()
+        });
         let host = PlatformRuntimeHost::new(
-            Arc::new(StubPlatform {
-                sign_raw_confirmed: true,
-                ..Default::default()
-            }),
+            platform.clone(),
             runtime_config("myapp.dot"),
             test_spawner(),
         );
-        host.session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let session = sso_session_info();
+        host.session_state().set_session(session.clone());
+        let cx = CallContext::with_request_id("sign-raw-1".to_string());
         let request = HostSignRawRequest::V1(v01::HostSignRawRequest {
             account: account_id("myapp.dot", 0),
             payload: raw_payload(),
@@ -2247,9 +2513,18 @@ mod tests {
         match err {
             CallError::Domain(HostSignRawError::V1(v01::HostSignPayloadError::Unknown {
                 reason,
-            })) => assert_eq!(reason, "SSO signing not implemented"),
+            })) => assert_eq!(reason, "SSO signing response wait not implemented"),
             other => panic!("expected SSO boundary error, got {other:?}"),
         }
+        let message = submitted_remote_message(&platform, &session);
+        assert!(matches!(
+            message.data,
+            crate::host_logic::sso_messages::RemoteMessageData::V1(
+                crate::host_logic::sso_messages::RemoteMessageV1::SignRequest(
+                    crate::host_logic::sso_messages::SigningRequest::Raw(_)
+                )
+            )
+        ));
     }
 
     #[test]
@@ -2300,25 +2575,72 @@ mod tests {
     }
 
     #[test]
-    fn create_transaction_accepts_confirmation_then_reaches_sso_boundary() {
+    fn sign_payload_accepts_confirmation_then_reaches_sso_boundary() {
+        let platform = Arc::new(StubPlatform {
+            sign_payload_confirmed: true,
+            ..Default::default()
+        });
         let host = PlatformRuntimeHost::new(
-            Arc::new(StubPlatform {
-                create_transaction_confirmed: true,
-                ..Default::default()
-            }),
+            platform.clone(),
             runtime_config("myapp.dot"),
             test_spawner(),
         );
-        host.session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let session = sso_session_info();
+        host.session_state().set_session(session.clone());
+        let cx = CallContext::with_request_id("sign-payload-1".to_string());
+        let request = HostSignPayloadRequest::V1(v01::HostSignPayloadRequest {
+            account: account_id("myapp.dot", 0),
+            payload: sign_payload_data(),
+        });
+
+        let err = futures::executor::block_on(host.sign_payload(&cx, request)).unwrap_err();
+
+        match err {
+            CallError::Domain(HostSignPayloadError::V1(v01::HostSignPayloadError::Unknown {
+                reason,
+            })) => assert_eq!(reason, "SSO signing response wait not implemented"),
+            other => panic!("expected SSO boundary error, got {other:?}"),
+        }
+        let message = submitted_remote_message(&platform, &session);
+        assert!(matches!(
+            message.data,
+            crate::host_logic::sso_messages::RemoteMessageData::V1(
+                crate::host_logic::sso_messages::RemoteMessageV1::SignRequest(
+                    crate::host_logic::sso_messages::SigningRequest::Payload(_)
+                )
+            )
+        ));
+    }
+
+    #[test]
+    fn create_transaction_accepts_confirmation_then_reaches_sso_boundary() {
+        let platform = Arc::new(StubPlatform {
+            create_transaction_confirmed: true,
+            ..Default::default()
+        });
+        let host = PlatformRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        let session = sso_session_info();
+        host.session_state().set_session(session.clone());
+        let cx = CallContext::with_request_id("create-tx-1".to_string());
         let request = HostCreateTransactionRequest::V1(product_tx_payload("myapp.dot"));
         let err = futures::executor::block_on(host.create_transaction(&cx, request)).unwrap_err();
         match err {
             CallError::Domain(HostCreateTransactionError::V1(
                 v01::HostCreateTransactionError::Unknown { reason },
-            )) => assert_eq!(reason, "SSO transaction creation not implemented"),
+            )) => assert_eq!(reason, "SSO transaction response wait not implemented"),
             other => panic!("expected SSO transaction boundary error, got {other:?}"),
         }
+        let message = submitted_remote_message(&platform, &session);
+        assert!(matches!(
+            message.data,
+            crate::host_logic::sso_messages::RemoteMessageData::V1(
+                crate::host_logic::sso_messages::RemoteMessageV1::CreateTransactionRequest(_)
+            )
+        ));
     }
 
     #[test]
@@ -2344,16 +2666,18 @@ mod tests {
 
     #[test]
     fn legacy_sign_raw_accepts_derived_ss58_then_reaches_sso_boundary() {
+        let platform = Arc::new(StubPlatform {
+            sign_raw_confirmed: true,
+            ..Default::default()
+        });
         let host = PlatformRuntimeHost::new(
-            Arc::new(StubPlatform {
-                sign_raw_confirmed: true,
-                ..Default::default()
-            }),
+            platform.clone(),
             runtime_config("myapp.dot"),
             test_spawner(),
         );
-        host.session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let session = sso_session_info();
+        host.session_state().set_session(session.clone());
+        let cx = CallContext::with_request_id("legacy-sign-raw-1".to_string());
         let request =
             HostSignRawWithLegacyAccountRequest::V1(v01::HostSignRawWithLegacyAccountRequest {
                 signer: "5CyFsdhwjXy7wWpDEM6isungQ3LfGnu9UXkt7paBQ6DYRxk1".to_string(),
@@ -2364,9 +2688,18 @@ mod tests {
         match err {
             CallError::Domain(HostSignRawWithLegacyAccountError::V1(
                 v01::HostSignPayloadError::Unknown { reason },
-            )) => assert_eq!(reason, "SSO signing not implemented"),
+            )) => assert_eq!(reason, "SSO signing response wait not implemented"),
             other => panic!("expected SSO boundary error, got {other:?}"),
         }
+        let message = submitted_remote_message(&platform, &session);
+        assert!(matches!(
+            message.data,
+            crate::host_logic::sso_messages::RemoteMessageData::V1(
+                crate::host_logic::sso_messages::RemoteMessageV1::SignRequest(
+                    crate::host_logic::sso_messages::SigningRequest::Raw(_)
+                )
+            )
+        ));
     }
 
     #[test]
@@ -2471,15 +2804,14 @@ mod tests {
 
     #[test]
     fn resource_allocation_accepts_confirmation_then_reaches_sso_boundary() {
-        let host = PlatformRuntimeHost::new_compat(
-            Arc::new(StubPlatform {
-                resource_allocation_confirmed: true,
-                ..Default::default()
-            }),
-            test_spawner(),
-        );
-        host.session_state().set_session(session_info());
-        let cx = CallContext::new();
+        let platform = Arc::new(StubPlatform {
+            resource_allocation_confirmed: true,
+            ..Default::default()
+        });
+        let host = PlatformRuntimeHost::new_compat(platform.clone(), test_spawner());
+        let session = sso_session_info();
+        host.session_state().set_session(session.clone());
+        let cx = CallContext::with_request_id("alloc-1".to_string());
         let err = futures::executor::block_on(ResourceAllocation::request(
             &host,
             &cx,
@@ -2489,9 +2821,19 @@ mod tests {
         match err {
             CallError::Domain(HostRequestResourceAllocationError::V1(
                 v01::ResourceAllocationError::Unknown { reason },
-            )) => assert_eq!(reason, "SSO resource allocation not implemented"),
+            )) => assert_eq!(
+                reason,
+                "SSO resource allocation response wait not implemented"
+            ),
             other => panic!("expected SSO boundary error, got {other:?}"),
         }
+        let message = submitted_remote_message(&platform, &session);
+        assert!(matches!(
+            message.data,
+            crate::host_logic::sso_messages::RemoteMessageData::V1(
+                crate::host_logic::sso_messages::RemoteMessageV1::ResourceAllocationRequest(_)
+            )
+        ));
     }
 
     #[test]
