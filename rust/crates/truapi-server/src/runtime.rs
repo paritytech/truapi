@@ -424,9 +424,15 @@ where
             &format!("truapi:sso-submit:{message_id}"),
             &statement,
         ));
+        let responses = connection.responses();
+        let subscription_guard = SsoRemoteSubscriptionGuard::new(
+            connection,
+            own_subscription_request_id.clone(),
+            peer_subscription_request_id.clone(),
+        );
         let (disconnect_waiter_id, disconnect) = self.session_disconnects.subscribe();
         let result = wait_for_sso_remote_response(
-            connection.responses(),
+            responses,
             SsoRemoteResponseWait {
                 session: sso,
                 own_subscription_request_id: &own_subscription_request_id,
@@ -435,6 +441,8 @@ where
                 remote_message_id: &message_id,
                 timeout: DEFAULT_SSO_RESPONSE_TIMEOUT,
                 disconnect: Some(disconnect),
+                own_remote_subscription_id: subscription_guard.own_remote_subscription_id(),
+                peer_remote_subscription_id: subscription_guard.peer_remote_subscription_id(),
             },
         )
         .await;
@@ -490,6 +498,79 @@ struct SsoRemoteResponseWait<'a> {
     remote_message_id: &'a str,
     timeout: Duration,
     disconnect: Option<oneshot::Receiver<String>>,
+    own_remote_subscription_id: SharedRemoteSubscriptionId,
+    peer_remote_subscription_id: SharedRemoteSubscriptionId,
+}
+
+struct SsoRemoteResponseTarget<'a> {
+    session: &'a SsoSessionInfo,
+    own_subscription_request_id: &'a str,
+    peer_subscription_request_id: &'a str,
+    statement_request_id: &'a str,
+    remote_message_id: &'a str,
+    own_remote_subscription_slot: SharedRemoteSubscriptionId,
+    peer_remote_subscription_slot: SharedRemoteSubscriptionId,
+}
+
+type SharedRemoteSubscriptionId = Arc<Mutex<Option<String>>>;
+
+struct SsoRemoteSubscriptionGuard {
+    connection: Box<dyn JsonRpcConnection>,
+    own_unsubscribe_request_id: String,
+    peer_unsubscribe_request_id: String,
+    own_remote_subscription_id: SharedRemoteSubscriptionId,
+    peer_remote_subscription_id: SharedRemoteSubscriptionId,
+}
+
+impl SsoRemoteSubscriptionGuard {
+    fn new(
+        connection: Box<dyn JsonRpcConnection>,
+        own_subscription_request_id: String,
+        peer_subscription_request_id: String,
+    ) -> Self {
+        Self {
+            connection,
+            own_unsubscribe_request_id: format!("{own_subscription_request_id}:unsubscribe"),
+            peer_unsubscribe_request_id: format!("{peer_subscription_request_id}:unsubscribe"),
+            own_remote_subscription_id: Arc::new(Mutex::new(None)),
+            peer_remote_subscription_id: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    fn own_remote_subscription_id(&self) -> SharedRemoteSubscriptionId {
+        self.own_remote_subscription_id.clone()
+    }
+
+    fn peer_remote_subscription_id(&self) -> SharedRemoteSubscriptionId {
+        self.peer_remote_subscription_id.clone()
+    }
+}
+
+impl Drop for SsoRemoteSubscriptionGuard {
+    fn drop(&mut self) {
+        if let Some(remote_subscription_id) = self
+            .own_remote_subscription_id
+            .lock()
+            .expect("SSO own subscription id mutex poisoned")
+            .as_ref()
+        {
+            self.connection.send(unsubscribe_request(
+                &self.own_unsubscribe_request_id,
+                remote_subscription_id,
+            ));
+        }
+        if let Some(remote_subscription_id) = self
+            .peer_remote_subscription_id
+            .lock()
+            .expect("SSO peer subscription id mutex poisoned")
+            .as_ref()
+        {
+            self.connection.send(unsubscribe_request(
+                &self.peer_unsubscribe_request_id,
+                remote_subscription_id,
+            ));
+        }
+    }
 }
 
 async fn wait_for_sso_remote_response(
@@ -503,11 +584,15 @@ async fn wait_for_sso_remote_response(
     );
     let response = wait_for_sso_remote_response_inner(
         responses,
-        wait.session,
-        wait.own_subscription_request_id,
-        wait.peer_subscription_request_id,
-        wait.statement_request_id,
-        wait.remote_message_id,
+        SsoRemoteResponseTarget {
+            session: wait.session,
+            own_subscription_request_id: wait.own_subscription_request_id,
+            peer_subscription_request_id: wait.peer_subscription_request_id,
+            statement_request_id: wait.statement_request_id,
+            remote_message_id: wait.remote_message_id,
+            own_remote_subscription_slot: wait.own_remote_subscription_id.clone(),
+            peer_remote_subscription_slot: wait.peer_remote_subscription_id.clone(),
+        },
     )
     .fuse();
     let timeout = futures_timer::Delay::new(wait.timeout).fuse();
@@ -530,29 +615,33 @@ async fn wait_for_sso_remote_response(
 
 async fn wait_for_sso_remote_response_inner(
     mut responses: BoxStream<'static, String>,
-    session: &SsoSessionInfo,
-    own_subscription_request_id: &str,
-    peer_subscription_request_id: &str,
-    statement_request_id: &str,
-    remote_message_id: &str,
+    target: SsoRemoteResponseTarget<'_>,
 ) -> Result<SsoRemoteResponse, String> {
-    let mut own_remote_subscription_id = None;
-    let mut peer_remote_subscription_id = None;
+    let mut own_remote_subscription_id: Option<String> = None;
+    let mut peer_remote_subscription_id: Option<String> = None;
     let mut request_accepted = false;
     let mut pending_remote_response = None;
 
     while let Some(frame) = responses.next().await {
         if own_remote_subscription_id.is_none()
-            && let Some(id) = parse_subscribe_ack(&frame, own_subscription_request_id)
+            && let Some(id) = parse_subscribe_ack(&frame, target.own_subscription_request_id)
                 .map_err(|err| err.to_string())?
         {
+            *target
+                .own_remote_subscription_slot
+                .lock()
+                .expect("SSO own subscription id mutex poisoned") = Some(id.clone());
             own_remote_subscription_id = Some(id);
             continue;
         }
         if peer_remote_subscription_id.is_none()
-            && let Some(id) = parse_subscribe_ack(&frame, peer_subscription_request_id)
+            && let Some(id) = parse_subscribe_ack(&frame, target.peer_subscription_request_id)
                 .map_err(|err| err.to_string())?
         {
+            *target
+                .peer_remote_subscription_slot
+                .lock()
+                .expect("SSO peer subscription id mutex poisoned") = Some(id.clone());
             peer_remote_subscription_id = Some(id);
             continue;
         }
@@ -570,10 +659,10 @@ async fn wait_for_sso_remote_response_inner(
 
         for statement in page.statements {
             match decode_sso_session_statement(
-                session,
+                target.session,
                 &statement,
-                statement_request_id,
-                remote_message_id,
+                target.statement_request_id,
+                target.remote_message_id,
             )? {
                 Some(SsoSessionStatement::RequestAccepted) => {
                     request_accepted = true;
@@ -596,7 +685,8 @@ async fn wait_for_sso_remote_response_inner(
     }
 
     Err(format!(
-        "SSO response stream ended before response for {remote_message_id}"
+        "SSO response stream ended before response for {}",
+        target.remote_message_id
     ))
 }
 
@@ -2494,6 +2584,10 @@ mod tests {
         Arc::new(futures::executor::block_on)
     }
 
+    fn remote_subscription_slot() -> SharedRemoteSubscriptionId {
+        Arc::new(Mutex::new(None))
+    }
+
     /// Minimal Platform impl that only answers `feature_supported`. Every
     /// other callback returns a unit value or empty stream, so the runtime
     /// can exercise its delegation paths without pulling in a real backend.
@@ -3947,6 +4041,34 @@ mod tests {
                 crate::host_logic::sso_messages::SigningRequest::Raw(_)
             )
         ));
+        let sent = platform.sent_rpc.lock().expect("rpc list mutex poisoned");
+        let methods = sent
+            .iter()
+            .map(|request| {
+                serde_json::from_str::<serde_json::Value>(request).unwrap()["method"]
+                    .as_str()
+                    .unwrap()
+                    .to_string()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            methods,
+            vec![
+                "statement_subscribeStatement",
+                "statement_subscribeStatement",
+                "statement_submit",
+                "statement_unsubscribeStatement",
+                "statement_unsubscribeStatement",
+            ]
+        );
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&sent[3]).unwrap()["params"][0],
+            "own-sub-sign-raw-1"
+        );
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&sent[4]).unwrap()["params"][0],
+            "peer-sub-sign-raw-1"
+        );
     }
 
     #[test]
@@ -4669,6 +4791,8 @@ mod tests {
                 remote_message_id: "request-1",
                 timeout: Duration::from_millis(1),
                 disconnect: None,
+                own_remote_subscription_id: remote_subscription_slot(),
+                peer_remote_subscription_id: remote_subscription_slot(),
             },
         ))
         .unwrap_err();
@@ -4691,6 +4815,8 @@ mod tests {
                 remote_message_id: "request-1",
                 timeout: Duration::from_secs(60),
                 disconnect: Some(rx),
+                own_remote_subscription_id: remote_subscription_slot(),
+                peer_remote_subscription_id: remote_subscription_slot(),
             },
         ))
         .unwrap_err();
