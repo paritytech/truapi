@@ -70,7 +70,11 @@ export interface WasmRawCallbacks {
   localStorageRead(key: string): Promise<Uint8Array | null | undefined>;
   localStorageWrite(key: string, value: Uint8Array): Promise<void>;
   localStorageClear(key: string): Promise<void>;
+  confirmSignPayload?(payload: Uint8Array): Promise<boolean>;
+  confirmSignRaw?(payload: Uint8Array): Promise<boolean>;
+  confirmCreateTransaction?(payload: Uint8Array): Promise<boolean>;
   confirmAccountAlias?(payload: Uint8Array): Promise<boolean>;
+  confirmResourceAllocation?(payload: Uint8Array): Promise<boolean>;
   accountGet(payload: Uint8Array): Promise<Uint8Array>;
   accountGetAlias(payload: Uint8Array): Promise<Uint8Array>;
   accountCreateProof(payload: Uint8Array): Promise<Uint8Array>;

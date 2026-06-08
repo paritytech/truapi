@@ -45,7 +45,11 @@ struct JsBridge {
     local_storage_read: Function,
     local_storage_write: Function,
     local_storage_clear: Function,
+    confirm_sign_payload: Option<Function>,
+    confirm_sign_raw: Option<Function>,
+    confirm_create_transaction: Option<Function>,
     confirm_account_alias: Option<Function>,
+    confirm_resource_allocation: Option<Function>,
     /// Optional. Hosts that own JSON-RPC connections (e.g. dotli with its
     /// "smoldot vs RPC node" toggle) provide this; otherwise chain calls
     /// fail with an "unavailable" reason.
@@ -66,7 +70,17 @@ impl JsBridge {
             local_storage_read: get_function(callbacks, "localStorageRead")?,
             local_storage_write: get_function(callbacks, "localStorageWrite")?,
             local_storage_clear: get_function(callbacks, "localStorageClear")?,
+            confirm_sign_payload: get_optional_function(callbacks, "confirmSignPayload")?,
+            confirm_sign_raw: get_optional_function(callbacks, "confirmSignRaw")?,
+            confirm_create_transaction: get_optional_function(
+                callbacks,
+                "confirmCreateTransaction",
+            )?,
             confirm_account_alias: get_optional_function(callbacks, "confirmAccountAlias")?,
+            confirm_resource_allocation: get_optional_function(
+                callbacks,
+                "confirmResourceAllocation",
+            )?,
             chain_connect: get_optional_function(callbacks, "chainConnect")?,
             emit_frame: get_function(callbacks, "emitFrame")?,
             dispose: get_optional_function(callbacks, "dispose")?.unwrap_or_else(noop_function),
@@ -294,19 +308,25 @@ impl SessionStore for WasmPlatform {
 }
 
 impl UserConfirmation for WasmPlatform {
-    async fn confirm_sign_payload(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
-        Ok(false)
+    async fn confirm_sign_payload(&self, review: Vec<u8>) -> Result<bool, v01::GenericError> {
+        let Some(fn_) = self.bridge.confirm_sign_payload.as_ref() else {
+            return Ok(false);
+        };
+        invoke_bool(fn_, review).await.map_err(generic)
     }
 
-    async fn confirm_sign_raw(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
-        Ok(false)
+    async fn confirm_sign_raw(&self, review: Vec<u8>) -> Result<bool, v01::GenericError> {
+        let Some(fn_) = self.bridge.confirm_sign_raw.as_ref() else {
+            return Ok(false);
+        };
+        invoke_bool(fn_, review).await.map_err(generic)
     }
 
-    async fn confirm_create_transaction(
-        &self,
-        _review: Vec<u8>,
-    ) -> Result<bool, v01::GenericError> {
-        Ok(false)
+    async fn confirm_create_transaction(&self, review: Vec<u8>) -> Result<bool, v01::GenericError> {
+        let Some(fn_) = self.bridge.confirm_create_transaction.as_ref() else {
+            return Ok(false);
+        };
+        invoke_bool(fn_, review).await.map_err(generic)
     }
 
     async fn confirm_account_alias(&self, review: Vec<u8>) -> Result<bool, v01::GenericError> {
@@ -318,9 +338,12 @@ impl UserConfirmation for WasmPlatform {
 
     async fn confirm_resource_allocation(
         &self,
-        _review: Vec<u8>,
+        review: Vec<u8>,
     ) -> Result<bool, v01::GenericError> {
-        Ok(false)
+        let Some(fn_) = self.bridge.confirm_resource_allocation.as_ref() else {
+            return Ok(false);
+        };
+        invoke_bool(fn_, review).await.map_err(generic)
     }
 }
 

@@ -124,9 +124,25 @@ pub trait HostCallbacks: Send + Sync {
     /// `request` is the SCALE-encoded [`v01::RemotePermissionRequest`].
     fn remote_permission(&self, request: Vec<u8>) -> Result<bool, HostRejection>;
 
+    /// Confirm a sign-payload request. `review` is a SCALE-encoded review
+    /// payload owned by the Rust core.
+    fn confirm_sign_payload(&self, review: Vec<u8>) -> Result<bool, HostRejection>;
+
+    /// Confirm a sign-raw request. `review` is a SCALE-encoded review payload
+    /// owned by the Rust core.
+    fn confirm_sign_raw(&self, review: Vec<u8>) -> Result<bool, HostRejection>;
+
+    /// Confirm a create-transaction request. `review` is a SCALE-encoded
+    /// review payload owned by the Rust core.
+    fn confirm_create_transaction(&self, review: Vec<u8>) -> Result<bool, HostRejection>;
+
     /// Confirm a cross-domain account-alias request. `review` is a
     /// SCALE-encoded review payload owned by the Rust core.
     fn confirm_account_alias(&self, review: Vec<u8>) -> Result<bool, HostRejection>;
+
+    /// Confirm a resource-allocation request. `review` is a SCALE-encoded
+    /// review payload owned by the Rust core.
+    fn confirm_resource_allocation(&self, review: Vec<u8>) -> Result<bool, HostRejection>;
 
     /// Answer a feature-support query. `request` is the SCALE-encoded
     /// [`HostFeatureSupportedRequest`].
@@ -432,19 +448,34 @@ impl SessionStore for CallbackPlatform {
 }
 
 impl UserConfirmation for CallbackPlatform {
-    async fn confirm_sign_payload(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
-        Ok(false)
+    async fn confirm_sign_payload(&self, review: Vec<u8>) -> Result<bool, v01::GenericError> {
+        self.callbacks.on_core_log(
+            "truapi.native.callback.confirm_sign_payload".to_string(),
+            String::new(),
+        );
+        self.callbacks
+            .confirm_sign_payload(review)
+            .map_err(v01::GenericError::from)
     }
 
-    async fn confirm_sign_raw(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
-        Ok(false)
+    async fn confirm_sign_raw(&self, review: Vec<u8>) -> Result<bool, v01::GenericError> {
+        self.callbacks.on_core_log(
+            "truapi.native.callback.confirm_sign_raw".to_string(),
+            String::new(),
+        );
+        self.callbacks
+            .confirm_sign_raw(review)
+            .map_err(v01::GenericError::from)
     }
 
-    async fn confirm_create_transaction(
-        &self,
-        _review: Vec<u8>,
-    ) -> Result<bool, v01::GenericError> {
-        Ok(false)
+    async fn confirm_create_transaction(&self, review: Vec<u8>) -> Result<bool, v01::GenericError> {
+        self.callbacks.on_core_log(
+            "truapi.native.callback.confirm_create_transaction".to_string(),
+            String::new(),
+        );
+        self.callbacks
+            .confirm_create_transaction(review)
+            .map_err(v01::GenericError::from)
     }
 
     async fn confirm_account_alias(&self, review: Vec<u8>) -> Result<bool, v01::GenericError> {
@@ -459,9 +490,15 @@ impl UserConfirmation for CallbackPlatform {
 
     async fn confirm_resource_allocation(
         &self,
-        _review: Vec<u8>,
+        review: Vec<u8>,
     ) -> Result<bool, v01::GenericError> {
-        Ok(false)
+        self.callbacks.on_core_log(
+            "truapi.native.callback.confirm_resource_allocation".to_string(),
+            String::new(),
+        );
+        self.callbacks
+            .confirm_resource_allocation(review)
+            .map_err(v01::GenericError::from)
     }
 }
 
@@ -516,7 +553,19 @@ mod tests {
             fn remote_permission(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
                 Ok(false)
             }
+            fn confirm_sign_payload(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
+                Ok(false)
+            }
+            fn confirm_sign_raw(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
+                Ok(false)
+            }
+            fn confirm_create_transaction(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
+                Ok(false)
+            }
             fn confirm_account_alias(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
+                Ok(false)
+            }
+            fn confirm_resource_allocation(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
                 Ok(false)
             }
             fn feature_supported(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
@@ -571,7 +620,19 @@ mod tests {
             fn remote_permission(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
                 Ok(false)
             }
+            fn confirm_sign_payload(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
+                Ok(false)
+            }
+            fn confirm_sign_raw(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
+                Ok(false)
+            }
+            fn confirm_create_transaction(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
+                Ok(false)
+            }
             fn confirm_account_alias(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
+                Ok(false)
+            }
+            fn confirm_resource_allocation(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
                 Ok(false)
             }
             fn feature_supported(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
