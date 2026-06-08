@@ -285,6 +285,7 @@ pub struct CreateTransactionResponse {
 pub enum SsoSessionStatement {
     RequestAccepted,
     RemoteResponse(SsoRemoteResponse),
+    Disconnected,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -322,6 +323,12 @@ pub fn decode_sso_session_statement(
             for message in data {
                 let message = RemoteMessage::decode(&mut message.as_slice())
                     .map_err(|err| format!("invalid SSO remote message: {err}"))?;
+                if matches!(
+                    &message.data,
+                    RemoteMessageData::V1(RemoteMessageV1::Disconnected)
+                ) {
+                    return Ok(Some(SsoSessionStatement::Disconnected));
+                }
                 if let Some(response) =
                     remote_response_for_message(message, expected_remote_message_id)
                 {

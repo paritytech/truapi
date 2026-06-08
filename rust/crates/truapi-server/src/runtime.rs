@@ -7,7 +7,7 @@
 //! permission cache layer). Methods with no platform backing return
 //! `CallError::unavailable()`.
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use crate::chain_runtime::{
@@ -42,6 +42,7 @@ use crate::host_logic::statement_store::{
 };
 use crate::subscription::Spawner;
 
+use futures::channel::oneshot;
 use futures::stream::{self, BoxStream};
 use futures::{FutureExt, StreamExt, pin_mut};
 use parity_scale_codec::Encode;
@@ -134,6 +135,54 @@ use truapi_platform::{
 const PAIRING_SUBSCRIBE_REQUEST_ID: &str = "truapi:sso-pairing:1";
 const DEFAULT_SSO_STATEMENT_EXPIRY_SECS: u64 = 7 * 24 * 60 * 60;
 const DEFAULT_SSO_RESPONSE_TIMEOUT: Duration = Duration::from_secs(180);
+const SSO_LOCAL_DISCONNECT_REASON: &str = "SSO session disconnected";
+const SSO_PEER_DISCONNECT_REASON: &str = "SSO peer disconnected";
+
+#[derive(Default)]
+struct SessionDisconnects {
+    inner: Mutex<SessionDisconnectsInner>,
+}
+
+#[derive(Default)]
+struct SessionDisconnectsInner {
+    next_id: u64,
+    waiters: Vec<(u64, oneshot::Sender<String>)>,
+}
+
+impl SessionDisconnects {
+    fn subscribe(&self) -> (u64, oneshot::Receiver<String>) {
+        let (tx, rx) = oneshot::channel();
+        let mut inner = self
+            .inner
+            .lock()
+            .expect("session disconnect mutex poisoned");
+        inner.next_id = inner.next_id.wrapping_add(1);
+        let id = inner.next_id;
+        inner.waiters.push((id, tx));
+        (id, rx)
+    }
+
+    fn unsubscribe(&self, id: u64) {
+        self.inner
+            .lock()
+            .expect("session disconnect mutex poisoned")
+            .waiters
+            .retain(|(waiter_id, _)| *waiter_id != id);
+    }
+
+    fn notify(&self, reason: &'static str) {
+        let waiters = {
+            let mut inner = self
+                .inner
+                .lock()
+                .expect("session disconnect mutex poisoned");
+            std::mem::take(&mut inner.waiters)
+        };
+        for (_, waiter) in waiters {
+            let _ = waiter.send(reason.to_string());
+        }
+    }
+}
 
 /// Adapter that exposes a [`truapi_platform::Platform`] through the
 /// `truapi::api::*` trait set the generated dispatcher routes to.
@@ -147,6 +196,7 @@ pub struct PlatformRuntimeHost<P> {
     /// Account-management subscriptions read from this in lieu of round-tripping
     /// a callback on every connection-status query.
     session_state: Arc<SessionState>,
+    session_disconnects: Arc<SessionDisconnects>,
 }
 
 impl<P> PlatformRuntimeHost<P> {
@@ -163,6 +213,7 @@ impl<P> PlatformRuntimeHost<P> {
             runtime_config,
             chain: ChainRuntime::new(chain_provider, spawner),
             session_state: SessionState::new(),
+            session_disconnects: Arc::new(SessionDisconnects::default()),
         }
     }
 
@@ -242,12 +293,12 @@ impl<P> PlatformRuntimeHost<P> {
     where
         P: Platform + 'static,
     {
+        self.session_disconnects.notify(SSO_LOCAL_DISCONNECT_REASON);
         let session = self.session_state.current();
         if let Some(session) = session.as_ref() {
             let _ = self.submit_sso_disconnected(session).await;
         }
-        self.session_state.clear_session();
-        let _ = PlatformSessionStore::clear_session(self.platform.as_ref()).await;
+        self.clear_disconnected_session().await;
     }
 
     /// Static product/host configuration for this runtime instance.
@@ -266,6 +317,14 @@ impl<P> PlatformRuntimeHost<P> {
     fn legacy_slot_zero_public_key(&self, session: &SessionInfo) -> Result<[u8; 32], String> {
         derive_product_public_key(session.public_key, &self.runtime_config.product_id, 0)
             .map_err(|err| err.to_string())
+    }
+
+    async fn clear_disconnected_session(&self)
+    where
+        P: Platform + 'static,
+    {
+        self.session_state.clear_session();
+        let _ = PlatformSessionStore::clear_session(self.platform.as_ref()).await;
     }
 }
 
@@ -350,7 +409,8 @@ where
             &format!("truapi:sso-submit:{message_id}"),
             &statement,
         ));
-        wait_for_sso_remote_response(
+        let (disconnect_waiter_id, disconnect) = self.session_disconnects.subscribe();
+        let result = wait_for_sso_remote_response(
             connection.responses(),
             sso,
             &own_subscription_request_id,
@@ -358,8 +418,15 @@ where
             &message_id,
             &message_id,
             DEFAULT_SSO_RESPONSE_TIMEOUT,
+            Some(disconnect),
         )
-        .await
+        .await;
+        self.session_disconnects.unsubscribe(disconnect_waiter_id);
+        if matches!(&result, Err(reason) if reason == SSO_PEER_DISCONNECT_REASON) {
+            self.session_disconnects.notify(SSO_PEER_DISCONNECT_REASON);
+            self.clear_disconnected_session().await;
+        }
+        result
     }
 
     fn validate_legacy_address_signer(
@@ -406,6 +473,7 @@ async fn wait_for_sso_remote_response(
     statement_request_id: &str,
     remote_message_id: &str,
     timeout: Duration,
+    disconnect: Option<oneshot::Receiver<String>>,
 ) -> Result<SsoRemoteResponse, String> {
     let timeout_reason = format!(
         "SSO response timed out after {} for {remote_message_id}",
@@ -421,10 +489,20 @@ async fn wait_for_sso_remote_response(
     )
     .fuse();
     let timeout = futures_timer::Delay::new(timeout).fuse();
-    pin_mut!(response, timeout);
+    let disconnect = async move {
+        match disconnect {
+            Some(rx) => rx
+                .await
+                .unwrap_or_else(|_| SSO_LOCAL_DISCONNECT_REASON.to_string()),
+            None => futures::future::pending::<String>().await,
+        }
+    }
+    .fuse();
+    pin_mut!(response, timeout, disconnect);
     futures::select! {
         result = response => result,
         _ = timeout => Err(timeout_reason),
+        reason = disconnect => Err(reason),
     }
 }
 
@@ -488,6 +566,9 @@ async fn wait_for_sso_remote_response_inner(
                         return Ok(response);
                     }
                     pending_remote_response = Some(response);
+                }
+                Some(SsoSessionStatement::Disconnected) => {
+                    return Err(SSO_PEER_DISCONNECT_REASON.to_string());
                 }
                 None => {}
             }
@@ -2462,6 +2543,54 @@ mod tests {
         ]
     }
 
+    fn sso_peer_disconnect_responses(
+        session: &crate::host_logic::session::SessionInfo,
+        message_id: &str,
+    ) -> Vec<String> {
+        let own_subscription_id = format!("own-sub-{message_id}");
+        let peer_subscription_id = format!("peer-sub-{message_id}");
+        vec![
+            subscribe_ack_frame(
+                &format!("truapi:sso-sub-own:{message_id}"),
+                &own_subscription_id,
+            ),
+            subscribe_ack_frame(
+                &format!("truapi:sso-sub-peer:{message_id}"),
+                &peer_subscription_id,
+            ),
+            new_statements_frame(
+                &own_subscription_id,
+                vec![sso_statement(
+                    session,
+                    crate::host_logic::sso_pairing::SsoStatementData::Response {
+                        request_id: message_id.to_string(),
+                        response_code: 0,
+                    },
+                    1,
+                )],
+            ),
+            new_statements_frame(
+                &peer_subscription_id,
+                vec![sso_statement(
+                    session,
+                    crate::host_logic::sso_pairing::SsoStatementData::Request {
+                        request_id: format!("wallet-disconnect-{message_id}"),
+                        data: vec![
+                            crate::host_logic::sso_messages::RemoteMessage {
+                                message_id: format!("wallet-disconnect-{message_id}"),
+                                data: crate::host_logic::sso_messages::RemoteMessageData::V1(
+                                    crate::host_logic::sso_messages::RemoteMessageV1::Disconnected,
+                                ),
+                            }
+                            .encode(),
+                        ],
+                    },
+                    2,
+                )],
+            ),
+        ]
+    }
+
     fn subscribe_ack_frame(request_id: &str, subscription_id: &str) -> String {
         serde_json::json!({
             "jsonrpc": "2.0",
@@ -3522,6 +3651,57 @@ mod tests {
     }
 
     #[test]
+    fn sign_raw_peer_disconnect_clears_session_store_and_broadcasts() {
+        let session = sso_session_info();
+        let platform = Arc::new(StubPlatform {
+            sign_raw_confirmed: true,
+            rpc_responses: sso_peer_disconnect_responses(&session, "sign-raw-disconnect"),
+            ..Default::default()
+        });
+        let host = PlatformRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        host.session_state().set_session(session);
+        let mut statuses = host.session_state().subscribe();
+        assert_eq!(
+            futures::executor::block_on(statuses.next()).unwrap(),
+            HostAccountConnectionStatusSubscribeItem::V1(
+                v01::HostAccountConnectionStatusSubscribeItem::Connected
+            )
+        );
+
+        let cx = CallContext::with_request_id("sign-raw-disconnect".to_string());
+        let request = HostSignRawRequest::V1(v01::HostSignRawRequest {
+            account: account_id("myapp.dot", 0),
+            payload: raw_payload(),
+        });
+        let err = futures::executor::block_on(host.sign_raw(&cx, request)).unwrap_err();
+
+        assert!(matches!(
+            err,
+            CallError::Domain(HostSignRawError::V1(
+                v01::HostSignPayloadError::Unknown { reason }
+            )) if reason == SSO_PEER_DISCONNECT_REASON
+        ));
+        assert!(host.session_state().current().is_none());
+        assert_eq!(
+            *platform
+                .session_clears
+                .lock()
+                .expect("session clear counter mutex poisoned"),
+            1
+        );
+        assert_eq!(
+            futures::executor::block_on(statuses.next()).unwrap(),
+            HostAccountConnectionStatusSubscribeItem::V1(
+                v01::HostAccountConnectionStatusSubscribeItem::Disconnected
+            )
+        );
+    }
+
+    #[test]
     fn sign_payload_denies_when_chain_submit_denied() {
         let host = PlatformRuntimeHost::new(
             Arc::new(StubPlatform {
@@ -4115,6 +4295,20 @@ mod tests {
     }
 
     #[test]
+    fn disconnect_notifies_pending_sso_waiters() {
+        let platform = Arc::new(StubPlatform::default());
+        let host = PlatformRuntimeHost::new_compat(platform, test_spawner());
+        let (_waiter_id, disconnect) = host.session_disconnects.subscribe();
+
+        futures::executor::block_on(host.disconnect());
+
+        assert_eq!(
+            futures::executor::block_on(disconnect).unwrap(),
+            SSO_LOCAL_DISCONNECT_REASON
+        );
+    }
+
+    #[test]
     fn sso_remote_response_waiter_times_out() {
         let session = sso_session_info();
         let err = futures::executor::block_on(wait_for_sso_remote_response(
@@ -4125,10 +4319,31 @@ mod tests {
             "request-1",
             "request-1",
             Duration::from_millis(1),
+            None,
         ))
         .unwrap_err();
 
         assert_eq!(err, "SSO response timed out after 1ms for request-1");
+    }
+
+    #[test]
+    fn sso_remote_response_waiter_stops_on_local_disconnect_signal() {
+        let session = sso_session_info();
+        let (tx, rx) = oneshot::channel();
+        tx.send(SSO_LOCAL_DISCONNECT_REASON.to_string()).unwrap();
+        let err = futures::executor::block_on(wait_for_sso_remote_response(
+            stream::pending().boxed(),
+            session.sso.as_ref().unwrap(),
+            "own-sub",
+            "peer-sub",
+            "request-1",
+            "request-1",
+            Duration::from_secs(60),
+            Some(rx),
+        ))
+        .unwrap_err();
+
+        assert_eq!(err, SSO_LOCAL_DISCONNECT_REASON);
     }
 
     #[test]
