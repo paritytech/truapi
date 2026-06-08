@@ -2713,11 +2713,17 @@ mod tests {
     use super::*;
     #[cfg(not(target_arch = "wasm32"))]
     use crate::chain_runtime::thread_per_task_spawner;
+    use aes_gcm::aead::{Aead, KeyInit};
+    use aes_gcm::{Aes256Gcm, Nonce};
     use futures::stream::{self, BoxStream};
+    use hkdf::Hkdf;
+    use p256::PublicKey as P256PublicKey;
     use p256::SecretKey as P256SecretKey;
+    use p256::ecdh::diffie_hellman;
     use p256::elliptic_curve::sec1::ToEncodedPoint;
     use parity_scale_codec::{Decode, Encode};
     use schnorrkel::{ExpansionMode, MiniSecretKey};
+    use sha2::Sha256;
     use std::sync::Mutex;
     use truapi::v01;
     use truapi_platform::{
@@ -2764,9 +2770,11 @@ mod tests {
         session_blob: Option<Vec<u8>>,
         session_error: Option<&'static str>,
         session_clears: Arc<Mutex<usize>>,
+        session_writes: Arc<Mutex<Vec<Vec<u8>>>>,
         pairing_error: Option<&'static str>,
         pairing_pending: bool,
         presented_pairings: Arc<Mutex<Vec<String>>>,
+        pairing_success_response: bool,
         notification_id: v01::NotificationId,
         pushed_notifications: Arc<Mutex<Vec<v01::HostPushNotificationRequest>>>,
         cancelled_notifications: Arc<Mutex<Vec<v01::NotificationId>>>,
@@ -2792,9 +2800,11 @@ mod tests {
                 session_blob: None,
                 session_error: None,
                 session_clears: Arc::new(Mutex::new(0)),
+                session_writes: Arc::new(Mutex::new(Vec::new())),
                 pairing_error: None,
                 pairing_pending: false,
                 presented_pairings: Arc::new(Mutex::new(Vec::new())),
+                pairing_success_response: false,
                 notification_id: 0,
                 pushed_notifications: Arc::new(Mutex::new(Vec::new())),
                 cancelled_notifications: Arc::new(Mutex::new(Vec::new())),
@@ -3045,6 +3055,59 @@ mod tests {
         signed_test_statement(encrypted)
     }
 
+    fn core_encryption_public_key_from_deeplink(deeplink: &str) -> [u8; 65] {
+        let encoded = deeplink
+            .split("handshake=")
+            .nth(1)
+            .expect("pairing deeplink should include handshake");
+        let handshake = hex::decode(encoded).expect("handshake should be hex");
+        assert_eq!(handshake[0], 0);
+        handshake[33..98]
+            .try_into()
+            .expect("handshake should include core encryption key")
+    }
+
+    fn wallet_handshake_statement(deeplink: &str) -> Vec<u8> {
+        let core_public_key =
+            P256PublicKey::from_sec1_bytes(&core_encryption_public_key_from_deeplink(deeplink))
+                .expect("core encryption public key should decode");
+        let wallet_ephemeral_secret = P256SecretKey::from_slice(&[3; 32]).unwrap();
+        let wallet_ephemeral_public = wallet_ephemeral_secret.public_key().to_encoded_point(false);
+        let mut wallet_ephemeral_public_bytes = [0u8; 65];
+        wallet_ephemeral_public_bytes.copy_from_slice(wallet_ephemeral_public.as_bytes());
+        let wallet_persistent_public = P256SecretKey::from_slice(&[2; 32])
+            .unwrap()
+            .public_key()
+            .to_encoded_point(false);
+        let (_, identity_account_id) = peer_statement_keypair();
+        let answer = crate::host_logic::sso_pairing::SsoHandshakeAnswerSensitiveData {
+            shared_secret_derivation_key: wallet_persistent_public.as_bytes().try_into().unwrap(),
+            root_user_account_id: session_info().public_key,
+            identity_account_id,
+        };
+        let shared_secret = diffie_hellman(
+            wallet_ephemeral_secret.to_nonzero_scalar(),
+            core_public_key.as_affine(),
+        );
+        let hkdf = Hkdf::<Sha256>::new(None, shared_secret.raw_secret_bytes());
+        let mut aes_key = [0u8; 32];
+        hkdf.expand(&[], &mut aes_key).unwrap();
+        let nonce = [0x44; crate::host_logic::sso_pairing::AES_GCM_NONCE_LEN];
+        let cipher = Aes256Gcm::new_from_slice(&aes_key).unwrap();
+        let mut encrypted_message = nonce.to_vec();
+        encrypted_message.extend(
+            cipher
+                .encrypt(Nonce::from_slice(&nonce), answer.encode().as_slice())
+                .unwrap(),
+        );
+        let handshake = crate::host_logic::sso_pairing::AppHandshakeData::V1 {
+            encrypted_message,
+            public_key: wallet_ephemeral_public_bytes,
+        };
+
+        signed_test_statement(handshake.encode())
+    }
+
     fn sign_response_message(
         message_id: &str,
         signature: Vec<u8>,
@@ -3232,6 +3295,8 @@ mod tests {
     struct RecordingConnection {
         sent: Arc<Mutex<Vec<String>>>,
         responses: Vec<String>,
+        presented_pairings: Arc<Mutex<Vec<String>>>,
+        pairing_success_response: bool,
     }
 
     impl JsonRpcConnection for RecordingConnection {
@@ -3242,6 +3307,41 @@ mod tests {
                 .push(request);
         }
         fn responses(&self) -> BoxStream<'static, String> {
+            if self.pairing_success_response {
+                let presented_pairings = self.presented_pairings.clone();
+                return Box::pin(stream::unfold(0, move |state| {
+                    let presented_pairings = presented_pairings.clone();
+                    async move {
+                        match state {
+                            0 => Some((
+                                subscribe_ack_frame(PAIRING_SUBSCRIBE_REQUEST_ID, "pairing-sub"),
+                                1,
+                            )),
+                            1 => {
+                                for _ in 0..100 {
+                                    let deeplink = presented_pairings
+                                        .lock()
+                                        .expect("pairing list mutex poisoned")
+                                        .first()
+                                        .cloned();
+                                    if let Some(deeplink) = deeplink {
+                                        return Some((
+                                            new_statements_frame(
+                                                "pairing-sub",
+                                                vec![wallet_handshake_statement(&deeplink)],
+                                            ),
+                                            2,
+                                        ));
+                                    }
+                                    futures_timer::Delay::new(Duration::from_millis(1)).await;
+                                }
+                                panic!("pairing deeplink was not presented");
+                            }
+                            _ => None,
+                        }
+                    }
+                }));
+            }
             if self.responses.is_empty() {
                 Box::pin(futures::stream::pending())
             } else {
@@ -3263,6 +3363,8 @@ mod tests {
             Ok(Box::new(RecordingConnection {
                 sent: self.sent_rpc.clone(),
                 responses: self.rpc_responses.clone(),
+                presented_pairings: self.presented_pairings.clone(),
+                pairing_success_response: self.pairing_success_response,
             }))
         }
     }
@@ -3296,7 +3398,11 @@ mod tests {
                 Ok(self.session_blob.clone())
             }
         }
-        async fn write_session(&self, _value: Vec<u8>) -> Result<(), v01::GenericError> {
+        async fn write_session(&self, value: Vec<u8>) -> Result<(), v01::GenericError> {
+            self.session_writes
+                .lock()
+                .expect("session write list mutex poisoned")
+                .push(value);
             Ok(())
         }
         async fn clear_session(&self) -> Result<(), v01::GenericError> {
@@ -4894,6 +5000,83 @@ mod tests {
         );
         let unsubscribe: serde_json::Value = serde_json::from_str(&sent_rpc[1]).unwrap();
         assert_eq!(unsubscribe["params"][0], "remote-sub");
+    }
+
+    #[test]
+    fn request_login_accepts_valid_pairing_statement_and_persists_session() {
+        let session_writes = Arc::new(Mutex::new(Vec::new()));
+        let platform = Arc::new(StubPlatform {
+            pairing_pending: true,
+            pairing_success_response: true,
+            session_writes: session_writes.clone(),
+            ..Default::default()
+        });
+        let host = PlatformRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        let mut statuses = host.session_state().subscribe();
+        assert_eq!(
+            futures::executor::block_on(statuses.next()).unwrap(),
+            HostAccountConnectionStatusSubscribeItem::V1(
+                v01::HostAccountConnectionStatusSubscribeItem::Disconnected
+            )
+        );
+
+        let cx = CallContext::new();
+        let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
+        let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
+
+        assert_eq!(
+            response,
+            HostRequestLoginResponse::V1(v01::HostRequestLoginResponse::Success)
+        );
+        assert_eq!(
+            futures::executor::block_on(statuses.next()).unwrap(),
+            HostAccountConnectionStatusSubscribeItem::V1(
+                v01::HostAccountConnectionStatusSubscribeItem::Connected
+            )
+        );
+
+        let session = host
+            .session_state()
+            .current()
+            .expect("paired session should be active");
+        assert_eq!(session.public_key, session_info().public_key);
+        assert_eq!(
+            session.entropy_secret.as_deref(),
+            Some(&session.sso.as_ref().unwrap().ss_secret[..])
+        );
+        assert_eq!(
+            session.sso.as_ref().unwrap().identity_account_id,
+            peer_statement_keypair().1
+        );
+
+        let writes = session_writes
+            .lock()
+            .expect("session write list mutex poisoned");
+        assert_eq!(writes.len(), 1);
+        assert_eq!(
+            crate::host_logic::session::decode_persisted_session(&writes[0]).unwrap(),
+            session
+        );
+
+        let methods = platform
+            .sent_rpc
+            .lock()
+            .expect("rpc list mutex poisoned")
+            .iter()
+            .map(|request| serde_json::from_str::<serde_json::Value>(request).unwrap())
+            .map(|request| request["method"].as_str().unwrap().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            methods,
+            vec![
+                "statement_subscribeStatement",
+                "statement_unsubscribeStatement"
+            ]
+        );
     }
 
     #[test]
