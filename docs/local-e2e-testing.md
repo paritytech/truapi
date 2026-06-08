@@ -164,12 +164,17 @@ method from the UI.
 ```bash
 cd hosts/dotli
 bun run preview            # → http://localhost:5173
-# or, for the TrUAPI debug panel:
-bun run preview:debugger   # = VITE_APP_DEBUG=true bun run preview
 ```
 
-`preview:debugger` is recommended whenever you're investigating a wire
-issue — the debug panel logs every host↔product TrUAPI frame.
+When investigating a wire issue, enable Rust bridge logging in the host
+origin before reloading dotli:
+
+```js
+localStorage.setItem("truapi:debug", "1");
+```
+
+The WASM worker bridge then forwards core debug logs to the browser
+console.
 
 ### Start the playground dev server
 
@@ -225,9 +230,9 @@ failing. Check:
   stale; redo step 4).
 
 If a method call hangs, the host either didn't receive the frame
-(check dotli's debug panel or console) or didn't respond. The bridge
-auto-responds to `host_handshake_request` only; everything else is on
-the host implementation.
+(check dotli's console with `truapi:debug` enabled) or didn't respond.
+The bridge auto-responds to `host_handshake_request` only; everything
+else is on the host implementation.
 
 ## 7. Codegen tests
 

@@ -1,6 +1,6 @@
 # F - `@novasamatech` removal checklist (dotli side)
 
-> Part of the [host-contract & core-impl spec](<index.md>).
+> Part of the [host-contract & core-impl spec](index.md).
 
 Source of truth for the original audit was the current dotli checkout at `~/github/dotli` (`85c9733`,
 dirty worktree ignored). Implementation status below tracks the migrated `hosts/dotli` submodule on this
@@ -99,5 +99,7 @@ them.
 - [x] `package.json` deps: remove `@novasamatech/host-api`, `host-container`, `host-papp`,
       `sdk-statement`, `statement-store`, and `storage-adapter` from `packages/ui`, `packages/auth`, and
       `packages/truapi-debug` when no `rg "@novasamatech"` value/type imports remain.
-- [ ] Docs and README: update `README.md` host-container/debug descriptions and any dotli migration notes
-      to describe the Rust bridge and core-owned SSO/session protocol.
+- [x] Docs and README: update `README.md` host-container/debug descriptions and any dotli migration notes
+      to describe the Rust bridge and core-owned SSO/session protocol. `hosts/dotli/README.md` now
+      describes the `@parity/truapi-host-wasm` worker bridge, core-owned SSO/session lifecycle, and nested
+      dApp cutover decision; `docs/local-e2e-testing.md` documents the `truapi:debug` Rust bridge toggle.
