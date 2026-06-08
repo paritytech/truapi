@@ -290,7 +290,10 @@ impl<P> PlatformRuntimeHost<P> {
                         }
                     },
                     Ok(None) => session_state.clear_session(),
-                    Err(_) => {}
+                    Err(_) => {
+                        session_state.clear_session();
+                        let _ = PlatformSessionStore::clear_session(platform.as_ref()).await;
+                    }
                 }
             }
         }));
@@ -4366,6 +4369,25 @@ mod tests {
         host.start_session_store_sync(immediate_spawner());
 
         assert!(host.session_state().current().is_none());
+    }
+
+    #[test]
+    fn session_store_sync_clears_unreadable_blob() {
+        let session_clears = Arc::new(Mutex::new(0));
+        let host = PlatformRuntimeHost::new_compat(
+            Arc::new(StubPlatform {
+                session_error: Some("storage unavailable"),
+                session_clears: session_clears.clone(),
+                ..Default::default()
+            }),
+            test_spawner(),
+        );
+        host.session_state().set_session(sso_session_info());
+
+        host.start_session_store_sync(immediate_spawner());
+
+        assert!(host.session_state().current().is_none());
+        assert_eq!(*session_clears.lock().unwrap(), 1);
     }
 
     #[test]
