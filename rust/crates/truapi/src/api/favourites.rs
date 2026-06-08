@@ -24,10 +24,8 @@ pub trait Favourites: Send + Sync {
     async fn subscribe(
         &self,
         _cx: &CallContext,
-    ) -> Result<
-        Subscription<HostFavouritesSubscribeItem>,
-        CallError<HostFavouritesSubscribeError>,
-    > {
+    ) -> Result<Subscription<HostFavouritesSubscribeItem>, CallError<HostFavouritesSubscribeError>>
+    {
         Err(CallError::unavailable())
     }
 
