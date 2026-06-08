@@ -47,19 +47,6 @@ pub struct RuntimeConfig {
 }
 
 impl RuntimeConfig {
-    /// Compatibility config used by old constructors and tests until every
-    /// host bridge passes real product config.
-    pub fn compatibility_default() -> Self {
-        Self {
-            product_label: "unknown".to_string(),
-            product_id: "unknown.dot".to_string(),
-            site_id: "unknown".to_string(),
-            host_metadata_url: "https://example.invalid/metadata.json".to_string(),
-            people_chain_genesis_hash: [0; 32],
-            pairing_deeplink_scheme: PairingDeeplinkScheme::PolkadotApp,
-        }
-    }
-
     /// Validate fields whose representation cannot be made invalid by Rust
     /// types alone.
     pub fn validate(&self) -> Result<(), RuntimeConfigValidationError> {

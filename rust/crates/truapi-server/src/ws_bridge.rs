@@ -415,8 +415,9 @@ mod tests {
     use truapi::v01;
     use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
     use truapi_platform::{
-        ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, PairingPresenter,
-        Permissions, PreimageHost, SessionStore, Storage, ThemeHost, UserConfirmation,
+        ChainProvider, Features, JsonRpcConnection, Navigation, Notifications,
+        PairingDeeplinkScheme, PairingPresenter, Permissions, PreimageHost, RuntimeConfig,
+        SessionStore, Storage, ThemeHost, UserConfirmation,
     };
 
     use crate::frame::{FrameKind, Payload, compose_action};
@@ -579,6 +580,25 @@ mod tests {
         }
     }
 
+    fn test_runtime_config() -> RuntimeConfig {
+        RuntimeConfig {
+            product_label: "dotli".to_string(),
+            product_id: "dotli.dot".to_string(),
+            site_id: "dot.li".to_string(),
+            host_metadata_url: "https://dot.li/metadata.json".to_string(),
+            people_chain_genesis_hash: [0xa2; 32],
+            pairing_deeplink_scheme: PairingDeeplinkScheme::PolkadotApp,
+        }
+    }
+
+    fn test_core() -> Arc<TrUApiCore> {
+        Arc::new(TrUApiCore::from_platform_with_config(
+            Arc::new(StubPlatform),
+            test_runtime_config(),
+            crate::subscription::thread_per_subscription_spawner(),
+        ))
+    }
+
     #[test]
     fn path_token_matches_exact() {
         assert!(path_token_matches(Some("/?t=abc"), "abc"));
@@ -594,10 +614,7 @@ mod tests {
     /// the bridge echoes the SCALE-encoded `feature_supported` response.
     #[test]
     fn round_trip_feature_supported_through_bridge() {
-        let core = Arc::new(TrUApiCore::from_platform(
-            Arc::new(StubPlatform),
-            crate::subscription::thread_per_subscription_spawner(),
-        ));
+        let core = test_core();
         let logger: BridgeLogger = Arc::new(|_, _| {});
         let (mut bridge, endpoint) = WsBridge::start(0, core, logger).expect("start bridge");
         let url = format!("ws://127.0.0.1:{}/?t={}", endpoint.port, endpoint.token);
@@ -656,10 +673,7 @@ mod tests {
     /// upgrade step with a 401, not silently dropped.
     #[test]
     fn wrong_token_is_rejected_at_handshake() {
-        let core = Arc::new(TrUApiCore::from_platform(
-            Arc::new(StubPlatform),
-            crate::subscription::thread_per_subscription_spawner(),
-        ));
+        let core = test_core();
         let logger: BridgeLogger = Arc::new(|_, _| {});
         let (mut bridge, endpoint) = WsBridge::start(0, core, logger).expect("start bridge");
         let url = format!("ws://127.0.0.1:{}/?t=bogus", endpoint.port);
@@ -687,10 +701,7 @@ mod tests {
     /// no-op.
     #[test]
     fn drop_calls_stop_idempotently() {
-        let core = Arc::new(TrUApiCore::from_platform(
-            Arc::new(StubPlatform),
-            crate::subscription::thread_per_subscription_spawner(),
-        ));
+        let core = test_core();
         let logger: BridgeLogger = Arc::new(|_, _| {});
         let (bridge, _endpoint) = WsBridge::start(0, core, logger).expect("start bridge");
         // Drop the bridge; the worker thread must join via Drop.
@@ -699,10 +710,7 @@ mod tests {
         // Build a second bridge and explicitly stop twice. The second
         // call has no shutdown sender and no thread handle left to join,
         // so it returns without panicking.
-        let core = Arc::new(TrUApiCore::from_platform(
-            Arc::new(StubPlatform),
-            crate::subscription::thread_per_subscription_spawner(),
-        ));
+        let core = test_core();
         let logger: BridgeLogger = Arc::new(|_, _| {});
         let (mut bridge, _endpoint) = WsBridge::start(0, core, logger).expect("start bridge");
         bridge.stop();

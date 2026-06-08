@@ -3,7 +3,7 @@
 //! The TS host/client codec expects every request response to be
 //! `Result<Ok, Err>`-shaped on the wire (one leading discriminant byte
 //! followed by the SCALE-encoded value). This test stands up a
-//! `TrUApiCore::from_platform` with a `StubPlatform` whose `Features`
+//! `TrUApiCore::from_platform_with_config` with a `StubPlatform` whose `Features`
 //! impl returns `Ok(supported = true)` and asserts:
 //!
 //! - A `system_feature_supported_request` produces a response whose
@@ -27,8 +27,9 @@ use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupporte
 use truapi::versioned::{account, payment};
 
 use truapi_platform::{
-    ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, PairingPresenter,
-    Permissions, PreimageHost, SessionStore, Storage, ThemeHost, UserConfirmation,
+    ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, PairingDeeplinkScheme,
+    PairingPresenter, Permissions, PreimageHost, RuntimeConfig, SessionStore, Storage, ThemeHost,
+    UserConfirmation,
 };
 
 use truapi_server::{
@@ -206,9 +207,20 @@ fn test_spawner() -> truapi_server::subscription::Spawner {
     }
 }
 
+fn test_runtime_config() -> RuntimeConfig {
+    RuntimeConfig {
+        product_label: "dotli".to_string(),
+        product_id: "dotli.dot".to_string(),
+        site_id: "dot.li".to_string(),
+        host_metadata_url: "https://dot.li/metadata.json".to_string(),
+        people_chain_genesis_hash: [0xa2; 32],
+        pairing_deeplink_scheme: PairingDeeplinkScheme::PolkadotApp,
+    }
+}
+
 #[test]
 fn feature_supported_ok_response_uses_ok_discriminant() {
-    let core = TrUApiCore::from_platform(Arc::new(StubPlatform), test_spawner());
+    let core = make_core();
     let request = HostFeatureSupportedRequest::V1(v01::HostFeatureSupportedRequest::Chain {
         genesis_hash: vec![0u8; 32],
     });
@@ -237,7 +249,7 @@ fn feature_supported_ok_response_uses_ok_discriminant() {
 
 #[test]
 fn local_storage_read_err_response_uses_err_discriminant() {
-    let core = TrUApiCore::from_platform(Arc::new(StubPlatform), test_spawner());
+    let core = make_core();
     let request = truapi::versioned::local_storage::HostLocalStorageReadRequest::V1(
         v01::HostLocalStorageReadRequest {
             key: "missing".to_string(),
@@ -473,7 +485,11 @@ fn deferred_payment_subscriptions_interrupt_dotli_not_implemented_errors() {
 }
 
 fn make_core() -> TrUApiCore {
-    TrUApiCore::from_platform(Arc::new(StubPlatform), test_spawner())
+    TrUApiCore::from_platform_with_config(
+        Arc::new(StubPlatform),
+        test_runtime_config(),
+        test_spawner(),
+    )
 }
 
 /// Untrusted product input that is not a decodable frame must be dropped

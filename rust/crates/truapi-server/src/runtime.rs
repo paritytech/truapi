@@ -228,13 +228,25 @@ impl<P> PlatformRuntimeHost<P> {
         }
     }
 
-    /// Compatibility constructor used by existing tests and bridge surfaces
-    /// until they pass real product runtime config.
-    pub fn new_compat(platform: Arc<P>, spawner: Spawner) -> Self
+    /// Compatibility constructor used only by tests that do not exercise
+    /// product-scoped behavior.
+    #[cfg(test)]
+    fn new_compat(platform: Arc<P>, spawner: Spawner) -> Self
     where
         P: Platform + 'static,
     {
-        Self::new(platform, RuntimeConfig::compatibility_default(), spawner)
+        Self::new(
+            platform,
+            RuntimeConfig {
+                product_label: "unknown".to_string(),
+                product_id: "unknown.dot".to_string(),
+                site_id: "test".to_string(),
+                host_metadata_url: "https://example.invalid/metadata.json".to_string(),
+                people_chain_genesis_hash: [0; 32],
+                pairing_deeplink_scheme: truapi_platform::PairingDeeplinkScheme::PolkadotApp,
+            },
+            spawner,
+        )
     }
 
     /// Chain provider backing the chainHead-v1 runtime. Without the `smoldot`

@@ -1,6 +1,6 @@
 //! TrUAPI server runtime: dispatcher, frames, SCALE encoding, stream management.
 //!
-//! The platform path (`TrUApiCore::from_platform`) wraps a
+//! The platform path (`TrUApiCore::from_platform_with_config`) wraps a
 //! [`truapi_platform::Platform`] in a `PlatformRuntimeHost` that implements
 //! every `truapi::api::*` trait by delegating to platform callbacks.
 //!

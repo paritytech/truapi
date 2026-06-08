@@ -6,7 +6,7 @@
 //! the unified [`truapi::api::TrUApi`] super-trait. Useful for unit tests
 //! and bespoke hosts.
 //!
-//! Platform path: [`TrUApiCore::from_platform`] takes a
+//! Platform path: [`TrUApiCore::from_platform_with_config`] takes a
 //! [`truapi_platform::Platform`] and wires it through
 //! [`crate::runtime::PlatformRuntimeHost`] before registering with the
 //! generated dispatcher. This is the path real platform shims (UniFFI,
@@ -31,8 +31,8 @@ type DisconnectFn = Arc<dyn Fn() -> BoxFuture<'static, ()> + Send + Sync>;
 /// session-state holder.
 pub struct TrUApiCore {
     dispatcher: Dispatcher,
-    /// Always present; empty for [`Self::new`] (no platform feeding it),
-    /// connected to a [`PlatformRuntimeHost`] for [`Self::from_platform`].
+    /// Always present; empty for [`Self::new`] (direct host path), connected
+    /// to a [`PlatformRuntimeHost`] for [`Self::from_platform_with_config`].
     session_state: Arc<SessionState>,
     disconnect: DisconnectFn,
 }
@@ -60,16 +60,6 @@ impl TrUApiCore {
                 })
             }),
         }
-    }
-
-    /// Build a core around a [`Platform`] implementation. Wraps the platform
-    /// in a [`PlatformRuntimeHost`] before registering with the dispatcher.
-    /// Subscription work runs on `spawner`.
-    pub fn from_platform<P>(platform: Arc<P>, spawner: Spawner) -> Self
-    where
-        P: Platform + 'static,
-    {
-        Self::from_platform_with_config(platform, RuntimeConfig::compatibility_default(), spawner)
     }
 
     /// Build a core around a [`Platform`] implementation and explicit product
@@ -193,8 +183,9 @@ mod tests {
     use truapi::versioned::permissions::RemotePermissionRequest;
     use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
     use truapi_platform::{
-        ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, PairingPresenter,
-        Permissions, PreimageHost, SessionStore, Storage, ThemeHost, UserConfirmation,
+        ChainProvider, Features, JsonRpcConnection, Navigation, Notifications,
+        PairingDeeplinkScheme, PairingPresenter, Permissions, PreimageHost, SessionStore, Storage,
+        ThemeHost, UserConfirmation,
     };
 
     use crate::frame::{FrameKind, Payload, compose_action};
@@ -207,6 +198,17 @@ mod tests {
         #[cfg(target_arch = "wasm32")]
         {
             Arc::new(futures::executor::block_on)
+        }
+    }
+
+    fn test_runtime_config() -> RuntimeConfig {
+        RuntimeConfig {
+            product_label: "dotli".to_string(),
+            product_id: "dotli.dot".to_string(),
+            site_id: "dot.li".to_string(),
+            host_metadata_url: "https://dot.li/metadata.json".to_string(),
+            people_chain_genesis_hash: [0xa2; 32],
+            pairing_deeplink_scheme: PairingDeeplinkScheme::PolkadotApp,
         }
     }
 
@@ -370,7 +372,11 @@ mod tests {
 
     #[test]
     fn from_platform_dispatches_feature_supported() {
-        let core = TrUApiCore::from_platform(Arc::new(StubPlatform), test_spawner());
+        let core = TrUApiCore::from_platform_with_config(
+            Arc::new(StubPlatform),
+            test_runtime_config(),
+            test_spawner(),
+        );
         let request = HostFeatureSupportedRequest::V1(v01::HostFeatureSupportedRequest::Chain {
             genesis_hash: vec![0u8; 32],
         });
@@ -421,7 +427,11 @@ mod tests {
     }
 
     fn make_core() -> TrUApiCore {
-        TrUApiCore::from_platform(Arc::new(StubPlatform), test_spawner())
+        TrUApiCore::from_platform_with_config(
+            Arc::new(StubPlatform),
+            test_runtime_config(),
+            test_spawner(),
+        )
     }
 
     #[test]

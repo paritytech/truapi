@@ -3,7 +3,7 @@
 //!
 //! The native side builds a [`CallbackPlatform`] that adapts every
 //! [`truapi_platform::Platform`] trait to a corresponding callback. The
-//! resulting platform is fed into [`TrUApiCore::from_platform`] so the rest
+//! resulting platform is fed into [`TrUApiCore::from_platform_with_config`] so the rest
 //! of the dispatcher pipeline behaves identically to the WS-bridge and wasm
 //! flavors.
 
