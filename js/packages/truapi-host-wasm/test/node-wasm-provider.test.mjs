@@ -66,6 +66,18 @@ test("createNodeWasmProvider exposes core disconnect", async () => {
   provider.dispose();
 });
 
+test("createNodeWasmProvider validates runtimeConfig in the WASM core", async () => {
+  await assert.rejects(
+    () =>
+      createNodeWasmProvider(makeCallbacks(), {
+        runtimeConfig: {
+          peopleChainGenesisHash: "0x1234",
+        },
+      }),
+    /runtimeConfig\.peopleChainGenesisHash: expected 32-byte hex string/,
+  );
+});
+
 test("createNodeWasmProvider dispose is idempotent", async () => {
   const provider = await createNodeWasmProvider(makeCallbacks());
   provider.dispose();
