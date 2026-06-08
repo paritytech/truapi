@@ -21,10 +21,13 @@ use crate::host_logic::product_account::{
 };
 use crate::host_logic::session::{SessionInfo, SessionState, decode_persisted_session};
 use crate::host_logic::sso_pairing::create_pairing_bootstrap;
-use crate::host_logic::statement_store::subscribe_match_all_request;
+use crate::host_logic::statement_store::{
+    parse_new_statements, parse_subscribe_ack, subscribe_match_all_request,
+};
 use crate::subscription::Spawner;
 
-use futures::StreamExt;
+use futures::stream::BoxStream;
+use futures::{FutureExt, StreamExt, pin_mut};
 use parity_scale_codec::Encode;
 use truapi::api::{
     Account, Chain, Chat, CoinPayment, Entropy, LocalStorage, Notifications, Payment, Permissions,
@@ -103,6 +106,8 @@ use truapi_platform::{
     Storage as PlatformStorage, ThemeHost as PlatformThemeHost,
     UserConfirmation as PlatformUserConfirmation,
 };
+
+const PAIRING_SUBSCRIBE_REQUEST_ID: &str = "truapi:sso-pairing:1";
 
 /// Adapter that exposes a [`truapi_platform::Platform`] through the
 /// `truapi::api::*` trait set the generated dispatcher routes to.
@@ -644,19 +649,70 @@ where
             reason: format!("pairing statement-store connect failed: {err:?}"),
         })?;
         statement_store.send(subscribe_match_all_request(
-            "truapi:sso-pairing:1",
+            PAIRING_SUBSCRIBE_REQUEST_ID,
             &[bootstrap.topic],
         ));
-        PlatformPairingPresenter::present_pairing(self.platform.as_ref(), bootstrap.deeplink)
-            .await
-            .map_err(|err| CallError::HostFailure {
-                reason: format!("pairing presentation failed: {err:?}"),
-            })?;
+        let presenter =
+            PlatformPairingPresenter::present_pairing(self.platform.as_ref(), bootstrap.deeplink)
+                .fuse();
+        let pairing_statement = wait_for_pairing_statement(statement_store.responses()).fuse();
+        pin_mut!(presenter, pairing_statement);
 
-        Ok(HostRequestLoginResponse::V1(
-            v01::HostRequestLoginResponse::Rejected,
-        ))
+        futures::select! {
+            presenter_result = presenter => {
+                presenter_result.map_err(|err| CallError::HostFailure {
+                    reason: format!("pairing presentation failed: {err:?}"),
+                })?;
+                Ok(HostRequestLoginResponse::V1(
+                    v01::HostRequestLoginResponse::Rejected,
+                ))
+            }
+            statement_result = pairing_statement => {
+                let statement = statement_result.map_err(|reason| CallError::HostFailure {
+                    reason,
+                })?;
+                Err(CallError::Domain(HostRequestLoginError::V1(
+                    v01::HostRequestLoginError::Unknown {
+                        reason: format!(
+                            "SSO handshake statement decoding not implemented ({} bytes)",
+                            statement.len()
+                        ),
+                    },
+                )))
+            }
+        }
     }
+}
+
+async fn wait_for_pairing_statement(
+    mut responses: BoxStream<'static, String>,
+) -> Result<Vec<u8>, String> {
+    let mut remote_subscription_id = None;
+    while let Some(frame) = responses.next().await {
+        if remote_subscription_id.is_none() {
+            if let Some(id) = parse_subscribe_ack(&frame, PAIRING_SUBSCRIBE_REQUEST_ID)
+                .map_err(|err| err.to_string())?
+            {
+                remote_subscription_id = Some(id);
+                continue;
+            }
+        }
+
+        let Some(page) = parse_new_statements(&frame).map_err(|err| err.to_string())? else {
+            continue;
+        };
+        if remote_subscription_id
+            .as_ref()
+            .is_some_and(|expected| expected != &page.remote_subscription_id)
+        {
+            continue;
+        }
+        if let Some(statement) = page.statements.into_iter().next() {
+            return Ok(statement);
+        }
+    }
+
+    Err("pairing statement-store response stream ended".to_string())
 }
 
 impl<P> Signing for PlatformRuntimeHost<P>
@@ -1353,8 +1409,10 @@ mod tests {
         session_blob: Option<Vec<u8>>,
         session_error: Option<&'static str>,
         pairing_error: Option<&'static str>,
+        pairing_pending: bool,
         presented_pairings: Arc<Mutex<Vec<String>>>,
         sent_rpc: Arc<Mutex<Vec<String>>>,
+        rpc_responses: Vec<String>,
     }
 
     impl Default for StubPlatform {
@@ -1374,8 +1432,10 @@ mod tests {
                 session_blob: None,
                 session_error: None,
                 pairing_error: None,
+                pairing_pending: false,
                 presented_pairings: Arc::new(Mutex::new(Vec::new())),
                 sent_rpc: Arc::new(Mutex::new(Vec::new())),
+                rpc_responses: Vec::new(),
             }
         }
     }
@@ -1536,6 +1596,7 @@ mod tests {
 
     struct RecordingConnection {
         sent: Arc<Mutex<Vec<String>>>,
+        responses: Vec<String>,
     }
 
     impl JsonRpcConnection for RecordingConnection {
@@ -1546,7 +1607,11 @@ mod tests {
                 .push(request);
         }
         fn responses(&self) -> BoxStream<'static, String> {
-            Box::pin(stream::empty())
+            if self.responses.is_empty() {
+                Box::pin(futures::stream::pending())
+            } else {
+                Box::pin(stream::iter(self.responses.clone()))
+            }
         }
     }
 
@@ -1557,6 +1622,7 @@ mod tests {
         ) -> Result<Box<dyn JsonRpcConnection>, v01::GenericError> {
             Ok(Box::new(RecordingConnection {
                 sent: self.sent_rpc.clone(),
+                responses: self.rpc_responses.clone(),
             }))
         }
     }
@@ -1567,6 +1633,9 @@ mod tests {
                 .lock()
                 .expect("pairing list mutex poisoned")
                 .push(deeplink);
+            if self.pairing_pending {
+                futures::future::pending::<()>().await;
+            }
             if let Some(reason) = self.pairing_error {
                 Err(v01::GenericError {
                     reason: reason.to_string(),
@@ -2433,6 +2502,38 @@ mod tests {
                 assert!(reason.contains("present failed"));
             }
             other => panic!("expected presenter host failure, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn request_login_waits_for_pairing_statement() {
+        let host = PlatformRuntimeHost::new_compat(
+            Arc::new(StubPlatform {
+                pairing_pending: true,
+                rpc_responses: vec![
+                    r#"{"jsonrpc":"2.0","id":"truapi:sso-pairing:1","result":"remote-sub"}"#
+                        .to_string(),
+                    r#"{"jsonrpc":"2.0","method":"statement_subscribeStatement","params":{"subscription":"remote-sub","result":{"event":"newStatements","data":{"statements":["0xdeadbeef"],"remaining":0}}}}"#
+                        .to_string(),
+                ],
+                ..Default::default()
+            }),
+            test_spawner(),
+        );
+        let cx = CallContext::new();
+        let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
+        let err = futures::executor::block_on(host.request_login(&cx, request)).unwrap_err();
+
+        match err {
+            CallError::Domain(HostRequestLoginError::V1(v01::HostRequestLoginError::Unknown {
+                reason,
+            })) => {
+                assert_eq!(
+                    reason,
+                    "SSO handshake statement decoding not implemented (4 bytes)"
+                );
+            }
+            other => panic!("expected handshake decode boundary, got {other:?}"),
         }
     }
 
