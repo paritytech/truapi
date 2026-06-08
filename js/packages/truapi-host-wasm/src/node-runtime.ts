@@ -4,6 +4,7 @@ import {
   createWasmProvider,
   type WasmCoreLike,
   type WasmRawCallbacks,
+  type WasmRuntimeConfig,
 } from "./runtime.js";
 
 interface NodeWasmModuleShape {
@@ -17,6 +18,8 @@ interface NodeWasmModuleShape {
 export interface CreateNodeWasmProviderOptions {
   /** Toggle the wasm core's debug logging. Default: `false`. */
   debug?: boolean;
+  /** Static product/pairing config passed to the Rust core. */
+  runtimeConfig?: WasmRuntimeConfig;
 }
 
 /**
@@ -50,7 +53,7 @@ export async function createNodeWasmProvider(
   wasm.setDebugEnabled?.(options.debug ?? false);
 
   return createWasmProvider(
-    (raw) => new wasm.WasmTrUApiCore(raw),
+    (raw) => new wasm.WasmTrUApiCore(raw, options.runtimeConfig),
     partial,
   );
 }

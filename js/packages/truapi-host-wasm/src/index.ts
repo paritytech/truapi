@@ -15,10 +15,13 @@ export type {
   Navigation,
   Notifications,
   Permissions,
+  PreimageHost,
   PlatformJsonRpcConnection,
   Storage,
+  ThemeHost,
   WasmCoreLike,
   WasmRawCallbacks,
+  WasmRuntimeConfig,
 } from "./runtime.js";
 export { createUnavailableCallbacks, createWasmProvider } from "./runtime.js";
 

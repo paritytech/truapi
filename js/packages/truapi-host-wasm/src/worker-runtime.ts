@@ -195,8 +195,7 @@ let wasm: WasmModuleShape | null = null;
   try {
     wasm = await wasmModulePromise;
     await wasm.default();
-    core = new wasm.WasmTrUApiCore(rawCallbacks);
-    postToMain({ kind: "ready" });
+    postToMain({ kind: "loaded" });
   } catch (err) {
     postToMain({ kind: "error", error: errMsg(err) });
   }
@@ -205,8 +204,18 @@ let wasm: WasmModuleShape | null = null;
 ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
   const msg = ev.data;
   switch (msg.kind) {
-    case "configure":
+    case "init":
+      if (!wasm) {
+        postToMain({ kind: "error", error: "init received before WASM loaded" });
+        break;
+      }
       wasm?.setDebugEnabled(msg.debug);
+      try {
+        core = new wasm.WasmTrUApiCore(rawCallbacks, msg.runtimeConfig);
+        postToMain({ kind: "ready" });
+      } catch (err) {
+        postToMain({ kind: "error", error: `init: ${errMsg(err)}` });
+      }
       break;
     case "frame":
       void handleFrame(msg.bytes);

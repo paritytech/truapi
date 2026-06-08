@@ -16,9 +16,10 @@ use futures::task::SpawnExt;
 use parity_scale_codec::Encode;
 use truapi::v01;
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
+use truapi_platform::PairingDeeplinkScheme as PlatformPairingDeeplinkScheme;
 use truapi_platform::{
     ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, PairingPresenter,
-    Permissions, PreimageHost, SessionStore, Storage, ThemeHost, UserConfirmation,
+    Permissions, PreimageHost, RuntimeConfig, SessionStore, Storage, ThemeHost, UserConfirmation,
 };
 
 use crate::TrUApiCore;
@@ -100,6 +101,75 @@ impl From<HostTheme> for v01::Theme {
             HostTheme::Light => v01::Theme::Light,
             HostTheme::Dark => v01::Theme::Dark,
         }
+    }
+}
+
+/// Native-friendly SSO deeplink scheme.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum NativePairingDeeplinkScheme {
+    /// Production Polkadot app.
+    PolkadotApp,
+    /// Development Polkadot app.
+    PolkadotAppDev,
+}
+
+impl From<NativePairingDeeplinkScheme> for PlatformPairingDeeplinkScheme {
+    fn from(scheme: NativePairingDeeplinkScheme) -> Self {
+        match scheme {
+            NativePairingDeeplinkScheme::PolkadotApp => PlatformPairingDeeplinkScheme::PolkadotApp,
+            NativePairingDeeplinkScheme::PolkadotAppDev => {
+                PlatformPairingDeeplinkScheme::PolkadotAppDev
+            }
+        }
+    }
+}
+
+/// Native runtime configuration supplied before product calls are handled.
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct NativeRuntimeConfig {
+    /// Human-readable dotli label, e.g. `my-app`.
+    pub product_label: String,
+    /// Canonical product identifier used for account derivation.
+    pub product_id: String,
+    /// Host deployment/site identifier.
+    pub site_id: String,
+    /// HTTPS metadata URL the SSO peer can fetch for display.
+    pub host_metadata_url: String,
+    /// People-chain genesis hash. Must be exactly 32 bytes.
+    pub people_chain_genesis_hash: Vec<u8>,
+    /// Deeplink scheme used in pairing QR payloads.
+    pub pairing_deeplink_scheme: NativePairingDeeplinkScheme,
+}
+
+/// Native runtime config validation error.
+#[derive(Debug, Clone, thiserror::Error, uniffi::Error)]
+pub enum NativeRuntimeConfigError {
+    /// People-chain genesis hash was not exactly 32 bytes.
+    #[error("people_chain_genesis_hash must be exactly 32 bytes, got {actual}")]
+    InvalidPeopleChainGenesisHash {
+        /// Supplied byte length.
+        actual: u64,
+    },
+}
+
+impl TryFrom<NativeRuntimeConfig> for RuntimeConfig {
+    type Error = NativeRuntimeConfigError;
+
+    fn try_from(config: NativeRuntimeConfig) -> Result<Self, Self::Error> {
+        let people_chain_genesis_hash =
+            <[u8; 32]>::try_from(config.people_chain_genesis_hash.as_slice()).map_err(|_| {
+                NativeRuntimeConfigError::InvalidPeopleChainGenesisHash {
+                    actual: config.people_chain_genesis_hash.len() as u64,
+                }
+            })?;
+        Ok(Self {
+            product_label: config.product_label,
+            product_id: config.product_id,
+            site_id: config.site_id,
+            host_metadata_url: config.host_metadata_url,
+            people_chain_genesis_hash,
+            pairing_deeplink_scheme: config.pairing_deeplink_scheme.into(),
+        })
     }
 }
 
@@ -222,22 +292,19 @@ impl NativeTrUApiCore {
     /// thread each.
     #[uniffi::constructor]
     pub fn new(callbacks: Box<dyn HostCallbacks>) -> Arc<Self> {
-        let callbacks: Arc<dyn HostCallbacks> = callbacks.into();
-        callbacks.on_core_log(
-            "truapi.native.core.boot".to_string(),
-            "core ready".to_string(),
-        );
+        native_core_from_platform_config(callbacks, RuntimeConfig::compatibility_default())
+    }
 
-        let platform = Arc::new(CallbackPlatform {
-            callbacks: callbacks.clone(),
-        });
-        let spawner = native_thread_pool_spawner(&callbacks);
-        Arc::new(Self {
-            core: Arc::new(TrUApiCore::from_platform(platform, spawner)),
+    /// Construct the core with explicit product and pairing runtime config.
+    #[uniffi::constructor]
+    pub fn with_runtime_config(
+        callbacks: Box<dyn HostCallbacks>,
+        runtime_config: NativeRuntimeConfig,
+    ) -> Result<Arc<Self>, NativeRuntimeConfigError> {
+        Ok(native_core_from_platform_config(
             callbacks,
-            #[cfg(feature = "ws-bridge")]
-            bridge: std::sync::Mutex::new(None),
-        })
+            runtime_config.try_into()?,
+        ))
     }
 
     /// Push the currently-paired session into the core. Mirrors the JS
@@ -286,6 +353,32 @@ impl NativeTrUApiCore {
     pub fn disconnect(&self) {
         self.core.disconnect();
     }
+}
+
+fn native_core_from_platform_config(
+    callbacks: Box<dyn HostCallbacks>,
+    runtime_config: RuntimeConfig,
+) -> Arc<NativeTrUApiCore> {
+    let callbacks: Arc<dyn HostCallbacks> = callbacks.into();
+    callbacks.on_core_log(
+        "truapi.native.core.boot".to_string(),
+        "core ready".to_string(),
+    );
+
+    let platform = Arc::new(CallbackPlatform {
+        callbacks: callbacks.clone(),
+    });
+    let spawner = native_thread_pool_spawner(&callbacks);
+    Arc::new(NativeTrUApiCore {
+        core: Arc::new(TrUApiCore::from_platform_with_config(
+            platform,
+            runtime_config,
+            spawner,
+        )),
+        callbacks,
+        #[cfg(feature = "ws-bridge")]
+        bridge: std::sync::Mutex::new(None),
+    })
 }
 
 #[cfg(feature = "ws-bridge")]
@@ -692,6 +785,24 @@ mod tests {
         assert!(!core.set_active_session(vec![0u8; 16], None, None));
         assert!(core.set_active_session(vec![0u8; 32], None, None));
         core.clear_active_session();
+    }
+
+    #[test]
+    fn runtime_config_rejects_wrong_size_genesis_hash() {
+        let err = RuntimeConfig::try_from(NativeRuntimeConfig {
+            product_label: "app".to_string(),
+            product_id: "app.dot".to_string(),
+            site_id: "dot.li".to_string(),
+            host_metadata_url: "https://example.invalid/metadata.json".to_string(),
+            people_chain_genesis_hash: vec![0; 31],
+            pairing_deeplink_scheme: NativePairingDeeplinkScheme::PolkadotApp,
+        })
+        .unwrap_err();
+
+        assert!(matches!(
+            err,
+            NativeRuntimeConfigError::InvalidPeopleChainGenesisHash { actual: 31 }
+        ));
     }
 
     /// Calling `start_ws_bridge` twice on the same `NativeTrUApiCore`

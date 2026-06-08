@@ -48,6 +48,21 @@ export interface ChainConnection {
   close(): void;
 }
 
+export interface WasmRuntimeConfig {
+  productLabel?: string;
+  productId?: string;
+  siteId?: string;
+  hostMetadataUrl?: string;
+  peopleChainGenesisHash?: string | Uint8Array;
+  pairingDeeplinkScheme?:
+    | "polkadotapp"
+    | "polkadotApp"
+    | "PolkadotApp"
+    | "polkadotappdev"
+    | "polkadotAppDev"
+    | "PolkadotAppDev";
+}
+
 /**
  * Raw byte-oriented callbacks the WASM core invokes. Names match the
  * camelCase property keys the Rust `JsBridge::from_js` extracts. Request

@@ -4,6 +4,7 @@ import type {
   ChainConnection,
   MainToWorker,
   SubscriptionName,
+  WasmRuntimeConfig,
   WasmRawCallbacks,
   WorkerToMain,
 } from "../index.js";
@@ -224,6 +225,8 @@ function handleChainClose(
 export interface CreateWebWorkerProviderOptions {
   /** Toggle the wasm core's debug logging. Default: `false`. */
   debug?: boolean;
+  /** Static product/pairing config passed to the Rust core. */
+  runtimeConfig?: WasmRuntimeConfig;
 }
 
 /**
@@ -267,6 +270,8 @@ export function createWebWorkerProvider(
     const onMessage = (ev: MessageEvent<WorkerToMain>): void => {
       const msg = ev.data;
       switch (msg.kind) {
+        case "loaded":
+          break;
         case "ready":
           break;
         case "error":
@@ -323,13 +328,15 @@ export function createWebWorkerProvider(
 
     const onInitMessage = (ev: MessageEvent<WorkerToMain>): void => {
       const msg = ev.data;
-      if (msg.kind === "ready") {
-        cleanupInit();
-        const configure: MainToWorker = {
-          kind: "configure",
+      if (msg.kind === "loaded") {
+        const init: MainToWorker = {
+          kind: "init",
           debug: options.debug ?? false,
+          runtimeConfig: options.runtimeConfig,
         };
-        worker.postMessage(configure);
+        worker.postMessage(init);
+      } else if (msg.kind === "ready") {
+        cleanupInit();
         worker.addEventListener("message", onMessage);
         // Surface a post-init worker fault (uncaught throw, OOM, killed
         // worker) to close listeners for the provider's lifetime.

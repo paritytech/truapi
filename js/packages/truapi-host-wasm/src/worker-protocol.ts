@@ -47,7 +47,7 @@ export type SubscriptionName =
 export type CallbackArgs = readonly unknown[];
 
 export type MainToWorker =
-  | { kind: "configure"; debug: boolean }
+  | { kind: "init"; debug: boolean; runtimeConfig?: unknown }
   | { kind: "frame"; bytes: Uint8Array }
   | { kind: "callbackResponse"; requestId: number; ok: true; value: unknown }
   | { kind: "callbackResponse"; requestId: number; ok: false; error: string }
@@ -58,6 +58,7 @@ export type MainToWorker =
   | { kind: "dispose" };
 
 export type WorkerToMain =
+  | { kind: "loaded" }
   | { kind: "ready" }
   | { kind: "error"; error: string }
   | { kind: "frame"; bytes: Uint8Array }
