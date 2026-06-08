@@ -32,8 +32,8 @@ pub struct SessionInfo {
 
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SsoSessionInfo {
-    /// Core's own session sr25519 statement-store secret seed.
-    pub ss_secret: [u8; 32],
+    /// Core's own 64-byte expanded sr25519 statement-store secret.
+    pub ss_secret: [u8; 64],
     /// Core's own session sr25519 statement-store public key.
     pub ss_public_key: [u8; 32],
     /// Core's P-256 ECDH private key.
@@ -54,7 +54,7 @@ pub struct SsoSessionInfo {
     pub peer_request_channel: [u8; 32],
 }
 
-const PERSISTED_SESSION_VERSION: u8 = 1;
+const PERSISTED_SESSION_VERSION: u8 = 2;
 
 /// Encode the active-session fields the core currently understands into an
 /// opaque host-global session blob. Later SSO channel state should bump
@@ -217,7 +217,7 @@ mod tests {
     fn persisted_sso_session_round_trips() {
         let mut session = info(0x42);
         session.sso = Some(SsoSessionInfo {
-            ss_secret: [1; 32],
+            ss_secret: [1; 64],
             ss_public_key: [2; 32],
             enc_secret: [3; 32],
             peer_enc_pubkey: [4; 65],

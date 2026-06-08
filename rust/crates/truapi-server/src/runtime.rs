@@ -700,7 +700,7 @@ where
                 let session = SessionInfo {
                     public_key: answer.root_user_account_id,
                     sso: Some(sso),
-                    entropy_secret: Some(bootstrap.statement_store_secret_seed.to_vec()),
+                    entropy_secret: Some(bootstrap.statement_store_secret.to_vec()),
                     lite_username: None,
                     full_username: None,
                 };

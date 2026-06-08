@@ -26,7 +26,7 @@ Because the core now runs pairing, `SessionInfo` carries the material the handsh
 ```rust
 pub struct SessionInfo {
     pub public_key: [u8; 32],           // wallet root_user_account_id; the product-account derivation root
-    pub ss_secret: [u8; 32],            // core's OWN session sr25519 statement-store secret (signs statement proofs)
+    pub ss_secret: [u8; 64],            // core's OWN expanded sr25519 statement-store secret (signs statement proofs)
     pub enc_secret: [u8; 32],           // core's P-256 ECDH private key (channel encryption)
     pub peer_enc_pubkey: [u8; 65],      // wallet persistent P-256 pubkey
     pub identity_account_id: [u8; 32],  // wallet identity pubkey

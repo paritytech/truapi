@@ -4,14 +4,18 @@
 //! `ChainProvider` JSON-RPC connection. These helpers keep the dotli/
 //! `@novasamatech/sdk-statement` request shapes in one place.
 
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Compact, Decode, Encode};
+use schnorrkel::SecretKey;
 use serde_json::Value;
 use serde_json::json;
 use thiserror::Error;
 
+use crate::host_logic::session::SsoSessionInfo;
+
 pub const SUBSCRIBE_STATEMENT_METHOD: &str = "statement_subscribeStatement";
 pub const UNSUBSCRIBE_STATEMENT_METHOD: &str = "statement_unsubscribeStatement";
 pub const SUBMIT_STATEMENT_METHOD: &str = "statement_submit";
+const SR25519_SIGNING_CONTEXT: &[u8] = b"substrate";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewStatements {
@@ -207,6 +211,94 @@ pub fn decode_statement_data(statement: &[u8]) -> Result<Vec<u8>, StatementStore
         .ok_or_else(|| StatementStoreParseError::Malformed("statement has no data".to_string()))
 }
 
+pub fn build_signed_session_request_statement(
+    session: &SsoSessionInfo,
+    encrypted_data: Vec<u8>,
+    expiry: u64,
+) -> Result<Vec<u8>, String> {
+    build_signed_statement(
+        session,
+        session.request_channel,
+        session.session_id_own,
+        encrypted_data,
+        expiry,
+    )
+}
+
+pub fn build_signed_statement(
+    session: &SsoSessionInfo,
+    channel: [u8; 32],
+    topic1: [u8; 32],
+    data: Vec<u8>,
+    expiry: u64,
+) -> Result<Vec<u8>, String> {
+    let fields = vec![
+        StatementField::Expiry(expiry),
+        StatementField::Channel(channel),
+        StatementField::Topic1(topic1),
+        StatementField::Data(data),
+    ];
+    sign_statement_fields(session.ss_secret, session.ss_public_key, fields)
+        .map(|fields| fields.encode())
+}
+
+pub fn sign_statement_fields(
+    ss_secret: [u8; 64],
+    expected_public_key: [u8; 32],
+    mut fields: Vec<StatementField>,
+) -> Result<Vec<StatementField>, String> {
+    if fields
+        .iter()
+        .any(|field| matches!(field, StatementField::Proof(_)))
+    {
+        return Err("statement is already signed".to_string());
+    }
+    fields.sort_by_key(statement_field_sort_index);
+
+    let secret =
+        SecretKey::from_bytes(&ss_secret).map_err(|err| format!("invalid ss_secret: {err}"))?;
+    let public = secret.to_public();
+    if public.to_bytes() != expected_public_key {
+        return Err("ss_secret does not match session statement public key".to_string());
+    }
+
+    let signing_payload = statement_signing_payload(&fields)?;
+    let signature = secret
+        .sign_simple(SR25519_SIGNING_CONTEXT, &signing_payload, &public)
+        .to_bytes();
+
+    let mut signed = Vec::with_capacity(fields.len() + 1);
+    signed.push(StatementField::Proof(StatementProof::Sr25519 {
+        signature,
+        signer: expected_public_key,
+    }));
+    signed.extend(fields);
+    Ok(signed)
+}
+
+pub fn statement_signing_payload(fields: &[StatementField]) -> Result<Vec<u8>, String> {
+    let encoded = fields.to_vec().encode();
+    let mut input = encoded.as_slice();
+    let _: Compact<u32> =
+        Decode::decode(&mut input).map_err(|err| format!("invalid statement vector: {err}"))?;
+    let compact_len = encoded.len() - input.len();
+    Ok(encoded[compact_len..].to_vec())
+}
+
+fn statement_field_sort_index(field: &StatementField) -> u8 {
+    match field {
+        StatementField::Proof(_) => 0,
+        StatementField::DecryptionKey(_) => 1,
+        StatementField::Expiry(_) => 2,
+        StatementField::Channel(_) => 3,
+        StatementField::Topic1(_) => 4,
+        StatementField::Topic2(_) => 5,
+        StatementField::Topic3(_) => 6,
+        StatementField::Topic4(_) => 7,
+        StatementField::Data(_) => 8,
+    }
+}
+
 fn hex_topic(topic: &[u8; 32]) -> String {
     format!("0x{}", hex::encode(topic))
 }
@@ -224,7 +316,26 @@ fn decode_hex(value: &str) -> Result<Vec<u8>, StatementStoreParseError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::host_logic::session::SsoSessionInfo;
+    use schnorrkel::{ExpansionMode, MiniSecretKey, PublicKey, Signature};
     use serde_json::Value;
+
+    fn test_session() -> SsoSessionInfo {
+        let mini_secret = MiniSecretKey::from_bytes(&[7; 32]).unwrap();
+        let keypair = mini_secret.expand_to_keypair(ExpansionMode::Ed25519);
+        SsoSessionInfo {
+            ss_secret: keypair.secret.to_bytes(),
+            ss_public_key: keypair.public.to_bytes(),
+            enc_secret: [1; 32],
+            peer_enc_pubkey: [2; 65],
+            identity_account_id: [3; 32],
+            session_id_own: [4; 32],
+            session_id_peer: [5; 32],
+            request_channel: [6; 32],
+            response_channel: [7; 32],
+            peer_request_channel: [8; 32],
+        }
+    }
 
     #[test]
     fn builds_match_all_subscribe_request_like_dotli_sdk() {
@@ -330,6 +441,73 @@ mod tests {
         assert_eq!(
             decode_statement_data(&statement).unwrap(),
             vec![0xde, 0xad, 0xbe, 0xef]
+        );
+    }
+
+    #[test]
+    fn signing_payload_strips_scale_vec_compact_len() {
+        let fields = vec![
+            StatementField::Expiry(42),
+            StatementField::Channel([3; 32]),
+            StatementField::Topic1([4; 32]),
+            StatementField::Data(vec![0xde, 0xad, 0xbe, 0xef]),
+        ];
+        let encoded = fields.encode();
+
+        assert_eq!(encoded[0], 16);
+        assert_eq!(statement_signing_payload(&fields).unwrap(), encoded[1..]);
+    }
+
+    #[test]
+    fn builds_signed_session_request_statement() {
+        let session = test_session();
+
+        let statement =
+            build_signed_session_request_statement(&session, vec![0xde, 0xad], 42).unwrap();
+        let mut input = statement.as_slice();
+        let fields = Vec::<StatementField>::decode(&mut input).unwrap();
+
+        assert!(input.is_empty());
+        assert_eq!(fields.len(), 5);
+        let StatementField::Proof(StatementProof::Sr25519 { signature, signer }) = fields[0] else {
+            panic!("expected sr25519 proof");
+        };
+        assert_eq!(signer, session.ss_public_key);
+        assert_eq!(fields[1], StatementField::Expiry(42));
+        assert_eq!(fields[2], StatementField::Channel(session.request_channel));
+        assert_eq!(fields[3], StatementField::Topic1(session.session_id_own));
+        assert_eq!(fields[4], StatementField::Data(vec![0xde, 0xad]));
+
+        let payload = statement_signing_payload(&fields[1..]).unwrap();
+        let public = PublicKey::from_bytes(&signer).unwrap();
+        let signature = Signature::from_bytes(&signature).unwrap();
+        public
+            .verify_simple(SR25519_SIGNING_CONTEXT, &payload, &signature)
+            .unwrap();
+    }
+
+    #[test]
+    fn signing_rejects_mismatched_session_key_material() {
+        let mut session = test_session();
+        session.ss_public_key = [0xff; 32];
+
+        assert_eq!(
+            build_signed_session_request_statement(&session, vec![0xde], 42).unwrap_err(),
+            "ss_secret does not match session statement public key"
+        );
+    }
+
+    #[test]
+    fn signing_rejects_already_signed_statements() {
+        let session = test_session();
+        let fields = vec![StatementField::Proof(StatementProof::Sr25519 {
+            signature: [1; 64],
+            signer: session.ss_public_key,
+        })];
+
+        assert_eq!(
+            sign_statement_fields(session.ss_secret, session.ss_public_key, fields).unwrap_err(),
+            "statement is already signed"
         );
     }
 

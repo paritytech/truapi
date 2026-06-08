@@ -31,7 +31,7 @@ pub struct PairingBootstrap {
     pub deeplink: String,
     pub topic: [u8; 32],
     pub statement_store_public_key: [u8; 32],
-    pub statement_store_secret_seed: [u8; 32],
+    pub statement_store_secret: [u8; 64],
     pub encryption_public_key: [u8; 65],
     pub encryption_secret_key: [u8; 32],
 }
@@ -134,7 +134,7 @@ pub fn establish_sso_session_info(
     );
 
     Ok(SsoSessionInfo {
-        ss_secret: bootstrap.statement_store_secret_seed,
+        ss_secret: bootstrap.statement_store_secret,
         ss_public_key: bootstrap.statement_store_public_key,
         enc_secret: bootstrap.encryption_secret_key,
         peer_enc_pubkey: answer.shared_secret_derivation_key,
@@ -282,8 +282,7 @@ fn keyed_hash(key: [u8; 32], message: &[u8]) -> [u8; 32] {
 pub fn create_pairing_bootstrap(
     config: &RuntimeConfig,
 ) -> Result<PairingBootstrap, PairingBootstrapError> {
-    let (statement_store_secret_seed, statement_store_public_key) =
-        generate_statement_store_keypair()?;
+    let (statement_store_secret, statement_store_public_key) = generate_statement_store_keypair()?;
     let (encryption_secret_key, encryption_public_key) = generate_p256_keypair()?;
     let deeplink = build_pairing_deeplink(
         config.pairing_deeplink_scheme,
@@ -297,7 +296,7 @@ pub fn create_pairing_bootstrap(
         deeplink,
         topic,
         statement_store_public_key,
-        statement_store_secret_seed,
+        statement_store_secret,
         encryption_public_key,
         encryption_secret_key,
     })
@@ -343,14 +342,14 @@ fn deeplink_scheme_prefix(scheme: PairingDeeplinkScheme) -> &'static str {
     }
 }
 
-fn generate_statement_store_keypair() -> Result<([u8; 32], [u8; 32]), PairingBootstrapError> {
+fn generate_statement_store_keypair() -> Result<([u8; 64], [u8; 32]), PairingBootstrapError> {
     let mut seed = [0u8; 32];
     getrandom::getrandom(&mut seed)
         .map_err(|err| PairingBootstrapError::Random(err.to_string()))?;
     let mini_secret = MiniSecretKey::from_bytes(&seed)
         .map_err(|err| PairingBootstrapError::Random(err.to_string()))?;
     let keypair = mini_secret.expand_to_keypair(ExpansionMode::Ed25519);
-    Ok((seed, keypair.public.to_bytes()))
+    Ok((keypair.secret.to_bytes(), keypair.public.to_bytes()))
 }
 
 fn generate_p256_keypair() -> Result<([u8; 32], [u8; 65]), PairingBootstrapError> {
@@ -540,7 +539,7 @@ mod tests {
             deeplink: "polkadotapp://pair?handshake=00".to_string(),
             topic: [0x11; 32],
             statement_store_public_key: [0x22; 32],
-            statement_store_secret_seed: [0x33; 32],
+            statement_store_secret: [0x33; 64],
             encryption_public_key: core_public_bytes,
             encryption_secret_key: [1; 32],
         };
@@ -554,7 +553,7 @@ mod tests {
 
         let info = establish_sso_session_info(&bootstrap, &answer).unwrap();
 
-        assert_eq!(info.ss_secret, [0x33; 32]);
+        assert_eq!(info.ss_secret, [0x33; 64]);
         assert_eq!(info.ss_public_key, [0x22; 32]);
         assert_eq!(info.enc_secret, [1; 32]);
         assert_eq!(info.peer_enc_pubkey, answer.shared_secret_derivation_key);
@@ -607,7 +606,7 @@ mod tests {
             deeplink: "polkadotapp://pair?handshake=00".to_string(),
             topic: [0x11; 32],
             statement_store_public_key: [0x22; 32],
-            statement_store_secret_seed: [0x33; 32],
+            statement_store_secret: [0x33; 64],
             encryption_public_key: core_public_bytes,
             encryption_secret_key: [1; 32],
         };
