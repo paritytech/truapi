@@ -71,7 +71,7 @@ jobs:
           node-version: 22
 
       - name: Install workspace deps
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Run codegen
         run: ./scripts/codegen.sh
@@ -115,7 +115,7 @@ jobs:
           name: codegen-output
 
       - name: Install
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Build
         run: npm run build --prefix js/packages/truapi
@@ -144,7 +144,9 @@ jobs:
           name: codegen-output
 
       - name: Install workspace deps + build @parity/truapi
-        run: npm ci
+        run: |
+          npm ci --ignore-scripts
+          npm run build --prefix js/packages/truapi
 
       - name: Install playground deps
         working-directory: playground
@@ -187,7 +189,9 @@ jobs:
           name: codegen-output
 
       - name: Install workspace deps + build @parity/truapi
-        run: npm ci
+        run: |
+          npm ci --ignore-scripts
+          npm run build --prefix js/packages/truapi
 
       - name: Install explorer deps
         working-directory: explorer
@@ -230,7 +234,9 @@ jobs:
           name: codegen-output
 
       - name: Build @parity/truapi
-        run: npm ci
+        run: |
+          npm ci --ignore-scripts
+          npm run build --prefix js/packages/truapi
 
       - name: Install dotli deps
         working-directory: hosts/dotli
