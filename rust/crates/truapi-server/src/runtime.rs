@@ -522,6 +522,42 @@ struct SsoRemoteSubscriptionGuard {
     peer_remote_subscription_id: SharedRemoteSubscriptionId,
 }
 
+struct PairingSubscriptionGuard {
+    connection: Box<dyn JsonRpcConnection>,
+    unsubscribe_request_id: String,
+    remote_subscription_id: SharedRemoteSubscriptionId,
+}
+
+impl PairingSubscriptionGuard {
+    fn new(connection: Box<dyn JsonRpcConnection>) -> Self {
+        Self {
+            connection,
+            unsubscribe_request_id: format!("{PAIRING_SUBSCRIBE_REQUEST_ID}:unsubscribe"),
+            remote_subscription_id: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    fn remote_subscription_id(&self) -> SharedRemoteSubscriptionId {
+        self.remote_subscription_id.clone()
+    }
+}
+
+impl Drop for PairingSubscriptionGuard {
+    fn drop(&mut self) {
+        if let Some(remote_subscription_id) = self
+            .remote_subscription_id
+            .lock()
+            .expect("pairing subscription id mutex poisoned")
+            .as_ref()
+        {
+            self.connection.send(unsubscribe_request(
+                &self.unsubscribe_request_id,
+                remote_subscription_id,
+            ));
+        }
+    }
+}
+
 impl SsoRemoteSubscriptionGuard {
     fn new(
         connection: Box<dyn JsonRpcConnection>,
@@ -1176,13 +1212,17 @@ where
             PAIRING_SUBSCRIBE_REQUEST_ID,
             &[bootstrap.topic],
         ));
+        let responses = statement_store.responses();
+        let subscription_guard = PairingSubscriptionGuard::new(statement_store);
         let core_encryption_secret_key = bootstrap.encryption_secret_key;
         let presenter = PlatformPairingPresenter::present_pairing(
             self.platform.as_ref(),
             bootstrap.deeplink.clone(),
         )
         .fuse();
-        let pairing_statement = wait_for_pairing_statement(statement_store.responses()).fuse();
+        let pairing_statement =
+            wait_for_pairing_statement(responses, subscription_guard.remote_subscription_id())
+                .fuse();
         pin_mut!(presenter, pairing_statement);
 
         futures::select! {
@@ -1248,6 +1288,7 @@ where
 
 async fn wait_for_pairing_statement(
     mut responses: BoxStream<'static, String>,
+    remote_subscription_slot: SharedRemoteSubscriptionId,
 ) -> Result<Vec<u8>, String> {
     let mut remote_subscription_id = None;
     while let Some(frame) = responses.next().await {
@@ -1255,6 +1296,9 @@ async fn wait_for_pairing_statement(
             && let Some(id) = parse_subscribe_ack(&frame, PAIRING_SUBSCRIBE_REQUEST_ID)
                 .map_err(|err| err.to_string())?
         {
+            *remote_subscription_slot
+                .lock()
+                .expect("pairing subscription id mutex poisoned") = Some(id.clone());
             remote_subscription_id = Some(id);
             continue;
         }
@@ -4586,18 +4630,16 @@ mod tests {
             r#"{{"jsonrpc":"2.0","method":"statement_subscribeStatement","params":{{"subscription":"remote-sub","result":{{"event":"newStatements","data":{{"statements":["0x{}"],"remaining":0}}}}}}}}"#,
             hex::encode(statement)
         );
-        let host = PlatformRuntimeHost::new_compat(
-            Arc::new(StubPlatform {
-                pairing_pending: true,
-                rpc_responses: vec![
-                    r#"{"jsonrpc":"2.0","id":"truapi:sso-pairing:1","result":"remote-sub"}"#
-                        .to_string(),
-                    notification,
-                ],
-                ..Default::default()
-            }),
-            test_spawner(),
-        );
+        let platform = Arc::new(StubPlatform {
+            pairing_pending: true,
+            rpc_responses: vec![
+                r#"{"jsonrpc":"2.0","id":"truapi:sso-pairing:1","result":"remote-sub"}"#
+                    .to_string(),
+                notification,
+            ],
+            ..Default::default()
+        });
+        let host = PlatformRuntimeHost::new_compat(platform.clone(), test_spawner());
         let cx = CallContext::new();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
         let err = futures::executor::block_on(host.request_login(&cx, request)).unwrap_err();
@@ -4608,6 +4650,21 @@ mod tests {
             }
             other => panic!("expected handshake decrypt failure, got {other:?}"),
         }
+        let sent_rpc = platform.sent_rpc.lock().expect("rpc list mutex poisoned");
+        let methods = sent_rpc
+            .iter()
+            .map(|request| serde_json::from_str::<serde_json::Value>(request).unwrap())
+            .map(|request| request["method"].as_str().unwrap().to_string())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            methods,
+            vec![
+                "statement_subscribeStatement",
+                "statement_unsubscribeStatement"
+            ]
+        );
+        let unsubscribe: serde_json::Value = serde_json::from_str(&sent_rpc[1]).unwrap();
+        assert_eq!(unsubscribe["params"][0], "remote-sub");
     }
 
     #[test]
