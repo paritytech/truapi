@@ -45,6 +45,7 @@ struct JsBridge {
     local_storage_read: Function,
     local_storage_write: Function,
     local_storage_clear: Function,
+    confirm_account_alias: Option<Function>,
     /// Optional. Hosts that own JSON-RPC connections (e.g. dotli with its
     /// "smoldot vs RPC node" toggle) provide this; otherwise chain calls
     /// fail with an "unavailable" reason.
@@ -65,6 +66,7 @@ impl JsBridge {
             local_storage_read: get_function(callbacks, "localStorageRead")?,
             local_storage_write: get_function(callbacks, "localStorageWrite")?,
             local_storage_clear: get_function(callbacks, "localStorageClear")?,
+            confirm_account_alias: get_optional_function(callbacks, "confirmAccountAlias")?,
             chain_connect: get_optional_function(callbacks, "chainConnect")?,
             emit_frame: get_function(callbacks, "emitFrame")?,
             dispose: get_optional_function(callbacks, "dispose")?.unwrap_or_else(noop_function),
@@ -305,6 +307,13 @@ impl UserConfirmation for WasmPlatform {
         _review: Vec<u8>,
     ) -> Result<bool, v01::GenericError> {
         Ok(false)
+    }
+
+    async fn confirm_account_alias(&self, review: Vec<u8>) -> Result<bool, v01::GenericError> {
+        let Some(fn_) = self.bridge.confirm_account_alias.as_ref() else {
+            return Ok(false);
+        };
+        invoke_bool(fn_, review).await.map_err(generic)
     }
 
     async fn confirm_resource_allocation(

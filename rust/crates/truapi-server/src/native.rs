@@ -124,6 +124,10 @@ pub trait HostCallbacks: Send + Sync {
     /// `request` is the SCALE-encoded [`v01::RemotePermissionRequest`].
     fn remote_permission(&self, request: Vec<u8>) -> Result<bool, HostRejection>;
 
+    /// Confirm a cross-domain account-alias request. `review` is a
+    /// SCALE-encoded review payload owned by the Rust core.
+    fn confirm_account_alias(&self, review: Vec<u8>) -> Result<bool, HostRejection>;
+
     /// Answer a feature-support query. `request` is the SCALE-encoded
     /// [`HostFeatureSupportedRequest`].
     fn feature_supported(&self, request: Vec<u8>) -> Result<bool, HostRejection>;
@@ -443,6 +447,16 @@ impl UserConfirmation for CallbackPlatform {
         Ok(false)
     }
 
+    async fn confirm_account_alias(&self, review: Vec<u8>) -> Result<bool, v01::GenericError> {
+        self.callbacks.on_core_log(
+            "truapi.native.callback.confirm_account_alias".to_string(),
+            String::new(),
+        );
+        self.callbacks
+            .confirm_account_alias(review)
+            .map_err(v01::GenericError::from)
+    }
+
     async fn confirm_resource_allocation(
         &self,
         _review: Vec<u8>,
@@ -502,6 +516,9 @@ mod tests {
             fn remote_permission(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
                 Ok(false)
             }
+            fn confirm_account_alias(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
+                Ok(false)
+            }
             fn feature_supported(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
                 Ok(false)
             }
@@ -552,6 +569,9 @@ mod tests {
                 Ok(false)
             }
             fn remote_permission(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
+                Ok(false)
+            }
+            fn confirm_account_alias(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
                 Ok(false)
             }
             fn feature_supported(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {

@@ -485,11 +485,23 @@ where
         }
 
         if product_account_id.dot_ns_identifier != self.runtime_config.product_id {
-            return Err(CallError::Domain(HostAccountGetAliasError::V1(
-                v01::HostAccountGetError::Unknown {
-                    reason: "Cross-domain alias confirmation not implemented".to_string(),
-                },
-            )));
+            let confirmed = PlatformUserConfirmation::confirm_account_alias(
+                self.platform.as_ref(),
+                (
+                    self.runtime_config.product_id.clone(),
+                    product_account_id.dot_ns_identifier.clone(),
+                )
+                    .encode(),
+            )
+            .await
+            .map_err(|err| CallError::HostFailure {
+                reason: format!("account alias confirmation failed: {err:?}"),
+            })?;
+            if !confirmed {
+                return Err(CallError::Domain(HostAccountGetAliasError::V1(
+                    v01::HostAccountGetError::Rejected,
+                )));
+            }
         }
 
         Err(CallError::Domain(HostAccountGetAliasError::V1(
@@ -1211,6 +1223,8 @@ mod tests {
     /// can exercise its delegation paths without pulling in a real backend.
     struct StubPlatform {
         remote_permission_granted: bool,
+        account_alias_confirmed: bool,
+        account_alias_error: Option<&'static str>,
         resource_allocation_confirmed: bool,
         resource_allocation_error: Option<&'static str>,
     }
@@ -1219,6 +1233,8 @@ mod tests {
         fn default() -> Self {
             Self {
                 remote_permission_granted: true,
+                account_alias_confirmed: false,
+                account_alias_error: None,
                 resource_allocation_confirmed: false,
                 resource_allocation_error: None,
             }
@@ -1432,6 +1448,15 @@ mod tests {
         ) -> Result<bool, v01::GenericError> {
             Ok(false)
         }
+        async fn confirm_account_alias(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
+            if let Some(reason) = self.account_alias_error {
+                Err(v01::GenericError {
+                    reason: reason.to_string(),
+                })
+            } else {
+                Ok(self.account_alias_confirmed)
+            }
+        }
         async fn confirm_resource_allocation(
             &self,
             _review: Vec<u8>,
@@ -1624,9 +1649,54 @@ mod tests {
     }
 
     #[test]
-    fn get_account_alias_cross_domain_reaches_confirmation_boundary() {
+    fn get_account_alias_cross_domain_rejects_when_user_declines() {
         let host =
             PlatformRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let err = futures::executor::block_on(
+            host.get_account_alias(&cx, account_alias_request("other.dot")),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            CallError::Domain(HostAccountGetAliasError::V1(
+                v01::HostAccountGetError::Rejected
+            ))
+        ));
+    }
+
+    #[test]
+    fn get_account_alias_cross_domain_maps_confirmation_failure_to_host_failure() {
+        let host = PlatformRuntimeHost::new(
+            Arc::new(StubPlatform {
+                account_alias_error: Some("modal failed"),
+                ..Default::default()
+            }),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let err = futures::executor::block_on(
+            host.get_account_alias(&cx, account_alias_request("other.dot")),
+        )
+        .unwrap_err();
+        assert!(
+            matches!(err, CallError::HostFailure { reason } if reason.contains("modal failed"))
+        );
+    }
+
+    #[test]
+    fn get_account_alias_cross_domain_accepts_confirmation_then_reaches_sso_boundary() {
+        let host = PlatformRuntimeHost::new(
+            Arc::new(StubPlatform {
+                account_alias_confirmed: true,
+                ..Default::default()
+            }),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
         host.session_state().set_session(session_info());
         let cx = CallContext::new();
         let err = futures::executor::block_on(
@@ -1636,8 +1706,8 @@ mod tests {
         match err {
             CallError::Domain(HostAccountGetAliasError::V1(
                 v01::HostAccountGetError::Unknown { reason },
-            )) => assert_eq!(reason, "Cross-domain alias confirmation not implemented"),
-            other => panic!("expected cross-domain alias confirmation boundary, got {other:?}"),
+            )) => assert_eq!(reason, "SSO account alias not implemented"),
+            other => panic!("expected SSO alias boundary error, got {other:?}"),
         }
     }
 

@@ -217,6 +217,13 @@ pub trait UserConfirmation: Send + Sync {
         review: Vec<u8>,
     ) -> impl Future<Output = Result<bool, GenericError>> + Send;
 
+    /// Confirm a cross-domain account-alias request before the core asks the
+    /// SSO peer.
+    fn confirm_account_alias(
+        &self,
+        review: Vec<u8>,
+    ) -> impl Future<Output = Result<bool, GenericError>> + Send;
+
     /// Confirm resource allocation before the core asks the SSO peer.
     fn confirm_resource_allocation(
         &self,

@@ -286,6 +286,9 @@ mod tests {
         ) -> Result<bool, v01::GenericError> {
             Ok(false)
         }
+        async fn confirm_account_alias(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
+            Ok(false)
+        }
         async fn confirm_resource_allocation(
             &self,
             _review: Vec<u8>,

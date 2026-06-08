@@ -213,6 +213,12 @@ export interface UserConfirmation {
   confirmCreateTransaction(review: Uint8Array): Promise<boolean>;
 
   /**
+   * Confirm a cross-domain account-alias request before the core asks the
+   * SSO peer.
+   */
+  confirmAccountAlias(review: Uint8Array): Promise<boolean>;
+
+  /**
    * Confirm resource allocation before the core asks the SSO peer.
    */
   confirmResourceAllocation(review: Uint8Array): Promise<boolean>;
