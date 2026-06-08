@@ -4,6 +4,7 @@
 //! `ChainProvider` JSON-RPC connection. These helpers keep the dotli/
 //! `@novasamatech/sdk-statement` request shapes in one place.
 
+use parity_scale_codec::{Decode, Encode};
 use serde_json::Value;
 use serde_json::json;
 use thiserror::Error;
@@ -25,8 +26,57 @@ pub enum StatementStoreParseError {
     InvalidJson(String),
     #[error("invalid statement hex: {0}")]
     InvalidStatementHex(String),
+    #[error("invalid statement scale: {0}")]
+    InvalidStatementScale(String),
     #[error("malformed statement-store frame: {0}")]
     Malformed(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum StatementProof {
+    #[codec(index = 0)]
+    Sr25519 {
+        signature: [u8; 64],
+        signer: [u8; 32],
+    },
+    #[codec(index = 1)]
+    Ed25519 {
+        signature: [u8; 64],
+        signer: [u8; 32],
+    },
+    #[codec(index = 2)]
+    Ecdsa {
+        signature: [u8; 65],
+        signer: [u8; 33],
+    },
+    #[codec(index = 3)]
+    OnChain {
+        who: [u8; 32],
+        block_hash: [u8; 32],
+        event: u64,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum StatementField {
+    #[codec(index = 0)]
+    Proof(StatementProof),
+    #[codec(index = 1)]
+    DecryptionKey([u8; 32]),
+    #[codec(index = 2)]
+    Expiry(u64),
+    #[codec(index = 3)]
+    Channel([u8; 32]),
+    #[codec(index = 4)]
+    Topic1([u8; 32]),
+    #[codec(index = 5)]
+    Topic2([u8; 32]),
+    #[codec(index = 6)]
+    Topic3([u8; 32]),
+    #[codec(index = 7)]
+    Topic4([u8; 32]),
+    #[codec(index = 8)]
+    Data(Vec<u8>),
 }
 
 pub fn subscribe_match_all_request(id: &str, topics: &[[u8; 32]]) -> String {
@@ -139,6 +189,24 @@ pub fn parse_new_statements(
     }))
 }
 
+pub fn decode_statement_data(statement: &[u8]) -> Result<Vec<u8>, StatementStoreParseError> {
+    let mut input = statement;
+    let fields: Vec<StatementField> = Decode::decode(&mut input)
+        .map_err(|err| StatementStoreParseError::InvalidStatementScale(err.to_string()))?;
+    if !input.is_empty() {
+        return Err(StatementStoreParseError::Malformed(
+            "statement has trailing bytes".to_string(),
+        ));
+    }
+    fields
+        .into_iter()
+        .find_map(|field| match field {
+            StatementField::Data(value) => Some(value),
+            _ => None,
+        })
+        .ok_or_else(|| StatementStoreParseError::Malformed("statement has no data".to_string()))
+}
+
 fn hex_topic(topic: &[u8; 32]) -> String {
     format!("0x{}", hex::encode(topic))
 }
@@ -242,6 +310,36 @@ mod tests {
             )
             .unwrap(),
             None
+        );
+    }
+
+    #[test]
+    fn decodes_statement_data_field() {
+        let statement = vec![
+            StatementField::Proof(StatementProof::Sr25519 {
+                signature: [1; 64],
+                signer: [2; 32],
+            }),
+            StatementField::Expiry(42),
+            StatementField::Channel([3; 32]),
+            StatementField::Topic1([4; 32]),
+            StatementField::Data(vec![0xde, 0xad, 0xbe, 0xef]),
+        ]
+        .encode();
+
+        assert_eq!(
+            decode_statement_data(&statement).unwrap(),
+            vec![0xde, 0xad, 0xbe, 0xef]
+        );
+    }
+
+    #[test]
+    fn rejects_statement_without_data_field() {
+        let statement = vec![StatementField::Expiry(42)].encode();
+
+        assert_eq!(
+            decode_statement_data(&statement).unwrap_err(),
+            StatementStoreParseError::Malformed("statement has no data".to_string())
         );
     }
 }

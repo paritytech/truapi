@@ -6,7 +6,7 @@
 use blake2_rfc::blake2b::blake2b;
 use p256::SecretKey;
 use p256::elliptic_curve::sec1::ToEncodedPoint;
-use parity_scale_codec::Encode;
+use parity_scale_codec::{Decode, Encode};
 use schnorrkel::{ExpansionMode, MiniSecretKey};
 use thiserror::Error;
 use truapi_platform::{PairingDeeplinkScheme, RuntimeConfig};
@@ -40,6 +40,25 @@ pub enum HostHandshakeData {
         encryption_public_key: [u8; 65],
         metadata: String,
     },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum AppHandshakeData {
+    #[codec(index = 0)]
+    V1 {
+        encrypted_message: Vec<u8>,
+        public_key: [u8; 65],
+    },
+}
+
+pub fn decode_app_handshake_data(blob: &[u8]) -> Result<AppHandshakeData, String> {
+    let mut input = blob;
+    let value: AppHandshakeData =
+        Decode::decode(&mut input).map_err(|err| format!("invalid app handshake data: {err}"))?;
+    if !input.is_empty() {
+        return Err("invalid app handshake data: trailing bytes".to_string());
+    }
+    Ok(value)
 }
 
 pub fn create_pairing_bootstrap(
@@ -216,6 +235,31 @@ mod tests {
                 bootstrap.statement_store_public_key,
                 bootstrap.encryption_public_key
             )
+        );
+    }
+
+    #[test]
+    fn decodes_app_handshake_answer() {
+        let answer = AppHandshakeData::V1 {
+            encrypted_message: vec![0xde, 0xad],
+            public_key: ENC_PUBLIC,
+        };
+
+        assert_eq!(decode_app_handshake_data(&answer.encode()).unwrap(), answer);
+    }
+
+    #[test]
+    fn rejects_app_handshake_trailing_bytes() {
+        let mut encoded = AppHandshakeData::V1 {
+            encrypted_message: vec![0xde, 0xad],
+            public_key: ENC_PUBLIC,
+        }
+        .encode();
+        encoded.push(0);
+
+        assert_eq!(
+            decode_app_handshake_data(&encoded).unwrap_err(),
+            "invalid app handshake data: trailing bytes"
         );
     }
 }

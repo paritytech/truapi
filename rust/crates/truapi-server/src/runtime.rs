@@ -20,9 +20,11 @@ use crate::host_logic::product_account::{
     derive_product_public_key, is_product_identifier, product_public_key_to_address,
 };
 use crate::host_logic::session::{SessionInfo, SessionState, decode_persisted_session};
-use crate::host_logic::sso_pairing::create_pairing_bootstrap;
+use crate::host_logic::sso_pairing::{
+    AppHandshakeData, create_pairing_bootstrap, decode_app_handshake_data,
+};
 use crate::host_logic::statement_store::{
-    parse_new_statements, parse_subscribe_ack, subscribe_match_all_request,
+    decode_statement_data, parse_new_statements, parse_subscribe_ack, subscribe_match_all_request,
 };
 use crate::subscription::Spawner;
 
@@ -671,11 +673,22 @@ where
                 let statement = statement_result.map_err(|reason| CallError::HostFailure {
                     reason,
                 })?;
+                let payload = decode_statement_data(&statement).map_err(|err| CallError::HostFailure {
+                    reason: err.to_string(),
+                })?;
+                let handshake = decode_app_handshake_data(&payload).map_err(|reason| CallError::HostFailure {
+                    reason,
+                })?;
+                let AppHandshakeData::V1 {
+                    encrypted_message,
+                    public_key,
+                } = handshake;
                 Err(CallError::Domain(HostRequestLoginError::V1(
                     v01::HostRequestLoginError::Unknown {
                         reason: format!(
-                            "SSO handshake statement decoding not implemented ({} bytes)",
-                            statement.len()
+                            "SSO handshake decryption not implemented (encrypted_message={} bytes, public_key={} bytes)",
+                            encrypted_message.len(),
+                            public_key.len()
                         ),
                     },
                 )))
@@ -2507,14 +2520,25 @@ mod tests {
 
     #[test]
     fn request_login_waits_for_pairing_statement() {
+        let handshake = crate::host_logic::sso_pairing::AppHandshakeData::V1 {
+            encrypted_message: vec![0xde, 0xad],
+            public_key: [4; 65],
+        };
+        let statement = vec![crate::host_logic::statement_store::StatementField::Data(
+            handshake.encode(),
+        )]
+        .encode();
+        let notification = format!(
+            r#"{{"jsonrpc":"2.0","method":"statement_subscribeStatement","params":{{"subscription":"remote-sub","result":{{"event":"newStatements","data":{{"statements":["0x{}"],"remaining":0}}}}}}}}"#,
+            hex::encode(statement)
+        );
         let host = PlatformRuntimeHost::new_compat(
             Arc::new(StubPlatform {
                 pairing_pending: true,
                 rpc_responses: vec![
                     r#"{"jsonrpc":"2.0","id":"truapi:sso-pairing:1","result":"remote-sub"}"#
                         .to_string(),
-                    r#"{"jsonrpc":"2.0","method":"statement_subscribeStatement","params":{"subscription":"remote-sub","result":{"event":"newStatements","data":{"statements":["0xdeadbeef"],"remaining":0}}}}"#
-                        .to_string(),
+                    notification,
                 ],
                 ..Default::default()
             }),
@@ -2530,7 +2554,7 @@ mod tests {
             })) => {
                 assert_eq!(
                     reason,
-                    "SSO handshake statement decoding not implemented (4 bytes)"
+                    "SSO handshake decryption not implemented (encrypted_message=2 bytes, public_key=65 bytes)"
                 );
             }
             other => panic!("expected handshake decode boundary, got {other:?}"),
