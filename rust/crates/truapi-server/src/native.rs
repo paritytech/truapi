@@ -124,6 +124,18 @@ pub trait HostCallbacks: Send + Sync {
     /// `request` is the SCALE-encoded [`v01::RemotePermissionRequest`].
     fn remote_permission(&self, request: Vec<u8>) -> Result<bool, HostRejection>;
 
+    /// Present an SSO pairing deeplink or QR payload built by the Rust core.
+    fn present_pairing(&self, deeplink: String) -> Result<(), HostRejection>;
+
+    /// Read the opaque core-owned SSO session blob from host-global storage.
+    fn read_session(&self) -> Result<Option<Vec<u8>>, HostRejection>;
+
+    /// Persist the opaque core-owned SSO session blob in host-global storage.
+    fn write_session(&self, value: Vec<u8>) -> Result<(), HostRejection>;
+
+    /// Clear the persisted core-owned SSO session blob.
+    fn clear_session(&self) -> Result<(), HostRejection>;
+
     /// Confirm a sign-payload request. `review` is a SCALE-encoded review
     /// payload owned by the Rust core.
     fn confirm_sign_payload(&self, review: Vec<u8>) -> Result<bool, HostRejection>;
@@ -420,26 +432,32 @@ impl ChainProvider for CallbackPlatform {
 impl PairingPresenter for CallbackPlatform {
     async fn present_pairing(&self, deeplink: String) -> Result<(), v01::GenericError> {
         self.callbacks.on_core_log(
-            "truapi.native.callback.present_pairing.unavailable".to_string(),
-            deeplink,
+            "truapi.native.callback.present_pairing".to_string(),
+            String::new(),
         );
-        Err(v01::GenericError {
-            reason: "pairing presenter callback not wired through native callbacks".to_string(),
-        })
+        self.callbacks
+            .present_pairing(deeplink)
+            .map_err(v01::GenericError::from)
     }
 }
 
 impl SessionStore for CallbackPlatform {
     async fn read_session(&self) -> Result<Option<Vec<u8>>, v01::GenericError> {
-        Ok(None)
+        self.callbacks
+            .read_session()
+            .map_err(v01::GenericError::from)
     }
 
-    async fn write_session(&self, _value: Vec<u8>) -> Result<(), v01::GenericError> {
-        Ok(())
+    async fn write_session(&self, value: Vec<u8>) -> Result<(), v01::GenericError> {
+        self.callbacks
+            .write_session(value)
+            .map_err(v01::GenericError::from)
     }
 
     async fn clear_session(&self) -> Result<(), v01::GenericError> {
-        Ok(())
+        self.callbacks
+            .clear_session()
+            .map_err(v01::GenericError::from)
     }
 
     fn subscribe_session_store(&self) -> BoxStream<'static, Result<(), v01::GenericError>> {
@@ -553,6 +571,18 @@ mod tests {
             fn remote_permission(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
                 Ok(false)
             }
+            fn present_pairing(&self, _deeplink: String) -> Result<(), HostRejection> {
+                Ok(())
+            }
+            fn read_session(&self) -> Result<Option<Vec<u8>>, HostRejection> {
+                Ok(None)
+            }
+            fn write_session(&self, _value: Vec<u8>) -> Result<(), HostRejection> {
+                Ok(())
+            }
+            fn clear_session(&self) -> Result<(), HostRejection> {
+                Ok(())
+            }
             fn confirm_sign_payload(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
                 Ok(false)
             }
@@ -619,6 +649,18 @@ mod tests {
             }
             fn remote_permission(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
                 Ok(false)
+            }
+            fn present_pairing(&self, _deeplink: String) -> Result<(), HostRejection> {
+                Ok(())
+            }
+            fn read_session(&self) -> Result<Option<Vec<u8>>, HostRejection> {
+                Ok(None)
+            }
+            fn write_session(&self, _value: Vec<u8>) -> Result<(), HostRejection> {
+                Ok(())
+            }
+            fn clear_session(&self) -> Result<(), HostRejection> {
+                Ok(())
             }
             fn confirm_sign_payload(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
                 Ok(false)

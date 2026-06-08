@@ -50,6 +50,10 @@ struct JsBridge {
     confirm_create_transaction: Option<Function>,
     confirm_account_alias: Option<Function>,
     confirm_resource_allocation: Option<Function>,
+    present_pairing: Option<Function>,
+    read_session: Option<Function>,
+    write_session: Option<Function>,
+    clear_session: Option<Function>,
     /// Optional. Hosts that own JSON-RPC connections (e.g. dotli with its
     /// "smoldot vs RPC node" toggle) provide this; otherwise chain calls
     /// fail with an "unavailable" reason.
@@ -81,6 +85,10 @@ impl JsBridge {
                 callbacks,
                 "confirmResourceAllocation",
             )?,
+            present_pairing: get_optional_function(callbacks, "presentPairing")?,
+            read_session: get_optional_function(callbacks, "readSession")?,
+            write_session: get_optional_function(callbacks, "writeSession")?,
+            clear_session: get_optional_function(callbacks, "clearSession")?,
             chain_connect: get_optional_function(callbacks, "chainConnect")?,
             emit_frame: get_function(callbacks, "emitFrame")?,
             dispose: get_optional_function(callbacks, "dispose")?.unwrap_or_else(noop_function),
@@ -282,24 +290,36 @@ impl ChainProvider for WasmPlatform {
 }
 
 impl PairingPresenter for WasmPlatform {
-    async fn present_pairing(&self, _deeplink: String) -> Result<(), v01::GenericError> {
-        Err(v01::GenericError {
-            reason: "pairing presenter callback not provided by host".to_string(),
-        })
+    async fn present_pairing(&self, deeplink: String) -> Result<(), v01::GenericError> {
+        let Some(fn_) = self.bridge.present_pairing.as_ref() else {
+            return Err(v01::GenericError {
+                reason: "presentPairing callback not provided by host".to_string(),
+            });
+        };
+        invoke_string_unit(fn_, deeplink).await.map_err(generic)
     }
 }
 
 impl SessionStore for WasmPlatform {
     async fn read_session(&self) -> Result<Option<Vec<u8>>, v01::GenericError> {
-        Ok(None)
+        let Some(fn_) = self.bridge.read_session.as_ref() else {
+            return Ok(None);
+        };
+        invoke_optional_bytes(fn_).await.map_err(generic)
     }
 
-    async fn write_session(&self, _value: Vec<u8>) -> Result<(), v01::GenericError> {
-        Ok(())
+    async fn write_session(&self, value: Vec<u8>) -> Result<(), v01::GenericError> {
+        let Some(fn_) = self.bridge.write_session.as_ref() else {
+            return Ok(());
+        };
+        invoke_bytes_unit(fn_, value).await.map_err(generic)
     }
 
     async fn clear_session(&self) -> Result<(), v01::GenericError> {
-        Ok(())
+        let Some(fn_) = self.bridge.clear_session.as_ref() else {
+            return Ok(());
+        };
+        invoke_no_args_unit(fn_).await.map_err(generic)
     }
 
     fn subscribe_session_store(&self) -> BoxStream<'static, Result<(), v01::GenericError>> {
@@ -497,6 +517,57 @@ fn invoke_u32_unit(
         let arg = JsValue::from_f64(f64::from(value));
         let returned = fn_.call1(&JsValue::NULL, &arg).map_err(js_to_string)?;
         await_optional_promise(returned).await.map(|_| ())
+    })
+}
+
+fn invoke_string_unit(
+    fn_: &Function,
+    value: String,
+) -> impl std::future::Future<Output = Result<(), String>> + Send {
+    let fn_ = fn_.clone();
+    SendWrapper::new(async move {
+        let arg = JsValue::from_str(&value);
+        let returned = fn_.call1(&JsValue::NULL, &arg).map_err(js_to_string)?;
+        await_optional_promise(returned).await.map(|_| ())
+    })
+}
+
+fn invoke_bytes_unit(
+    fn_: &Function,
+    value: Vec<u8>,
+) -> impl std::future::Future<Output = Result<(), String>> + Send {
+    let fn_ = fn_.clone();
+    SendWrapper::new(async move {
+        let arg = Uint8Array::from(value.as_slice());
+        let returned = fn_.call1(&JsValue::NULL, &arg).map_err(js_to_string)?;
+        await_optional_promise(returned).await.map(|_| ())
+    })
+}
+
+fn invoke_no_args_unit(
+    fn_: &Function,
+) -> impl std::future::Future<Output = Result<(), String>> + Send {
+    let fn_ = fn_.clone();
+    SendWrapper::new(async move {
+        let returned = fn_.call0(&JsValue::NULL).map_err(js_to_string)?;
+        await_optional_promise(returned).await.map(|_| ())
+    })
+}
+
+fn invoke_optional_bytes(
+    fn_: &Function,
+) -> impl std::future::Future<Output = Result<Option<Vec<u8>>, String>> + Send {
+    let fn_ = fn_.clone();
+    SendWrapper::new(async move {
+        let returned = fn_.call0(&JsValue::NULL).map_err(js_to_string)?;
+        let resolved = await_optional_promise(returned).await?;
+        if resolved.is_null() || resolved.is_undefined() {
+            return Ok(None);
+        }
+        let array = resolved
+            .dyn_into::<Uint8Array>()
+            .map_err(|_| "callback must resolve to Uint8Array, null or undefined".to_string())?;
+        Ok(Some(array.to_vec()))
     })
 }
 
