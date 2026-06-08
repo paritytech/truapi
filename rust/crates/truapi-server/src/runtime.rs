@@ -19,7 +19,7 @@ use crate::host_logic::permissions::{Decision, PermissionsService};
 use crate::host_logic::product_account::{
     derive_product_public_key, is_product_identifier, product_public_key_to_address,
 };
-use crate::host_logic::session::{SessionInfo, SessionState};
+use crate::host_logic::session::{SessionInfo, SessionState, decode_persisted_session};
 use crate::subscription::Spawner;
 
 use futures::StreamExt;
@@ -97,8 +97,8 @@ use truapi::{CallContext, CallError, Subscription};
 use truapi_platform::{
     ChainProvider as PlatformChainProvider, JsonRpcConnection, Navigation as PlatformNavigation,
     Notifications as PlatformNotifications, Platform, PreimageHost as PlatformPreimageHost,
-    RuntimeConfig, Storage as PlatformStorage, ThemeHost as PlatformThemeHost,
-    UserConfirmation as PlatformUserConfirmation,
+    RuntimeConfig, SessionStore as PlatformSessionStore, Storage as PlatformStorage,
+    ThemeHost as PlatformThemeHost, UserConfirmation as PlatformUserConfirmation,
 };
 
 /// Adapter that exposes a [`truapi_platform::Platform`] through the
@@ -602,6 +602,27 @@ where
             return Ok(HostRequestLoginResponse::V1(
                 v01::HostRequestLoginResponse::AlreadyConnected,
             ));
+        }
+        match PlatformSessionStore::read_session(self.platform.as_ref()).await {
+            Ok(Some(blob)) => {
+                let session = decode_persisted_session(&blob).map_err(|reason| {
+                    CallError::Domain(HostRequestLoginError::V1(
+                        v01::HostRequestLoginError::Unknown { reason },
+                    ))
+                })?;
+                self.session_state.set_session(session);
+                return Ok(HostRequestLoginResponse::V1(
+                    v01::HostRequestLoginResponse::Success,
+                ));
+            }
+            Ok(None) => {}
+            Err(err) => {
+                return Err(CallError::Domain(HostRequestLoginError::V1(
+                    v01::HostRequestLoginError::Unknown {
+                        reason: format!("session restore failed: {err:?}"),
+                    },
+                )));
+            }
         }
         Err(CallError::unavailable())
     }
@@ -1297,6 +1318,8 @@ mod tests {
         create_transaction_error: Option<&'static str>,
         resource_allocation_confirmed: bool,
         resource_allocation_error: Option<&'static str>,
+        session_blob: Option<Vec<u8>>,
+        session_error: Option<&'static str>,
     }
 
     impl Default for StubPlatform {
@@ -1313,6 +1336,8 @@ mod tests {
                 create_transaction_error: None,
                 resource_allocation_confirmed: false,
                 resource_allocation_error: None,
+                session_blob: None,
+                session_error: None,
             }
         }
     }
@@ -1498,7 +1523,13 @@ mod tests {
 
     impl SessionStore for StubPlatform {
         async fn read_session(&self) -> Result<Option<Vec<u8>>, v01::GenericError> {
-            Ok(None)
+            if let Some(reason) = self.session_error {
+                Err(v01::GenericError {
+                    reason: reason.to_string(),
+                })
+            } else {
+                Ok(self.session_blob.clone())
+            }
         }
         async fn write_session(&self, _value: Vec<u8>) -> Result<(), v01::GenericError> {
             Ok(())
@@ -2306,6 +2337,73 @@ mod tests {
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
         let err = futures::executor::block_on(host.request_login(&cx, request)).unwrap_err();
         assert!(matches!(err, CallError::HostFailure { reason } if reason == "unavailable"));
+    }
+
+    #[test]
+    fn request_login_restores_persisted_session() {
+        let stored = session_info();
+        let host = PlatformRuntimeHost::new_compat(
+            Arc::new(StubPlatform {
+                session_blob: Some(crate::host_logic::session::encode_persisted_session(
+                    &stored,
+                )),
+                ..Default::default()
+            }),
+            test_spawner(),
+        );
+        let cx = CallContext::new();
+        let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
+        let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
+
+        assert_eq!(
+            response,
+            HostRequestLoginResponse::V1(v01::HostRequestLoginResponse::Success)
+        );
+        assert_eq!(host.session_state().current(), Some(stored));
+    }
+
+    #[test]
+    fn request_login_rejects_corrupt_persisted_session() {
+        let host = PlatformRuntimeHost::new_compat(
+            Arc::new(StubPlatform {
+                session_blob: Some(vec![0xff]),
+                ..Default::default()
+            }),
+            test_spawner(),
+        );
+        let cx = CallContext::new();
+        let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
+        let err = futures::executor::block_on(host.request_login(&cx, request)).unwrap_err();
+
+        match err {
+            CallError::Domain(HostRequestLoginError::V1(v01::HostRequestLoginError::Unknown {
+                reason,
+            })) => assert!(reason.contains("invalid session blob")),
+            other => panic!("expected corrupt session login error, got {other:?}"),
+        }
+        assert!(host.session_state().current().is_none());
+    }
+
+    #[test]
+    fn request_login_maps_session_store_failure() {
+        let host = PlatformRuntimeHost::new_compat(
+            Arc::new(StubPlatform {
+                session_error: Some("storage failed"),
+                ..Default::default()
+            }),
+            test_spawner(),
+        );
+        let cx = CallContext::new();
+        let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
+        let err = futures::executor::block_on(host.request_login(&cx, request)).unwrap_err();
+
+        match err {
+            CallError::Domain(HostRequestLoginError::V1(v01::HostRequestLoginError::Unknown {
+                reason,
+            })) => assert!(reason.contains("storage failed")),
+            other => panic!("expected session-store login error, got {other:?}"),
+        }
+        assert!(host.session_state().current().is_none());
     }
 
     #[test]

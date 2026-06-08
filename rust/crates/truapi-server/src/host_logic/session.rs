@@ -5,6 +5,7 @@
 
 use futures::channel::mpsc;
 use futures::stream::{self, BoxStream, StreamExt};
+use parity_scale_codec::{Decode, Encode};
 use std::sync::{Arc, Mutex};
 
 use truapi::v01::HostAccountConnectionStatusSubscribeItem;
@@ -12,7 +13,7 @@ use truapi::versioned::account::HostAccountConnectionStatusSubscribeItem as Vers
 
 /// Session info pushed by the host. The 32-byte sr25519 public key plus
 /// optional usernames sourced from the People-Chain identity record.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SessionInfo {
     /// 32-byte sr25519 root public key of the paired session.
     pub public_key: [u8; 32],
@@ -24,6 +25,29 @@ pub struct SessionInfo {
     pub lite_username: Option<String>,
     /// Fully qualified username (e.g. `Alice Smith`).
     pub full_username: Option<String>,
+}
+
+const PERSISTED_SESSION_VERSION: u8 = 1;
+
+/// Encode the active-session fields the core currently understands into an
+/// opaque host-global session blob. Later SSO channel state should bump
+/// `PERSISTED_SESSION_VERSION` instead of extending this layout silently.
+pub fn encode_persisted_session(info: &SessionInfo) -> Vec<u8> {
+    (PERSISTED_SESSION_VERSION, info).encode()
+}
+
+/// Decode a core-owned persisted session blob.
+pub fn decode_persisted_session(blob: &[u8]) -> Result<SessionInfo, String> {
+    let mut input = blob;
+    let (version, info): (u8, SessionInfo) =
+        Decode::decode(&mut input).map_err(|err| format!("invalid session blob: {err}"))?;
+    if version != PERSISTED_SESSION_VERSION {
+        return Err(format!("unsupported session blob version {version}"));
+    }
+    if !input.is_empty() {
+        return Err("invalid session blob: trailing bytes".to_string());
+    }
+    Ok(info)
 }
 
 /// Holds the currently-active session and broadcasts connection-status
@@ -147,6 +171,38 @@ mod tests {
         let got = state.current().expect("session should be present");
         assert_eq!(got.public_key, [0x42; 32]);
         assert_eq!(got.lite_username.as_deref(), Some("alice"));
+    }
+
+    #[test]
+    fn persisted_session_round_trips() {
+        let mut session = info(0x42);
+        session.entropy_secret = Some(vec![1, 2, 3]);
+        session.full_username = Some("Alice Smith".to_string());
+
+        let blob = encode_persisted_session(&session);
+        let decoded = decode_persisted_session(&blob).expect("session should decode");
+
+        assert_eq!(decoded, session);
+    }
+
+    #[test]
+    fn persisted_session_rejects_unknown_version() {
+        let mut blob = encode_persisted_session(&info(0x42));
+        blob[0] = 0xff;
+
+        let err = decode_persisted_session(&blob).unwrap_err();
+
+        assert_eq!(err, "unsupported session blob version 255");
+    }
+
+    #[test]
+    fn persisted_session_rejects_trailing_bytes() {
+        let mut blob = encode_persisted_session(&info(0x42));
+        blob.push(0);
+
+        let err = decode_persisted_session(&blob).unwrap_err();
+
+        assert_eq!(err, "invalid session blob: trailing bytes");
     }
 
     #[test]
