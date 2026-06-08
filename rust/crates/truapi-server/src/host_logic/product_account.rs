@@ -5,6 +5,7 @@
 
 use blake2::Blake2bVar;
 use blake2::digest::{Update, VariableOutput};
+use blake2_rfc::blake2b::blake2b;
 use parity_scale_codec::Encode;
 use schnorrkel::PublicKey;
 use schnorrkel::derive::{ChainCode, Derivation};
@@ -13,6 +14,8 @@ use unicode_normalization::UnicodeNormalization;
 
 const JUNCTION_ID_LEN: usize = 32;
 const PRODUCT_JUNCTION: &str = "product";
+const SS58_PREFIX: &[u8] = b"SS58PRE";
+const SUBSTRATE_GENERIC_SS58_PREFIX: u8 = 42;
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum ProductAccountError {
@@ -52,6 +55,20 @@ pub fn derive_product_public_key(
     }
 
     Ok(public_key.to_bytes())
+}
+
+pub fn product_public_key_to_address(public_key: [u8; 32]) -> String {
+    let mut payload = Vec::with_capacity(35);
+    payload.push(SUBSTRATE_GENERIC_SS58_PREFIX);
+    payload.extend_from_slice(&public_key);
+
+    let mut checksum_input = Vec::with_capacity(SS58_PREFIX.len() + payload.len());
+    checksum_input.extend_from_slice(SS58_PREFIX);
+    checksum_input.extend_from_slice(&payload);
+    let checksum = blake2b(64, &[], &checksum_input);
+    payload.extend_from_slice(&checksum.as_bytes()[..2]);
+
+    bs58::encode(payload).into_string()
 }
 
 fn create_chain_code(code: &str) -> Result<[u8; 32], ProductAccountError> {
@@ -119,6 +136,15 @@ mod tests {
         assert_eq!(
             hex::encode(derived),
             "56769a234038defb62a7ad42f251091cc24846c2473a31b5bdd17d366c38c211"
+        );
+    }
+
+    #[test]
+    fn ss58_address_matches_dotli_vector() {
+        let derived = derive_product_public_key(ROOT_PUBLIC_KEY, "myapp.dot", 0).unwrap();
+        assert_eq!(
+            product_public_key_to_address(derived),
+            "5CyFsdhwjXy7wWpDEM6isungQ3LfGnu9UXkt7paBQ6DYRxk1"
         );
     }
 

@@ -16,8 +16,10 @@ use crate::host_logic::dotns::{NavigateDecision, parse_navigate};
 use crate::host_logic::entropy::derive_product_entropy;
 use crate::host_logic::features::feature_supported;
 use crate::host_logic::permissions::{Decision, PermissionsService};
-use crate::host_logic::product_account::{derive_product_public_key, is_product_identifier};
-use crate::host_logic::session::SessionState;
+use crate::host_logic::product_account::{
+    derive_product_public_key, is_product_identifier, product_public_key_to_address,
+};
+use crate::host_logic::session::{SessionInfo, SessionState};
 use crate::subscription::Spawner;
 
 use futures::StreamExt;
@@ -70,6 +72,15 @@ use truapi::versioned::permissions::{
 use truapi::versioned::preimage::{
     RemotePreimageLookupSubscribeItem, RemotePreimageLookupSubscribeRequest,
     RemotePreimageSubmitError, RemotePreimageSubmitRequest, RemotePreimageSubmitResponse,
+};
+use truapi::versioned::signing::{
+    HostCreateTransactionError, HostCreateTransactionRequest, HostCreateTransactionResponse,
+    HostCreateTransactionWithLegacyAccountError, HostCreateTransactionWithLegacyAccountRequest,
+    HostCreateTransactionWithLegacyAccountResponse, HostSignPayloadError, HostSignPayloadRequest,
+    HostSignPayloadResponse, HostSignPayloadWithLegacyAccountError,
+    HostSignPayloadWithLegacyAccountRequest, HostSignPayloadWithLegacyAccountResponse,
+    HostSignRawError, HostSignRawRequest, HostSignRawResponse, HostSignRawWithLegacyAccountError,
+    HostSignRawWithLegacyAccountRequest, HostSignRawWithLegacyAccountResponse,
 };
 use truapi::versioned::system::{
     HostFeatureSupportedError, HostFeatureSupportedRequest, HostFeatureSupportedResponse,
@@ -156,6 +167,69 @@ impl<P> PlatformRuntimeHost<P> {
     /// Static product/host configuration for this runtime instance.
     pub fn runtime_config(&self) -> &RuntimeConfig {
         &self.runtime_config
+    }
+
+    fn is_product_account_valid_for_caller(&self, dot_ns_identifier: &str) -> bool {
+        if self.runtime_config.product_label.starts_with("localhost:") {
+            is_product_identifier(dot_ns_identifier)
+        } else {
+            dot_ns_identifier == self.runtime_config.product_id
+        }
+    }
+
+    fn legacy_slot_zero_public_key(&self, session: &SessionInfo) -> Result<[u8; 32], String> {
+        derive_product_public_key(session.public_key, &self.runtime_config.product_id, 0)
+            .map_err(|err| err.to_string())
+    }
+}
+
+impl<P> PlatformRuntimeHost<P>
+where
+    P: Platform + 'static,
+{
+    async fn chain_submit_decision(&self) -> Result<Decision, String> {
+        let service = PermissionsService::new(self.platform.as_ref(), self.platform.as_ref());
+        service
+            .check_or_prompt_remote(v01::RemotePermissionRequest {
+                permission: v01::RemotePermission::ChainSubmit,
+            })
+            .await
+            .map_err(|err| format!("permission storage failed: {err:?}"))
+    }
+
+    fn validate_legacy_address_signer(
+        &self,
+        session: &SessionInfo,
+        signer: &str,
+    ) -> Result<(), v01::HostSignPayloadError> {
+        let public_key = self
+            .legacy_slot_zero_public_key(session)
+            .map_err(|reason| v01::HostSignPayloadError::Unknown { reason })?;
+        let expected = product_public_key_to_address(public_key);
+        if expected == signer {
+            Ok(())
+        } else {
+            Err(v01::HostSignPayloadError::Unknown {
+                reason: "Account can't be derived from product account id".to_string(),
+            })
+        }
+    }
+
+    fn validate_legacy_public_key_signer(
+        &self,
+        session: &SessionInfo,
+        signer: [u8; 32],
+    ) -> Result<(), v01::HostCreateTransactionError> {
+        let public_key = self
+            .legacy_slot_zero_public_key(session)
+            .map_err(|reason| v01::HostCreateTransactionError::Unknown { reason })?;
+        if public_key == signer {
+            Ok(())
+        } else {
+            Err(v01::HostCreateTransactionError::Unknown {
+                reason: "Account can't be derived from product account id".to_string(),
+            })
+        }
     }
 }
 
@@ -485,7 +559,200 @@ where
     }
 }
 
-impl<P> Signing for PlatformRuntimeHost<P> where P: Platform + 'static {}
+impl<P> Signing for PlatformRuntimeHost<P>
+where
+    P: Platform + 'static,
+{
+    async fn sign_payload(
+        &self,
+        _cx: &CallContext,
+        request: HostSignPayloadRequest,
+    ) -> Result<HostSignPayloadResponse, CallError<HostSignPayloadError>> {
+        let HostSignPayloadRequest::V1(v01::HostSignPayloadRequest { account, .. }) = request;
+        if !self.is_product_account_valid_for_caller(&account.dot_ns_identifier) {
+            return Err(CallError::Domain(HostSignPayloadError::V1(
+                v01::HostSignPayloadError::PermissionDenied,
+            )));
+        }
+        match self.chain_submit_decision().await {
+            Ok(Decision::Granted) => {}
+            Ok(Decision::Denied) => {
+                return Err(CallError::Domain(HostSignPayloadError::V1(
+                    v01::HostSignPayloadError::PermissionDenied,
+                )));
+            }
+            Err(reason) => return Err(CallError::HostFailure { reason }),
+        }
+        if self.session_state.current().is_none() {
+            return Err(CallError::Domain(HostSignPayloadError::V1(
+                v01::HostSignPayloadError::Rejected,
+            )));
+        }
+        Err(CallError::Domain(HostSignPayloadError::V1(
+            v01::HostSignPayloadError::Unknown {
+                reason: "SSO signing not implemented".to_string(),
+            },
+        )))
+    }
+
+    async fn sign_raw(
+        &self,
+        _cx: &CallContext,
+        request: HostSignRawRequest,
+    ) -> Result<HostSignRawResponse, CallError<HostSignRawError>> {
+        let HostSignRawRequest::V1(v01::HostSignRawRequest { account, .. }) = request;
+        if !self.is_product_account_valid_for_caller(&account.dot_ns_identifier) {
+            return Err(CallError::Domain(HostSignRawError::V1(
+                v01::HostSignPayloadError::PermissionDenied,
+            )));
+        }
+        if self.session_state.current().is_none() {
+            return Err(CallError::Domain(HostSignRawError::V1(
+                v01::HostSignPayloadError::Rejected,
+            )));
+        }
+        Err(CallError::Domain(HostSignRawError::V1(
+            v01::HostSignPayloadError::Unknown {
+                reason: "SSO signing not implemented".to_string(),
+            },
+        )))
+    }
+
+    async fn create_transaction(
+        &self,
+        _cx: &CallContext,
+        request: HostCreateTransactionRequest,
+    ) -> Result<HostCreateTransactionResponse, CallError<HostCreateTransactionError>> {
+        let HostCreateTransactionRequest::V1(v01::ProductAccountTxPayload { signer, .. }) = request;
+        if !self.is_product_account_valid_for_caller(&signer.dot_ns_identifier) {
+            return Err(CallError::Domain(HostCreateTransactionError::V1(
+                v01::HostCreateTransactionError::PermissionDenied,
+            )));
+        }
+        match self.chain_submit_decision().await {
+            Ok(Decision::Granted) => {}
+            Ok(Decision::Denied) => {
+                return Err(CallError::Domain(HostCreateTransactionError::V1(
+                    v01::HostCreateTransactionError::PermissionDenied,
+                )));
+            }
+            Err(reason) => return Err(CallError::HostFailure { reason }),
+        }
+        if self.session_state.current().is_none() {
+            return Err(CallError::Domain(HostCreateTransactionError::V1(
+                v01::HostCreateTransactionError::Rejected,
+            )));
+        }
+        Err(CallError::Domain(HostCreateTransactionError::V1(
+            v01::HostCreateTransactionError::Unknown {
+                reason: "SSO transaction creation not implemented".to_string(),
+            },
+        )))
+    }
+
+    async fn sign_payload_with_legacy_account(
+        &self,
+        _cx: &CallContext,
+        request: HostSignPayloadWithLegacyAccountRequest,
+    ) -> Result<
+        HostSignPayloadWithLegacyAccountResponse,
+        CallError<HostSignPayloadWithLegacyAccountError>,
+    > {
+        let HostSignPayloadWithLegacyAccountRequest::V1(
+            v01::HostSignPayloadWithLegacyAccountRequest { signer, .. },
+        ) = request;
+        let Some(session) = self.session_state.current() else {
+            return Err(CallError::Domain(
+                HostSignPayloadWithLegacyAccountError::V1(v01::HostSignPayloadError::Rejected),
+            ));
+        };
+        self.validate_legacy_address_signer(&session, &signer)
+            .map_err(|err| CallError::Domain(HostSignPayloadWithLegacyAccountError::V1(err)))?;
+        match self.chain_submit_decision().await {
+            Ok(Decision::Granted) => {}
+            Ok(Decision::Denied) => {
+                return Err(CallError::Domain(
+                    HostSignPayloadWithLegacyAccountError::V1(
+                        v01::HostSignPayloadError::PermissionDenied,
+                    ),
+                ));
+            }
+            Err(reason) => return Err(CallError::HostFailure { reason }),
+        }
+        Err(CallError::Domain(
+            HostSignPayloadWithLegacyAccountError::V1(v01::HostSignPayloadError::Unknown {
+                reason: "SSO signing not implemented".to_string(),
+            }),
+        ))
+    }
+
+    async fn sign_raw_with_legacy_account(
+        &self,
+        _cx: &CallContext,
+        request: HostSignRawWithLegacyAccountRequest,
+    ) -> Result<HostSignRawWithLegacyAccountResponse, CallError<HostSignRawWithLegacyAccountError>>
+    {
+        let HostSignRawWithLegacyAccountRequest::V1(v01::HostSignRawWithLegacyAccountRequest {
+            signer,
+            ..
+        }) = request;
+        let Some(session) = self.session_state.current() else {
+            return Err(CallError::Domain(HostSignRawWithLegacyAccountError::V1(
+                v01::HostSignPayloadError::Rejected,
+            )));
+        };
+        self.validate_legacy_address_signer(&session, &signer)
+            .map_err(|err| CallError::Domain(HostSignRawWithLegacyAccountError::V1(err)))?;
+        Err(CallError::Domain(HostSignRawWithLegacyAccountError::V1(
+            v01::HostSignPayloadError::Unknown {
+                reason: "SSO signing not implemented".to_string(),
+            },
+        )))
+    }
+
+    async fn create_transaction_with_legacy_account(
+        &self,
+        _cx: &CallContext,
+        request: HostCreateTransactionWithLegacyAccountRequest,
+    ) -> Result<
+        HostCreateTransactionWithLegacyAccountResponse,
+        CallError<HostCreateTransactionWithLegacyAccountError>,
+    > {
+        let HostCreateTransactionWithLegacyAccountRequest::V1(v01::LegacyAccountTxPayload {
+            signer,
+            ..
+        }) = request;
+        let Some(session) = self.session_state.current() else {
+            return Err(CallError::Domain(
+                HostCreateTransactionWithLegacyAccountError::V1(
+                    v01::HostCreateTransactionError::Rejected,
+                ),
+            ));
+        };
+        self.validate_legacy_public_key_signer(&session, signer)
+            .map_err(|err| {
+                CallError::Domain(HostCreateTransactionWithLegacyAccountError::V1(err))
+            })?;
+        match self.chain_submit_decision().await {
+            Ok(Decision::Granted) => {}
+            Ok(Decision::Denied) => {
+                return Err(CallError::Domain(
+                    HostCreateTransactionWithLegacyAccountError::V1(
+                        v01::HostCreateTransactionError::PermissionDenied,
+                    ),
+                ));
+            }
+            Err(reason) => return Err(CallError::HostFailure { reason }),
+        }
+        Err(CallError::Domain(
+            HostCreateTransactionWithLegacyAccountError::V1(
+                v01::HostCreateTransactionError::Unknown {
+                    reason: "SSO transaction creation not implemented".to_string(),
+                },
+            ),
+        ))
+    }
+}
 
 impl<P> StatementStore for PlatformRuntimeHost<P> where P: Platform + 'static {}
 
@@ -901,6 +1168,49 @@ mod tests {
             entropy_secret: Some((0..32).map(|i| i as u8).collect()),
             lite_username: Some("alice".to_string()),
             full_username: Some("Alice Smith".to_string()),
+        }
+    }
+
+    fn account_id(identifier: &str, derivation_index: u32) -> v01::ProductAccountId {
+        v01::ProductAccountId {
+            dot_ns_identifier: identifier.to_string(),
+            derivation_index,
+        }
+    }
+
+    fn raw_payload() -> v01::RawPayload {
+        v01::RawPayload::Bytes {
+            bytes: b"hello".to_vec(),
+        }
+    }
+
+    fn sign_payload_data() -> v01::HostSignPayloadData {
+        v01::HostSignPayloadData {
+            block_hash: vec![0; 32],
+            block_number: vec![0; 4],
+            era: vec![0],
+            genesis_hash: vec![1; 32],
+            method: vec![0],
+            nonce: vec![0],
+            spec_version: vec![0],
+            tip: vec![0],
+            transaction_version: vec![0],
+            signed_extensions: vec![],
+            version: 4,
+            asset_id: None,
+            metadata_hash: None,
+            mode: None,
+            with_signed_transaction: None,
+        }
+    }
+
+    fn product_tx_payload(identifier: &str) -> v01::ProductAccountTxPayload {
+        v01::ProductAccountTxPayload {
+            signer: account_id(identifier, 0),
+            genesis_hash: [1; 32],
+            call_data: vec![0],
+            extensions: vec![],
+            tx_ext_version: 0,
         }
     }
 
@@ -1329,6 +1639,148 @@ mod tests {
                 theme: v01::Theme::Dark
             })
         );
+    }
+
+    #[test]
+    fn sign_raw_rejects_invalid_product_account() {
+        let host =
+            PlatformRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let request = HostSignRawRequest::V1(v01::HostSignRawRequest {
+            account: account_id("other.dot", 0),
+            payload: raw_payload(),
+        });
+        let err = futures::executor::block_on(host.sign_raw(&cx, request)).unwrap_err();
+        assert!(matches!(
+            err,
+            CallError::Domain(HostSignRawError::V1(
+                v01::HostSignPayloadError::PermissionDenied
+            ))
+        ));
+    }
+
+    #[test]
+    fn sign_raw_rejects_without_session_after_valid_account() {
+        let host =
+            PlatformRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
+        let cx = CallContext::new();
+        let request = HostSignRawRequest::V1(v01::HostSignRawRequest {
+            account: account_id("myapp.dot", 0),
+            payload: raw_payload(),
+        });
+        let err = futures::executor::block_on(host.sign_raw(&cx, request)).unwrap_err();
+        assert!(matches!(
+            err,
+            CallError::Domain(HostSignRawError::V1(v01::HostSignPayloadError::Rejected))
+        ));
+    }
+
+    #[test]
+    fn sign_payload_denies_when_chain_submit_denied() {
+        let host = PlatformRuntimeHost::new(
+            Arc::new(StubPlatform {
+                remote_permission_granted: false,
+            }),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let request = HostSignPayloadRequest::V1(v01::HostSignPayloadRequest {
+            account: account_id("myapp.dot", 0),
+            payload: sign_payload_data(),
+        });
+        let err = futures::executor::block_on(host.sign_payload(&cx, request)).unwrap_err();
+        assert!(matches!(
+            err,
+            CallError::Domain(HostSignPayloadError::V1(
+                v01::HostSignPayloadError::PermissionDenied
+            ))
+        ));
+    }
+
+    #[test]
+    fn legacy_sign_raw_rejects_signer_mismatch() {
+        let host =
+            PlatformRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let request =
+            HostSignRawWithLegacyAccountRequest::V1(v01::HostSignRawWithLegacyAccountRequest {
+                signer: "5Ci5sCERp3MFEDpF2jVkQDJoBevpRosB7toYRqKWShewhdhq".to_string(),
+                payload: raw_payload(),
+            });
+        let err = futures::executor::block_on(host.sign_raw_with_legacy_account(&cx, request))
+            .unwrap_err();
+        match err {
+            CallError::Domain(HostSignRawWithLegacyAccountError::V1(
+                v01::HostSignPayloadError::Unknown { reason },
+            )) => assert_eq!(reason, "Account can't be derived from product account id"),
+            other => panic!("expected legacy signer mismatch, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn legacy_sign_raw_accepts_derived_ss58_then_reaches_sso_boundary() {
+        let host =
+            PlatformRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let request =
+            HostSignRawWithLegacyAccountRequest::V1(v01::HostSignRawWithLegacyAccountRequest {
+                signer: "5CyFsdhwjXy7wWpDEM6isungQ3LfGnu9UXkt7paBQ6DYRxk1".to_string(),
+                payload: raw_payload(),
+            });
+        let err = futures::executor::block_on(host.sign_raw_with_legacy_account(&cx, request))
+            .unwrap_err();
+        match err {
+            CallError::Domain(HostSignRawWithLegacyAccountError::V1(
+                v01::HostSignPayloadError::Unknown { reason },
+            )) => assert_eq!(reason, "SSO signing not implemented"),
+            other => panic!("expected SSO boundary error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn legacy_create_transaction_rejects_raw_key_mismatch() {
+        let host =
+            PlatformRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let request =
+            HostCreateTransactionWithLegacyAccountRequest::V1(v01::LegacyAccountTxPayload {
+                signer: [0; 32],
+                genesis_hash: [1; 32],
+                call_data: vec![0],
+                extensions: vec![],
+                tx_ext_version: 0,
+            });
+        let err =
+            futures::executor::block_on(host.create_transaction_with_legacy_account(&cx, request))
+                .unwrap_err();
+        match err {
+            CallError::Domain(HostCreateTransactionWithLegacyAccountError::V1(
+                v01::HostCreateTransactionError::Unknown { reason },
+            )) => assert_eq!(reason, "Account can't be derived from product account id"),
+            other => panic!("expected legacy signer mismatch, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn create_transaction_rejects_invalid_product_account() {
+        let host =
+            PlatformRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let request = HostCreateTransactionRequest::V1(product_tx_payload("other.dot"));
+        let err = futures::executor::block_on(host.create_transaction(&cx, request)).unwrap_err();
+        assert!(matches!(
+            err,
+            CallError::Domain(HostCreateTransactionError::V1(
+                v01::HostCreateTransactionError::PermissionDenied
+            ))
+        ));
     }
 
     #[test]
