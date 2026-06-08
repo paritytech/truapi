@@ -2361,9 +2361,8 @@ where
     }
 }
 
-// `Notifications` methods are required (no default bodies), so the
-// unavailable stubs are spelled out. The v0.1 platform contract does not
-// model host-assigned notification ids, cancellation, or scheduling.
+// `Notifications` delegates to the platform so hosts can own scheduling and
+// cancellation while the core preserves the typed TrUAPI wire shape.
 impl<P> Notifications for PlatformRuntimeHost<P>
 where
     P: Platform + 'static,
@@ -2450,6 +2449,9 @@ mod tests {
         pairing_error: Option<&'static str>,
         pairing_pending: bool,
         presented_pairings: Arc<Mutex<Vec<String>>>,
+        notification_id: v01::NotificationId,
+        pushed_notifications: Arc<Mutex<Vec<v01::HostPushNotificationRequest>>>,
+        cancelled_notifications: Arc<Mutex<Vec<v01::NotificationId>>>,
         sent_rpc: Arc<Mutex<Vec<String>>>,
         rpc_responses: Vec<String>,
     }
@@ -2474,6 +2476,9 @@ mod tests {
                 pairing_error: None,
                 pairing_pending: false,
                 presented_pairings: Arc::new(Mutex::new(Vec::new())),
+                notification_id: 0,
+                pushed_notifications: Arc::new(Mutex::new(Vec::new())),
+                cancelled_notifications: Arc::new(Mutex::new(Vec::new())),
                 sent_rpc: Arc::new(Mutex::new(Vec::new())),
                 rpc_responses: Vec::new(),
             }
@@ -2837,12 +2842,22 @@ mod tests {
     impl PlatformNotifications for StubPlatform {
         async fn push_notification(
             &self,
-            _notification: v01::HostPushNotificationRequest,
+            notification: v01::HostPushNotificationRequest,
         ) -> Result<v01::HostPushNotificationResponse, v01::GenericError> {
-            Ok(v01::HostPushNotificationResponse { id: 0 })
+            self.pushed_notifications
+                .lock()
+                .expect("notification list mutex poisoned")
+                .push(notification);
+            Ok(v01::HostPushNotificationResponse {
+                id: self.notification_id,
+            })
         }
 
-        async fn cancel_notification(&self, _id: u32) -> Result<(), v01::GenericError> {
+        async fn cancel_notification(&self, id: u32) -> Result<(), v01::GenericError> {
+            self.cancelled_notifications
+                .lock()
+                .expect("notification cancellation list mutex poisoned")
+                .push(id);
             Ok(())
         }
     }
@@ -3072,6 +3087,69 @@ mod tests {
             })) => {}
             other => panic!("expected Unknown navigate error, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn push_notification_delegates_payload_and_returns_host_id() {
+        let pushed_notifications = Arc::new(Mutex::new(Vec::new()));
+        let platform = Arc::new(StubPlatform {
+            notification_id: 42,
+            pushed_notifications: pushed_notifications.clone(),
+            ..Default::default()
+        });
+        let host = PlatformRuntimeHost::new_compat(platform, test_spawner());
+        let cx = CallContext::new();
+        let request = HostPushNotificationRequest::V1(v01::HostPushNotificationRequest {
+            text: "Hello".to_string(),
+            deeplink: Some("https://example.invalid/launch".to_string()),
+            scheduled_at: Some(1_776_144_000_000),
+        });
+
+        let response =
+            futures::executor::block_on(host.send_push_notification(&cx, request)).unwrap();
+
+        assert_eq!(
+            response,
+            HostPushNotificationResponse::V1(v01::HostPushNotificationResponse { id: 42 })
+        );
+        assert_eq!(
+            pushed_notifications
+                .lock()
+                .expect("notification list mutex poisoned")
+                .as_slice(),
+            &[v01::HostPushNotificationRequest {
+                text: "Hello".to_string(),
+                deeplink: Some("https://example.invalid/launch".to_string()),
+                scheduled_at: Some(1_776_144_000_000),
+            }]
+        );
+    }
+
+    #[test]
+    fn cancel_notification_delegates_host_id() {
+        let cancelled_notifications = Arc::new(Mutex::new(Vec::new()));
+        let platform = Arc::new(StubPlatform {
+            cancelled_notifications: cancelled_notifications.clone(),
+            ..Default::default()
+        });
+        let host = PlatformRuntimeHost::new_compat(platform, test_spawner());
+        let cx = CallContext::new();
+        let request =
+            HostPushNotificationCancelRequest::V1(v01::HostPushNotificationCancelRequest {
+                id: 42,
+            });
+
+        let response =
+            futures::executor::block_on(host.cancel_push_notification(&cx, request)).unwrap();
+
+        assert_eq!(response, HostPushNotificationCancelResponse::V1);
+        assert_eq!(
+            cancelled_notifications
+                .lock()
+                .expect("notification cancellation list mutex poisoned")
+                .as_slice(),
+            &[42]
+        );
     }
 
     #[test]
