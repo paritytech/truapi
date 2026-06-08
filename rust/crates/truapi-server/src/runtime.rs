@@ -127,7 +127,8 @@ use truapi::versioned::statement_store::{
     RemoteStatementStoreCreateProofAuthorizedResponse, RemoteStatementStoreCreateProofError,
     RemoteStatementStoreCreateProofRequest, RemoteStatementStoreCreateProofResponse,
     RemoteStatementStoreSubmitError, RemoteStatementStoreSubmitRequest,
-    RemoteStatementStoreSubscribeItem, RemoteStatementStoreSubscribeRequest,
+    RemoteStatementStoreSubscribeError, RemoteStatementStoreSubscribeItem,
+    RemoteStatementStoreSubscribeRequest,
 };
 use truapi::versioned::system::{
     HostFeatureSupportedError, HostFeatureSupportedRequest, HostFeatureSupportedResponse,
@@ -1868,10 +1869,17 @@ where
         &self,
         cx: &CallContext,
         request: RemoteStatementStoreSubscribeRequest,
-    ) -> Subscription<RemoteStatementStoreSubscribeItem> {
+    ) -> Result<
+        Subscription<RemoteStatementStoreSubscribeItem>,
+        CallError<RemoteStatementStoreSubscribeError>,
+    > {
         let (kind, topics) = match statement_store_topic_filter(request) {
             Ok(value) => value,
-            Err(_) => return Subscription::empty(),
+            Err(reason) => {
+                return Err(CallError::Domain(RemoteStatementStoreSubscribeError::V1(
+                    v01::GenericError { reason },
+                )));
+            }
         };
         let request_id = if cx.request_id().is_empty() {
             "truapi:ss-subscribe".to_string()
@@ -1885,7 +1893,13 @@ where
         .await
         {
             Ok(connection) => connection,
-            Err(_) => return Subscription::empty(),
+            Err(err) => {
+                return Err(CallError::Domain(RemoteStatementStoreSubscribeError::V1(
+                    v01::GenericError {
+                        reason: format!("statement-store connect failed: {err:?}"),
+                    },
+                )));
+            }
         };
         connection.send(match kind {
             TopicFilterKind::MatchAll => subscribe_match_all_request(&request_id, &topics),
@@ -1893,7 +1907,7 @@ where
         });
         let responses = connection.responses();
         let stream = statement_store_subscription_stream(connection, responses, request_id);
-        Subscription::new(Box::pin(stream))
+        Ok(Subscription::new(Box::pin(stream)))
     }
 
     async fn create_proof(
@@ -2758,6 +2772,7 @@ mod tests {
         cancelled_notifications: Arc<Mutex<Vec<v01::NotificationId>>>,
         sent_rpc: Arc<Mutex<Vec<String>>>,
         rpc_responses: Vec<String>,
+        chain_connect_error: Option<&'static str>,
     }
 
     impl Default for StubPlatform {
@@ -2785,6 +2800,7 @@ mod tests {
                 cancelled_notifications: Arc::new(Mutex::new(Vec::new())),
                 sent_rpc: Arc::new(Mutex::new(Vec::new())),
                 rpc_responses: Vec::new(),
+                chain_connect_error: None,
             }
         }
     }
@@ -3239,6 +3255,11 @@ mod tests {
             &self,
             _genesis_hash: Vec<u8>,
         ) -> Result<Box<dyn JsonRpcConnection>, v01::GenericError> {
+            if let Some(reason) = self.chain_connect_error {
+                return Err(v01::GenericError {
+                    reason: reason.to_string(),
+                });
+            }
             Ok(Box::new(RecordingConnection {
                 sent: self.sent_rpc.clone(),
                 responses: self.rpc_responses.clone(),
@@ -3896,7 +3917,8 @@ mod tests {
             RemoteStatementStoreSubscribeRequest::V1(
                 v01::RemoteStatementStoreSubscribeRequest::MatchAny(vec![[7; 32]]),
             ),
-        ));
+        ))
+        .unwrap();
 
         let item = futures::executor::block_on(subscription.next()).expect("statement page");
 
@@ -3937,7 +3959,8 @@ mod tests {
             RemoteStatementStoreSubscribeRequest::V1(
                 v01::RemoteStatementStoreSubscribeRequest::MatchAny(vec![[7; 32]]),
             ),
-        ));
+        ))
+        .unwrap();
 
         let _ = futures::executor::block_on(subscription.next()).expect("statement page");
         drop(subscription);
@@ -3970,13 +3993,92 @@ mod tests {
             RemoteStatementStoreSubscribeRequest::V1(
                 v01::RemoteStatementStoreSubscribeRequest::MatchAny(vec![[7; 32]]),
             ),
-        ));
+        ))
+        .unwrap();
 
         let item = futures::executor::block_on(subscription.next()).expect("completion page");
 
         let RemoteStatementStoreSubscribeItem::V1(inner) = item;
         assert!(inner.is_complete);
         assert!(inner.statements.is_empty());
+    }
+
+    #[test]
+    fn statement_store_subscribe_rejects_topic_limit_violations() {
+        let platform = stub_platform();
+        let host = PlatformRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        let cx = CallContext::with_request_id("sub-too-many".to_string());
+        let topics = vec![[7; 32]; MAX_MATCH_ANY_TOPICS + 1];
+
+        let err = match futures::executor::block_on(StatementStore::subscribe(
+            &host,
+            &cx,
+            RemoteStatementStoreSubscribeRequest::V1(
+                v01::RemoteStatementStoreSubscribeRequest::MatchAny(topics),
+            ),
+        )) {
+            Ok(_) => panic!("topic limit violation should fail subscription start"),
+            Err(err) => err,
+        };
+
+        let CallError::Domain(RemoteStatementStoreSubscribeError::V1(reason)) = err else {
+            panic!("expected statement-store subscribe domain error");
+        };
+        assert_eq!(
+            reason.reason,
+            format!(
+                "MatchAny has {} topics, maximum is {}",
+                MAX_MATCH_ANY_TOPICS + 1,
+                MAX_MATCH_ANY_TOPICS
+            )
+        );
+        assert!(platform.sent_rpc.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn statement_store_subscribe_reports_chain_connect_failure() {
+        let platform = Arc::new(StubPlatform {
+            chain_connect_error: Some("chain unavailable"),
+            ..Default::default()
+        });
+        let host = PlatformRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        let cx = CallContext::with_request_id("sub-connect-fail".to_string());
+
+        let err = match futures::executor::block_on(StatementStore::subscribe(
+            &host,
+            &cx,
+            RemoteStatementStoreSubscribeRequest::V1(
+                v01::RemoteStatementStoreSubscribeRequest::MatchAny(vec![[7; 32]]),
+            ),
+        )) {
+            Ok(_) => panic!("chain connect failure should fail subscription start"),
+            Err(err) => err,
+        };
+
+        let CallError::Domain(RemoteStatementStoreSubscribeError::V1(reason)) = err else {
+            panic!("expected statement-store subscribe domain error");
+        };
+        assert!(
+            reason
+                .reason
+                .contains("statement-store connect failed: GenericError"),
+            "unexpected reason: {}",
+            reason.reason
+        );
+        assert!(
+            reason.reason.contains("chain unavailable"),
+            "unexpected reason: {}",
+            reason.reason
+        );
+        assert!(platform.sent_rpc.lock().unwrap().is_empty());
     }
 
     #[test]

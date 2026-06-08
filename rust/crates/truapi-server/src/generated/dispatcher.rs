@@ -1440,7 +1440,10 @@ where
                         Decode::decode(&mut &bytes[..])
                             .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
-                    let stream = host.subscribe(&cx, request).await;
+                    let stream = match host.subscribe(&cx, request).await {
+                        Ok(sub) => sub,
+                        Err(err) => return Err(encode_call_error_payload(err)),
+                    };
                     Ok(subscription_stream::<
                         versioned::statement_store::RemoteStatementStoreSubscribeItem,
                         _,

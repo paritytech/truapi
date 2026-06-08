@@ -24,7 +24,7 @@ use parity_scale_codec::{Decode, Encode};
 
 use truapi::v01;
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
-use truapi::versioned::{account, payment};
+use truapi::versioned::{account, payment, statement_store};
 
 use truapi_platform::{
     ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, PairingDeeplinkScheme,
@@ -479,6 +479,26 @@ fn deferred_payment_subscriptions_interrupt_dotli_not_implemented_errors() {
         truapi::CallError::Domain(payment::HostPaymentStatusSubscribeError::V1(
             v01::HostPaymentStatusSubscribeError::Unknown {
                 reason: PAYMENTS_NOT_IMPLEMENTED.to_string(),
+            },
+        )),
+    );
+}
+
+#[test]
+fn statement_store_subscribe_topic_limit_interrupts_with_typed_error() {
+    let core = make_core();
+    let request = statement_store::RemoteStatementStoreSubscribeRequest::V1(
+        v01::RemoteStatementStoreSubscribeRequest::MatchAny(vec![[7u8; 32]; 129]),
+    );
+
+    assert_subscription_start_interrupts_error(
+        &core,
+        "p:ss-too-many",
+        "statement_store_subscribe",
+        request.encode(),
+        truapi::CallError::Domain(statement_store::RemoteStatementStoreSubscribeError::V1(
+            v01::GenericError {
+                reason: "MatchAny has 129 topics, maximum is 128".to_string(),
             },
         )),
     );
