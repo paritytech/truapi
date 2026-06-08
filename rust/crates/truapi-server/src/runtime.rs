@@ -2360,9 +2360,12 @@ where
 // Deferred product surfaces.
 //
 // Payment and full account proof are explicitly out of current dotli parity,
-// but products should still observe `Unsupported` rather than a host failure.
+// but products should still observe dotli's typed "not implemented" errors
+// rather than a generic transport failure.
 // Chat and CoinPayment remain outside this milestone and keep their generated
 // trait defaults until another host/product needs real implementations.
+
+const PAYMENTS_NOT_IMPLEMENTED: &str = "Payments are not supported in dot.li";
 
 impl<P> Chat for PlatformRuntimeHost<P> where P: Platform + 'static {}
 impl<P> CoinPayment for PlatformRuntimeHost<P> where P: Platform + 'static {}
@@ -2378,7 +2381,9 @@ where
         Subscription<HostPaymentBalanceSubscribeItem>,
         CallError<HostPaymentBalanceSubscribeError>,
     > {
-        Err(CallError::Unsupported)
+        Err(CallError::Domain(HostPaymentBalanceSubscribeError::V1(
+            v01::HostPaymentBalanceSubscribeError::PermissionDenied,
+        )))
     }
 
     async fn request(
@@ -2386,7 +2391,11 @@ where
         _cx: &CallContext,
         _request: HostPaymentRequest,
     ) -> Result<HostPaymentResponse, CallError<HostPaymentError>> {
-        Err(CallError::Unsupported)
+        Err(CallError::Domain(HostPaymentError::V1(
+            v01::HostPaymentError::Unknown {
+                reason: PAYMENTS_NOT_IMPLEMENTED.to_string(),
+            },
+        )))
     }
 
     async fn status_subscribe(
@@ -2397,7 +2406,11 @@ where
         Subscription<HostPaymentStatusSubscribeItem>,
         CallError<HostPaymentStatusSubscribeError>,
     > {
-        Err(CallError::Unsupported)
+        Err(CallError::Domain(HostPaymentStatusSubscribeError::V1(
+            v01::HostPaymentStatusSubscribeError::Unknown {
+                reason: PAYMENTS_NOT_IMPLEMENTED.to_string(),
+            },
+        )))
     }
 
     async fn top_up(
@@ -2405,7 +2418,11 @@ where
         _cx: &CallContext,
         _request: HostPaymentTopUpRequest,
     ) -> Result<HostPaymentTopUpResponse, CallError<HostPaymentTopUpError>> {
-        Err(CallError::Unsupported)
+        Err(CallError::Domain(HostPaymentTopUpError::V1(
+            v01::HostPaymentTopUpError::Unknown {
+                reason: PAYMENTS_NOT_IMPLEMENTED.to_string(),
+            },
+        )))
     }
 }
 
