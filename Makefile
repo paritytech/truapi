@@ -3,7 +3,7 @@
 # Run `make help` for the list of targets.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup build codegen test check playground wasm uniffi android-publish-local
+.PHONY: help setup build codegen test check playground wasm wasm-crypto-test uniffi android-publish-local
 
 TRUAPI_PKG := js/packages/truapi
 PLAYGROUND := playground
@@ -29,6 +29,9 @@ codegen: ## Regenerate the TypeScript client from the Rust crate.
 
 wasm: ## Rebuild the truapi-server WASM artifacts under js/packages/truapi-host-wasm/dist/wasm/.
 	cd $(JS_PACKAGES)/truapi-host-wasm && npm run build:wasm
+
+wasm-crypto-test: ## Run crypto/vector tests on wasm32 via wasm-pack/node.
+	wasm-pack test --node rust/crates/truapi-server --test wasm_crypto_vectors --no-default-features
 
 UNIFFI_CDYLIB_DIR := target/release
 UNAME_S := $(shell uname -s)

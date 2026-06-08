@@ -71,3 +71,6 @@ web-sys = { version = "0.3", features = [
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "macros", "io-util", "time"] }
 tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect"] }
+
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "0.3"
