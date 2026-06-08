@@ -7,7 +7,9 @@
 //! permission cache layer). Methods with no platform backing return
 //! `CallError::unavailable()`.
 
+use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+use std::task::{Context, Poll};
 use std::time::Duration;
 
 use crate::chain_runtime::{
@@ -38,12 +40,12 @@ use crate::host_logic::statement_store::{
     decode_statement_data, parse_new_statements, parse_submit_ack, parse_subscribe_ack,
     sign_statement_fields, signed_statement_to_scale, statement_fields_from_v01,
     statement_proof_to_v01, submit_statement_request, subscribe_match_all_request,
-    subscribe_match_any_request,
+    subscribe_match_any_request, unsubscribe_request,
 };
 use crate::subscription::Spawner;
 
 use futures::channel::oneshot;
-use futures::stream::{self, BoxStream};
+use futures::stream::BoxStream;
 use futures::{FutureExt, StreamExt, pin_mut};
 use parity_scale_codec::Encode;
 use truapi::api::{
@@ -1804,70 +1806,91 @@ fn statement_store_subscription_stream(
     responses: BoxStream<'static, String>,
     request_id: String,
 ) -> impl futures::Stream<Item = RemoteStatementStoreSubscribeItem> + Send {
-    struct State {
-        _connection: Box<dyn JsonRpcConnection>,
-        responses: BoxStream<'static, String>,
-        request_id: String,
-        remote_subscription_id: Option<String>,
-        is_complete: bool,
+    StatementStoreSubscriptionStream {
+        connection,
+        responses,
+        request_id,
+        remote_subscription_id: None,
+        is_complete: false,
     }
+}
 
-    stream::unfold(
-        State {
-            _connection: connection,
-            responses,
-            request_id,
-            remote_subscription_id: None,
-            is_complete: false,
-        },
-        |mut state| async move {
-            while let Some(frame) = state.responses.next().await {
-                if state.remote_subscription_id.is_none() {
-                    match parse_subscribe_ack(&frame, &state.request_id) {
-                        Ok(Some(id)) => {
-                            state.remote_subscription_id = Some(id);
-                            continue;
-                        }
-                        Ok(None) => {}
-                        Err(_) => return None,
+struct StatementStoreSubscriptionStream {
+    connection: Box<dyn JsonRpcConnection>,
+    responses: BoxStream<'static, String>,
+    request_id: String,
+    remote_subscription_id: Option<String>,
+    is_complete: bool,
+}
+
+impl Unpin for StatementStoreSubscriptionStream {}
+
+impl futures::Stream for StatementStoreSubscriptionStream {
+    type Item = RemoteStatementStoreSubscribeItem;
+
+    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let state = self.get_mut();
+        loop {
+            let frame = match state.responses.as_mut().poll_next(cx) {
+                Poll::Pending => return Poll::Pending,
+                Poll::Ready(Some(frame)) => frame,
+                Poll::Ready(None) => return Poll::Ready(None),
+            };
+
+            if state.remote_subscription_id.is_none() {
+                match parse_subscribe_ack(&frame, &state.request_id) {
+                    Ok(Some(id)) => {
+                        state.remote_subscription_id = Some(id);
+                        continue;
                     }
+                    Ok(None) => {}
+                    Err(_) => return Poll::Ready(None),
                 }
-
-                let page = match parse_new_statements(&frame) {
-                    Ok(Some(page)) => page,
-                    Ok(None) => continue,
-                    Err(_) => return None,
-                };
-                if state
-                    .remote_subscription_id
-                    .as_ref()
-                    .is_some_and(|id| id != &page.remote_subscription_id)
-                {
-                    continue;
-                }
-
-                let is_complete = state.is_complete || page.remaining == Some(0);
-                state.is_complete = is_complete;
-                let statements = page
-                    .statements
-                    .into_iter()
-                    .filter_map(|statement| decode_signed_statement(&statement).ok())
-                    .collect::<Vec<_>>();
-                if statements.is_empty() {
-                    continue;
-                }
-
-                return Some((
-                    RemoteStatementStoreSubscribeItem::V1(v01::RemoteStatementStoreSubscribeItem {
-                        statements,
-                        is_complete,
-                    }),
-                    state,
-                ));
             }
-            None
-        },
-    )
+
+            let page = match parse_new_statements(&frame) {
+                Ok(Some(page)) => page,
+                Ok(None) => continue,
+                Err(_) => return Poll::Ready(None),
+            };
+            if state
+                .remote_subscription_id
+                .as_ref()
+                .is_some_and(|id| id != &page.remote_subscription_id)
+            {
+                continue;
+            }
+
+            let is_complete = state.is_complete || page.remaining == Some(0);
+            state.is_complete = is_complete;
+            let statements = page
+                .statements
+                .into_iter()
+                .filter_map(|statement| decode_signed_statement(&statement).ok())
+                .collect::<Vec<_>>();
+            if statements.is_empty() {
+                continue;
+            }
+
+            return Poll::Ready(Some(RemoteStatementStoreSubscribeItem::V1(
+                v01::RemoteStatementStoreSubscribeItem {
+                    statements,
+                    is_complete,
+                },
+            )));
+        }
+    }
+}
+
+impl Drop for StatementStoreSubscriptionStream {
+    fn drop(&mut self) {
+        if let Some(remote_subscription_id) = self.remote_subscription_id.as_ref() {
+            self.connection.send(unsubscribe_request(
+                &format!("{}:unsubscribe", self.request_id),
+                remote_subscription_id,
+            ));
+        }
+    }
 }
 
 impl<P> PlatformRuntimeHost<P>
@@ -3623,6 +3646,43 @@ mod tests {
             request["params"][0]["matchAny"][0],
             "0x0707070707070707070707070707070707070707070707070707070707070707"
         );
+    }
+
+    #[test]
+    fn statement_store_subscribe_unsubscribes_remote_subscription_on_drop() {
+        let signed = crate::host_logic::statement_store::signed_statement_to_scale(
+            signed_statement([7; 32]),
+        )
+        .unwrap();
+        let platform = Arc::new(StubPlatform {
+            rpc_responses: vec![
+                subscribe_ack_frame("sub-drop", "remote-sub-drop"),
+                new_statements_frame("remote-sub-drop", vec![signed]),
+            ],
+            ..Default::default()
+        });
+        let host = PlatformRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        let cx = CallContext::with_request_id("sub-drop".to_string());
+        let mut subscription = futures::executor::block_on(StatementStore::subscribe(
+            &host,
+            &cx,
+            RemoteStatementStoreSubscribeRequest::V1(
+                v01::RemoteStatementStoreSubscribeRequest::MatchAny(vec![[7; 32]]),
+            ),
+        ));
+
+        let _ = futures::executor::block_on(subscription.next()).expect("statement page");
+        drop(subscription);
+
+        let sent = platform.sent_rpc.lock().expect("rpc list mutex poisoned");
+        assert_eq!(sent.len(), 2);
+        let unsubscribe: serde_json::Value = serde_json::from_str(&sent[1]).unwrap();
+        assert_eq!(unsubscribe["method"], "statement_unsubscribeStatement");
+        assert_eq!(unsubscribe["params"][0], "remote-sub-drop");
     }
 
     #[test]
