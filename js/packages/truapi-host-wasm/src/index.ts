@@ -19,6 +19,7 @@ export type {
   PlatformJsonRpcConnection,
   Storage,
   ThemeHost,
+  TrUApiHostWasmProvider,
   WasmCoreLike,
   WasmRawCallbacks,
   WasmRuntimeConfig,
@@ -32,6 +33,7 @@ export type {
   CallbackArgs,
   CallbackName,
   MainToWorker,
+  OptionalCallbackName,
   SubscriptionName,
   WorkerToMain,
 } from "./worker-protocol.js";

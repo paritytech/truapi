@@ -12,12 +12,36 @@
 export type CallbackName =
   | "navigateTo"
   | "pushNotification"
+  | "cancelNotification"
   | "devicePermission"
   | "remotePermission"
   | "featureSupported"
   | "localStorageRead"
   | "localStorageWrite"
   | "localStorageClear"
+  | "presentPairing"
+  | "readSession"
+  | "writeSession"
+  | "clearSession"
+  | "confirmSignPayload"
+  | "confirmSignRaw"
+  | "confirmCreateTransaction"
+  | "confirmAccountAlias"
+  | "confirmResourceAllocation"
+  | "confirmPreimageSubmit"
+  | "submitPreimage";
+
+export type OptionalCallbackName =
+  | "cancelNotification"
+  | "presentPairing"
+  | "readSession"
+  | "writeSession"
+  | "clearSession"
+  | "confirmSignPayload"
+  | "confirmSignRaw"
+  | "confirmCreateTransaction"
+  | "confirmAccountAlias"
+  | "confirmResourceAllocation"
   | "confirmPreimageSubmit"
   | "submitPreimage";
 
@@ -37,8 +61,16 @@ export type SubscriptionName =
 export type CallbackArgs = readonly unknown[];
 
 export type MainToWorker =
-  | { kind: "init"; debug: boolean; runtimeConfig?: unknown }
+  | {
+      kind: "init";
+      debug: boolean;
+      runtimeConfig?: unknown;
+      optionalCallbacks?: readonly OptionalCallbackName[];
+      optionalSubscriptions?: readonly SubscriptionName[];
+      chainConnect?: boolean;
+    }
   | { kind: "frame"; bytes: Uint8Array }
+  | { kind: "disconnect"; requestId: number }
   | { kind: "callbackResponse"; requestId: number; ok: true; value: unknown }
   | { kind: "callbackResponse"; requestId: number; ok: false; error: string }
   | { kind: "subscriptionItem"; subId: number; value: unknown }
@@ -52,6 +84,8 @@ export type WorkerToMain =
   | { kind: "ready" }
   | { kind: "error"; error: string }
   | { kind: "frame"; bytes: Uint8Array }
+  | { kind: "disconnectResponse"; requestId: number; ok: true }
+  | { kind: "disconnectResponse"; requestId: number; ok: false; error: string }
   | {
       kind: "callbackRequest";
       requestId: number;

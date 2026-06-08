@@ -17,7 +17,7 @@ import { SYSTEM_FEATURE_SUPPORTED } from "@parity/truapi/wire-table";
 
 import { createNodeWasmProvider } from "../dist/index.js";
 
-function makeCallbacks() {
+function makeCallbacks(overrides = {}) {
   const noopSubscribe = () => () => {};
   return {
     navigateTo: async () => {},
@@ -28,8 +28,10 @@ function makeCallbacks() {
     localStorageRead: async () => undefined,
     localStorageWrite: async () => {},
     localStorageClear: async () => {},
+    clearSession: async () => {},
     preimageLookupSubscribe: noopSubscribe,
     dispose: () => {},
+    ...overrides,
   };
 }
 
@@ -37,6 +39,7 @@ test("createNodeWasmProvider returns a usable Provider", async () => {
   const provider = await createNodeWasmProvider(makeCallbacks());
   assert.equal(typeof provider.postMessage, "function");
   assert.equal(typeof provider.subscribe, "function");
+  assert.equal(typeof provider.disconnect, "function");
   assert.equal(typeof provider.dispose, "function");
 
   // Subscribe and immediately unsubscribe to exercise the listener
@@ -44,6 +47,22 @@ test("createNodeWasmProvider returns a usable Provider", async () => {
   const unsubscribe = provider.subscribe(() => {});
   unsubscribe();
 
+  provider.dispose();
+});
+
+test("createNodeWasmProvider exposes core disconnect", async () => {
+  let clears = 0;
+  const provider = await createNodeWasmProvider(
+    makeCallbacks({
+      clearSession: async () => {
+        clears += 1;
+      },
+    }),
+  );
+
+  await provider.disconnect();
+
+  assert.equal(clears, 1);
   provider.dispose();
 });
 

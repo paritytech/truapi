@@ -1,9 +1,10 @@
-import type { Provider } from "@parity/truapi";
 import type {
   CallbackName,
   ChainConnection,
   MainToWorker,
+  OptionalCallbackName,
   SubscriptionName,
+  TrUApiHostWasmProvider,
   WasmRuntimeConfig,
   WasmRawCallbacks,
   WorkerToMain,
@@ -16,7 +17,53 @@ interface WorkerProviderState {
   closeListeners: Set<(error: Error) => void>;
   subscriptionDisposers: Map<number, () => void>;
   chainConnections: Map<number, ChainConnection>;
+  pendingDisconnects: Map<
+    number,
+    { resolve: () => void; reject: (error: Error) => void }
+  >;
   disposed: boolean;
+}
+
+let nextDisconnectRequestId = 0;
+
+const OPTIONAL_CALLBACK_NAMES: readonly OptionalCallbackName[] = [
+  "cancelNotification",
+  "presentPairing",
+  "readSession",
+  "writeSession",
+  "clearSession",
+  "confirmSignPayload",
+  "confirmSignRaw",
+  "confirmCreateTransaction",
+  "confirmAccountAlias",
+  "confirmResourceAllocation",
+  "confirmPreimageSubmit",
+  "submitPreimage",
+];
+
+const OPTIONAL_SUBSCRIPTION_NAMES: readonly {
+  readonly callback: keyof Omit<WasmRawCallbacks, "emitFrame">;
+  readonly protocol: SubscriptionName;
+}[] = [
+  { callback: "subscribeSessionStore", protocol: "sessionStoreSubscribe" },
+  { callback: "themeSubscribe", protocol: "themeSubscribe" },
+  { callback: "preimageLookupSubscribe", protocol: "preimageLookupSubscribe" },
+];
+
+function optionalCallbacks(
+  callbacks: Omit<WasmRawCallbacks, "emitFrame">,
+): OptionalCallbackName[] {
+  return OPTIONAL_CALLBACK_NAMES.filter(
+    (name) => typeof callbacks[name] === "function",
+  );
+}
+
+function optionalSubscriptions(
+  callbacks: Omit<WasmRawCallbacks, "emitFrame">,
+): SubscriptionName[] {
+  return OPTIONAL_SUBSCRIPTION_NAMES.filter(
+    ({ callback }) => typeof callbacks[callback] === "function",
+  ).map(({ protocol }) => protocol);
 }
 
 function errMsg(err: unknown): string {
@@ -215,6 +262,29 @@ function handleChainClose(
   }
 }
 
+function handleDisconnectResponse(
+  state: WorkerProviderState,
+  msg:
+    | { requestId: number; ok: true }
+    | { requestId: number; ok: false; error: string },
+): void {
+  const pending = state.pendingDisconnects.get(msg.requestId);
+  if (!pending) return;
+  state.pendingDisconnects.delete(msg.requestId);
+  if (msg.ok) {
+    pending.resolve();
+  } else {
+    pending.reject(new Error(msg.error));
+  }
+}
+
+function rejectPendingDisconnects(state: WorkerProviderState, error: Error): void {
+  for (const pending of state.pendingDisconnects.values()) {
+    pending.reject(error);
+  }
+  state.pendingDisconnects.clear();
+}
+
 export interface CreateWebWorkerProviderOptions {
   /** Toggle the wasm core's debug logging. Default: `false`. */
   debug?: boolean;
@@ -243,7 +313,7 @@ export function createWebWorkerProvider(
   worker: Worker,
   callbacks: Omit<WasmRawCallbacks, "emitFrame">,
   options: CreateWebWorkerProviderOptions = {},
-): Promise<Provider> {
+): Promise<TrUApiHostWasmProvider> {
   return new Promise((resolve, reject) => {
     const state: WorkerProviderState = {
       worker,
@@ -257,6 +327,7 @@ export function createWebWorkerProvider(
       closeListeners: new Set(),
       subscriptionDisposers: new Map(),
       chainConnections: new Map(),
+      pendingDisconnects: new Map(),
       disposed: false,
     };
 
@@ -274,6 +345,9 @@ export function createWebWorkerProvider(
           break;
         case "frame":
           for (const listener of [...state.listeners]) listener(msg.bytes);
+          break;
+        case "disconnectResponse":
+          handleDisconnectResponse(state, msg);
           break;
         case "callbackRequest":
           handleCallbackRequest(state, msg);
@@ -299,6 +373,7 @@ export function createWebWorkerProvider(
     const notifyFault = (error: Error): void => {
       if (state.disposed) return;
       state.disposed = true;
+      rejectPendingDisconnects(state, error);
       for (const listener of [...state.closeListeners]) listener(error);
       state.listeners.clear();
       state.closeListeners.clear();
@@ -326,6 +401,9 @@ export function createWebWorkerProvider(
           kind: "init",
           debug: options.debug ?? false,
           runtimeConfig: options.runtimeConfig,
+          optionalCallbacks: optionalCallbacks(callbacks),
+          optionalSubscriptions: optionalSubscriptions(callbacks),
+          chainConnect: typeof callbacks.chainConnect === "function",
         };
         worker.postMessage(init);
       } else if (msg.kind === "ready") {
@@ -353,7 +431,7 @@ export function createWebWorkerProvider(
   });
 }
 
-function buildProvider(state: WorkerProviderState): Provider {
+function buildProvider(state: WorkerProviderState): TrUApiHostWasmProvider {
   return {
     postMessage(bytes: Uint8Array): void {
       if (state.disposed) return;
@@ -372,9 +450,24 @@ function buildProvider(state: WorkerProviderState): Provider {
         state.closeListeners.delete(callback);
       };
     },
+    disconnect(): Promise<void> {
+      if (state.disposed) return Promise.resolve();
+      return new Promise((resolve, reject) => {
+        const requestId = ++nextDisconnectRequestId;
+        state.pendingDisconnects.set(requestId, { resolve, reject });
+        try {
+          const post: MainToWorker = { kind: "disconnect", requestId };
+          state.worker.postMessage(post);
+        } catch (err) {
+          state.pendingDisconnects.delete(requestId);
+          reject(err instanceof Error ? err : new Error(String(err)));
+        }
+      });
+    },
     dispose() {
       if (state.disposed) return;
       state.disposed = true;
+      rejectPendingDisconnects(state, new Error("provider disposed"));
       for (const fn of state.subscriptionDisposers.values()) {
         try {
           fn();

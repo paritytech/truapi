@@ -1,7 +1,6 @@
-import type { Provider } from "@parity/truapi";
-
 import {
   createWasmProvider,
+  type TrUApiHostWasmProvider,
   type WasmCoreLike,
   type WasmRawCallbacks,
   type WasmRuntimeConfig,
@@ -32,7 +31,7 @@ export interface CreateNodeWasmProviderOptions {
 export async function createNodeWasmProvider(
   partial: Omit<WasmRawCallbacks, "emitFrame">,
   options: CreateNodeWasmProviderOptions = {},
-): Promise<Provider> {
+): Promise<TrUApiHostWasmProvider> {
   // Dynamic import keeps the WASM module out of the package's static
   // dependency graph and out of the tsc rootDir. Indirected through a
   // variable so TS skips the static module-existence check.

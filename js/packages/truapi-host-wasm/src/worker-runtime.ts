@@ -7,12 +7,14 @@
 import type {
   CallbackName,
   MainToWorker,
+  OptionalCallbackName,
   SubscriptionName,
   WorkerToMain,
 } from "./worker-protocol.js";
 
 interface WasmCore {
   receiveFromProduct(frame: Uint8Array): Promise<void>;
+  disconnect(): Promise<void>;
   dispose(): void;
   free(): void;
 }
@@ -123,7 +125,9 @@ function chainConnect(
   });
 }
 
-const rawCallbacks = {
+type RawCallbackFn = (...args: never[]) => unknown;
+
+const requiredRawCallbacks: Record<string, RawCallbackFn> = {
   navigateTo: (url: string) => callbackRequest("navigateTo", [url]),
   pushNotification: (payload: Uint8Array) =>
     callbackRequest("pushNotification", [payload]),
@@ -141,27 +145,68 @@ const rawCallbacks = {
     callbackRequest("localStorageWrite", [key, value]),
   localStorageClear: (key: string) =>
     callbackRequest("localStorageClear", [key]),
-  subscribeSessionStore: (sendItem: () => void) =>
-    startSubscription("sessionStoreSubscribe", null, sendItem),
+};
+
+const optionalRawCallbacks: Record<OptionalCallbackName, RawCallbackFn> = {
+  cancelNotification: (id: number) =>
+    callbackRequest("cancelNotification", [id]),
+  presentPairing: (deeplink: string) =>
+    callbackRequest("presentPairing", [deeplink]),
+  readSession: () =>
+    callbackRequest("readSession", []) as Promise<
+      Uint8Array | null | undefined
+    >,
+  writeSession: (value: Uint8Array) =>
+    callbackRequest("writeSession", [value]),
+  clearSession: () => callbackRequest("clearSession", []),
+  confirmSignPayload: (payload: Uint8Array) =>
+    callbackRequest("confirmSignPayload", [payload]) as Promise<boolean>,
+  confirmSignRaw: (payload: Uint8Array) =>
+    callbackRequest("confirmSignRaw", [payload]) as Promise<boolean>,
+  confirmCreateTransaction: (payload: Uint8Array) =>
+    callbackRequest("confirmCreateTransaction", [payload]) as Promise<boolean>,
+  confirmAccountAlias: (payload: Uint8Array) =>
+    callbackRequest("confirmAccountAlias", [payload]) as Promise<boolean>,
+  confirmResourceAllocation: (payload: Uint8Array) =>
+    callbackRequest("confirmResourceAllocation", [payload]) as Promise<boolean>,
   confirmPreimageSubmit: (size: number) =>
     callbackRequest("confirmPreimageSubmit", [size]) as Promise<void>,
   submitPreimage: (value: Uint8Array) =>
     callbackRequest("submitPreimage", [value]) as Promise<Uint8Array>,
-  preimageLookupSubscribe: (
-    key: Uint8Array,
-    sendItem: (value: Uint8Array | null | undefined) => void,
-  ) => startSubscription("preimageLookupSubscribe", key, sendItem),
-  themeSubscribe: (
-    sendItem: (theme: "Light" | "Dark" | 0 | 1 | Uint8Array) => void,
-  ) => startSubscription("themeSubscribe", null, sendItem),
-  chainConnect,
-  emitFrame(frame: Uint8Array): void {
-    postToMain({ kind: "frame", bytes: frame });
-  },
-  dispose(): void {
-    // Main thread terminates the worker, no separate cleanup needed here.
-  },
 };
+
+function buildRawCallbacks(msg: Extract<MainToWorker, { kind: "init" }>) {
+  const callbacks: Record<string, unknown> = { ...requiredRawCallbacks };
+  for (const name of msg.optionalCallbacks ?? []) {
+    callbacks[name] = optionalRawCallbacks[name];
+  }
+  const optionalSubscriptions = new Set(msg.optionalSubscriptions ?? []);
+  if (optionalSubscriptions.has("sessionStoreSubscribe")) {
+    callbacks.subscribeSessionStore = (sendItem: () => void) =>
+      startSubscription("sessionStoreSubscribe", null, sendItem);
+  }
+  if (optionalSubscriptions.has("themeSubscribe")) {
+    callbacks.themeSubscribe = (
+      sendItem: (theme: "Light" | "Dark" | 0 | 1 | Uint8Array) => void,
+    ) => startSubscription("themeSubscribe", null, sendItem);
+  }
+  if (optionalSubscriptions.has("preimageLookupSubscribe")) {
+    callbacks.preimageLookupSubscribe = (
+      key: Uint8Array,
+      sendItem: (value: Uint8Array | null | undefined) => void,
+    ) => startSubscription("preimageLookupSubscribe", key, sendItem);
+  }
+  if (msg.chainConnect) {
+    callbacks.chainConnect = chainConnect;
+  }
+  callbacks.emitFrame = (frame: Uint8Array): void => {
+    postToMain({ kind: "frame", bytes: frame });
+  };
+  callbacks.dispose = (): void => {
+    // Main thread terminates the worker, no separate cleanup needed here.
+  };
+  return callbacks;
+}
 
 let core: WasmCore | null = null;
 let wasm: WasmModuleShape | null = null;
@@ -186,7 +231,7 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
       }
       wasm?.setDebugEnabled(msg.debug);
       try {
-        core = new wasm.WasmTrUApiCore(rawCallbacks, msg.runtimeConfig);
+        core = new wasm.WasmTrUApiCore(buildRawCallbacks(msg), msg.runtimeConfig);
         postToMain({ kind: "ready" });
       } catch (err) {
         postToMain({ kind: "error", error: `init: ${errMsg(err)}` });
@@ -194,6 +239,9 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
       break;
     case "frame":
       void handleFrame(msg.bytes);
+      break;
+    case "disconnect":
+      void handleDisconnect(msg.requestId);
       break;
     case "callbackResponse": {
       const cb = pendingCallbacks.get(msg.requestId);
@@ -236,6 +284,29 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
       break;
   }
 });
+
+async function handleDisconnect(requestId: number): Promise<void> {
+  if (!core) {
+    postToMain({
+      kind: "disconnectResponse",
+      requestId,
+      ok: false,
+      error: "disconnect received before core is ready",
+    });
+    return;
+  }
+  try {
+    await core.disconnect();
+    postToMain({ kind: "disconnectResponse", requestId, ok: true });
+  } catch (err) {
+    postToMain({
+      kind: "disconnectResponse",
+      requestId,
+      ok: false,
+      error: errMsg(err),
+    });
+  }
+}
 
 async function handleFrame(bytes: Uint8Array): Promise<void> {
   if (!core) {

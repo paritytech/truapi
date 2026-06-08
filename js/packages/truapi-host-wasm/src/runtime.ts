@@ -158,6 +158,15 @@ export interface WasmCoreLike {
   free(): void;
 }
 
+export interface TrUApiHostWasmProvider extends Provider {
+  /**
+   * Core-owned logout/disconnect. This best-effort notifies the SSO peer,
+   * clears the in-memory session, clears SessionStore, and broadcasts
+   * Disconnected from the Rust core.
+   */
+  disconnect(): Promise<void>;
+}
+
 /**
  * Wraps a WASM core in a `Provider`, the byte transport abstraction
  * exposed by `@parity/truapi`. The provider can be handed to
@@ -168,7 +177,7 @@ export interface WasmCoreLike {
 export function createWasmProvider(
   createCore: (rawCallbacks: WasmRawCallbacks) => WasmCoreLike,
   partial: Omit<WasmRawCallbacks, "emitFrame">,
-): Provider {
+): TrUApiHostWasmProvider {
   const listeners = new Set<(message: Uint8Array) => void>();
   const closeListeners = new Set<(error: Error) => void>();
   let disposed = false;
@@ -206,6 +215,13 @@ export function createWasmProvider(
       return () => {
         closeListeners.delete(callback);
       };
+    },
+    async disconnect() {
+      if (disposed) return;
+      if (!core.disconnect) {
+        throw new Error("disconnect unavailable on this WASM core");
+      }
+      await core.disconnect();
     },
     dispose() {
       if (disposed) return;
