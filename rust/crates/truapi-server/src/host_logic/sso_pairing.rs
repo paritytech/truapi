@@ -70,6 +70,20 @@ pub struct SsoHandshakeAnswerSensitiveData {
     pub identity_account_id: [u8; 32],
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum SsoStatementData {
+    #[codec(index = 0)]
+    Request {
+        request_id: String,
+        data: Vec<Vec<u8>>,
+    },
+    #[codec(index = 1)]
+    Response {
+        request_id: String,
+        response_code: u8,
+    },
+}
+
 pub fn decode_app_handshake_data(blob: &[u8]) -> Result<AppHandshakeData, String> {
     let mut input = blob;
     let value: AppHandshakeData =
@@ -133,6 +147,47 @@ pub fn establish_sso_session_info(
     })
 }
 
+pub fn encrypt_session_statement_data(
+    session: &SsoSessionInfo,
+    data: &SsoStatementData,
+) -> Result<Vec<u8>, String> {
+    let mut nonce = [0u8; AES_GCM_NONCE_LEN];
+    getrandom::getrandom(&mut nonce)
+        .map_err(|err| format!("failed to generate AES-GCM nonce: {err}"))?;
+    encrypt_session_statement_data_with_nonce(session, data, nonce)
+}
+
+pub fn encrypt_session_statement_data_with_nonce(
+    session: &SsoSessionInfo,
+    data: &SsoStatementData,
+    nonce: [u8; AES_GCM_NONCE_LEN],
+) -> Result<Vec<u8>, String> {
+    let aes_key = session_aes_key(session)?;
+    let cipher = Aes256Gcm::new_from_slice(&aes_key)
+        .map_err(|err| format!("failed to initialize AES-GCM: {err}"))?;
+    let mut encrypted = nonce.to_vec();
+    encrypted.extend(
+        cipher
+            .encrypt(Nonce::from_slice(&nonce), data.encode().as_slice())
+            .map_err(|err| format!("failed to encrypt SSO statement data: {err}"))?,
+    );
+    Ok(encrypted)
+}
+
+pub fn decrypt_session_statement_data(
+    session: &SsoSessionInfo,
+    encrypted_message: &[u8],
+) -> Result<SsoStatementData, String> {
+    let plaintext = decrypt_session_message(session, encrypted_message)?;
+    let mut input = plaintext.as_slice();
+    let data = SsoStatementData::decode(&mut input)
+        .map_err(|err| format!("invalid SSO statement data: {err}"))?;
+    if !input.is_empty() {
+        return Err("invalid SSO statement data: trailing bytes".to_string());
+    }
+    Ok(data)
+}
+
 fn decrypt_p256_hkdf_aes_gcm(
     own_secret_key: [u8; 32],
     peer_public_key: [u8; 65],
@@ -142,18 +197,51 @@ fn decrypt_p256_hkdf_aes_gcm(
         return Err("encrypted SSO handshake answer is too short".to_string());
     }
     let shared_secret = shared_secret(own_secret_key, peer_public_key)?;
+    let aes_key = aes_key_from_shared_secret(&shared_secret)?;
 
-    let hkdf = Hkdf::<Sha256>::new(None, shared_secret.raw_secret_bytes());
-    let mut aes_key = [0u8; 32];
-    hkdf.expand(&[], &mut aes_key)
-        .map_err(|err| format!("failed to derive AES key: {err}"))?;
+    decrypt_aes_gcm_with_key(aes_key, encrypted_message, "handshake answer")
+}
 
+fn decrypt_session_message(
+    session: &SsoSessionInfo,
+    encrypted_message: &[u8],
+) -> Result<Vec<u8>, String> {
+    decrypt_aes_gcm_with_key(
+        session_aes_key(session)?,
+        encrypted_message,
+        "statement data",
+    )
+}
+
+fn decrypt_aes_gcm_with_key(
+    aes_key: [u8; 32],
+    encrypted_message: &[u8],
+    label: &str,
+) -> Result<Vec<u8>, String> {
+    if encrypted_message.len() < AES_GCM_NONCE_LEN {
+        return Err(format!("encrypted SSO {label} is too short"));
+    }
     let (nonce, ciphertext) = encrypted_message.split_at(AES_GCM_NONCE_LEN);
     let cipher = Aes256Gcm::new_from_slice(&aes_key)
         .map_err(|err| format!("failed to initialize AES-GCM: {err}"))?;
     cipher
         .decrypt(Nonce::from_slice(nonce), ciphertext)
-        .map_err(|err| format!("failed to decrypt SSO handshake answer: {err}"))
+        .map_err(|err| format!("failed to decrypt SSO {label}: {err}"))
+}
+
+fn session_aes_key(session: &SsoSessionInfo) -> Result<[u8; 32], String> {
+    let shared_secret = shared_secret(session.enc_secret, session.peer_enc_pubkey)?;
+    aes_key_from_shared_secret(&shared_secret)
+}
+
+fn aes_key_from_shared_secret(
+    shared_secret: &p256::ecdh::SharedSecret,
+) -> Result<[u8; 32], String> {
+    let hkdf = Hkdf::<Sha256>::new(None, shared_secret.raw_secret_bytes());
+    let mut aes_key = [0u8; 32];
+    hkdf.expand(&[], &mut aes_key)
+        .map_err(|err| format!("failed to derive AES key: {err}"))?;
+    Ok(aes_key)
 }
 
 fn shared_secret(
@@ -483,6 +571,70 @@ mod tests {
         assert_eq!(
             info.peer_request_channel,
             keyed_hash(info.session_id_peer, b"request")
+        );
+    }
+
+    #[test]
+    fn statement_data_codec_round_trips_request_and_response() {
+        let request = SsoStatementData::Request {
+            request_id: "req-1".to_string(),
+            data: vec![vec![0xde, 0xad], vec![0xbe, 0xef]],
+        };
+        let response = SsoStatementData::Response {
+            request_id: "req-1".to_string(),
+            response_code: 0,
+        };
+
+        assert_eq!(
+            SsoStatementData::decode(&mut &request.encode()[..]).unwrap(),
+            request
+        );
+        assert_eq!(
+            SsoStatementData::decode(&mut &response.encode()[..]).unwrap(),
+            response
+        );
+        assert_eq!(request.encode()[0], 0);
+        assert_eq!(response.encode()[0], 1);
+    }
+
+    #[test]
+    fn encrypts_and_decrypts_session_statement_data() {
+        let core_secret = SecretKey::from_slice(&[1; 32]).unwrap();
+        let core_public = core_secret.public_key().to_encoded_point(false);
+        let mut core_public_bytes = [0u8; 65];
+        core_public_bytes.copy_from_slice(core_public.as_bytes());
+        let bootstrap = PairingBootstrap {
+            deeplink: "polkadotapp://pair?handshake=00".to_string(),
+            topic: [0x11; 32],
+            statement_store_public_key: [0x22; 32],
+            statement_store_secret_seed: [0x33; 32],
+            encryption_public_key: core_public_bytes,
+            encryption_secret_key: [1; 32],
+        };
+        let peer_secret = SecretKey::from_slice(&[2; 32]).unwrap();
+        let answer = SsoHandshakeAnswerSensitiveData {
+            shared_secret_derivation_key: peer_secret
+                .public_key()
+                .to_encoded_point(false)
+                .as_bytes()
+                .try_into()
+                .unwrap(),
+            root_user_account_id: [0x44; 32],
+            identity_account_id: [0x55; 32],
+        };
+        let session = establish_sso_session_info(&bootstrap, &answer).unwrap();
+        let data = SsoStatementData::Request {
+            request_id: "req-1".to_string(),
+            data: vec![vec![0xde, 0xad]],
+        };
+        let nonce = [9u8; AES_GCM_NONCE_LEN];
+
+        let encrypted = encrypt_session_statement_data_with_nonce(&session, &data, nonce).unwrap();
+
+        assert_eq!(&encrypted[..AES_GCM_NONCE_LEN], nonce);
+        assert_eq!(
+            decrypt_session_statement_data(&session, &encrypted).unwrap(),
+            data
         );
     }
 }
