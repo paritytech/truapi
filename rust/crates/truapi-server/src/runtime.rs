@@ -1263,6 +1263,15 @@ where
                 v01::HostSignPayloadError::PermissionDenied,
             )));
         }
+        match self.chain_submit_decision().await {
+            Ok(Decision::Granted) => {}
+            Ok(Decision::Denied) => {
+                return Err(CallError::Domain(HostSignRawError::V1(
+                    v01::HostSignPayloadError::PermissionDenied,
+                )));
+            }
+            Err(reason) => return Err(CallError::HostFailure { reason }),
+        }
         let Some(session) = self.session_state.current() else {
             return Err(CallError::Domain(HostSignRawError::V1(
                 v01::HostSignPayloadError::Rejected,
@@ -1477,6 +1486,15 @@ where
         };
         self.validate_legacy_address_signer(&session, &inner.signer)
             .map_err(|err| CallError::Domain(HostSignRawWithLegacyAccountError::V1(err)))?;
+        match self.chain_submit_decision().await {
+            Ok(Decision::Granted) => {}
+            Ok(Decision::Denied) => {
+                return Err(CallError::Domain(HostSignRawWithLegacyAccountError::V1(
+                    v01::HostSignPayloadError::PermissionDenied,
+                )));
+            }
+            Err(reason) => return Err(CallError::HostFailure { reason }),
+        }
         let confirmed = PlatformUserConfirmation::confirm_sign_raw(
             self.platform.as_ref(),
             inner.clone().encode(),
@@ -3752,6 +3770,31 @@ mod tests {
     }
 
     #[test]
+    fn sign_raw_denies_when_chain_submit_denied() {
+        let host = PlatformRuntimeHost::new(
+            Arc::new(StubPlatform {
+                remote_permission_granted: false,
+                ..Default::default()
+            }),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let request = HostSignRawRequest::V1(v01::HostSignRawRequest {
+            account: account_id("myapp.dot", 0),
+            payload: raw_payload(),
+        });
+        let err = futures::executor::block_on(host.sign_raw(&cx, request)).unwrap_err();
+        assert!(matches!(
+            err,
+            CallError::Domain(HostSignRawError::V1(
+                v01::HostSignPayloadError::PermissionDenied
+            ))
+        ));
+    }
+
+    #[test]
     fn sign_raw_rejects_when_user_declines_confirmation() {
         let host =
             PlatformRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
@@ -4007,6 +4050,33 @@ mod tests {
             )) => assert_eq!(reason, "Account can't be derived from product account id"),
             other => panic!("expected legacy signer mismatch, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn legacy_sign_raw_denies_when_chain_submit_denied() {
+        let host = PlatformRuntimeHost::new(
+            Arc::new(StubPlatform {
+                remote_permission_granted: false,
+                ..Default::default()
+            }),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        host.session_state().set_session(sso_session_info());
+        let cx = CallContext::new();
+        let request =
+            HostSignRawWithLegacyAccountRequest::V1(v01::HostSignRawWithLegacyAccountRequest {
+                signer: "5CyFsdhwjXy7wWpDEM6isungQ3LfGnu9UXkt7paBQ6DYRxk1".to_string(),
+                payload: raw_payload(),
+            });
+        let err = futures::executor::block_on(host.sign_raw_with_legacy_account(&cx, request))
+            .unwrap_err();
+        assert!(matches!(
+            err,
+            CallError::Domain(HostSignRawWithLegacyAccountError::V1(
+                v01::HostSignPayloadError::PermissionDenied
+            ))
+        ));
     }
 
     #[test]
