@@ -44,7 +44,7 @@ pub struct SessionInfo {
     pub root_account_id: [u8; 32],
     pub identity_account_id: [u8; 32],
     pub statement_secret: SessionStatementSecret,
-    pub root_entropy_source: RootEntropySource,
+    pub entropy_secret: EntropySecret,
     pub sso_channel_state: SsoChannelState,
 }
 ```
@@ -131,14 +131,15 @@ operation, not just a cached permission decision.
 
 ## EntropyService
 
-Dotli main derives entropy from:
+The current dotli checkout derives entropy from:
 
-- session `rootEntropySource`;
+- session `ssSecret` read from `adapter.secrets.read(session.id)`;
 - product label/id scope;
 - caller-provided key.
 
-The Rust implementation must match that behavior with vector tests. Do not use
-`statement_secret` for dotli main parity.
+The Rust implementation must match `deriveProductEntropy` from
+`@novasamatech/host-container` with vector tests. If dotli later switches to a
+wallet-provided `rootEntropySource`, update this service and its vectors.
 
 ## Facades
 
@@ -156,7 +157,7 @@ Some behavior remains host-backed but routed through Rust:
 Use small, named fixtures:
 
 - product account derivation vectors;
-- entropy vectors using `rootEntropySource`;
+- entropy vectors using current dotli `ssSecret` input;
 - SSO pairing fixture or wallet test peer;
 - statement proof vector;
 - mocked SSO responses for sign/raw/transaction/alias/allocation;

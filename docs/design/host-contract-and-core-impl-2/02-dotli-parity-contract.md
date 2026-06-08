@@ -40,7 +40,7 @@ plus dotli host adapters.
 | Legacy signing/transaction | Re-derives `(product_id, 0)`, validates signer, then reuses product-account flow. | Core. |
 | Resource allocation | Requires session, shows allocation modal, sends SSO request, strips returned secrets. | Core SSO plus host allocation UI. |
 | Product local storage | Product-scoped key/value storage. | Existing `Storage` host primitive. |
-| Entropy | Derived from session `rootEntropySource`, product label, and caller key. | Core. |
+| Entropy | Derived from session `ssSecret`, product id, and caller key via `deriveProductEntropy`. | Core. |
 | Navigation | dotli-aware URL normalization and `window.open`. | Core parses policy, host opens URL. |
 | Device permissions | Cached tri-state prompts for enforceable browser permissions; notification/open-url special cases. | Core permission service plus host prompt. |
 | Remote permissions | Cached submit-style permissions, WebRTC and broad remote requests auto-granted today. | Core permission service plus host prompt. |
@@ -68,8 +68,10 @@ features:
 - `get_legacy_accounts` returns `[]` when disconnected. When authenticated it
   returns the synthetic `(product_id, 0)` account plus lite username so legacy
   signing methods can round-trip the same signer.
-- Entropy must use the wallet-provided `rootEntropySource`. Older notes that
-  derive entropy from `ssSecret` are stale for dotli main parity.
+- Entropy currently uses the host-papp session `ssSecret` through
+  `@novasamatech/host-container`'s `deriveProductEntropy` helper. If dotli
+  later switches to wallet-provided `rootEntropySource`, update the vectors
+  and session state at that point.
 - Session persistence does not need to preserve the host-papp `SsoSessions`
   binary format. One-time re-pair during cutover is acceptable.
 - Nested dApps are currently detected by dotli JS and assigned nested storage

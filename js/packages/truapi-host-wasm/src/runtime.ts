@@ -145,6 +145,13 @@ export function createUnavailableCallbacks(): Omit<
  */
 export interface WasmCoreLike {
   receiveFromProduct(frame: Uint8Array): Promise<void>;
+  setActiveSession?(
+    pubkey: Uint8Array,
+    liteUsername?: string | null,
+    fullUsername?: string | null,
+  ): void;
+  setActiveSessionEntropySecret?(secret: Uint8Array): boolean;
+  clearActiveSession?(): void;
   dispose(): void;
   free(): void;
 }

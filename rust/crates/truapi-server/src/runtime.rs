@@ -13,6 +13,7 @@ use crate::chain_runtime::{
     ChainRuntime, RuntimeChainProvider, RuntimeFailure, RuntimeFailureKind,
 };
 use crate::host_logic::dotns::{NavigateDecision, parse_navigate};
+use crate::host_logic::entropy::derive_product_entropy;
 use crate::host_logic::features::feature_supported;
 use crate::host_logic::permissions::{Decision, PermissionsService};
 use crate::host_logic::product_account::{derive_product_public_key, is_product_identifier};
@@ -48,6 +49,9 @@ use truapi::versioned::chain::{
     RemoteChainTransactionBroadcastRequest, RemoteChainTransactionBroadcastResponse,
     RemoteChainTransactionStopError, RemoteChainTransactionStopRequest,
     RemoteChainTransactionStopResponse,
+};
+use truapi::versioned::entropy::{
+    HostDeriveEntropyError, HostDeriveEntropyRequest, HostDeriveEntropyResponse,
 };
 use truapi::versioned::local_storage::{
     HostLocalStorageClearError, HostLocalStorageClearRequest, HostLocalStorageClearResponse,
@@ -676,17 +680,60 @@ where
 // ---------------------------------------------------------------------------
 // Traits that defer entirely to default "unavailable" trait bodies.
 //
-// These API surfaces (Chat, CoinPayment, Payment, ResourceAllocation,
-// Entropy, Theme) are not part of the v0.1 platform contract, so we leave
-// every method at its default `Err(CallError::unavailable())` body and
-// supply empty trait impls here. Adding a method later only requires
-// implementing the relevant `truapi_platform::*` extension trait.
+// These API surfaces (Chat, CoinPayment, Payment, ResourceAllocation, Theme)
+// are not part of the v0.1 platform contract, so we leave every method at its
+// default `Err(CallError::unavailable())` body and supply empty trait impls
+// here. Adding a method later only requires implementing the relevant
+// `truapi_platform::*` extension trait.
 
 impl<P> Chat for PlatformRuntimeHost<P> where P: Platform + 'static {}
 impl<P> CoinPayment for PlatformRuntimeHost<P> where P: Platform + 'static {}
 impl<P> Payment for PlatformRuntimeHost<P> where P: Platform + 'static {}
 impl<P> ResourceAllocation for PlatformRuntimeHost<P> where P: Platform + 'static {}
-impl<P> Entropy for PlatformRuntimeHost<P> where P: Platform + 'static {}
+// ---------------------------------------------------------------------------
+// Entropy
+// ---------------------------------------------------------------------------
+
+impl<P> Entropy for PlatformRuntimeHost<P>
+where
+    P: Platform + 'static,
+{
+    async fn derive(
+        &self,
+        _cx: &CallContext,
+        request: HostDeriveEntropyRequest,
+    ) -> Result<HostDeriveEntropyResponse, CallError<HostDeriveEntropyError>> {
+        let HostDeriveEntropyRequest::V1(v01::HostDeriveEntropyRequest { context }) = request;
+        let Some(session) = self.session_state.current() else {
+            return Err(CallError::Domain(HostDeriveEntropyError::V1(
+                v01::HostDeriveEntropyError::Unknown {
+                    reason: "Not connected".to_string(),
+                },
+            )));
+        };
+        let Some(entropy_secret) = session.entropy_secret else {
+            return Err(CallError::Domain(HostDeriveEntropyError::V1(
+                v01::HostDeriveEntropyError::Unknown {
+                    reason: "Session secret missing".to_string(),
+                },
+            )));
+        };
+
+        let entropy =
+            derive_product_entropy(&entropy_secret, &self.runtime_config.product_id, &context)
+                .map_err(|err| {
+                    CallError::Domain(HostDeriveEntropyError::V1(
+                        v01::HostDeriveEntropyError::Unknown {
+                            reason: err.to_string(),
+                        },
+                    ))
+                })?;
+
+        Ok(HostDeriveEntropyResponse::V1(
+            v01::HostDeriveEntropyResponse { entropy },
+        ))
+    }
+}
 impl<P> Theme for PlatformRuntimeHost<P> where P: Platform + 'static {}
 
 // `Notifications` methods are required (no default bodies), so the
@@ -786,6 +833,7 @@ mod tests {
                 0xb8, 0xf5, 0x81, 0xaa, 0x99, 0xe3, 0x49, 0x3b, 0xf4, 0x96, 0xed, 0xf1, 0x51, 0xab,
                 0xc1, 0xd7, 0x20, 0x23,
             ],
+            entropy_secret: Some((0..32).map(|i| i as u8).collect()),
             lite_username: Some("alice".to_string()),
             full_username: Some("Alice Smith".to_string()),
         }
@@ -1107,6 +1155,74 @@ mod tests {
                 v01::HostGetUserIdError::PermissionDenied
             ))
         ));
+    }
+
+    #[test]
+    fn derive_entropy_matches_dotli_vector() {
+        let host =
+            PlatformRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let request = HostDeriveEntropyRequest::V1(v01::HostDeriveEntropyRequest {
+            context: b"product-key".to_vec(),
+        });
+        let response = futures::executor::block_on(host.derive(&cx, request)).unwrap();
+        let HostDeriveEntropyResponse::V1(inner) = response;
+        assert_eq!(
+            hex::encode(inner.entropy),
+            "ab1887248c9de3cf4b8c5a255782796d3d35a98c8eb2d7df61a410db8b14da36"
+        );
+    }
+
+    #[test]
+    fn derive_entropy_requires_session() {
+        let host = PlatformRuntimeHost::new_compat(stub_platform(), test_spawner());
+        let cx = CallContext::new();
+        let request = HostDeriveEntropyRequest::V1(v01::HostDeriveEntropyRequest {
+            context: b"product-key".to_vec(),
+        });
+        let err = futures::executor::block_on(host.derive(&cx, request)).unwrap_err();
+        match err {
+            CallError::Domain(HostDeriveEntropyError::V1(
+                v01::HostDeriveEntropyError::Unknown { reason },
+            )) => assert_eq!(reason, "Not connected"),
+            other => panic!("expected Unknown entropy error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn derive_entropy_requires_secret() {
+        let host = PlatformRuntimeHost::new_compat(stub_platform(), test_spawner());
+        let mut session = session_info();
+        session.entropy_secret = None;
+        host.session_state().set_session(session);
+        let cx = CallContext::new();
+        let request = HostDeriveEntropyRequest::V1(v01::HostDeriveEntropyRequest {
+            context: b"product-key".to_vec(),
+        });
+        let err = futures::executor::block_on(host.derive(&cx, request)).unwrap_err();
+        match err {
+            CallError::Domain(HostDeriveEntropyError::V1(
+                v01::HostDeriveEntropyError::Unknown { reason },
+            )) => assert_eq!(reason, "Session secret missing"),
+            other => panic!("expected Unknown entropy error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn derive_entropy_rejects_empty_context_like_dotli_key() {
+        let host = PlatformRuntimeHost::new_compat(stub_platform(), test_spawner());
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let request =
+            HostDeriveEntropyRequest::V1(v01::HostDeriveEntropyRequest { context: vec![] });
+        let err = futures::executor::block_on(host.derive(&cx, request)).unwrap_err();
+        match err {
+            CallError::Domain(HostDeriveEntropyError::V1(
+                v01::HostDeriveEntropyError::Unknown { reason },
+            )) => assert_eq!(reason, "\"key\" must be between 1 and 32 bytes, got 0"),
+            other => panic!("expected Unknown entropy error, got {other:?}"),
+        }
     }
 
     #[test]

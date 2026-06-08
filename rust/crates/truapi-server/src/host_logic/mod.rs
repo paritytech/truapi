@@ -5,6 +5,7 @@
 //! iOS, Android, and web hosts share one canonical implementation.
 
 pub mod dotns;
+pub mod entropy;
 pub mod features;
 pub mod permissions;
 pub mod product_account;

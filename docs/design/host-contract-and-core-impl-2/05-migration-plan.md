@@ -102,7 +102,7 @@ dotli Nova dependency removal
   - derive alias;
   - request resource allocation;
   - submit/subscribe statements and create proofs;
-  - derive entropy from `rootEntropySource`;
+  - derive entropy from the current dotli `ssSecret` input;
   - read/write/clear local storage;
   - navigate;
   - handle permissions;

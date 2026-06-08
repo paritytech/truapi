@@ -752,10 +752,18 @@ impl WasmTrUApiCore {
             .session_state()
             .set_session(crate::host_logic::session::SessionInfo {
                 public_key,
+                entropy_secret: None,
                 lite_username,
                 full_username,
             });
         Ok(())
+    }
+
+    /// Attach the host-papp session `ssSecret` used by current dotli entropy
+    /// derivation. Returns false when no active session has been pushed yet.
+    #[wasm_bindgen(js_name = setActiveSessionEntropySecret)]
+    pub fn set_active_session_entropy_secret(&self, secret: Vec<u8>) -> bool {
+        self.inner.core.session_state().set_entropy_secret(secret)
     }
 
     /// Drop the currently-paired session.
