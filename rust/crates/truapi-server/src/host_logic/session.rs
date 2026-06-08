@@ -96,12 +96,13 @@ impl SessionState {
     }
 
     /// Replace the active session with `info`. Emits a `Connected` event to
-    /// every live subscriber if this is a transition from no-session.
+    /// every live subscriber if this is a transition from no-session or an
+    /// actual session replacement.
     pub fn set_session(&self, info: SessionInfo) {
         let mut inner = self.inner.lock().expect("session-state mutex poisoned");
-        let was_present = inner.current.is_some();
+        let should_broadcast = inner.current.as_ref() != Some(&info);
         inner.current = Some(info);
-        if !was_present {
+        if should_broadcast {
             broadcast(
                 &mut inner.subscribers,
                 HostAccountConnectionStatusSubscribeItem::Connected,
@@ -304,7 +305,23 @@ mod tests {
     }
 
     #[test]
-    fn set_session_twice_does_not_re_emit_connected() {
+    fn set_session_with_same_info_does_not_re_emit_connected() {
+        let state = SessionState::new();
+        state.set_session(info(0x01));
+        let mut stream = state.subscribe();
+        let _ = block_on(stream.next());
+
+        state.set_session(info(0x01));
+
+        let pending = stream.next().now_or_never();
+        assert!(
+            pending.is_none(),
+            "no transition event expected for equivalent session"
+        );
+    }
+
+    #[test]
+    fn set_session_with_replacement_re_emits_connected() {
         let state = SessionState::new();
         state.set_session(info(0x01));
         let mut stream = state.subscribe();
@@ -312,10 +329,10 @@ mod tests {
 
         state.set_session(info(0x02));
 
-        let pending = stream.next().now_or_never();
-        assert!(
-            pending.is_none(),
-            "no transition event expected on session replace"
+        let next = block_on(stream.next()).expect("expected replacement Connected event");
+        assert_eq!(
+            next,
+            VersionedItem::V1(HostAccountConnectionStatusSubscribeItem::Connected)
         );
     }
 

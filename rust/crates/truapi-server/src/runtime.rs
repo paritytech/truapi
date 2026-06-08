@@ -4772,6 +4772,34 @@ mod tests {
     }
 
     #[test]
+    fn session_store_sync_replaces_valid_blob_and_broadcasts_connected() {
+        let mut replacement = sso_session_info();
+        replacement.public_key = [0x44; 32];
+        let host = PlatformRuntimeHost::new_compat(
+            Arc::new(StubPlatform {
+                session_blob: Some(crate::host_logic::session::encode_persisted_session(
+                    &replacement,
+                )),
+                ..Default::default()
+            }),
+            test_spawner(),
+        );
+        host.session_state().set_session(sso_session_info());
+        let mut statuses = host.session_state().subscribe();
+        let _ = futures::executor::block_on(statuses.next());
+
+        host.start_session_store_sync(immediate_spawner());
+
+        assert_eq!(host.session_state().current(), Some(replacement));
+        assert_eq!(
+            futures::executor::block_on(statuses.next()).unwrap(),
+            HostAccountConnectionStatusSubscribeItem::V1(
+                v01::HostAccountConnectionStatusSubscribeItem::Connected
+            )
+        );
+    }
+
+    #[test]
     fn session_store_sync_clears_invalid_blob() {
         let host = PlatformRuntimeHost::new_compat(
             Arc::new(StubPlatform {
