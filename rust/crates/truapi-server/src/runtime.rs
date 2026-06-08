@@ -422,13 +422,15 @@ where
         let (disconnect_waiter_id, disconnect) = self.session_disconnects.subscribe();
         let result = wait_for_sso_remote_response(
             connection.responses(),
-            sso,
-            &own_subscription_request_id,
-            &peer_subscription_request_id,
-            &message_id,
-            &message_id,
-            DEFAULT_SSO_RESPONSE_TIMEOUT,
-            Some(disconnect),
+            SsoRemoteResponseWait {
+                session: sso,
+                own_subscription_request_id: &own_subscription_request_id,
+                peer_subscription_request_id: &peer_subscription_request_id,
+                statement_request_id: &message_id,
+                remote_message_id: &message_id,
+                timeout: DEFAULT_SSO_RESPONSE_TIMEOUT,
+                disconnect: Some(disconnect),
+            },
         )
         .await;
         self.session_disconnects.unsubscribe(disconnect_waiter_id);
@@ -475,32 +477,37 @@ where
     }
 }
 
-async fn wait_for_sso_remote_response(
-    responses: BoxStream<'static, String>,
-    session: &SsoSessionInfo,
-    own_subscription_request_id: &str,
-    peer_subscription_request_id: &str,
-    statement_request_id: &str,
-    remote_message_id: &str,
+struct SsoRemoteResponseWait<'a> {
+    session: &'a SsoSessionInfo,
+    own_subscription_request_id: &'a str,
+    peer_subscription_request_id: &'a str,
+    statement_request_id: &'a str,
+    remote_message_id: &'a str,
     timeout: Duration,
     disconnect: Option<oneshot::Receiver<String>>,
+}
+
+async fn wait_for_sso_remote_response(
+    responses: BoxStream<'static, String>,
+    wait: SsoRemoteResponseWait<'_>,
 ) -> Result<SsoRemoteResponse, String> {
     let timeout_reason = format!(
-        "SSO response timed out after {} for {remote_message_id}",
-        format_timeout_duration(timeout)
+        "SSO response timed out after {} for {}",
+        format_timeout_duration(wait.timeout),
+        wait.remote_message_id
     );
     let response = wait_for_sso_remote_response_inner(
         responses,
-        session,
-        own_subscription_request_id,
-        peer_subscription_request_id,
-        statement_request_id,
-        remote_message_id,
+        wait.session,
+        wait.own_subscription_request_id,
+        wait.peer_subscription_request_id,
+        wait.statement_request_id,
+        wait.remote_message_id,
     )
     .fuse();
-    let timeout = futures_timer::Delay::new(timeout).fuse();
+    let timeout = futures_timer::Delay::new(wait.timeout).fuse();
     let disconnect = async move {
-        match disconnect {
+        match wait.disconnect {
             Some(rx) => rx
                 .await
                 .unwrap_or_else(|_| SSO_LOCAL_DISCONNECT_REASON.to_string()),
@@ -530,21 +537,19 @@ async fn wait_for_sso_remote_response_inner(
     let mut pending_remote_response = None;
 
     while let Some(frame) = responses.next().await {
-        if own_remote_subscription_id.is_none() {
-            if let Some(id) = parse_subscribe_ack(&frame, own_subscription_request_id)
+        if own_remote_subscription_id.is_none()
+            && let Some(id) = parse_subscribe_ack(&frame, own_subscription_request_id)
                 .map_err(|err| err.to_string())?
-            {
-                own_remote_subscription_id = Some(id);
-                continue;
-            }
+        {
+            own_remote_subscription_id = Some(id);
+            continue;
         }
-        if peer_remote_subscription_id.is_none() {
-            if let Some(id) = parse_subscribe_ack(&frame, peer_subscription_request_id)
+        if peer_remote_subscription_id.is_none()
+            && let Some(id) = parse_subscribe_ack(&frame, peer_subscription_request_id)
                 .map_err(|err| err.to_string())?
-            {
-                peer_remote_subscription_id = Some(id);
-                continue;
-            }
+        {
+            peer_remote_subscription_id = Some(id);
+            continue;
         }
 
         let Some(page) = parse_new_statements(&frame).map_err(|err| err.to_string())? else {
@@ -1140,13 +1145,12 @@ async fn wait_for_pairing_statement(
 ) -> Result<Vec<u8>, String> {
     let mut remote_subscription_id = None;
     while let Some(frame) = responses.next().await {
-        if remote_subscription_id.is_none() {
-            if let Some(id) = parse_subscribe_ack(&frame, PAIRING_SUBSCRIBE_REQUEST_ID)
+        if remote_subscription_id.is_none()
+            && let Some(id) = parse_subscribe_ack(&frame, PAIRING_SUBSCRIBE_REQUEST_ID)
                 .map_err(|err| err.to_string())?
-            {
-                remote_subscription_id = Some(id);
-                continue;
-            }
+        {
+            remote_subscription_id = Some(id);
+            continue;
         }
 
         let Some(page) = parse_new_statements(&frame).map_err(|err| err.to_string())? else {
@@ -2422,7 +2426,7 @@ mod tests {
     }
 
     fn immediate_spawner() -> Spawner {
-        Arc::new(|future| futures::executor::block_on(future))
+        Arc::new(futures::executor::block_on)
     }
 
     /// Minimal Platform impl that only answers `feature_supported`. Every
@@ -3699,11 +3703,12 @@ mod tests {
         assert_eq!(inner.signed_transaction, None);
         let message = submitted_remote_message(&platform, &session);
         assert!(matches!(
-            message.data,
+            &message.data,
             crate::host_logic::sso_messages::RemoteMessageData::V1(
-                crate::host_logic::sso_messages::RemoteMessageV1::SignRequest(
-                    crate::host_logic::sso_messages::SigningRequest::Raw(_)
-                )
+                crate::host_logic::sso_messages::RemoteMessageV1::SignRequest(request)
+            ) if matches!(
+                request.as_ref(),
+                crate::host_logic::sso_messages::SigningRequest::Raw(_)
             )
         ));
     }
@@ -3837,11 +3842,12 @@ mod tests {
         assert_eq!(inner.signed_transaction, Some(vec![0xab, 0xcd]));
         let message = submitted_remote_message(&platform, &session);
         assert!(matches!(
-            message.data,
+            &message.data,
             crate::host_logic::sso_messages::RemoteMessageData::V1(
-                crate::host_logic::sso_messages::RemoteMessageV1::SignRequest(
-                    crate::host_logic::sso_messages::SigningRequest::Payload(_)
-                )
+                crate::host_logic::sso_messages::RemoteMessageV1::SignRequest(request)
+            ) if matches!(
+                request.as_ref(),
+                crate::host_logic::sso_messages::SigningRequest::Payload(_)
             )
         ));
     }
@@ -3940,11 +3946,12 @@ mod tests {
         assert_eq!(inner.signed_transaction, None);
         let message = submitted_remote_message(&platform, &session);
         assert!(matches!(
-            message.data,
+            &message.data,
             crate::host_logic::sso_messages::RemoteMessageData::V1(
-                crate::host_logic::sso_messages::RemoteMessageV1::SignRequest(
-                    crate::host_logic::sso_messages::SigningRequest::Raw(_)
-                )
+                crate::host_logic::sso_messages::RemoteMessageV1::SignRequest(request)
+            ) if matches!(
+                request.as_ref(),
+                crate::host_logic::sso_messages::SigningRequest::Raw(_)
             )
         ));
     }
@@ -4371,13 +4378,15 @@ mod tests {
         let session = sso_session_info();
         let err = futures::executor::block_on(wait_for_sso_remote_response(
             stream::pending().boxed(),
-            session.sso.as_ref().unwrap(),
-            "own-sub",
-            "peer-sub",
-            "request-1",
-            "request-1",
-            Duration::from_millis(1),
-            None,
+            SsoRemoteResponseWait {
+                session: session.sso.as_ref().unwrap(),
+                own_subscription_request_id: "own-sub",
+                peer_subscription_request_id: "peer-sub",
+                statement_request_id: "request-1",
+                remote_message_id: "request-1",
+                timeout: Duration::from_millis(1),
+                disconnect: None,
+            },
         ))
         .unwrap_err();
 
@@ -4391,13 +4400,15 @@ mod tests {
         tx.send(SSO_LOCAL_DISCONNECT_REASON.to_string()).unwrap();
         let err = futures::executor::block_on(wait_for_sso_remote_response(
             stream::pending().boxed(),
-            session.sso.as_ref().unwrap(),
-            "own-sub",
-            "peer-sub",
-            "request-1",
-            "request-1",
-            Duration::from_secs(60),
-            Some(rx),
+            SsoRemoteResponseWait {
+                session: session.sso.as_ref().unwrap(),
+                own_subscription_request_id: "own-sub",
+                peer_subscription_request_id: "peer-sub",
+                statement_request_id: "request-1",
+                remote_message_id: "request-1",
+                timeout: Duration::from_secs(60),
+                disconnect: Some(rx),
+            },
         ))
         .unwrap_err();
 

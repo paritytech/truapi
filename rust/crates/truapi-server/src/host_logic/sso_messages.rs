@@ -34,7 +34,7 @@ pub enum RemoteMessageV1 {
     #[codec(index = 0)]
     Disconnected,
     #[codec(index = 1)]
-    SignRequest(SigningRequest),
+    SignRequest(Box<SigningRequest>),
     #[codec(index = 2)]
     SignResponse(SigningResponse),
     #[codec(index = 3)]
@@ -54,7 +54,7 @@ pub enum RemoteMessageV1 {
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SigningRequest {
     #[codec(index = 0)]
-    Payload(SigningPayloadRequest),
+    Payload(Box<SigningPayloadRequest>),
     #[codec(index = 1)]
     Raw(SigningRawRequest),
 }
@@ -385,8 +385,8 @@ pub fn sign_payload_message(
 ) -> RemoteMessage {
     RemoteMessage {
         message_id,
-        data: RemoteMessageData::V1(RemoteMessageV1::SignRequest(SigningRequest::Payload(
-            request.into(),
+        data: RemoteMessageData::V1(RemoteMessageV1::SignRequest(Box::new(
+            SigningRequest::Payload(Box::new(request.into())),
         ))),
     }
 }
@@ -394,9 +394,9 @@ pub fn sign_payload_message(
 pub fn sign_raw_message(message_id: String, request: v01::HostSignRawRequest) -> RemoteMessage {
     RemoteMessage {
         message_id,
-        data: RemoteMessageData::V1(RemoteMessageV1::SignRequest(SigningRequest::Raw(
+        data: RemoteMessageData::V1(RemoteMessageV1::SignRequest(Box::new(SigningRequest::Raw(
             request.into(),
-        ))),
+        )))),
     }
 }
 
