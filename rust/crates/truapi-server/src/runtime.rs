@@ -30,7 +30,8 @@ use truapi::api::{
 };
 use truapi::v01;
 use truapi::versioned::account::{
-    HostAccountConnectionStatusSubscribeItem, HostAccountGetError, HostAccountGetRequest,
+    HostAccountConnectionStatusSubscribeItem, HostAccountGetAliasError, HostAccountGetAliasRequest,
+    HostAccountGetAliasResponse, HostAccountGetError, HostAccountGetRequest,
     HostAccountGetResponse, HostGetLegacyAccountsError, HostGetLegacyAccountsRequest,
     HostGetLegacyAccountsResponse, HostGetUserIdError, HostGetUserIdRequest, HostGetUserIdResponse,
     HostRequestLoginError, HostRequestLoginRequest, HostRequestLoginResponse,
@@ -419,14 +420,8 @@ where
 // Account
 // ---------------------------------------------------------------------------
 //
-// Account-management flows live in the Rust core itself, backed by the
-// `Storage` capability for key material. Most Account trait methods fall
-// back to the `truapi::api::*` defaults, which return
-// `Err(CallError::unavailable())` until those in-core implementations
-// land. `PlatformRuntimeHost` only overrides
-// `connection_status_subscribe` (fed by the session-state holder) and
-// `request_login` (currently only the already-connected short-circuit; full
-// pairing lands with the SSO service).
+// Account-management flows live in the Rust core itself, backed by the shared
+// session state and, for alias/proof/login success paths, the SSO service.
 
 impl<P> Account for PlatformRuntimeHost<P>
 where
@@ -467,6 +462,41 @@ where
                 public_key: public_key.to_vec(),
             },
         }))
+    }
+
+    async fn get_account_alias(
+        &self,
+        _cx: &CallContext,
+        request: HostAccountGetAliasRequest,
+    ) -> Result<HostAccountGetAliasResponse, CallError<HostAccountGetAliasError>> {
+        let HostAccountGetAliasRequest::V1(v01::HostAccountGetAliasRequest { product_account_id }) =
+            request;
+
+        if self.session_state.current().is_none() {
+            return Err(CallError::Domain(HostAccountGetAliasError::V1(
+                v01::HostAccountGetError::NotConnected,
+            )));
+        }
+
+        if !is_product_identifier(&product_account_id.dot_ns_identifier) {
+            return Err(CallError::Domain(HostAccountGetAliasError::V1(
+                v01::HostAccountGetError::DomainNotValid,
+            )));
+        }
+
+        if product_account_id.dot_ns_identifier != self.runtime_config.product_id {
+            return Err(CallError::Domain(HostAccountGetAliasError::V1(
+                v01::HostAccountGetError::Unknown {
+                    reason: "Cross-domain alias confirmation not implemented".to_string(),
+                },
+            )));
+        }
+
+        Err(CallError::Domain(HostAccountGetAliasError::V1(
+            v01::HostAccountGetError::Unknown {
+                reason: "SSO account alias not implemented".to_string(),
+            },
+        )))
     }
 
     async fn get_legacy_accounts(
@@ -1230,6 +1260,12 @@ mod tests {
         }
     }
 
+    fn account_alias_request(identifier: &str) -> HostAccountGetAliasRequest {
+        HostAccountGetAliasRequest::V1(v01::HostAccountGetAliasRequest {
+            product_account_id: account_id(identifier, 0),
+        })
+    }
+
     fn raw_payload() -> v01::RawPayload {
         v01::RawPayload::Bytes {
             bytes: b"hello".to_vec(),
@@ -1532,6 +1568,77 @@ mod tests {
             hex::encode(inner.account.public_key),
             "281489e3dd1c4dbe88cd670a59edcc9c44d64f510d302bd527ec306f10292f08"
         );
+    }
+
+    #[test]
+    fn get_account_alias_requires_session() {
+        let host =
+            PlatformRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
+        let cx = CallContext::new();
+        let err = futures::executor::block_on(
+            host.get_account_alias(&cx, account_alias_request("myapp.dot")),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            CallError::Domain(HostAccountGetAliasError::V1(
+                v01::HostAccountGetError::NotConnected
+            ))
+        ));
+    }
+
+    #[test]
+    fn get_account_alias_rejects_invalid_product_identifier() {
+        let host =
+            PlatformRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let err = futures::executor::block_on(
+            host.get_account_alias(&cx, account_alias_request("example.com")),
+        )
+        .unwrap_err();
+        assert!(matches!(
+            err,
+            CallError::Domain(HostAccountGetAliasError::V1(
+                v01::HostAccountGetError::DomainNotValid
+            ))
+        ));
+    }
+
+    #[test]
+    fn get_account_alias_same_domain_reaches_sso_boundary() {
+        let host =
+            PlatformRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let err = futures::executor::block_on(
+            host.get_account_alias(&cx, account_alias_request("myapp.dot")),
+        )
+        .unwrap_err();
+        match err {
+            CallError::Domain(HostAccountGetAliasError::V1(
+                v01::HostAccountGetError::Unknown { reason },
+            )) => assert_eq!(reason, "SSO account alias not implemented"),
+            other => panic!("expected SSO alias boundary error, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn get_account_alias_cross_domain_reaches_confirmation_boundary() {
+        let host =
+            PlatformRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let err = futures::executor::block_on(
+            host.get_account_alias(&cx, account_alias_request("other.dot")),
+        )
+        .unwrap_err();
+        match err {
+            CallError::Domain(HostAccountGetAliasError::V1(
+                v01::HostAccountGetError::Unknown { reason },
+            )) => assert_eq!(reason, "Cross-domain alias confirmation not implemented"),
+            other => panic!("expected cross-domain alias confirmation boundary, got {other:?}"),
+        }
     }
 
     #[test]
