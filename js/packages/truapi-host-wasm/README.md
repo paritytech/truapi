@@ -19,14 +19,15 @@ The package exposes tree-shakeable subpath exports — import only what your env
 | `@parity/truapi-host-wasm/worker-runtime`  | Web Worker entrypoint (import with your bundler's `?worker` suffix) so the WASM core runs off the page main thread.     |
 | `@parity/truapi-host-wasm/wasm/{web,node}` | The raw `wasm-bindgen` glue, if you need to instantiate the core yourself.                                              |
 
-## Pre-built WASM artefacts
+## Generated WASM artefacts
 
-The committed bundles under `dist/wasm/web/` and `dist/wasm/node/` are built without smoldot
+The ignored bundles under `dist/wasm/web/` and `dist/wasm/node/` are built without smoldot
 (`wasm-pack build --no-default-features`). Hosts that already manage chain access through their own
 JSON-RPC provider wire `chainConnect` into the callbacks and never touch smoldot. The bundled WASM
 is about 1 MB (release build with `wasm-opt`).
 
-To rebuild after editing `rust/crates/truapi-server` (requires `wasm-pack` on PATH):
+Build them after editing `rust/crates/truapi-server` and before packaging, publishing, or running
+tests that load the raw WASM bundle (requires `wasm-pack` on PATH):
 
 ```bash
 npm run build:wasm   # or `make wasm` from the repo root

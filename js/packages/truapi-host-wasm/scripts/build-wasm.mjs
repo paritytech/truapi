@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Rebuild the truapi-server WASM artefacts committed under
+// Rebuild the truapi-server WASM artefacts generated under
 // `dist/wasm/{web,node}/`. wasm-pack is required.
 
 import { execFile } from "node:child_process";
@@ -32,9 +32,8 @@ async function build(target, subdir) {
   const outDir = resolve(pkgRoot, "dist/wasm", subdir);
   process.stdout.write(`wasm-pack build --target ${target} → ${outDir}\n`);
   await execFileAsync("wasm-pack", args(target, outDir), { cwd: repoRoot });
-  // wasm-pack writes a `.gitignore: *` next to the artefacts which would
-  // hide the committed bundle. Remove it; the package's outer .gitignore
-  // handles compiled TS without masking the WASM files.
+  // wasm-pack writes a nested `.gitignore: *`; the repo-level ignore already
+  // owns generated WASM outputs.
   await rm(resolve(outDir, ".gitignore"), { force: true });
 }
 

@@ -199,7 +199,7 @@ The artifact lands under `~/.m2/repository/io/parity/truapi-host-android/<versio
 
 ## Regenerating the UniFFI bindings
 
-The committed Kotlin bindings under `src/main/kotlin/generated/uniffi/` are produced from the workspace `uniffi-bindgen-cli`:
+The ignored Kotlin bindings under `src/main/kotlin/generated/uniffi/` are produced from the workspace `uniffi-bindgen-cli`. Regenerate them before building or publishing the Android host package:
 
 ```bash
 cargo build -p truapi-server --release --features ws-bridge
