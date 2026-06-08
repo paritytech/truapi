@@ -155,11 +155,18 @@ interface HostBridge {
     @Throws(HostRejection::class)
     fun remotePermission(request: ByteArray): Boolean
 
-    /** Present an SSO pairing deeplink or QR payload built by the Rust core. */
+    /**
+     * Present an SSO pairing deeplink or QR payload built by the Rust core.
+     * Show the UI and return immediately. Call
+     * [TrUAPIHostCore.notifyPairingCancelled] when the user dismisses it.
+     */
     @Throws(HostRejection::class)
     fun presentPairing(deeplink: String) {
         throw HostRejection.Rejected("pairing presenter unavailable")
     }
+
+    /** Close any active SSO pairing presentation. */
+    fun dismissPairing() {}
 
     /** Read the opaque core-owned SSO session blob from host-global storage. */
     @Throws(HostRejection::class)
@@ -258,6 +265,9 @@ private class HostCallbackAdapter(private val bridge: HostBridge) : HostCallback
 
     override fun presentPairing(deeplink: String) =
         bridge.presentPairing(deeplink)
+
+    override fun dismissPairing() =
+        bridge.dismissPairing()
 
     override fun readSession(): ByteArray? =
         bridge.readSession()
@@ -373,6 +383,11 @@ class TrUAPIHostCore private constructor(
     /** Notify the core that host-global session storage changed externally. */
     fun notifySessionStoreChanged() {
         inner.notifySessionStoreChanged()
+    }
+
+    /** Notify the core that the user dismissed the active SSO pairing UI. */
+    fun notifyPairingCancelled() {
+        inner.notifyPairingCancelled()
     }
 
     /** Push a host theme update to active TrUAPI theme subscriptions. */

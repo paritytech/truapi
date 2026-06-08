@@ -174,7 +174,12 @@ public protocol HostBridge: AnyObject, Sendable {
     func remotePermission(request: Data) throws -> Bool
 
     /// Present an SSO pairing deeplink or QR payload built by the Rust core.
+    /// Show the UI and return immediately. Call
+    /// ``TrUAPIHostCore/notifyPairingCancelled()`` when the user dismisses it.
     func presentPairing(deeplink: String) throws
+
+    /// Close any active SSO pairing presentation.
+    func dismissPairing()
 
     /// Read the opaque core-owned SSO session blob from host-global storage.
     func readSession() throws -> Data?
@@ -237,6 +242,7 @@ public extension HostBridge {
     func presentPairing(deeplink: String) throws {
         throw HostRejection.Rejected(reason: "pairing presenter unavailable")
     }
+    func dismissPairing() {}
     func readSession() throws -> Data? { nil }
     func writeSession(value: Data) throws {}
     func clearSession() throws {}
@@ -290,6 +296,10 @@ private final class HostCallbackAdapter: HostCallbacks, @unchecked Sendable {
 
     func presentPairing(deeplink: String) throws {
         try bridge.presentPairing(deeplink: deeplink)
+    }
+
+    func dismissPairing() {
+        bridge.dismissPairing()
     }
 
     func readSession() throws -> Data? {
@@ -421,6 +431,11 @@ public final class TrUAPIHostCore {
     /// Notify the core that host-global session storage changed externally.
     public func notifySessionStoreChanged() {
         inner.notifySessionStoreChanged()
+    }
+
+    /// Notify the core that the user dismissed the active SSO pairing UI.
+    public func notifyPairingCancelled() {
+        inner.notifyPairingCancelled()
     }
 
     /// Push a host theme update to active TrUAPI theme subscriptions.

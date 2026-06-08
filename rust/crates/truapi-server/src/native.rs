@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use futures::channel::mpsc;
+use futures::channel::{mpsc, oneshot};
 use futures::executor::ThreadPool;
 use futures::future::BoxFuture;
 use futures::stream::{self, BoxStream, StreamExt};
@@ -253,7 +253,12 @@ pub trait HostCallbacks: Send + Sync {
     fn remote_permission(&self, request: Vec<u8>) -> Result<bool, HostRejection>;
 
     /// Present an SSO pairing deeplink or QR payload built by the Rust core.
+    /// Implementations should show and return immediately; user cancellation
+    /// is reported through `NativeTrUApiCore.notify_pairing_cancelled()`.
     fn present_pairing(&self, deeplink: String) -> Result<(), HostRejection>;
+
+    /// Close any active SSO pairing presentation.
+    fn dismiss_pairing(&self);
 
     /// Read the opaque core-owned SSO session blob from host-global storage.
     fn read_session(&self) -> Result<Option<Vec<u8>>, HostRejection>;
@@ -373,6 +378,11 @@ impl NativeTrUApiCore {
         self.events.notify_session_store_changed();
     }
 
+    /// Notify the core that the user dismissed the active SSO pairing UI.
+    pub fn notify_pairing_cancelled(&self) {
+        self.events.notify_pairing_cancelled();
+    }
+
     /// Push a host theme update to active TrUAPI theme subscriptions.
     pub fn notify_theme_changed(&self, theme: HostTheme) {
         self.events.notify_theme_changed(theme.into());
@@ -490,6 +500,7 @@ struct CallbackPlatform {
 
 #[derive(Default)]
 struct NativeEventBus {
+    pairing_cancels: Mutex<Vec<oneshot::Sender<()>>>,
     session_store_ticks: Mutex<Vec<mpsc::UnboundedSender<Result<(), v01::GenericError>>>>,
     theme_changes: Mutex<Vec<mpsc::UnboundedSender<Result<v01::Theme, v01::GenericError>>>>,
     preimage_changes: Mutex<Vec<PreimageSubscription>>,
@@ -502,6 +513,27 @@ struct PreimageSubscription {
 }
 
 impl NativeEventBus {
+    fn register_pairing_cancel(&self) -> oneshot::Receiver<()> {
+        let (tx, rx) = oneshot::channel();
+        self.pairing_cancels
+            .lock()
+            .expect("native pairing cancel waiters mutex poisoned")
+            .push(tx);
+        rx
+    }
+
+    fn notify_pairing_cancelled(&self) {
+        let waiters = std::mem::take(
+            &mut *self
+                .pairing_cancels
+                .lock()
+                .expect("native pairing cancel waiters mutex poisoned"),
+        );
+        for tx in waiters {
+            let _ = tx.send(());
+        }
+    }
+
     fn subscribe_session_store(&self) -> BoxStream<'static, Result<(), v01::GenericError>> {
         let (tx, rx) = mpsc::unbounded();
         self.session_store_ticks
@@ -778,9 +810,26 @@ impl PairingPresenter for CallbackPlatform {
             "truapi.native.callback.present_pairing".to_string(),
             String::new(),
         );
+        let cancel = self.events.register_pairing_cancel();
         self.callbacks
             .present_pairing(deeplink)
-            .map_err(v01::GenericError::from)
+            .map_err(v01::GenericError::from)?;
+        let _dismiss = NativePairingDismiss {
+            callbacks: self.callbacks.clone(),
+        };
+        cancel.await.map_err(|_| v01::GenericError {
+            reason: "pairing presenter cancelled by core".to_string(),
+        })
+    }
+}
+
+struct NativePairingDismiss {
+    callbacks: Arc<dyn HostCallbacks>,
+}
+
+impl Drop for NativePairingDismiss {
+    fn drop(&mut self) {
+        self.callbacks.dismiss_pairing();
     }
 }
 
@@ -916,6 +965,8 @@ mod tests {
     struct EventCallbacks {
         theme: Mutex<HostTheme>,
         preimages: Mutex<PreimageFixtureEntries>,
+        presented_pairings: Mutex<Vec<String>>,
+        dismissed_pairings: Mutex<u32>,
         chain_id: Mutex<Option<u32>>,
         chain_connects: Mutex<Vec<Vec<u8>>>,
         chain_sends: Mutex<Vec<(u32, String)>>,
@@ -927,6 +978,8 @@ mod tests {
             Self {
                 theme: Mutex::new(HostTheme::Light),
                 preimages: Mutex::new(Vec::new()),
+                presented_pairings: Mutex::new(Vec::new()),
+                dismissed_pairings: Mutex::new(0),
                 chain_id: Mutex::new(None),
                 chain_connects: Mutex::new(Vec::new()),
                 chain_sends: Mutex::new(Vec::new()),
@@ -952,8 +1005,18 @@ mod tests {
         fn remote_permission(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
             Ok(false)
         }
-        fn present_pairing(&self, _deeplink: String) -> Result<(), HostRejection> {
+        fn present_pairing(&self, deeplink: String) -> Result<(), HostRejection> {
+            self.presented_pairings
+                .lock()
+                .expect("presented pairings mutex poisoned")
+                .push(deeplink);
             Ok(())
+        }
+        fn dismiss_pairing(&self) {
+            *self
+                .dismissed_pairings
+                .lock()
+                .expect("dismissed pairings mutex poisoned") += 1;
         }
         fn read_session(&self) -> Result<Option<Vec<u8>>, HostRejection> {
             Ok(None)
@@ -1044,6 +1107,54 @@ mod tests {
             events: events.clone(),
         };
         (callbacks, events, platform)
+    }
+
+    #[test]
+    fn native_pairing_presenter_waits_for_cancel_notification() {
+        let (callbacks, events, platform) = event_platform();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let handle = std::thread::spawn(move || {
+            tx.send(futures::executor::block_on(
+                platform.present_pairing("polkadotapp://pair?handshake=00".to_string()),
+            ))
+            .expect("send pairing result");
+        });
+
+        for _ in 0..100 {
+            if !callbacks
+                .presented_pairings
+                .lock()
+                .expect("presented pairings mutex poisoned")
+                .is_empty()
+            {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+
+        assert_eq!(
+            callbacks
+                .presented_pairings
+                .lock()
+                .expect("presented pairings mutex poisoned")
+                .as_slice(),
+            &["polkadotapp://pair?handshake=00".to_string()]
+        );
+        assert!(
+            rx.try_recv().is_err(),
+            "pairing presenter must stay pending until native cancel"
+        );
+
+        events.notify_pairing_cancelled();
+        assert!(rx.recv().expect("pairing result").is_ok());
+        handle.join().expect("pairing presenter thread joins");
+        assert_eq!(
+            *callbacks
+                .dismissed_pairings
+                .lock()
+                .expect("dismissed pairings mutex poisoned"),
+            1
+        );
     }
 
     #[test]
@@ -1235,6 +1346,7 @@ mod tests {
             fn present_pairing(&self, _deeplink: String) -> Result<(), HostRejection> {
                 Ok(())
             }
+            fn dismiss_pairing(&self) {}
             fn read_session(&self) -> Result<Option<Vec<u8>>, HostRejection> {
                 Ok(None)
             }
