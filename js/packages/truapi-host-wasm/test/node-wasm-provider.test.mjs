@@ -18,9 +18,6 @@ import { SYSTEM_FEATURE_SUPPORTED } from "@parity/truapi/wire-table";
 import { createNodeWasmProvider } from "../dist/index.js";
 
 function makeCallbacks() {
-  const unavailable = (name) => async () => {
-    throw new Error(`${name} unavailable`);
-  };
   const noopSubscribe = () => () => {};
   return {
     navigateTo: async () => {},
@@ -31,17 +28,6 @@ function makeCallbacks() {
     localStorageRead: async () => undefined,
     localStorageWrite: async () => {},
     localStorageClear: async () => {},
-    accountGet: unavailable("accountGet"),
-    accountGetAlias: unavailable("accountGetAlias"),
-    accountCreateProof: unavailable("accountCreateProof"),
-    getLegacyAccounts: unavailable("getLegacyAccounts"),
-    accountConnectionStatusSubscribe: noopSubscribe,
-    getUserId: unavailable("getUserId"),
-    signPayload: unavailable("signPayload"),
-    signRaw: unavailable("signRaw"),
-    statementStoreSubscribe: noopSubscribe,
-    statementStoreSubmit: unavailable("statementStoreSubmit"),
-    statementStoreCreateProof: unavailable("statementStoreCreateProof"),
     preimageLookupSubscribe: noopSubscribe,
     dispose: () => {},
   };

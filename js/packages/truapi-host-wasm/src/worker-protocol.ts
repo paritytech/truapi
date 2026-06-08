@@ -18,15 +18,6 @@ export type CallbackName =
   | "localStorageRead"
   | "localStorageWrite"
   | "localStorageClear"
-  | "accountGet"
-  | "accountGetAlias"
-  | "accountCreateProof"
-  | "getLegacyAccounts"
-  | "getUserId"
-  | "signPayload"
-  | "signRaw"
-  | "statementStoreSubmit"
-  | "statementStoreCreateProof"
   | "confirmPreimageSubmit"
   | "submitPreimage";
 
@@ -35,9 +26,7 @@ export type CallbackName =
  * `(payload?, sendItem) => dispose | void`.
  */
 export type SubscriptionName =
-  | "accountConnectionStatusSubscribe"
   | "sessionStoreSubscribe"
-  | "statementStoreSubscribe"
   | "preimageLookupSubscribe"
   | "themeSubscribe";
 

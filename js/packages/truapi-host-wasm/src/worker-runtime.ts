@@ -143,33 +143,6 @@ const rawCallbacks = {
     callbackRequest("localStorageClear", [key]),
   subscribeSessionStore: (sendItem: () => void) =>
     startSubscription("sessionStoreSubscribe", null, sendItem),
-  accountGet: (payload: Uint8Array) =>
-    callbackRequest("accountGet", [payload]) as Promise<Uint8Array>,
-  accountGetAlias: (payload: Uint8Array) =>
-    callbackRequest("accountGetAlias", [payload]) as Promise<Uint8Array>,
-  accountCreateProof: (payload: Uint8Array) =>
-    callbackRequest("accountCreateProof", [payload]) as Promise<Uint8Array>,
-  getLegacyAccounts: (payload: Uint8Array) =>
-    callbackRequest("getLegacyAccounts", [payload]) as Promise<Uint8Array>,
-  accountConnectionStatusSubscribe: (sendItem: (bytes: Uint8Array) => void) =>
-    startSubscription("accountConnectionStatusSubscribe", null, sendItem),
-  getUserId: (payload: Uint8Array) =>
-    callbackRequest("getUserId", [payload]) as Promise<Uint8Array>,
-  signPayload: (payload: Uint8Array) =>
-    callbackRequest("signPayload", [payload]) as Promise<Uint8Array>,
-  signRaw: (payload: Uint8Array) =>
-    callbackRequest("signRaw", [payload]) as Promise<Uint8Array>,
-  statementStoreSubscribe: (
-    payload: Uint8Array,
-    sendItem: (bytes: Uint8Array) => void,
-  ) => startSubscription("statementStoreSubscribe", payload, sendItem),
-  statementStoreSubmit: (payload: Uint8Array) =>
-    callbackRequest("statementStoreSubmit", [payload]) as Promise<Uint8Array>,
-  statementStoreCreateProof: (payload: Uint8Array) =>
-    callbackRequest(
-      "statementStoreCreateProof",
-      [payload],
-    ) as Promise<Uint8Array>,
   confirmPreimageSubmit: (size: number) =>
     callbackRequest("confirmPreimageSubmit", [size]) as Promise<void>,
   submitPreimage: (value: Uint8Array) =>

@@ -47,7 +47,7 @@ them.
       allocation, local storage, entropy, navigation, device/product permissions, notifications,
       statement-store submit/subscribe/proof, preimage submit/lookup, theme subscription, feature support,
       and chain connection/status.
-- [ ] `js/packages/truapi-host-wasm`: delete transitional raw callback routes for methods now owned by
+- [x] `js/packages/truapi-host-wasm`: delete transitional raw callback routes for methods now owned by
       Rust (`accountGet`, `accountGetAlias`, `accountCreateProof` if still unavailable, `getLegacyAccounts`,
       `getUserId`, `signPayload`, `signRaw`, `statementStoreSubscribe`, `statementStoreSubmit`,
       `statementStoreCreateProof`, and any preimage route that has moved behind the final host-side

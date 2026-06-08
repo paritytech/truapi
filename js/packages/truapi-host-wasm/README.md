@@ -52,8 +52,8 @@ const provider = await createNodeWasmProvider({
   localStorageRead: async () => undefined,
   localStorageWrite: async () => {},
   localStorageClear: async () => {},
-  accountConnectionStatusSubscribe: () => {},
-  // ...remaining account / signing / statement-store callbacks
+  // Optional: presentPairing, readSession/writeSession/clearSession,
+  // subscribeSessionStore, confirmation, preimage, theme, and chain callbacks.
 });
 
 const server = createHostServer(provider, [

@@ -73,9 +73,8 @@ export interface WasmRuntimeConfig {
  * This interface is the SCALE-byte-level wire surface between the WASM
  * core and JS; the typed `HostCallbacks` interface above is the
  * host-author surface. They overlap on the capability methods covered by
- * `truapi-platform` but `WasmRawCallbacks` additionally carries
- * account / signing / statement-store callbacks that live in the Rust
- * core, not in the platform trait set.
+ * `truapi-platform`; account, signing, and statement-store methods are owned
+ * by the Rust core and do not cross this callback boundary.
  */
 export interface WasmRawCallbacks {
   navigateTo(url: string): Promise<void>;
@@ -102,22 +101,6 @@ export interface WasmRawCallbacks {
   themeSubscribe?(
     sendItem: (theme: "Light" | "Dark" | 0 | 1 | Uint8Array) => void,
   ): (() => void) | void;
-  accountGet(payload: Uint8Array): Promise<Uint8Array>;
-  accountGetAlias(payload: Uint8Array): Promise<Uint8Array>;
-  accountCreateProof(payload: Uint8Array): Promise<Uint8Array>;
-  getLegacyAccounts(payload: Uint8Array): Promise<Uint8Array>;
-  accountConnectionStatusSubscribe(
-    sendItem: (bytes: Uint8Array) => void,
-  ): (() => void) | void;
-  getUserId(payload: Uint8Array): Promise<Uint8Array>;
-  signPayload(payload: Uint8Array): Promise<Uint8Array>;
-  signRaw(payload: Uint8Array): Promise<Uint8Array>;
-  statementStoreSubscribe(
-    payload: Uint8Array,
-    sendItem: (bytes: Uint8Array) => void,
-  ): (() => void) | void;
-  statementStoreSubmit(payload: Uint8Array): Promise<Uint8Array>;
-  statementStoreCreateProof(payload: Uint8Array): Promise<Uint8Array>;
   preimageLookupSubscribe(
     key: Uint8Array,
     sendItem: (value: Uint8Array | null | undefined) => void,
@@ -155,17 +138,6 @@ export function createUnavailableCallbacks(): Omit<
     localStorageRead: async () => undefined,
     localStorageWrite: async () => {},
     localStorageClear: async () => {},
-    accountGet: unavailable("accountGet"),
-    accountGetAlias: unavailable("accountGetAlias"),
-    accountCreateProof: unavailable("accountCreateProof"),
-    getLegacyAccounts: unavailable("getLegacyAccounts"),
-    accountConnectionStatusSubscribe: noopSubscribe,
-    getUserId: unavailable("getUserId"),
-    signPayload: unavailable("signPayload"),
-    signRaw: unavailable("signRaw"),
-    statementStoreSubscribe: noopSubscribe,
-    statementStoreSubmit: unavailable("statementStoreSubmit"),
-    statementStoreCreateProof: unavailable("statementStoreCreateProof"),
     confirmPreimageSubmit: unavailable("confirmPreimageSubmit"),
     submitPreimage: unavailable("submitPreimage"),
     subscribeSessionStore: noopSubscribe,

@@ -92,11 +92,7 @@ function handleSubscriptionStart(
   };
   let dispose: unknown;
   try {
-    if (msg.name === "accountConnectionStatusSubscribe") {
-      dispose = state.rawCallbacks.accountConnectionStatusSubscribe(
-        sendItem as (bytes: Uint8Array) => void,
-      );
-    } else if (msg.name === "sessionStoreSubscribe") {
+    if (msg.name === "sessionStoreSubscribe") {
       dispose = state.rawCallbacks.subscribeSessionStore?.(
         sendItem as () => void,
       );
@@ -105,17 +101,10 @@ function handleSubscriptionStart(
         sendItem as (theme: "Light" | "Dark" | 0 | 1 | Uint8Array) => void,
       );
     } else if (msg.payload !== null) {
-      if (msg.name === "statementStoreSubscribe") {
-        dispose = state.rawCallbacks.statementStoreSubscribe(
-          msg.payload,
-          sendItem as (bytes: Uint8Array) => void,
-        );
-      } else {
-        dispose = state.rawCallbacks.preimageLookupSubscribe(
-          msg.payload,
-          sendItem as (value: Uint8Array | null | undefined) => void,
-        );
-      }
+      dispose = state.rawCallbacks.preimageLookupSubscribe(
+        msg.payload,
+        sendItem as (value: Uint8Array | null | undefined) => void,
+      );
     } else {
       console.warn(
         `[truapi worker] ${msg.name} requires payload, none received`,
