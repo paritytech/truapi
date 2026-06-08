@@ -96,6 +96,10 @@ function handleSubscriptionStart(
       dispose = state.rawCallbacks.accountConnectionStatusSubscribe(
         sendItem as (bytes: Uint8Array) => void,
       );
+    } else if (msg.name === "sessionStoreSubscribe") {
+      dispose = state.rawCallbacks.subscribeSessionStore?.(
+        sendItem as () => void,
+      );
     } else if (msg.name === "themeSubscribe") {
       dispose = state.rawCallbacks.themeSubscribe?.(
         sendItem as (theme: "Light" | "Dark" | 0 | 1 | Uint8Array) => void,

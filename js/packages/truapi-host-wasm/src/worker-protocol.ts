@@ -36,6 +36,7 @@ export type CallbackName =
  */
 export type SubscriptionName =
   | "accountConnectionStatusSubscribe"
+  | "sessionStoreSubscribe"
   | "statementStoreSubscribe"
   | "preimageLookupSubscribe"
   | "themeSubscribe";

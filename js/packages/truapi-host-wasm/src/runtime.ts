@@ -91,6 +91,7 @@ export interface WasmRawCallbacks {
   readSession?(): Promise<Uint8Array | null | undefined>;
   writeSession?(value: Uint8Array): Promise<void>;
   clearSession?(): Promise<void>;
+  subscribeSessionStore?(sendItem: () => void): (() => void) | void;
   confirmSignPayload?(payload: Uint8Array): Promise<boolean>;
   confirmSignRaw?(payload: Uint8Array): Promise<boolean>;
   confirmCreateTransaction?(payload: Uint8Array): Promise<boolean>;
@@ -167,6 +168,7 @@ export function createUnavailableCallbacks(): Omit<
     statementStoreCreateProof: unavailable("statementStoreCreateProof"),
     confirmPreimageSubmit: unavailable("confirmPreimageSubmit"),
     submitPreimage: unavailable("submitPreimage"),
+    subscribeSessionStore: noopSubscribe,
     themeSubscribe: noopSubscribe,
     preimageLookupSubscribe: noopSubscribe,
   };

@@ -60,6 +60,7 @@ struct JsBridge {
     read_session: Option<Function>,
     write_session: Option<Function>,
     clear_session: Option<Function>,
+    subscribe_session_store: Option<Function>,
     /// Optional. Hosts that own JSON-RPC connections (e.g. dotli with its
     /// "smoldot vs RPC node" toggle) provide this; otherwise chain calls
     /// fail with an "unavailable" reason.
@@ -99,6 +100,7 @@ impl JsBridge {
             read_session: get_optional_function(callbacks, "readSession")?,
             write_session: get_optional_function(callbacks, "writeSession")?,
             clear_session: get_optional_function(callbacks, "clearSession")?,
+            subscribe_session_store: get_optional_function(callbacks, "subscribeSessionStore")?,
             chain_connect: get_optional_function(callbacks, "chainConnect")?,
             emit_frame: get_function(callbacks, "emitFrame")?,
             dispose: get_optional_function(callbacks, "dispose")?.unwrap_or_else(noop_function),
@@ -333,7 +335,10 @@ impl SessionStore for WasmPlatform {
     }
 
     fn subscribe_session_store(&self) -> BoxStream<'static, Result<(), v01::GenericError>> {
-        stream::once(async { Ok(()) }).boxed()
+        let Some(fn_) = self.bridge.subscribe_session_store.as_ref() else {
+            return stream::once(async { Ok(()) }).boxed();
+        };
+        invoke_js_subscription(fn_, None, parse_session_store_tick).boxed()
     }
 }
 
@@ -702,6 +707,10 @@ fn parse_theme_item(value: JsValue) -> Result<v01::Theme, String> {
             v01::Theme::decode(&mut array.to_vec().as_slice())
                 .map_err(|_| "encoded Theme item did not decode".to_string())
         })
+}
+
+fn parse_session_store_tick(_value: JsValue) -> Result<(), String> {
+    Ok(())
 }
 
 fn invoke_no_args_unit(

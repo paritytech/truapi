@@ -141,6 +141,8 @@ const rawCallbacks = {
     callbackRequest("localStorageWrite", [key, value]),
   localStorageClear: (key: string) =>
     callbackRequest("localStorageClear", [key]),
+  subscribeSessionStore: (sendItem: () => void) =>
+    startSubscription("sessionStoreSubscribe", null, sendItem),
   accountGet: (payload: Uint8Array) =>
     callbackRequest("accountGet", [payload]) as Promise<Uint8Array>,
   accountGetAlias: (payload: Uint8Array) =>
