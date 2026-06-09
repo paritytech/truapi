@@ -11,6 +11,7 @@ import type {
   SubscriptionName,
   WorkerToMain,
 } from "./worker-protocol.js";
+import { errorMessage } from "./error-message.js";
 
 interface WasmCore {
   receiveFromProduct(frame: Uint8Array): Promise<void>;
@@ -38,12 +39,6 @@ const ctx = self as unknown as DedicatedWorkerGlobalScope;
 
 function postToMain(msg: WorkerToMain): void {
   ctx.postMessage(msg);
-}
-
-function errMsg(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "string") return err;
-  return JSON.stringify(err);
 }
 
 let nextRequestId = 0;
@@ -217,7 +212,7 @@ let wasm: WasmModuleShape | null = null;
     await wasm.default();
     postToMain({ kind: "loaded" });
   } catch (err) {
-    postToMain({ kind: "error", error: errMsg(err) });
+    postToMain({ kind: "error", error: errorMessage(err) });
   }
 })();
 
@@ -234,7 +229,7 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
         core = new wasm.WasmTrUApiCore(buildRawCallbacks(msg), msg.runtimeConfig);
         postToMain({ kind: "ready" });
       } catch (err) {
-        postToMain({ kind: "error", error: `init: ${errMsg(err)}` });
+        postToMain({ kind: "error", error: `init: ${errorMessage(err)}` });
       }
       break;
     case "setLogLevel":
@@ -281,7 +276,7 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
         core?.dispose();
         core?.free();
       } catch (err) {
-        postToMain({ kind: "error", error: `dispose: ${errMsg(err)}` });
+        postToMain({ kind: "error", error: `dispose: ${errorMessage(err)}` });
       }
       core = null;
       break;
@@ -306,7 +301,7 @@ async function handleDisconnect(requestId: number): Promise<void> {
       kind: "disconnectResponse",
       requestId,
       ok: false,
-      error: errMsg(err),
+      error: errorMessage(err),
     });
   }
 }
@@ -319,6 +314,9 @@ async function handleFrame(bytes: Uint8Array): Promise<void> {
   try {
     await core.receiveFromProduct(bytes);
   } catch (err) {
-    postToMain({ kind: "error", error: `receiveFromProduct: ${errMsg(err)}` });
+    postToMain({
+      kind: "error",
+      error: `receiveFromProduct: ${errorMessage(err)}`,
+    });
   }
 }

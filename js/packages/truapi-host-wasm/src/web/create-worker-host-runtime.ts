@@ -10,6 +10,7 @@ import type {
   WasmRawCallbacks,
   WorkerToMain,
 } from "../index.js";
+import { errorMessage } from "../error-message.js";
 import { decodeWireMessage } from "@parity/truapi";
 import { bytesToHex } from "@parity/truapi/scale";
 import * as WireTable from "@parity/truapi/wire-table";
@@ -98,12 +99,6 @@ function optionalSubscriptions(
   ).map(({ protocol }) => protocol);
 }
 
-function errMsg(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "string") return err;
-  return JSON.stringify(err);
-}
-
 function bytesToHexPreview(bytes: Uint8Array, maxBytes = 96): string {
   const visible = bytes.subarray(0, maxBytes);
   const suffix =
@@ -173,7 +168,7 @@ function handleCallbackRequest(
           kind: "callbackResponse",
           requestId: msg.requestId,
           ok: false,
-          error: errMsg(err),
+          error: errorMessage(err),
         };
         state.worker.postMessage(reply);
       },
@@ -289,7 +284,7 @@ async function handleChainConnectStart(
       kind: "chainConnectAck",
       connId: msg.connId,
       ok: false,
-      error: errMsg(err),
+      error: errorMessage(err),
     };
     state.worker.postMessage(reply);
   }
