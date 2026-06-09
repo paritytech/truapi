@@ -118,8 +118,7 @@ function makeStubHandlers(partial) {
   const transport = createTransport(a);
   const client = createClient(transport);
 
-  const sampleRequest = {
-    account: { dotNsIdentifier: "alice.dot", derivationIndex: 0 },
+  const samplePayload = {
     blockHash: "0x" + "00".repeat(32),
     blockNumber: "0x10",
     era: "0x00",
@@ -131,6 +130,10 @@ function makeStubHandlers(partial) {
     transactionVersion: "0x04",
     signedExtensions: [],
     version: 4,
+  };
+  const sampleRequest = {
+    account: { dotNsIdentifier: "alice.dot", derivationIndex: 0 },
+    payload: samplePayload,
   };
   const sampleSignature = "0x" + "ab".repeat(32);
 
@@ -155,11 +158,11 @@ function makeStubHandlers(partial) {
   assert.equal(result.value.signature, sampleSignature);
   // SCALE decode reifies optional fields, so compare key-by-key on the
   // input set rather than deepEqual on the whole shape.
-  for (const [key, expected] of Object.entries(sampleRequest)) {
+  for (const [key, expected] of Object.entries(samplePayload)) {
     assert.deepEqual(
-      observedRequest.value[key],
+      observedRequest.value.payload[key],
       expected,
-      `signPayload request.value.${key} mismatch`,
+      `signPayload request.value.payload.${key} mismatch`,
     );
   }
 

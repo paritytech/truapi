@@ -1146,14 +1146,15 @@ fn emit_payload(
 }
 
 /// Response shape after the versioned wrapper is stripped. TS callers see the
-/// inner type; request responses decode `Versioned<Result<Ok, Err>>`, while
-/// subscription items still decode the full versioned item wrapper.
+/// inner type; request responses decode `Result<VersionedOk,
+/// CallError<VersionedErr>>`, while subscription items still decode the full
+/// versioned item wrapper.
 #[derive(Clone)]
 struct ResponseEmission {
     inner_type_ts: String,
     wire_type_ts: String,
     wire_codec_expr: String,
-    inner_codec_expr: String,
+    unwrap_wire_value: bool,
 }
 
 fn versioned_value_cast(wire_type: &str, inner_type: &str, version: u32) -> String {
@@ -1191,13 +1192,13 @@ fn emit_response(
                 inner_type_ts: "undefined".to_string(),
                 wire_type_ts: format!("T.{}", versioned_wrapper_ts_name(wrapper_name)),
                 wire_codec_expr: format!("T.{}", versioned_wrapper_ts_name(wrapper_name)),
-                inner_codec_expr: "S._void".to_string(),
+                unwrap_wire_value: true,
             }),
             VersionedKind::Tuple(inner) => Ok(ResponseEmission {
                 inner_type_ts: ts_type_qualified(inner)?,
                 wire_type_ts: format!("T.{}", versioned_wrapper_ts_name(wrapper_name)),
                 wire_codec_expr: format!("T.{}", versioned_wrapper_ts_name(wrapper_name)),
-                inner_codec_expr: codec_expr(inner, true, ctx)?,
+                unwrap_wire_value: true,
             }),
         };
     }
@@ -1206,7 +1207,7 @@ fn emit_response(
         inner_type_ts: ts_type_qualified(ty)?,
         wire_type_ts: ts_type_qualified(ty)?,
         wire_codec_expr: codec_expr(ty, true, ctx)?,
-        inner_codec_expr: codec_expr(ty, true, ctx)?,
+        unwrap_wire_value: false,
     })
 }
 
@@ -1263,8 +1264,45 @@ fn indexed_versioned_codec_expr(
     ))
 }
 
-fn versioned_result_codec_expr(version: u32, ok_codec: &str, err_codec: &str) -> Result<String> {
-    indexed_versioned_codec_expr([(version, format!("S.Result({ok_codec}, {err_codec})"))])
+fn call_error_codec_expr(err: &TypeRef, err_codec: String) -> String {
+    if call_error_inner(err).is_some() {
+        format!("S.CallError({err_codec})")
+    } else {
+        err_codec
+    }
+}
+
+fn request_response_codec_expr(ok_codec: String, err: &TypeRef, err_codec: String) -> String {
+    let err_codec = call_error_codec_expr(err, err_codec);
+    format!("S.Result({ok_codec}, {err_codec})")
+}
+
+fn client_decode_response_expr(
+    response_codec: &str,
+    unwrap_ok_value: bool,
+    unwrap_err_value: bool,
+) -> String {
+    if !unwrap_ok_value && !unwrap_err_value {
+        return format!("(payload) => {response_codec}.dec(payload)");
+    }
+    let ok_value = if unwrap_ok_value {
+        "result.value.value"
+    } else {
+        "result.value"
+    };
+    let err_value = if unwrap_err_value {
+        "result.value.value"
+    } else {
+        "result.value"
+    };
+    format!(
+        r#"(payload) => {{
+        const result = {response_codec}.dec(payload);
+        return result.success
+          ? {{ success: true as const, value: {ok_value} }}
+          : {{ success: false as const, value: {err_value} }};
+      }}"#
+    )
 }
 
 fn emit_method(
@@ -1286,17 +1324,11 @@ fn emit_method(
             let is_handshake = trait_def.name == "System" && method.name == "handshake";
             let response = emit_response(ok, wrappers, ctx, wire_version)?;
             let error = emit_error_response(err, wrappers, ctx, wire_version)?;
-            let response_codec = match wire_version {
-                Some(version) => versioned_result_codec_expr(
-                    version,
-                    &response.inner_codec_expr,
-                    &error.inner_codec_expr,
-                )?,
-                None => format!(
-                    "S.Result({}, {})",
-                    response.wire_codec_expr, error.wire_codec_expr
-                ),
-            };
+            let response_codec = request_response_codec_expr(
+                response.wire_codec_expr.clone(),
+                err,
+                error.wire_codec_expr.clone(),
+            );
 
             let arg_decl = if is_handshake || payload.param_list.is_empty() {
                 String::new()
@@ -1327,12 +1359,12 @@ fn emit_method(
                 payload.wire_version,
                 request_expr,
             );
-            let value_suffix = if wire_version.is_some() { ".value" } else { "" };
-            writeln!(
-                out,
-                "      decodeResponse: (payload) => {response_codec}.dec(payload){value_suffix},"
-            )
-            .unwrap();
+            let decode_response = client_decode_response_expr(
+                &response_codec,
+                response.unwrap_wire_value,
+                error.unwrap_wire_value,
+            );
+            writeln!(out, "      decodeResponse: {decode_response},").unwrap();
             writedoc!(
                 out,
                 "
@@ -2524,28 +2556,22 @@ fn generate_host_server(api: &ApiDefinition) -> Result<String> {
         services_with_methods.push((trait_def, methods));
     }
 
-    // Only import the response-payload helpers actually referenced by this
-    // generation. `MethodKind::Request` methods need `toResponsePayload`
-    // (versioned) or `toFlatResponsePayload` (unversioned).
-    let mut needs_versioned_helper = false;
+    // Only import the response-payload helper when request handlers exist.
+    // All request responses use the flat wire shape
+    // `Result<Ok, CallError<Err>>`; versioned methods carry their version tag
+    // inside the Ok/Err value rather than around the Result.
     let mut needs_flat_helper = false;
     for (_, methods) in &services_with_methods {
         for method in methods {
             if !matches!(method.kind, MethodKind::Request) {
                 continue;
             }
-            if method_wire_versions(method, &wrappers)?.is_empty() {
-                needs_flat_helper = true;
-            } else {
-                needs_versioned_helper = true;
-            }
+            needs_flat_helper = true;
         }
     }
-    let helper_imports = match (needs_versioned_helper, needs_flat_helper) {
-        (true, true) => "  toFlatResponsePayload,\n  toResponsePayload,\n",
-        (true, false) => "  toResponsePayload,\n",
-        (false, true) => "  toFlatResponsePayload,\n",
-        (false, false) => "",
+    let helper_imports = match needs_flat_helper {
+        true => "  toFlatResponsePayload,\n",
+        false => "",
     };
 
     let mut out = String::new();
@@ -2747,10 +2773,9 @@ fn host_request_codec(
     }
 }
 
-/// Codec for encoding the response of a request method. Per-position: if
-/// both Ok and Err are versioned, build `indexedTaggedUnion({V<n>: [n-1,
-/// S.Result(ok_n, err_n)], ...})`. If neither is versioned, fall back to
-/// `S.Result(ok, err)`.
+/// Codec for encoding the response of a request method. Versioned positions
+/// encode the selected version inside the Ok/Err arm:
+/// `Result<VersionedOk, CallError<VersionedErr>>`.
 fn host_response_codec(
     ok: &TypeRef,
     err: &TypeRef,
@@ -2759,28 +2784,9 @@ fn host_response_codec(
     versions: &BTreeSet<u32>,
 ) -> Result<String> {
     let err_inner = call_error_inner(err).unwrap_or(err);
-    let ok_shapes = host_response_shapes_for_versions(ok, wrappers, ctx, versions)?;
-    let err_shapes = host_response_shapes_for_versions(err_inner, wrappers, ctx, versions)?;
-    match (ok_shapes, err_shapes) {
-        (None, None) => {
-            let ok_codec = codec_expr_raw(ok, true, ctx)?;
-            let err_codec = codec_expr_raw(err_inner, true, ctx)?;
-            Ok(format!("S.Result({ok_codec}, {err_codec})"))
-        }
-        (Some(o), Some(e)) => {
-            indexed_versioned_codec_expr(o.iter().zip(e.iter()).map(|(oo, ee)| {
-                (
-                    oo.version,
-                    format!(
-                        "S.Result({ok}, {err})",
-                        ok = oo.inner_codec_expr,
-                        err = ee.inner_codec_expr,
-                    ),
-                )
-            }))
-        }
-        _ => bail!("internal: mismatched per-version shapes for `{ok:?}` and `{err_inner:?}`"),
-    }
+    let ok_codec = host_value_codec(ok, wrappers, ctx, versions)?;
+    let err_codec = host_value_codec(err_inner, wrappers, ctx, versions)?;
+    Ok(request_response_codec_expr(ok_codec, err, err_codec))
 }
 
 /// Codec for encoding a subscription item or interrupt reason. Versioned
@@ -3143,7 +3149,7 @@ fn emit_host_entry(
                       ids: W.{wire_const},
                       async handle(ctx, bytes) {{
                         const request = {request_codec}.dec(bytes);
-                        const response = toResponsePayload(
+                        const response = toFlatResponsePayload(
                           await handlers.{ts_method_name}(ctx, request),
                         );
                         return {response_codec}.enc(response);

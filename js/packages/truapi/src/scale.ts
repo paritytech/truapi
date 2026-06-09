@@ -11,6 +11,7 @@ import {
   createCodec,
   createDecoder,
   enhanceCodec,
+  str as scaleStr,
   u8,
   type Codec,
 } from "scale-ts";
@@ -121,6 +122,44 @@ export function TaggedUnion<O extends TaggedUnionCodecs>(
   inner: O,
 ): Codec<TaggedUnionValue<O>> {
   return Enum(inner) as unknown as Codec<TaggedUnionValue<O>>;
+}
+
+/**
+ * Wire codec for Rust `CallError<D>`, projected to the public domain error `D`.
+ *
+ * Generated TypeScript APIs expose only the domain error union in
+ * `ResultAsync<Ok, D>`. The Rust host still wraps that value in
+ * `CallError::Domain` on the wire so framework errors can share the response
+ * channel. Encoding always emits `Domain`; decoding returns the inner domain
+ * value and throws for framework-level failures that have no public `D` shape.
+ */
+export function CallError<D>(domain: Codec<D>): Codec<D> {
+  return createCodec(
+    (value: D) => {
+      const payload = domain.enc(value);
+      const out = new Uint8Array(payload.length + 1);
+      out[0] = 0;
+      out.set(payload, 1);
+      return out;
+    },
+    createDecoder((input) => {
+      const tag = u8.dec(input);
+      switch (tag) {
+        case 0:
+          return domain.dec(input);
+        case 1:
+          throw new Error("Host denied the request");
+        case 2:
+          throw new Error("Host does not support this request");
+        case 3:
+          throw new Error(`Malformed request frame: ${scaleStr.dec(input)}`);
+        case 4:
+          throw new Error(`Host failure: ${scaleStr.dec(input)}`);
+        default:
+          throw new Error(`Unknown CallError discriminant: ${tag}`);
+      }
+    }),
+  );
 }
 
 type TaggedUnionCodecs = {
