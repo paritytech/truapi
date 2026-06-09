@@ -3,13 +3,17 @@
 # Run `make help` for the list of targets.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup build codegen test check playground wasm wasm-crypto-test uniffi android-publish-local dev matrix explorer
+.PHONY: help setup build codegen test check playground wasm wasm-crypto-test uniffi android-publish-local dev dev-bootstrap matrix explorer
 
 TRUAPI_PKG := js/packages/truapi
 PLAYGROUND := playground
 JS_PACKAGES := js/packages
 EXPLORER := explorer
 DOTLI := hosts/dotli
+HOST_WASM_PKG := $(JS_PACKAGES)/truapi-host-wasm
+HOST_WASM_GENERATED := $(HOST_WASM_PKG)/src/generated/host-callbacks.ts
+HOST_WASM_WEB := $(HOST_WASM_PKG)/dist/wasm/web/truapi_server.js
+HOST_WASM_NODE := $(HOST_WASM_PKG)/dist/wasm/node/truapi_server.js
 
 # `make dev DEBUG=1` runs dotli with VITE_APP_DEBUG=true to log every wire frame.
 DOTLI_PREVIEW := preview
@@ -23,20 +27,21 @@ help: ## Show this help.
 
 setup: ## First-time setup: submodules + JS dependencies.
 	git submodule update --init --recursive
-	cd $(TRUAPI_PKG) && npm install
+	npm ci
 	cd $(PLAYGROUND) && yarn install --frozen-lockfile
+	cd $(DOTLI) && bun install --frozen-lockfile
 
 build: ## Build the Rust workspace and the TypeScript client.
 	cargo build --workspace
 	cd $(TRUAPI_PKG) && npm run build
-	cd $(JS_PACKAGES)/truapi-host-wasm && npm install --no-fund --no-audit && npm run build
+	cd $(HOST_WASM_PKG) && npm run build
 
 codegen: ## Regenerate the TypeScript client from the Rust crate.
 	./scripts/codegen.sh
 	cd $(PLAYGROUND) && rm -rf node_modules/@parity && yarn install
 
 wasm: ## Rebuild the truapi-server WASM artifacts under js/packages/truapi-host-wasm/dist/wasm/.
-	cd $(JS_PACKAGES)/truapi-host-wasm && npm run build:wasm
+	cd $(HOST_WASM_PKG) && npm run build:wasm
 
 wasm-crypto-test: ## Run crypto/vector tests on wasm32 via wasm-pack/node.
 	wasm-pack test --node rust/crates/truapi-server --test wasm_crypto_vectors --no-default-features
@@ -92,7 +97,16 @@ playground: ## Refresh the playground's @parity/truapi snapshot and rebuild.
 	cd $(PLAYGROUND) && rm -rf node_modules/@parity && yarn install
 	cd $(PLAYGROUND) && yarn build
 
-dev: ## Start dotli host (:5173) + playground (:3000) together; open http://localhost:5173/localhost:3000. DEBUG=1 logs wire frames.
+dev-bootstrap: ## Prepare ignored generated/build artifacts needed by dotli preview.
+	git submodule update --init --recursive
+	if [ ! -d node_modules ]; then npm ci; fi
+	if [ ! -f "$(HOST_WASM_GENERATED)" ]; then ./scripts/codegen.sh; fi
+	cd $(HOST_WASM_PKG) && npm run build
+	if [ ! -f "$(HOST_WASM_WEB)" ] || [ ! -f "$(HOST_WASM_NODE)" ]; then $(MAKE) wasm; fi
+	cd $(PLAYGROUND) && yarn install --frozen-lockfile
+	cd $(DOTLI) && bun install --frozen-lockfile
+
+dev: dev-bootstrap ## Start dotli host (:5173) + playground (:3000) together; open http://localhost:5173/localhost:3000. DEBUG=1 logs wire frames.
 	@trap 'kill 0' EXIT; \
 	( cd $(DOTLI) && bun run $(DOTLI_PREVIEW) ) & \
 	( cd $(PLAYGROUND) && yarn dev ) & \

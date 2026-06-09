@@ -67,6 +67,7 @@ if [ "${TRUAPI_SKIP_PACKAGE_BUILD:-0}" != "1" ]; then
   node scripts/bundle-truapi-dts.mjs
   npm run build --prefix js/packages/truapi
   npm run build --prefix js/packages/truapi-host
+  npm run build --prefix js/packages/truapi-host-wasm
 fi
 
 echo "Generated client at js/packages/truapi/src/generated/"
