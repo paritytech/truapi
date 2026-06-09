@@ -3,7 +3,7 @@
 # Run `make help` for the list of targets.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup build codegen test check playground wasm wasm-crypto-test uniffi android-publish-local dev dev-bootstrap matrix explorer
+.PHONY: help setup build codegen test check playground wasm wasm-crypto-test uniffi android-publish-local dev dev-bootstrap dev-link-check matrix explorer
 
 TRUAPI_PKG := js/packages/truapi
 PLAYGROUND := playground
@@ -14,6 +14,8 @@ HOST_WASM_PKG := $(JS_PACKAGES)/truapi-host-wasm
 HOST_WASM_GENERATED := $(HOST_WASM_PKG)/src/generated/host-callbacks.ts
 HOST_WASM_WEB := $(HOST_WASM_PKG)/dist/wasm/web/truapi_server.js
 HOST_WASM_NODE := $(HOST_WASM_PKG)/dist/wasm/node/truapi_server.js
+DOTLI_UI := $(DOTLI)/packages/ui
+DOTLI_HOST_WASM_LINK := $(DOTLI_UI)/node_modules/@parity/truapi-host-wasm
 
 # `make dev DEBUG=1` runs dotli with VITE_APP_DEBUG=true to log every wire frame.
 DOTLI_PREVIEW := preview
@@ -105,6 +107,14 @@ dev-bootstrap: ## Prepare ignored generated/build artifacts needed by dotli prev
 	if [ ! -f "$(HOST_WASM_WEB)" ] || [ ! -f "$(HOST_WASM_NODE)" ]; then $(MAKE) wasm; fi
 	cd $(PLAYGROUND) && yarn install --frozen-lockfile
 	cd $(DOTLI) && bun install --frozen-lockfile
+	$(MAKE) dev-link-check
+
+dev-link-check: ## Verify dotli can resolve the local @parity/truapi-host-wasm package.
+	@test -f "$(HOST_WASM_GENERATED)" || (echo "Missing generated host callbacks. Run: make codegen"; exit 1)
+	@test -f "$(HOST_WASM_PKG)/dist/index.js" || (echo "Missing @parity/truapi-host-wasm dist. Run: npm run build --prefix $(HOST_WASM_PKG)"; exit 1)
+	@test -f "$(HOST_WASM_WEB)" || (echo "Missing @parity/truapi-host-wasm web WASM glue. Run: make wasm"; exit 1)
+	@test -e "$(DOTLI_HOST_WASM_LINK)/package.json" || (echo "dotli cannot resolve @parity/truapi-host-wasm. Run top-level: make dev"; exit 1)
+	cd $(DOTLI_UI) && bun -e 'await import("@parity/truapi-host-wasm"); await import("@parity/truapi-host-wasm/web");'
 
 dev: dev-bootstrap ## Start dotli host (:5173) + playground (:3000) together; open http://localhost:5173/localhost:3000. DEBUG=1 logs wire frames.
 	@trap 'kill 0' EXIT; \
