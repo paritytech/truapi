@@ -50,6 +50,7 @@ playground/test/generated/
 android/truapi-host/src/main/kotlin/generated/
 ios/truapi-host/Sources/TrUAPIHost/truapi_server.swift
 ios/truapi-host/Sources/truapi_serverFFI/
+rust/crates/truapi-server/pkg/
 js/packages/truapi/src/generated/
 js/packages/truapi/dist/generated/
 js/packages/truapi-host/src/generated/
