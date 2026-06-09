@@ -1,9 +1,4 @@
-import {
-  adaptExampleSourceForHost,
-  runExample,
-  type LogEntry,
-  type RunResult,
-} from "./example-runner";
+import { runExample, type LogEntry, type RunResult } from "./example-runner";
 import { getClient } from "./transport";
 import type { MethodInfo, ServiceInfo } from "./services";
 
@@ -61,7 +56,7 @@ async function runOne({
 
   onUpdate(id, { status: "running" });
 
-  const source = adaptExampleSourceForHost(method.exampleSource);
+  const source = method.exampleSource;
   const logs: LogEntry[] = [];
   const onLog = (entry: LogEntry) => logs.push(entry);
   const timeoutMs = LONG_TIMEOUT_METHODS.has(id)
