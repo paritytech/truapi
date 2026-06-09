@@ -137,8 +137,16 @@ pub struct NativeRuntimeConfig {
     pub product_id: String,
     /// Host deployment/site identifier.
     pub site_id: String,
-    /// HTTPS metadata URL the SSO peer can fetch for display.
-    pub host_metadata_url: String,
+    /// Host name shown by the wallet during SSO pairing.
+    pub host_name: String,
+    /// Optional host icon URL shown by the wallet during SSO pairing.
+    pub host_icon: Option<String>,
+    /// Optional host version shown by the wallet during SSO pairing.
+    pub host_version: Option<String>,
+    /// Optional platform/browser name shown by the wallet during SSO pairing.
+    pub platform_type: Option<String>,
+    /// Optional platform/browser version shown by the wallet during SSO pairing.
+    pub platform_version: Option<String>,
     /// People-chain genesis hash. Must be exactly 32 bytes.
     pub people_chain_genesis_hash: Vec<u8>,
     /// Deeplink scheme used in pairing QR payloads.
@@ -160,15 +168,15 @@ pub enum NativeRuntimeConfigError {
         /// Supplied byte length.
         actual: u64,
     },
-    /// Metadata URL could not be parsed.
-    #[error("host_metadata_url must be an absolute HTTPS URL: {reason}")]
-    InvalidHostMetadataUrl {
+    /// Host icon URL could not be parsed.
+    #[error("host_icon must be an absolute HTTPS URL: {reason}")]
+    InvalidHostIcon {
         /// Parse failure reason.
         reason: String,
     },
-    /// Metadata URL used a non-HTTPS scheme.
-    #[error("host_metadata_url must use https scheme, got {scheme:?}")]
-    InsecureHostMetadataUrl {
+    /// Host icon URL used a non-HTTPS scheme.
+    #[error("host_icon must use https scheme, got {scheme:?}")]
+    InsecureHostIcon {
         /// Actual URL scheme.
         scheme: String,
     },
@@ -188,7 +196,11 @@ impl TryFrom<NativeRuntimeConfig> for RuntimeConfig {
             product_label: config.product_label,
             product_id: config.product_id,
             site_id: config.site_id,
-            host_metadata_url: config.host_metadata_url,
+            host_name: config.host_name,
+            host_icon: config.host_icon,
+            host_version: config.host_version,
+            platform_type: config.platform_type,
+            platform_version: config.platform_version,
             people_chain_genesis_hash,
             pairing_deeplink_scheme: config.pairing_deeplink_scheme.into(),
         };
@@ -203,11 +215,11 @@ impl From<RuntimeConfigValidationError> for NativeRuntimeConfigError {
             RuntimeConfigValidationError::EmptyField { field } => Self::EmptyField {
                 field: field.to_string(),
             },
-            RuntimeConfigValidationError::InvalidHostMetadataUrl { reason } => {
-                Self::InvalidHostMetadataUrl { reason }
+            RuntimeConfigValidationError::InvalidHostIcon { reason } => {
+                Self::InvalidHostIcon { reason }
             }
-            RuntimeConfigValidationError::InsecureHostMetadataUrl { scheme } => {
-                Self::InsecureHostMetadataUrl { scheme }
+            RuntimeConfigValidationError::InsecureHostIcon { scheme } => {
+                Self::InsecureHostIcon { scheme }
             }
         }
     }
@@ -1238,7 +1250,11 @@ mod tests {
             product_label: "app".to_string(),
             product_id: "app.dot".to_string(),
             site_id: "dot.li".to_string(),
-            host_metadata_url: "https://example.invalid/metadata.json".to_string(),
+            host_name: "Polkadot Web".to_string(),
+            host_icon: Some("https://example.invalid/dotli.png".to_string()),
+            host_version: None,
+            platform_type: None,
+            platform_version: None,
             people_chain_genesis_hash: vec![0; 31],
             pairing_deeplink_scheme: NativePairingDeeplinkScheme::PolkadotApp,
         })
@@ -1256,7 +1272,11 @@ mod tests {
             product_label: "app".to_string(),
             product_id: " ".to_string(),
             site_id: "dot.li".to_string(),
-            host_metadata_url: "https://example.invalid/metadata.json".to_string(),
+            host_name: "Polkadot Web".to_string(),
+            host_icon: Some("https://example.invalid/dotli.png".to_string()),
+            host_version: None,
+            platform_type: None,
+            platform_version: None,
             people_chain_genesis_hash: vec![0; 32],
             pairing_deeplink_scheme: NativePairingDeeplinkScheme::PolkadotApp,
         })
@@ -1269,12 +1289,16 @@ mod tests {
     }
 
     #[test]
-    fn runtime_config_rejects_relative_metadata_url() {
+    fn runtime_config_rejects_relative_host_icon() {
         let err = RuntimeConfig::try_from(NativeRuntimeConfig {
             product_label: "app".to_string(),
             product_id: "app.dot".to_string(),
             site_id: "dot.li".to_string(),
-            host_metadata_url: "/metadata.json".to_string(),
+            host_name: "Polkadot Web".to_string(),
+            host_icon: Some("/dotli.png".to_string()),
+            host_version: None,
+            platform_type: None,
+            platform_version: None,
             people_chain_genesis_hash: vec![0; 32],
             pairing_deeplink_scheme: NativePairingDeeplinkScheme::PolkadotApp,
         })
@@ -1282,17 +1306,21 @@ mod tests {
 
         assert!(matches!(
             err,
-            NativeRuntimeConfigError::InvalidHostMetadataUrl { .. }
+            NativeRuntimeConfigError::InvalidHostIcon { .. }
         ));
     }
 
     #[test]
-    fn runtime_config_rejects_non_https_metadata_url() {
+    fn runtime_config_rejects_non_https_host_icon() {
         let err = RuntimeConfig::try_from(NativeRuntimeConfig {
             product_label: "app".to_string(),
             product_id: "app.dot".to_string(),
             site_id: "dot.li".to_string(),
-            host_metadata_url: "http://localhost:3000/metadata.json".to_string(),
+            host_name: "Polkadot Web".to_string(),
+            host_icon: Some("http://localhost:3000/dotli.png".to_string()),
+            host_version: None,
+            platform_type: None,
+            platform_version: None,
             people_chain_genesis_hash: vec![0; 32],
             pairing_deeplink_scheme: NativePairingDeeplinkScheme::PolkadotApp,
         })
@@ -1300,7 +1328,7 @@ mod tests {
 
         assert!(matches!(
             err,
-            NativeRuntimeConfigError::InsecureHostMetadataUrl { scheme } if scheme == "http"
+            NativeRuntimeConfigError::InsecureHostIcon { scheme } if scheme == "http"
         ));
     }
 
@@ -1409,7 +1437,11 @@ mod tests {
                 product_label: "dotli".to_string(),
                 product_id: "dotli.dot".to_string(),
                 site_id: "dot.li".to_string(),
-                host_metadata_url: "https://dot.li/metadata.json".to_string(),
+                host_name: "Polkadot Web".to_string(),
+                host_icon: Some("https://dot.li/dotli.png".to_string()),
+                host_version: None,
+                platform_type: None,
+                platform_version: None,
                 people_chain_genesis_hash: [0xa2; 32].to_vec(),
                 pairing_deeplink_scheme: NativePairingDeeplinkScheme::PolkadotApp,
             },

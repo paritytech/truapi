@@ -587,7 +587,11 @@ mod tests {
             product_label: "dotli".to_string(),
             product_id: "dotli.dot".to_string(),
             site_id: "dot.li".to_string(),
-            host_metadata_url: "https://dot.li/metadata.json".to_string(),
+            host_name: "Polkadot Web".to_string(),
+            host_icon: Some("https://dot.li/dotli.png".to_string()),
+            host_version: None,
+            platform_type: None,
+            platform_version: None,
             people_chain_genesis_hash: [0xa2; 32],
             pairing_deeplink_scheme: PairingDeeplinkScheme::PolkadotApp,
         }

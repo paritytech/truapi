@@ -20,9 +20,8 @@ pub struct SessionInfo {
     /// Core-owned SSO channel state. Core-run pairing fills this; unavailable
     /// sessions restored from older test fixtures may leave it empty.
     pub sso: Option<SsoSessionInfo>,
-    /// Current dotli entropy source: core session statement-store secret.
-    /// Core-run pairing fills it; older or account-only test fixtures may not.
-    pub entropy_secret: Option<Vec<u8>>,
+    /// Wallet-provided source for deterministic product entropy.
+    pub root_entropy_source: Option<[u8; 32]>,
     /// Short username (e.g. `alice`).
     pub lite_username: Option<String>,
     /// Fully qualified username (e.g. `Alice Smith`).
@@ -169,7 +168,7 @@ mod tests {
         SessionInfo {
             public_key: [pubkey_byte; 32],
             sso: None,
-            entropy_secret: None,
+            root_entropy_source: None,
             lite_username: Some("alice".to_string()),
             full_username: None,
         }
@@ -193,7 +192,7 @@ mod tests {
     #[test]
     fn persisted_session_round_trips() {
         let mut session = info(0x42);
-        session.entropy_secret = Some(vec![1, 2, 3]);
+        session.root_entropy_source = Some([1; 32]);
         session.full_username = Some("Alice Smith".to_string());
 
         let blob = encode_persisted_session(&session);

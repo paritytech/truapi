@@ -1,6 +1,6 @@
 # B - Core implementations (`truapi-server` wire methods)
 
-> Part of the [host-contract & core-impl spec](<index.md>).
+> Part of the [host-contract & core-impl spec](index.md).
 
 This page tracks the wire methods migrated onto `PlatformRuntimeHost<P>` (`runtime.rs`). The current Rust
 core implements the dotli parity surface for `Account`, `Signing`, `StatementStore`,
@@ -17,23 +17,23 @@ Strategy tags below: **pure-core** (no host help) · **core+session** (reads `Se
 (a request/response over the SSO session channel, [H §5](<H - sso-pairing-protocol.md>)) · **core protocol**
 (the pairing handshake or the statement-store client).
 
-| Wire method (id) | Strategy | Status |
-|---|---|---|
-| `get_legacy_accounts`(28), `get_user_id`(110) | core+session + runtime product config | implemented |
-| `get_account`(22) | pure-core + crypto | implemented |
-| `request_login`(112) | core protocol (SSO handshake, [H](<H - sso-pairing-protocol.md>)) | implemented |
-| `sign_payload`(116), `sign_raw`(114), `sign_*_with_legacy_account`(34/36) | core+chan (signingRequest) | implemented |
-| `create_transaction`(30), `create_transaction_with_legacy_account`(32) | core+chan (createTransactionRequest) | implemented |
-| `create_proof`(60), `create_proof_authorized`(132) | core+session + crypto | implemented |
-| `get_account_alias`(24) | core+chan (aliasRequest) | implemented |
-| `subscribe`(56), `submit`(62) | core-native (statement client) | implemented |
-| `ResourceAllocation::request`(130) | host-confirm + core+chan (resourceAllocationRequest) | implemented |
-| `Entropy::derive`(108) | core+session + crypto | implemented |
-| `Theme::subscribe`(104) | host-side primitive/subscription | implemented |
-| `Notifications::send_push_notification`(4), `cancel_push_notification`(134) | host-side primitive | implemented |
-| `lookup_subscribe`(64), `submit`(68) [preimage] | host-side primitive/callback | implemented |
-| `create_account_proof`(26) | core+chan (full ring-VRF; needs new message) | deferred (unimplemented by dotli) |
-| `Payment::*` | intentionally unavailable | deferred (dotli returns typed "not implemented" errors) |
+| Wire method (id)                                                            | Strategy                                                          | Status                                                  |
+| --------------------------------------------------------------------------- | ----------------------------------------------------------------- | ------------------------------------------------------- |
+| `get_legacy_accounts`(28), `get_user_id`(110)                               | core+session + runtime product config                             | implemented                                             |
+| `get_account`(22)                                                           | pure-core + crypto                                                | implemented                                             |
+| `request_login`(112)                                                        | core protocol (SSO handshake, [H](<H - sso-pairing-protocol.md>)) | implemented                                             |
+| `sign_payload`(116), `sign_raw`(114), `sign_*_with_legacy_account`(34/36)   | core+chan (signingRequest)                                        | implemented                                             |
+| `create_transaction`(30), `create_transaction_with_legacy_account`(32)      | core+chan (createTransactionRequest)                              | implemented                                             |
+| `create_proof`(60), `create_proof_authorized`(132)                          | core+session + crypto                                             | implemented                                             |
+| `get_account_alias`(24)                                                     | core+chan (aliasRequest)                                          | implemented                                             |
+| `subscribe`(56), `submit`(62)                                               | core-native (statement client)                                    | implemented                                             |
+| `ResourceAllocation::request`(130)                                          | host-confirm + core+chan (resourceAllocationRequest)              | implemented                                             |
+| `Entropy::derive`(108)                                                      | core+session + crypto                                             | implemented                                             |
+| `Theme::subscribe`(104)                                                     | host-side primitive/subscription                                  | implemented                                             |
+| `Notifications::send_push_notification`(4), `cancel_push_notification`(134) | host-side primitive                                               | implemented                                             |
+| `lookup_subscribe`(64), `submit`(68) [preimage]                             | host-side primitive/callback                                      | implemented                                             |
+| `create_account_proof`(26)                                                  | core+chan (full ring-VRF; needs new message)                      | deferred (unimplemented by dotli)                       |
+| `Payment::*`                                                                | intentionally unavailable                                         | deferred (dotli returns typed "not implemented" errors) |
 
 ---
 
@@ -46,11 +46,11 @@ Read `self.session_state.current()` (returns `Option<SessionInfo>`) and the runt
 `HostGetUserIdError::NotConnected`.
 
 - `get_legacy_accounts` → `HostGetLegacyAccountsResponse { accounts: vec![LegacyAccount { public_key:
-  product_public_key.to_vec(), name: info.lite_username }] }`. Current dotli returns the single
+product_public_key.to_vec(), name: info.lite_username }] }`. Current dotli returns the single
   product-derived `(calling_product_id, 0)` account, not the wallet root
   (`~/github/dotli/packages/ui/src/container.ts:222-233`).
 - `get_user_id` → `HostGetUserIdResponse { primary_username: info.full_username.or(info.lite_username)
-  .ok_or(NotConnected)? }`, gated by the product-scoped `UserId` permission like current dotli
+.ok_or(NotConnected)? }`, gated by the product-scoped `UserId` permission like current dotli
   (`~/github/dotli/packages/ui/src/container.ts:242-261`).
 
 Both have **unit** versioned requests (no payload). **Acceptance:** with a session set,
@@ -96,7 +96,7 @@ Control flow (see [H §1-§3](<H - sso-pairing-protocol.md>) for the byte-level 
 
 ```
   session already present? --> AlreadyConnected
-  mint session sr25519 + P-256 keypairs ; read RuntimeConfig ; build HostHandshakeData -> deeplink
+  mint session sr25519 + P-256 keypairs ; read RuntimeConfig ; build VersionedHandshakeProposal::V2 -> deeplink
   A1.present(deeplink) ; subscribe(bootstrap topic) on the People-chain statement store
   select! {
      handshake statement -> verify sr25519 proof ; ECDH-decrypt the answer ;

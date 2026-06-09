@@ -22,13 +22,21 @@ pub fn derive_product_entropy(
     product_id: &str,
     key: &[u8],
 ) -> Result<[u8; 32], ProductEntropyError> {
+    let root_entropy_source = blake2b256_keyed(entropy_secret, DOMAIN_SEPARATOR);
+    derive_product_entropy_from_source(&root_entropy_source, product_id, key)
+}
+
+pub fn derive_product_entropy_from_source(
+    root_entropy_source: &[u8; 32],
+    product_id: &str,
+    key: &[u8],
+) -> Result<[u8; 32], ProductEntropyError> {
     if key.is_empty() || key.len() > 32 {
         return Err(ProductEntropyError::InvalidKeyLength(key.len()));
     }
 
-    let root_entropy_source = blake2b256_keyed(entropy_secret, DOMAIN_SEPARATOR);
     let product_id_hash = blake2b256(product_id.as_bytes());
-    let per_product_entropy = blake2b256_keyed(&root_entropy_source, &product_id_hash);
+    let per_product_entropy = blake2b256_keyed(root_entropy_source, &product_id_hash);
     Ok(blake2b256_keyed(&per_product_entropy, key))
 }
 

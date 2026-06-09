@@ -51,7 +51,11 @@ export interface WasmRuntimeConfig {
   productLabel: string;
   productId: string;
   siteId: string;
-  hostMetadataUrl: string;
+  hostName: string;
+  hostIcon?: string;
+  hostVersion?: string;
+  platformType?: string;
+  platformVersion?: string;
   peopleChainGenesisHash: string | Uint8Array;
   pairingDeeplinkScheme:
     | "polkadotapp"

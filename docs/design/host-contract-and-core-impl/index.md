@@ -4,7 +4,7 @@
 no `@novasamatech` dependency, by defining the host primitives, core implementations, and package changes
 that close the gap. "Feature parity" here means the handlers implemented in current dotli main
 (`hosts/dotli` `origin/main` audited at `4611008` on 2026-06-09, with the older `~/github/dotli`
-checkout at `85c9733` used only as historical implementation evidence); handlers dotli currently leaves
+checkout at `85c9733` used as implementation precedent where useful); handlers dotli currently leaves
 unimplemented stay out of scope until other hosts need them.
 
 This is the high-level overview. Each detail doc is written so a senior Rust engineer can pick it up as
@@ -34,18 +34,18 @@ show `(D1*)` account/signing/statement callbacks or session handoff as transitio
 is the more specific successor: those callbacks are removed once the core implementations in [B](<B - core-impls.md>)
 land.
 
-| Doc | Covers |
-|---|---|
-| [H - SSO pairing protocol](<H - sso-pairing-protocol.md>) | **Foundational.** The one transport (People-chain statement store) that pairing + signing + transaction construction + resource allocation + ring-VRF + statements all ride |
-| [A - Host primitives](<A - host-primitives.md>) | The new SSO callback (QR presenter), runtime product config, and host-container parity surfaces |
-| [B - Core implementations](<B - core-impls.md>) | The migrated wire methods, current deferred set, per-method tickets + diagrams |
-| [C - Session contract](<C - session-contract.md>) | `SessionState` extension, persistence/restore, the JS package gap |
-| [D - Crypto foundation](<D - crypto-foundation.md>) | wasm32 deps, the `get_account` derivation, the proof scheme, golden vectors |
-| [E - Decision log / deferred questions](<E - open-questions.md>) | Resolved audit decisions plus non-parity deferred items |
-| [F - `@novasamatech` removal](<F - novasamatech-removal.md>) | dotli-side cleanup, exact file:line list |
-| [G - Annex](<G - annex.md>) | Shared mechanics: trait conventions, the 5-layer wiring recipe, the override template |
-| [I - Nested dApps note](<I - nested-dapps.md>) | Current nested bridge behavior, usefulness, and why it is non-blocking for v1 |
-| [J - Implementation plan](<J - implementation-plan.md>) | Ordered work packages, review slicing, and acceptance gates |
+| Doc                                                              | Covers                                                                                                                                                                      |
+| ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [H - SSO pairing protocol](<H - sso-pairing-protocol.md>)        | **Foundational.** The one transport (People-chain statement store) that pairing + signing + transaction construction + resource allocation + ring-VRF + statements all ride |
+| [A - Host primitives](<A - host-primitives.md>)                  | The new SSO callback (QR presenter), runtime product config, and host-container parity surfaces                                                                             |
+| [B - Core implementations](<B - core-impls.md>)                  | The migrated wire methods, current deferred set, per-method tickets + diagrams                                                                                              |
+| [C - Session contract](<C - session-contract.md>)                | `SessionState` extension, persistence/restore, the JS package gap                                                                                                           |
+| [D - Crypto foundation](<D - crypto-foundation.md>)              | wasm32 deps, the `get_account` derivation, the proof scheme, golden vectors                                                                                                 |
+| [E - Decision log / deferred questions](<E - open-questions.md>) | Resolved audit decisions plus non-parity deferred items                                                                                                                     |
+| [F - `@novasamatech` removal](<F - novasamatech-removal.md>)     | dotli-side cleanup, exact file:line list                                                                                                                                    |
+| [G - Annex](<G - annex.md>)                                      | Shared mechanics: trait conventions, the 5-layer wiring recipe, the override template                                                                                       |
+| [I - Nested dApps note](<I - nested-dapps.md>)                   | Current nested bridge behavior, usefulness, and why it is non-blocking for v1                                                                                               |
+| [J - Implementation plan](<J - implementation-plan.md>)          | Ordered work packages, review slicing, and acceptance gates                                                                                                                 |
 
 ---
 
@@ -128,7 +128,7 @@ dotli is the first migration target, not the architecture boundary. The reusable
 - The same core APIs and crypto vectors must pass on WASM hosts (dotli web/Electron worker) and UniFFI
   hosts (iOS/Android). Host bindings may differ, but they cannot fork SSO, signing, statement-store,
   derivation, or session semantics.
-- dotli-specific details such as `localStorage` route names, public metadata URL rewriting, modal
+- dotli-specific details such as `localStorage` route names, modal
   components, and product-label lookup live in the dotli adapter/runtime config. They are not allowed to
   leak into `truapi-server`.
 
@@ -140,17 +140,17 @@ proof signing, or session persistence semantics outside Rust.
 
 ## The gap at a glance
 
-| Domain | Deferred/unsupported in current dotli parity | Implemented in Rust core today |
-|---|---|---|
-| `Account` | `create_account_proof`(26) | `connection_status_subscribe`(18), `get_account`(22), `get_account_alias`(24), `get_legacy_accounts`(28), `get_user_id`(110), `request_login`(112), logout/disconnect |
-| `Signing` | none | `create_transaction`(30), `create_transaction_with_legacy_account`(32), `sign_payload`(116), `sign_payload_with_legacy_account`(36), `sign_raw`(114), `sign_raw_with_legacy_account`(34) |
-| `StatementStore` | none | `subscribe`(56), `submit`(62), `create_proof`(60), `create_proof_authorized`(132) |
-| `ResourceAllocation` | none | `request`(130) |
-| `Entropy` | none | `derive`(108) |
-| `Theme` | none | `subscribe`(104) |
-| `Notifications` | none | `send_push_notification`(4), `cancel_push_notification`(134) |
-| `Preimage` | none | `lookup_subscribe`(64), `submit`(68) |
-| `Payment` | `balance_subscribe`(118), `top_up`(122), `request`(124), `status_subscribe`(126) | none, and dotli intentionally returns typed "not implemented" errors |
+| Domain               | Deferred/unsupported in current dotli parity                                     | Implemented in Rust core today                                                                                                                                                           |
+| -------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Account`            | `create_account_proof`(26)                                                       | `connection_status_subscribe`(18), `get_account`(22), `get_account_alias`(24), `get_legacy_accounts`(28), `get_user_id`(110), `request_login`(112), logout/disconnect                    |
+| `Signing`            | none                                                                             | `create_transaction`(30), `create_transaction_with_legacy_account`(32), `sign_payload`(116), `sign_payload_with_legacy_account`(36), `sign_raw`(114), `sign_raw_with_legacy_account`(34) |
+| `StatementStore`     | none                                                                             | `subscribe`(56), `submit`(62), `create_proof`(60), `create_proof_authorized`(132)                                                                                                        |
+| `ResourceAllocation` | none                                                                             | `request`(130)                                                                                                                                                                           |
+| `Entropy`            | none                                                                             | `derive`(108)                                                                                                                                                                            |
+| `Theme`              | none                                                                             | `subscribe`(104)                                                                                                                                                                         |
+| `Notifications`      | none                                                                             | `send_push_notification`(4), `cancel_push_notification`(134)                                                                                                                             |
+| `Preimage`           | none                                                                             | `lookup_subscribe`(64), `submit`(68)                                                                                                                                                     |
+| `Payment`            | `balance_subscribe`(118), `top_up`(122), `request`(124), `status_subscribe`(126) | none, and dotli intentionally returns typed "not implemented" errors                                                                                                                     |
 
 `Chat` and `CoinPayment` remain outside this milestone and keep generated trait defaults until another
 host/product requires them. `Payment` and full `create_account_proof` deliberately return
@@ -159,12 +159,10 @@ The current Rust core owns the dotli parity paths: SSO-only pairing/restore/logo
 derivation, signing and transaction SSO proxying, statement-store submit/subscribe/proofs, allocation
 requests, entropy, theme, notifications, and preimage callbacks.
 
-Latest-dotli audit note: dotli main has moved from host-papp's V1 metadata-URL QR to the host-papp 0.8.6
-SSO V2 proposal. The Rust pairing implementation must therefore migrate from `HostHandshakeData::V1` to
-`VersionedHandshakeProposal::V2`, carry host metadata entries (`HostName`, `HostVersion`, `HostIcon`,
-`PlatformType`, `PlatformVersion`), parse the V2 response envelope, and persist the returned
-`rootEntropySource`. Until that lands, the current Rust V1 pairing path is not complete current-dotli
-pairing parity even though non-pairing dotli bridge gates pass.
+Latest-dotli audit note: dotli main and the Rust pairing path use the host-papp 0.8.6 SSO V2 proposal.
+The QR carries `VersionedHandshakeProposal::V2` with host metadata entries (`HostName`, `HostVersion`,
+`HostIcon`, `PlatformType`, `PlatformVersion`); the core parses the V2 response envelope and persists the
+returned `rootEntropySource`.
 
 Current dotli backs its host bridge with `@novasamatech/host-api` + `host-container`, and auth/session
 flows with `host-papp`, `statement-store`, `sdk-statement`, and `storage-adapter`. The packages are **not
@@ -176,15 +174,15 @@ see [D](<D - crypto-foundation.md>).
 
 ## Roadmap
 
-| Tier | Scope | Detail |
-|---|---|---|
-| 0 | Runtime construction plumbing (S): pass `RuntimeConfig` through Rust, WASM, UniFFI, and JS worker creation; no account-only session injection APIs. Zero crypto. | [A](<A - host-primitives.md>), [G](<G - annex.md>) |
-| 1 | Pure-core accounts (S–M): add the crypto baseline + golden vectors; `get_account` (in-core sr25519 derivation); `get_legacy_accounts`, `get_user_id` (read `SessionState`). | [B](<B - core-impls.md>), [D](<D - crypto-foundation.md>) |
-| 1.5 | Protocol crypto/vector gate (M): build the narrow WASM-safe crypto module/crate, leaning on existing Rust crypto crates and using `useragent-kit` only as implementation precedent for similar migrations; capture vectors for HDKD, statement proof, handshake/channel encryption, and topic/session derivation. No pairing I/O yet. | [D](<D - crypto-foundation.md>) |
-| 2 | Statement-store client + pairing (L): a minimal People-chain statement submit/subscribe client over `ChainProvider`, then the `request_login` SSO handshake ([H](<H - sso-pairing-protocol.md>)) + the `PairingPresenter` (A1); extend `SessionInfo`; persist/restore through `SessionStore`; expose public logout/disconnect. The keystone. | [H](<H - sso-pairing-protocol.md>), [A](<A - host-primitives.md>), [B](<B - core-impls.md>), [C](<C - session-contract.md>) |
-| 3 | Message-exchange ops + statement-store parity: `sign_payload`/`sign_raw`, `create_transaction`, and legacy signing/create-transaction over the SSO session channel; `create_proof`/`_authorized` (in-core, session `ssSecret`); product statement `subscribe`/`submit` (same client as Tier 2); `get_account_alias` (aliasRequest); resource allocation host confirmation + SSO request. | [H](<H - sso-pairing-protocol.md>), [B](<B - core-impls.md>) |
-| 3.5 | Non-Nova but implemented dotli host behavior needed once host-container is gone: preimage host callbacks, scheduled/cancellable notifications, theme subscription, and entropy derivation from the SSO V2 `rootEntropySource`. | [B](<B - core-impls.md>), [A](<A - host-primitives.md>) |
-| 4 | Remaining TrUAPI surface not required for current dotli parity: full `create_account_proof`, Payment, Chat, CoinPayment, and any future move of preimage fully in-core. | [B](<B - core-impls.md>), [E](<E - open-questions.md>) |
+| Tier | Scope                                                                                                                                                                                                                                                                                                                                                                                    | Detail                                                                                                                      |
+| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| 0    | Runtime construction plumbing (S): pass `RuntimeConfig` through Rust, WASM, UniFFI, and JS worker creation; no account-only session injection APIs. Zero crypto.                                                                                                                                                                                                                         | [A](<A - host-primitives.md>), [G](<G - annex.md>)                                                                          |
+| 1    | Pure-core accounts (S–M): add the crypto baseline + golden vectors; `get_account` (in-core sr25519 derivation); `get_legacy_accounts`, `get_user_id` (read `SessionState`).                                                                                                                                                                                                              | [B](<B - core-impls.md>), [D](<D - crypto-foundation.md>)                                                                   |
+| 1.5  | Protocol crypto/vector gate (M): build the narrow WASM-safe crypto module/crate, leaning on existing Rust crypto crates and using `useragent-kit` only as implementation precedent for similar migrations; capture vectors for HDKD, statement proof, handshake/channel encryption, and topic/session derivation. No pairing I/O yet.                                                    | [D](<D - crypto-foundation.md>)                                                                                             |
+| 2    | Statement-store client + pairing (L): a minimal People-chain statement submit/subscribe client over `ChainProvider`, then the `request_login` SSO handshake ([H](<H - sso-pairing-protocol.md>)) + the `PairingPresenter` (A1); extend `SessionInfo`; persist/restore through `SessionStore`; expose public logout/disconnect. The keystone.                                             | [H](<H - sso-pairing-protocol.md>), [A](<A - host-primitives.md>), [B](<B - core-impls.md>), [C](<C - session-contract.md>) |
+| 3    | Message-exchange ops + statement-store parity: `sign_payload`/`sign_raw`, `create_transaction`, and legacy signing/create-transaction over the SSO session channel; `create_proof`/`_authorized` (in-core, session `ssSecret`); product statement `subscribe`/`submit` (same client as Tier 2); `get_account_alias` (aliasRequest); resource allocation host confirmation + SSO request. | [H](<H - sso-pairing-protocol.md>), [B](<B - core-impls.md>)                                                                |
+| 3.5  | Non-Nova but implemented dotli host behavior needed once host-container is gone: preimage host callbacks, scheduled/cancellable notifications, theme subscription, and entropy derivation from the SSO V2 `rootEntropySource`.                                                                                                                                                           | [B](<B - core-impls.md>), [A](<A - host-primitives.md>)                                                                     |
+| 4    | Remaining TrUAPI surface not required for current dotli parity: full `create_account_proof`, Payment, Chat, CoinPayment, and any future move of preimage fully in-core.                                                                                                                                                                                                                  | [B](<B - core-impls.md>), [E](<E - open-questions.md>)                                                                      |
 
 The protocol crypto/vector gate (Tier 1.5) keeps byte-level compatibility failures out of the pairing
 I/O path. The statement-store client (Tier 2) is the keystone: it unlocks pairing, signing-proxy,

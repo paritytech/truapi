@@ -1,6 +1,6 @@
 # A - Host primitives (`truapi-platform`)
 
-> Part of the [host-contract & core-impl spec](<index.md>).
+> Part of the [host-contract & core-impl spec](index.md).
 
 SSO pairing, transaction/raw signing, transaction construction, ring-VRF alias, and the product
 statement store all ride **one** mechanism: the People-chain statement store, reached through the
@@ -54,6 +54,7 @@ The same host contract must be usable from:
 renders a string the core produced ([H §1](<H - sso-pairing-protocol.md>)).
 
 **Proposed trait** (lib.rs):
+
 ```rust
 pub trait PairingPresenter: Send + Sync {
     /// Show the pairing deeplink/QR. The future resolves when the user dismisses/cancels.
@@ -61,6 +62,7 @@ pub trait PairingPresenter: Send + Sync {
     fn present(&self, deeplink: String) -> impl Future<Output = ()> + Send;
 }
 ```
+
 The drop-to-close, resolve-on-cancel shape lets `request_login` `select!` over {handshake statement
 arrives, present-future resolves (cancel), `cx.cancel()`}.
 
@@ -79,17 +81,13 @@ pub struct RuntimeConfig {
     pub product_id: String,
     pub product_label: String,
     pub site_id: String,
-    pub host_metadata: HostMetadata,
-    pub people_chain_genesis_hash: [u8; 32],
-    pub pairing_deeplink_scheme: PairingDeeplinkScheme, // polkadotapp:// or polkadotappdev://
-}
-
-pub struct HostMetadata {
-    pub host_name: Option<String>,
-    pub host_version: Option<String>,
+    pub host_name: String,
     pub host_icon: Option<String>,
+    pub host_version: Option<String>,
     pub platform_type: Option<String>,
     pub platform_version: Option<String>,
+    pub people_chain_genesis_hash: [u8; 32],
+    pub pairing_deeplink_scheme: PairingDeeplinkScheme, // polkadotapp:// or polkadotappdev://
 }
 ```
 
@@ -103,11 +101,9 @@ separate runtime/config boundary for v1; if dotli keeps nested message forwardin
 same Rust core and product identity as the containing product. The current JS nested bridge behavior and
 its possible future value are tracked separately in [I](<I - nested-dapps.md>).
 
-For current dotli main, pairing metadata is embedded in the SSO V2 proposal rather than fetched from a
-metadata URL. dotli should pass `host_name = "Polkadot Web"`, `host_icon = "https://dot.li/dotli.png"`,
-`host_version = __DOTLI_VERSION__`, and browser-derived `platform_type` / `platform_version` when
-available. Older V1 metadata-URL support is historical compatibility only; it is not sufficient for
-current-dotli parity.
+For current dotli main, pairing metadata is embedded directly in the SSO V2 proposal. dotli should pass
+`host_name = "Polkadot Web"`, `host_icon = "https://dot.li/dotli.png"`,
+`host_version = __DOTLI_VERSION__`, and browser-derived `platform_type` / `platform_version` when available.
 
 ## A3. Current host-container parity surfaces **(S-M)**
 
@@ -138,6 +134,7 @@ them to products through `@novasamatech/host-container`.
   validate the current blob.
 
 **Proposed trait**:
+
 ```rust
 pub trait SessionStore: Send + Sync {
     fn read(&self) -> impl Future<Output = Result<Option<Vec<u8>>, GenericError>> + Send;

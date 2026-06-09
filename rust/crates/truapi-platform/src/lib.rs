@@ -38,8 +38,16 @@ pub struct RuntimeConfig {
     pub product_id: String,
     /// Host deployment/site identifier, e.g. `dot.li`.
     pub site_id: String,
-    /// HTTPS metadata URL the SSO peer can fetch for display.
-    pub host_metadata_url: String,
+    /// Host name shown by the wallet during SSO pairing.
+    pub host_name: String,
+    /// Optional host icon URL/CID shown by the wallet during SSO pairing.
+    pub host_icon: Option<String>,
+    /// Optional host version shown by the wallet during SSO pairing.
+    pub host_version: Option<String>,
+    /// Optional platform/browser name shown by the wallet during SSO pairing.
+    pub platform_type: Option<String>,
+    /// Optional platform/browser version shown by the wallet during SSO pairing.
+    pub platform_version: Option<String>,
     /// People-chain genesis hash used for statement-store SSO.
     pub people_chain_genesis_hash: [u8; 32],
     /// Deeplink scheme used in pairing QR payloads.
@@ -53,15 +61,17 @@ impl RuntimeConfig {
         require_non_empty("product_label", &self.product_label)?;
         require_non_empty("product_id", &self.product_id)?;
         require_non_empty("site_id", &self.site_id)?;
-        let parsed = Url::parse(&self.host_metadata_url).map_err(|err| {
-            RuntimeConfigValidationError::InvalidHostMetadataUrl {
-                reason: err.to_string(),
+        require_non_empty("host_name", &self.host_name)?;
+        if let Some(icon) = &self.host_icon {
+            let parsed =
+                Url::parse(icon).map_err(|err| RuntimeConfigValidationError::InvalidHostIcon {
+                    reason: err.to_string(),
+                })?;
+            if parsed.scheme() != "https" {
+                return Err(RuntimeConfigValidationError::InsecureHostIcon {
+                    scheme: parsed.scheme().to_string(),
+                });
             }
-        })?;
-        if parsed.scheme() != "https" {
-            return Err(RuntimeConfigValidationError::InsecureHostMetadataUrl {
-                scheme: parsed.scheme().to_string(),
-            });
         }
         Ok(())
     }
@@ -82,13 +92,13 @@ pub enum RuntimeConfigValidationError {
         /// Field name.
         field: &'static str,
     },
-    /// Metadata URL could not be parsed as an absolute URL.
-    InvalidHostMetadataUrl {
+    /// Host icon URL could not be parsed as an absolute URL.
+    InvalidHostIcon {
         /// Parse failure reason.
         reason: String,
     },
-    /// Metadata URL used a non-HTTPS scheme.
-    InsecureHostMetadataUrl {
+    /// Host icon URL used a non-HTTPS scheme.
+    InsecureHostIcon {
         /// Actual URL scheme.
         scheme: String,
     },
@@ -100,14 +110,11 @@ impl std::fmt::Display for RuntimeConfigValidationError {
             RuntimeConfigValidationError::EmptyField { field } => {
                 write!(f, "{field} must not be empty")
             }
-            RuntimeConfigValidationError::InvalidHostMetadataUrl { reason } => {
-                write!(
-                    f,
-                    "host_metadata_url must be an absolute HTTPS URL: {reason}"
-                )
+            RuntimeConfigValidationError::InvalidHostIcon { reason } => {
+                write!(f, "host_icon must be an absolute HTTPS URL: {reason}")
             }
-            RuntimeConfigValidationError::InsecureHostMetadataUrl { scheme } => {
-                write!(f, "host_metadata_url must use https scheme, got {scheme:?}")
+            RuntimeConfigValidationError::InsecureHostIcon { scheme } => {
+                write!(f, "host_icon must use https scheme, got {scheme:?}")
             }
         }
     }

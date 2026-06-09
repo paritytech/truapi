@@ -1,6 +1,6 @@
 # D - Crypto & dependency foundation
 
-> Part of the [host-contract & core-impl spec](<index.md>).
+> Part of the [host-contract & core-impl spec](index.md).
 
 `truapi-server` has no crypto deps today (grep for `schnorrkel`/`blake2` in the workspace `Cargo.toml`s
 returns nothing). This doc specifies the deps, the one fully-portable algorithm (`get_account`
@@ -121,8 +121,6 @@ Current dotli main uses host-papp 0.8.6 SSO V2. The vector gate must cover:
 - `VersionedHandshakeResponse` / encrypted V2 response variants (`Pending`, `Success`, `Failed`).
 - `HandshakeSuccessV2` fields, especially `rootAccountId`, `identityAccountId`, `ssoEncPubKey`,
   `deviceEncPubKey`, and `rootEntropySource`.
-
-The older V1 vectors below are retained only as historical implementation evidence.
 
 The current dotli web path is explicit:
 

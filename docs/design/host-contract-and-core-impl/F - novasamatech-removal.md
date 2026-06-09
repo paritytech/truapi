@@ -88,9 +88,9 @@ them.
       core-owned storage interface. Core session persistence is not host-papp session-list compatible and
       cutover requires one-time re-pair ([E5](<E - open-questions.md>)). The migrated submodule deletes
       `packages/auth` and uses the Rust-owned `SessionStore`.
-- [ ] SSO V2 parity: replace the Rust V1 metadata-URL pairing proposal with host-papp 0.8.6's
-      `VersionedHandshakeProposal::V2`, including host metadata entries, platform type/version, V2 pairing
-      topic/channel, V2 response envelope handling, and `rootEntropySource` persistence.
+- [x] SSO V2 parity: use host-papp 0.8.6's `VersionedHandshakeProposal::V2`, including host metadata
+      entries, platform type/version, V2 pairing topic/channel, V2 response envelope handling, and
+      `rootEntropySource` persistence.
 - [x] `packages/ui/src/statement-store-mapping.ts`: delete the SDK<->host mapping once Rust emits/accepts
       the final TrUAPI statement-store wire types directly.
 - [x] `packages/ui/src/permissions.ts`, `packages/ui/src/allocation-modal.ts`, and any modal code importing

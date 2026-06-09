@@ -3,7 +3,7 @@ import {
   VersionedHostFeatureSupportedRequest,
   VersionedHostPushNotificationRequest,
   VersionedRemotePermissionRequest,
-  Theme,
+  ThemeVariant,
   type GenericError,
   type Result,
 } from "@parity/truapi";
@@ -93,7 +93,9 @@ function driveResultStream<T>(
   };
 }
 
-function chainConnect(callbacks: OptionalTypedCallbacks): RawWithoutEmit["chainConnect"] {
+function chainConnect(
+  callbacks: OptionalTypedCallbacks,
+): RawWithoutEmit["chainConnect"] {
   if (!callbacks.connect) return undefined;
   return async (genesisHash, onResponse): Promise<ChainConnection | null> => {
     const connection = await callbacks.connect!(hexToBytes(genesisHash));
@@ -145,7 +147,9 @@ export function createWasmRawCallbacks(
         }
       : unavailable.pushNotification,
     ...(callbacks.cancelNotification
-      ? { cancelNotification: (id: number) => callbacks.cancelNotification!(id) }
+      ? {
+          cancelNotification: (id: number) => callbacks.cancelNotification!(id),
+        }
       : {}),
     devicePermission: callbacks.devicePermission
       ? async (payload) => {
@@ -181,7 +185,10 @@ export function createWasmRawCallbacks(
       ? (key) => callbacks.clear!(key)
       : unavailable.localStorageClear,
     ...(callbacks.presentPairing
-      ? { presentPairing: (deeplink: string) => callbacks.presentPairing!(deeplink) }
+      ? {
+          presentPairing: (deeplink: string) =>
+            callbacks.presentPairing!(deeplink),
+        }
       : {}),
     ...(callbacks.readSession
       ? { readSession: () => callbacks.readSession!() }
@@ -189,18 +196,28 @@ export function createWasmRawCallbacks(
     ...(callbacks.writeSession
       ? { writeSession: (value: Uint8Array) => callbacks.writeSession!(value) }
       : {}),
-    ...(callbacks.clearSession ? { clearSession: () => callbacks.clearSession!() } : {}),
+    ...(callbacks.clearSession
+      ? { clearSession: () => callbacks.clearSession!() }
+      : {}),
     ...(callbacks.subscribeSessionStore
       ? {
           subscribeSessionStore: (sendItem: () => void) =>
-            driveResultStream(callbacks.subscribeSessionStore!(), () => sendItem()),
+            driveResultStream(callbacks.subscribeSessionStore!(), () =>
+              sendItem(),
+            ),
         }
       : {}),
     ...(callbacks.confirmSignPayload
-      ? { confirmSignPayload: (payload: Uint8Array) => callbacks.confirmSignPayload!(payload) }
+      ? {
+          confirmSignPayload: (payload: Uint8Array) =>
+            callbacks.confirmSignPayload!(payload),
+        }
       : {}),
     ...(callbacks.confirmSignRaw
-      ? { confirmSignRaw: (payload: Uint8Array) => callbacks.confirmSignRaw!(payload) }
+      ? {
+          confirmSignRaw: (payload: Uint8Array) =>
+            callbacks.confirmSignRaw!(payload),
+        }
       : {}),
     ...(callbacks.confirmCreateTransaction
       ? {
@@ -228,7 +245,7 @@ export function createWasmRawCallbacks(
       : unavailable.submitPreimage,
     ...(callbacks.subscribeTheme
       ? {
-          themeSubscribe: (sendItem: (theme: Theme) => void) =>
+          themeSubscribe: (sendItem: (theme: ThemeVariant) => void) =>
             driveResultStream(callbacks.subscribeTheme!(), sendItem),
         }
       : {}),

@@ -42,29 +42,37 @@ import {
 } from "@parity/truapi-host-wasm";
 import { createElectronProvider } from "@parity/truapi-host-wasm/electron";
 
-const provider = await createNodeWasmProvider({
-  navigateTo: async (url) => {
-    /* shell.openExternal(url) */
+const provider = await createNodeWasmProvider(
+  {
+    navigateTo: async (url) => {
+      /* shell.openExternal(url) */
+    },
+    pushNotification: async () => {},
+    devicePermission: async () => true,
+    remotePermission: async () => true,
+    featureSupported: async (payload) => payload,
+    localStorageRead: async () => undefined,
+    localStorageWrite: async () => {},
+    localStorageClear: async () => {},
+    // Optional: presentPairing, readSession/writeSession/clearSession,
+    // subscribeSessionStore, confirmation, preimage, theme, and chain callbacks.
   },
-  pushNotification: async () => {},
-  devicePermission: async () => true,
-  remotePermission: async () => true,
-  featureSupported: async (payload) => payload,
-  localStorageRead: async () => undefined,
-  localStorageWrite: async () => {},
-  localStorageClear: async () => {},
-  // Optional: presentPairing, readSession/writeSession/clearSession,
-  // subscribeSessionStore, confirmation, preimage, theme, and chain callbacks.
-}, {
-  runtimeConfig: {
-    productLabel: "example",
-    productId: "example.dot",
-    siteId: "dot.li",
-    hostMetadataUrl: "https://dot.li/metadata.json",
-    peopleChainGenesisHash: "0xa22a2424d2cbf561eaecf7da8b1b548fa9d1939f60265e942b1049616a012f71",
-    pairingDeeplinkScheme: "polkadotapp",
+  {
+    runtimeConfig: {
+      productLabel: "example",
+      productId: "example.dot",
+      siteId: "dot.li",
+      hostName: "Polkadot Web",
+      hostIcon: "https://dot.li/dotli.png",
+      hostVersion: "0.5.0",
+      platformType: "browser",
+      platformVersion: "unknown",
+      peopleChainGenesisHash:
+        "0xa22a2424d2cbf561eaecf7da8b1b548fa9d1939f60265e942b1049616a012f71",
+      pairingDeeplinkScheme: "polkadotapp",
+    },
   },
-});
+);
 
 const server = createHostServer(provider, [
   /* dispatch entries */

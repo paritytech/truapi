@@ -60,7 +60,11 @@ function runtimeConfig(overrides = {}) {
     productLabel: "dotli",
     productId: "dotli.dot",
     siteId: "dot.li",
-    hostMetadataUrl: "https://dot.li/metadata.json",
+    hostName: "Polkadot Web",
+    hostIcon: "https://dot.li/dotli.png",
+    hostVersion: "0.5.0",
+    platformType: "node",
+    platformVersion: process.versions.node,
     peopleChainGenesisHash:
       "0xa22a2424d2cbf561eaecf7da8b1b548fa9d1939f60265e942b1049616a012f71",
     pairingDeeplinkScheme: "polkadotapp",
@@ -97,10 +101,7 @@ test("createWebWorkerProvider advertises only supplied optional hooks", async ()
     debug: true,
     runtimeConfig: config,
     optionalCallbacks: ["readSession", "clearSession"],
-    optionalSubscriptions: [
-      "sessionStoreSubscribe",
-      "preimageLookupSubscribe",
-    ],
+    optionalSubscriptions: ["sessionStoreSubscribe", "preimageLookupSubscribe"],
     chainConnect: true,
   });
 
@@ -125,7 +126,11 @@ test("worker provider resolves disconnect responses", async () => {
   assert.equal(msg.kind, "disconnect");
   assert.equal(typeof msg.requestId, "number");
 
-  worker.emit({ kind: "disconnectResponse", requestId: msg.requestId, ok: true });
+  worker.emit({
+    kind: "disconnectResponse",
+    requestId: msg.requestId,
+    ok: true,
+  });
   await disconnect;
 
   provider.dispose();

@@ -1,6 +1,6 @@
 # E - Decision log / deferred questions
 
-> Part of the [host-contract & core-impl spec](<index.md>).
+> Part of the [host-contract & core-impl spec](index.md).
 
 Resolved branches from the plan audit, plus deferred items that are not required for current dotli parity.
 The rest of the spec assumes these decisions for v1.
@@ -57,9 +57,10 @@ need to reverse-engineer or preserve host-papp's internal session list encoding.
 ## E6. Relay endpoint + deeplink format: RESOLVED
 
 There is no relay endpoint: the transport is the People-chain statement store reached via `ChainProvider`,
-and the deeplink is `polkadotapp://pair?handshake=<hex(SCALE HostHandshakeData)>`
+and the deeplink is `polkadotapp://pair?handshake=<hex(SCALE VersionedHandshakeProposal::V2)>`
 ([H §1](<H - sso-pairing-protocol.md>)). Both are core-owned protocol constants; the only host input is the
-People-chain genesis hash for `ChainProvider::connect` and the dApp metadata URL.
+People-chain genesis hash for `ChainProvider::connect` plus the SSO V2 host metadata fields in
+`RuntimeConfig`.
 
 ## E7. Resource allocation confirmation: RESOLVED
 

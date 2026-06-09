@@ -833,7 +833,11 @@ fn runtime_config_from_js(value: &JsValue) -> Result<RuntimeConfig, JsValue> {
         product_label: get_required_string(value, "productLabel")?,
         product_id: get_required_string(value, "productId")?,
         site_id: get_required_string(value, "siteId")?,
-        host_metadata_url: get_required_string(value, "hostMetadataUrl")?,
+        host_name: get_required_string(value, "hostName")?,
+        host_icon: get_optional_string(value, "hostIcon")?,
+        host_version: get_optional_string(value, "hostVersion")?,
+        platform_type: get_optional_string(value, "platformType")?,
+        platform_version: get_optional_string(value, "platformVersion")?,
         people_chain_genesis_hash: get_required_bytes32(value, "peopleChainGenesisHash")?,
         pairing_deeplink_scheme: {
             let scheme = get_required_string(value, "pairingDeeplinkScheme")?;
@@ -860,12 +864,12 @@ fn runtime_config_validation_to_js(err: RuntimeConfigValidationError) -> JsValue
             "runtimeConfig.{} must not be empty",
             runtime_config_field_to_js(field)
         )),
-        RuntimeConfigValidationError::InvalidHostMetadataUrl { reason } => JsValue::from_str(
-            &format!("runtimeConfig.hostMetadataUrl must be an absolute HTTPS URL: {reason}"),
-        ),
-        RuntimeConfigValidationError::InsecureHostMetadataUrl { scheme } => JsValue::from_str(
-            &format!("runtimeConfig.hostMetadataUrl must use https scheme, got {scheme:?}"),
-        ),
+        RuntimeConfigValidationError::InvalidHostIcon { reason } => JsValue::from_str(&format!(
+            "runtimeConfig.hostIcon must be an absolute HTTPS URL: {reason}"
+        )),
+        RuntimeConfigValidationError::InsecureHostIcon { scheme } => JsValue::from_str(&format!(
+            "runtimeConfig.hostIcon must use https scheme, got {scheme:?}"
+        )),
     }
 }
 
@@ -874,7 +878,7 @@ fn runtime_config_field_to_js(field: &str) -> &str {
         "product_label" => "productLabel",
         "product_id" => "productId",
         "site_id" => "siteId",
-        "host_metadata_url" => "hostMetadataUrl",
+        "host_name" => "hostName",
         "people_chain_genesis_hash" => "peopleChainGenesisHash",
         other => other,
     }

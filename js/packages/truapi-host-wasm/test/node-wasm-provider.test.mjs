@@ -40,7 +40,11 @@ function runtimeConfig(overrides = {}) {
     productLabel: "dotli",
     productId: "dotli.dot",
     siteId: "dot.li",
-    hostMetadataUrl: "https://dot.li/metadata.json",
+    hostName: "Polkadot Web",
+    hostIcon: "https://dot.li/dotli.png",
+    hostVersion: "0.5.0",
+    platformType: "node",
+    platformVersion: process.versions.node,
     peopleChainGenesisHash:
       "0xa22a2424d2cbf561eaecf7da8b1b548fa9d1939f60265e942b1049616a012f71",
     pairingDeeplinkScheme: "polkadotapp",
@@ -115,15 +119,15 @@ test("createNodeWasmProvider rejects empty runtime config identity fields", asyn
   );
 });
 
-test("createNodeWasmProvider rejects non-HTTPS runtime metadata URLs", async () => {
+test("createNodeWasmProvider rejects non-HTTPS runtime host icons", async () => {
   await assert.rejects(
     () =>
       createNodeWasmProvider(makeCallbacks(), {
         runtimeConfig: runtimeConfig({
-          hostMetadataUrl: "http://localhost:3000/metadata.json",
+          hostIcon: "http://localhost:3000/dotli.png",
         }),
       }),
-    /runtimeConfig\.hostMetadataUrl must use https scheme/,
+    /runtimeConfig\.hostIcon must use https scheme/,
   );
 });
 

@@ -44,30 +44,90 @@ pub enum PairingBootstrapError {
     InvalidP256Secret,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Encode)]
-pub enum HostHandshakeData {
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum VersionedHandshakeProposal {
     #[codec(index = 0)]
-    V1 {
-        statement_store_public_key: [u8; 32],
-        encryption_public_key: [u8; 65],
-        metadata: String,
-    },
+    ReservedV1,
+    #[codec(index = 1)]
+    V2(HandshakeProposalV2),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub enum AppHandshakeData {
+pub struct HandshakeProposalV2 {
+    pub device: HandshakeDevice,
+    pub metadata: Vec<HandshakeMetadataEntry>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HandshakeDevice {
+    pub statement_account_id: [u8; 32],
+    pub encryption_public_key: [u8; 65],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HandshakeMetadataEntry(pub HandshakeMetadataKey, pub String);
+
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum HandshakeMetadataKey {
+    #[codec(index = 0)]
+    Custom(String),
+    #[codec(index = 1)]
+    HostName,
+    #[codec(index = 2)]
+    HostVersion,
+    #[codec(index = 3)]
+    HostIcon,
+    #[codec(index = 4)]
+    PlatformType,
+    #[codec(index = 5)]
+    PlatformVersion,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum VersionedHandshakeResponse {
     #[codec(index = 0)]
     V1 {
+        encrypted_message: Vec<u8>,
+        public_key: [u8; 65],
+    },
+    #[codec(index = 1)]
+    V2 {
         encrypted_message: Vec<u8>,
         public_key: [u8; 65],
     },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct SsoHandshakeAnswerSensitiveData {
+pub struct SsoHandshakeAnswerV1 {
     pub shared_secret_derivation_key: [u8; 65],
     pub root_user_account_id: [u8; 32],
     pub identity_account_id: [u8; 32],
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum EncryptedHandshakeResponseV2 {
+    #[codec(index = 0)]
+    Pending(HandshakeStatusV2),
+    #[codec(index = 1)]
+    Success(HandshakeSuccessV2),
+    #[codec(index = 2)]
+    Failed(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum HandshakeStatusV2 {
+    #[codec(index = 0)]
+    AllowanceAllocation,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HandshakeSuccessV2 {
+    pub identity_account_id: [u8; 32],
+    pub root_account_id: [u8; 32],
+    pub identity_chat_private_key: [u8; 32],
+    pub sso_enc_pub_key: [u8; 65],
+    pub device_enc_pub_key: [u8; 65],
+    pub root_entropy_source: [u8; 32],
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
@@ -84,9 +144,9 @@ pub enum SsoStatementData {
     },
 }
 
-pub fn decode_app_handshake_data(blob: &[u8]) -> Result<AppHandshakeData, String> {
+pub fn decode_app_handshake_data(blob: &[u8]) -> Result<VersionedHandshakeResponse, String> {
     let mut input = blob;
-    let value: AppHandshakeData =
+    let value: VersionedHandshakeResponse =
         Decode::decode(&mut input).map_err(|err| format!("invalid app handshake data: {err}"))?;
     if !input.is_empty() {
         return Err("invalid app handshake data: trailing bytes".to_string());
@@ -98,14 +158,14 @@ pub fn decrypt_handshake_answer(
     core_encryption_secret_key: [u8; 32],
     wallet_ephemeral_public_key: [u8; 65],
     encrypted_message: &[u8],
-) -> Result<SsoHandshakeAnswerSensitiveData, String> {
+) -> Result<SsoHandshakeAnswerV1, String> {
     let plaintext = decrypt_p256_hkdf_aes_gcm(
         core_encryption_secret_key,
         wallet_ephemeral_public_key,
         encrypted_message,
     )?;
     let mut input = plaintext.as_slice();
-    let value = SsoHandshakeAnswerSensitiveData::decode(&mut input)
+    let value = SsoHandshakeAnswerV1::decode(&mut input)
         .map_err(|err| format!("invalid SSO handshake answer: {err}"))?;
     if !input.is_empty() {
         return Err("invalid SSO handshake answer: trailing bytes".to_string());
@@ -113,23 +173,40 @@ pub fn decrypt_handshake_answer(
     Ok(value)
 }
 
+pub fn decrypt_v2_handshake_response(
+    core_encryption_secret_key: [u8; 32],
+    wallet_ephemeral_public_key: [u8; 65],
+    encrypted_message: &[u8],
+) -> Result<EncryptedHandshakeResponseV2, String> {
+    let plaintext = decrypt_p256_hkdf_aes_gcm(
+        core_encryption_secret_key,
+        wallet_ephemeral_public_key,
+        encrypted_message,
+    )?;
+    let mut input = plaintext.as_slice();
+    let value = EncryptedHandshakeResponseV2::decode(&mut input)
+        .map_err(|err| format!("invalid SSO V2 handshake response: {err}"))?;
+    if !input.is_empty() {
+        return Err("invalid SSO V2 handshake response: trailing bytes".to_string());
+    }
+    Ok(value)
+}
+
 pub fn establish_sso_session_info(
     bootstrap: &PairingBootstrap,
-    answer: &SsoHandshakeAnswerSensitiveData,
+    peer_statement_account_id: [u8; 32],
+    peer_sso_enc_pub_key: [u8; 65],
 ) -> Result<SsoSessionInfo, String> {
-    let shared_secret = shared_secret(
-        bootstrap.encryption_secret_key,
-        answer.shared_secret_derivation_key,
-    )?;
+    let shared_secret = shared_secret(bootstrap.encryption_secret_key, peer_sso_enc_pub_key)?;
     let shared_secret_bytes: [u8; 32] = (*shared_secret.raw_secret_bytes()).into();
     let session_id_own = create_session_id(
         shared_secret_bytes,
         bootstrap.statement_store_public_key,
-        answer.identity_account_id,
+        peer_statement_account_id,
     );
     let session_id_peer = create_session_id(
         shared_secret_bytes,
-        answer.identity_account_id,
+        peer_statement_account_id,
         bootstrap.statement_store_public_key,
     );
 
@@ -137,8 +214,8 @@ pub fn establish_sso_session_info(
         ss_secret: bootstrap.statement_store_secret,
         ss_public_key: bootstrap.statement_store_public_key,
         enc_secret: bootstrap.encryption_secret_key,
-        peer_enc_pubkey: answer.shared_secret_derivation_key,
-        identity_account_id: answer.identity_account_id,
+        peer_enc_pubkey: peer_sso_enc_pub_key,
+        identity_account_id: peer_statement_account_id,
         session_id_own,
         session_id_peer,
         request_channel: keyed_hash(session_id_own, REQUEST_CHANNEL_SUFFIX),
@@ -288,7 +365,7 @@ pub fn create_pairing_bootstrap(
         config.pairing_deeplink_scheme,
         statement_store_public_key,
         encryption_public_key,
-        &config.host_metadata_url,
+        config,
     );
     let topic = bootstrap_topic(statement_store_public_key, encryption_public_key);
 
@@ -306,18 +383,52 @@ pub fn build_pairing_deeplink(
     scheme: PairingDeeplinkScheme,
     statement_store_public_key: [u8; 32],
     encryption_public_key: [u8; 65],
-    metadata: &str,
+    config: &RuntimeConfig,
 ) -> String {
-    let handshake = HostHandshakeData::V1 {
-        statement_store_public_key,
-        encryption_public_key,
-        metadata: metadata.to_string(),
-    };
+    let handshake = VersionedHandshakeProposal::V2(HandshakeProposalV2 {
+        device: HandshakeDevice {
+            statement_account_id: statement_store_public_key,
+            encryption_public_key,
+        },
+        metadata: handshake_metadata(config),
+    });
     format!(
         "{}pair?handshake={}",
         deeplink_scheme_prefix(scheme),
         hex::encode(handshake.encode())
     )
+}
+
+fn handshake_metadata(config: &RuntimeConfig) -> Vec<HandshakeMetadataEntry> {
+    let mut entries = vec![HandshakeMetadataEntry(
+        HandshakeMetadataKey::HostName,
+        config.host_name.clone(),
+    )];
+    if let Some(value) = &config.host_version {
+        entries.push(HandshakeMetadataEntry(
+            HandshakeMetadataKey::HostVersion,
+            value.clone(),
+        ));
+    }
+    if let Some(value) = &config.host_icon {
+        entries.push(HandshakeMetadataEntry(
+            HandshakeMetadataKey::HostIcon,
+            value.clone(),
+        ));
+    }
+    if let Some(value) = &config.platform_type {
+        entries.push(HandshakeMetadataEntry(
+            HandshakeMetadataKey::PlatformType,
+            value.clone(),
+        ));
+    }
+    if let Some(value) = &config.platform_version {
+        entries.push(HandshakeMetadataEntry(
+            HandshakeMetadataKey::PlatformVersion,
+            value.clone(),
+        ));
+    }
+    entries
 }
 
 pub fn bootstrap_topic(
@@ -392,19 +503,43 @@ mod tests {
         0x3b, 0x3c, 0x3d, 0x3e, 0x3f,
     ];
 
+    fn runtime_config() -> RuntimeConfig {
+        RuntimeConfig {
+            product_label: "myapp".to_string(),
+            product_id: "myapp.dot".to_string(),
+            site_id: "test".to_string(),
+            host_name: "Polkadot Web".to_string(),
+            host_icon: Some("https://example.invalid/dotli.png".to_string()),
+            host_version: Some("1.2.3".to_string()),
+            platform_type: Some("Firefox".to_string()),
+            platform_version: Some("192.32".to_string()),
+            people_chain_genesis_hash: [0; 32],
+            pairing_deeplink_scheme: PairingDeeplinkScheme::PolkadotApp,
+        }
+    }
+
     #[test]
-    fn builds_v1_pairing_deeplink() {
+    fn builds_v2_pairing_deeplink() {
+        let config = runtime_config();
         let deeplink = build_pairing_deeplink(
             PairingDeeplinkScheme::PolkadotApp,
             SS_PUBLIC,
             ENC_PUBLIC,
-            "https://example.invalid/metadata.json",
+            &config,
         );
 
-        assert_eq!(
-            deeplink,
-            "polkadotapp://pair?handshake=00000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f04000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f9468747470733a2f2f6578616d706c652e696e76616c69642f6d657461646174612e6a736f6e"
-        );
+        assert!(deeplink.starts_with("polkadotapp://pair?handshake=01"));
+        let encoded = hex::decode(deeplink.split("handshake=").nth(1).unwrap()).unwrap();
+        let decoded = <VersionedHandshakeProposal as Decode>::decode(&mut &encoded[..]).unwrap();
+        let VersionedHandshakeProposal::V2(proposal) = decoded else {
+            panic!("expected V2 proposal");
+        };
+        assert_eq!(proposal.device.statement_account_id, SS_PUBLIC);
+        assert_eq!(proposal.device.encryption_public_key, ENC_PUBLIC);
+        assert!(proposal.metadata.contains(&HandshakeMetadataEntry(
+            HandshakeMetadataKey::HostName,
+            "Polkadot Web".to_string()
+        )));
     }
 
     #[test]
@@ -413,7 +548,7 @@ mod tests {
             PairingDeeplinkScheme::PolkadotAppDev,
             SS_PUBLIC,
             ENC_PUBLIC,
-            "https://example.invalid/metadata.json",
+            &runtime_config(),
         );
 
         assert!(deeplink.starts_with("polkadotappdev://pair?handshake="));
@@ -429,14 +564,7 @@ mod tests {
 
     #[test]
     fn generated_bootstrap_uses_real_key_shapes() {
-        let config = RuntimeConfig {
-            product_label: "myapp".to_string(),
-            product_id: "myapp.dot".to_string(),
-            site_id: "test".to_string(),
-            host_metadata_url: "https://example.invalid/metadata.json".to_string(),
-            people_chain_genesis_hash: [0; 32],
-            pairing_deeplink_scheme: PairingDeeplinkScheme::PolkadotApp,
-        };
+        let config = runtime_config();
 
         let bootstrap = create_pairing_bootstrap(&config).unwrap();
 
@@ -457,7 +585,7 @@ mod tests {
 
     #[test]
     fn decodes_app_handshake_answer() {
-        let answer = AppHandshakeData::V1 {
+        let answer = VersionedHandshakeResponse::V1 {
             encrypted_message: vec![0xde, 0xad],
             public_key: ENC_PUBLIC,
         };
@@ -467,7 +595,7 @@ mod tests {
 
     #[test]
     fn rejects_app_handshake_trailing_bytes() {
-        let mut encoded = AppHandshakeData::V1 {
+        let mut encoded = VersionedHandshakeResponse::V1 {
             encrypted_message: vec![0xde, 0xad],
             public_key: ENC_PUBLIC,
         }
@@ -496,7 +624,7 @@ mod tests {
         let mut aes_key = [0u8; 32];
         hkdf.expand(&[], &mut aes_key).unwrap();
 
-        let sensitive = SsoHandshakeAnswerSensitiveData {
+        let sensitive = SsoHandshakeAnswerV1 {
             shared_secret_derivation_key: ENC_PUBLIC,
             root_user_account_id: [7; 32],
             identity_account_id: [8; 32],
@@ -545,18 +673,14 @@ mod tests {
         };
         let peer_secret = SecretKey::from_slice(&[2; 32]).unwrap();
         let peer_public = peer_secret.public_key().to_encoded_point(false);
-        let answer = SsoHandshakeAnswerSensitiveData {
-            shared_secret_derivation_key: peer_public.as_bytes().try_into().unwrap(),
-            root_user_account_id: [0x44; 32],
-            identity_account_id: [0x55; 32],
-        };
+        let peer_public: [u8; 65] = peer_public.as_bytes().try_into().unwrap();
 
-        let info = establish_sso_session_info(&bootstrap, &answer).unwrap();
+        let info = establish_sso_session_info(&bootstrap, [0x55; 32], peer_public).unwrap();
 
         assert_eq!(info.ss_secret, [0x33; 64]);
         assert_eq!(info.ss_public_key, [0x22; 32]);
         assert_eq!(info.enc_secret, [1; 32]);
-        assert_eq!(info.peer_enc_pubkey, answer.shared_secret_derivation_key);
+        assert_eq!(info.peer_enc_pubkey, peer_public);
         assert_eq!(info.identity_account_id, [0x55; 32]);
         assert_ne!(info.session_id_own, info.session_id_peer);
         assert_eq!(
@@ -611,17 +735,13 @@ mod tests {
             encryption_secret_key: [1; 32],
         };
         let peer_secret = SecretKey::from_slice(&[2; 32]).unwrap();
-        let answer = SsoHandshakeAnswerSensitiveData {
-            shared_secret_derivation_key: peer_secret
-                .public_key()
-                .to_encoded_point(false)
-                .as_bytes()
-                .try_into()
-                .unwrap(),
-            root_user_account_id: [0x44; 32],
-            identity_account_id: [0x55; 32],
-        };
-        let session = establish_sso_session_info(&bootstrap, &answer).unwrap();
+        let peer_public = peer_secret
+            .public_key()
+            .to_encoded_point(false)
+            .as_bytes()
+            .try_into()
+            .unwrap();
+        let session = establish_sso_session_info(&bootstrap, [0x55; 32], peer_public).unwrap();
         let data = SsoStatementData::Request {
             request_id: "req-1".to_string(),
             data: vec![vec![0xde, 0xad]],

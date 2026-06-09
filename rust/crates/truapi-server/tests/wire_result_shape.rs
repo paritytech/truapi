@@ -212,7 +212,11 @@ fn test_runtime_config() -> RuntimeConfig {
         product_label: "dotli".to_string(),
         product_id: "dotli.dot".to_string(),
         site_id: "dot.li".to_string(),
-        host_metadata_url: "https://dot.li/metadata.json".to_string(),
+        host_name: "Polkadot Web".to_string(),
+        host_icon: Some("https://dot.li/dotli.png".to_string()),
+        host_version: None,
+        platform_type: None,
+        platform_version: None,
         people_chain_genesis_hash: [0xa2; 32],
         pairing_deeplink_scheme: PairingDeeplinkScheme::PolkadotApp,
     }
@@ -607,7 +611,7 @@ fn subscription_start_receive_stop_through_wire_boundary() {
         .set_session(truapi_server::host_logic::session::SessionInfo {
             public_key: [7u8; 32],
             sso: None,
-            entropy_secret: None,
+            root_entropy_source: None,
             lite_username: None,
             full_username: None,
         });

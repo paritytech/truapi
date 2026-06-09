@@ -16,7 +16,7 @@ use crate::chain_runtime::{
     ChainRuntime, RuntimeChainProvider, RuntimeFailure, RuntimeFailureKind,
 };
 use crate::host_logic::dotns::{NavigateDecision, parse_navigate};
-use crate::host_logic::entropy::derive_product_entropy;
+use crate::host_logic::entropy::derive_product_entropy_from_source;
 use crate::host_logic::features::feature_supported;
 use crate::host_logic::permissions::{Decision, PermissionsService};
 use crate::host_logic::product_account::{
@@ -32,8 +32,8 @@ use crate::host_logic::sso_messages::{
     resource_allocation_message, sign_payload_message, sign_raw_message,
 };
 use crate::host_logic::sso_pairing::{
-    AppHandshakeData, create_pairing_bootstrap, decode_app_handshake_data,
-    decrypt_handshake_answer, establish_sso_session_info,
+    EncryptedHandshakeResponseV2, VersionedHandshakeResponse, create_pairing_bootstrap,
+    decode_app_handshake_data, decrypt_v2_handshake_response, establish_sso_session_info,
 };
 use crate::host_logic::statement_store::{
     MAX_MATCH_ALL_TOPICS, MAX_MATCH_ANY_TOPICS, TopicFilterKind, decode_signed_statement,
@@ -147,6 +147,10 @@ use truapi_platform::{
 const PAIRING_SUBSCRIBE_REQUEST_ID: &str = "truapi:sso-pairing:1";
 const DEFAULT_SSO_STATEMENT_EXPIRY_SECS: u64 = 7 * 24 * 60 * 60;
 const DEFAULT_SSO_RESPONSE_TIMEOUT: Duration = Duration::from_secs(180);
+#[cfg(not(test))]
+const PAIRING_QUERY_INTERVAL: Duration = Duration::from_secs(2);
+#[cfg(test)]
+const PAIRING_QUERY_INTERVAL: Duration = Duration::from_millis(1);
 const SSO_LOCAL_DISCONNECT_REASON: &str = "SSO session disconnected";
 const SSO_PEER_DISCONNECT_REASON: &str = "SSO peer disconnected";
 
@@ -242,7 +246,11 @@ impl<P> PlatformRuntimeHost<P> {
                 product_label: "unknown".to_string(),
                 product_id: "unknown.dot".to_string(),
                 site_id: "test".to_string(),
-                host_metadata_url: "https://example.invalid/metadata.json".to_string(),
+                host_name: "Polkadot Web".to_string(),
+                host_icon: Some("https://example.invalid/dotli.png".to_string()),
+                host_version: None,
+                platform_type: None,
+                platform_version: None,
                 people_chain_genesis_hash: [0; 32],
                 pairing_deeplink_scheme: truapi_platform::PairingDeeplinkScheme::PolkadotApp,
             },
@@ -1270,17 +1278,21 @@ where
         ));
         let responses = statement_store.responses();
         let subscription_guard = PairingSubscriptionGuard::new(statement_store);
-        let core_encryption_secret_key = bootstrap.encryption_secret_key;
         let presenter = PlatformPairingPresenter::present_pairing(
             self.platform.as_ref(),
             bootstrap.deeplink.clone(),
         )
         .fuse();
-        let pairing_statement =
-            wait_for_pairing_statement(responses, subscription_guard.remote_subscription_id())
-                .fuse();
+        let pairing_response = wait_for_v2_pairing_success(
+            subscription_guard.connection.as_ref(),
+            responses,
+            subscription_guard.remote_subscription_id(),
+            bootstrap.topic,
+            bootstrap.encryption_secret_key,
+        )
+        .fuse();
         let cancellation = wait_for_call_cancelled(cx.cancel().clone()).fuse();
-        pin_mut!(presenter, pairing_statement, cancellation);
+        pin_mut!(presenter, pairing_response, cancellation);
 
         futures::select! {
             reason = cancellation => Err(request_login_cancelled_with_reason(reason)),
@@ -1292,38 +1304,20 @@ where
                     v01::HostRequestLoginResponse::Rejected,
                 ))
             }
-            statement_result = pairing_statement => {
-                let statement = statement_result.map_err(|reason| CallError::HostFailure {
+            response_result = pairing_response => {
+                let response = response_result.map_err(|reason| CallError::HostFailure {
                     reason,
                 })?;
-                let verified = decode_verified_statement_data(&statement, None).map_err(|err| CallError::HostFailure {
-                    reason: err.to_string(),
-                })?;
-                let payload = verified.data;
-                let handshake = decode_app_handshake_data(&payload).map_err(|reason| CallError::HostFailure {
-                    reason,
-                })?;
-                let AppHandshakeData::V1 {
-                    encrypted_message,
-                    public_key,
-                } = handshake;
-                let answer = decrypt_handshake_answer(
-                    core_encryption_secret_key,
-                    public_key,
-                    &encrypted_message,
+                let sso = establish_sso_session_info(
+                    &bootstrap,
+                    response.peer_statement_account_id,
+                    response.success.sso_enc_pub_key,
                 )
-                .map_err(|reason| CallError::HostFailure { reason })?;
-                if verified.signer != answer.identity_account_id {
-                    return Err(CallError::HostFailure {
-                        reason: "pairing statement proof signer does not match wallet identity".to_string(),
-                    });
-                }
-                let sso = establish_sso_session_info(&bootstrap, &answer)
                     .map_err(|reason| CallError::HostFailure { reason })?;
                 let session = SessionInfo {
-                    public_key: answer.root_user_account_id,
+                    public_key: response.success.root_account_id,
                     sso: Some(sso),
-                    entropy_secret: Some(bootstrap.statement_store_secret.to_vec()),
+                    root_entropy_source: Some(response.success.root_entropy_source),
                     lite_username: None,
                     full_username: None,
                 };
@@ -1364,38 +1358,140 @@ fn request_login_cancelled_with_reason(reason: String) -> CallError<HostRequestL
     ))
 }
 
-async fn wait_for_pairing_statement(
+struct PairingSuccess {
+    peer_statement_account_id: [u8; 32],
+    success: crate::host_logic::sso_pairing::HandshakeSuccessV2,
+}
+
+async fn wait_for_v2_pairing_success(
+    connection: &dyn JsonRpcConnection,
     mut responses: BoxStream<'static, String>,
     remote_subscription_slot: SharedRemoteSubscriptionId,
-) -> Result<Vec<u8>, String> {
+    topic: [u8; 32],
+    core_encryption_secret_key: [u8; 32],
+) -> Result<PairingSuccess, String> {
     let mut remote_subscription_id = None;
-    while let Some(frame) = responses.next().await {
-        if remote_subscription_id.is_none()
-            && let Some(id) = parse_subscribe_ack(&frame, PAIRING_SUBSCRIBE_REQUEST_ID)
-                .map_err(|err| err.to_string())?
-        {
-            *remote_subscription_slot
-                .lock()
-                .expect("pairing subscription id mutex poisoned") = Some(id.clone());
-            remote_subscription_id = Some(id);
-            continue;
+    let mut query_counter = 0usize;
+    let mut pending_query_request_id = None;
+    let mut pending_query_remote_id = None;
+    let poll = futures_timer::Delay::new(PAIRING_QUERY_INTERVAL).fuse();
+    pin_mut!(poll);
+    loop {
+        futures::select! {
+            frame = responses.next().fuse() => {
+                let Some(frame) = frame else {
+                    return Err("pairing statement-store response stream ended".to_string());
+                };
+                if let Some(success) = handle_v2_pairing_frame(
+                    connection,
+                    &frame,
+                    &mut remote_subscription_id,
+                    &remote_subscription_slot,
+                    &mut pending_query_request_id,
+                    &mut pending_query_remote_id,
+                    core_encryption_secret_key,
+                )? {
+                    return Ok(success);
+                }
+            }
+            _ = poll => {
+                if pending_query_request_id.is_none() {
+                    query_counter += 1;
+                    let query_request_id =
+                        format!("{PAIRING_SUBSCRIBE_REQUEST_ID}:query:{query_counter}");
+                    connection.send(subscribe_match_all_request(&query_request_id, &[topic]));
+                    pending_query_request_id = Some(query_request_id);
+                }
+                poll.set(futures_timer::Delay::new(PAIRING_QUERY_INTERVAL).fuse());
+            }
         }
+    }
+}
 
-        let Some(page) = parse_new_statements(&frame).map_err(|err| err.to_string())? else {
-            continue;
-        };
-        if remote_subscription_id
-            .as_ref()
-            .is_some_and(|expected| expected != &page.remote_subscription_id)
+fn handle_v2_pairing_frame(
+    connection: &dyn JsonRpcConnection,
+    frame: &str,
+    remote_subscription_id: &mut Option<String>,
+    remote_subscription_slot: &SharedRemoteSubscriptionId,
+    pending_query_request_id: &mut Option<String>,
+    pending_query_remote_id: &mut Option<String>,
+    core_encryption_secret_key: [u8; 32],
+) -> Result<Option<PairingSuccess>, String> {
+    if remote_subscription_id.is_none()
+        && let Some(id) = parse_subscribe_ack(frame, PAIRING_SUBSCRIBE_REQUEST_ID)
+            .map_err(|err| err.to_string())?
+    {
+        *remote_subscription_slot
+            .lock()
+            .expect("pairing subscription id mutex poisoned") = Some(id.clone());
+        *remote_subscription_id = Some(id);
+        return Ok(None);
+    }
+    if let Some(query_request_id) = pending_query_request_id.as_deref()
+        && let Some(id) =
+            parse_subscribe_ack(frame, query_request_id).map_err(|err| err.to_string())?
+    {
+        *pending_query_remote_id = Some(id);
+        return Ok(None);
+    }
+
+    let Some(page) = parse_new_statements(frame).map_err(|err| err.to_string())? else {
+        return Ok(None);
+    };
+    let is_live_subscription =
+        Some(page.remote_subscription_id.as_str()) == remote_subscription_id.as_deref();
+    let is_query_subscription =
+        Some(page.remote_subscription_id.as_str()) == pending_query_remote_id.as_deref();
+    if !is_live_subscription && !is_query_subscription {
+        return Ok(None);
+    }
+
+    if is_query_subscription && page.remaining.unwrap_or(0) == 0 {
+        connection.send(unsubscribe_request(
+            &format!(
+                "{}:unsubscribe",
+                pending_query_request_id
+                    .as_deref()
+                    .unwrap_or(PAIRING_SUBSCRIBE_REQUEST_ID)
+            ),
+            &page.remote_subscription_id,
+        ));
+        *pending_query_request_id = None;
+        *pending_query_remote_id = None;
+    }
+    for statement in page.statements {
+        if let Some(success) = decode_v2_pairing_statement(&statement, core_encryption_secret_key)?
         {
-            continue;
-        }
-        if let Some(statement) = page.statements.into_iter().next() {
-            return Ok(statement);
+            return Ok(Some(success));
         }
     }
 
-    Err("pairing statement-store response stream ended".to_string())
+    Ok(None)
+}
+
+fn decode_v2_pairing_statement(
+    statement: &[u8],
+    core_encryption_secret_key: [u8; 32],
+) -> Result<Option<PairingSuccess>, String> {
+    let verified =
+        decode_verified_statement_data(statement, None).map_err(|err| err.to_string())?;
+    let handshake = decode_app_handshake_data(&verified.data)?;
+    let VersionedHandshakeResponse::V2 {
+        encrypted_message,
+        public_key,
+    } = handshake
+    else {
+        return Err("pairing response is not SSO V2".to_string());
+    };
+    match decrypt_v2_handshake_response(core_encryption_secret_key, public_key, &encrypted_message)?
+    {
+        EncryptedHandshakeResponseV2::Pending(_) => Ok(None),
+        EncryptedHandshakeResponseV2::Failed(reason) => Err(reason),
+        EncryptedHandshakeResponseV2::Success(success) => Ok(Some(PairingSuccess {
+            peer_statement_account_id: verified.signer,
+            success,
+        })),
+    }
 }
 
 impl<P> Signing for PlatformRuntimeHost<P>
@@ -2581,7 +2677,7 @@ where
                 },
             )));
         };
-        let Some(entropy_secret) = session.entropy_secret else {
+        let Some(root_entropy_source) = session.root_entropy_source else {
             return Err(CallError::Domain(HostDeriveEntropyError::V1(
                 v01::HostDeriveEntropyError::Unknown {
                     reason: "Session secret missing".to_string(),
@@ -2589,15 +2685,18 @@ where
             )));
         };
 
-        let entropy =
-            derive_product_entropy(&entropy_secret, &self.runtime_config.product_id, &context)
-                .map_err(|err| {
-                    CallError::Domain(HostDeriveEntropyError::V1(
-                        v01::HostDeriveEntropyError::Unknown {
-                            reason: err.to_string(),
-                        },
-                    ))
-                })?;
+        let entropy = derive_product_entropy_from_source(
+            &root_entropy_source,
+            &self.runtime_config.product_id,
+            &context,
+        )
+        .map_err(|err| {
+            CallError::Domain(HostDeriveEntropyError::V1(
+                v01::HostDeriveEntropyError::Unknown {
+                    reason: err.to_string(),
+                },
+            ))
+        })?;
 
         Ok(HostDeriveEntropyResponse::V1(
             v01::HostDeriveEntropyResponse { entropy },
@@ -2828,7 +2927,11 @@ mod tests {
             product_label: product_id.trim_end_matches(".dot").to_string(),
             product_id: product_id.to_string(),
             site_id: "test".to_string(),
-            host_metadata_url: "https://example.invalid/metadata.json".to_string(),
+            host_name: "Polkadot Web".to_string(),
+            host_icon: Some("https://example.invalid/dotli.png".to_string()),
+            host_version: None,
+            platform_type: None,
+            platform_version: None,
             people_chain_genesis_hash: [0; 32],
             pairing_deeplink_scheme: truapi_platform::PairingDeeplinkScheme::PolkadotApp,
         }
@@ -2842,7 +2945,11 @@ mod tests {
                 0xc1, 0xd7, 0x20, 0x23,
             ],
             sso: None,
-            entropy_secret: Some((0..32).map(|i| i as u8).collect()),
+            root_entropy_source: Some([
+                0x15, 0xcb, 0x94, 0x34, 0x84, 0x0b, 0x56, 0xbe, 0x1f, 0xdd, 0x91, 0xc4, 0x6a, 0x13,
+                0xf5, 0x20, 0xf4, 0x91, 0x61, 0x2e, 0xa5, 0xd6, 0x06, 0x92, 0x0d, 0x91, 0x38, 0xe8,
+                0xbd, 0xd6, 0x3c, 0xb0,
+            ]),
             lite_username: Some("alice".to_string()),
             full_username: Some("Alice Smith".to_string()),
         }
@@ -2872,7 +2979,7 @@ mod tests {
             response_channel: [7; 32],
             peer_request_channel: [8; 32],
         });
-        session.entropy_secret = Some(keypair.secret.to_bytes().to_vec());
+        session.root_entropy_source = Some(keypair.secret.to_bytes()[..32].try_into().unwrap());
         session
     }
 
@@ -3065,7 +3172,7 @@ mod tests {
             .nth(1)
             .expect("pairing deeplink should include handshake");
         let handshake = hex::decode(encoded).expect("handshake should be hex");
-        assert_eq!(handshake[0], 0);
+        assert_eq!(handshake[0], 1);
         handshake[33..98]
             .try_into()
             .expect("handshake should include core encryption key")
@@ -3079,16 +3186,23 @@ mod tests {
         let wallet_ephemeral_public = wallet_ephemeral_secret.public_key().to_encoded_point(false);
         let mut wallet_ephemeral_public_bytes = [0u8; 65];
         wallet_ephemeral_public_bytes.copy_from_slice(wallet_ephemeral_public.as_bytes());
-        let wallet_persistent_public = P256SecretKey::from_slice(&[2; 32])
+        let wallet_persistent_public: [u8; 65] = P256SecretKey::from_slice(&[2; 32])
             .unwrap()
             .public_key()
-            .to_encoded_point(false);
-        let (_, identity_account_id) = peer_statement_keypair();
-        let answer = crate::host_logic::sso_pairing::SsoHandshakeAnswerSensitiveData {
-            shared_secret_derivation_key: wallet_persistent_public.as_bytes().try_into().unwrap(),
-            root_user_account_id: session_info().public_key,
-            identity_account_id,
-        };
+            .to_encoded_point(false)
+            .as_bytes()
+            .try_into()
+            .unwrap();
+        let answer = crate::host_logic::sso_pairing::EncryptedHandshakeResponseV2::Success(
+            crate::host_logic::sso_pairing::HandshakeSuccessV2 {
+                identity_account_id: peer_statement_keypair().1,
+                root_account_id: session_info().public_key,
+                identity_chat_private_key: [0x77; 32],
+                sso_enc_pub_key: wallet_persistent_public,
+                device_enc_pub_key: wallet_persistent_public,
+                root_entropy_source: [0x66; 32],
+            },
+        );
         let shared_secret = diffie_hellman(
             wallet_ephemeral_secret.to_nonzero_scalar(),
             core_public_key.as_affine(),
@@ -3104,7 +3218,7 @@ mod tests {
                 .encrypt(Nonce::from_slice(&nonce), answer.encode().as_slice())
                 .unwrap(),
         );
-        let handshake = crate::host_logic::sso_pairing::AppHandshakeData::V1 {
+        let handshake = crate::host_logic::sso_pairing::VersionedHandshakeResponse::V2 {
             encrypted_message,
             public_key: wallet_ephemeral_public_bytes,
         };
@@ -4230,7 +4344,7 @@ mod tests {
     fn derive_entropy_requires_secret() {
         let host = PlatformRuntimeHost::new_compat(stub_platform(), test_spawner());
         let mut session = session_info();
-        session.entropy_secret = None;
+        session.root_entropy_source = None;
         host.session_state().set_session(session);
         let cx = CallContext::new();
         let request = HostDeriveEntropyRequest::V1(v01::HostDeriveEntropyRequest {
@@ -4949,7 +5063,12 @@ mod tests {
             other => panic!("expected cancellation domain error, got {other:?}"),
         }
         let sent_rpc = platform.sent_rpc.lock().expect("rpc list mutex poisoned");
-        assert_eq!(sent_rpc.len(), 1);
+        assert!(
+            sent_rpc
+                .iter()
+                .any(|request| request.contains(PAIRING_SUBSCRIBE_REQUEST_ID)),
+            "pairing subscription should be started before cancellation"
+        );
         let presented = platform
             .presented_pairings
             .lock()
@@ -4963,7 +5082,7 @@ mod tests {
         let wallet_ephemeral_public = wallet_ephemeral_secret.public_key().to_encoded_point(false);
         let mut wallet_ephemeral_public_bytes = [0u8; 65];
         wallet_ephemeral_public_bytes.copy_from_slice(wallet_ephemeral_public.as_bytes());
-        let handshake = crate::host_logic::sso_pairing::AppHandshakeData::V1 {
+        let handshake = crate::host_logic::sso_pairing::VersionedHandshakeResponse::V2 {
             encrypted_message: vec![0xde, 0xad],
             public_key: wallet_ephemeral_public_bytes,
         };
@@ -4999,11 +5118,14 @@ mod tests {
             .map(|request| request["method"].as_str().unwrap().to_string())
             .collect::<Vec<_>>();
         assert_eq!(
-            methods,
-            vec![
-                "statement_subscribeStatement",
-                "statement_unsubscribeStatement"
-            ]
+            methods.first().map(String::as_str),
+            Some("statement_subscribeStatement")
+        );
+        assert!(
+            methods
+                .iter()
+                .any(|method| method == "statement_unsubscribeStatement"),
+            "pairing subscription should be cleaned up"
         );
         let unsubscribe: serde_json::Value = serde_json::from_str(&sent_rpc[1]).unwrap();
         assert_eq!(unsubscribe["params"][0], "remote-sub");
@@ -5051,10 +5173,7 @@ mod tests {
             .current()
             .expect("paired session should be active");
         assert_eq!(session.public_key, session_info().public_key);
-        assert_eq!(
-            session.entropy_secret.as_deref(),
-            Some(&session.sso.as_ref().unwrap().ss_secret[..])
-        );
+        assert_eq!(session.root_entropy_source, Some([0x66; 32]));
         assert_eq!(
             session.sso.as_ref().unwrap().identity_account_id,
             peer_statement_keypair().1
@@ -5078,11 +5197,14 @@ mod tests {
             .map(|request| request["method"].as_str().unwrap().to_string())
             .collect::<Vec<_>>();
         assert_eq!(
-            methods,
-            vec![
-                "statement_subscribeStatement",
-                "statement_unsubscribeStatement"
-            ]
+            methods.first().map(String::as_str),
+            Some("statement_subscribeStatement")
+        );
+        assert!(
+            methods
+                .iter()
+                .any(|method| method == "statement_unsubscribeStatement"),
+            "pairing subscription should be cleaned up"
         );
     }
 

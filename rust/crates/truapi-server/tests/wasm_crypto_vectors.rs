@@ -9,16 +9,17 @@ use p256::elliptic_curve::sec1::ToEncodedPoint;
 use parity_scale_codec::{Decode, Encode};
 use schnorrkel::{ExpansionMode, MiniSecretKey};
 use sha2::Sha256;
-use truapi_platform::PairingDeeplinkScheme;
+use truapi_platform::{PairingDeeplinkScheme, RuntimeConfig};
 use truapi_server::host_logic::entropy::derive_product_entropy;
 use truapi_server::host_logic::product_account::{
     derive_product_public_key, product_public_key_to_address,
 };
 use truapi_server::host_logic::session::SsoSessionInfo;
 use truapi_server::host_logic::sso_pairing::{
-    AES_GCM_NONCE_LEN, AppHandshakeData, PairingBootstrap, SsoHandshakeAnswerSensitiveData,
-    SsoStatementData, bootstrap_topic, build_pairing_deeplink, decode_app_handshake_data,
-    decrypt_handshake_answer, decrypt_session_statement_data,
+    AES_GCM_NONCE_LEN, EncryptedHandshakeResponseV2, HandshakeMetadataEntry, HandshakeMetadataKey,
+    HandshakeSuccessV2, PairingBootstrap, SsoStatementData, VersionedHandshakeProposal,
+    VersionedHandshakeResponse, bootstrap_topic, build_pairing_deeplink, decode_app_handshake_data,
+    decrypt_session_statement_data, decrypt_v2_handshake_response,
     encrypt_session_statement_data_with_nonce, establish_sso_session_info,
 };
 use truapi_server::host_logic::statement_store::{
@@ -52,6 +53,21 @@ fn entropy_secret() -> [u8; 32] {
     secret
 }
 
+fn runtime_config() -> RuntimeConfig {
+    RuntimeConfig {
+        product_label: "dotli".to_string(),
+        product_id: "dotli.dot".to_string(),
+        site_id: "dot.li".to_string(),
+        host_name: "Polkadot Web".to_string(),
+        host_icon: Some("https://example.invalid/dotli.png".to_string()),
+        host_version: Some("1.2.3".to_string()),
+        platform_type: Some("Firefox".to_string()),
+        platform_version: Some("192.32".to_string()),
+        people_chain_genesis_hash: [0xa2; 32],
+        pairing_deeplink_scheme: PairingDeeplinkScheme::PolkadotApp,
+    }
+}
+
 fn statement_session() -> SsoSessionInfo {
     let mini_secret = MiniSecretKey::from_bytes(&[7; 32]).unwrap();
     let keypair = mini_secret.expand_to_keypair(ExpansionMode::Ed25519);
@@ -81,18 +97,14 @@ fn sso_session() -> SsoSessionInfo {
         encryption_secret_key: [1; 32],
     };
     let peer_secret = SecretKey::from_slice(&[2; 32]).unwrap();
-    let answer = SsoHandshakeAnswerSensitiveData {
-        shared_secret_derivation_key: peer_secret
-            .public_key()
-            .to_encoded_point(false)
-            .as_bytes()
-            .try_into()
-            .unwrap(),
-        root_user_account_id: [0x44; 32],
-        identity_account_id: [0x55; 32],
-    };
+    let peer_sso_enc_pub_key = peer_secret
+        .public_key()
+        .to_encoded_point(false)
+        .as_bytes()
+        .try_into()
+        .unwrap();
 
-    establish_sso_session_info(&bootstrap, &answer).unwrap()
+    establish_sso_session_info(&bootstrap, [0x55; 32], peer_sso_enc_pub_key).unwrap()
 }
 
 #[wasm_bindgen_test]
@@ -116,22 +128,35 @@ fn product_account_and_entropy_vectors_match_dotli() {
 
 #[wasm_bindgen_test]
 fn pairing_deeplink_topic_and_scale_vectors_match_dotli() {
+    let config = runtime_config();
     let deeplink = build_pairing_deeplink(
         PairingDeeplinkScheme::PolkadotApp,
         SS_PUBLIC,
         ENC_PUBLIC,
-        "https://example.invalid/metadata.json",
+        &config,
     );
-    assert_eq!(
-        deeplink,
-        "polkadotapp://pair?handshake=00000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f04000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f9468747470733a2f2f6578616d706c652e696e76616c69642f6d657461646174612e6a736f6e"
-    );
+    assert!(deeplink.starts_with("polkadotapp://pair?handshake=01"));
+    let encoded = hex::decode(deeplink.split("handshake=").nth(1).unwrap()).unwrap();
+    let decoded = VersionedHandshakeProposal::decode(&mut &encoded[..]).unwrap();
+    let VersionedHandshakeProposal::V2(proposal) = decoded else {
+        panic!("expected V2 proposal");
+    };
+    assert_eq!(proposal.device.statement_account_id, SS_PUBLIC);
+    assert_eq!(proposal.device.encryption_public_key, ENC_PUBLIC);
+    assert!(proposal.metadata.contains(&HandshakeMetadataEntry(
+        HandshakeMetadataKey::HostName,
+        "Polkadot Web".to_string()
+    )));
+    assert!(proposal.metadata.contains(&HandshakeMetadataEntry(
+        HandshakeMetadataKey::HostIcon,
+        "https://example.invalid/dotli.png".to_string()
+    )));
     assert_eq!(
         hex::encode(bootstrap_topic(SS_PUBLIC, ENC_PUBLIC)),
         "031c589833c39b1dfbe3c1304ced75fa7b0d841035db008e5b407bfadd2779a4"
     );
 
-    let answer = AppHandshakeData::V1 {
+    let answer = VersionedHandshakeResponse::V2 {
         encrypted_message: vec![0xde, 0xad],
         public_key: ENC_PUBLIC,
     };
@@ -152,11 +177,14 @@ fn p256_hkdf_aes_gcm_vectors_work_on_wasm() {
     let mut aes_key = [0u8; 32];
     hkdf.expand(&[], &mut aes_key).unwrap();
 
-    let sensitive = SsoHandshakeAnswerSensitiveData {
-        shared_secret_derivation_key: ENC_PUBLIC,
-        root_user_account_id: [7; 32],
+    let sensitive = EncryptedHandshakeResponseV2::Success(HandshakeSuccessV2 {
         identity_account_id: [8; 32],
-    };
+        root_account_id: [7; 32],
+        identity_chat_private_key: [6; 32],
+        sso_enc_pub_key: ENC_PUBLIC,
+        device_enc_pub_key: ENC_PUBLIC,
+        root_entropy_source: [5; 32],
+    });
     let nonce = [9u8; AES_GCM_NONCE_LEN];
     let cipher = Aes256Gcm::new_from_slice(&aes_key).unwrap();
     let mut encrypted = nonce.to_vec();
@@ -167,7 +195,7 @@ fn p256_hkdf_aes_gcm_vectors_work_on_wasm() {
     );
 
     assert_eq!(
-        decrypt_handshake_answer(
+        decrypt_v2_handshake_response(
             core_secret.to_bytes().into(),
             wallet_ephemeral_public.as_bytes().try_into().unwrap(),
             &encrypted,
