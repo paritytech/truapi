@@ -302,10 +302,31 @@ pub fn decode_sso_session_statement(
     expected_statement_request_id: &str,
     expected_remote_message_id: &str,
 ) -> Result<Option<SsoSessionStatement>, String> {
-    let encrypted = decode_verified_statement_data(statement, Some(session.identity_account_id))
-        .map_err(|err| err.to_string())?
-        .data;
+    let verified =
+        decode_verified_statement_data(statement, None).map_err(|err| err.to_string())?;
+    let encrypted = verified.data;
     let data = decrypt_session_statement_data(session, &encrypted)?;
+    if verified.signer == session.ss_public_key {
+        return match data {
+            SsoStatementData::Response {
+                request_id,
+                response_code,
+            } if request_id == expected_statement_request_id => {
+                if response_code == SSO_RESPONSE_CODE_SUCCESS {
+                    Ok(Some(SsoSessionStatement::RequestAccepted))
+                } else {
+                    Err(format!(
+                        "SSO request {request_id} was rejected: {}",
+                        sso_response_code_name(response_code)
+                    ))
+                }
+            }
+            _ => Ok(None),
+        };
+    }
+    if verified.signer != session.identity_account_id {
+        return Err("statement proof signer does not match expected peer".to_string());
+    }
     match data {
         SsoStatementData::Response {
             request_id,
@@ -511,7 +532,9 @@ fn outgoing_request_data(
 mod tests {
     use super::*;
     use crate::host_logic::sso_pairing::decrypt_session_statement_data;
-    use crate::host_logic::statement_store::{StatementField, decode_statement_data};
+    use crate::host_logic::statement_store::{
+        StatementField, build_signed_statement, decode_statement_data,
+    };
     use p256::SecretKey as P256SecretKey;
     use p256::elliptic_curve::sec1::ToEncodedPoint;
     use schnorrkel::{ExpansionMode, MiniSecretKey};
@@ -678,5 +701,59 @@ mod tests {
         assert_eq!(fields[1], StatementField::Expiry(99));
         assert_eq!(fields[2], StatementField::Channel(session.request_channel));
         assert_eq!(fields[3], StatementField::Topic1(session.session_id_own));
+    }
+
+    #[test]
+    fn ignores_own_echoed_session_request_statement() {
+        let session = session();
+        let remote_message = sign_raw_message(
+            "remote-1".to_string(),
+            v01::HostSignRawRequest {
+                account: account(),
+                payload: v01::RawPayload::Payload {
+                    payload: "<Bytes>hello</Bytes>".to_string(),
+                },
+            },
+        );
+        let statement = build_outgoing_request_statement_with_nonce(
+            &session,
+            "statement-1".to_string(),
+            vec![remote_message],
+            99,
+            [9; AES_GCM_NONCE_LEN],
+        )
+        .unwrap();
+
+        let decoded =
+            decode_sso_session_statement(&session, &statement, "statement-1", "remote-1").unwrap();
+
+        assert_eq!(decoded, None);
+    }
+
+    #[test]
+    fn accepts_own_echoed_session_response_ack() {
+        let session = session();
+        let encrypted = encrypt_session_statement_data_with_nonce(
+            &session,
+            &SsoStatementData::Response {
+                request_id: "statement-1".to_string(),
+                response_code: SSO_RESPONSE_CODE_SUCCESS,
+            },
+            [9; AES_GCM_NONCE_LEN],
+        )
+        .unwrap();
+        let statement = build_signed_statement(
+            &session,
+            session.response_channel,
+            session.session_id_own,
+            encrypted,
+            99,
+        )
+        .unwrap();
+
+        let decoded =
+            decode_sso_session_statement(&session, &statement, "statement-1", "remote-1").unwrap();
+
+        assert_eq!(decoded, Some(SsoSessionStatement::RequestAccepted));
     }
 }

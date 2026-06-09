@@ -12,6 +12,7 @@ export type {
   ChainProvider,
   Features,
   HostCallbacks,
+  LogLevel,
   Navigation,
   Notifications,
   Permissions,

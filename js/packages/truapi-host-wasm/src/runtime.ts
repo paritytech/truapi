@@ -47,6 +47,14 @@ export interface ChainConnection {
   close(): void;
 }
 
+/**
+ * Verbosity threshold for the wasm core's `tracing` output. `off` silences
+ * it; the rest map to the matching browser `console` method (`debug`/`trace`
+ * land on `console.debug`, hidden in Chrome unless the console level dropdown
+ * includes "Verbose").
+ */
+export type LogLevel = "off" | "error" | "warn" | "info" | "debug" | "trace";
+
 export interface WasmRuntimeConfig {
   productLabel: string;
   productId: string;
@@ -179,6 +187,13 @@ export interface TrUApiHostWasmProvider extends Provider {
    * Disconnected from the Rust core.
    */
   disconnect(): Promise<void>;
+
+  /**
+   * Re-tune the wasm core's log level at runtime. Present on runtimes that
+   * keep a live channel to the core (e.g. the Web Worker provider); absent on
+   * one-shot constructions that only accept `logLevel` up front.
+   */
+  setLogLevel?(level: LogLevel): void;
 }
 
 /**

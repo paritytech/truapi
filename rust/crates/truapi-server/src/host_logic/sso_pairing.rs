@@ -36,6 +36,14 @@ pub struct PairingBootstrap {
     pub encryption_secret_key: [u8; 32],
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct PairingDeviceIdentity {
+    pub statement_store_secret: [u8; 64],
+    pub statement_store_public_key: [u8; 32],
+    pub encryption_secret_key: [u8; 32],
+    pub encryption_public_key: [u8; 65],
+}
+
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum PairingBootstrapError {
     #[error("failed to generate random pairing material: {0}")]
@@ -359,23 +367,43 @@ fn keyed_hash(key: [u8; 32], message: &[u8]) -> [u8; 32] {
 pub fn create_pairing_bootstrap(
     config: &RuntimeConfig,
 ) -> Result<PairingBootstrap, PairingBootstrapError> {
+    create_pairing_bootstrap_from_identity(config, generate_pairing_device_identity()?)
+}
+
+pub fn generate_pairing_device_identity() -> Result<PairingDeviceIdentity, PairingBootstrapError> {
     let (statement_store_secret, statement_store_public_key) = generate_statement_store_keypair()?;
     let (encryption_secret_key, encryption_public_key) = generate_p256_keypair()?;
+
+    Ok(PairingDeviceIdentity {
+        statement_store_secret,
+        statement_store_public_key,
+        encryption_secret_key,
+        encryption_public_key,
+    })
+}
+
+pub fn create_pairing_bootstrap_from_identity(
+    config: &RuntimeConfig,
+    identity: PairingDeviceIdentity,
+) -> Result<PairingBootstrap, PairingBootstrapError> {
     let deeplink = build_pairing_deeplink(
         config.pairing_deeplink_scheme,
-        statement_store_public_key,
-        encryption_public_key,
+        identity.statement_store_public_key,
+        identity.encryption_public_key,
         config,
     );
-    let topic = bootstrap_topic(statement_store_public_key, encryption_public_key);
+    let topic = bootstrap_topic(
+        identity.statement_store_public_key,
+        identity.encryption_public_key,
+    );
 
     Ok(PairingBootstrap {
         deeplink,
         topic,
-        statement_store_public_key,
-        statement_store_secret,
-        encryption_public_key,
-        encryption_secret_key,
+        statement_store_public_key: identity.statement_store_public_key,
+        statement_store_secret: identity.statement_store_secret,
+        encryption_public_key: identity.encryption_public_key,
+        encryption_secret_key: identity.encryption_secret_key,
     })
 }
 

@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
-  VersionedHostDevicePermissionRequest,
-  VersionedHostFeatureSupportedRequest,
-  VersionedHostPushNotificationRequest,
-  VersionedRemotePermissionRequest,
+  HostDevicePermissionRequest,
+  HostFeatureSupportedRequest,
+  HostPushNotificationRequest,
+  RemotePermissionRequest,
 } from "@parity/truapi";
 
 import { createWasmRawCallbacks } from "../dist/index.js";
@@ -46,36 +46,29 @@ test("createWasmRawCallbacks decodes SCALE request callbacks into typed host cal
 
   assert.equal(
     await raw.pushNotification(
-      VersionedHostPushNotificationRequest.enc({
-        tag: "V1",
-        value: { text: "hello", deeplink: undefined, scheduledAt: undefined },
+      HostPushNotificationRequest.enc({
+        text: "hello",
+        deeplink: undefined,
+        scheduledAt: undefined,
       }),
     ),
     5,
   );
   assert.equal(
-    await raw.devicePermission(
-      VersionedHostDevicePermissionRequest.enc({
-        tag: "V1",
-        value: "Camera",
-      }),
-    ),
+    await raw.devicePermission(HostDevicePermissionRequest.enc("Camera")),
     true,
   );
   assert.equal(
     await raw.remotePermission(
-      VersionedRemotePermissionRequest.enc({
-        tag: "V1",
-        value: { permission: { tag: "ChainSubmit" } },
-      }),
+      RemotePermissionRequest.enc({ permission: { tag: "ChainSubmit" } }),
     ),
     true,
   );
   assert.equal(
     await raw.featureSupported(
-      VersionedHostFeatureSupportedRequest.enc({
-        tag: "V1",
-        value: { tag: "Chain", value: { genesisHash: GENESIS } },
+      HostFeatureSupportedRequest.enc({
+        tag: "Chain",
+        value: { genesisHash: GENESIS },
       }),
     ),
     true,

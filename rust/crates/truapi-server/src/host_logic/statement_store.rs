@@ -14,6 +14,7 @@ use truapi::v01;
 use crate::host_logic::session::SsoSessionInfo;
 
 pub const SUBSCRIBE_STATEMENT_METHOD: &str = "statement_subscribeStatement";
+pub const STATEMENT_NOTIFICATION_METHOD: &str = "statement_statement";
 pub const UNSUBSCRIBE_STATEMENT_METHOD: &str = "statement_unsubscribeStatement";
 pub const SUBMIT_STATEMENT_METHOD: &str = "statement_submit";
 pub const MAX_MATCH_ALL_TOPICS: usize = 4;
@@ -201,7 +202,8 @@ pub fn parse_new_statements(
     frame: &str,
 ) -> Result<Option<NewStatements>, StatementStoreParseError> {
     let value = parse_frame(frame)?;
-    if value.get("method").and_then(Value::as_str) != Some(SUBSCRIBE_STATEMENT_METHOD) {
+    let method = value.get("method").and_then(Value::as_str);
+    if method != Some(SUBSCRIBE_STATEMENT_METHOD) && method != Some(STATEMENT_NOTIFICATION_METHOD) {
         return Ok(None);
     }
     let params = value
@@ -736,7 +738,7 @@ mod tests {
 
     #[test]
     fn parses_dotli_sdk_new_statements_notification() {
-        let frame = r#"{"jsonrpc":"2.0","method":"statement_subscribeStatement","params":{"subscription":"remote-sub","result":{"event":"newStatements","data":{"statements":["0xdeadbeef","0xcafe"],"remaining":0}}}}"#;
+        let frame = r#"{"jsonrpc":"2.0","method":"statement_statement","params":{"subscription":"remote-sub","result":{"event":"newStatements","data":{"statements":["0xdeadbeef","0xcafe"],"remaining":0}}}}"#;
 
         assert_eq!(
             parse_new_statements(frame).unwrap(),

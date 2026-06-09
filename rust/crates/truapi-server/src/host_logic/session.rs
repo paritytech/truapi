@@ -22,6 +22,8 @@ pub struct SessionInfo {
     pub sso: Option<SsoSessionInfo>,
     /// Wallet-provided source for deterministic product entropy.
     pub root_entropy_source: Option<[u8; 32]>,
+    /// Wallet identity account id used for People-chain username lookup.
+    pub identity_account_id: Option<[u8; 32]>,
     /// Short username (e.g. `alice`).
     pub lite_username: Option<String>,
     /// Fully qualified username (e.g. `Alice Smith`).
@@ -52,7 +54,16 @@ pub struct SsoSessionInfo {
     pub peer_request_channel: [u8; 32],
 }
 
-const PERSISTED_SESSION_VERSION: u8 = 2;
+const PERSISTED_SESSION_VERSION: u8 = 3;
+
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+struct PersistedSessionV2 {
+    public_key: [u8; 32],
+    sso: Option<SsoSessionInfo>,
+    root_entropy_source: Option<[u8; 32]>,
+    lite_username: Option<String>,
+    full_username: Option<String>,
+}
 
 /// Encode the active-session fields the core currently understands into an
 /// opaque host-global session blob. Later SSO channel state should bump
@@ -64,11 +75,25 @@ pub fn encode_persisted_session(info: &SessionInfo) -> Vec<u8> {
 /// Decode a core-owned persisted session blob.
 pub fn decode_persisted_session(blob: &[u8]) -> Result<SessionInfo, String> {
     let mut input = blob;
-    let (version, info): (u8, SessionInfo) =
-        Decode::decode(&mut input).map_err(|err| format!("invalid session blob: {err}"))?;
-    if version != PERSISTED_SESSION_VERSION {
-        return Err(format!("unsupported session blob version {version}"));
-    }
+    let version = u8::decode(&mut input).map_err(|err| format!("invalid session blob: {err}"))?;
+    let info = match version {
+        2 => {
+            let legacy = PersistedSessionV2::decode(&mut input)
+                .map_err(|err| format!("invalid session blob: {err}"))?;
+            SessionInfo {
+                public_key: legacy.public_key,
+                sso: legacy.sso,
+                root_entropy_source: legacy.root_entropy_source,
+                identity_account_id: None,
+                lite_username: legacy.lite_username,
+                full_username: legacy.full_username,
+            }
+        }
+        PERSISTED_SESSION_VERSION => {
+            SessionInfo::decode(&mut input).map_err(|err| format!("invalid session blob: {err}"))?
+        }
+        _ => return Err(format!("unsupported session blob version {version}")),
+    };
     if !input.is_empty() {
         return Err("invalid session blob: trailing bytes".to_string());
     }
@@ -169,6 +194,7 @@ mod tests {
             public_key: [pubkey_byte; 32],
             sso: None,
             root_entropy_source: None,
+            identity_account_id: None,
             lite_username: Some("alice".to_string()),
             full_username: None,
         }
@@ -231,6 +257,24 @@ mod tests {
         let err = decode_persisted_session(&blob).unwrap_err();
 
         assert_eq!(err, "unsupported session blob version 255");
+    }
+
+    #[test]
+    fn persisted_v2_session_decodes_without_identity_account() {
+        let legacy = PersistedSessionV2 {
+            public_key: [0x42; 32],
+            sso: None,
+            root_entropy_source: Some([0x24; 32]),
+            lite_username: Some("alice".to_string()),
+            full_username: None,
+        };
+        let blob = (2u8, legacy).encode();
+
+        let decoded = decode_persisted_session(&blob).expect("v2 session should decode");
+
+        assert_eq!(decoded.public_key, [0x42; 32]);
+        assert_eq!(decoded.identity_account_id, None);
+        assert_eq!(decoded.lite_username.as_deref(), Some("alice"));
     }
 
     #[test]

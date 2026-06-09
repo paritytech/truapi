@@ -113,4 +113,4 @@ them.
 - [x] Docs and README: update `README.md` host-container/debug descriptions and any dotli migration notes
       to describe the Rust bridge and core-owned SSO/session protocol. `hosts/dotli/README.md` now
       describes the `@parity/truapi-host-wasm` worker bridge, core-owned SSO/session lifecycle, and nested
-      dApp cutover decision; `docs/local-e2e-testing.md` documents the `truapi:debug` Rust bridge toggle.
+      dApp cutover decision; `docs/local-e2e-testing.md` documents the `truapi:logLevel` Rust bridge toggle.

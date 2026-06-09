@@ -5,6 +5,8 @@
 // untouched in either direction. Everything else is a control message
 // for callback dispatch, subscription bookkeeping, or chain connections.
 
+import type { LogLevel } from "./runtime.js";
+
 /**
  * Names of every request/response style host callback the wasm core can
  * invoke. Names match the camelCase property keys of `WasmRawCallbacks`.
@@ -63,12 +65,13 @@ export type CallbackArgs = readonly unknown[];
 export type MainToWorker =
   | {
       kind: "init";
-      debug: boolean;
+      logLevel: LogLevel;
       runtimeConfig: unknown;
       optionalCallbacks?: readonly OptionalCallbackName[];
       optionalSubscriptions?: readonly SubscriptionName[];
       chainConnect?: boolean;
     }
+  | { kind: "setLogLevel"; level: LogLevel }
   | { kind: "frame"; bytes: Uint8Array }
   | { kind: "disconnect"; requestId: number }
   | { kind: "callbackResponse"; requestId: number; ok: true; value: unknown }

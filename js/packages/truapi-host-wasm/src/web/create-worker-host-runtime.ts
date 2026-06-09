@@ -1,6 +1,7 @@
 import type {
   CallbackName,
   ChainConnection,
+  LogLevel,
   MainToWorker,
   OptionalCallbackName,
   SubscriptionName,
@@ -9,6 +10,8 @@ import type {
   WasmRawCallbacks,
   WorkerToMain,
 } from "../index.js";
+import { decodeWireMessage } from "@parity/truapi";
+import * as WireTable from "@parity/truapi/wire-table";
 
 interface WorkerProviderState {
   worker: Worker;
@@ -25,6 +28,34 @@ interface WorkerProviderState {
 }
 
 let nextDisconnectRequestId = 0;
+
+const WIRE_ID_KINDS = [
+  "request",
+  "response",
+  "start",
+  "stop",
+  "interrupt",
+  "receive",
+] as const;
+
+const WIRE_TAG_BY_ID = (() => {
+  const map = new Map<number, string>();
+  for (const [name, value] of Object.entries(WireTable)) {
+    if (typeof value !== "object" || value === null) {
+      continue;
+    }
+    const ids = value as Partial<
+      Record<(typeof WIRE_ID_KINDS)[number], unknown>
+    >;
+    for (const kind of WIRE_ID_KINDS) {
+      const id = ids[kind];
+      if (typeof id === "number") {
+        map.set(id, `${name.toLowerCase()}_${kind}`);
+      }
+    }
+  }
+  return map;
+})();
 
 const OPTIONAL_CALLBACK_NAMES: readonly OptionalCallbackName[] = [
   "cancelNotification",
@@ -70,6 +101,37 @@ function errMsg(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === "string") return err;
   return JSON.stringify(err);
+}
+
+function bytesToHex(bytes: Uint8Array, maxBytes = 96): string {
+  const visible = bytes.subarray(0, maxBytes);
+  const hex = Array.from(visible, (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+  const suffix =
+    bytes.length > maxBytes ? `…(+${bytes.length - maxBytes})` : "";
+  return `0x${hex}${suffix}`;
+}
+
+function describeWireFrame(bytes: Uint8Array) {
+  const decoded = decodeWireMessage(bytes);
+  if (decoded.isErr()) {
+    return {
+      frameBytes: bytes.byteLength,
+      decodeError: decoded.error.message,
+      frameHex: bytesToHex(bytes),
+    };
+  }
+  const wireId = decoded.value.payload.id;
+  const payload = decoded.value.payload.value;
+  return {
+    frame: WIRE_TAG_BY_ID.get(wireId) ?? `wire_${String(wireId)}`,
+    requestId: decoded.value.requestId,
+    wireId,
+    frameBytes: bytes.byteLength,
+    payloadBytes: payload.byteLength,
+    payloadHex: bytesToHex(payload),
+  };
 }
 
 function handleCallbackRequest(
@@ -242,6 +304,7 @@ function handleChainSend(
   const conn = state.chainConnections.get(msg.connId);
   if (!conn) return;
   try {
+    console.debug("[truapi worker] chainSend", msg.connId, msg.request);
     conn.send(msg.request);
   } catch (err) {
     console.warn("[truapi worker] chain send threw:", err);
@@ -278,7 +341,10 @@ function handleDisconnectResponse(
   }
 }
 
-function rejectPendingDisconnects(state: WorkerProviderState, error: Error): void {
+function rejectPendingDisconnects(
+  state: WorkerProviderState,
+  error: Error,
+): void {
   for (const pending of state.pendingDisconnects.values()) {
     pending.reject(error);
   }
@@ -286,8 +352,8 @@ function rejectPendingDisconnects(state: WorkerProviderState, error: Error): voi
 }
 
 export interface CreateWebWorkerProviderOptions {
-  /** Toggle the wasm core's debug logging. Default: `false`. */
-  debug?: boolean;
+  /** Wasm core log level. Default: `"off"`. */
+  logLevel?: LogLevel;
   /** Static product/pairing config passed to the Rust core. */
   runtimeConfig: WasmRuntimeConfig;
 }
@@ -350,12 +416,17 @@ export function createWebWorkerProvider(
             listener(new Error(msg.error));
           break;
         case "frame":
+          console.debug(
+            "[truapi worker] frame <-",
+            describeWireFrame(msg.bytes),
+          );
           for (const listener of [...state.listeners]) listener(msg.bytes);
           break;
         case "disconnectResponse":
           handleDisconnectResponse(state, msg);
           break;
         case "callbackRequest":
+          console.debug("[truapi worker] callbackRequest", msg.name);
           handleCallbackRequest(state, msg);
           break;
         case "subscriptionStart":
@@ -365,6 +436,7 @@ export function createWebWorkerProvider(
           handleSubscriptionStop(state, msg);
           break;
         case "chainConnectStart":
+          console.debug("[truapi worker] chainConnectStart", msg.connId);
           void handleChainConnectStart(state, msg);
           break;
         case "chainSend":
@@ -405,7 +477,7 @@ export function createWebWorkerProvider(
       if (msg.kind === "loaded") {
         const init: MainToWorker = {
           kind: "init",
-          debug: options.debug ?? false,
+          logLevel: options.logLevel ?? "off",
           runtimeConfig: options.runtimeConfig,
           optionalCallbacks: optionalCallbacks(callbacks),
           optionalSubscriptions: optionalSubscriptions(callbacks),
@@ -419,7 +491,9 @@ export function createWebWorkerProvider(
         // worker) to close listeners for the provider's lifetime.
         worker.addEventListener("error", onRuntimeError);
         worker.addEventListener("messageerror", onMessageError);
-        resolve(buildProvider(state));
+        const provider = buildProvider(state);
+        exposeDevGlobal(provider);
+        resolve(provider);
       } else if (msg.kind === "error") {
         cleanupInit();
         worker.terminate();
@@ -442,6 +516,7 @@ function buildProvider(state: WorkerProviderState): TrUApiHostWasmProvider {
     postMessage(bytes: Uint8Array): void {
       if (state.disposed) return;
       const post: MainToWorker = { kind: "frame", bytes };
+      console.debug("[truapi worker] frame ->", describeWireFrame(bytes));
       state.worker.postMessage(post);
     },
     subscribe(callback) {
@@ -469,6 +544,11 @@ function buildProvider(state: WorkerProviderState): TrUApiHostWasmProvider {
           reject(err instanceof Error ? err : new Error(String(err)));
         }
       });
+    },
+    setLogLevel(level: LogLevel): void {
+      if (state.disposed) return;
+      const post: MainToWorker = { kind: "setLogLevel", level };
+      state.worker.postMessage(post);
     },
     dispose() {
       if (state.disposed) return;
@@ -499,6 +579,22 @@ function buildProvider(state: WorkerProviderState): TrUApiHostWasmProvider {
       state.worker.terminate();
       state.listeners.clear();
       state.closeListeners.clear();
+    },
+  };
+}
+
+/**
+ * Publish `globalThis.__truapi.setLogLevel(level)` so a developer can re-tune
+ * the wasm core's verbosity live from the browser console without a reload.
+ * Pair with the DevTools console "Verbose" level to surface debug/trace.
+ */
+function exposeDevGlobal(provider: TrUApiHostWasmProvider): void {
+  const target = globalThis as {
+    __truapi?: { setLogLevel(level: LogLevel): void };
+  };
+  target.__truapi = {
+    setLogLevel(level: LogLevel): void {
+      provider.setLogLevel?.(level);
     },
   };
 }

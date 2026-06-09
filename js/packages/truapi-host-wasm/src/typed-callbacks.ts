@@ -1,8 +1,8 @@
 import {
-  VersionedHostDevicePermissionRequest,
-  VersionedHostFeatureSupportedRequest,
-  VersionedHostPushNotificationRequest,
-  VersionedRemotePermissionRequest,
+  HostDevicePermissionRequest,
+  HostFeatureSupportedRequest,
+  HostPushNotificationRequest,
+  RemotePermissionRequest,
   ThemeVariant,
   type GenericError,
   type Result,
@@ -28,14 +28,10 @@ type OptionalTypedCallbacks = Partial<HostCallbacks>;
 
 type RawWithoutEmit = Omit<WasmRawCallbacks, "emitFrame">;
 
-function v1<T>(codec: { dec(bytes: Uint8Array): { tag: "V1"; value: T } }) {
-  return (bytes: Uint8Array): T => codec.dec(bytes).value;
-}
-
-const decodePushNotification = v1(VersionedHostPushNotificationRequest);
-const decodeDevicePermission = v1(VersionedHostDevicePermissionRequest);
-const decodeRemotePermission = v1(VersionedRemotePermissionRequest);
-const decodeFeatureSupported = v1(VersionedHostFeatureSupportedRequest);
+const decodePushNotification = HostPushNotificationRequest.dec;
+const decodeDevicePermission = HostDevicePermissionRequest.dec;
+const decodeRemotePermission = RemotePermissionRequest.dec;
+const decodeFeatureSupported = HostFeatureSupportedRequest.dec;
 
 function errorReason(error: GenericError): string {
   return error.reason;

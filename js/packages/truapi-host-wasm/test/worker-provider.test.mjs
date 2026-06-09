@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import {
+  HostPushNotificationRequest,
+} from "../../truapi/dist/index.js";
+import {
+  createWasmRawCallbacks,
+} from "../dist/index.js";
 import { createWebWorkerProvider } from "../dist/web/index.js";
 
 class FakeWorker {
@@ -89,7 +95,7 @@ test("createWebWorkerProvider advertises only supplied optional hooks", async ()
       chainConnect: () => ({ send: () => {}, close: () => {} }),
     }),
     {
-      debug: true,
+      logLevel: "debug",
       runtimeConfig: config,
     },
   );
@@ -98,7 +104,7 @@ test("createWebWorkerProvider advertises only supplied optional hooks", async ()
   assert.equal(worker.messages.length, 1);
   assert.deepEqual(worker.messages[0], {
     kind: "init",
-    debug: true,
+    logLevel: "debug",
     runtimeConfig: config,
     optionalCallbacks: ["readSession", "clearSession"],
     optionalSubscriptions: ["sessionStoreSubscribe", "preimageLookupSubscribe"],
@@ -171,4 +177,29 @@ test("worker provider dispatches optional callback requests to host hooks", asyn
   });
 
   provider.dispose();
+});
+
+test("typed callbacks decode raw v01 push notification payloads", async () => {
+  let notification;
+  const callbacks = createWasmRawCallbacks({
+    pushNotification: async (request) => {
+      notification = request;
+      return { id: 42 };
+    },
+  });
+
+  const id = await callbacks.pushNotification(
+    HostPushNotificationRequest.enc({
+      text: "Hello!",
+      deeplink: undefined,
+      scheduledAt: undefined,
+    }),
+  );
+
+  assert.equal(id, 42);
+  assert.deepEqual(notification, {
+    text: "Hello!",
+    deeplink: undefined,
+    scheduledAt: undefined,
+  });
 });

@@ -1,5 +1,6 @@
 import {
   createWasmProvider,
+  type LogLevel,
   type TrUApiHostWasmProvider,
   type WasmCoreLike,
   type WasmRawCallbacks,
@@ -8,15 +9,15 @@ import {
 
 interface NodeWasmModuleShape {
   WasmTrUApiCore: new (callbacks: unknown, runtimeConfig: unknown) => WasmCoreLike;
-  setDebugEnabled: (enabled: boolean) => void;
+  setLogLevel: (level: string) => void;
 }
 
 /**
  * Options for `createNodeWasmProvider`.
  */
 export interface CreateNodeWasmProviderOptions {
-  /** Toggle the wasm core's debug logging. Default: `false`. */
-  debug?: boolean;
+  /** Wasm core log level. Default: `"off"`. */
+  logLevel?: LogLevel;
   /** Static product/pairing config passed to the Rust core. */
   runtimeConfig: WasmRuntimeConfig;
 }
@@ -53,7 +54,7 @@ export async function createNodeWasmProvider(
     throw new Error("Node WASM bundle did not export WasmTrUApiCore");
   }
 
-  wasm.setDebugEnabled?.(options.debug ?? false);
+  wasm.setLogLevel?.(options.logLevel ?? "off");
 
   return createWasmProvider(
     (raw) => new wasm.WasmTrUApiCore(raw, options.runtimeConfig),

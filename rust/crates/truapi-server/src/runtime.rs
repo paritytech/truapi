@@ -8,9 +8,14 @@
 //! `CallError::unavailable()`.
 
 use std::pin::Pin;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll};
+
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
+#[cfg(target_arch = "wasm32")]
+use web_time::Duration;
 
 use crate::chain_runtime::{
     ChainRuntime, RuntimeChainProvider, RuntimeFailure, RuntimeFailureKind,
@@ -18,6 +23,9 @@ use crate::chain_runtime::{
 use crate::host_logic::dotns::{NavigateDecision, parse_navigate};
 use crate::host_logic::entropy::derive_product_entropy_from_source;
 use crate::host_logic::features::feature_supported;
+use crate::host_logic::identity::{
+    PeopleIdentity, decode_people_identity, resources_consumers_storage_key,
+};
 use crate::host_logic::permissions::{Decision, PermissionsService};
 use crate::host_logic::product_account::{
     derive_product_public_key, is_product_identifier, product_public_key_to_address,
@@ -32,8 +40,9 @@ use crate::host_logic::sso_messages::{
     resource_allocation_message, sign_payload_message, sign_raw_message,
 };
 use crate::host_logic::sso_pairing::{
-    EncryptedHandshakeResponseV2, VersionedHandshakeResponse, create_pairing_bootstrap,
-    decode_app_handshake_data, decrypt_v2_handshake_response, establish_sso_session_info,
+    EncryptedHandshakeResponseV2, PairingDeviceIdentity, VersionedHandshakeResponse,
+    create_pairing_bootstrap_from_identity, decode_app_handshake_data,
+    decrypt_v2_handshake_response, establish_sso_session_info, generate_pairing_device_identity,
 };
 use crate::host_logic::statement_store::{
     MAX_MATCH_ALL_TOPICS, MAX_MATCH_ANY_TOPICS, TopicFilterKind, decode_signed_statement,
@@ -47,12 +56,17 @@ use crate::subscription::Spawner;
 use futures::channel::oneshot;
 use futures::stream::BoxStream;
 use futures::{FutureExt, StreamExt, pin_mut};
-use parity_scale_codec::Encode;
+use parity_scale_codec::{Decode, Encode};
+use tracing::{debug, info, instrument, warn};
 use truapi::api::{
     Account, Chain, Chat, CoinPayment, Entropy, LocalStorage, Notifications, Payment, Permissions,
     Preimage, ResourceAllocation, Signing, StatementStore, System, Theme,
 };
 use truapi::v01;
+use truapi::v01::{
+    OperationStartedResult, RemoteChainHeadFollowItem as V01RemoteChainHeadFollowItem,
+    StorageQueryType,
+};
 use truapi::versioned::account::{
     HostAccountConnectionStatusSubscribeItem, HostAccountCreateProofError,
     HostAccountCreateProofRequest, HostAccountCreateProofResponse, HostAccountGetAliasError,
@@ -145,12 +159,17 @@ use truapi_platform::{
 };
 
 const PAIRING_SUBSCRIBE_REQUEST_ID: &str = "truapi:sso-pairing:1";
+const PAIRING_DEVICE_IDENTITY_STORAGE_KEY: &str = "truapi:sso-device-identity:v1";
 const DEFAULT_SSO_STATEMENT_EXPIRY_SECS: u64 = 7 * 24 * 60 * 60;
 const DEFAULT_SSO_RESPONSE_TIMEOUT: Duration = Duration::from_secs(180);
 #[cfg(not(test))]
 const PAIRING_QUERY_INTERVAL: Duration = Duration::from_secs(2);
 #[cfg(test)]
 const PAIRING_QUERY_INTERVAL: Duration = Duration::from_millis(1);
+#[cfg(not(test))]
+const PAIRING_QUERY_TIMEOUT_TICKS: u8 = 15;
+#[cfg(test)]
+const PAIRING_QUERY_TIMEOUT_TICKS: u8 = 10;
 const SSO_LOCAL_DISCONNECT_REASON: &str = "SSO session disconnected";
 const SSO_PEER_DISCONNECT_REASON: &str = "SSO peer disconnected";
 
@@ -297,6 +316,8 @@ impl<P> PlatformRuntimeHost<P> {
         P: Platform + 'static,
     {
         let platform = self.platform.clone();
+        let chain = self.chain.clone();
+        let runtime_config = self.runtime_config.clone();
         let session_state = self.session_state.clone();
         spawner(Box::pin(async move {
             let mut ticks = PlatformSessionStore::subscribe_session_store(platform.as_ref());
@@ -306,7 +327,22 @@ impl<P> PlatformRuntimeHost<P> {
                 }
                 match PlatformSessionStore::read_session(platform.as_ref()).await {
                     Ok(Some(blob)) => match decode_persisted_session(&blob) {
-                        Ok(session) => session_state.set_session(session),
+                        Ok(session) => {
+                            let resolved = resolve_session_identity_with_chain(
+                                &chain,
+                                runtime_config.people_chain_genesis_hash,
+                                session,
+                            )
+                            .await;
+                            if encode_persisted_session(&resolved) != blob {
+                                let _ = PlatformSessionStore::write_session(
+                                    platform.as_ref(),
+                                    encode_persisted_session(&resolved),
+                                )
+                                .await;
+                            }
+                            session_state.set_session(resolved);
+                        }
                         Err(_) => {
                             session_state.clear_session();
                             let _ = PlatformSessionStore::clear_session(platform.as_ref()).await;
@@ -359,8 +395,14 @@ impl<P> PlatformRuntimeHost<P> {
     where
         P: Platform + 'static,
     {
+        debug!("clearing disconnected SSO session state");
         self.session_state.clear_session();
         let _ = PlatformSessionStore::clear_session(self.platform.as_ref()).await;
+        let _ = PlatformStorage::clear(
+            self.platform.as_ref(),
+            PAIRING_DEVICE_IDENTITY_STORAGE_KEY.to_string(),
+        )
+        .await;
     }
 }
 
@@ -376,6 +418,15 @@ where
             })
             .await
             .map_err(|err| format!("permission storage failed: {err:?}"))
+    }
+
+    async fn resolve_session_identity(&self, session: SessionInfo) -> SessionInfo {
+        resolve_session_identity_with_chain(
+            &self.chain,
+            self.runtime_config.people_chain_genesis_hash,
+            session,
+        )
+        .await
     }
 
     async fn submit_sso_disconnected(&self, session: &SessionInfo) -> Result<(), String> {
@@ -462,6 +513,7 @@ where
         .map_err(|err| format!("SSO statement-store connect failed: {err:?}"))?;
         let own_subscription_request_id = format!("truapi:sso-sub-own:{message_id}");
         let peer_subscription_request_id = format!("truapi:sso-sub-peer:{message_id}");
+        let submit_request_id = format!("truapi:sso-submit:{message_id}");
         connection.send(subscribe_match_all_request(
             &own_subscription_request_id,
             &[sso.session_id_own],
@@ -470,10 +522,8 @@ where
             &peer_subscription_request_id,
             &[sso.session_id_peer],
         ));
-        connection.send(submit_statement_request(
-            &format!("truapi:sso-submit:{message_id}"),
-            &statement,
-        ));
+        connection.send(submit_statement_request(&submit_request_id, &statement));
+        debug!(action, %message_id, "submitted SSO remote message, awaiting response");
         let responses = connection.responses();
         let subscription_guard = SsoRemoteSubscriptionGuard::new(
             connection,
@@ -487,6 +537,7 @@ where
                 session: sso,
                 own_subscription_request_id: &own_subscription_request_id,
                 peer_subscription_request_id: &peer_subscription_request_id,
+                submit_request_id: &submit_request_id,
                 statement_request_id: &message_id,
                 remote_message_id: &message_id,
                 timeout,
@@ -497,6 +548,10 @@ where
         )
         .await;
         self.session_disconnects.unsubscribe(disconnect_waiter_id);
+        match &result {
+            Ok(_) => debug!(action, %message_id, "SSO remote response received"),
+            Err(reason) => warn!(action, %message_id, %reason, "SSO remote message failed"),
+        }
         if matches!(&result, Err(reason) if reason == SSO_PEER_DISCONNECT_REASON) {
             self.session_disconnects.notify(SSO_PEER_DISCONNECT_REASON);
             self.clear_disconnected_session().await;
@@ -544,6 +599,7 @@ struct SsoRemoteResponseWait<'a> {
     session: &'a SsoSessionInfo,
     own_subscription_request_id: &'a str,
     peer_subscription_request_id: &'a str,
+    submit_request_id: &'a str,
     statement_request_id: &'a str,
     remote_message_id: &'a str,
     timeout: Option<Duration>,
@@ -556,6 +612,7 @@ struct SsoRemoteResponseTarget<'a> {
     session: &'a SsoSessionInfo,
     own_subscription_request_id: &'a str,
     peer_subscription_request_id: &'a str,
+    submit_request_id: &'a str,
     statement_request_id: &'a str,
     remote_message_id: &'a str,
     own_remote_subscription_slot: SharedRemoteSubscriptionId,
@@ -676,6 +733,7 @@ async fn wait_for_sso_remote_response(
             session: wait.session,
             own_subscription_request_id: wait.own_subscription_request_id,
             peer_subscription_request_id: wait.peer_subscription_request_id,
+            submit_request_id: wait.submit_request_id,
             statement_request_id: wait.statement_request_id,
             remote_message_id: wait.remote_message_id,
             own_remote_subscription_slot: wait.own_remote_subscription_id.clone(),
@@ -740,6 +798,12 @@ async fn wait_for_sso_remote_response_inner(
                 .lock()
                 .expect("SSO peer subscription id mutex poisoned") = Some(id.clone());
             peer_remote_subscription_id = Some(id);
+            continue;
+        }
+
+        let submit_ack = parse_submit_ack(&frame, target.submit_request_id)
+            .map_err(|err| format!("SSO statement submit failed: {err}"))?;
+        if submit_ack.is_some() {
             continue;
         }
 
@@ -1217,6 +1281,7 @@ where
         Subscription::new(self.session_state.subscribe())
     }
 
+    #[instrument(skip_all, fields(product = %self.runtime_config.product_id))]
     async fn request_login(
         &self,
         cx: &CallContext,
@@ -1226,63 +1291,63 @@ where
             return Err(request_login_cancelled());
         }
         if self.session_state.current().is_some() {
+            debug!("request_login: already connected, returning early");
             return Ok(HostRequestLoginResponse::V1(
                 v01::HostRequestLoginResponse::AlreadyConnected,
             ));
         }
-        match PlatformSessionStore::read_session(self.platform.as_ref()).await {
-            Ok(Some(blob)) => match decode_persisted_session(&blob) {
-                Ok(session) => {
-                    self.session_state.set_session(session);
-                    return Ok(HostRequestLoginResponse::V1(
-                        v01::HostRequestLoginResponse::Success,
-                    ));
-                }
-                Err(_) => {
-                    self.session_state.clear_session();
-                    PlatformSessionStore::clear_session(self.platform.as_ref())
-                        .await
-                        .map_err(|err| CallError::HostFailure {
-                            reason: format!("invalid session clear failed: {err:?}"),
-                        })?;
-                }
-            },
-            Ok(None) => {}
-            Err(err) => {
-                return Err(CallError::Domain(HostRequestLoginError::V1(
-                    v01::HostRequestLoginError::Unknown {
-                        reason: format!("session restore failed: {err:?}"),
-                    },
-                )));
-            }
-        }
 
-        let bootstrap = create_pairing_bootstrap(&self.runtime_config).map_err(|err| {
-            CallError::Domain(HostRequestLoginError::V1(
-                v01::HostRequestLoginError::Unknown {
-                    reason: err.to_string(),
-                },
-            ))
-        })?;
-        let statement_store = PlatformChainProvider::connect(
-            self.platform.as_ref(),
-            self.runtime_config.people_chain_genesis_hash.to_vec(),
-        )
-        .await
-        .map_err(|err| CallError::HostFailure {
-            reason: format!("pairing statement-store connect failed: {err:?}"),
-        })?;
-        statement_store.send(subscribe_match_all_request(
-            PAIRING_SUBSCRIBE_REQUEST_ID,
-            &[bootstrap.topic],
-        ));
-        let responses = statement_store.responses();
-        let subscription_guard = PairingSubscriptionGuard::new(statement_store);
+        let pairing_identity = load_or_create_pairing_device_identity(self.platform.as_ref())
+            .await
+            .map_err(|reason| {
+                CallError::Domain(HostRequestLoginError::V1(
+                    v01::HostRequestLoginError::Unknown { reason },
+                ))
+            })?;
+        let bootstrap =
+            create_pairing_bootstrap_from_identity(&self.runtime_config, pairing_identity)
+                .map_err(|err| {
+                    CallError::Domain(HostRequestLoginError::V1(
+                        v01::HostRequestLoginError::Unknown {
+                            reason: err.to_string(),
+                        },
+                    ))
+                })?;
         let presenter = PlatformPairingPresenter::present_pairing(
             self.platform.as_ref(),
             bootstrap.deeplink.clone(),
         )
         .fuse();
+        let statement_store_connect = PlatformChainProvider::connect(
+            self.platform.as_ref(),
+            self.runtime_config.people_chain_genesis_hash.to_vec(),
+        )
+        .fuse();
+        let cancellation = wait_for_call_cancelled(cx.cancel().clone()).fuse();
+        pin_mut!(presenter, statement_store_connect, cancellation);
+
+        let statement_store = futures::select! {
+            reason = cancellation => return Err(request_login_cancelled_with_reason(reason)),
+            presenter_result = presenter => {
+                presenter_result.map_err(|err| CallError::HostFailure {
+                    reason: format!("pairing presentation failed: {err:?}"),
+                })?;
+                return Ok(HostRequestLoginResponse::V1(
+                    v01::HostRequestLoginResponse::Rejected,
+                ));
+            }
+            connect_result = statement_store_connect => connect_result.map_err(|err| CallError::HostFailure {
+                reason: format!("pairing statement-store connect failed: {err:?}"),
+            })?,
+        };
+        info!("presenting pairing QR, waiting for wallet handshake");
+        statement_store.send(subscribe_match_all_request(
+            PAIRING_SUBSCRIBE_REQUEST_ID,
+            &[bootstrap.topic],
+        ));
+        debug!("subscribed to pairing topic, polling statement store");
+        let responses = statement_store.responses();
+        let subscription_guard = PairingSubscriptionGuard::new(statement_store);
         let pairing_response = wait_for_v2_pairing_success(
             subscription_guard.connection.as_ref(),
             responses,
@@ -1291,8 +1356,7 @@ where
             bootstrap.encryption_secret_key,
         )
         .fuse();
-        let cancellation = wait_for_call_cancelled(cx.cancel().clone()).fuse();
-        pin_mut!(presenter, pairing_response, cancellation);
+        pin_mut!(pairing_response);
 
         futures::select! {
             reason = cancellation => Err(request_login_cancelled_with_reason(reason)),
@@ -1300,6 +1364,7 @@ where
                 presenter_result.map_err(|err| CallError::HostFailure {
                     reason: format!("pairing presentation failed: {err:?}"),
                 })?;
+                info!("pairing presentation closed before handshake, login rejected");
                 Ok(HostRequestLoginResponse::V1(
                     v01::HostRequestLoginResponse::Rejected,
                 ))
@@ -1318,9 +1383,11 @@ where
                     public_key: response.success.root_account_id,
                     sso: Some(sso),
                     root_entropy_source: Some(response.success.root_entropy_source),
+                    identity_account_id: Some(response.success.identity_account_id),
                     lite_username: None,
                     full_username: None,
                 };
+                let session = self.resolve_session_identity(session).await;
                 PlatformSessionStore::write_session(
                     self.platform.as_ref(),
                     encode_persisted_session(&session),
@@ -1330,6 +1397,7 @@ where
                     reason: format!("session persist failed: {err:?}"),
                 })?;
                 self.session_state.set_session(session);
+                info!("login succeeded, SSO session established");
                 Ok(HostRequestLoginResponse::V1(
                     v01::HostRequestLoginResponse::Success,
                 ))
@@ -1338,8 +1406,232 @@ where
     }
 }
 
+static IDENTITY_LOOKUP_COUNTER: AtomicU64 = AtomicU64::new(1);
+
+async fn resolve_session_identity_with_chain(
+    chain: &ChainRuntime,
+    people_chain_genesis_hash: [u8; 32],
+    mut session: SessionInfo,
+) -> SessionInfo {
+    if session_has_username(&session) || people_chain_genesis_hash == [0; 32] {
+        return session;
+    }
+
+    let preferred_account = session.identity_account_id.unwrap_or(session.public_key);
+    match lookup_people_identity(chain, people_chain_genesis_hash, preferred_account).await {
+        Ok(Some(identity)) => {
+            apply_people_identity(&mut session, identity);
+            return session;
+        }
+        Ok(None) => {}
+        Err(reason) => warn!(
+            account = %hex::encode(preferred_account),
+            %reason,
+            "People-chain identity lookup failed"
+        ),
+    }
+
+    if preferred_account != session.public_key {
+        match lookup_people_identity(chain, people_chain_genesis_hash, session.public_key).await {
+            Ok(Some(identity)) => apply_people_identity(&mut session, identity),
+            Ok(None) => {}
+            Err(reason) => warn!(
+                account = %hex::encode(session.public_key),
+                %reason,
+                "People-chain root identity lookup failed"
+            ),
+        }
+    }
+
+    session
+}
+
+fn session_has_username(session: &SessionInfo) -> bool {
+    session
+        .full_username
+        .as_ref()
+        .is_some_and(|value| !value.is_empty())
+        || session
+            .lite_username
+            .as_ref()
+            .is_some_and(|value| !value.is_empty())
+}
+
+fn apply_people_identity(session: &mut SessionInfo, identity: PeopleIdentity) {
+    if identity
+        .full_username
+        .as_ref()
+        .is_some_and(|value| !value.is_empty())
+    {
+        session.full_username = identity.full_username;
+    }
+    if identity
+        .lite_username
+        .as_ref()
+        .is_some_and(|value| !value.is_empty())
+    {
+        session.lite_username = identity.lite_username;
+    }
+}
+
+async fn lookup_people_identity(
+    chain: &ChainRuntime,
+    people_chain_genesis_hash: [u8; 32],
+    account_id: [u8; 32],
+) -> Result<Option<PeopleIdentity>, String> {
+    let genesis_hash = people_chain_genesis_hash.to_vec();
+    let key = resources_consumers_storage_key(&account_id);
+    let follow_id = format!(
+        "truapi:identity:{}:{}",
+        IDENTITY_LOOKUP_COUNTER.fetch_add(1, Ordering::Relaxed),
+        hex::encode(account_id),
+    );
+    let mut follow = chain.remote_chain_head_follow(
+        follow_id.clone(),
+        v01::RemoteChainHeadFollowRequest {
+            genesis_hash: genesis_hash.clone(),
+            with_runtime: false,
+        },
+    );
+
+    let hash = wait_for_identity_follow_hash(&mut follow).await?;
+    let response = chain
+        .remote_chain_head_storage(v01::RemoteChainHeadStorageRequest {
+            genesis_hash,
+            follow_subscription_id: follow_id,
+            hash,
+            items: vec![v01::StorageQueryItem {
+                key: key.clone(),
+                query_type: StorageQueryType::Value,
+            }],
+            child_trie: None,
+        })
+        .await
+        .map_err(|failure| failure.reason())?;
+
+    let operation_id = match response.operation {
+        OperationStartedResult::Started { operation_id } => operation_id,
+        OperationStartedResult::LimitReached => {
+            return Err("People-chain storage lookup limit reached".to_string());
+        }
+    };
+    let Some(value) = wait_for_identity_storage_value(&mut follow, &operation_id, &key).await?
+    else {
+        return Ok(None);
+    };
+    decode_people_identity(&value).map(Some)
+}
+
+async fn wait_for_identity_follow_hash(
+    follow: &mut BoxStream<'static, V01RemoteChainHeadFollowItem>,
+) -> Result<Vec<u8>, String> {
+    let timeout = futures_timer::Delay::new(Duration::from_secs(10)).fuse();
+    pin_mut!(timeout);
+    loop {
+        let next = follow.next().fuse();
+        pin_mut!(next);
+        futures::select! {
+            item = next => match item {
+                Some(V01RemoteChainHeadFollowItem::Initialized { finalized_block_hashes, .. }) => {
+                    if let Some(hash) = finalized_block_hashes.last() {
+                        return Ok(hash.clone());
+                    }
+                }
+                Some(V01RemoteChainHeadFollowItem::BestBlockChanged { best_block_hash }) => {
+                    return Ok(best_block_hash);
+                }
+                Some(V01RemoteChainHeadFollowItem::Stop) | None => {
+                    return Err("People-chain follow stopped before initialization".to_string());
+                }
+                _ => {}
+            },
+            () = timeout => return Err("People-chain follow initialization timed out".to_string()),
+        }
+    }
+}
+
+async fn wait_for_identity_storage_value(
+    follow: &mut BoxStream<'static, V01RemoteChainHeadFollowItem>,
+    operation_id: &str,
+    key: &[u8],
+) -> Result<Option<Vec<u8>>, String> {
+    let timeout = futures_timer::Delay::new(Duration::from_secs(10)).fuse();
+    pin_mut!(timeout);
+    let mut value = None;
+    loop {
+        let next = follow.next().fuse();
+        pin_mut!(next);
+        futures::select! {
+            item = next => match item {
+                Some(V01RemoteChainHeadFollowItem::OperationStorageItems { operation_id: item_operation_id, items })
+                    if item_operation_id == operation_id =>
+                {
+                    for item in items {
+                        if item.key == key {
+                            value = item.value;
+                        }
+                    }
+                }
+                Some(V01RemoteChainHeadFollowItem::OperationStorageDone { operation_id: item_operation_id })
+                    if item_operation_id == operation_id =>
+                {
+                    return Ok(value);
+                }
+                Some(V01RemoteChainHeadFollowItem::OperationInaccessible { operation_id: item_operation_id })
+                    if item_operation_id == operation_id =>
+                {
+                    return Ok(None);
+                }
+                Some(V01RemoteChainHeadFollowItem::OperationError { operation_id: item_operation_id, error })
+                    if item_operation_id == operation_id =>
+                {
+                    return Err(error);
+                }
+                Some(V01RemoteChainHeadFollowItem::Stop) | None => {
+                    return Err("People-chain follow stopped during storage lookup".to_string());
+                }
+                _ => {}
+            },
+            () = timeout => return Err("People-chain storage lookup timed out".to_string()),
+        }
+    }
+}
+
 const CALL_CANCELLATION_POLL: Duration = Duration::from_millis(10);
 const CALL_CANCELLED_REASON: &str = "request cancelled";
+
+async fn load_or_create_pairing_device_identity(
+    storage: &(impl PlatformStorage + ?Sized),
+) -> Result<PairingDeviceIdentity, String> {
+    if let Some(raw) =
+        PlatformStorage::read(storage, PAIRING_DEVICE_IDENTITY_STORAGE_KEY.to_string())
+            .await
+            .map_err(|err| format!("pairing device identity read failed: {err:?}"))?
+    {
+        match PairingDeviceIdentity::decode(&mut raw.as_slice()) {
+            Ok(identity) => return Ok(identity),
+            Err(err) => {
+                warn!("stored pairing device identity is invalid, regenerating: {err}");
+                let _ = PlatformStorage::clear(
+                    storage,
+                    PAIRING_DEVICE_IDENTITY_STORAGE_KEY.to_string(),
+                )
+                .await;
+            }
+        }
+    }
+
+    let identity = generate_pairing_device_identity()
+        .map_err(|err| format!("pairing identity failed: {err}"))?;
+    PlatformStorage::write(
+        storage,
+        PAIRING_DEVICE_IDENTITY_STORAGE_KEY.to_string(),
+        identity.encode(),
+    )
+    .await
+    .map_err(|err| format!("pairing device identity write failed: {err:?}"))?;
+    Ok(identity)
+}
 
 async fn wait_for_call_cancelled(cancel: CancellationToken) -> String {
     while !cancel.is_cancelled() {
@@ -1371,38 +1663,85 @@ async fn wait_for_v2_pairing_success(
     core_encryption_secret_key: [u8; 32],
 ) -> Result<PairingSuccess, String> {
     let mut remote_subscription_id = None;
-    let mut query_counter = 0usize;
     let mut pending_query_request_id = None;
     let mut pending_query_remote_id = None;
-    let poll = futures_timer::Delay::new(PAIRING_QUERY_INTERVAL).fuse();
-    pin_mut!(poll);
+    let mut pending_query_elapsed_ticks = 0u8;
+
+    #[cfg(target_arch = "wasm32")]
     loop {
-        futures::select! {
-            frame = responses.next().fuse() => {
-                let Some(frame) = frame else {
-                    return Err("pairing statement-store response stream ended".to_string());
-                };
-                if let Some(success) = handle_v2_pairing_frame(
-                    connection,
-                    &frame,
-                    &mut remote_subscription_id,
-                    &remote_subscription_slot,
-                    &mut pending_query_request_id,
-                    &mut pending_query_remote_id,
-                    core_encryption_secret_key,
-                )? {
-                    return Ok(success);
+        let Some(frame) = responses.next().await else {
+            return Err("pairing statement-store response stream ended".to_string());
+        };
+        if let Some(success) = handle_v2_pairing_frame(
+            connection,
+            &frame,
+            &mut remote_subscription_id,
+            &remote_subscription_slot,
+            &mut pending_query_request_id,
+            &mut pending_query_remote_id,
+            &mut pending_query_elapsed_ticks,
+            core_encryption_secret_key,
+        )? {
+            return Ok(success);
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let mut query_counter = 0usize;
+        let poll = futures_timer::Delay::new(PAIRING_QUERY_INTERVAL).fuse();
+        pin_mut!(poll);
+        loop {
+            futures::select! {
+                frame = responses.next().fuse() => {
+                    let Some(frame) = frame else {
+                        return Err("pairing statement-store response stream ended".to_string());
+                    };
+                    if let Some(success) = handle_v2_pairing_frame(
+                        connection,
+                        &frame,
+                        &mut remote_subscription_id,
+                        &remote_subscription_slot,
+                        &mut pending_query_request_id,
+                        &mut pending_query_remote_id,
+                        &mut pending_query_elapsed_ticks,
+                        core_encryption_secret_key,
+                    )? {
+                        return Ok(success);
+                    }
                 }
-            }
-            _ = poll => {
-                if pending_query_request_id.is_none() {
-                    query_counter += 1;
-                    let query_request_id =
-                        format!("{PAIRING_SUBSCRIBE_REQUEST_ID}:query:{query_counter}");
-                    connection.send(subscribe_match_all_request(&query_request_id, &[topic]));
-                    pending_query_request_id = Some(query_request_id);
+                _ = poll => {
+                    if pending_query_request_id.is_some() {
+                        pending_query_elapsed_ticks = pending_query_elapsed_ticks.saturating_add(1);
+                    }
+                    if pending_query_request_id.is_some()
+                        && pending_query_elapsed_ticks >= PAIRING_QUERY_TIMEOUT_TICKS
+                    {
+                        if let Some(remote_id) = pending_query_remote_id.as_deref() {
+                            connection.send(unsubscribe_request(
+                                &format!(
+                                    "{}:timeout-unsubscribe",
+                                    pending_query_request_id
+                                        .as_deref()
+                                        .unwrap_or(PAIRING_SUBSCRIBE_REQUEST_ID)
+                                ),
+                                remote_id,
+                            ));
+                        }
+                        pending_query_request_id = None;
+                        pending_query_remote_id = None;
+                        pending_query_elapsed_ticks = 0;
+                    }
+                    if pending_query_request_id.is_none() {
+                        query_counter += 1;
+                        let query_request_id =
+                            format!("{PAIRING_SUBSCRIBE_REQUEST_ID}:query:{query_counter}");
+                        connection.send(subscribe_match_all_request(&query_request_id, &[topic]));
+                        pending_query_elapsed_ticks = 0;
+                        pending_query_request_id = Some(query_request_id);
+                    }
+                    poll.set(futures_timer::Delay::new(PAIRING_QUERY_INTERVAL).fuse());
                 }
-                poll.set(futures_timer::Delay::new(PAIRING_QUERY_INTERVAL).fuse());
             }
         }
     }
@@ -1415,6 +1754,7 @@ fn handle_v2_pairing_frame(
     remote_subscription_slot: &SharedRemoteSubscriptionId,
     pending_query_request_id: &mut Option<String>,
     pending_query_remote_id: &mut Option<String>,
+    pending_query_elapsed_ticks: &mut u8,
     core_encryption_secret_key: [u8; 32],
 ) -> Result<Option<PairingSuccess>, String> {
     if remote_subscription_id.is_none()
@@ -1427,11 +1767,12 @@ fn handle_v2_pairing_frame(
         *remote_subscription_id = Some(id);
         return Ok(None);
     }
-    if let Some(query_request_id) = pending_query_request_id.as_deref()
-        && let Some(id) =
-            parse_subscribe_ack(frame, query_request_id).map_err(|err| err.to_string())?
+    if let Some((query_request_id, id)) =
+        parse_pairing_query_subscribe_ack(frame, pending_query_request_id.as_deref())?
     {
+        *pending_query_request_id = Some(query_request_id);
         *pending_query_remote_id = Some(id);
+        *pending_query_elapsed_ticks = 0;
         return Ok(None);
     }
 
@@ -1458,6 +1799,7 @@ fn handle_v2_pairing_frame(
         ));
         *pending_query_request_id = None;
         *pending_query_remote_id = None;
+        *pending_query_elapsed_ticks = 0;
     }
     for statement in page.statements {
         if let Some(success) = decode_v2_pairing_statement(&statement, core_encryption_secret_key)?
@@ -1467,6 +1809,37 @@ fn handle_v2_pairing_frame(
     }
 
     Ok(None)
+}
+
+fn parse_pairing_query_subscribe_ack(
+    frame: &str,
+    pending_query_request_id: Option<&str>,
+) -> Result<Option<(String, String)>, String> {
+    if let Some(query_request_id) = pending_query_request_id
+        && let Some(id) =
+            parse_subscribe_ack(frame, query_request_id).map_err(|err| err.to_string())?
+    {
+        return Ok(Some((query_request_id.to_string(), id)));
+    }
+
+    let value: serde_json::Value = serde_json::from_str(frame).map_err(|err| err.to_string())?;
+    let Some(request_id) = value.get("id").and_then(serde_json::Value::as_str) else {
+        return Ok(None);
+    };
+    if !request_id.starts_with(&format!("{PAIRING_SUBSCRIBE_REQUEST_ID}:query:")) {
+        return Ok(None);
+    }
+    if let Some(error) = value.get("error") {
+        return Err(error
+            .get("message")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("statement-store query subscribe failed")
+            .to_string());
+    }
+    let Some(remote_id) = value.get("result").and_then(serde_json::Value::as_str) else {
+        return Err("missing query subscribe result".to_string());
+    };
+    Ok(Some((request_id.to_string(), remote_id.to_string())))
 }
 
 fn decode_v2_pairing_statement(
@@ -1498,11 +1871,13 @@ impl<P> Signing for PlatformRuntimeHost<P>
 where
     P: Platform + 'static,
 {
+    #[instrument(skip_all)]
     async fn sign_payload(
         &self,
         cx: &CallContext,
         request: HostSignPayloadRequest,
     ) -> Result<HostSignPayloadResponse, CallError<HostSignPayloadError>> {
+        info!("sign_payload: requesting wallet signature");
         let HostSignPayloadRequest::V1(inner) = request;
         if !self.is_product_account_valid_for_caller(&inner.account.dot_ns_identifier) {
             return Err(CallError::Domain(HostSignPayloadError::V1(
@@ -1568,11 +1943,13 @@ where
             })
     }
 
+    #[instrument(skip_all)]
     async fn sign_raw(
         &self,
         cx: &CallContext,
         request: HostSignRawRequest,
     ) -> Result<HostSignRawResponse, CallError<HostSignRawError>> {
+        info!("sign_raw: requesting wallet signature");
         let HostSignRawRequest::V1(inner) = request;
         if !self.is_product_account_valid_for_caller(&inner.account.dot_ns_identifier) {
             return Err(CallError::Domain(HostSignRawError::V1(
@@ -1638,11 +2015,13 @@ where
             })
     }
 
+    #[instrument(skip_all)]
     async fn create_transaction(
         &self,
         cx: &CallContext,
         request: HostCreateTransactionRequest,
     ) -> Result<HostCreateTransactionResponse, CallError<HostCreateTransactionError>> {
+        info!("create_transaction: requesting wallet signature");
         let HostCreateTransactionRequest::V1(inner) = request;
         if !self.is_product_account_valid_for_caller(&inner.signer.dot_ns_identifier) {
             return Err(CallError::Domain(HostCreateTransactionError::V1(
@@ -2884,6 +3263,7 @@ mod tests {
         sent_rpc: Arc<Mutex<Vec<String>>>,
         rpc_responses: Vec<String>,
         chain_connect_error: Option<&'static str>,
+        local_storage: Arc<Mutex<std::collections::HashMap<String, Vec<u8>>>>,
     }
 
     impl Default for StubPlatform {
@@ -2914,6 +3294,7 @@ mod tests {
                 sent_rpc: Arc::new(Mutex::new(Vec::new())),
                 rpc_responses: Vec::new(),
                 chain_connect_error: None,
+                local_storage: Arc::new(Mutex::new(std::collections::HashMap::new())),
             }
         }
     }
@@ -2949,6 +3330,11 @@ mod tests {
                 0x15, 0xcb, 0x94, 0x34, 0x84, 0x0b, 0x56, 0xbe, 0x1f, 0xdd, 0x91, 0xc4, 0x6a, 0x13,
                 0xf5, 0x20, 0xf4, 0x91, 0x61, 0x2e, 0xa5, 0xd6, 0x06, 0x92, 0x0d, 0x91, 0x38, 0xe8,
                 0xbd, 0xd6, 0x3c, 0xb0,
+            ]),
+            identity_account_id: Some([
+                0x80, 0x05, 0x28, 0xc9, 0x55, 0x87, 0x3e, 0x4c, 0x78, 0xb7, 0xdf, 0x24, 0xf7, 0x1d,
+                0xb8, 0xf5, 0x81, 0xaa, 0x99, 0xe3, 0x49, 0x3b, 0xf4, 0x96, 0xed, 0xf1, 0x51, 0xab,
+                0xc1, 0xd7, 0x20, 0x23,
             ]),
             lite_username: Some("alice".to_string()),
             full_username: Some("Alice Smith".to_string()),
@@ -3167,15 +3553,27 @@ mod tests {
     }
 
     fn core_encryption_public_key_from_deeplink(deeplink: &str) -> [u8; 65] {
+        pairing_device_from_deeplink(deeplink).1
+    }
+
+    fn pairing_device_from_deeplink(deeplink: &str) -> ([u8; 32], [u8; 65]) {
         let encoded = deeplink
             .split("handshake=")
             .nth(1)
             .expect("pairing deeplink should include handshake");
         let handshake = hex::decode(encoded).expect("handshake should be hex");
-        assert_eq!(handshake[0], 1);
-        handshake[33..98]
-            .try_into()
-            .expect("handshake should include core encryption key")
+        let decoded = crate::host_logic::sso_pairing::VersionedHandshakeProposal::decode(
+            &mut handshake.as_slice(),
+        )
+        .expect("handshake should decode");
+        let crate::host_logic::sso_pairing::VersionedHandshakeProposal::V2(proposal) = decoded
+        else {
+            panic!("handshake should be V2");
+        };
+        (
+            proposal.device.statement_account_id,
+            proposal.device.encryption_public_key,
+        )
     }
 
     fn wallet_handshake_statement(deeplink: &str) -> Vec<u8> {
@@ -3335,18 +3733,31 @@ mod tests {
     impl PlatformStorage for StubPlatform {
         async fn read(
             &self,
-            _key: String,
+            key: String,
         ) -> Result<Option<Vec<u8>>, v01::HostLocalStorageReadError> {
-            Ok(None)
+            Ok(self
+                .local_storage
+                .lock()
+                .expect("local storage mutex poisoned")
+                .get(&key)
+                .cloned())
         }
         async fn write(
             &self,
-            _key: String,
-            _value: Vec<u8>,
+            key: String,
+            value: Vec<u8>,
         ) -> Result<(), v01::HostLocalStorageReadError> {
+            self.local_storage
+                .lock()
+                .expect("local storage mutex poisoned")
+                .insert(key, value);
             Ok(())
         }
-        async fn clear(&self, _key: String) -> Result<(), v01::HostLocalStorageReadError> {
+        async fn clear(&self, key: String) -> Result<(), v01::HostLocalStorageReadError> {
+            self.local_storage
+                .lock()
+                .expect("local storage mutex poisoned")
+                .remove(&key);
             Ok(())
         }
     }
@@ -5008,13 +5419,14 @@ mod tests {
         assert!(presented[0].starts_with("polkadotapp://pair?handshake="));
 
         let sent_rpc = platform.sent_rpc.lock().expect("rpc list mutex poisoned");
-        assert_eq!(sent_rpc.len(), 1);
-        let request: serde_json::Value = serde_json::from_str(&sent_rpc[0]).unwrap();
-        assert_eq!(request["method"], "statement_subscribeStatement");
-        assert_eq!(
-            request["params"][0]["matchAll"][0].as_str().unwrap().len(),
-            66
-        );
+        if let Some(sent) = sent_rpc.first() {
+            let request: serde_json::Value = serde_json::from_str(sent).unwrap();
+            assert_eq!(request["method"], "statement_subscribeStatement");
+            assert_eq!(
+                request["params"][0]["matchAll"][0].as_str().unwrap().len(),
+                66
+            );
+        }
     }
 
     #[test]
@@ -5036,6 +5448,42 @@ mod tests {
             }
             other => panic!("expected presenter host failure, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn request_login_reuses_persisted_pairing_device_identity() {
+        let platform = stub_platform();
+        let host = PlatformRuntimeHost::new_compat(platform.clone(), test_spawner());
+        let cx = CallContext::new();
+        let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
+
+        let first = futures::executor::block_on(host.request_login(&cx, request.clone())).unwrap();
+        let second = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
+
+        assert_eq!(
+            first,
+            HostRequestLoginResponse::V1(v01::HostRequestLoginResponse::Rejected)
+        );
+        assert_eq!(
+            second,
+            HostRequestLoginResponse::V1(v01::HostRequestLoginResponse::Rejected)
+        );
+        let presented = platform
+            .presented_pairings
+            .lock()
+            .expect("pairing list mutex poisoned");
+        assert_eq!(presented.len(), 2);
+        assert_eq!(
+            pairing_device_from_deeplink(&presented[0]),
+            pairing_device_from_deeplink(&presented[1])
+        );
+        assert!(
+            platform
+                .local_storage
+                .lock()
+                .expect("local storage mutex poisoned")
+                .contains_key(PAIRING_DEVICE_IDENTITY_STORAGE_KEY)
+        );
     }
 
     #[test]
@@ -5209,7 +5657,7 @@ mod tests {
     }
 
     #[test]
-    fn request_login_restores_persisted_session() {
+    fn request_login_does_not_restore_persisted_session_before_pairing() {
         let stored = session_info();
         let host = PlatformRuntimeHost::new_compat(
             Arc::new(StubPlatform {
@@ -5226,13 +5674,13 @@ mod tests {
 
         assert_eq!(
             response,
-            HostRequestLoginResponse::V1(v01::HostRequestLoginResponse::Success)
+            HostRequestLoginResponse::V1(v01::HostRequestLoginResponse::Rejected)
         );
-        assert_eq!(host.session_state().current(), Some(stored));
+        assert!(host.session_state().current().is_none());
     }
 
     #[test]
-    fn request_login_clears_corrupt_persisted_session_and_pairs_from_empty() {
+    fn request_login_ignores_corrupt_persisted_session_before_pairing() {
         let session_clears = Arc::new(Mutex::new(0));
         let host = PlatformRuntimeHost::new_compat(
             Arc::new(StubPlatform {
@@ -5251,7 +5699,7 @@ mod tests {
             HostRequestLoginResponse::V1(v01::HostRequestLoginResponse::Rejected)
         );
         assert!(host.session_state().current().is_none());
-        assert_eq!(*session_clears.lock().unwrap(), 1);
+        assert_eq!(*session_clears.lock().unwrap(), 0);
     }
 
     #[test]
@@ -5365,6 +5813,14 @@ mod tests {
         let platform = Arc::new(StubPlatform::default());
         let host = PlatformRuntimeHost::new_compat(platform.clone(), test_spawner());
         host.session_state().set_session(sso_session_info());
+        platform
+            .local_storage
+            .lock()
+            .expect("local storage mutex poisoned")
+            .insert(
+                PAIRING_DEVICE_IDENTITY_STORAGE_KEY.to_string(),
+                vec![1, 2, 3],
+            );
         let mut statuses = host.session_state().subscribe();
         assert_eq!(
             futures::executor::block_on(statuses.next()).unwrap(),
@@ -5382,6 +5838,14 @@ mod tests {
                 .lock()
                 .expect("session clear counter mutex poisoned"),
             1
+        );
+        assert!(
+            !platform
+                .local_storage
+                .lock()
+                .expect("local storage mutex poisoned")
+                .contains_key(PAIRING_DEVICE_IDENTITY_STORAGE_KEY),
+            "logout must rotate the pairing device identity so stale statement-store responses cannot be replayed on the next login"
         );
         assert_eq!(
             futures::executor::block_on(statuses.next()).unwrap(),
@@ -5433,6 +5897,7 @@ mod tests {
                 session: session.sso.as_ref().unwrap(),
                 own_subscription_request_id: "own-sub",
                 peer_subscription_request_id: "peer-sub",
+                submit_request_id: "submit",
                 statement_request_id: "request-1",
                 remote_message_id: "request-1",
                 timeout: Some(Duration::from_millis(1)),
@@ -5447,6 +5912,43 @@ mod tests {
     }
 
     #[test]
+    fn sso_remote_response_waiter_reports_submit_rejections() {
+        let session = sso_session_info();
+        let err = futures::executor::block_on(wait_for_sso_remote_response(
+            stream::iter(vec![
+                serde_json::json!({
+                    "jsonrpc": "2.0",
+                    "id": "submit",
+                    "error": {
+                        "code": -32000,
+                        "message": "no allowance"
+                    },
+                })
+                .to_string(),
+            ])
+            .boxed(),
+            SsoRemoteResponseWait {
+                session: session.sso.as_ref().unwrap(),
+                own_subscription_request_id: "own-sub",
+                peer_subscription_request_id: "peer-sub",
+                submit_request_id: "submit",
+                statement_request_id: "request-1",
+                remote_message_id: "request-1",
+                timeout: Some(Duration::from_secs(60)),
+                disconnect: None,
+                own_remote_subscription_id: remote_subscription_slot(),
+                peer_remote_subscription_id: remote_subscription_slot(),
+            },
+        ))
+        .unwrap_err();
+
+        assert_eq!(
+            err,
+            "SSO statement submit failed: malformed statement-store frame: no allowance"
+        );
+    }
+
+    #[test]
     fn sso_remote_response_waiter_stops_on_local_disconnect_signal() {
         let session = sso_session_info();
         let (tx, rx) = oneshot::channel();
@@ -5457,6 +5959,7 @@ mod tests {
                 session: session.sso.as_ref().unwrap(),
                 own_subscription_request_id: "own-sub",
                 peer_subscription_request_id: "peer-sub",
+                submit_request_id: "submit",
                 statement_request_id: "request-1",
                 remote_message_id: "request-1",
                 timeout: Some(Duration::from_secs(60)),
@@ -5481,6 +5984,7 @@ mod tests {
                 session: session.sso.as_ref().unwrap(),
                 own_subscription_request_id: "own-sub",
                 peer_subscription_request_id: "peer-sub",
+                submit_request_id: "submit",
                 statement_request_id: "request-1",
                 remote_message_id: "request-1",
                 timeout: None,
@@ -5495,7 +5999,7 @@ mod tests {
     }
 
     #[test]
-    fn request_login_maps_session_store_failure() {
+    fn request_login_ignores_session_store_failure_before_pairing() {
         let host = PlatformRuntimeHost::new_compat(
             Arc::new(StubPlatform {
                 session_error: Some("storage failed"),
@@ -5505,14 +6009,12 @@ mod tests {
         );
         let cx = CallContext::new();
         let request = HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None });
-        let err = futures::executor::block_on(host.request_login(&cx, request)).unwrap_err();
+        let response = futures::executor::block_on(host.request_login(&cx, request)).unwrap();
 
-        match err {
-            CallError::Domain(HostRequestLoginError::V1(v01::HostRequestLoginError::Unknown {
-                reason,
-            })) => assert!(reason.contains("storage failed")),
-            other => panic!("expected session-store login error, got {other:?}"),
-        }
+        assert_eq!(
+            response,
+            HostRequestLoginResponse::V1(v01::HostRequestLoginResponse::Rejected)
+        );
         assert!(host.session_state().current().is_none());
     }
 

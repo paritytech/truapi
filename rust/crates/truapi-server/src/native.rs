@@ -405,10 +405,20 @@ impl NativeTrUApiCore {
     }
 }
 
+/// Set the live log level (`off`/`error`/`warn`/`info`/`debug`/`trace`) for
+/// the `tracing` output, which on native routes to stderr (system logs on
+/// iOS/Android). Most native diagnostics flow through `on_core_log` instead;
+/// this controls the cross-platform `tracing` events shared with wasm.
+#[uniffi::export]
+pub fn set_log_level(level: String) {
+    crate::logging::set_level(crate::logging::parse_level(&level));
+}
+
 fn native_core_from_platform_config(
     callbacks: Box<dyn HostCallbacks>,
     runtime_config: RuntimeConfig,
 ) -> Arc<NativeTrUApiCore> {
+    crate::logging::init();
     let callbacks: Arc<dyn HostCallbacks> = callbacks.into();
     callbacks.on_core_log(
         "truapi.native.core.boot".to_string(),

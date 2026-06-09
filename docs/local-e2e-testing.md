@@ -166,15 +166,26 @@ cd hosts/dotli
 bun run preview            # → http://localhost:5173
 ```
 
-When investigating a wire issue, enable Rust bridge logging in the host
-origin before reloading dotli:
+When investigating a wire issue, raise the Rust core's log level in the
+host origin before reloading dotli:
 
 ```js
-localStorage.setItem("truapi:debug", "1");
+localStorage.setItem("truapi:logLevel", "debug"); // off|error|warn|info|debug|trace
+location.reload();
 ```
 
-The WASM worker bridge then forwards core debug logs to the browser
-console.
+The WASM worker bridge forwards core `tracing` output to the browser
+console, mapping each level to the matching `console` method. To tune the
+level live without reloading, call the dev helper the worker runtime
+publishes:
+
+```js
+window.__truapi.setLogLevel("trace");
+```
+
+`debug` and `trace` are emitted via `console.debug`, which Chrome hides
+unless the console **Default levels ▾** dropdown includes **Verbose**;
+`info`/`warn`/`error` always render.
 
 ### Start the playground dev server
 
@@ -230,7 +241,7 @@ failing. Check:
   stale; redo step 4).
 
 If a method call hangs, the host either didn't receive the frame
-(check dotli's console with `truapi:debug` enabled) or didn't respond.
+(check dotli's console with `truapi:logLevel` set to `debug`) or didn't respond.
 The bridge auto-responds to `host_handshake_request` only; everything
 else is on the host implementation.
 

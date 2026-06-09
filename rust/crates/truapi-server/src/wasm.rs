@@ -952,11 +952,12 @@ struct WasmCoreInner {
     disposing: Cell<bool>,
 }
 
-/// Toggle [`crate::debug_log`] output. Hosts read their `truapi:debug`
-/// flag (web: localStorage) and call this once during boot.
-#[wasm_bindgen(js_name = setDebugEnabled)]
-pub fn set_debug_enabled(enabled: bool) {
-    crate::debug_log::set_enabled(enabled);
+/// Set the live log level (`off`/`error`/`warn`/`info`/`debug`/`trace`).
+/// Hosts read their `truapi:logLevel` flag (web: localStorage) and call this
+/// during boot, or again at any time to re-tune verbosity.
+#[wasm_bindgen(js_name = setLogLevel)]
+pub fn set_log_level(level: &str) {
+    crate::logging::set_level(crate::logging::parse_level(level));
 }
 
 /// JS-callable handle to the TrUAPI core. Constructed once per shell boot.
@@ -978,6 +979,7 @@ impl WasmTrUApiCore {
         // from `receiveFromProduct` as a fatal-instance signal and rebuild the
         // core rather than continue using it.
         console_error_panic_hook::set_once();
+        crate::logging::init();
         let bridge = Arc::new(JsBridge::from_js(&callbacks)?);
         let disposed = Arc::new(AtomicBool::new(false));
         let transport = Arc::new(WasmCallbackTransport {

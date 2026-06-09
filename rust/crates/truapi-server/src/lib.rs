@@ -14,10 +14,10 @@
 
 pub mod chain_runtime;
 pub mod core;
-pub mod debug_log;
 pub mod dispatcher;
 pub mod frame;
 pub mod host_logic;
+pub mod logging;
 pub mod runtime;
 pub mod subscription;
 pub mod transport;

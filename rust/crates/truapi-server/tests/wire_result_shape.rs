@@ -612,6 +612,7 @@ fn subscription_start_receive_stop_through_wire_boundary() {
             public_key: [7u8; 32],
             sso: None,
             root_entropy_source: None,
+            identity_account_id: None,
             lite_username: None,
             full_username: None,
         });

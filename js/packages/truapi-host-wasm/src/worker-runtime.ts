@@ -22,7 +22,7 @@ interface WasmCore {
 interface WasmModuleShape {
   default: (input?: unknown) => Promise<unknown>;
   WasmTrUApiCore: new (callbacks: unknown, runtimeConfig: unknown) => WasmCore;
-  setDebugEnabled: (enabled: boolean) => void;
+  setLogLevel?: (level: string) => void;
 }
 
 // Resolved at runtime, the wasm-pack artifact lives outside `src/` so a
@@ -229,13 +229,16 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
         postToMain({ kind: "error", error: "init received before WASM loaded" });
         break;
       }
-      wasm?.setDebugEnabled(msg.debug);
+      wasm.setLogLevel?.(msg.logLevel);
       try {
         core = new wasm.WasmTrUApiCore(buildRawCallbacks(msg), msg.runtimeConfig);
         postToMain({ kind: "ready" });
       } catch (err) {
         postToMain({ kind: "error", error: `init: ${errMsg(err)}` });
       }
+      break;
+    case "setLogLevel":
+      wasm?.setLogLevel?.(msg.level);
       break;
     case "frame":
       void handleFrame(msg.bytes);
