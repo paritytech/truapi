@@ -11,6 +11,7 @@ import type {
   WorkerToMain,
 } from "../index.js";
 import { decodeWireMessage } from "@parity/truapi";
+import { bytesToHex } from "@parity/truapi/scale";
 import * as WireTable from "@parity/truapi/wire-table";
 
 interface WorkerProviderState {
@@ -103,14 +104,11 @@ function errMsg(err: unknown): string {
   return JSON.stringify(err);
 }
 
-function bytesToHex(bytes: Uint8Array, maxBytes = 96): string {
+function bytesToHexPreview(bytes: Uint8Array, maxBytes = 96): string {
   const visible = bytes.subarray(0, maxBytes);
-  const hex = Array.from(visible, (byte) =>
-    byte.toString(16).padStart(2, "0"),
-  ).join("");
   const suffix =
     bytes.length > maxBytes ? `…(+${bytes.length - maxBytes})` : "";
-  return `0x${hex}${suffix}`;
+  return `${bytesToHex(visible)}${suffix}`;
 }
 
 function describeWireFrame(bytes: Uint8Array) {
@@ -119,7 +117,7 @@ function describeWireFrame(bytes: Uint8Array) {
     return {
       frameBytes: bytes.byteLength,
       decodeError: decoded.error.message,
-      frameHex: bytesToHex(bytes),
+      frameHex: bytesToHexPreview(bytes),
     };
   }
   const wireId = decoded.value.payload.id;
@@ -130,7 +128,7 @@ function describeWireFrame(bytes: Uint8Array) {
     wireId,
     frameBytes: bytes.byteLength,
     payloadBytes: payload.byteLength,
-    payloadHex: bytesToHex(payload),
+    payloadHex: bytesToHexPreview(payload),
   };
 }
 

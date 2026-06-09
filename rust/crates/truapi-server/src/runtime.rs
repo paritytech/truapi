@@ -312,6 +312,7 @@ impl<P> PlatformRuntimeHost<P> {
     /// Start syncing the in-memory session from the host-global session store.
     /// The store emits coarse ticks; each tick triggers a fresh read so same-
     /// runtime writes and cross-runtime logout/re-pair take the same path.
+    #[instrument(skip_all, fields(runtime.method = "session_store.sync"))]
     pub(crate) fn start_session_store_sync(&self, spawner: Spawner)
     where
         P: Platform + 'static,
@@ -362,6 +363,7 @@ impl<P> PlatformRuntimeHost<P> {
     /// Core-owned logout/disconnect path. It best-effort notifies the SSO
     /// peer, then clears in-memory and persisted session state regardless of
     /// any transport failure.
+    #[instrument(skip_all, fields(runtime.method = "account.disconnect"))]
     pub(crate) async fn disconnect(&self)
     where
         P: Platform + 'static,
@@ -407,6 +409,7 @@ impl<P> PlatformRuntimeHost<P> {
             .map_err(|err| err.to_string())
     }
 
+    #[instrument(skip_all, fields(runtime.method = "session_store.clear_disconnected"))]
     async fn clear_disconnected_session(&self)
     where
         P: Platform + 'static,
@@ -426,6 +429,7 @@ impl<P> PlatformRuntimeHost<P>
 where
     P: Platform + 'static,
 {
+    #[instrument(skip_all, fields(runtime.method = "permissions.chain_submit_decision"))]
     async fn chain_submit_decision(&self) -> Result<Decision, String> {
         let service = PermissionsService::new(self.platform.as_ref(), self.platform.as_ref());
         service
@@ -436,6 +440,7 @@ where
             .map_err(|err| format!("permission storage failed: {err:?}"))
     }
 
+    #[instrument(skip_all, fields(runtime.method = "session.identity.resolve"))]
     async fn resolve_session_identity(&self, session: SessionInfo) -> SessionInfo {
         resolve_session_identity_with_chain(
             &self.chain,
@@ -445,6 +450,7 @@ where
         .await
     }
 
+    #[instrument(skip_all, fields(runtime.method = "sso.disconnect.submit"))]
     async fn submit_sso_disconnected(&self, session: &SessionInfo) -> Result<(), String> {
         let sso = session
             .sso
@@ -474,6 +480,7 @@ where
         Ok(())
     }
 
+    #[instrument(skip_all, fields(runtime.method = "sso.remote_message.submit", action = action))]
     async fn submit_sso_remote_message(
         &self,
         cx: &CallContext,
@@ -491,6 +498,7 @@ where
         .await
     }
 
+    #[instrument(skip_all, fields(runtime.method = "sso.remote_message.submit_without_timeout", action = action))]
     async fn submit_sso_remote_message_without_timeout(
         &self,
         cx: &CallContext,
@@ -502,6 +510,7 @@ where
             .await
     }
 
+    #[instrument(skip_all, fields(runtime.method = "sso.remote_message.submit_with_timeout", action = action))]
     async fn submit_sso_remote_message_with_timeout(
         &self,
         cx: &CallContext,
@@ -732,6 +741,7 @@ impl Drop for SsoRemoteSubscriptionGuard {
     }
 }
 
+#[instrument(skip_all, fields(runtime.method = "sso.remote_response.wait"))]
 async fn wait_for_sso_remote_response(
     responses: BoxStream<'static, String>,
     wait: SsoRemoteResponseWait<'_>,
@@ -784,6 +794,7 @@ async fn wait_for_sso_remote_response(
     }
 }
 
+#[instrument(skip_all, fields(runtime.method = "sso.remote_response.wait_inner"))]
 async fn wait_for_sso_remote_response_inner(
     mut responses: BoxStream<'static, String>,
     target: SsoRemoteResponseTarget<'_>,
@@ -925,6 +936,7 @@ impl<P> RuntimeChainProvider for PlatformChainRuntimeProvider<P>
 where
     P: Platform + 'static,
 {
+    #[instrument(skip_all, fields(runtime.method = "chain.provider.connect"))]
     async fn connect(
         &self,
         genesis_hash: Vec<u8>,
@@ -955,6 +967,7 @@ impl<P> System for PlatformRuntimeHost<P>
 where
     P: Platform + 'static,
 {
+    #[instrument(skip_all, fields(runtime.method = "system.feature_supported"))]
     async fn feature_supported(
         &self,
         _cx: &CallContext,
@@ -965,6 +978,7 @@ where
             .map_err(|err| CallError::Domain(HostFeatureSupportedError::V1(err)))
     }
 
+    #[instrument(skip_all, fields(runtime.method = "system.navigate_to"))]
     async fn navigate_to(
         &self,
         _cx: &CallContext,
@@ -1001,6 +1015,7 @@ impl<P> Permissions for PlatformRuntimeHost<P>
 where
     P: Platform + 'static,
 {
+    #[instrument(skip_all, fields(runtime.method = "permissions.request_device_permission"))]
     async fn request_device_permission(
         &self,
         _cx: &CallContext,
@@ -1020,6 +1035,7 @@ where
         }
     }
 
+    #[instrument(skip_all, fields(runtime.method = "permissions.request_remote_permission"))]
     async fn request_remote_permission(
         &self,
         _cx: &CallContext,
@@ -1048,6 +1064,7 @@ impl<P> LocalStorage for PlatformRuntimeHost<P>
 where
     P: Platform + 'static,
 {
+    #[instrument(skip_all, fields(runtime.method = "local_storage.read"))]
     async fn read(
         &self,
         _cx: &CallContext,
@@ -1062,6 +1079,7 @@ where
             .map_err(|err| CallError::Domain(HostLocalStorageReadError::V1(err)))
     }
 
+    #[instrument(skip_all, fields(runtime.method = "local_storage.write"))]
     async fn write(
         &self,
         _cx: &CallContext,
@@ -1075,6 +1093,7 @@ where
             .map_err(|err| CallError::Domain(HostLocalStorageWriteError::V1(err)))
     }
 
+    #[instrument(skip_all, fields(runtime.method = "local_storage.clear"))]
     async fn clear(
         &self,
         _cx: &CallContext,
@@ -1099,6 +1118,7 @@ impl<P> Account for PlatformRuntimeHost<P>
 where
     P: Platform + 'static,
 {
+    #[instrument(skip_all, fields(runtime.method = "account.get_account"))]
     async fn get_account(
         &self,
         _cx: &CallContext,
@@ -1137,6 +1157,7 @@ where
         }))
     }
 
+    #[instrument(skip_all, fields(runtime.method = "account.get_account_alias"))]
     async fn get_account_alias(
         &self,
         cx: &CallContext,
@@ -1206,6 +1227,7 @@ where
             })
     }
 
+    #[instrument(skip_all, fields(runtime.method = "account.create_account_proof"))]
     async fn create_account_proof(
         &self,
         _cx: &CallContext,
@@ -1214,6 +1236,7 @@ where
         Err(CallError::Unsupported)
     }
 
+    #[instrument(skip_all, fields(runtime.method = "account.get_legacy_accounts"))]
     async fn get_legacy_accounts(
         &self,
         _cx: &CallContext,
@@ -1251,6 +1274,7 @@ where
         ))
     }
 
+    #[instrument(skip_all, fields(runtime.method = "account.get_user_id"))]
     async fn get_user_id(
         &self,
         _cx: &CallContext,
@@ -1289,6 +1313,7 @@ where
         }
     }
 
+    #[instrument(skip_all, fields(runtime.method = "account.connection_status_subscribe"))]
     async fn connection_status_subscribe(
         &self,
         _cx: &CallContext,
@@ -1296,7 +1321,7 @@ where
         Subscription::new(self.session_state.subscribe())
     }
 
-    #[instrument(skip_all, fields(product = %self.runtime_config.product_id))]
+    #[instrument(skip_all, fields(runtime.method = "account.request_login", product = %self.runtime_config.product_id))]
     async fn request_login(
         &self,
         cx: &CallContext,
@@ -1423,6 +1448,7 @@ where
 
 static IDENTITY_LOOKUP_COUNTER: AtomicU64 = AtomicU64::new(1);
 
+#[instrument(skip_all, fields(runtime.method = "session.identity.resolve_with_chain"))]
 async fn resolve_session_identity_with_chain(
     chain: &ChainRuntime,
     people_chain_genesis_hash: [u8; 32],
@@ -1489,6 +1515,7 @@ fn apply_people_identity(session: &mut SessionInfo, identity: PeopleIdentity) {
     }
 }
 
+#[instrument(skip_all, fields(runtime.method = "session.identity.lookup"))]
 async fn lookup_people_identity(
     chain: &ChainRuntime,
     people_chain_genesis_hash: [u8; 32],
@@ -1537,6 +1564,7 @@ async fn lookup_people_identity(
     decode_people_identity(&value).map(Some)
 }
 
+#[instrument(skip_all, fields(runtime.method = "session.identity.wait_follow_hash"))]
 async fn wait_for_identity_follow_hash(
     follow: &mut BoxStream<'static, V01RemoteChainHeadFollowItem>,
 ) -> Result<Vec<u8>, String> {
@@ -1565,6 +1593,7 @@ async fn wait_for_identity_follow_hash(
     }
 }
 
+#[instrument(skip_all, fields(runtime.method = "session.identity.wait_storage_value"))]
 async fn wait_for_identity_storage_value(
     follow: &mut BoxStream<'static, V01RemoteChainHeadFollowItem>,
     operation_id: &str,
@@ -1615,6 +1644,7 @@ async fn wait_for_identity_storage_value(
 const CALL_CANCELLATION_POLL: Duration = Duration::from_millis(10);
 const CALL_CANCELLED_REASON: &str = "request cancelled";
 
+#[instrument(skip_all, fields(runtime.method = "sso.pairing_device.load_or_create"))]
 async fn load_or_create_pairing_device_identity(
     storage: &(impl PlatformStorage + ?Sized),
 ) -> Result<PairingDeviceIdentity, String> {
@@ -1648,6 +1678,7 @@ async fn load_or_create_pairing_device_identity(
     Ok(identity)
 }
 
+#[instrument(skip_all, fields(runtime.method = "call.wait_cancelled"))]
 async fn wait_for_call_cancelled(cancel: CancellationToken) -> String {
     while !cancel.is_cancelled() {
         futures_timer::Delay::new(CALL_CANCELLATION_POLL).await;
@@ -1670,6 +1701,7 @@ struct PairingSuccess {
     success: crate::host_logic::sso_pairing::HandshakeSuccessV2,
 }
 
+#[instrument(skip_all, fields(runtime.method = "sso.pairing.wait_success"))]
 async fn wait_for_v2_pairing_success(
     connection: &dyn JsonRpcConnection,
     mut responses: BoxStream<'static, String>,
@@ -1762,6 +1794,7 @@ async fn wait_for_v2_pairing_success(
     }
 }
 
+#[instrument(skip_all, fields(runtime.method = "sso.pairing.handle_frame"))]
 fn handle_v2_pairing_frame(
     connection: &dyn JsonRpcConnection,
     frame: &str,
@@ -1857,6 +1890,7 @@ fn parse_pairing_query_subscribe_ack(
     Ok(Some((request_id.to_string(), remote_id.to_string())))
 }
 
+#[instrument(skip_all, fields(runtime.method = "sso.pairing.decode_statement"))]
 fn decode_v2_pairing_statement(
     statement: &[u8],
     core_encryption_secret_key: [u8; 32],
@@ -1886,7 +1920,7 @@ impl<P> Signing for PlatformRuntimeHost<P>
 where
     P: Platform + 'static,
 {
-    #[instrument(skip_all)]
+    #[instrument(skip_all, fields(runtime.method = "signing.sign_payload"))]
     async fn sign_payload(
         &self,
         cx: &CallContext,
@@ -1959,7 +1993,7 @@ where
             })
     }
 
-    #[instrument(skip_all)]
+    #[instrument(skip_all, fields(runtime.method = "signing.sign_raw"))]
     async fn sign_raw(
         &self,
         cx: &CallContext,
@@ -2032,7 +2066,7 @@ where
             })
     }
 
-    #[instrument(skip_all)]
+    #[instrument(skip_all, fields(runtime.method = "signing.create_transaction"))]
     async fn create_transaction(
         &self,
         cx: &CallContext,
@@ -2104,6 +2138,7 @@ where
             })
     }
 
+    #[instrument(skip_all, fields(runtime.method = "signing.sign_payload_with_legacy_account"))]
     async fn sign_payload_with_legacy_account(
         &self,
         cx: &CallContext,
@@ -2185,6 +2220,7 @@ where
             })
     }
 
+    #[instrument(skip_all, fields(runtime.method = "signing.sign_raw_with_legacy_account"))]
     async fn sign_raw_with_legacy_account(
         &self,
         cx: &CallContext,
@@ -2262,6 +2298,7 @@ where
             })
     }
 
+    #[instrument(skip_all, fields(runtime.method = "signing.create_transaction_with_legacy_account"))]
     async fn create_transaction_with_legacy_account(
         &self,
         cx: &CallContext,
@@ -2358,6 +2395,7 @@ impl<P> StatementStore for PlatformRuntimeHost<P>
 where
     P: Platform + 'static,
 {
+    #[instrument(skip_all, fields(runtime.method = "statement_store.subscribe"))]
     async fn subscribe(
         &self,
         cx: &CallContext,
@@ -2403,6 +2441,7 @@ where
         Ok(Subscription::new(Box::pin(stream)))
     }
 
+    #[instrument(skip_all, fields(runtime.method = "statement_store.create_proof"))]
     async fn create_proof(
         &self,
         _cx: &CallContext,
@@ -2426,6 +2465,7 @@ where
         ))
     }
 
+    #[instrument(skip_all, fields(runtime.method = "statement_store.create_proof_authorized"))]
     async fn create_proof_authorized(
         &self,
         _cx: &CallContext,
@@ -2443,6 +2483,7 @@ where
         ))
     }
 
+    #[instrument(skip_all, fields(runtime.method = "statement_store.submit"))]
     async fn submit(
         &self,
         cx: &CallContext,
@@ -2511,6 +2552,7 @@ fn statement_store_topic_filter(
     }
 }
 
+#[instrument(skip_all, fields(runtime.method = "statement_store.wait_submit_ack"))]
 async fn wait_for_statement_submit_ack(
     mut responses: BoxStream<'static, String>,
     request_id: &str,
@@ -2724,6 +2766,7 @@ impl<P> Chain for PlatformRuntimeHost<P>
 where
     P: Platform + 'static,
 {
+    #[instrument(skip_all, fields(runtime.method = "chain.follow_head_subscribe"))]
     async fn follow_head_subscribe(
         &self,
         cx: &CallContext,
@@ -2738,6 +2781,7 @@ where
         Subscription::new(Box::pin(stream))
     }
 
+    #[instrument(skip_all, fields(runtime.method = "chain.get_head_header"))]
     async fn get_head_header(
         &self,
         _cx: &CallContext,
@@ -2751,6 +2795,7 @@ where
             .map_err(runtime_failure_to_call_error)
     }
 
+    #[instrument(skip_all, fields(runtime.method = "chain.get_head_body"))]
     async fn get_head_body(
         &self,
         _cx: &CallContext,
@@ -2764,6 +2809,7 @@ where
             .map_err(runtime_failure_to_call_error)
     }
 
+    #[instrument(skip_all, fields(runtime.method = "chain.get_head_storage"))]
     async fn get_head_storage(
         &self,
         _cx: &CallContext,
@@ -2777,6 +2823,7 @@ where
             .map_err(runtime_failure_to_call_error)
     }
 
+    #[instrument(skip_all, fields(runtime.method = "chain.call_head"))]
     async fn call_head(
         &self,
         _cx: &CallContext,
@@ -2790,6 +2837,7 @@ where
             .map_err(runtime_failure_to_call_error)
     }
 
+    #[instrument(skip_all, fields(runtime.method = "chain.unpin_head"))]
     async fn unpin_head(
         &self,
         _cx: &CallContext,
@@ -2803,6 +2851,7 @@ where
             .map_err(runtime_failure_to_call_error)
     }
 
+    #[instrument(skip_all, fields(runtime.method = "chain.continue_head"))]
     async fn continue_head(
         &self,
         _cx: &CallContext,
@@ -2816,6 +2865,7 @@ where
             .map_err(runtime_failure_to_call_error)
     }
 
+    #[instrument(skip_all, fields(runtime.method = "chain.stop_head_operation"))]
     async fn stop_head_operation(
         &self,
         _cx: &CallContext,
@@ -2830,6 +2880,7 @@ where
             .map_err(runtime_failure_to_call_error)
     }
 
+    #[instrument(skip_all, fields(runtime.method = "chain.get_spec_genesis_hash"))]
     async fn get_spec_genesis_hash(
         &self,
         _cx: &CallContext,
@@ -2844,6 +2895,7 @@ where
             .map_err(runtime_failure_to_call_error)
     }
 
+    #[instrument(skip_all, fields(runtime.method = "chain.get_spec_chain_name"))]
     async fn get_spec_chain_name(
         &self,
         _cx: &CallContext,
@@ -2857,6 +2909,7 @@ where
             .map_err(runtime_failure_to_call_error)
     }
 
+    #[instrument(skip_all, fields(runtime.method = "chain.get_spec_properties"))]
     async fn get_spec_properties(
         &self,
         _cx: &CallContext,
@@ -2870,6 +2923,7 @@ where
             .map_err(runtime_failure_to_call_error)
     }
 
+    #[instrument(skip_all, fields(runtime.method = "chain.broadcast_transaction"))]
     async fn broadcast_transaction(
         &self,
         _cx: &CallContext,
@@ -2886,6 +2940,7 @@ where
             .map_err(runtime_failure_to_call_error)
     }
 
+    #[instrument(skip_all, fields(runtime.method = "chain.stop_transaction"))]
     async fn stop_transaction(
         &self,
         _cx: &CallContext,
@@ -2918,6 +2973,7 @@ impl<P> Payment for PlatformRuntimeHost<P>
 where
     P: Platform + 'static,
 {
+    #[instrument(skip_all, fields(runtime.method = "payment.balance_subscribe"))]
     async fn balance_subscribe(
         &self,
         _cx: &CallContext,
@@ -2931,6 +2987,7 @@ where
         )))
     }
 
+    #[instrument(skip_all, fields(runtime.method = "payment.request"))]
     async fn request(
         &self,
         _cx: &CallContext,
@@ -2943,6 +3000,7 @@ where
         )))
     }
 
+    #[instrument(skip_all, fields(runtime.method = "payment.status_subscribe"))]
     async fn status_subscribe(
         &self,
         _cx: &CallContext,
@@ -2958,6 +3016,7 @@ where
         )))
     }
 
+    #[instrument(skip_all, fields(runtime.method = "payment.top_up"))]
     async fn top_up(
         &self,
         _cx: &CallContext,
@@ -2975,6 +3034,7 @@ impl<P> ResourceAllocation for PlatformRuntimeHost<P>
 where
     P: Platform + 'static,
 {
+    #[instrument(skip_all, fields(runtime.method = "resource_allocation.request"))]
     async fn request(
         &self,
         cx: &CallContext,
@@ -3062,6 +3122,7 @@ impl<P> Entropy for PlatformRuntimeHost<P>
 where
     P: Platform + 'static,
 {
+    #[instrument(skip_all, fields(runtime.method = "entropy.derive"))]
     async fn derive(
         &self,
         _cx: &CallContext,
@@ -3107,6 +3168,7 @@ impl<P> Preimage for PlatformRuntimeHost<P>
 where
     P: Platform + 'static,
 {
+    #[instrument(skip_all, fields(runtime.method = "preimage.lookup_subscribe"))]
     async fn lookup_subscribe(
         &self,
         _cx: &CallContext,
@@ -3127,6 +3189,7 @@ where
         Subscription::new(Box::pin(stream))
     }
 
+    #[instrument(skip_all, fields(runtime.method = "preimage.submit"))]
     async fn submit(
         &self,
         _cx: &CallContext,
@@ -3151,6 +3214,7 @@ impl<P> Theme for PlatformRuntimeHost<P>
 where
     P: Platform + 'static,
 {
+    #[instrument(skip_all, fields(runtime.method = "theme.subscribe"))]
     async fn subscribe(&self, _cx: &CallContext) -> Subscription<HostThemeSubscribeItem> {
         let stream =
             PlatformThemeHost::subscribe_theme(self.platform.as_ref()).filter_map(|item| async {
@@ -3171,6 +3235,7 @@ impl<P> Notifications for PlatformRuntimeHost<P>
 where
     P: Platform + 'static,
 {
+    #[instrument(skip_all, fields(runtime.method = "notifications.send_push_notification"))]
     async fn send_push_notification(
         &self,
         _cx: &CallContext,
@@ -3187,6 +3252,7 @@ where
             })
     }
 
+    #[instrument(skip_all, fields(runtime.method = "notifications.cancel_push_notification"))]
     async fn cancel_push_notification(
         &self,
         _cx: &CallContext,

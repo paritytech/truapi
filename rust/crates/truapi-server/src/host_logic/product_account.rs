@@ -3,8 +3,6 @@
 //! Mirrors dotli's `packages/auth/src/account.ts`: derive an sr25519 public
 //! key through soft HDKD junctions `["product", product_id, derivation_index]`.
 
-use blake2::Blake2bVar;
-use blake2::digest::{Update, VariableOutput};
 use blake2_rfc::blake2b::blake2b;
 use parity_scale_codec::Encode;
 use schnorrkel::PublicKey;
@@ -82,11 +80,8 @@ fn create_chain_code(code: &str) -> Result<[u8; 32], ProductAccountError> {
 
     let mut chain_code = [0u8; JUNCTION_ID_LEN];
     if encoded.len() > JUNCTION_ID_LEN {
-        let mut hasher = Blake2bVar::new(JUNCTION_ID_LEN).expect("valid blake2b output length");
-        hasher.update(&encoded);
-        hasher
-            .finalize_variable(&mut chain_code)
-            .expect("valid blake2b output buffer length");
+        let hash = blake2b(JUNCTION_ID_LEN, &[], &encoded);
+        chain_code.copy_from_slice(hash.as_bytes());
     } else {
         chain_code[..encoded.len()].copy_from_slice(&encoded);
     }

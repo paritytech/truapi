@@ -27,6 +27,7 @@ use futures::future::{BoxFuture, Shared};
 use futures::stream::BoxStream;
 use futures::{Stream, StreamExt};
 use serde_json::{Map, Value, json};
+use tracing::instrument;
 use truapi::v01::{
     OperationStartedResult, RemoteChainHeadBodyRequest, RemoteChainHeadBodyResponse,
     RemoteChainHeadCallRequest, RemoteChainHeadCallResponse, RemoteChainHeadContinueRequest,
@@ -171,6 +172,7 @@ impl ChainRuntime {
     /// Start (or attach to an existing) `chainHead_v1_follow` subscription.
     /// Returns a stream of typed follow items that closes when the remote
     /// sends `stop` or the connection drops.
+    #[instrument(skip_all, fields(runtime.method = "chain_runtime.follow"))]
     pub fn remote_chain_head_follow(
         &self,
         follow_subscription_id: String,
@@ -210,6 +212,7 @@ impl ChainRuntime {
     }
 
     /// Fetch a block header.
+    #[instrument(skip_all, fields(runtime.method = "chain_runtime.header"))]
     pub async fn remote_chain_head_header(
         &self,
         request: RemoteChainHeadHeaderRequest,
@@ -244,6 +247,7 @@ impl ChainRuntime {
     }
 
     /// Start a chainHead_v1_body operation.
+    #[instrument(skip_all, fields(runtime.method = "chain_runtime.body"))]
     pub async fn remote_chain_head_body(
         &self,
         request: RemoteChainHeadBodyRequest,
@@ -266,6 +270,7 @@ impl ChainRuntime {
     }
 
     /// Start a chainHead_v1_storage operation.
+    #[instrument(skip_all, fields(runtime.method = "chain_runtime.storage"))]
     pub async fn remote_chain_head_storage(
         &self,
         request: RemoteChainHeadStorageRequest,
@@ -304,6 +309,7 @@ impl ChainRuntime {
     }
 
     /// Start a chainHead_v1_call operation.
+    #[instrument(skip_all, fields(runtime.method = "chain_runtime.call"))]
     pub async fn remote_chain_head_call(
         &self,
         request: RemoteChainHeadCallRequest,
@@ -331,6 +337,7 @@ impl ChainRuntime {
     }
 
     /// Release pinned blocks.
+    #[instrument(skip_all, fields(runtime.method = "chain_runtime.unpin"))]
     pub async fn remote_chain_head_unpin(
         &self,
         request: RemoteChainHeadUnpinRequest,
@@ -362,6 +369,7 @@ impl ChainRuntime {
     }
 
     /// Continue a paused operation.
+    #[instrument(skip_all, fields(runtime.method = "chain_runtime.continue"))]
     pub async fn remote_chain_head_continue(
         &self,
         request: RemoteChainHeadContinueRequest,
@@ -388,6 +396,7 @@ impl ChainRuntime {
     }
 
     /// Stop a chain-head operation.
+    #[instrument(skip_all, fields(runtime.method = "chain_runtime.stop_operation"))]
     pub async fn remote_chain_head_stop_operation(
         &self,
         request: RemoteChainHeadStopOperationRequest,
@@ -414,6 +423,7 @@ impl ChainRuntime {
     }
 
     /// Echo back the chain genesis hash via chainSpec_v1_genesisHash.
+    #[instrument(skip_all, fields(runtime.method = "chain_runtime.spec_genesis_hash"))]
     pub async fn remote_chain_spec_genesis_hash(
         &self,
         genesis_hash: Vec<u8>,
@@ -439,6 +449,7 @@ impl ChainRuntime {
     }
 
     /// Fetch the chain display name via chainSpec_v1_chainName.
+    #[instrument(skip_all, fields(runtime.method = "chain_runtime.spec_chain_name"))]
     pub async fn remote_chain_spec_chain_name(
         &self,
         genesis_hash: Vec<u8>,
@@ -458,6 +469,7 @@ impl ChainRuntime {
     }
 
     /// Fetch the chain JSON properties via chainSpec_v1_properties.
+    #[instrument(skip_all, fields(runtime.method = "chain_runtime.spec_properties"))]
     pub async fn remote_chain_spec_properties(
         &self,
         genesis_hash: Vec<u8>,
@@ -473,6 +485,7 @@ impl ChainRuntime {
     }
 
     /// Broadcast a signed transaction via transaction_v1_broadcast.
+    #[instrument(skip_all, fields(runtime.method = "chain_runtime.transaction_broadcast"))]
     pub async fn remote_chain_transaction_broadcast(
         &self,
         request: RemoteChainTransactionBroadcastRequest,
@@ -499,6 +512,7 @@ impl ChainRuntime {
     }
 
     /// Stop a transaction broadcast via transaction_v1_stop.
+    #[instrument(skip_all, fields(runtime.method = "chain_runtime.transaction_stop"))]
     pub async fn remote_chain_transaction_stop(
         &self,
         request: RemoteChainTransactionStopRequest,
@@ -517,6 +531,7 @@ impl ChainRuntime {
         }
     }
 
+    #[instrument(skip_all, fields(runtime.method = "chain_runtime.connection_for", method = method))]
     async fn connection_for(
         &self,
         method: &'static str,
@@ -548,6 +563,7 @@ impl ChainRuntime {
         Ok(connection)
     }
 
+    #[instrument(skip_all, fields(runtime.method = "chain_runtime.start_follow"))]
     async fn start_follow(
         &self,
         local_follow_id: String,
@@ -567,6 +583,7 @@ impl ChainRuntime {
         Ok(())
     }
 
+    #[instrument(skip_all, fields(runtime.method = "chain_runtime.ensure_follow_context", method = method))]
     async fn ensure_follow_context(
         &self,
         method: &'static str,
@@ -586,6 +603,7 @@ impl ChainRuntime {
         Ok(remote_follow_id)
     }
 
+    #[instrument(skip_all, fields(runtime.method = "chain_runtime.cleanup_follow"))]
     fn cleanup_follow(&self, genesis_hash: &[u8], local_follow_id: &str) {
         let key = encode_hex(genesis_hash);
         let Some(connection) = self.connections.lock().unwrap().get(&key).cloned() else {
@@ -649,6 +667,7 @@ impl ChainConnection {
         self.closed.load(Ordering::Relaxed)
     }
 
+    #[instrument(skip_all, fields(runtime.method = "chain_connection.request_value", method = method, rpc_method = rpc_method))]
     async fn request_value(
         &self,
         method: &'static str,
@@ -736,6 +755,7 @@ impl ChainConnection {
     /// the remote subscription id. Concurrent callers for the same id share
     /// one in-flight setup instead of each opening a duplicate remote
     /// subscription that would then leak.
+    #[instrument(skip_all, fields(runtime.method = "chain_connection.ensure_remote_follow"))]
     async fn ensure_remote_follow(
         self: &Arc<Self>,
         local_follow_id: String,
@@ -773,6 +793,7 @@ impl ChainConnection {
 
     /// Body of the single-flight follow setup: ensure the `FollowState`
     /// exists, issue `chainHead_v1_follow`, and record the remote id.
+    #[instrument(skip_all, fields(runtime.method = "chain_connection.run_follow_setup"))]
     async fn run_follow_setup(
         self: Arc<Self>,
         local_follow_id: String,
