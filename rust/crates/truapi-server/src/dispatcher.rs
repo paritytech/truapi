@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use futures::future::LocalBoxFuture;
+use tracing::instrument;
 
 use truapi::CallError;
 
@@ -87,6 +88,7 @@ impl Dispatcher {
 
     /// Process an incoming protocol message, sending any responses or
     /// subscription frames through `transport`.
+    #[instrument(skip_all, fields(runtime.method = "dispatcher.dispatch"))]
     pub async fn dispatch(&self, message: ProtocolMessage, transport: Arc<dyn Transport>) {
         let Some((method, kind)) = FrameKind::from_tag(&message.payload.tag) else {
             return;

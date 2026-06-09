@@ -16,6 +16,7 @@ use std::sync::{Arc, Mutex};
 
 use futures::future::BoxFuture;
 use parity_scale_codec::{Decode, Encode};
+use tracing::instrument;
 use truapi::api::TrUApi;
 use truapi_platform::{Platform, RuntimeConfig};
 
@@ -42,6 +43,7 @@ impl TrUApiCore {
     /// state holder is unused on this path (no platform pushes updates),
     /// but is created anyway so the public API surface stays consistent.
     /// Subscription work runs on `spawner`.
+    #[instrument(skip_all, fields(runtime.method = "core.new"))]
     pub fn new<P>(host: Arc<P>, spawner: Spawner) -> Self
     where
         P: TrUApi + 'static,
@@ -64,6 +66,7 @@ impl TrUApiCore {
 
     /// Build a core around a [`Platform`] implementation and explicit product
     /// runtime configuration.
+    #[instrument(skip_all, fields(runtime.method = "core.from_platform_with_config"))]
     pub fn from_platform_with_config<P>(
         platform: Arc<P>,
         runtime_config: RuntimeConfig,
@@ -104,11 +107,13 @@ impl TrUApiCore {
     /// Core-owned logout/disconnect. Platform-backed cores best-effort notify
     /// the SSO peer and clear the host-global session store; direct cores only
     /// clear their in-memory session state.
+    #[instrument(skip_all, fields(runtime.method = "core.disconnect"))]
     pub async fn disconnect_async(&self) {
         (self.disconnect)().await;
     }
 
     /// Blocking wrapper for embedders that do not drive async directly.
+    #[instrument(skip_all, fields(runtime.method = "core.disconnect_blocking"))]
     pub fn disconnect(&self) {
         futures::executor::block_on(self.disconnect_async());
     }
@@ -116,6 +121,7 @@ impl TrUApiCore {
     /// Asynchronous form of [`Self::receive_from_product`]. Decodes the
     /// incoming frame, runs it through the dispatcher, and returns the
     /// SCALE-encoded response (if any).
+    #[instrument(skip_all, fields(runtime.method = "core.receive_from_product"))]
     pub async fn receive_from_product_async(&self, frame: &[u8]) -> Option<Vec<u8>> {
         let message = ProtocolMessage::decode(&mut &*frame).ok()?;
         let transport = Arc::new(ResponseTransport::default());
@@ -128,6 +134,7 @@ impl TrUApiCore {
     /// Synchronous wrapper that blocks the current thread until the inner
     /// future resolves. Convenient for embedding contexts (e.g. UniFFI) that
     /// don't already drive an async runtime.
+    #[instrument(skip_all, fields(runtime.method = "core.receive_from_product_blocking"))]
     pub fn receive_from_product(&self, frame: &[u8]) -> Option<Vec<u8>> {
         futures::executor::block_on(self.receive_from_product_async(frame))
     }
@@ -137,6 +144,7 @@ impl TrUApiCore {
     /// JS callback) call this directly so subscription items flow back
     /// through the bridge transport instead of the single-slot capture used
     /// by [`Self::receive_from_product`].
+    #[instrument(skip_all, fields(runtime.method = "core.dispatch"))]
     pub async fn dispatch(&self, message: ProtocolMessage, transport: Arc<dyn Transport>) {
         self.dispatcher.dispatch(message, transport).await;
     }

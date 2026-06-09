@@ -1,8 +1,7 @@
 //! Product-scoped deterministic entropy derivation.
 //!
-//! Mirrors `@novasamatech/host-container`'s `deriveProductEntropy` helper used
-//! by the current dotli checkout: three keyed BLAKE2b-256 layers over the
-//! session secret, product id, and caller key.
+//! Matches dotli's product entropy contract: three keyed BLAKE2b-256 layers
+//! over the session secret, product id, and caller key.
 
 use blake2_rfc::blake2b::blake2b;
 use thiserror::Error;

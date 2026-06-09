@@ -600,7 +600,7 @@ mod tests {
     }
 
     #[test]
-    fn option_bool_matches_nova_option_bool_encoding() {
+    fn option_bool_matches_host_papp_option_bool_encoding() {
         let mut request = v01::HostSignPayloadRequest {
             account: account(),
             payload: v01::HostSignPayloadData {

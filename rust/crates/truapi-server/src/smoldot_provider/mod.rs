@@ -261,12 +261,7 @@ mod tests {
     use std::time::{Duration, Instant};
 
     fn paseo_genesis_bytes() -> Vec<u8> {
-        let clean = PASEO_RELAY_GENESIS.trim_start_matches("0x");
-        let mut out = Vec::with_capacity(32);
-        for pair in clean.as_bytes().chunks(2) {
-            out.push(u8::from_str_radix(std::str::from_utf8(pair).unwrap(), 16).unwrap());
-        }
-        out
+        hex::decode(PASEO_RELAY_GENESIS.trim_start_matches("0x")).expect("valid genesis hash")
     }
 
     /// Smoke test: building the provider with bundled specs must register

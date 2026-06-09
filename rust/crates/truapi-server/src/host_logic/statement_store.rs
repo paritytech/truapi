@@ -1,8 +1,8 @@
 //! People-chain statement-store JSON-RPC helpers.
 //!
 //! The core talks to the statement-store pallet through the host-provided
-//! `ChainProvider` JSON-RPC connection. These helpers keep the dotli/
-//! `@novasamatech/sdk-statement` request shapes in one place.
+//! `ChainProvider` JSON-RPC connection. These helpers keep dotli-compatible
+//! request shapes in one place.
 
 use parity_scale_codec::{Compact, Decode, Encode};
 use schnorrkel::{PublicKey, SecretKey, Signature};

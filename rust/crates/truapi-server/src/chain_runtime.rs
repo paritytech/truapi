@@ -1331,29 +1331,11 @@ fn u32_object_field(value: &Map<String, Value>, field: &str) -> Result<u32, Stri
 
 /// Encode a byte slice as a `0x`-prefixed lowercase hex string.
 pub(crate) fn encode_hex(value: &[u8]) -> String {
-    let mut out = String::from("0x");
-    for byte in value {
-        out.push_str(&format!("{byte:02x}"));
-    }
-    out
+    format!("0x{}", hex::encode(value))
 }
 
 fn decode_hex(value: &str) -> Result<Vec<u8>, String> {
-    let value = value.strip_prefix("0x").unwrap_or(value);
-    if !value.len().is_multiple_of(2) {
-        return Err("invalid hex length".to_string());
-    }
-
-    let mut out = Vec::with_capacity(value.len() / 2);
-    let bytes = value.as_bytes();
-    let mut index = 0;
-    while index < bytes.len() {
-        let chunk = std::str::from_utf8(&bytes[index..index + 2]).map_err(|_| "invalid hex")?;
-        let byte = u8::from_str_radix(chunk, 16).map_err(|_| "invalid hex")?;
-        out.push(byte);
-        index += 2;
-    }
-    Ok(out)
+    hex::decode(value.strip_prefix("0x").unwrap_or(value)).map_err(|_| "invalid hex".to_string())
 }
 
 // ---------------------------------------------------------------------------

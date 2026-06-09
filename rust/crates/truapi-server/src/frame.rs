@@ -60,7 +60,7 @@ impl Encode for ProtocolMessage {
         id.encode_to(dest);
         // Payload bytes are inlined; the receiver reads "until end of frame"
         // because each transport frame is one ProtocolMessage. This matches
-        // the Novasama `Enum({v1: ...})` shape (variant payload encoded
+        // the public versioned enum transport shape (variant payload encoded
         // inline, no length prefix), and constrains us to slice-shaped
         // `Input`s on the decode side.
         dest.write(&self.payload.value);
