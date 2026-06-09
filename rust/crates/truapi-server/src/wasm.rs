@@ -261,15 +261,7 @@ impl ChainProvider for WasmPlatform {
                 }
             }) as Box<dyn FnMut(JsValue)>);
 
-            let genesis_hex = genesis_hash.iter().fold(
-                String::with_capacity(2 + genesis_hash.len() * 2),
-                |mut s, b| {
-                    use std::fmt::Write;
-                    let _ = write!(s, "{b:02x}");
-                    s
-                },
-            );
-            let genesis_arg = JsValue::from_str(&format!("0x{genesis_hex}"));
+            let genesis_arg = JsValue::from_str(&format!("0x{}", hex::encode(&genesis_hash)));
             let returned = chain_connect
                 .call2(
                     &JsValue::NULL,
@@ -928,20 +920,17 @@ fn get_required_bytes32(value: &JsValue, name: &str) -> Result<[u8; 32], JsValue
 }
 
 fn parse_hex32(value: &str) -> Result<[u8; 32], String> {
-    let hex = value.strip_prefix("0x").unwrap_or(value);
-    if hex.len() != 64 {
+    let raw = value.strip_prefix("0x").unwrap_or(value);
+    if raw.len() != 64 {
         return Err(format!(
             "expected 32-byte hex string, got {} hex chars",
-            hex.len()
+            raw.len()
         ));
     }
-    let mut out = [0u8; 32];
-    for (idx, byte) in out.iter_mut().enumerate() {
-        let start = idx * 2;
-        *byte = u8::from_str_radix(&hex[start..start + 2], 16)
-            .map_err(|_| "invalid hex".to_string())?;
-    }
-    Ok(out)
+    let bytes = hex::decode(raw).map_err(|_| "invalid hex".to_string())?;
+    bytes
+        .try_into()
+        .map_err(|bytes: Vec<u8>| format!("expected 32 bytes, got {}", bytes.len()))
 }
 
 struct WasmCoreInner {
