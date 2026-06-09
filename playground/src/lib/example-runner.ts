@@ -64,6 +64,31 @@ const AsyncFunction = Object.getPrototypeOf(
   assert: typeof exampleAssert,
 ) => Promise<unknown>;
 
+const DEPLOYED_PLAYGROUND_PRODUCT_ID = "truapi-playground.dot";
+
+function currentExampleProductIdentifier(): string {
+  if (typeof window === "undefined") return DEPLOYED_PLAYGROUND_PRODUCT_ID;
+  const { hostname, port } = window.location;
+  if ((hostname === "localhost" || hostname === "127.0.0.1") && port) {
+    return `${hostname}:${port}`;
+  }
+  return DEPLOYED_PLAYGROUND_PRODUCT_ID;
+}
+
+export function adaptExampleSourceForHost(source: string): string {
+  const productId = currentExampleProductIdentifier();
+  if (productId === DEPLOYED_PLAYGROUND_PRODUCT_ID) return source;
+  return source
+    .replaceAll(
+      `"${DEPLOYED_PLAYGROUND_PRODUCT_ID}"`,
+      `"${productId}"`,
+    )
+    .replaceAll(
+      `'${DEPLOYED_PLAYGROUND_PRODUCT_ID}'`,
+      `'${productId}'`,
+    );
+}
+
 function lazyImport(load: () => Promise<unknown>): () => Promise<unknown> {
   let promise: Promise<unknown> | null = null;
   return () => (promise ??= load());
@@ -76,7 +101,8 @@ export async function runExample(opts: {
   client: TrUApiClient;
   onLog: (entry: LogEntry) => void;
 }): Promise<RunResult> {
-  const { source, client, onLog } = opts;
+  const { client, onLog } = opts;
+  const source = adaptExampleSourceForHost(opts.source);
 
   let js: string;
   try {

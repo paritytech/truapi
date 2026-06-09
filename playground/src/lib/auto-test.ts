@@ -1,4 +1,5 @@
 import {
+  adaptExampleSourceForHost,
   runExample,
   type LogEntry,
   type RunResult,
@@ -60,7 +61,7 @@ async function runOne({
 
   onUpdate(id, { status: "running" });
 
-  const source = method.exampleSource;
+  const source = adaptExampleSourceForHost(method.exampleSource);
   const logs: LogEntry[] = [];
   const onLog = (entry: LogEntry) => logs.push(entry);
   const timeoutMs = LONG_TIMEOUT_METHODS.has(id)
