@@ -1701,6 +1701,14 @@ struct PairingSuccess {
     success: crate::host_logic::sso_pairing::HandshakeSuccessV2,
 }
 
+#[derive(Default)]
+struct PairingFrameState {
+    remote_subscription_id: Option<String>,
+    pending_query_request_id: Option<String>,
+    pending_query_remote_id: Option<String>,
+    pending_query_elapsed_ticks: u8,
+}
+
 #[instrument(skip_all, fields(runtime.method = "sso.pairing.wait_success"))]
 async fn wait_for_v2_pairing_success(
     connection: &dyn JsonRpcConnection,
@@ -1709,10 +1717,7 @@ async fn wait_for_v2_pairing_success(
     topic: [u8; 32],
     core_encryption_secret_key: [u8; 32],
 ) -> Result<PairingSuccess, String> {
-    let mut remote_subscription_id = None;
-    let mut pending_query_request_id = None;
-    let mut pending_query_remote_id = None;
-    let mut pending_query_elapsed_ticks = 0u8;
+    let mut state = PairingFrameState::default();
 
     #[cfg(target_arch = "wasm32")]
     loop {
@@ -1722,11 +1727,8 @@ async fn wait_for_v2_pairing_success(
         if let Some(success) = handle_v2_pairing_frame(
             connection,
             &frame,
-            &mut remote_subscription_id,
+            &mut state,
             &remote_subscription_slot,
-            &mut pending_query_request_id,
-            &mut pending_query_remote_id,
-            &mut pending_query_elapsed_ticks,
             core_encryption_secret_key,
         )? {
             return Ok(success);
@@ -1747,45 +1749,42 @@ async fn wait_for_v2_pairing_success(
                     if let Some(success) = handle_v2_pairing_frame(
                         connection,
                         &frame,
-                        &mut remote_subscription_id,
+                        &mut state,
                         &remote_subscription_slot,
-                        &mut pending_query_request_id,
-                        &mut pending_query_remote_id,
-                        &mut pending_query_elapsed_ticks,
                         core_encryption_secret_key,
                     )? {
                         return Ok(success);
                     }
                 }
                 _ = poll => {
-                    if pending_query_request_id.is_some() {
-                        pending_query_elapsed_ticks = pending_query_elapsed_ticks.saturating_add(1);
+                    if state.pending_query_request_id.is_some() {
+                        state.pending_query_elapsed_ticks = state.pending_query_elapsed_ticks.saturating_add(1);
                     }
-                    if pending_query_request_id.is_some()
-                        && pending_query_elapsed_ticks >= PAIRING_QUERY_TIMEOUT_TICKS
+                    if state.pending_query_request_id.is_some()
+                        && state.pending_query_elapsed_ticks >= PAIRING_QUERY_TIMEOUT_TICKS
                     {
-                        if let Some(remote_id) = pending_query_remote_id.as_deref() {
+                        if let Some(remote_id) = state.pending_query_remote_id.as_deref() {
                             connection.send(unsubscribe_request(
                                 &format!(
                                     "{}:timeout-unsubscribe",
-                                    pending_query_request_id
+                                    state.pending_query_request_id
                                         .as_deref()
                                         .unwrap_or(PAIRING_SUBSCRIBE_REQUEST_ID)
                                 ),
                                 remote_id,
                             ));
                         }
-                        pending_query_request_id = None;
-                        pending_query_remote_id = None;
-                        pending_query_elapsed_ticks = 0;
+                        state.pending_query_request_id = None;
+                        state.pending_query_remote_id = None;
+                        state.pending_query_elapsed_ticks = 0;
                     }
-                    if pending_query_request_id.is_none() {
+                    if state.pending_query_request_id.is_none() {
                         query_counter += 1;
                         let query_request_id =
                             format!("{PAIRING_SUBSCRIBE_REQUEST_ID}:query:{query_counter}");
                         connection.send(subscribe_match_all_request(&query_request_id, &[topic]));
-                        pending_query_elapsed_ticks = 0;
-                        pending_query_request_id = Some(query_request_id);
+                        state.pending_query_elapsed_ticks = 0;
+                        state.pending_query_request_id = Some(query_request_id);
                     }
                     poll.set(futures_timer::Delay::new(PAIRING_QUERY_INTERVAL).fuse());
                 }
@@ -1798,29 +1797,26 @@ async fn wait_for_v2_pairing_success(
 fn handle_v2_pairing_frame(
     connection: &dyn JsonRpcConnection,
     frame: &str,
-    remote_subscription_id: &mut Option<String>,
+    state: &mut PairingFrameState,
     remote_subscription_slot: &SharedRemoteSubscriptionId,
-    pending_query_request_id: &mut Option<String>,
-    pending_query_remote_id: &mut Option<String>,
-    pending_query_elapsed_ticks: &mut u8,
     core_encryption_secret_key: [u8; 32],
 ) -> Result<Option<PairingSuccess>, String> {
-    if remote_subscription_id.is_none()
+    if state.remote_subscription_id.is_none()
         && let Some(id) = parse_subscribe_ack(frame, PAIRING_SUBSCRIBE_REQUEST_ID)
             .map_err(|err| err.to_string())?
     {
         *remote_subscription_slot
             .lock()
             .expect("pairing subscription id mutex poisoned") = Some(id.clone());
-        *remote_subscription_id = Some(id);
+        state.remote_subscription_id = Some(id);
         return Ok(None);
     }
     if let Some((query_request_id, id)) =
-        parse_pairing_query_subscribe_ack(frame, pending_query_request_id.as_deref())?
+        parse_pairing_query_subscribe_ack(frame, state.pending_query_request_id.as_deref())?
     {
-        *pending_query_request_id = Some(query_request_id);
-        *pending_query_remote_id = Some(id);
-        *pending_query_elapsed_ticks = 0;
+        state.pending_query_request_id = Some(query_request_id);
+        state.pending_query_remote_id = Some(id);
+        state.pending_query_elapsed_ticks = 0;
         return Ok(None);
     }
 
@@ -1828,9 +1824,9 @@ fn handle_v2_pairing_frame(
         return Ok(None);
     };
     let is_live_subscription =
-        Some(page.remote_subscription_id.as_str()) == remote_subscription_id.as_deref();
+        Some(page.remote_subscription_id.as_str()) == state.remote_subscription_id.as_deref();
     let is_query_subscription =
-        Some(page.remote_subscription_id.as_str()) == pending_query_remote_id.as_deref();
+        Some(page.remote_subscription_id.as_str()) == state.pending_query_remote_id.as_deref();
     if !is_live_subscription && !is_query_subscription {
         return Ok(None);
     }
@@ -1839,15 +1835,16 @@ fn handle_v2_pairing_frame(
         connection.send(unsubscribe_request(
             &format!(
                 "{}:unsubscribe",
-                pending_query_request_id
+                state
+                    .pending_query_request_id
                     .as_deref()
                     .unwrap_or(PAIRING_SUBSCRIBE_REQUEST_ID)
             ),
             &page.remote_subscription_id,
         ));
-        *pending_query_request_id = None;
-        *pending_query_remote_id = None;
-        *pending_query_elapsed_ticks = 0;
+        state.pending_query_request_id = None;
+        state.pending_query_remote_id = None;
+        state.pending_query_elapsed_ticks = 0;
     }
     for statement in page.statements {
         if let Some(success) = decode_v2_pairing_statement(&statement, core_encryption_secret_key)?
@@ -1911,7 +1908,7 @@ fn decode_v2_pairing_statement(
         EncryptedHandshakeResponseV2::Failed(reason) => Err(reason),
         EncryptedHandshakeResponseV2::Success(success) => Ok(Some(PairingSuccess {
             peer_statement_account_id: verified.signer,
-            success,
+            success: *success,
         })),
     }
 }
@@ -3674,14 +3671,14 @@ mod tests {
             .try_into()
             .unwrap();
         let answer = crate::host_logic::sso_pairing::EncryptedHandshakeResponseV2::Success(
-            crate::host_logic::sso_pairing::HandshakeSuccessV2 {
+            Box::new(crate::host_logic::sso_pairing::HandshakeSuccessV2 {
                 identity_account_id: peer_statement_keypair().1,
                 root_account_id: session_info().public_key,
                 identity_chat_private_key: [0x77; 32],
                 sso_enc_pub_key: wallet_persistent_public,
                 device_enc_pub_key: wallet_persistent_public,
                 root_entropy_source: [0x66; 32],
-            },
+            }),
         );
         let shared_secret = diffie_hellman(
             wallet_ephemeral_secret.to_nonzero_scalar(),

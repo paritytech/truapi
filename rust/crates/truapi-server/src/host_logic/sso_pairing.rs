@@ -117,7 +117,7 @@ pub enum EncryptedHandshakeResponseV2 {
     #[codec(index = 0)]
     Pending(HandshakeStatusV2),
     #[codec(index = 1)]
-    Success(HandshakeSuccessV2),
+    Success(Box<HandshakeSuccessV2>),
     #[codec(index = 2)]
     Failed(String),
 }

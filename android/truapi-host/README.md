@@ -125,7 +125,7 @@ class MyBridge(private val webView: WebView) : HostBridge {
         return granted
     }
 
-    override fun remotePermission(request: ByteArray): Boolean = TODO("prompt user")
+    override fun remotePermission(request: ByteArray): Boolean = false
     override fun featureSupported(request: ByteArray): Boolean = false
 
     override fun chainConnect(genesisHash: ByteArray): UInt? {
