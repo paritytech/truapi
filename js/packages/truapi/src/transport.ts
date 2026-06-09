@@ -9,6 +9,12 @@ function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
 
+function toWebSocketPayload(message: Uint8Array): Uint8Array<ArrayBuffer> {
+  const copy: Uint8Array<ArrayBuffer> = new Uint8Array(message.byteLength);
+  copy.set(message);
+  return copy;
+}
+
 /**
  * Handle returned by TrUAPI subscription APIs.
  **/
@@ -619,7 +625,7 @@ export function createWebSocketProvider(
   socket.onopen = () => {
     for (const msg of pending) {
       try {
-        socket.send(msg);
+        socket.send(toWebSocketPayload(msg));
       } catch (error) {
         base.close(error);
         return;
@@ -656,7 +662,7 @@ export function createWebSocketProvider(
       }
       if (socket.readyState === WebSocketCtor.OPEN) {
         try {
-          socket.send(message);
+          socket.send(toWebSocketPayload(message));
         } catch (error) {
           base.close(error);
           throw toError(error);

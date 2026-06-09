@@ -28,7 +28,8 @@ use crate::host_logic::identity::{
 };
 use crate::host_logic::permissions::{Decision, PermissionsService};
 use crate::host_logic::product_account::{
-    derive_product_public_key, is_product_identifier, product_public_key_to_address,
+    derive_product_public_key, is_product_identifier, normalize_product_identifier,
+    product_public_key_to_address,
 };
 use crate::host_logic::session::{
     SessionInfo, SessionState, SsoSessionInfo, decode_persisted_session, encode_persisted_session,
@@ -379,15 +380,30 @@ impl<P> PlatformRuntimeHost<P> {
     }
 
     fn is_product_account_valid_for_caller(&self, dot_ns_identifier: &str) -> bool {
+        let dot_ns_identifier = normalize_product_identifier(dot_ns_identifier);
+        let product_id = normalize_product_identifier(&self.runtime_config.product_id);
         if self.runtime_config.product_label.starts_with("localhost:") {
-            is_product_identifier(dot_ns_identifier)
+            is_product_identifier(&dot_ns_identifier)
         } else {
-            dot_ns_identifier == self.runtime_config.product_id
+            dot_ns_identifier == product_id
         }
     }
 
+    fn normalize_product_account_id(
+        product_account_id: v01::ProductAccountId,
+    ) -> v01::ProductAccountId {
+        v01::ProductAccountId {
+            dot_ns_identifier: normalize_product_identifier(&product_account_id.dot_ns_identifier),
+            derivation_index: product_account_id.derivation_index,
+        }
+    }
+
+    fn product_id(&self) -> String {
+        normalize_product_identifier(&self.runtime_config.product_id)
+    }
+
     fn legacy_slot_zero_public_key(&self, session: &SessionInfo) -> Result<[u8; 32], String> {
-        derive_product_public_key(session.public_key, &self.runtime_config.product_id, 0)
+        derive_product_public_key(session.public_key, &self.product_id(), 0)
             .map_err(|err| err.to_string())
     }
 
@@ -1089,6 +1105,7 @@ where
         request: HostAccountGetRequest,
     ) -> Result<HostAccountGetResponse, CallError<HostAccountGetError>> {
         let HostAccountGetRequest::V1(v01::HostAccountGetRequest { product_account_id }) = request;
+        let product_account_id = Self::normalize_product_account_id(product_account_id);
 
         if !is_product_identifier(&product_account_id.dot_ns_identifier) {
             return Err(CallError::Domain(HostAccountGetError::V1(
@@ -1127,6 +1144,7 @@ where
     ) -> Result<HostAccountGetAliasResponse, CallError<HostAccountGetAliasError>> {
         let HostAccountGetAliasRequest::V1(v01::HostAccountGetAliasRequest { product_account_id }) =
             request;
+        let product_account_id = Self::normalize_product_account_id(product_account_id);
 
         let Some(session) = self.session_state.current() else {
             return Err(CallError::Domain(HostAccountGetAliasError::V1(
@@ -1140,11 +1158,12 @@ where
             )));
         }
 
-        if product_account_id.dot_ns_identifier != self.runtime_config.product_id {
+        let product_id = self.product_id();
+        if product_account_id.dot_ns_identifier != product_id {
             let confirmed = PlatformUserConfirmation::confirm_account_alias(
                 self.platform.as_ref(),
                 (
-                    self.runtime_config.product_id.clone(),
+                    product_id.clone(),
                     product_account_id.dot_ns_identifier.clone(),
                 )
                     .encode(),
@@ -1161,11 +1180,7 @@ where
         }
 
         let message_id = sso_message_id(cx, "account-alias");
-        let message = alias_request_message(
-            message_id.clone(),
-            product_account_id,
-            self.runtime_config.product_id.clone(),
-        );
+        let message = alias_request_message(message_id.clone(), product_account_id, product_id);
         let response = self
             .submit_sso_remote_message_without_timeout(cx, &session, "account-alias", message)
             .await
@@ -1210,21 +1225,21 @@ where
             ));
         };
 
-        if !is_product_identifier(&self.runtime_config.product_id) {
+        let product_id = self.product_id();
+        if !is_product_identifier(&product_id) {
             return Err(CallError::Domain(HostGetLegacyAccountsError::V1(
                 v01::HostAccountGetError::DomainNotValid,
             )));
         }
 
         let public_key =
-            derive_product_public_key(session.public_key, &self.runtime_config.product_id, 0)
-                .map_err(|err| {
-                    CallError::Domain(HostGetLegacyAccountsError::V1(
-                        v01::HostAccountGetError::Unknown {
-                            reason: err.to_string(),
-                        },
-                    ))
-                })?;
+            derive_product_public_key(session.public_key, &product_id, 0).map_err(|err| {
+                CallError::Domain(HostGetLegacyAccountsError::V1(
+                    v01::HostAccountGetError::Unknown {
+                        reason: err.to_string(),
+                    },
+                ))
+            })?;
 
         Ok(HostGetLegacyAccountsResponse::V1(
             v01::HostGetLegacyAccountsResponse {
@@ -1878,7 +1893,8 @@ where
         request: HostSignPayloadRequest,
     ) -> Result<HostSignPayloadResponse, CallError<HostSignPayloadError>> {
         info!("sign_payload: requesting wallet signature");
-        let HostSignPayloadRequest::V1(inner) = request;
+        let HostSignPayloadRequest::V1(mut inner) = request;
+        inner.account = Self::normalize_product_account_id(inner.account);
         if !self.is_product_account_valid_for_caller(&inner.account.dot_ns_identifier) {
             return Err(CallError::Domain(HostSignPayloadError::V1(
                 v01::HostSignPayloadError::PermissionDenied,
@@ -1950,7 +1966,8 @@ where
         request: HostSignRawRequest,
     ) -> Result<HostSignRawResponse, CallError<HostSignRawError>> {
         info!("sign_raw: requesting wallet signature");
-        let HostSignRawRequest::V1(inner) = request;
+        let HostSignRawRequest::V1(mut inner) = request;
+        inner.account = Self::normalize_product_account_id(inner.account);
         if !self.is_product_account_valid_for_caller(&inner.account.dot_ns_identifier) {
             return Err(CallError::Domain(HostSignRawError::V1(
                 v01::HostSignPayloadError::PermissionDenied,
@@ -2022,7 +2039,8 @@ where
         request: HostCreateTransactionRequest,
     ) -> Result<HostCreateTransactionResponse, CallError<HostCreateTransactionError>> {
         info!("create_transaction: requesting wallet signature");
-        let HostCreateTransactionRequest::V1(inner) = request;
+        let HostCreateTransactionRequest::V1(mut inner) = request;
+        inner.signer = Self::normalize_product_account_id(inner.signer);
         if !self.is_product_account_valid_for_caller(&inner.signer.dot_ns_identifier) {
             return Err(CallError::Domain(HostCreateTransactionError::V1(
                 v01::HostCreateTransactionError::PermissionDenied,
@@ -2131,7 +2149,7 @@ where
             message_id,
             v01::HostSignPayloadRequest {
                 account: v01::ProductAccountId {
-                    dot_ns_identifier: self.runtime_config.product_id.clone(),
+                    dot_ns_identifier: self.product_id(),
                     derivation_index: 0,
                 },
                 payload: inner.payload,
@@ -2208,7 +2226,7 @@ where
             message_id,
             v01::HostSignRawRequest {
                 account: v01::ProductAccountId {
-                    dot_ns_identifier: self.runtime_config.product_id.clone(),
+                    dot_ns_identifier: self.product_id(),
                     derivation_index: 0,
                 },
                 payload: inner.payload,
@@ -2295,7 +2313,7 @@ where
             message_id,
             v01::ProductAccountTxPayload {
                 signer: v01::ProductAccountId {
-                    dot_ns_identifier: self.runtime_config.product_id.clone(),
+                    dot_ns_identifier: self.product_id(),
                     derivation_index: 0,
                 },
                 genesis_hash: inner.genesis_hash,
@@ -2393,7 +2411,8 @@ where
         RemoteStatementStoreCreateProofResponse,
         CallError<RemoteStatementStoreCreateProofError>,
     > {
-        let RemoteStatementStoreCreateProofRequest::V1(inner) = request;
+        let RemoteStatementStoreCreateProofRequest::V1(mut inner) = request;
+        inner.product_account_id = Self::normalize_product_account_id(inner.product_account_id);
         if !self.is_product_account_valid_for_caller(&inner.product_account_id.dot_ns_identifier) {
             return Err(CallError::Domain(RemoteStatementStoreCreateProofError::V1(
                 v01::RemoteStatementStoreCreateProofError::UnknownAccount,
@@ -2989,7 +3008,7 @@ where
         let message_id = sso_message_id(cx, "resource-allocation");
         let message = resource_allocation_message(
             message_id,
-            self.runtime_config.product_id.clone(),
+            self.product_id(),
             inner.resources,
             OnExistingAllowancePolicy::Increase,
         );
@@ -3064,18 +3083,15 @@ where
             )));
         };
 
-        let entropy = derive_product_entropy_from_source(
-            &root_entropy_source,
-            &self.runtime_config.product_id,
-            &context,
-        )
-        .map_err(|err| {
-            CallError::Domain(HostDeriveEntropyError::V1(
-                v01::HostDeriveEntropyError::Unknown {
-                    reason: err.to_string(),
-                },
-            ))
-        })?;
+        let entropy =
+            derive_product_entropy_from_source(&root_entropy_source, &self.product_id(), &context)
+                .map_err(|err| {
+                    CallError::Domain(HostDeriveEntropyError::V1(
+                        v01::HostDeriveEntropyError::Unknown {
+                            reason: err.to_string(),
+                        },
+                    ))
+                })?;
 
         Ok(HostDeriveEntropyResponse::V1(
             v01::HostDeriveEntropyResponse { entropy },
@@ -4190,6 +4206,25 @@ mod tests {
     }
 
     #[test]
+    fn get_account_normalizes_product_identifier_before_deriving() {
+        let host = PlatformRuntimeHost::new_compat(stub_platform(), test_spawner());
+        host.session_state().set_session(session_info());
+        let cx = CallContext::new();
+        let request = HostAccountGetRequest::V1(v01::HostAccountGetRequest {
+            product_account_id: v01::ProductAccountId {
+                dot_ns_identifier: "MyApp.DOT".to_string(),
+                derivation_index: 0,
+            },
+        });
+        let response = futures::executor::block_on(host.get_account(&cx, request)).unwrap();
+        let HostAccountGetResponse::V1(inner) = response;
+        assert_eq!(
+            hex::encode(inner.account.public_key),
+            "281489e3dd1c4dbe88cd670a59edcc9c44d64f510d302bd527ec306f10292f08"
+        );
+    }
+
+    #[test]
     fn get_account_alias_requires_session() {
         let host =
             PlatformRuntimeHost::new(stub_platform(), runtime_config("myapp.dot"), test_spawner());
@@ -4263,12 +4298,60 @@ mod tests {
         assert_eq!(inner.context, [9; 32]);
         assert_eq!(inner.alias, vec![1, 2, 3]);
         let message = submitted_remote_message(&platform, &session);
-        assert!(matches!(
-            message.data,
-            crate::host_logic::sso_messages::RemoteMessageData::V1(
-                crate::host_logic::sso_messages::RemoteMessageV1::RingVrfAliasRequest(_)
-            )
-        ));
+        let crate::host_logic::sso_messages::RemoteMessageData::V1(
+            crate::host_logic::sso_messages::RemoteMessageV1::RingVrfAliasRequest(request),
+        ) = message.data
+        else {
+            panic!("expected ring VRF alias request");
+        };
+        assert_eq!(request.product_account_id.dot_ns_identifier, "myapp.dot");
+        assert_eq!(request.product_id, "myapp.dot");
+    }
+
+    #[test]
+    fn get_account_alias_normalizes_remote_request_identifier() {
+        let session = sso_session_info();
+        let platform = Arc::new(StubPlatform {
+            rpc_responses: sso_success_responses(
+                &session,
+                "alias-1",
+                crate::host_logic::sso_messages::RemoteMessage {
+                    message_id: "wallet-alias-1".to_string(),
+                    data: crate::host_logic::sso_messages::RemoteMessageData::V1(
+                        crate::host_logic::sso_messages::RemoteMessageV1::RingVrfAliasResponse(
+                            crate::host_logic::sso_messages::RingVrfAliasResponse {
+                                responding_to: "alias-1".to_string(),
+                                payload: Ok(v01::HostAccountGetAliasResponse {
+                                    context: [9; 32],
+                                    alias: vec![1, 2, 3],
+                                }),
+                            },
+                        ),
+                    ),
+                },
+            ),
+            ..Default::default()
+        });
+        let host = PlatformRuntimeHost::new(
+            platform.clone(),
+            runtime_config("MyApp.DOT"),
+            test_spawner(),
+        );
+        host.session_state().set_session(session.clone());
+        let cx = CallContext::with_request_id("alias-1".to_string());
+        futures::executor::block_on(
+            host.get_account_alias(&cx, account_alias_request("MyApp.DOT")),
+        )
+        .unwrap();
+        let message = submitted_remote_message(&platform, &session);
+        let crate::host_logic::sso_messages::RemoteMessageData::V1(
+            crate::host_logic::sso_messages::RemoteMessageV1::RingVrfAliasRequest(request),
+        ) = message.data
+        else {
+            panic!("expected ring VRF alias request");
+        };
+        assert_eq!(request.product_account_id.dot_ns_identifier, "myapp.dot");
+        assert_eq!(request.product_id, "myapp.dot");
     }
 
     #[test]
