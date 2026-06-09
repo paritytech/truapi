@@ -420,7 +420,7 @@ mod tests {
         SessionStore, Storage, ThemeHost, UserConfirmation,
     };
 
-    use crate::frame::{FrameKind, Payload, compose_action};
+    use crate::frame::{Payload, request_ids};
 
     struct StubPlatform;
 
@@ -632,13 +632,14 @@ mod tests {
             .build()
             .expect("test runtime");
 
+        let ids = request_ids("system_feature_supported").expect("known request method");
         let response_bytes = rt.block_on(async {
             let (mut ws, _) = tokio_tungstenite::connect_async(&url).await.expect("dial");
 
             let request_frame = ProtocolMessage {
                 request_id: "p:1".into(),
                 payload: Payload {
-                    tag: compose_action("system_feature_supported", FrameKind::Request),
+                    id: ids.request_id,
                     value: HostFeatureSupportedRequest::V1(
                         v01::HostFeatureSupportedRequest::Chain {
                             genesis_hash: vec![0u8; 32],
@@ -664,10 +665,7 @@ mod tests {
 
         let response = ProtocolMessage::decode(&mut &response_bytes[..]).expect("decode response");
         assert_eq!(response.request_id, "p:1");
-        assert_eq!(
-            response.payload.tag,
-            compose_action("system_feature_supported", FrameKind::Response),
-        );
+        assert_eq!(response.payload.id, ids.response_id);
         // Wire payload is `Result<Ok, Err>`-shaped:
         // [Ok disc=0x00][V1 variant 0x00][supported=1]
         assert_eq!(response.payload.value, vec![0x00, 0x00, 0x01]);

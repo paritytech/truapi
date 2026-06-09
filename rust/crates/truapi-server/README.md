@@ -22,10 +22,12 @@ Every frame on the wire is encoded as:
 [requestId: SCALE str][discriminant: u8][payload bytes...]
 ```
 
-The discriminant maps to a method/kind tag via the auto-generated
-[`crate::generated::wire_table::WIRE_TABLE`]. Method ordering is part of
-the wire protocol; only ever append.
+The discriminant identifies a method + frame kind via the auto-generated
+[`crate::generated::wire_table::WIRE_TABLE`]. Each method's ids are exposed
+as a named const (`PREIMAGE_SUBMIT`, ...); both `WIRE_TABLE` and the generated
+dispatcher reference those consts. Method ordering is part of the wire
+protocol; only ever append.
 
 The payload bytes are the SCALE-encoded inner value, inlined without a
-length prefix. In-memory we keep the tag as a `String` so the dispatcher
-(which keys on method name) is independent of the wire numbering.
+length prefix. The discriminant is carried directly as `Payload::id`, and the
+dispatcher routes on that numeric id via id-keyed tables.

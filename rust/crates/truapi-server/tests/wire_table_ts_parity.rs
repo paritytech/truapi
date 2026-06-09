@@ -39,26 +39,34 @@ fn parse_id(raw: &str, method: &str) -> u8 {
 }
 
 fn parse_rust(src: &str) -> Vec<Row> {
-    // Walks the `pub const WIRE_TABLE: &[WireEntry] = &[ ... ];` body and
-    // pulls out each `WireEntry { method: "x", kind: ... }`.
+    // The Rust codegen emits one named `pub const FOO_BAR: RequestFrameIds = ...`
+    // (or `SubscriptionFrameIds`) per method. The const name is
+    // `SCREAMING_SNAKE_CASE` of the method name; we lowercase it to match the
+    // TS const names. This mirrors `parse_ts` below.
     let mut out = Vec::new();
-    let mut iter = src.lines().peekable();
+    let mut iter = src.lines();
     while let Some(line) = iter.next() {
         let trimmed = line.trim();
-        let Some(rest) = trimmed.strip_prefix("method: \"") else {
+        let Some(rest) = trimmed.strip_prefix("pub const ") else {
             continue;
         };
-        let Some(end) = rest.find('"') else { continue };
-        let method = rest[..end].to_string();
+        let Some(colon) = rest.find(':') else {
+            continue;
+        };
+        let is_subscription = rest.contains("SubscriptionFrameIds");
+        // Skip non-id consts (e.g. `WIRE_TABLE: &[WireEntry]`).
+        if !is_subscription && !rest.contains("RequestFrameIds") {
+            continue;
+        }
+        let method = rest[..colon].trim().to_ascii_lowercase();
         let mut request_or_start = None;
         let mut response_or_receive = None;
         let mut stop = None;
         let mut interrupt = None;
-        let mut is_subscription = false;
         for inner in iter.by_ref() {
             let t = inner.trim();
-            if t.contains("WireKind::Subscription") {
-                is_subscription = true;
+            if t.starts_with("};") {
+                break;
             }
             if let Some(rest) = t
                 .strip_prefix("request_id: ")
@@ -78,19 +86,16 @@ fn parse_rust(src: &str) -> Vec<Row> {
             if let Some(rest) = t.strip_prefix("interrupt_id: ") {
                 interrupt = Some(parse_id(rest, &method));
             }
-            if t == "},"
-                && let (Some(rs), Some(rr)) = (request_or_start, response_or_receive)
-            {
-                out.push(Row {
-                    method,
-                    request_or_start: rs,
-                    response_or_receive: rr,
-                    stop,
-                    interrupt,
-                    is_subscription,
-                });
-                break;
-            }
+        }
+        if let (Some(rs), Some(rr)) = (request_or_start, response_or_receive) {
+            out.push(Row {
+                method,
+                request_or_start: rs,
+                response_or_receive: rr,
+                stop,
+                interrupt,
+                is_subscription,
+            });
         }
     }
     out

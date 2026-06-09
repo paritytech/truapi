@@ -21,6 +21,7 @@ use indoc::{formatdoc, indoc, writedoc};
 
 use crate::rustdoc::*;
 
+use super::wire_table::const_name;
 use super::{module_for_trait, wire_method_name};
 
 /// Emit the contents of `dispatcher.rs`.
@@ -125,8 +126,8 @@ impl ModuleEmission {
 struct MethodEmission {
     /// Rust method name on the host trait (used for the `host.<name>(...)` call).
     name: String,
-    /// Fully-qualified wire method name (`{trait_snake}_{method}`); used as the
-    /// dispatcher registration key and the tag prefix.
+    /// Fully-qualified wire method name (`{trait_snake}_{method}`); uppercased
+    /// to the `wire_table` const this method registers against.
     wire_name: String,
     module: String,
     kind: MethodKind,
@@ -216,7 +217,7 @@ impl MethodEmission {
     fn write_request(&self, out: &mut String, host_expr: &str) {
         let module = &self.module;
         let method = &self.name;
-        let wire = &self.wire_name;
+        let ids = const_name(&self.wire_name);
 
         write_indented(
             out,
@@ -225,7 +226,7 @@ impl MethodEmission {
                 r#"
                 {{
                     let host = {host_expr};
-                    dispatcher.on_request("{wire}", move |request_id: String, bytes: Vec<u8>| {{
+                    dispatcher.on_request(wire_table::{ids}, move |request_id: String, bytes: Vec<u8>| {{
                         let host = host.clone();
                         Box::pin(async move {{
                 "#
@@ -298,7 +299,7 @@ impl MethodEmission {
     fn write_subscription(&self, out: &mut String, host_expr: &str) {
         let module = &self.module;
         let method = &self.name;
-        let wire = &self.wire_name;
+        let ids = const_name(&self.wire_name);
         let item = self
             .item_wrapper
             .as_deref()
@@ -313,7 +314,7 @@ impl MethodEmission {
                 r#"
                 {{
                     let host = {host_expr};
-                    dispatcher.on_subscription("{wire}", move |request_id: String, bytes: Vec<u8>| {{
+                    dispatcher.on_subscription(wire_table::{ids}, move |request_id: String, bytes: Vec<u8>| {{
                         let host = host.clone();
                         Box::pin(async move {{
                 "#
@@ -437,6 +438,7 @@ fn write_imports(out: &mut String, traits: &[&TraitDef]) {
 
         use crate::dispatcher::Dispatcher;
         use crate::frame::{{encode_call_error_payload, encode_decode_error}};
+        use crate::generated::wire_table;
         use crate::subscription::subscription_stream;
         "#
     )

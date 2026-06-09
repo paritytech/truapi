@@ -15,6 +15,7 @@ use truapi::versioned;
 
 use crate::dispatcher::Dispatcher;
 use crate::frame::{encode_call_error_payload, encode_decode_error};
+use crate::generated::wire_table;
 use crate::subscription::subscription_stream;
 
 /// Register every TrUAPI method with the dispatcher.
@@ -63,7 +64,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_subscription(
-            "account_connection_status_subscribe",
+            wire_table::ACCOUNT_CONNECTION_STATUS_SUBSCRIBE,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -81,7 +82,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "account_get_account",
+            wire_table::ACCOUNT_GET_ACCOUNT,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -105,7 +106,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "account_get_account_alias",
+            wire_table::ACCOUNT_GET_ACCOUNT_ALIAS,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -129,7 +130,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "account_create_account_proof",
+            wire_table::ACCOUNT_CREATE_ACCOUNT_PROOF,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -153,7 +154,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "account_get_legacy_accounts",
+            wire_table::ACCOUNT_GET_LEGACY_ACCOUNTS,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -177,7 +178,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "account_get_user_id",
+            wire_table::ACCOUNT_GET_USER_ID,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -201,7 +202,7 @@ where
     {
         let host = host;
         dispatcher.on_request(
-            "account_request_login",
+            wire_table::ACCOUNT_REQUEST_LOGIN,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -231,7 +232,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_subscription(
-            "chain_follow_head_subscribe",
+            wire_table::CHAIN_FOLLOW_HEAD_SUBSCRIBE,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -251,7 +252,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "chain_get_head_header",
+            wire_table::CHAIN_GET_HEAD_HEADER,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -275,7 +276,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "chain_get_head_body",
+            wire_table::CHAIN_GET_HEAD_BODY,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -299,7 +300,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "chain_get_head_storage",
+            wire_table::CHAIN_GET_HEAD_STORAGE,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -323,7 +324,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "chain_call_head",
+            wire_table::CHAIN_CALL_HEAD,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -347,7 +348,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "chain_unpin_head",
+            wire_table::CHAIN_UNPIN_HEAD,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -371,7 +372,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "chain_continue_head",
+            wire_table::CHAIN_CONTINUE_HEAD,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -395,7 +396,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "chain_stop_head_operation",
+            wire_table::CHAIN_STOP_HEAD_OPERATION,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -419,7 +420,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "chain_get_spec_genesis_hash",
+            wire_table::CHAIN_GET_SPEC_GENESIS_HASH,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -443,7 +444,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "chain_get_spec_chain_name",
+            wire_table::CHAIN_GET_SPEC_CHAIN_NAME,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -467,7 +468,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "chain_get_spec_properties",
+            wire_table::CHAIN_GET_SPEC_PROPERTIES,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -491,7 +492,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "chain_broadcast_transaction",
+            wire_table::CHAIN_BROADCAST_TRANSACTION,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -515,7 +516,7 @@ where
     {
         let host = host;
         dispatcher.on_request(
-            "chain_stop_transaction",
+            wire_table::CHAIN_STOP_TRANSACTION,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -545,7 +546,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "chat_create_room",
+            wire_table::CHAT_CREATE_ROOM,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -569,7 +570,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "chat_register_bot",
+            wire_table::CHAT_REGISTER_BOT,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -593,7 +594,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_subscription(
-            "chat_list_subscribe",
+            wire_table::CHAT_LIST_SUBSCRIBE,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -611,7 +612,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "chat_post_message",
+            wire_table::CHAT_POST_MESSAGE,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -635,7 +636,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_subscription(
-            "chat_action_subscribe",
+            wire_table::CHAT_ACTION_SUBSCRIBE,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -653,7 +654,7 @@ where
     {
         let host = host;
         dispatcher.on_subscription(
-            "chat_custom_message_render_subscribe",
+            wire_table::CHAT_CUSTOM_MESSAGE_RENDER_SUBSCRIBE,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -679,7 +680,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "coin_payment_create_purse",
+            wire_table::COIN_PAYMENT_CREATE_PURSE,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -703,7 +704,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "coin_payment_query_purse",
+            wire_table::COIN_PAYMENT_QUERY_PURSE,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -727,7 +728,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_subscription(
-            "coin_payment_rebalance_purse",
+            wire_table::COIN_PAYMENT_REBALANCE_PURSE,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -750,7 +751,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_subscription(
-            "coin_payment_delete_purse",
+            wire_table::COIN_PAYMENT_DELETE_PURSE,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -773,7 +774,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "coin_payment_create_receivable",
+            wire_table::COIN_PAYMENT_CREATE_RECEIVABLE,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -797,7 +798,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "coin_payment_create_cheque",
+            wire_table::COIN_PAYMENT_CREATE_CHEQUE,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -821,7 +822,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_subscription(
-            "coin_payment_deposit",
+            wire_table::COIN_PAYMENT_DEPOSIT,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -844,7 +845,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_subscription(
-            "coin_payment_refund",
+            wire_table::COIN_PAYMENT_REFUND,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -867,7 +868,7 @@ where
     {
         let host = host;
         dispatcher.on_subscription(
-            "coin_payment_listen_for_payment",
+            wire_table::COIN_PAYMENT_LISTEN_FOR_PAYMENT,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -896,7 +897,7 @@ where
     {
         let host = host;
         dispatcher.on_request(
-            "entropy_derive",
+            wire_table::ENTROPY_DERIVE,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -926,7 +927,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "local_storage_read",
+            wire_table::LOCAL_STORAGE_READ,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -950,7 +951,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "local_storage_write",
+            wire_table::LOCAL_STORAGE_WRITE,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -974,7 +975,7 @@ where
     {
         let host = host;
         dispatcher.on_request(
-            "local_storage_clear",
+            wire_table::LOCAL_STORAGE_CLEAR,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -1004,7 +1005,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "notifications_send_push_notification",
+            wire_table::NOTIFICATIONS_SEND_PUSH_NOTIFICATION,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -1028,7 +1029,7 @@ where
     {
         let host = host;
         dispatcher.on_request(
-            "notifications_cancel_push_notification",
+            wire_table::NOTIFICATIONS_CANCEL_PUSH_NOTIFICATION,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -1058,7 +1059,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_subscription(
-            "payment_balance_subscribe",
+            wire_table::PAYMENT_BALANCE_SUBSCRIBE,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -1081,7 +1082,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "payment_request",
+            wire_table::PAYMENT_REQUEST,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -1105,7 +1106,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_subscription(
-            "payment_status_subscribe",
+            wire_table::PAYMENT_STATUS_SUBSCRIBE,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -1128,7 +1129,7 @@ where
     {
         let host = host;
         dispatcher.on_request(
-            "payment_top_up",
+            wire_table::PAYMENT_TOP_UP,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -1158,7 +1159,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "permissions_request_device_permission",
+            wire_table::PERMISSIONS_REQUEST_DEVICE_PERMISSION,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -1182,7 +1183,7 @@ where
     {
         let host = host;
         dispatcher.on_request(
-            "permissions_request_remote_permission",
+            wire_table::PERMISSIONS_REQUEST_REMOTE_PERMISSION,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -1212,7 +1213,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_subscription(
-            "preimage_lookup_subscribe",
+            wire_table::PREIMAGE_LOOKUP_SUBSCRIBE,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -1232,7 +1233,7 @@ where
     {
         let host = host;
         dispatcher.on_request(
-            "preimage_submit",
+            wire_table::PREIMAGE_SUBMIT,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -1261,7 +1262,7 @@ where
 {
     {
         let host = host;
-        dispatcher.on_request("resource_allocation_request", move |request_id: String, bytes: Vec<u8>| {
+        dispatcher.on_request(wire_table::RESOURCE_ALLOCATION_REQUEST, move |request_id: String, bytes: Vec<u8>| {
             let host = host.clone();
             Box::pin(async move {
                 let request: versioned::resource_allocation::HostRequestResourceAllocationRequest =
@@ -1287,7 +1288,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "signing_create_transaction",
+            wire_table::SIGNING_CREATE_TRANSACTION,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -1310,7 +1311,7 @@ where
     }
     {
         let host = host.clone();
-        dispatcher.on_request("signing_create_transaction_with_legacy_account", move |request_id: String, bytes: Vec<u8>| {
+        dispatcher.on_request(wire_table::SIGNING_CREATE_TRANSACTION_WITH_LEGACY_ACCOUNT, move |request_id: String, bytes: Vec<u8>| {
             let host = host.clone();
             Box::pin(async move {
                 let request: versioned::signing::HostCreateTransactionWithLegacyAccountRequest =
@@ -1330,7 +1331,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "signing_sign_raw_with_legacy_account",
+            wire_table::SIGNING_SIGN_RAW_WITH_LEGACY_ACCOUNT,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -1354,7 +1355,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "signing_sign_payload_with_legacy_account",
+            wire_table::SIGNING_SIGN_PAYLOAD_WITH_LEGACY_ACCOUNT,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -1378,7 +1379,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "signing_sign_raw",
+            wire_table::SIGNING_SIGN_RAW,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -1402,7 +1403,7 @@ where
     {
         let host = host;
         dispatcher.on_request(
-            "signing_sign_payload",
+            wire_table::SIGNING_SIGN_PAYLOAD,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -1432,7 +1433,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_subscription(
-            "statement_store_subscribe",
+            wire_table::STATEMENT_STORE_SUBSCRIBE,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -1454,7 +1455,7 @@ where
     }
     {
         let host = host.clone();
-        dispatcher.on_request("statement_store_create_proof", move |request_id: String, bytes: Vec<u8>| {
+        dispatcher.on_request(wire_table::STATEMENT_STORE_CREATE_PROOF, move |request_id: String, bytes: Vec<u8>| {
             let host = host.clone();
             Box::pin(async move {
                 let request: versioned::statement_store::RemoteStatementStoreCreateProofRequest =
@@ -1473,7 +1474,7 @@ where
     }
     {
         let host = host.clone();
-        dispatcher.on_request("statement_store_create_proof_authorized", move |request_id: String, bytes: Vec<u8>| {
+        dispatcher.on_request(wire_table::STATEMENT_STORE_CREATE_PROOF_AUTHORIZED, move |request_id: String, bytes: Vec<u8>| {
             let host = host.clone();
             Box::pin(async move {
                 let request: versioned::statement_store::RemoteStatementStoreCreateProofAuthorizedRequest =
@@ -1493,7 +1494,7 @@ where
     {
         let host = host;
         dispatcher.on_request(
-            "statement_store_submit",
+            wire_table::STATEMENT_STORE_SUBMIT,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -1518,7 +1519,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "system_handshake",
+            wire_table::SYSTEM_HANDSHAKE,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -1542,7 +1543,7 @@ where
     {
         let host = host.clone();
         dispatcher.on_request(
-            "system_feature_supported",
+            wire_table::SYSTEM_FEATURE_SUPPORTED,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -1566,7 +1567,7 @@ where
     {
         let host = host;
         dispatcher.on_request(
-            "system_navigate_to",
+            wire_table::SYSTEM_NAVIGATE_TO,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {
@@ -1596,7 +1597,7 @@ where
     {
         let host = host;
         dispatcher.on_subscription(
-            "theme_subscribe",
+            wire_table::THEME_SUBSCRIBE,
             move |request_id: String, bytes: Vec<u8>| {
                 let host = host.clone();
                 Box::pin(async move {

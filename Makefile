@@ -38,7 +38,7 @@ build: ## Build the Rust workspace and the TypeScript client.
 	cd $(TRUAPI_PKG) && npm run build
 	cd $(HOST_WASM_PKG) && npm run build
 
-codegen: ## Regenerate the TypeScript client from the Rust crate.
+codegen: ## Regenerate generated TS/Rust artifacts from the Rust crates.
 	./scripts/codegen.sh
 	cd $(PLAYGROUND) && rm -rf node_modules/@parity && yarn install
 

@@ -147,6 +147,33 @@ submodule init + `bun install` and the per-pane `cd` discipline).
 Alternatively, with a deployed Polkadot Desktop Host installed, navigate to
 `https://dot.li/localhost:3000` from within it.
 
+#### Local dotli + playground E2E notes
+
+Use `make dev DEBUG=1` from the repo root for the local host stack. It prepares
+the ignored WASM/build artifacts, verifies dotli can resolve
+`@parity/truapi-host-wasm`, then starts dotli on `:5173` and the playground on
+`:3000`. Open `http://localhost:5173/localhost:3000`.
+
+When automating with Playwright, prefer a persistent headed Chrome profile and
+reuse the same browser context across checks. SSO pairing needs a real phone QR
+scan, and signing/resource-allocation flows may need web or mobile confirmation;
+if the human or companion app is unavailable, skip those methods and record the
+skip instead of treating it as a protocol failure. Non-interactive checks should
+still verify that the playground renders, the TrUAPI debug panel receives
+host/product events, generated examples can call non-confirmation methods, and
+logout/relogin does not restore a stale session.
+
+Useful debug signals:
+
+```bash
+localStorage.setItem("truapi:logLevel", "debug")
+sessionStorage.setItem("dotli:truapi-debug", "1")
+```
+
+Reload after setting them. Watch for `Unknown wire discriminant`, missing
+`@parity/truapi-host-wasm` imports, worker WASM instantiation failures, and
+debug-panel traffic disappearing when the login popup opens.
+
 ## Deployment
 
 Pushes to `main` trigger `.github/workflows/deploy-playground.yml`, which builds `playground/` and publishes the static export to `truapi-playground.dot` via `bulletin-deploy`.

@@ -33,7 +33,7 @@ use truapi_platform::{
 };
 
 use truapi_server::{
-    FrameKind, Payload, ProtocolMessage, TrUApiCore, compose_action, encode_call_error_payload,
+    Payload, ProtocolMessage, TrUApiCore, encode_call_error_payload, request_ids, subscription_ids,
 };
 
 const PAYMENTS_NOT_IMPLEMENTED: &str = "Payments are not supported in dot.li";
@@ -228,19 +228,17 @@ fn feature_supported_ok_response_uses_ok_discriminant() {
     let request = HostFeatureSupportedRequest::V1(v01::HostFeatureSupportedRequest::Chain {
         genesis_hash: vec![0u8; 32],
     });
+    let ids = request_ids("system_feature_supported").expect("known request method");
     let frame = ProtocolMessage {
         request_id: "p:1".into(),
         payload: Payload {
-            tag: compose_action("system_feature_supported", FrameKind::Request),
+            id: ids.request_id,
             value: request.encode(),
         },
     };
     let response = dispatch(&core, frame);
     assert_eq!(response.request_id, "p:1");
-    assert_eq!(
-        response.payload.tag,
-        compose_action("system_feature_supported", FrameKind::Response),
-    );
+    assert_eq!(response.payload.id, ids.response_id);
 
     // Wire payload: [Ok disc=0x00][encoded versioned response]
     let mut expected = vec![0x00u8];
@@ -259,19 +257,17 @@ fn local_storage_read_err_response_uses_err_discriminant() {
             key: "missing".to_string(),
         },
     );
+    let ids = request_ids("local_storage_read").expect("known request method");
     let frame = ProtocolMessage {
         request_id: "p:2".into(),
         payload: Payload {
-            tag: compose_action("local_storage_read", FrameKind::Request),
+            id: ids.request_id,
             value: request.encode(),
         },
     };
     let response = dispatch(&core, frame);
     assert_eq!(response.request_id, "p:2");
-    assert_eq!(
-        response.payload.tag,
-        compose_action("local_storage_read", FrameKind::Response),
-    );
+    assert_eq!(response.payload.id, ids.response_id);
 
     // Wire payload: `[Err disc=0x01][CallError::Domain variant=0x00][encoded
     // domain error]`. Build the expected bytes from the typed value the runtime
@@ -292,21 +288,19 @@ fn assert_request_returns_unsupported(
     method: &str,
     value: Vec<u8>,
 ) {
+    let ids = request_ids(method).expect("known request method");
     let response = dispatch(
         core,
         ProtocolMessage {
             request_id: request_id.into(),
             payload: Payload {
-                tag: compose_action(method, FrameKind::Request),
+                id: ids.request_id,
                 value,
             },
         },
     );
     assert_eq!(response.request_id, request_id);
-    assert_eq!(
-        response.payload.tag,
-        compose_action(method, FrameKind::Response),
-    );
+    assert_eq!(response.payload.id, ids.response_id);
     assert_eq!(
         response.payload.value,
         vec![0x01, 0x02],
@@ -321,21 +315,19 @@ fn assert_request_returns_domain_error<E: Encode>(
     value: Vec<u8>,
     error: truapi::CallError<E>,
 ) {
+    let ids = request_ids(method).expect("known request method");
     let response = dispatch(
         core,
         ProtocolMessage {
             request_id: request_id.into(),
             payload: Payload {
-                tag: compose_action(method, FrameKind::Request),
+                id: ids.request_id,
                 value,
             },
         },
     );
     assert_eq!(response.request_id, request_id);
-    assert_eq!(
-        response.payload.tag,
-        compose_action(method, FrameKind::Response),
-    );
+    assert_eq!(response.payload.id, ids.response_id);
     let mut expected = vec![0x01u8];
     expected.extend(encode_call_error_payload(error));
     assert_eq!(response.payload.value, expected);
@@ -367,12 +359,13 @@ fn assert_subscription_start_interrupts_error<E: Encode>(
         }
     }
 
+    let ids = subscription_ids(method).expect("known subscription method");
     let transport = Arc::new(RecordingTransport::default());
     futures::executor::block_on(core.dispatch(
         ProtocolMessage {
             request_id: request_id.into(),
             payload: Payload {
-                tag: compose_action(method, FrameKind::Start),
+                id: ids.start_id,
                 value,
             },
         },
@@ -382,10 +375,7 @@ fn assert_subscription_start_interrupts_error<E: Encode>(
     let sent = transport.sent.lock().unwrap();
     assert_eq!(sent.len(), 1);
     assert_eq!(sent[0].request_id, request_id);
-    assert_eq!(
-        sent[0].payload.tag,
-        compose_action(method, FrameKind::Interrupt),
-    );
+    assert_eq!(sent[0].payload.id, ids.interrupt_id);
     assert_eq!(sent[0].payload.value, encode_call_error_payload(error));
 }
 
@@ -575,10 +565,11 @@ fn subscription_start_receive_stop_through_wire_boundary() {
     let dyn_transport: Arc<dyn Transport> = transport.clone();
 
     let method = "account_connection_status_subscribe";
+    let ids = subscription_ids(method).expect("known subscription method");
     let start = ProtocolMessage {
         request_id: "p:1".into(),
         payload: Payload {
-            tag: compose_action(method, FrameKind::Start),
+            id: ids.start_id,
             value: Vec::new(),
         },
     };
@@ -590,17 +581,14 @@ fn subscription_start_receive_stop_through_wire_boundary() {
         assert!(Instant::now() < deadline, "no initial _receive frame");
         std::thread::sleep(Duration::from_millis(10));
     }
-    assert_eq!(
-        transport.sent.lock().unwrap()[0].payload.tag,
-        compose_action(method, FrameKind::Receive),
-    );
+    assert_eq!(transport.sent.lock().unwrap()[0].payload.id, ids.receive_id);
 
     // Stop the subscription, then push a session change. A live subscription
     // would emit a Connected `_receive`; a stopped one must stay silent.
     let stop = ProtocolMessage {
         request_id: "p:1".into(),
         payload: Payload {
-            tag: compose_action(method, FrameKind::Stop),
+            id: ids.stop_id,
             value: Vec::new(),
         },
     };

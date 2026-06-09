@@ -149,23 +149,53 @@ mod tests {
     }
 
     fn parse_entries(src: &str) -> Vec<(u8, String)> {
-        // Lines look like `    WireEntry { method: "x", ... request_id: 7, ... },`
-        // For the assertion we extract (id, tag) pairs from the embedded
-        // helper comment block instead. Keep a simpler parser of
-        // `// id=NN tag="..."` lines emitted by the generator.
+        // Each method's ids are emitted as a named const, e.g.
+        //   pub const PREIMAGE_SUBMIT: RequestFrameIds = RequestFrameIds {
+        //       request_id: 68,
+        //       response_id: 69,
+        //   };
+        // Reconstruct the `(id, "{method}_{suffix}")` pairs the assertions use,
+        // mirroring the parser in `tests/wire_table_ts_parity.rs`.
         let mut out = Vec::new();
-        for line in src.lines() {
-            let trimmed = line.trim();
-            if let Some(rest) = trimmed.strip_prefix("// entry id=") {
-                let mut parts = rest.splitn(2, ' ');
-                let id = parts.next().unwrap().parse::<u8>().unwrap();
-                let tag = parts
-                    .next()
-                    .unwrap()
-                    .trim_start_matches("tag=\"")
-                    .trim_end_matches('"')
-                    .to_string();
-                out.push((id, tag));
+        let mut lines = src.lines();
+        while let Some(line) = lines.next() {
+            let Some(rest) = line.trim().strip_prefix("pub const ") else {
+                continue;
+            };
+            let Some(colon) = rest.find(':') else {
+                continue;
+            };
+            let is_sub = rest.contains("SubscriptionFrameIds");
+            // Skip non-id consts (e.g. `WIRE_TABLE: &[WireEntry]`).
+            if !is_sub && !rest.contains("RequestFrameIds") {
+                continue;
+            }
+            let method = rest[..colon].trim().to_ascii_lowercase();
+
+            let mut ids: std::collections::BTreeMap<&str, u8> = std::collections::BTreeMap::new();
+            for inner in lines.by_ref() {
+                let t = inner.trim();
+                if t.starts_with("};") {
+                    break;
+                }
+                if let Some((field, val)) = t.split_once(':') {
+                    let id = val.trim().trim_end_matches(',').parse::<u8>().unwrap();
+                    ids.insert(field.trim(), id);
+                }
+            }
+
+            let suffixes: &[(&str, &str)] = if is_sub {
+                &[
+                    ("start_id", "start"),
+                    ("stop_id", "stop"),
+                    ("interrupt_id", "interrupt"),
+                    ("receive_id", "receive"),
+                ]
+            } else {
+                &[("request_id", "request"), ("response_id", "response")]
+            };
+            for (field, suffix) in suffixes {
+                out.push((ids[field], format!("{method}_{suffix}")));
             }
         }
         out
@@ -227,12 +257,12 @@ mod tests {
 
         let dispatcher = generate_dispatcher(&api).expect("dispatcher");
         assert!(
-            dispatcher.contains("\"statement_store_submit\""),
-            "dispatcher missing prefixed StatementStore key:\n{dispatcher}"
+            dispatcher.contains("wire_table::STATEMENT_STORE_SUBMIT"),
+            "dispatcher missing prefixed StatementStore const:\n{dispatcher}"
         );
         assert!(
-            dispatcher.contains("\"preimage_submit\""),
-            "dispatcher missing prefixed Preimage key:\n{dispatcher}"
+            dispatcher.contains("wire_table::PREIMAGE_SUBMIT"),
+            "dispatcher missing prefixed Preimage const:\n{dispatcher}"
         );
 
         let table = generate_wire_table(&api).expect("wire_table");

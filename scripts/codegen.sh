@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Regenerate js/packages/truapi/src/generated/* from rust/crates/truapi
-# plus js/packages/truapi-host-wasm/src/generated/* from rust/crates/truapi-platform.
+# Regenerate generated TrUAPI artifacts from rust/crates/truapi plus host
+# callback TypeScript from rust/crates/truapi-platform.
 #
 # Pipeline:
 #   1. cargo +nightly rustdoc -p truapi --output-format json -> target/doc/truapi.json
@@ -10,6 +10,7 @@
 #                                     --playground-output js/packages/truapi/src/playground
 #                                     --client-examples-output playground/test/generated/examples
 #                                     --host-output js/packages/truapi-host/src/generated
+#                                     --rust-output rust/crates/truapi-server/src/generated
 #                                     --platform-input target/doc/truapi_platform.json
 #                                     --platform-ts-output js/packages/truapi-host-wasm/src/generated
 #                                     --explorer-output js/packages/truapi/src/explorer
@@ -34,10 +35,13 @@ cargo run -p truapi-codegen -- \
   --playground-output js/packages/truapi/src/playground \
   --client-examples-output playground/test/generated/examples \
   --host-output js/packages/truapi-host/src/generated \
+  --rust-output rust/crates/truapi-server/src/generated \
   --platform-input target/doc/truapi_platform.json \
   --platform-ts-output js/packages/truapi-host-wasm/src/generated \
   --explorer-output js/packages/truapi/src/explorer \
   --codec-version 1
+
+rustfmt --edition 2024 rust/crates/truapi-server/src/generated/*.rs
 
 node scripts/regen-explorer-versions.mjs
 
@@ -74,4 +78,5 @@ echo "Generated client at js/packages/truapi/src/generated/"
 echo "Generated playground metadata at js/packages/truapi/src/playground/codegen/"
 echo "Generated client examples at playground/test/generated/examples/"
 echo "Generated host package at js/packages/truapi-host/src/generated/"
+echo "Generated Rust dispatcher at rust/crates/truapi-server/src/generated/"
 echo "Generated host-callbacks at js/packages/truapi-host-wasm/src/generated/"

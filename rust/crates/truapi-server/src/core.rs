@@ -196,7 +196,7 @@ mod tests {
         ThemeHost, UserConfirmation,
     };
 
-    use crate::frame::{FrameKind, Payload, compose_action};
+    use crate::frame::{Payload, request_ids, subscription_ids};
 
     fn test_spawner() -> crate::subscription::Spawner {
         #[cfg(not(target_arch = "wasm32"))]
@@ -394,10 +394,11 @@ mod tests {
         let request = HostFeatureSupportedRequest::V1(v01::HostFeatureSupportedRequest::Chain {
             genesis_hash: vec![0u8; 32],
         });
+        let ids = request_ids("system_feature_supported").expect("known request method");
         let frame = ProtocolMessage {
             request_id: "p:1".into(),
             payload: Payload {
-                tag: compose_action("system_feature_supported", FrameKind::Request),
+                id: ids.request_id,
                 value: request.encode(),
             },
         };
@@ -407,10 +408,7 @@ mod tests {
             .expect("dispatcher should emit a response");
         let response = ProtocolMessage::decode(&mut &response_bytes[..]).expect("decode response");
         assert_eq!(response.request_id, "p:1");
-        assert_eq!(
-            response.payload.tag,
-            compose_action("system_feature_supported", FrameKind::Response),
-        );
+        assert_eq!(response.payload.id, ids.response_id);
         // Wire payload is `Result<Ok, Err>`-shaped:
         // [Ok disc=0x00][V1 variant 0x00][supported=1]
         assert_eq!(response.payload.value, vec![0x00, 0x00, 0x01]);
@@ -421,10 +419,11 @@ mod tests {
     /// the wrapping ProtocolMessage). Shared by the runtime-delegation
     /// tests below.
     fn run_request(core: &TrUApiCore, method: &str, request_bytes: Vec<u8>) -> Vec<u8> {
+        let ids = request_ids(method).expect("known request method");
         let frame = ProtocolMessage {
             request_id: "p:1".into(),
             payload: Payload {
-                tag: compose_action(method, FrameKind::Request),
+                id: ids.request_id,
                 value: request_bytes,
             },
         };
@@ -433,10 +432,7 @@ mod tests {
             .expect("dispatcher should emit a response");
         let response = ProtocolMessage::decode(&mut &response_bytes[..]).expect("decode response");
         assert_eq!(response.request_id, "p:1");
-        assert_eq!(
-            response.payload.tag,
-            compose_action(method, FrameKind::Response),
-        );
+        assert_eq!(response.payload.id, ids.response_id);
         response.payload.value
     }
 
@@ -546,10 +542,12 @@ mod tests {
         let transport = Arc::new(RecordingTransport::default());
         let dyn_transport: Arc<dyn Transport> = transport.clone();
 
+        let sub_ids =
+            subscription_ids("account_connection_status_subscribe").expect("known subscription");
         let frame = ProtocolMessage {
             request_id: "p:1".into(),
             payload: Payload {
-                tag: compose_action("account_connection_status_subscribe", FrameKind::Start),
+                id: sub_ids.start_id,
                 value: Vec::new(),
             },
         };
@@ -570,10 +568,7 @@ mod tests {
         let sent = transport.sent.lock().unwrap().clone();
         assert!(!sent.is_empty(), "expected at least one _receive frame");
         let first = &sent[0];
-        assert_eq!(
-            first.payload.tag,
-            compose_action("account_connection_status_subscribe", FrameKind::Receive,),
-        );
+        assert_eq!(first.payload.id, sub_ids.receive_id);
         // V1(Disconnected): V1 variant 0x00, Disconnected discriminant 0x00.
         assert_eq!(first.payload.value, vec![0x00, 0x00]);
     }

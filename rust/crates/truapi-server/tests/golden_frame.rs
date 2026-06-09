@@ -20,6 +20,7 @@
 //! deliberately and re-check the change against the wire table.
 
 use parity_scale_codec::{Decode, Encode};
+use truapi_server::generated::wire_table;
 use truapi_server::{Payload, ProtocolMessage};
 
 const GOLDEN: &[u8] = include_bytes!("snapshots/golden-account-get.bin");
@@ -37,7 +38,7 @@ fn golden_account_get_frame_decodes_to_expected_message() {
     let expected = ProtocolMessage {
         request_id: "p:1".to_string(),
         payload: Payload {
-            tag: "account_get_account_request".to_string(),
+            id: wire_table::ACCOUNT_GET_ACCOUNT.request_id,
             value: expected_inner,
         },
     };
