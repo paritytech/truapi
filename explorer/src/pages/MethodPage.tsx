@@ -8,15 +8,7 @@ import { MarkdownText } from "../components/MarkdownText";
 import CodeBlock from "../components/CodeBlock";
 import { compatibility } from "../data/compatibility";
 import type { CompatStatus } from "../data/compatibility-types";
-
-/** Deployed playground served inside the Polkadot Desktop Host. */
-const HOSTED_PLAYGROUND_URL = "https://truapi-playground.dot.li";
-
-/** Deep link that opens this method in the host-backed playground. */
-function playgroundUrl(service: string, method: string): string {
-  const params = new URLSearchParams({ service, method });
-  return `${HOSTED_PLAYGROUND_URL}/?${params.toString()}`;
-}
+import { playgroundMethodUrl } from "../data/playground";
 
 /** Detail page for a single method. */
 export default function MethodPage() {
@@ -71,7 +63,7 @@ export default function MethodPage() {
       : null;
 
   const exampleSource = method.exampleSource;
-  const playgroundDeepLink = playgroundUrl(service.name, method.name);
+  const playgroundDeepLink = playgroundMethodUrl(service.name, method.name);
 
   return (
     <div className="max-w-4xl mx-auto">

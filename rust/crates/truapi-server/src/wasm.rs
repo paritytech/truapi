@@ -383,9 +383,9 @@ impl UserConfirmation for WasmPlatform {
 }
 
 impl ThemeHost for WasmPlatform {
-    fn subscribe_theme(&self) -> BoxStream<'static, Result<v01::Theme, v01::GenericError>> {
+    fn subscribe_theme(&self) -> BoxStream<'static, Result<v01::ThemeVariant, v01::GenericError>> {
         let Some(fn_) = self.bridge.subscribe_theme.as_ref() else {
-            return stream::once(async { Ok(v01::Theme::Dark) }).boxed();
+            return stream::once(async { Ok(v01::ThemeVariant::Dark) }).boxed();
         };
         invoke_js_subscription(fn_, None, parse_theme_item).boxed()
     }
@@ -685,27 +685,27 @@ fn parse_preimage_lookup_item(value: JsValue) -> Result<Option<Vec<u8>>, String>
         .map_err(|_| "preimage lookup item must be Uint8Array, null, or undefined".to_string())
 }
 
-fn parse_theme_item(value: JsValue) -> Result<v01::Theme, String> {
+fn parse_theme_item(value: JsValue) -> Result<v01::ThemeVariant, String> {
     if let Some(theme) = value.as_string() {
         return match theme.as_str() {
-            "Light" | "light" => Ok(v01::Theme::Light),
-            "Dark" | "dark" => Ok(v01::Theme::Dark),
+            "Light" | "light" => Ok(v01::ThemeVariant::Light),
+            "Dark" | "dark" => Ok(v01::ThemeVariant::Dark),
             _ => Err("theme item string must be Light or Dark".to_string()),
         };
     }
     if let Some(theme) = value.as_f64() {
         return match theme as u8 {
-            0 if theme == 0.0 => Ok(v01::Theme::Light),
-            1 if theme == 1.0 => Ok(v01::Theme::Dark),
+            0 if theme == 0.0 => Ok(v01::ThemeVariant::Light),
+            1 if theme == 1.0 => Ok(v01::ThemeVariant::Dark),
             _ => Err("theme item number must be 0 or 1".to_string()),
         };
     }
     value
         .dyn_into::<Uint8Array>()
-        .map_err(|_| "theme item must be Light, Dark, 0, 1, or encoded Theme".to_string())
+        .map_err(|_| "theme item must be Light, Dark, 0, 1, or encoded ThemeVariant".to_string())
         .and_then(|array| {
-            v01::Theme::decode(&mut array.to_vec().as_slice())
-                .map_err(|_| "encoded Theme item did not decode".to_string())
+            v01::ThemeVariant::decode(&mut array.to_vec().as_slice())
+                .map_err(|_| "encoded ThemeVariant item did not decode".to_string())
         })
 }
 

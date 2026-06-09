@@ -64,14 +64,13 @@
     "ensure-generated": "./scripts/ensure-generated.sh",
     "build": "tsc -b",
     "prebuild": "npm run ensure-generated",
-    "prepare": "npm run build",
     "codegen": "cargo run -p truapi-codegen -- --input ../../../target/doc/truapi.json --output src/generated --playground-output src/playground --explorer-output src/explorer",
     "typecheck": "npm run build",
     "pretest": "npm run ensure-generated",
     "test": "for f in test/*.test.mjs; do echo \"=== $f ===\" && bun \"$f\" || exit 1; done"
   },
   "devDependencies": {
-    "typescript": "^5.7"
+    "typescript": "^6.0"
   },
   "dependencies": {
     "neverthrow": "^8.2.0",

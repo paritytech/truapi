@@ -3,11 +3,19 @@
 # Run `make help` for the list of targets.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup build codegen test check playground wasm wasm-crypto-test uniffi android-publish-local
+.PHONY: help setup build codegen test check playground wasm wasm-crypto-test uniffi android-publish-local dev matrix explorer
 
 TRUAPI_PKG := js/packages/truapi
 PLAYGROUND := playground
 JS_PACKAGES := js/packages
+EXPLORER := explorer
+DOTLI := hosts/dotli
+
+# `make dev DEBUG=1` runs dotli with VITE_APP_DEBUG=true to log every wire frame.
+DOTLI_PREVIEW := preview
+ifdef DEBUG
+DOTLI_PREVIEW := preview:debug
+endif
 
 help: ## Show this help.
 	@awk 'BEGIN { FS = ":.*##"; printf "Usage: make <target>\n\nTargets:\n" } \
@@ -83,3 +91,15 @@ playground: ## Refresh the playground's @parity/truapi snapshot and rebuild.
 	cd $(TRUAPI_PKG) && npm run build
 	cd $(PLAYGROUND) && rm -rf node_modules/@parity && yarn install
 	cd $(PLAYGROUND) && yarn build
+
+dev: ## Start dotli host (:5173) + playground (:3000) together; open http://localhost:5173/localhost:3000. DEBUG=1 logs wire frames.
+	@trap 'kill 0' EXIT; \
+	( cd $(DOTLI) && bun run $(DOTLI_PREVIEW) ) & \
+	( cd $(PLAYGROUND) && yarn dev ) & \
+	wait
+
+matrix: ## Regenerate the host compatibility matrix from explorer/diagnosis-reports.
+	cd $(EXPLORER) && npm run generate-matrix
+
+explorer: ## Run the explorer dev server standalone at http://localhost:5181.
+	cd $(EXPLORER) && npx vite --base / --port 5181

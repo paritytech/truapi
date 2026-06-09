@@ -2660,8 +2660,12 @@ where
     async fn subscribe(&self, _cx: &CallContext) -> Subscription<HostThemeSubscribeItem> {
         let stream =
             PlatformThemeHost::subscribe_theme(self.platform.as_ref()).filter_map(|item| async {
-                item.ok()
-                    .map(|theme| HostThemeSubscribeItem::V1(v01::HostThemeSubscribeItem { theme }))
+                item.ok().map(|variant| {
+                    HostThemeSubscribeItem::V1(v01::HostThemeSubscribeItem {
+                        name: v01::ThemeName::Default,
+                        variant,
+                    })
+                })
             });
         Subscription::new(Box::pin(stream))
     }
@@ -3472,8 +3476,10 @@ mod tests {
     }
 
     impl ThemeHost for StubPlatform {
-        fn subscribe_theme(&self) -> BoxStream<'static, Result<v01::Theme, v01::GenericError>> {
-            Box::pin(stream::once(async { Ok(v01::Theme::Dark) }))
+        fn subscribe_theme(
+            &self,
+        ) -> BoxStream<'static, Result<v01::ThemeVariant, v01::GenericError>> {
+            Box::pin(stream::once(async { Ok(v01::ThemeVariant::Dark) }))
         }
     }
 
@@ -4291,7 +4297,8 @@ mod tests {
         assert_eq!(
             item,
             HostThemeSubscribeItem::V1(v01::HostThemeSubscribeItem {
-                theme: v01::Theme::Dark
+                name: v01::ThemeName::Default,
+                variant: v01::ThemeVariant::Dark,
             })
         );
     }

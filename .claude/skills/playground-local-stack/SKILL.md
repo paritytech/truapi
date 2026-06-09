@@ -45,23 +45,26 @@ configuration, `tmux split-window -c <dir>` only sets a new pane's cwd, and a
 freshly-created pane may swallow the first keys before its shell is ready.
 
 ```bash
+# 0. Resolve the repo root so the commands work on any machine.
+REPO_ROOT=$(git rev-parse --show-toplevel)
+
 # 1. Create the servers window and capture the initial pane id.
 DOTLI_PANE=$(
   tmux new-window -t truapi: -n servers -d -P -F '#{pane_id}' \
-    -c /home/pg/github/truapi
+    -c "$REPO_ROOT"
 )
 
 # 2. Split horizontally for the playground pane and capture its pane id.
 PLAYGROUND_PANE=$(
   tmux split-window -t "$DOTLI_PANE" -h -d -P -F '#{pane_id}' \
-    -c /home/pg/github/truapi/playground
+    -c "$REPO_ROOT/playground"
 )
 
 # 3. Launch each process WITH an explicit cd in the same send-keys.
 tmux send-keys -t "$DOTLI_PANE" \
-  'cd /home/pg/github/truapi/hosts/dotli && bun run preview' Enter
+  "cd $REPO_ROOT/hosts/dotli && bun run preview" Enter
 tmux send-keys -t "$PLAYGROUND_PANE" \
-  'cd /home/pg/github/truapi/playground && yarn dev' Enter
+  "cd $REPO_ROOT/playground && yarn dev" Enter
 ```
 
 Use `bun run preview:debugger` (i.e. `VITE_APP_DEBUG=true`) instead of

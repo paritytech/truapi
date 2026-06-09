@@ -17,15 +17,12 @@ pub trait Account: Send + Sync {
     /// Subscribe to account connection status changes.
     ///
     /// ```ts
-    /// import { from, take } from "rxjs";
+    /// import { firstValueFrom, from } from "rxjs";
     ///
-    /// from(truapi.account.connectionStatusSubscribe())
-    ///   .pipe(take(3))
-    ///   .subscribe({
-    ///     next: (status) => console.log(status),
-    ///     error: (error) => console.error(error),
-    ///     complete: () => console.log("completed"),
-    ///   });
+    /// const status = await firstValueFrom(
+    ///   from(truapi.account.connectionStatusSubscribe()),
+    /// );
+    /// console.log("connection status:", status);
     /// ```
     #[wire(start_id = 18)]
     async fn connection_status_subscribe(
@@ -44,10 +41,8 @@ pub trait Account: Send + Sync {
     ///     derivationIndex: 0,
     ///   },
     /// });
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "getAccount failed:", result);
+    /// console.log("account retrieved:", result.value);
     /// ```
     #[wire(request_id = 22)]
     async fn get_account(
@@ -67,10 +62,8 @@ pub trait Account: Send + Sync {
     ///     derivationIndex: 0,
     ///   },
     /// });
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "getAccountAlias failed:", result);
+    /// console.log("account alias:", result.value);
     /// ```
     #[wire(request_id = 24)]
     async fn get_account_alias(
@@ -98,10 +91,8 @@ pub trait Account: Send + Sync {
     ///   },
     ///   context: "0x",
     /// });
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "createAccountProof failed:", result);
+    /// console.log("account proof created:", result.value);
     /// ```
     #[wire(request_id = 26)]
     async fn create_account_proof(
@@ -116,10 +107,8 @@ pub trait Account: Send + Sync {
     ///
     /// ```ts
     /// const result = await truapi.account.getLegacyAccounts();
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "getLegacyAccounts failed:", result);
+    /// console.log("legacy accounts:", result.value);
     /// ```
     #[wire(request_id = 28)]
     async fn get_legacy_accounts(
@@ -134,10 +123,8 @@ pub trait Account: Send + Sync {
     ///
     /// ```ts
     /// const result = await truapi.account.getUserId();
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "getUserId failed:", result);
+    /// console.log("user id:", result.value);
     /// ```
     #[wire(request_id = 110)]
     async fn get_user_id(
@@ -157,10 +144,8 @@ pub trait Account: Send + Sync {
     /// const result = await truapi.account.requestLogin({
     ///   reason: "Sign in to vote on Referendum #42",
     /// });
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "requestLogin failed:", result);
+    /// console.log("login completed:", result.value);
     /// ```
     #[wire(request_id = 112)]
     async fn request_login(

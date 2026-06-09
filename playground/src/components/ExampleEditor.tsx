@@ -3,14 +3,21 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import {
+  configureLoader,
   MONACO_THEME_DARK,
   MONACO_THEME_LIGHT,
   setupMonaco,
 } from "@/src/lib/monaco-setup";
 import type { Monaco } from "@monaco-editor/react";
 
+// Configure the loader to use the bundled monaco-editor before the Editor
+// component mounts and calls loader.init(), so it never falls back to the CDN.
 const Editor = dynamic(
-  async () => (await import("@monaco-editor/react")).default,
+  async () => {
+    const mod = await import("@monaco-editor/react");
+    await configureLoader();
+    return mod.default;
+  },
   { ssr: false },
 );
 
@@ -59,6 +66,10 @@ export function ExampleEditor({
         options={{
           minimap: { enabled: false },
           fontSize: 13,
+          lineNumbers: "off",
+          lineDecorationsWidth: 0,
+          lineNumbersMinChars: 0,
+          glyphMargin: false,
           scrollBeyondLastLine: false,
           tabSize: 2,
           padding: { top: 12, bottom: 12 },

@@ -20,10 +20,8 @@ pub trait Chat: Send + Sync {
     ///   name: "Test Room",
     ///   icon: "",
     /// });
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "createRoom failed:", result);
+    /// console.log("room created:", result.value);
     /// ```
     #[wire(request_id = 38)]
     async fn create_room(
@@ -42,10 +40,8 @@ pub trait Chat: Send + Sync {
     ///   name: "Test Bot",
     ///   icon: "",
     /// });
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "registerBot failed:", result);
+    /// console.log("bot registered:", result.value);
     /// ```
     #[wire(request_id = 40)]
     async fn register_bot(
@@ -59,15 +55,12 @@ pub trait Chat: Send + Sync {
     /// Subscribe to the list of chat rooms.
     ///
     /// ```ts
-    /// import { from, take } from "rxjs";
+    /// import { firstValueFrom, from } from "rxjs";
     ///
-    /// from(truapi.chat.listSubscribe())
-    ///   .pipe(take(3))
-    ///   .subscribe({
-    ///     next: (rooms) => console.log(rooms),
-    ///     error: (error) => console.error(error),
-    ///     complete: () => console.log("completed"),
-    ///   });
+    /// const item = await firstValueFrom(
+    ///   from(truapi.chat.listSubscribe()),
+    /// );
+    /// console.log("room list received:", item);
     /// ```
     #[wire(start_id = 42)]
     async fn list_subscribe(&self, _cx: &CallContext) -> Subscription<HostChatListSubscribeItem> {
@@ -81,10 +74,8 @@ pub trait Chat: Send + Sync {
     ///   roomId: "test-room",
     ///   payload: { tag: "Text", value: { text: "Hello from playground!" } },
     /// });
-    /// result.match(
-    ///   (value) => console.log(value),
-    ///   (error) => console.error(error),
-    /// );
+    /// assert(result.isOk(), "postMessage failed:", result);
+    /// console.log("message posted:", result.value);
     /// ```
     #[wire(request_id = 46)]
     async fn post_message(
@@ -98,15 +89,12 @@ pub trait Chat: Send + Sync {
     /// Subscribe to received chat actions.
     ///
     /// ```ts
-    /// import { from, take } from "rxjs";
+    /// import { firstValueFrom, from } from "rxjs";
     ///
-    /// from(truapi.chat.actionSubscribe())
-    ///   .pipe(take(3))
-    ///   .subscribe({
-    ///     next: (action) => console.log(action),
-    ///     error: (error) => console.error(error),
-    ///     complete: () => console.log("completed"),
-    ///   });
+    /// const item = await firstValueFrom(
+    ///   from(truapi.chat.actionSubscribe()),
+    /// );
+    /// console.log("action received:", item);
     /// ```
     #[wire(start_id = 48)]
     async fn action_subscribe(
@@ -121,23 +109,20 @@ pub trait Chat: Send + Sync {
     /// tree describing the rendered UI.
     ///
     /// ```ts
-    /// import { from, take } from "rxjs";
+    /// import { firstValueFrom, from } from "rxjs";
     ///
-    /// from(
-    ///   truapi.chat.customMessageRenderSubscribe({
-    ///     request: {
-    ///       messageId: "msg-1",
-    ///       messageType: "custom-render-demo",
-    ///       payload: "0x",
-    ///     },
-    ///   }),
-    /// )
-    ///   .pipe(take(3))
-    ///   .subscribe({
-    ///     next: (node) => console.log(node),
-    ///     error: (error) => console.error(error),
-    ///     complete: () => console.log("completed"),
-    ///   });
+    /// const item = await firstValueFrom(
+    ///   from(
+    ///     truapi.chat.customMessageRenderSubscribe({
+    ///       request: {
+    ///         messageId: "msg-1",
+    ///         messageType: "custom-render-demo",
+    ///         payload: "0x",
+    ///       },
+    ///     }),
+    ///   ),
+    /// );
+    /// console.log("render request received:", item);
     /// ```
     #[wire(start_id = 52)]
     async fn custom_message_render_subscribe(

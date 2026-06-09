@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import type { DataType } from "../data/types";
+import { typePath } from "../data/registry";
 
 interface MarkdownTextProps {
   text: string;
@@ -50,7 +51,7 @@ export function MarkdownText({
               if (id) {
                 return (
                   <Link
-                    to={`/v/${versionId}/type/${id}`}
+                    to={typePath(versionId, id)}
                     className="text-sky-400 hover:text-sky-300 hover:underline underline-offset-2 transition-colors"
                   >
                     {children}

@@ -16,7 +16,7 @@ import type {
   RemotePermissionRequest,
   RemotePermissionResponse,
   Result,
-  Theme,
+  ThemeVariant,
 } from "@parity/truapi";
 
 /**
@@ -190,7 +190,7 @@ export interface ThemeHost {
   /**
    * Emits current theme immediately, then future changes.
    */
-  subscribeTheme(): AsyncIterable<Result<Theme, GenericError>>;
+  subscribeTheme(): AsyncIterable<Result<ThemeVariant, GenericError>>;
 }
 
 /**

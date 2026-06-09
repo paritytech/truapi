@@ -1,0 +1,15 @@
+# dtolnay/rust-toolchain publishes no version tags (only channel branches like
+# stable/nightly), so Dependabot cannot bump its pinned SHAs — refresh those by
+# hand. Every other action here auto-updates on the weekly schedule below.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns:
+          - "*"

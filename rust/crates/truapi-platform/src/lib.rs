@@ -18,7 +18,7 @@ use truapi::v01::{
     GenericError, HostDevicePermissionRequest, HostDevicePermissionResponse,
     HostLocalStorageReadError, HostNavigateToError, HostPushNotificationRequest,
     HostPushNotificationResponse, NotificationId, PreimageSubmitError, RemotePermissionRequest,
-    RemotePermissionResponse, Theme,
+    RemotePermissionResponse, ThemeVariant,
 };
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use url::Url;
@@ -289,7 +289,7 @@ pub trait UserConfirmation: Send + Sync {
 /// Host theme source.
 pub trait ThemeHost: Send + Sync {
     /// Emits current theme immediately, then future changes.
-    fn subscribe_theme(&self) -> BoxStream<'static, Result<Theme, GenericError>>;
+    fn subscribe_theme(&self) -> BoxStream<'static, Result<ThemeVariant, GenericError>>;
 }
 
 /// Host preimage backend. The core owns wire mapping and subscription

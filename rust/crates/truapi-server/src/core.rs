@@ -344,7 +344,9 @@ mod tests {
     }
 
     impl ThemeHost for StubPlatform {
-        fn subscribe_theme(&self) -> BoxStream<'static, Result<v01::Theme, v01::GenericError>> {
+        fn subscribe_theme(
+            &self,
+        ) -> BoxStream<'static, Result<v01::ThemeVariant, v01::GenericError>> {
             Box::pin(stream::empty())
         }
     }

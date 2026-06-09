@@ -4,6 +4,5 @@ dist
 .vite
 .DS_Store
 
-# Diagnosis reports waiting to be aggregated. The aggregated source-of-truth
-# at src/data/compatibility.ts is committed; the per-host inputs are not.
-pending-reports/*.md
+# Generated at build/dev time from diagnosis-reports/ (see scripts/aggregate-diagnosis-matrix.mjs).
+src/data/compatibility.ts

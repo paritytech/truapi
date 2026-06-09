@@ -99,11 +99,11 @@ pub enum HostTheme {
     Dark,
 }
 
-impl From<HostTheme> for v01::Theme {
+impl From<HostTheme> for v01::ThemeVariant {
     fn from(theme: HostTheme) -> Self {
         match theme {
-            HostTheme::Light => v01::Theme::Light,
-            HostTheme::Dark => v01::Theme::Dark,
+            HostTheme::Light => v01::ThemeVariant::Light,
+            HostTheme::Dark => v01::ThemeVariant::Dark,
         }
     }
 }
@@ -488,7 +488,7 @@ struct CallbackPlatform {
 struct NativeEventBus {
     pairing_cancels: Mutex<Vec<oneshot::Sender<()>>>,
     session_store_ticks: Mutex<Vec<mpsc::UnboundedSender<Result<(), v01::GenericError>>>>,
-    theme_changes: Mutex<Vec<mpsc::UnboundedSender<Result<v01::Theme, v01::GenericError>>>>,
+    theme_changes: Mutex<Vec<mpsc::UnboundedSender<Result<v01::ThemeVariant, v01::GenericError>>>>,
     preimage_changes: Mutex<Vec<PreimageSubscription>>,
     chain_responses: Mutex<HashMap<u32, mpsc::UnboundedSender<String>>>,
 }
@@ -538,8 +538,8 @@ impl NativeEventBus {
 
     fn subscribe_theme(
         &self,
-        current: Result<v01::Theme, v01::GenericError>,
-    ) -> BoxStream<'static, Result<v01::Theme, v01::GenericError>> {
+        current: Result<v01::ThemeVariant, v01::GenericError>,
+    ) -> BoxStream<'static, Result<v01::ThemeVariant, v01::GenericError>> {
         let (tx, rx) = mpsc::unbounded();
         self.theme_changes
             .lock()
@@ -548,7 +548,7 @@ impl NativeEventBus {
         stream::once(async move { current }).chain(rx).boxed()
     }
 
-    fn notify_theme_changed(&self, theme: v01::Theme) {
+    fn notify_theme_changed(&self, theme: v01::ThemeVariant) {
         self.theme_changes
             .lock()
             .expect("native theme subscribers mutex poisoned")
@@ -903,11 +903,11 @@ impl UserConfirmation for CallbackPlatform {
 }
 
 impl ThemeHost for CallbackPlatform {
-    fn subscribe_theme(&self) -> BoxStream<'static, Result<v01::Theme, v01::GenericError>> {
+    fn subscribe_theme(&self) -> BoxStream<'static, Result<v01::ThemeVariant, v01::GenericError>> {
         let current = self
             .callbacks
             .current_theme()
-            .map(v01::Theme::from)
+            .map(v01::ThemeVariant::from)
             .map_err(v01::GenericError::from);
         self.events.subscribe_theme(current)
     }
@@ -1163,11 +1163,11 @@ mod tests {
 
         let first = futures::executor::block_on(stream.next()).unwrap();
         *callbacks.theme.lock().expect("theme mutex poisoned") = HostTheme::Dark;
-        events.notify_theme_changed(v01::Theme::Dark);
+        events.notify_theme_changed(v01::ThemeVariant::Dark);
         let second = futures::executor::block_on(stream.next()).unwrap();
 
-        assert_eq!(first.unwrap(), v01::Theme::Light);
-        assert_eq!(second.unwrap(), v01::Theme::Dark);
+        assert_eq!(first.unwrap(), v01::ThemeVariant::Light);
+        assert_eq!(second.unwrap(), v01::ThemeVariant::Dark);
     }
 
     #[test]
