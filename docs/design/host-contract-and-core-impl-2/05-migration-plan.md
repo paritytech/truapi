@@ -30,7 +30,7 @@ drift.
 
 3. **Session and pairing slice**
    - Implement `SessionStore` restore.
-   - Implement SSO pairing through People-chain statement store.
+   - Implement host-papp 0.8.6 SSO V2 pairing through People-chain statement store.
    - Implement logout/disconnect cleanup.
 
 4. **Product method slice**
@@ -102,7 +102,7 @@ dotli Nova dependency removal
   - derive alias;
   - request resource allocation;
   - submit/subscribe statements and create proofs;
-  - derive entropy from the current dotli `ssSecret` input;
+  - derive entropy from the current dotli SSO V2 `rootEntropySource` input;
   - read/write/clear local storage;
   - navigate;
   - handle permissions;

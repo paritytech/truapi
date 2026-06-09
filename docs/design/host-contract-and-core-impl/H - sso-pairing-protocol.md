@@ -5,8 +5,10 @@
 > this one mechanism. Read this before
 > [A](<A - host-primitives.md>) / [B](<B - core-impls.md>).
 >
-> Source of truth for the protocol below is current dotli's pinned `@novasamatech/host-papp@0.7.9` /
-> `@novasamatech/statement-store@0.8.2` web code plus the iOS wallet
+> Source of truth for the current protocol is dotli main's pinned
+> `@novasamatech/host-papp@0.8.6` / `@novasamatech/statement-store@0.8.6` web
+> code plus the iOS wallet. The V1 metadata-URL handshake described in older
+> subsections is historical evidence only; current-dotli parity requires SSO V2.
 > (`~/github/polkadot-app-ios-v2`), the peer that implements the other side in readable Swift. We define
 > the **web/core** side.
 

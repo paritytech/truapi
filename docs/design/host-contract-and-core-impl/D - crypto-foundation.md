@@ -111,6 +111,19 @@ explicit context parameter.
 
 ## D4. SSO channel crypto (host-papp + wallet-peer vectors)
 
+Current dotli main uses host-papp 0.8.6 SSO V2. The vector gate must cover:
+
+- `VersionedHandshakeProposal::V2` SCALE with `Device { statementAccountId, encryptionPublicKey }`.
+- Metadata entries for `HostName`, `HostVersion`, `HostIcon`, `PlatformType`, and `PlatformVersion`.
+- V2 pairing topic and channel:
+  `blake2b256_keyed(encryptionPublicKey || "topic", key=statementAccountId)` and the same for
+  `"channel"`.
+- `VersionedHandshakeResponse` / encrypted V2 response variants (`Pending`, `Success`, `Failed`).
+- `HandshakeSuccessV2` fields, especially `rootAccountId`, `identityAccountId`, `ssoEncPubKey`,
+  `deviceEncPubKey`, and `rootEntropySource`.
+
+The older V1 vectors below are retained only as historical implementation evidence.
+
 The current dotli web path is explicit:
 
 - `createEncrSecret(entropy)`: convert entropy to a mini-secret, zero-extend to a 48-byte seed, then
@@ -135,14 +148,14 @@ choices are still open.
 
 ## D5. Golden-vector harness
 
-The `@novasamatech` packages are pinned in the current dotli checkout: `host-api` `0.8.2`,
-`host-container` `0.8.2`, `host-papp` `0.7.9`, `statement-store` `0.8.2`, `sdk-statement` `^0.6.0`,
-and `storage-adapter` `0.8.2`. To capture vectors: use `~/github/dotli` or a scratch workspace with the
-same package versions, then snapshot into a Rust test fixture:
+The `@novasamatech` packages are pinned in current dotli main at `0.8.6` for `host-api`, `host-papp`,
+`statement-store`, and `storage-adapter` (`sdk-statement` remains `^0.6.0`). To capture vectors: use
+`hosts/dotli` `origin/main` or a scratch workspace with the same package versions, then snapshot into a
+Rust test fixture:
 
 - `HDKD.publicSoft` fold outputs for several `(root, dotNS, index)` tuples (D2).
 - `createSr25519Prover(secret).generateMessageProof(statement)` `{signature, signer}` for fixed inputs (D3).
-- QR handshake SCALE/deeplink bytes for fixed public keys + metadata URL.
+- SSO V2 QR proposal SCALE/deeplink bytes for fixed public keys + host metadata entries.
 - P-256 ECDH -> HKDF -> AES-GCM round-trip + topic/session-id derivation for fixed inputs (D4),
   cross-checked against the iOS `SsoTestData` fixtures and host-papp outputs.
 

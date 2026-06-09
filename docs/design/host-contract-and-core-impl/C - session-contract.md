@@ -112,7 +112,7 @@ Peer-originated `disconnected` messages over the SSO session channel route throu
 cleanup path, including `SessionStore.clear()`. Do not keep a persisted session after the SSO peer says the
 session is disconnected.
 
-Current `host-papp@0.7.9` has a 180s session request-queue timeout for `signPayload`, `signRaw`,
+Current host-papp has a 180s session request-queue timeout for `signPayload`, `signRaw`,
 `createTransaction`, and `requestResourceAllocation`; dotli's signing/transaction UI wrappers add a 300s
 outer fallback after the user confirms the modal. `getRingVrfAlias` does not add a separate timeout in the
 current checkout. Preserve the same user-visible failure shape in Rust: peer decline maps to the method's

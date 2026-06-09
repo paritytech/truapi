@@ -33,8 +33,8 @@ proof**, which the channel does not expose today (the wallet has `BandersnatchKe
 no message routes to it). Options: add a new SSO message type the wallet answers, or compute it in-core
 (`bandersnatch_vrfs`/`ark-*` + ring membership from the Chain runtime, XL). **Recommendation:** add an SSO
 message (keeps the ring secret in the wallet). This is not a current dotli parity blocker because current
-dotli does not implement `handleAccountCreateProof`, and `host-papp@0.7.9`'s `RemoteMessageCodec` has no
-full ring-VRF proof request/response variant.
+dotli does not implement `handleAccountCreateProof`, and the host-papp remote-message surface audited for
+this plan has no full ring-VRF proof request/response variant.
 
 ## E4. Preimage: RESOLVED
 
@@ -156,8 +156,8 @@ state, clear in-memory `SessionState`, clear `SessionStore`, and broadcast `Disc
 Current dotli does not maintain a separate UI-level cancel token for session-channel work. Local logout
 calls `adapter.sessions.disconnect(session)` and then sets auth state to idle; dotli's debug contract says
 session-channel teardown produces `session:host_action_failed` for host-originated actions and
-`session:terminated` stops further peer/host actions for that session. The exact `host-papp@0.7.9`
-session wrapper also applies a 180s queue timeout to signing, raw signing, create-transaction, and
+`session:terminated` stops further peer/host actions for that session. The host-papp session wrapper
+also applies a 180s queue timeout to signing, raw signing, create-transaction, and
 resource-allocation requests; dotli's signing/transaction modals add a 300s outer fallback. Alias adds no
 separate timeout in current dotli. Resource allocation keeps its modal open for retry after an SSO
 failure. **Decision:** Rust owns this lifecycle explicitly: local logout or peer `disconnected` tears down

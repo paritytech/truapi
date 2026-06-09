@@ -243,11 +243,11 @@ paging in-core. [E1](<E - open-questions.md>) resolves this in-core.
 
 ### `Entropy::derive` (#108): core+session + crypto **(S-M)**
 
-Current dotli reads `ssSecret` and calls `deriveProductEntropy(secret, "${label}.dot", key)`
-(`~/github/dotli/packages/ui/src/container.ts:769-794`). Rust implements the same algorithm from
-`@novasamatech/host-container` vectors and the runtime `product_label` parity input. No session/secret =>
-`Unknown { reason:"Not connected" }` / `"Session secret missing"` parity unless the Rust error type is
-more specific.
+Current dotli main uses host-papp 0.8.6 / RFC-0007 entropy: successful SSO V2 pairing returns
+`rootEntropySource`, and product entropy is derived from that root source, the runtime product id, and the
+caller key. Rust must persist `rootEntropySource` in `SessionInfo` and update vectors from the V2 peer.
+No session/secret => `Unknown { reason:"Not connected" }` / `"Session secret missing"` parity unless the
+Rust error type is more specific.
 
 ### `Theme::subscribe` (#104): host-side **(S)**
 

@@ -44,5 +44,11 @@ playground/test/generated/
 # Auto-generated FFI / WASM binding outputs
 android/truapi-host/src/main/kotlin/generated/
 ios/truapi-host/Sources/TrUAPIHost/truapi_server.swift
-ios/truapi-host/Sources/truapi_serverFFI/include/
+ios/truapi-host/Sources/truapi_serverFFI/
+js/packages/truapi/src/generated/
+js/packages/truapi/dist/generated/
+js/packages/truapi-host/src/generated/
+js/packages/truapi-host/dist/generated/
+js/packages/truapi-host-wasm/src/generated/
+js/packages/truapi-host-wasm/dist/generated/
 js/packages/truapi-host-wasm/dist/wasm/

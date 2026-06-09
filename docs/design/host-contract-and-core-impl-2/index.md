@@ -2,8 +2,9 @@
 
 **Status:** clean-sheet draft.  
 **Base:** TrUAPI `origin/main` plus the runtime substrate proposed in PR 104.  
-**Parity target:** current `~/github/dotli` checkout at `85c9733`, including
-local UI permission edits present on 2026-06-08.
+**Parity target:** current dotli main at `4611008` (2026-06-09), with the
+older `~/github/dotli` checkout at `85c9733` used only as historical evidence
+where the latest submodule has already removed Nova code.
 
 This directory describes the migration from dotli's current
 `@novasamatech/host-container` stack to a shared Rust core. It intentionally
@@ -45,6 +46,9 @@ directory should be treated as the cleaner migration plan.
   parity blocker.
 - Do not preserve host-papp's storage format. One-time re-pair on cutover is
   acceptable.
+- Do not treat the older V1 metadata-URL SSO QR as current-dotli parity.
+  Current dotli main uses host-papp 0.8.6 SSO V2 proposals with host metadata
+  entries, platform type/version, and `rootEntropySource`.
 
 ## Success Criteria
 

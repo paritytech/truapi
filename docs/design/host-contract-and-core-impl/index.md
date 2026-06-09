@@ -2,9 +2,10 @@
 
 **Status:** draft for review · **Goal:** run dotli on the Rust core with current dotli feature parity and
 no `@novasamatech` dependency, by defining the host primitives, core implementations, and package changes
-that close the gap. "Feature parity" here means the handlers implemented in the current dotli checkout
-(`~/github/dotli`, observed at `85c9733`); handlers dotli currently leaves unimplemented stay out of scope
-until other hosts need them.
+that close the gap. "Feature parity" here means the handlers implemented in current dotli main
+(`hosts/dotli` `origin/main` audited at `4611008` on 2026-06-09, with the older `~/github/dotli`
+checkout at `85c9733` used only as historical implementation evidence); handlers dotli currently leaves
+unimplemented stay out of scope until other hosts need them.
 
 This is the high-level overview. Each detail doc is written so a senior Rust engineer can pick it up as
 a ticket: exact signatures, file anchors, an implementation sketch, and acceptance criteria.
@@ -158,6 +159,13 @@ The current Rust core owns the dotli parity paths: SSO-only pairing/restore/logo
 derivation, signing and transaction SSO proxying, statement-store submit/subscribe/proofs, allocation
 requests, entropy, theme, notifications, and preimage callbacks.
 
+Latest-dotli audit note: dotli main has moved from host-papp's V1 metadata-URL QR to the host-papp 0.8.6
+SSO V2 proposal. The Rust pairing implementation must therefore migrate from `HostHandshakeData::V1` to
+`VersionedHandshakeProposal::V2`, carry host metadata entries (`HostName`, `HostVersion`, `HostIcon`,
+`PlatformType`, `PlatformVersion`), parse the V2 response envelope, and persist the returned
+`rootEntropySource`. Until that lands, the current Rust V1 pairing path is not complete current-dotli
+pairing parity even though non-pairing dotli bridge gates pass.
+
 Current dotli backs its host bridge with `@novasamatech/host-api` + `host-container`, and auth/session
 flows with `host-papp`, `statement-store`, `sdk-statement`, and `storage-adapter`. The packages are **not
 part of the Rust repo**, but current `~/github/dotli/node_modules/.bun` contains the pinned JS sources.
@@ -175,7 +183,7 @@ see [D](<D - crypto-foundation.md>).
 | 1.5 | Protocol crypto/vector gate (M): build the narrow WASM-safe crypto module/crate, leaning on existing Rust crypto crates and using `useragent-kit` only as implementation precedent for similar migrations; capture vectors for HDKD, statement proof, handshake/channel encryption, and topic/session derivation. No pairing I/O yet. | [D](<D - crypto-foundation.md>) |
 | 2 | Statement-store client + pairing (L): a minimal People-chain statement submit/subscribe client over `ChainProvider`, then the `request_login` SSO handshake ([H](<H - sso-pairing-protocol.md>)) + the `PairingPresenter` (A1); extend `SessionInfo`; persist/restore through `SessionStore`; expose public logout/disconnect. The keystone. | [H](<H - sso-pairing-protocol.md>), [A](<A - host-primitives.md>), [B](<B - core-impls.md>), [C](<C - session-contract.md>) |
 | 3 | Message-exchange ops + statement-store parity: `sign_payload`/`sign_raw`, `create_transaction`, and legacy signing/create-transaction over the SSO session channel; `create_proof`/`_authorized` (in-core, session `ssSecret`); product statement `subscribe`/`submit` (same client as Tier 2); `get_account_alias` (aliasRequest); resource allocation host confirmation + SSO request. | [H](<H - sso-pairing-protocol.md>), [B](<B - core-impls.md>) |
-| 3.5 | Non-Nova but implemented dotli host behavior needed once host-container is gone: preimage host callbacks, scheduled/cancellable notifications, theme subscription, and entropy derivation from `ssSecret`. | [B](<B - core-impls.md>), [A](<A - host-primitives.md>) |
+| 3.5 | Non-Nova but implemented dotli host behavior needed once host-container is gone: preimage host callbacks, scheduled/cancellable notifications, theme subscription, and entropy derivation from the SSO V2 `rootEntropySource`. | [B](<B - core-impls.md>), [A](<A - host-primitives.md>) |
 | 4 | Remaining TrUAPI surface not required for current dotli parity: full `create_account_proof`, Payment, Chat, CoinPayment, and any future move of preimage fully in-core. | [B](<B - core-impls.md>), [E](<E - open-questions.md>) |
 
 The protocol crypto/vector gate (Tier 1.5) keeps byte-level compatibility failures out of the pairing

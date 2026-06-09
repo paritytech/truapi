@@ -2,18 +2,19 @@
 
 > Part of the [host-contract & core-impl spec](index.md).
 
-Source of truth for the original audit was the current dotli checkout at `~/github/dotli` (`85c9733`,
-dirty worktree ignored). Implementation status below tracks the migrated `hosts/dotli` submodule on this
-branch.
+Source of truth for the original audit was the dotli checkout at `~/github/dotli` (`85c9733`, dirty
+worktree ignored). The latest refresh uses `hosts/dotli` `origin/main` at `4611008` (2026-06-09), where
+host-papp has moved to 0.8.6 and SSO V2. Implementation status below tracks the migrated `hosts/dotli`
+submodule on this branch.
 
 Current dotli depends on:
 
-- `@novasamatech/host-api` `0.8.2`
-- `@novasamatech/host-container` `0.8.2`
-- `@novasamatech/host-papp` `0.7.9`
-- `@novasamatech/statement-store` `0.8.2`
+- `@novasamatech/host-api` `0.8.6`
+- `@novasamatech/host-container` `0.8.6`
+- `@novasamatech/host-papp` `0.8.6`
+- `@novasamatech/statement-store` `0.8.6`
 - `@novasamatech/sdk-statement` `^0.6.0`
-- `@novasamatech/storage-adapter` `0.8.2`
+- `@novasamatech/storage-adapter` `0.8.6`
 
 Handlers that current dotli explicitly leaves unimplemented, such as payment and full
 `create_account_proof`, are not blockers for this removal. They stay unavailable until another host needs
@@ -87,6 +88,9 @@ them.
       core-owned storage interface. Core session persistence is not host-papp session-list compatible and
       cutover requires one-time re-pair ([E5](<E - open-questions.md>)). The migrated submodule deletes
       `packages/auth` and uses the Rust-owned `SessionStore`.
+- [ ] SSO V2 parity: replace the Rust V1 metadata-URL pairing proposal with host-papp 0.8.6's
+      `VersionedHandshakeProposal::V2`, including host metadata entries, platform type/version, V2 pairing
+      topic/channel, V2 response envelope handling, and `rootEntropySource` persistence.
 - [x] `packages/ui/src/statement-store-mapping.ts`: delete the SDK<->host mapping once Rust emits/accepts
       the final TrUAPI statement-store wire types directly.
 - [x] `packages/ui/src/permissions.ts`, `packages/ui/src/allocation-modal.ts`, and any modal code importing

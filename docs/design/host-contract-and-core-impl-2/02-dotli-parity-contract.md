@@ -4,8 +4,9 @@
 
 Feature parity means product-visible behavior from the current
 `~/github/dotli` checkout, not every internal Nova package behavior. Evidence
-comes from dotli `85c9733` plus local UI permission edits in
-`packages/ui/src/container.ts`, and `packages/auth/src/auth.ts`.
+comes from dotli main `4611008`; the older `85c9733` checkout remains useful
+only for historical JS handler shape where latest main has already removed
+Nova code.
 
 ## Current Nova Runtime Packages
 
@@ -13,12 +14,12 @@ dotli main currently depends on:
 
 | Package | Version on dotli main | Used for |
 |---|---:|---|
-| `@novasamatech/host-api` | `0.8.2` | product wire types and errors |
-| `@novasamatech/host-container` | `0.8.2` | postMessage container runtime, rate limits, entropy helper |
-| `@novasamatech/host-papp` | `0.7.9` | SSO pairing, session restore, signing, alias, allocation |
-| `@novasamatech/statement-store` | `0.8.2` | People-chain statement-store client and proof signing |
+| `@novasamatech/host-api` | `0.8.6` | product wire types and errors |
+| `@novasamatech/host-container` | `0.8.6` | postMessage container runtime, rate limits, entropy helper |
+| `@novasamatech/host-papp` | `0.8.6` | SSO V2 pairing, session restore, signing, alias, allocation |
+| `@novasamatech/statement-store` | `0.8.6` | People-chain statement-store client and proof signing |
 | `@novasamatech/sdk-statement` | `^0.6.0` | statement mapping/types |
-| `@novasamatech/storage-adapter` | `0.8.2` | host-papp storage adapter |
+| `@novasamatech/storage-adapter` | `0.8.6` | host-papp storage adapter |
 
 The migration replaces their runtime responsibilities with Rust core services
 plus dotli host adapters.
@@ -40,7 +41,7 @@ plus dotli host adapters.
 | Legacy signing/transaction | Re-derives `(product_id, 0)`, validates signer, then reuses product-account flow. | Core. |
 | Resource allocation | Requires session, shows allocation modal, sends SSO request, strips returned secrets. | Core SSO plus host allocation UI. |
 | Product local storage | Product-scoped key/value storage. | Existing `Storage` host primitive. |
-| Entropy | Derived from session `ssSecret`, product id, and caller key via `deriveProductEntropy`. | Core. |
+| Entropy | Derived from SSO V2 `rootEntropySource`, product id, and caller key via RFC-0007 `deriveProductEntropy`. | Core. |
 | Navigation | dotli-aware URL normalization and `window.open`. | Core parses policy, host opens URL. |
 | Device permissions | Cached tri-state prompts for enforceable browser permissions; notification/open-url special cases. | Core permission service plus host prompt. |
 | Remote permissions | Cached submit-style permissions, WebRTC and broad remote requests auto-granted today. | Core permission service plus host prompt. |
@@ -68,10 +69,9 @@ features:
 - `get_legacy_accounts` returns `[]` when disconnected. When authenticated it
   returns the synthetic `(product_id, 0)` account plus lite username so legacy
   signing methods can round-trip the same signer.
-- Entropy currently uses the host-papp session `ssSecret` through
-  `@novasamatech/host-container`'s `deriveProductEntropy` helper. If dotli
-  later switches to wallet-provided `rootEntropySource`, update the vectors
-  and session state at that point.
+- Entropy now uses the SSO V2 `rootEntropySource` returned by the wallet.
+  The older `ssSecret` input is stale and must not be used for current-dotli
+  parity vectors.
 - Session persistence does not need to preserve the host-papp `SsoSessions`
   binary format. One-time re-pair during cutover is acceptable.
 - Nested dApps are currently detected by dotli JS and assigned nested storage

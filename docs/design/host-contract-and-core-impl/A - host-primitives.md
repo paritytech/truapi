@@ -76,11 +76,20 @@ methods or build the pairing QR:
 
 ```rust
 pub struct RuntimeConfig {
-    pub calling_product_id: String,
+    pub product_id: String,
     pub product_label: String,
-    pub pairing_metadata_url: String,
+    pub site_id: String,
+    pub host_metadata: HostMetadata,
     pub people_chain_genesis_hash: [u8; 32],
     pub pairing_deeplink_scheme: PairingDeeplinkScheme, // polkadotapp:// or polkadotappdev://
+}
+
+pub struct HostMetadata {
+    pub host_name: Option<String>,
+    pub host_version: Option<String>,
+    pub host_icon: Option<String>,
+    pub platform_type: Option<String>,
+    pub platform_version: Option<String>,
 }
 ```
 
@@ -94,10 +103,11 @@ separate runtime/config boundary for v1; if dotli keeps nested message forwardin
 same Rust core and product identity as the containing product. The current JS nested bridge behavior and
 its possible future value are tracked separately in [I](<I - nested-dapps.md>).
 
-dotli computes `pairing_metadata_url` with the same rule it uses today in
-`~/github/dotli/packages/auth/src/auth.ts`: production uses `${window.location.origin}/metadata.json`;
-localhost maps to the public `https://<subdomain>dot.li/metadata.json` URL the phone can fetch. The core
-validates the URL is HTTPS except for any explicit test-only mode.
+For current dotli main, pairing metadata is embedded in the SSO V2 proposal rather than fetched from a
+metadata URL. dotli should pass `host_name = "Polkadot Web"`, `host_icon = "https://dot.li/dotli.png"`,
+`host_version = __DOTLI_VERSION__`, and browser-derived `platform_type` / `platform_version` when
+available. Older V1 metadata-URL support is historical compatibility only; it is not sufficient for
+current-dotli parity.
 
 ## A3. Current host-container parity surfaces **(S-M)**
 

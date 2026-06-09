@@ -133,13 +133,13 @@ operation, not just a cached permission decision.
 
 The current dotli checkout derives entropy from:
 
-- session `ssSecret` read from `adapter.secrets.read(session.id)`;
+- SSO V2 `rootEntropySource` returned by successful pairing;
 - product label/id scope;
 - caller-provided key.
 
 The Rust implementation must match `deriveProductEntropy` from
-`@novasamatech/host-container` with vector tests. If dotli later switches to a
-wallet-provided `rootEntropySource`, update this service and its vectors.
+`@novasamatech/host-container` / RFC-0007 with vector tests. The older
+session-`ssSecret` input is historical and no longer current-dotli parity.
 
 ## Facades
 
@@ -157,7 +157,7 @@ Some behavior remains host-backed but routed through Rust:
 Use small, named fixtures:
 
 - product account derivation vectors;
-- entropy vectors using current dotli `ssSecret` input;
+- entropy vectors using current dotli SSO V2 `rootEntropySource` input;
 - SSO pairing fixture or wallet test peer;
 - statement proof vector;
 - mocked SSO responses for sign/raw/transaction/alias/allocation;
