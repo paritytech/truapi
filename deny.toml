@@ -18,7 +18,13 @@ confidence-threshold = 0.8
 # uniffi is MPL-2.0: file-level weak copyleft, consumed unmodified as a
 # dependency, which MPL-2.0 permits without affecting the MIT outbound licence.
 # Scoped per crate so MPL-2.0 stays disallowed everywhere else.
+# smoldot is GPL-3.0-or-later WITH Classpath-exception-2.0: the Classpath
+# exception explicitly permits linking it into independently-licensed works,
+# so the GPL does not extend to this crate. Scoped to the two smoldot crates
+# so plain GPL stays disallowed everywhere else.
 exceptions = [
+    { name = "smoldot", allow = ["GPL-3.0-or-later WITH Classpath-exception-2.0"] },
+    { name = "smoldot-light", allow = ["GPL-3.0-or-later WITH Classpath-exception-2.0"] },
     { name = "uniffi", allow = ["MPL-2.0"] },
     { name = "uniffi_bindgen", allow = ["MPL-2.0"] },
     { name = "uniffi_core", allow = ["MPL-2.0"] },
