@@ -45,6 +45,12 @@ let nextDisconnectRequestId = 0;
 let devLogLevelOverride: LogLevel | null = null;
 const devGlobalProviders = new Set<TrUApiHostWasmProvider>();
 
+interface TrUApiDevConsole {
+  setLogLevel(level: LogLevel): void;
+  getLogLevel(): LogLevel | null;
+  getProviderCount(): number;
+}
+
 function optionalCallbacks(
   callbacks: Omit<WasmRawCallbacks, "emitFrame">,
 ): OptionalCallbackName[] {
@@ -613,7 +619,7 @@ function buildProvider(state: WorkerProviderState): TrUApiHostWasmProvider {
  */
 function exposeDevGlobal(provider: TrUApiHostWasmProvider): void {
   const target = globalThis as {
-    __truapi?: { setLogLevel(level: LogLevel): void };
+    __truapi?: TrUApiDevConsole;
   };
   devGlobalProviders.add(provider);
   if (devLogLevelOverride !== null) {
@@ -625,6 +631,15 @@ function exposeDevGlobal(provider: TrUApiHostWasmProvider): void {
       for (const provider of [...devGlobalProviders]) {
         provider.setLogLevel?.(level);
       }
+      console.info(
+        `[truapi worker] logLevel=${level} providers=${String(devGlobalProviders.size)}`,
+      );
+    },
+    getLogLevel(): LogLevel | null {
+      return devLogLevelOverride;
+    },
+    getProviderCount(): number {
+      return devGlobalProviders.size;
     },
   };
 }

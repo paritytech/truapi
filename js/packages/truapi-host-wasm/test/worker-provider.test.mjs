@@ -153,6 +153,8 @@ test("dev global setLogLevel updates every live worker provider", async () => {
     kind: "setLogLevel",
     level: "debug",
   });
+  assert.equal(globalThis.__truapi.getLogLevel(), "debug");
+  assert.equal(globalThis.__truapi.getProviderCount(), 2);
 
   globalThis.__truapi.setLogLevel("off");
   first.dispose();
