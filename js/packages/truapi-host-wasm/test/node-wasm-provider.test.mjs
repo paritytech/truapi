@@ -200,5 +200,10 @@ test("createNodeWasmProvider surfaces a rejected receiveFromProduct through subs
   assert.ok(closes[0] instanceof Error);
   assert.equal(frames.length, 0, "no response frame on a rejected frame");
 
+  // Close is terminal: further frames are dropped and close fires only once.
+  provider.postMessage(new Uint8Array([0xff, 0xff, 0xff, 0xff, 0xff]));
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(closes.length, 1, "close listener does not fire again");
+
   provider.dispose();
 });

@@ -18,6 +18,7 @@ export type {
   Permissions,
   PreimageHost,
   PlatformJsonRpcConnection,
+  SessionUiInfo,
   Storage,
   ThemeHost,
   TrUApiHostWasmProvider,

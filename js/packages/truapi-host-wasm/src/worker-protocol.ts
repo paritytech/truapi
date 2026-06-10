@@ -4,6 +4,11 @@
 // Frames (`kind: 'frame'`) carry SCALE-encoded `ProtocolMessage` bytes
 // untouched in either direction. Everything else is a control message
 // for callback dispatch, subscription bookkeeping, or chain connections.
+//
+// Frame bytes cross the boundary by structured clone, deliberately not as
+// transferables: the sender keeps using its buffer (the worker side posts
+// views into WASM memory) and frames are small, so the copy is the simpler
+// safe choice.
 
 import type { LogLevel } from "./runtime.js";
 
@@ -25,6 +30,7 @@ export type CallbackName =
   | "readSession"
   | "writeSession"
   | "clearSession"
+  | "sessionUiChanged"
   | "confirmSignPayload"
   | "confirmSignRaw"
   | "confirmCreateTransaction"
@@ -39,6 +45,7 @@ export type OptionalCallbackName =
   | "readSession"
   | "writeSession"
   | "clearSession"
+  | "sessionUiChanged"
   | "confirmSignPayload"
   | "confirmSignRaw"
   | "confirmCreateTransaction"

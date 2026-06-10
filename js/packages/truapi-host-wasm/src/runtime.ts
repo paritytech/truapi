@@ -17,9 +17,11 @@ export type {
   Notifications,
   Permissions,
   PreimageHost,
+  SessionUiInfo,
   Storage,
   ThemeHost,
 } from "./generated/host-callbacks.js";
+import type { SessionUiInfo } from "./generated/host-callbacks.js";
 
 /**
  * Async-or-sync return. Synchronous hosts (e.g. the dotli main-thread
@@ -102,6 +104,7 @@ export interface WasmRawCallbacks {
   writeSession?(value: Uint8Array): Promise<void>;
   clearSession?(): Promise<void>;
   subscribeSessionStore?(sendItem: () => void): (() => void) | void;
+  sessionUiChanged?(info: SessionUiInfo): void;
   confirmSignPayload?(payload: Uint8Array): Promise<boolean>;
   confirmSignRaw?(payload: Uint8Array): Promise<boolean>;
   confirmCreateTransaction?(payload: Uint8Array): Promise<boolean>;
@@ -210,11 +213,23 @@ export function createWasmProvider(
   const listeners = new Set<(message: Uint8Array) => void>();
   const closeListeners = new Set<(error: Error) => void>();
   let disposed = false;
+  let closedError: Error | null = null;
+
+  // Terminal close-once transition, matching `createBaseProvider` in
+  // @parity/truapi: notify close listeners exactly once, then drop all
+  // listeners so the provider stops delivering.
+  const close = (error: Error): void => {
+    if (closedError) return;
+    closedError = error;
+    for (const listener of [...closeListeners]) listener(error);
+    listeners.clear();
+    closeListeners.clear();
+  };
 
   const raw: WasmRawCallbacks = {
     ...partial,
     emitFrame(frame: Uint8Array) {
-      if (disposed) return;
+      if (disposed || closedError) return;
       // Copy out of the WASM-owned buffer so retained references stay
       // valid once the core reuses the underlying memory.
       const copy = new Uint8Array(frame.length);
@@ -227,26 +242,27 @@ export function createWasmProvider(
 
   return {
     postMessage(bytes: Uint8Array): void {
-      if (disposed) return;
+      if (disposed || closedError) return;
       void core.receiveFromProduct(bytes).catch((err: unknown) => {
-        const error = err instanceof Error ? err : new Error(String(err));
-        for (const listener of [...closeListeners]) listener(error);
+        close(err instanceof Error ? err : new Error(String(err)));
       });
     },
     subscribe(callback) {
+      if (closedError) return () => {};
       listeners.add(callback);
       return () => {
         listeners.delete(callback);
       };
     },
     subscribeClose(callback) {
+      if (closedError) return () => {};
       closeListeners.add(callback);
       return () => {
         closeListeners.delete(callback);
       };
     },
     async disconnect() {
-      if (disposed) return;
+      if (disposed || closedError) return;
       if (!core.disconnect) {
         throw new Error("disconnect unavailable on this WASM core");
       }

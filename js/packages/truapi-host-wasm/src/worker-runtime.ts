@@ -12,6 +12,7 @@ import type {
   WorkerToMain,
 } from "./worker-protocol.js";
 import { errorMessage } from "./error-message.js";
+import { SUBSCRIPTION_DISPATCH } from "./subscription-table.js";
 
 interface WasmCore {
   receiveFromProduct(frame: Uint8Array): Promise<void>;
@@ -154,6 +155,9 @@ const optionalRawCallbacks: Record<OptionalCallbackName, RawCallbackFn> = {
   writeSession: (value: Uint8Array) =>
     callbackRequest("writeSession", [value]),
   clearSession: () => callbackRequest("clearSession", []),
+  // Fire-and-forget notification: the wasm core ignores the returned promise.
+  sessionUiChanged: (info: unknown) =>
+    void callbackRequest("sessionUiChanged", [info]).catch(() => {}),
   confirmSignPayload: (payload: Uint8Array) =>
     callbackRequest("confirmSignPayload", [payload]) as Promise<boolean>,
   confirmSignRaw: (payload: Uint8Array) =>
@@ -176,20 +180,14 @@ function buildRawCallbacks(msg: Extract<MainToWorker, { kind: "init" }>) {
     callbacks[name] = optionalRawCallbacks[name];
   }
   const optionalSubscriptions = new Set(msg.optionalSubscriptions ?? []);
-  if (optionalSubscriptions.has("sessionStoreSubscribe")) {
-    callbacks.subscribeSessionStore = (sendItem: () => void) =>
-      startSubscription("sessionStoreSubscribe", null, sendItem);
-  }
-  if (optionalSubscriptions.has("themeSubscribe")) {
-    callbacks.themeSubscribe = (
-      sendItem: (theme: "Light" | "Dark" | 0 | 1 | Uint8Array) => void,
-    ) => startSubscription("themeSubscribe", null, sendItem);
-  }
-  if (optionalSubscriptions.has("preimageLookupSubscribe")) {
-    callbacks.preimageLookupSubscribe = (
-      key: Uint8Array,
-      sendItem: (value: Uint8Array | null | undefined) => void,
-    ) => startSubscription("preimageLookupSubscribe", key, sendItem);
+  for (const entry of SUBSCRIPTION_DISPATCH) {
+    if (!optionalSubscriptions.has(entry.protocol)) continue;
+    callbacks[entry.callback] =
+      entry.payload === "required"
+        ? (payload: Uint8Array, sendItem: (value: unknown) => void) =>
+            startSubscription(entry.protocol, payload, sendItem)
+        : (sendItem: (value: unknown) => void) =>
+            startSubscription(entry.protocol, null, sendItem);
   }
   if (msg.chainConnect) {
     callbacks.chainConnect = chainConnect;
@@ -222,6 +220,10 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
     case "init":
       if (!wasm) {
         postToMain({ kind: "error", error: "init received before WASM loaded" });
+        break;
+      }
+      if (core) {
+        postToMain({ kind: "error", error: "init: core already initialized" });
         break;
       }
       wasm.setLogLevel?.(msg.logLevel);
@@ -280,6 +282,12 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
       }
       core = null;
       break;
+    default: {
+      const { kind } = msg as { kind?: unknown };
+      console.warn(
+        `[truapi worker-runtime] unknown message kind: ${String(kind)}`,
+      );
+    }
   }
 });
 

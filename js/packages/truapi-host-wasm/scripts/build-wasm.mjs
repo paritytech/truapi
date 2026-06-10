@@ -31,7 +31,18 @@ function args(target, outDir) {
 async function build(target, subdir) {
   const outDir = resolve(pkgRoot, "dist/wasm", subdir);
   process.stdout.write(`wasm-pack build --target ${target} → ${outDir}\n`);
-  await execFileAsync("wasm-pack", args(target, outDir), { cwd: repoRoot });
+  try {
+    await execFileAsync("wasm-pack", args(target, outDir), { cwd: repoRoot });
+  } catch (err) {
+    if (err?.code === "ENOENT") {
+      console.error(
+        "wasm-pack is required. Install it with `cargo install wasm-pack` " +
+          "or see https://rustwasm.github.io/wasm-pack/installer/",
+      );
+      process.exit(1);
+    }
+    throw err;
+  }
   // wasm-pack writes a nested `.gitignore: *`; the repo-level ignore already
   // owns generated WASM outputs.
   await rm(resolve(outDir, ".gitignore"), { force: true });

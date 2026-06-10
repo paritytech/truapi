@@ -45,6 +45,12 @@ class FakeWorker {
       listener({ message });
     }
   }
+
+  emitMessageError() {
+    for (const listener of this.listeners.get("messageerror") ?? []) {
+      listener({ data: null });
+    }
+  }
 }
 
 function makeCallbacks(overrides = {}) {
@@ -90,6 +96,7 @@ test("createWebWorkerProvider advertises only supplied optional hooks", async ()
     makeCallbacks({
       clearSession: async () => {},
       readSession: async () => new Uint8Array([1]),
+      sessionUiChanged: () => {},
       subscribeSessionStore: () => () => {},
       preimageLookupSubscribe: () => () => {},
       chainConnect: () => ({ send: () => {}, close: () => {} }),
@@ -106,7 +113,7 @@ test("createWebWorkerProvider advertises only supplied optional hooks", async ()
     kind: "init",
     logLevel: "debug",
     runtimeConfig: config,
-    optionalCallbacks: ["readSession", "clearSession"],
+    optionalCallbacks: ["readSession", "clearSession", "sessionUiChanged"],
     optionalSubscriptions: ["sessionStoreSubscribe", "preimageLookupSubscribe"],
     chainConnect: true,
   });
@@ -177,6 +184,219 @@ test("worker provider dispatches optional callback requests to host hooks", asyn
   });
 
   provider.dispose();
+});
+
+test("worker provider forwards sessionUiChanged callback requests", async () => {
+  const worker = new FakeWorker();
+  const infos = [];
+  const providerPromise = createWebWorkerProvider(
+    worker,
+    makeCallbacks({
+      sessionUiChanged: (info) => {
+        infos.push(info);
+      },
+    }),
+    {
+      runtimeConfig: runtimeConfig(),
+    },
+  );
+  worker.emit({ kind: "loaded" });
+  worker.emit({ kind: "ready" });
+  const provider = await providerPromise;
+
+  worker.emit({
+    kind: "callbackRequest",
+    requestId: 3,
+    name: "sessionUiChanged",
+    args: [
+      {
+        connected: true,
+        publicKey: new Uint8Array([1, 2]),
+        liteUsername: "alice",
+      },
+    ],
+  });
+  await settle();
+
+  assert.deepEqual(infos, [
+    { connected: true, publicKey: new Uint8Array([1, 2]), liteUsername: "alice" },
+  ]);
+  assert.deepEqual(worker.messages.at(-1), {
+    kind: "callbackResponse",
+    requestId: 3,
+    ok: true,
+    value: undefined,
+  });
+
+  provider.dispose();
+});
+
+test("worker fault terminates the worker and runs the full teardown", async () => {
+  const worker = new FakeWorker();
+  let subscriptionDisposes = 0;
+  let chainCloses = 0;
+  const providerPromise = createWebWorkerProvider(
+    worker,
+    makeCallbacks({
+      subscribeSessionStore: () => () => {
+        subscriptionDisposes += 1;
+      },
+      chainConnect: () => ({
+        send: () => {},
+        close: () => {
+          chainCloses += 1;
+        },
+      }),
+    }),
+    { runtimeConfig: runtimeConfig() },
+  );
+  worker.emit({ kind: "loaded" });
+  worker.emit({ kind: "ready" });
+  const provider = await providerPromise;
+
+  worker.emit({
+    kind: "subscriptionStart",
+    subId: 1,
+    name: "sessionStoreSubscribe",
+    payload: null,
+  });
+  worker.emit({ kind: "chainConnectStart", connId: 1, genesisHash: "0xab" });
+  await settle();
+
+  const closes = [];
+  provider.subscribeClose((error) => closes.push(error));
+
+  worker.emitError("boom");
+
+  assert.equal(worker.terminated, true);
+  assert.equal(subscriptionDisposes, 1);
+  assert.equal(chainCloses, 1);
+  assert.equal(closes.length, 1);
+  assert.match(closes[0].message, /boom/);
+
+  // The fault teardown is terminal; a second fault is a no-op.
+  worker.emitError("again");
+  assert.equal(closes.length, 1);
+});
+
+test("worker provider routes payload-carrying subscriptions by name", async () => {
+  const worker = new FakeWorker();
+  const keys = [];
+  let push;
+  const providerPromise = createWebWorkerProvider(
+    worker,
+    makeCallbacks({
+      preimageLookupSubscribe: (key, sendItem) => {
+        keys.push(key);
+        push = sendItem;
+        return () => {};
+      },
+    }),
+    { runtimeConfig: runtimeConfig() },
+  );
+  worker.emit({ kind: "loaded" });
+  worker.emit({ kind: "ready" });
+  const provider = await providerPromise;
+
+  worker.emit({
+    kind: "subscriptionStart",
+    subId: 4,
+    name: "preimageLookupSubscribe",
+    payload: new Uint8Array([9, 9]),
+  });
+
+  assert.deepEqual(keys, [new Uint8Array([9, 9])]);
+  push(new Uint8Array([1]));
+  assert.deepEqual(worker.messages.at(-1), {
+    kind: "subscriptionItem",
+    subId: 4,
+    value: new Uint8Array([1]),
+  });
+
+  provider.dispose();
+});
+
+test("unknown subscription names never fall through to another callback", async () => {
+  const worker = new FakeWorker();
+  let preimageStarts = 0;
+  const providerPromise = createWebWorkerProvider(
+    worker,
+    makeCallbacks({
+      preimageLookupSubscribe: () => {
+        preimageStarts += 1;
+        return () => {};
+      },
+    }),
+    { runtimeConfig: runtimeConfig() },
+  );
+  worker.emit({ kind: "loaded" });
+  worker.emit({ kind: "ready" });
+  const provider = await providerPromise;
+
+  worker.emit({
+    kind: "subscriptionStart",
+    subId: 5,
+    name: "someFutureSubscribe",
+    payload: new Uint8Array([1, 2, 3]),
+  });
+
+  assert.equal(preimageStarts, 0);
+  assert.equal(
+    worker.messages.some((m) => m.kind === "subscriptionItem"),
+    false,
+  );
+
+  provider.dispose();
+});
+
+test("payload-carrying subscription without payload is not dispatched", async () => {
+  const worker = new FakeWorker();
+  let preimageStarts = 0;
+  const providerPromise = createWebWorkerProvider(
+    worker,
+    makeCallbacks({
+      preimageLookupSubscribe: () => {
+        preimageStarts += 1;
+        return () => {};
+      },
+    }),
+    { runtimeConfig: runtimeConfig() },
+  );
+  worker.emit({ kind: "loaded" });
+  worker.emit({ kind: "ready" });
+  const provider = await providerPromise;
+
+  worker.emit({
+    kind: "subscriptionStart",
+    subId: 6,
+    name: "preimageLookupSubscribe",
+    payload: null,
+  });
+
+  assert.equal(preimageStarts, 0);
+
+  provider.dispose();
+});
+
+test("createWebWorkerProvider rejects when init times out", async () => {
+  const worker = new FakeWorker();
+  const providerPromise = createWebWorkerProvider(worker, makeCallbacks(), {
+    runtimeConfig: runtimeConfig(),
+    initTimeoutMs: 20,
+  });
+  worker.emit({ kind: "loaded" });
+  await assert.rejects(providerPromise, /worker init timed out after 20ms/);
+  assert.equal(worker.terminated, true);
+});
+
+test("createWebWorkerProvider rejects on messageerror during init", async () => {
+  const worker = new FakeWorker();
+  const providerPromise = createWebWorkerProvider(worker, makeCallbacks(), {
+    runtimeConfig: runtimeConfig(),
+  });
+  worker.emitMessageError();
+  await assert.rejects(providerPromise, /could not be deserialized/);
+  assert.equal(worker.terminated, true);
 });
 
 test("typed callbacks decode raw v01 push notification payloads", async () => {

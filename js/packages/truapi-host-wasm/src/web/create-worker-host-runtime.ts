@@ -11,9 +11,12 @@ import type {
   WorkerToMain,
 } from "../index.js";
 import { errorMessage } from "../error-message.js";
-import { decodeWireMessage } from "@parity/truapi";
+import {
+  SUBSCRIPTION_DISPATCH,
+  subscriptionDispatchEntry,
+} from "../subscription-table.js";
+import { decodeWireMessage, describeWireId } from "@parity/truapi";
 import { bytesToHex } from "@parity/truapi/scale";
-import * as WireTable from "@parity/truapi/wire-table";
 
 interface WorkerProviderState {
   worker: Worker;
@@ -26,38 +29,15 @@ interface WorkerProviderState {
     number,
     { resolve: () => void; reject: (error: Error) => void }
   >;
+  logLevel: LogLevel;
   disposed: boolean;
 }
 
+function debugLoggingEnabled(state: WorkerProviderState): boolean {
+  return state.logLevel === "debug" || state.logLevel === "trace";
+}
+
 let nextDisconnectRequestId = 0;
-
-const WIRE_ID_KINDS = [
-  "request",
-  "response",
-  "start",
-  "stop",
-  "interrupt",
-  "receive",
-] as const;
-
-const WIRE_TAG_BY_ID = (() => {
-  const map = new Map<number, string>();
-  for (const [name, value] of Object.entries(WireTable)) {
-    if (typeof value !== "object" || value === null) {
-      continue;
-    }
-    const ids = value as Partial<
-      Record<(typeof WIRE_ID_KINDS)[number], unknown>
-    >;
-    for (const kind of WIRE_ID_KINDS) {
-      const id = ids[kind];
-      if (typeof id === "number") {
-        map.set(id, `${name.toLowerCase()}_${kind}`);
-      }
-    }
-  }
-  return map;
-})();
 
 const OPTIONAL_CALLBACK_NAMES: readonly OptionalCallbackName[] = [
   "cancelNotification",
@@ -65,6 +45,7 @@ const OPTIONAL_CALLBACK_NAMES: readonly OptionalCallbackName[] = [
   "readSession",
   "writeSession",
   "clearSession",
+  "sessionUiChanged",
   "confirmSignPayload",
   "confirmSignRaw",
   "confirmCreateTransaction",
@@ -72,15 +53,6 @@ const OPTIONAL_CALLBACK_NAMES: readonly OptionalCallbackName[] = [
   "confirmResourceAllocation",
   "confirmPreimageSubmit",
   "submitPreimage",
-];
-
-const OPTIONAL_SUBSCRIPTION_NAMES: readonly {
-  readonly callback: keyof Omit<WasmRawCallbacks, "emitFrame">;
-  readonly protocol: SubscriptionName;
-}[] = [
-  { callback: "subscribeSessionStore", protocol: "sessionStoreSubscribe" },
-  { callback: "themeSubscribe", protocol: "themeSubscribe" },
-  { callback: "preimageLookupSubscribe", protocol: "preimageLookupSubscribe" },
 ];
 
 function optionalCallbacks(
@@ -94,7 +66,7 @@ function optionalCallbacks(
 function optionalSubscriptions(
   callbacks: Omit<WasmRawCallbacks, "emitFrame">,
 ): SubscriptionName[] {
-  return OPTIONAL_SUBSCRIPTION_NAMES.filter(
+  return SUBSCRIPTION_DISPATCH.filter(
     ({ callback }) => typeof callbacks[callback] === "function",
   ).map(({ protocol }) => protocol);
 }
@@ -118,7 +90,7 @@ function describeWireFrame(bytes: Uint8Array) {
   const wireId = decoded.value.payload.id;
   const payload = decoded.value.payload.value;
   return {
-    frame: WIRE_TAG_BY_ID.get(wireId) ?? `wire_${String(wireId)}`,
+    frame: describeWireId(wireId),
     requestId: decoded.value.requestId,
     wireId,
     frameBytes: bytes.byteLength,
@@ -135,12 +107,16 @@ function handleCallbackRequest(
     args: readonly unknown[];
   },
 ): void {
-  const fn = (
-    state.rawCallbacks as unknown as Record<
-      string,
-      (...args: readonly unknown[]) => unknown
-    >
-  )[msg.name];
+  // Own-property guard: `msg.name` is worker-supplied, never walk the
+  // prototype chain with it.
+  const fn = Object.hasOwn(state.rawCallbacks, msg.name)
+    ? (
+        state.rawCallbacks as unknown as Record<
+          string,
+          (...args: readonly unknown[]) => unknown
+        >
+      )[msg.name]
+    : undefined;
   if (!fn) {
     const reply: MainToWorker = {
       kind: "callbackResponse",
@@ -183,7 +159,12 @@ function handleSubscriptionStart(
     payload: Uint8Array | null;
   },
 ): void {
-  const sendItem = (value: unknown): void => {
+  const entry = subscriptionDispatchEntry(msg.name);
+  if (!entry) {
+    console.warn(`[truapi worker] unknown subscription: ${msg.name}`);
+    return;
+  }
+  const sendItem = (value?: unknown): void => {
     if (state.disposed) return;
     const post: MainToWorker = {
       kind: "subscriptionItem",
@@ -192,33 +173,25 @@ function handleSubscriptionStart(
     };
     state.worker.postMessage(post);
   };
-  let dispose: unknown;
+  let dispose: (() => void) | void;
   try {
-    if (msg.name === "sessionStoreSubscribe") {
-      dispose = state.rawCallbacks.subscribeSessionStore?.(
-        sendItem as () => void,
-      );
-    } else if (msg.name === "themeSubscribe") {
-      dispose = state.rawCallbacks.themeSubscribe?.(
-        sendItem as (theme: "Light" | "Dark" | 0 | 1 | Uint8Array) => void,
-      );
-    } else if (msg.payload !== null) {
-      dispose = state.rawCallbacks.preimageLookupSubscribe(
-        msg.payload,
-        sendItem as (value: Uint8Array | null | undefined) => void,
-      );
+    if (entry.payload === "required") {
+      if (msg.payload === null) {
+        console.warn(
+          `[truapi worker] ${msg.name} requires payload, none received`,
+        );
+        return;
+      }
+      dispose = entry.start(state.rawCallbacks, msg.payload, sendItem);
     } else {
-      console.warn(
-        `[truapi worker] ${msg.name} requires payload, none received`,
-      );
-      return;
+      dispose = entry.start(state.rawCallbacks, sendItem);
     }
   } catch (err) {
     console.error(`[truapi worker] ${msg.name} threw on start:`, err);
     return;
   }
   if (typeof dispose === "function") {
-    state.subscriptionDisposers.set(msg.subId, dispose as () => void);
+    state.subscriptionDisposers.set(msg.subId, dispose);
   }
 }
 
@@ -297,7 +270,9 @@ function handleChainSend(
   const conn = state.chainConnections.get(msg.connId);
   if (!conn) return;
   try {
-    console.debug("[truapi worker] chainSend", msg.connId, msg.request);
+    if (debugLoggingEnabled(state)) {
+      console.debug("[truapi worker] chainSend", msg.connId, msg.request);
+    }
     conn.send(msg.request);
   } catch (err) {
     console.warn("[truapi worker] chain send threw:", err);
@@ -344,11 +319,62 @@ function rejectPendingDisconnects(
   state.pendingDisconnects.clear();
 }
 
+/**
+ * Shared terminal teardown for both `dispose()` and worker faults: rejects
+ * pending disconnects, runs subscription disposers, closes chain connections,
+ * and terminates the worker. A fault additionally notifies close listeners.
+ */
+function teardown(
+  state: WorkerProviderState,
+  error: Error,
+  fault: boolean,
+): void {
+  if (state.disposed) return;
+  state.disposed = true;
+  rejectPendingDisconnects(state, error);
+  for (const fn of state.subscriptionDisposers.values()) {
+    try {
+      fn();
+    } catch {
+      // ignore during teardown
+    }
+  }
+  state.subscriptionDisposers.clear();
+  for (const conn of state.chainConnections.values()) {
+    try {
+      conn.close();
+    } catch {
+      // ignore during teardown
+    }
+  }
+  state.chainConnections.clear();
+  if (fault) {
+    state.worker.terminate();
+    for (const listener of [...state.closeListeners]) listener(error);
+  } else {
+    try {
+      const post: MainToWorker = { kind: "dispose" };
+      state.worker.postMessage(post);
+    } catch {
+      // ignore if worker already gone
+    }
+    // Give the worker a tick to free the core before terminating.
+    setTimeout(() => state.worker.terminate(), 0);
+  }
+  state.listeners.clear();
+  state.closeListeners.clear();
+}
+
 export interface CreateWebWorkerProviderOptions {
   /** Wasm core log level. Default: `"off"`. */
   logLevel?: LogLevel;
   /** Static product/pairing config passed to the Rust core. */
   runtimeConfig: WasmRuntimeConfig;
+  /**
+   * Milliseconds to wait for the worker to report `ready` before rejecting
+   * and terminating it. Default: 30000.
+   */
+  initTimeoutMs?: number;
 }
 
 /**
@@ -393,6 +419,7 @@ export function createWebWorkerProvider(
       subscriptionDisposers: new Map(),
       chainConnections: new Map(),
       pendingDisconnects: new Map(),
+      logLevel: options.logLevel ?? "off",
       disposed: false,
     };
 
@@ -409,17 +436,21 @@ export function createWebWorkerProvider(
             listener(new Error(msg.error));
           break;
         case "frame":
-          console.debug(
-            "[truapi worker] frame <-",
-            describeWireFrame(msg.bytes),
-          );
+          if (debugLoggingEnabled(state)) {
+            console.debug(
+              "[truapi worker] frame <-",
+              describeWireFrame(msg.bytes),
+            );
+          }
           for (const listener of [...state.listeners]) listener(msg.bytes);
           break;
         case "disconnectResponse":
           handleDisconnectResponse(state, msg);
           break;
         case "callbackRequest":
-          console.debug("[truapi worker] callbackRequest", msg.name);
+          if (debugLoggingEnabled(state)) {
+            console.debug("[truapi worker] callbackRequest", msg.name);
+          }
           handleCallbackRequest(state, msg);
           break;
         case "subscriptionStart":
@@ -429,7 +460,9 @@ export function createWebWorkerProvider(
           handleSubscriptionStop(state, msg);
           break;
         case "chainConnectStart":
-          console.debug("[truapi worker] chainConnectStart", msg.connId);
+          if (debugLoggingEnabled(state)) {
+            console.debug("[truapi worker] chainConnectStart", msg.connId);
+          }
           void handleChainConnectStart(state, msg);
           break;
         case "chainSend":
@@ -438,22 +471,29 @@ export function createWebWorkerProvider(
         case "chainClose":
           handleChainClose(state, msg);
           break;
+        default: {
+          const { kind } = msg as { kind?: unknown };
+          console.warn(
+            `[truapi worker] unknown worker message kind: ${String(kind)}`,
+          );
+        }
       }
     };
 
     const notifyFault = (error: Error): void => {
-      if (state.disposed) return;
-      state.disposed = true;
-      rejectPendingDisconnects(state, error);
-      for (const listener of [...state.closeListeners]) listener(error);
-      state.listeners.clear();
-      state.closeListeners.clear();
+      teardown(state, error, true);
     };
 
     const onError = (e: ErrorEvent): void => {
       cleanupInit();
       worker.terminate();
       reject(new Error(`worker init failed: ${e.message}`));
+    };
+
+    const onInitMessageError = (): void => {
+      cleanupInit();
+      worker.terminate();
+      reject(new Error("worker message could not be deserialized during init"));
     };
 
     const onRuntimeError = (e: ErrorEvent): void => {
@@ -495,11 +535,21 @@ export function createWebWorkerProvider(
     };
 
     const cleanupInit = (): void => {
+      clearTimeout(initTimeout);
       worker.removeEventListener("error", onError);
+      worker.removeEventListener("messageerror", onInitMessageError);
       worker.removeEventListener("message", onInitMessage);
     };
 
+    const timeoutMs = options.initTimeoutMs ?? 30_000;
+    const initTimeout = setTimeout(() => {
+      cleanupInit();
+      worker.terminate();
+      reject(new Error(`worker init timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
     worker.addEventListener("error", onError);
+    worker.addEventListener("messageerror", onInitMessageError);
     worker.addEventListener("message", onInitMessage);
   });
 }
@@ -509,7 +559,9 @@ function buildProvider(state: WorkerProviderState): TrUApiHostWasmProvider {
     postMessage(bytes: Uint8Array): void {
       if (state.disposed) return;
       const post: MainToWorker = { kind: "frame", bytes };
-      console.debug("[truapi worker] frame ->", describeWireFrame(bytes));
+      if (debugLoggingEnabled(state)) {
+        console.debug("[truapi worker] frame ->", describeWireFrame(bytes));
+      }
       state.worker.postMessage(post);
     },
     subscribe(callback) {
@@ -540,38 +592,12 @@ function buildProvider(state: WorkerProviderState): TrUApiHostWasmProvider {
     },
     setLogLevel(level: LogLevel): void {
       if (state.disposed) return;
+      state.logLevel = level;
       const post: MainToWorker = { kind: "setLogLevel", level };
       state.worker.postMessage(post);
     },
     dispose() {
-      if (state.disposed) return;
-      state.disposed = true;
-      rejectPendingDisconnects(state, new Error("provider disposed"));
-      for (const fn of state.subscriptionDisposers.values()) {
-        try {
-          fn();
-        } catch {
-          // ignore during teardown
-        }
-      }
-      state.subscriptionDisposers.clear();
-      for (const conn of state.chainConnections.values()) {
-        try {
-          conn.close();
-        } catch {
-          // ignore during teardown
-        }
-      }
-      state.chainConnections.clear();
-      try {
-        const post: MainToWorker = { kind: "dispose" };
-        state.worker.postMessage(post);
-      } catch {
-        // ignore if worker already gone
-      }
-      state.worker.terminate();
-      state.listeners.clear();
-      state.closeListeners.clear();
+      teardown(state, new Error("provider disposed"), false);
     },
   };
 }
@@ -585,6 +611,11 @@ function exposeDevGlobal(provider: TrUApiHostWasmProvider): void {
   const target = globalThis as {
     __truapi?: { setLogLevel(level: LogLevel): void };
   };
+  if (target.__truapi) {
+    console.debug(
+      "[truapi worker] globalThis.__truapi replaced by a newer provider",
+    );
+  }
   target.__truapi = {
     setLogLevel(level: LogLevel): void {
       provider.setLogLevel?.(level);

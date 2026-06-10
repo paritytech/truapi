@@ -14,7 +14,10 @@ import {
   type ChainConnection,
   type WasmRawCallbacks,
 } from "./runtime.js";
-import type { HostCallbacks } from "./generated/host-callbacks.js";
+import type {
+  HostCallbacks,
+  SessionUiInfo,
+} from "./generated/host-callbacks.js";
 
 type WireResult<T, E> =
   | { success: true; value: T }
@@ -201,6 +204,12 @@ export function createWasmRawCallbacks(
             driveResultStream(callbacks.subscribeSessionStore!(), () =>
               sendItem(),
             ),
+        }
+      : {}),
+    ...(callbacks.sessionUiChanged
+      ? {
+          sessionUiChanged: (info: SessionUiInfo) =>
+            callbacks.sessionUiChanged!(info),
         }
       : {}),
     ...(callbacks.confirmSignPayload
