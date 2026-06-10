@@ -403,6 +403,16 @@ fn parse_pairing_query_subscribe_ack(
     if !request_id.starts_with(&format!("{PAIRING_SUBSCRIBE_REQUEST_ID}:query:")) {
         return Ok(None);
     }
+    if value
+        .get("method")
+        .and_then(serde_json::Value::as_str)
+        .is_some()
+        && value.get("params").is_some()
+        && value.get("result").is_none()
+        && value.get("error").is_none()
+    {
+        return Ok(None);
+    }
     if let Some(error) = value.get("error") {
         return Err(error
             .get("message")
@@ -730,6 +740,20 @@ mod tests {
             ids.iter()
                 .any(|id| id.contains(":query:") && id.ends_with(":unsubscribe")),
             "drained query subscription should be cleaned up: {ids:?}"
+        );
+    }
+
+    #[test]
+    fn pairing_query_parser_ignores_echoed_subscribe_request() {
+        let frame = r#"{"jsonrpc":"2.0","id":"truapi:sso-pairing:1:query:7","method":"statement_subscribeStatement","params":[{"matchAll":["0x0707070707070707070707070707070707070707070707070707070707070707"]}]}"#;
+
+        assert_eq!(
+            parse_pairing_query_subscribe_ack(frame, Some("truapi:sso-pairing:1:query:7")).unwrap(),
+            None
+        );
+        assert_eq!(
+            parse_pairing_query_subscribe_ack(frame, None).unwrap(),
+            None
         );
     }
 

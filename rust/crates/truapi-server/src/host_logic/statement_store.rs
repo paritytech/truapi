@@ -158,6 +158,9 @@ pub fn parse_subscribe_ack(
     if value.get("id").and_then(Value::as_str) != Some(expected_id) {
         return Ok(None);
     }
+    if is_json_rpc_request_echo(&value) {
+        return Ok(None);
+    }
     if let Some(error) = value.get("error") {
         return Err(StatementStoreParseError::Malformed(
             error
@@ -181,6 +184,9 @@ pub fn parse_submit_ack(
 ) -> Result<Option<()>, StatementStoreParseError> {
     let value = parse_frame(frame)?;
     if value.get("id").and_then(Value::as_str) != Some(expected_id) {
+        return Ok(None);
+    }
+    if is_json_rpc_request_echo(&value) {
         return Ok(None);
     }
     if let Some(error) = value.get("error") {
@@ -663,6 +669,13 @@ fn parse_frame(frame: &str) -> Result<Value, StatementStoreParseError> {
         .map_err(|error| StatementStoreParseError::InvalidJson(error.to_string()))
 }
 
+fn is_json_rpc_request_echo(value: &Value) -> bool {
+    value.get("method").and_then(Value::as_str).is_some()
+        && value.get("params").is_some()
+        && value.get("result").is_none()
+        && value.get("error").is_none()
+}
+
 fn decode_hex(value: &str) -> Result<Vec<u8>, StatementStoreParseError> {
     hex::decode(value.strip_prefix("0x").unwrap_or(value))
         .map_err(|error| StatementStoreParseError::InvalidStatementHex(error.to_string()))
@@ -750,6 +763,13 @@ mod tests {
     }
 
     #[test]
+    fn ignores_echoed_subscribe_request_for_expected_request_id() {
+        let frame = r#"{"jsonrpc":"2.0","id":"truapi:ss:1","method":"statement_subscribeStatement","params":[{"matchAll":["0x0707070707070707070707070707070707070707070707070707070707070707"]}]}"#;
+
+        assert_eq!(parse_subscribe_ack(frame, "truapi:ss:1").unwrap(), None);
+    }
+
+    #[test]
     fn parses_submit_ack_for_expected_request_id() {
         let frame = r#"{"jsonrpc":"2.0","id":"truapi:ss:submit","result":"0xabc"}"#;
 
@@ -758,6 +778,13 @@ mod tests {
             Some(())
         );
         assert_eq!(parse_submit_ack(frame, "other").unwrap(), None);
+    }
+
+    #[test]
+    fn ignores_echoed_submit_request_for_expected_request_id() {
+        let frame = r#"{"jsonrpc":"2.0","id":"truapi:ss:submit","method":"statement_submit","params":["0xdeadbeef"]}"#;
+
+        assert_eq!(parse_submit_ack(frame, "truapi:ss:submit").unwrap(), None);
     }
 
     #[test]
