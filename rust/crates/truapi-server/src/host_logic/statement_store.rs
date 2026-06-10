@@ -52,6 +52,8 @@ pub enum TopicFilterKind {
 pub struct VerifiedStatementData {
     pub data: Vec<u8>,
     pub signer: [u8; 32],
+    /// Raw `Expiry` field, if present: unix seconds in the upper 32 bits.
+    pub expiry: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
@@ -262,8 +264,41 @@ pub fn decode_verified_statement_data(
 ) -> Result<VerifiedStatementData, StatementStoreParseError> {
     let fields = decode_statement_fields(statement)?;
     let signer = verify_statement_proof(&fields, expected_signer)?;
+    let expiry = fields.iter().find_map(|field| match field {
+        StatementField::Expiry(value) => Some(*value),
+        _ => None,
+    });
     let data = statement_data_from_fields(fields)?;
-    Ok(VerifiedStatementData { data, signer })
+    Ok(VerifiedStatementData {
+        data,
+        signer,
+        expiry,
+    })
+}
+
+/// Whether a statement `Expiry` field (unix seconds in the upper 32 bits) is
+/// in the past relative to `now_unix_secs`.
+pub fn statement_expiry_elapsed(expiry: u64, now_unix_secs: u64) -> bool {
+    (expiry >> 32) < now_unix_secs
+}
+
+/// Current unix time in seconds, used to stamp outgoing statement expiries
+/// and to gate inbound statement freshness. Trusts the local clock on both
+/// native and wasm targets.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn current_unix_secs() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+/// Current unix time in seconds on wasm32, sourced from the JS clock.
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn current_unix_secs() -> u64 {
+    (js_sys::Date::now() / 1000.0) as u64
 }
 
 pub fn decode_signed_statement(
@@ -858,8 +893,14 @@ mod tests {
         let verified =
             decode_verified_statement_data(&statement, Some(session.ss_public_key)).unwrap();
 
-        assert_eq!(verified.signer, session.ss_public_key);
-        assert_eq!(verified.data, vec![0xde, 0xad]);
+        assert_eq!(
+            verified,
+            VerifiedStatementData {
+                data: vec![0xde, 0xad],
+                signer: session.ss_public_key,
+                expiry: Some(42),
+            }
+        );
     }
 
     #[test]

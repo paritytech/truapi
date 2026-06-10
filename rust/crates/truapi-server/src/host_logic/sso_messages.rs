@@ -12,7 +12,8 @@ use crate::host_logic::sso_pairing::{
     encrypt_session_statement_data, encrypt_session_statement_data_with_nonce,
 };
 use crate::host_logic::statement_store::{
-    build_signed_session_request_statement, decode_verified_statement_data,
+    build_signed_session_request_statement, current_unix_secs, decode_verified_statement_data,
+    statement_expiry_elapsed,
 };
 
 const SSO_RESPONSE_CODE_SUCCESS: u8 = 0;
@@ -304,6 +305,14 @@ pub fn decode_sso_session_statement(
 ) -> Result<Option<SsoSessionStatement>, String> {
     let verified =
         decode_verified_statement_data(statement, None).map_err(|err| err.to_string())?;
+    // Freshness gate against replay: a statement whose expiry is in the past
+    // is ignored. Trusts the local clock.
+    if verified
+        .expiry
+        .is_some_and(|expiry| statement_expiry_elapsed(expiry, current_unix_secs()))
+    {
+        return Ok(None);
+    }
     let encrypted = verified.data;
     let data = decrypt_session_statement_data(session, &encrypted)?;
     if verified.signer == session.ss_public_key {
@@ -546,6 +555,14 @@ mod tests {
         }
     }
 
+    fn fresh_expiry() -> u64 {
+        (current_unix_secs() + 60) << 32
+    }
+
+    fn elapsed_expiry() -> u64 {
+        (current_unix_secs() - 60) << 32
+    }
+
     fn session() -> SsoSessionInfo {
         let mini_secret = MiniSecretKey::from_bytes(&[7; 32]).unwrap();
         let keypair = mini_secret.expand_to_keypair(ExpansionMode::Ed25519);
@@ -719,7 +736,7 @@ mod tests {
             &session,
             "statement-1".to_string(),
             vec![remote_message],
-            99,
+            fresh_expiry(),
             [9; AES_GCM_NONCE_LEN],
         )
         .unwrap();
@@ -730,11 +747,9 @@ mod tests {
         assert_eq!(decoded, None);
     }
 
-    #[test]
-    fn accepts_own_echoed_session_response_ack() {
-        let session = session();
+    fn response_ack_statement(session: &SsoSessionInfo, expiry: u64) -> Vec<u8> {
         let encrypted = encrypt_session_statement_data_with_nonce(
-            &session,
+            session,
             &SsoStatementData::Response {
                 request_id: "statement-1".to_string(),
                 response_code: SSO_RESPONSE_CODE_SUCCESS,
@@ -742,18 +757,37 @@ mod tests {
             [9; AES_GCM_NONCE_LEN],
         )
         .unwrap();
-        let statement = build_signed_statement(
-            &session,
+        build_signed_statement(
+            session,
             session.response_channel,
             session.session_id_own,
             encrypted,
-            99,
+            expiry,
         )
-        .unwrap();
+        .unwrap()
+    }
+
+    #[test]
+    fn accepts_own_echoed_session_response_ack() {
+        let session = session();
+        let statement = response_ack_statement(&session, fresh_expiry());
 
         let decoded =
             decode_sso_session_statement(&session, &statement, "statement-1", "remote-1").unwrap();
 
         assert_eq!(decoded, Some(SsoSessionStatement::RequestAccepted));
+    }
+
+    /// A statement whose expiry is in the past must be ignored even when it
+    /// would otherwise match the pending request (replay protection).
+    #[test]
+    fn ignores_expired_session_response_ack() {
+        let session = session();
+        let statement = response_ack_statement(&session, elapsed_expiry());
+
+        let decoded =
+            decode_sso_session_statement(&session, &statement, "statement-1", "remote-1").unwrap();
+
+        assert_eq!(decoded, None);
     }
 }
