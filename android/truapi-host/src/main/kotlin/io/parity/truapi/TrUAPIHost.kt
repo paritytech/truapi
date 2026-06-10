@@ -54,12 +54,20 @@ enum class PairingDeeplinkScheme {
 /**
  * Static product and pairing config supplied before the Rust core handles
  * product calls. One core instance represents one product identity.
+ *
+ * [hostName], [hostIcon], [hostVersion], [platformType], and
+ * [platformVersion] describe the host to the wallet during SSO pairing.
+ * [peopleChainGenesisHash] must be exactly 32 bytes.
  */
 data class RuntimeConfig(
     val productLabel: String,
     val productId: String,
     val siteId: String,
-    val hostMetadataUrl: String,
+    val hostName: String,
+    val hostIcon: String? = null,
+    val hostVersion: String? = null,
+    val platformType: String? = null,
+    val platformVersion: String? = null,
     val peopleChainGenesisHash: ByteArray,
     val pairingDeeplinkScheme: PairingDeeplinkScheme = PairingDeeplinkScheme.POLKADOT_APP,
 ) {
@@ -68,10 +76,43 @@ data class RuntimeConfig(
             productLabel = productLabel,
             productId = productId,
             siteId = siteId,
-            hostMetadataUrl = hostMetadataUrl,
+            hostName = hostName,
+            hostIcon = hostIcon,
+            hostVersion = hostVersion,
+            platformType = platformType,
+            platformVersion = platformVersion,
             peopleChainGenesisHash = peopleChainGenesisHash,
             pairingDeeplinkScheme = pairingDeeplinkScheme.toNative(),
         )
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is RuntimeConfig) return false
+        return productLabel == other.productLabel &&
+            productId == other.productId &&
+            siteId == other.siteId &&
+            hostName == other.hostName &&
+            hostIcon == other.hostIcon &&
+            hostVersion == other.hostVersion &&
+            platformType == other.platformType &&
+            platformVersion == other.platformVersion &&
+            peopleChainGenesisHash.contentEquals(other.peopleChainGenesisHash) &&
+            pairingDeeplinkScheme == other.pairingDeeplinkScheme
+    }
+
+    override fun hashCode(): Int {
+        var result = productLabel.hashCode()
+        result = 31 * result + productId.hashCode()
+        result = 31 * result + siteId.hashCode()
+        result = 31 * result + hostName.hashCode()
+        result = 31 * result + (hostIcon?.hashCode() ?: 0)
+        result = 31 * result + (hostVersion?.hashCode() ?: 0)
+        result = 31 * result + (platformType?.hashCode() ?: 0)
+        result = 31 * result + (platformVersion?.hashCode() ?: 0)
+        result = 31 * result + peopleChainGenesisHash.contentHashCode()
+        result = 31 * result + pairingDeeplinkScheme.hashCode()
+        return result
+    }
 }
 
 /**
@@ -106,31 +147,35 @@ interface HostStorage {
  * `@parity/truapi` client running on the JS side for UI rendering, then
  * report the user's decision as a `Boolean`.
  *
- * Threading: when the WS bridge is running, the Rust core invokes every
- * callback on the dedicated `truapi-ws-bridge` worker thread, never the UI
- * (main) thread. Any UI work an implementation does (navigation, prompts,
- * notifications) MUST be marshalled onto the main thread, e.g. with
- * `Handler(Looper.getMainLooper()).post { ... }` or a `CoroutineScope` bound
- * to `Dispatchers.Main`. Touching views or the `WebView` directly from a
- * callback throws `CalledFromWrongThreadException`.
+ * Threading: the Rust core invokes every callback on a background thread it
+ * owns, never the UI (main) thread. UI-decision callbacks ([navigateTo],
+ * [devicePermission], [remotePermission], [presentPairing], the `confirm*`
+ * family, and [submitPreimage]) each run on their own thread from a blocking
+ * pool, so an implementation may safely block its calling thread (e.g. with a
+ * `CountDownLatch`) until the user decides; other TrUAPI traffic keeps
+ * flowing. The remaining callbacks (storage, session, chain, feature, theme,
+ * preimage lookups) run inline on the dispatcher thread and must return
+ * promptly without blocking. Any UI work MUST still be marshalled onto the
+ * main thread, e.g. with `Handler(Looper.getMainLooper()).post { ... }` or a
+ * `CoroutineScope` bound to `Dispatchers.Main`. Touching views or the
+ * `WebView` directly from a callback throws `CalledFromWrongThreadException`.
  */
 interface HostBridge {
     /** Lifecycle logger. Marker is a stable slug, detail is free-form. */
     fun onCoreLog(marker: String, detail: String) {}
 
     /**
-     * Open a URL in the system browser. Invoked on the `truapi-ws-bridge`
-     * worker thread; marshal the UI launch (e.g. `startActivity`) to the main
-     * thread.
+     * Open a URL in the system browser. Invoked on a blocking-pool thread;
+     * marshal the UI launch (e.g. `startActivity`) to the main thread. May
+     * block the calling thread if the user has to approve the navigation.
      */
     @Throws(HostNavigateRejection::class)
     fun navigateTo(url: String)
 
     /**
      * Deliver a push notification (SCALE-encoded `HostPushNotificationRequest`)
-     * and return the host-assigned notification id.
-     * Invoked on the `truapi-ws-bridge` worker thread; marshal any UI work to
-     * the main thread.
+     * and return the host-assigned notification id. Invoked on the dispatcher
+     * thread; marshal any UI work to the main thread and return promptly.
      */
     @Throws(HostRejection::class)
     fun pushNotification(payload: ByteArray): UInt = 0u
@@ -141,16 +186,18 @@ interface HostBridge {
 
     /**
      * Prompt for a device-level permission. Returns whether it was granted.
-     * Invoked on the `truapi-ws-bridge` worker thread; present the prompt on
-     * the main thread and block this thread until the user decides.
+     * Invoked on a blocking-pool thread; present the prompt on the main
+     * thread and block the calling thread until the user decides. Blocking
+     * here does not stall other TrUAPI traffic.
      */
     @Throws(HostRejection::class)
     fun devicePermission(request: ByteArray): Boolean
 
     /**
-     * Prompt for a remote (product-scoped) permission bundle. Invoked on the
-     * `truapi-ws-bridge` worker thread; present the prompt on the main thread
-     * and block this thread until the user decides.
+     * Prompt for a remote (product-scoped) permission bundle. Invoked on a
+     * blocking-pool thread; present the prompt on the main thread and block
+     * the calling thread until the user decides. Blocking here does not stall
+     * other TrUAPI traffic.
      */
     @Throws(HostRejection::class)
     fun remotePermission(request: ByteArray): Boolean
@@ -229,8 +276,8 @@ interface HostBridge {
     fun currentTheme(): HostTheme = HostTheme.DARK
 
     /**
-     * Answer a feature-support query. Invoked on the `truapi-ws-bridge` worker
-     * thread.
+     * Answer a feature-support query. Invoked on the dispatcher thread; must
+     * return promptly.
      */
     @Throws(HostRejection::class)
     fun featureSupported(request: ByteArray): Boolean
@@ -370,8 +417,9 @@ class TrUAPIHostCore private constructor(
 
     /**
      * Core-owned logout/disconnect path. Best-effort notifies the SSO peer,
-     * clears in-memory session state, clears [HostBridge.sessionStore], and
-     * broadcasts `Disconnected` to active account-status subscribers.
+     * clears in-memory session state, clears the persisted session via
+     * [HostBridge.clearSession], and broadcasts `Disconnected` to active
+     * account-status subscribers.
      */
     fun disconnect() {
         inner.disconnect()

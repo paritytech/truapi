@@ -44,11 +44,19 @@ public enum PairingDeeplinkScheme: Sendable {
 
 /// Static product and pairing config supplied before the Rust core handles
 /// product calls. One core instance represents one product identity.
+///
+/// `hostName`, `hostIcon`, `hostVersion`, `platformType`, and
+/// `platformVersion` describe the host to the wallet during SSO pairing.
+/// `peopleChainGenesisHash` must be exactly 32 bytes.
 public struct RuntimeConfig: Sendable {
     public let productLabel: String
     public let productId: String
     public let siteId: String
-    public let hostMetadataUrl: String
+    public let hostName: String
+    public let hostIcon: String?
+    public let hostVersion: String?
+    public let platformType: String?
+    public let platformVersion: String?
     public let peopleChainGenesisHash: Data
     public let pairingDeeplinkScheme: PairingDeeplinkScheme
 
@@ -56,14 +64,22 @@ public struct RuntimeConfig: Sendable {
         productLabel: String,
         productId: String,
         siteId: String,
-        hostMetadataUrl: String,
+        hostName: String,
+        hostIcon: String? = nil,
+        hostVersion: String? = nil,
+        platformType: String? = nil,
+        platformVersion: String? = nil,
         peopleChainGenesisHash: Data,
         pairingDeeplinkScheme: PairingDeeplinkScheme = .polkadotApp
     ) {
         self.productLabel = productLabel
         self.productId = productId
         self.siteId = siteId
-        self.hostMetadataUrl = hostMetadataUrl
+        self.hostName = hostName
+        self.hostIcon = hostIcon
+        self.hostVersion = hostVersion
+        self.platformType = platformType
+        self.platformVersion = platformVersion
         self.peopleChainGenesisHash = peopleChainGenesisHash
         self.pairingDeeplinkScheme = pairingDeeplinkScheme
     }
@@ -73,7 +89,11 @@ public struct RuntimeConfig: Sendable {
             productLabel: productLabel,
             productId: productId,
             siteId: siteId,
-            hostMetadataUrl: hostMetadataUrl,
+            hostName: hostName,
+            hostIcon: hostIcon,
+            hostVersion: hostVersion,
+            platformType: platformType,
+            platformVersion: platformVersion,
             peopleChainGenesisHash: peopleChainGenesisHash,
             pairingDeeplinkScheme: pairingDeeplinkScheme.native
         )
@@ -141,42 +161,55 @@ public protocol HostStorageBackend: AnyObject, Sendable {
 /// `@parity/truapi` JS client for UI prompts, then return the boolean
 /// granted flag.
 ///
-/// Threading: when the WS bridge is running, the Rust core invokes every
-/// callback on the dedicated `truapi-ws-bridge` worker thread, never the main
-/// thread. Any UI work an implementation does (navigation, prompts,
-/// notifications, touching the `WKWebView`) MUST hop to the main thread, e.g.
+/// Threading: the Rust core invokes every callback on a background thread it
+/// owns, never the main thread. UI-decision callbacks
+/// (``navigateTo(url:)``, ``devicePermission(request:)``,
+/// ``remotePermission(request:)``, ``presentPairing(deeplink:cancel:)``, the
+/// `confirm*` family, and ``submitPreimage(value:)``) each run on their own
+/// thread from a blocking pool, so an implementation may safely block its
+/// calling thread (e.g. with `DispatchQueue.main.sync` or a semaphore) until
+/// the user decides; other TrUAPI traffic keeps flowing. The remaining
+/// callbacks (storage, session, chain, feature, theme, preimage lookups) run
+/// inline on the dispatcher thread and must return promptly without blocking.
+/// Any UI work MUST still hop to the main thread, e.g.
 /// `await MainActor.run { ... }` or `DispatchQueue.main.async { ... }`. Calling
 /// UIKit/WebKit off the main thread is undefined behaviour.
 public protocol HostBridge: AnyObject, Sendable {
     /// Lifecycle logger. Marker is a stable slug, detail is free-form.
     func onCoreLog(marker: String, detail: String)
 
-    /// Open a URL in the system browser. Invoked on the `truapi-ws-bridge`
-    /// worker thread; hop to the main thread to present UI.
+    /// Open a URL in the system browser. Invoked on a blocking-pool thread;
+    /// hop to the main thread to present UI. May block the calling thread if
+    /// the user has to approve the navigation.
     func navigateTo(url: String) throws
 
     /// Deliver a push notification (SCALE-encoded `HostPushNotificationRequest`)
-    /// and return the host-assigned notification id. Invoked on the
-    /// `truapi-ws-bridge` worker thread; hop to the main thread for any UI work.
+    /// and return the host-assigned notification id. Invoked on the dispatcher
+    /// thread; hop to the main thread for any UI work and return promptly.
     func pushNotification(payload: Data) throws -> UInt32
 
     /// Cancel a previously scheduled notification id.
     func cancelNotification(id: UInt32) throws
 
     /// Prompt for a device-level permission. Returns the granted flag. Invoked
-    /// on the `truapi-ws-bridge` worker thread; present the prompt on the main
-    /// thread and block this thread until the user decides.
+    /// on a blocking-pool thread; present the prompt on the main thread and
+    /// block the calling thread until the user decides. Blocking here does
+    /// not stall other TrUAPI traffic.
     func devicePermission(request: Data) throws -> Bool
 
-    /// Prompt for a remote (product-scoped) permission bundle. Invoked on the
-    /// `truapi-ws-bridge` worker thread; present the prompt on the main thread
-    /// and block this thread until the user decides.
+    /// Prompt for a remote (product-scoped) permission bundle. Invoked on a
+    /// blocking-pool thread; present the prompt on the main thread and block
+    /// the calling thread until the user decides. Blocking here does not
+    /// stall other TrUAPI traffic.
     func remotePermission(request: Data) throws -> Bool
 
     /// Present an SSO pairing deeplink or QR payload built by the Rust core.
-    /// Show the UI and return immediately. Call
-    /// ``TrUAPIHostCore/notifyPairingCancelled()`` when the user dismisses it.
-    func presentPairing(deeplink: String) throws
+    /// Show the UI and return; invoke `cancel` when the user dismisses the
+    /// presentation so the core can abandon the pairing wait. The closure is
+    /// safe to call from any thread and holds no strong reference back to the
+    /// core, so storing it in the presenting view (or the bridge itself) does
+    /// not create a retain cycle.
+    func presentPairing(deeplink: String, cancel: @escaping @Sendable () -> Void) throws
 
     /// Close any active SSO pairing presentation.
     func dismissPairing()
@@ -226,8 +259,8 @@ public protocol HostBridge: AnyObject, Sendable {
     /// Return the current host theme.
     func currentTheme() throws -> HostTheme
 
-    /// Answer a feature-support query. Invoked on the `truapi-ws-bridge` worker
-    /// thread.
+    /// Answer a feature-support query. Invoked on the dispatcher thread; must
+    /// return promptly.
     func featureSupported(request: Data) throws -> Bool
 
     /// Scoped key-value storage for the Rust core.
@@ -239,7 +272,7 @@ public extension HostBridge {
     func onCoreLog(marker: String, detail: String) {}
     func pushNotification(payload: Data) throws -> UInt32 { 0 }
     func cancelNotification(id: UInt32) throws {}
-    func presentPairing(deeplink: String) throws {
+    func presentPairing(deeplink: String, cancel: @escaping @Sendable () -> Void) throws {
         throw HostRejection.Rejected(reason: "pairing presenter unavailable")
     }
     func dismissPairing() {}
@@ -265,6 +298,10 @@ public extension HostBridge {
 /// leak into consumers.
 private final class HostCallbackAdapter: HostCallbacks, @unchecked Sendable {
     private let bridge: HostBridge
+    /// Back-reference used to build the pairing cancel handle. Weak: the core
+    /// retains this adapter for its whole lifetime, so a strong reference here
+    /// would form a retain cycle.
+    weak var core: NativeTrUApiCore?
 
     init(bridge: HostBridge) {
         self.bridge = bridge
@@ -295,7 +332,9 @@ private final class HostCallbackAdapter: HostCallbacks, @unchecked Sendable {
     }
 
     func presentPairing(deeplink: String) throws {
-        try bridge.presentPairing(deeplink: deeplink)
+        try bridge.presentPairing(deeplink: deeplink) { [weak self] in
+            self?.core?.notifyPairingCancelled()
+        }
     }
 
     func dismissPairing() {
@@ -400,6 +439,9 @@ public final class TrUAPIHostCore {
             callbacks: adapter,
             runtimeConfig: runtimeConfig.native
         )
+        // Weak back-reference for the pairing cancel handle; keeps
+        // core -> adapter -> core from becoming a retain cycle.
+        adapter.core = inner
     }
 
     /// Start the localhost WebSocket bridge. Requires the `ws-bridge`
@@ -416,8 +458,9 @@ public final class TrUAPIHostCore {
     }
 
     /// Core-owned logout/disconnect path. Best-effort notifies the SSO peer,
-    /// clears in-memory session state, clears `HostBridge.sessionStore`, and
-    /// broadcasts `Disconnected` to active account-status subscribers.
+    /// clears in-memory session state, clears the persisted session via
+    /// ``HostBridge/clearSession()``, and broadcasts `Disconnected` to active
+    /// account-status subscribers.
     public func disconnect() {
         inner.disconnect()
     }
@@ -428,6 +471,9 @@ public final class TrUAPIHostCore {
     }
 
     /// Notify the core that the user dismissed the active SSO pairing UI.
+    /// Usually reported through the `cancel` handle passed to
+    /// ``HostBridge/presentPairing(deeplink:cancel:)``; this method covers
+    /// hosts that route dismissal through their own plumbing.
     public func notifyPairingCancelled() {
         inner.notifyPairingCancelled()
     }

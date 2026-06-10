@@ -38,12 +38,17 @@ Both return a `Bool` granted flag. SCALE decoding for the UI prompt is done by t
 
 ## Example
 
-> **Threading:** when the WS bridge is running, the Rust core invokes every
-> `HostBridge` callback on the dedicated `truapi-ws-bridge` worker thread, never
-> the main thread. Hop to the main thread (`DispatchQueue.main` / `MainActor`)
-> before touching UIKit, WebKit, or the `WKWebView`. Permission callbacks return
-> synchronously, so use `DispatchQueue.main.sync` (or a semaphore) to present
-> the prompt on the main thread and block the worker until the user decides.
+> **Threading:** the Rust core invokes every `HostBridge` callback on a
+> background thread it owns, never the main thread. Hop to the main thread
+> (`DispatchQueue.main` / `MainActor`) before touching UIKit, WebKit, or the
+> `WKWebView`. UI-decision callbacks (`navigateTo`, `devicePermission`,
+> `remotePermission`, `presentPairing`, the `confirm*` family,
+> `submitPreimage`) each run on their own blocking-pool thread, so it is safe
+> to use `DispatchQueue.main.sync` (or a semaphore) to present the prompt on
+> the main thread and block the calling thread until the user decides; other
+> TrUAPI traffic keeps flowing while you wait. The remaining callbacks
+> (storage, session, chain, feature, theme, preimage lookups) run inline on
+> the dispatcher thread and must return promptly without blocking.
 
 ```swift
 import Foundation
@@ -60,8 +65,8 @@ final class MyStorage: HostStorageBackend, @unchecked Sendable {
 final class MyBridge: HostBridge, @unchecked Sendable {
     let storage: HostStorageBackend = MyStorage()
 
-    // Callbacks arrive on the `truapi-ws-bridge` worker thread, never the main
-    // thread. Hop to the main thread before touching UIKit/WebKit.
+    // Callbacks arrive on background threads, never the main thread.
+    // Hop to the main thread before touching UIKit/WebKit.
     func navigateTo(url: String) throws {
         DispatchQueue.main.async { /* UIApplication.shared.open(...) */ }
     }
@@ -77,13 +82,32 @@ final class MyBridge: HostBridge, @unchecked Sendable {
     }
 
     func devicePermission(request: Data) throws -> Bool {
-        // Present synchronously on the main thread and return the decision.
+        // Called on a blocking-pool thread; present synchronously on the main
+        // thread and return the decision. Blocking here does not stall other
+        // TrUAPI traffic.
         DispatchQueue.main.sync { /* show prompt; */ false }
     }
 
     func remotePermission(request: Data) throws -> Bool {
         DispatchQueue.main.sync { /* show prompt; */ false }
     }
+
+    // The `cancel` handle holds no strong reference back to the core, so
+    // storing it (even in a view controller) cannot create a retain cycle.
+    private var pairingCancel: (@Sendable () -> Void)?
+
+    func presentPairing(deeplink: String, cancel: @escaping @Sendable () -> Void) throws {
+        pairingCancel = cancel
+        DispatchQueue.main.async { /* present the pairing QR / deeplink sheet */ }
+    }
+
+    func dismissPairing() {
+        pairingCancel = nil
+        DispatchQueue.main.async { /* tear down the pairing sheet */ }
+    }
+
+    // When the user closes the pairing sheet, report it to the core:
+    // pairingCancel?()
 
     func featureSupported(request: Data) throws -> Bool { false }
 
@@ -107,7 +131,8 @@ let runtimeConfig = RuntimeConfig(
     productLabel: "my-product",
     productId: "my-product.dot",
     siteId: "host.example",
-    hostMetadataUrl: "https://host.example/metadata.json",
+    hostName: "My Host",
+    hostIcon: "https://host.example/icon.png",
     peopleChainGenesisHash: Data(repeating: 0, count: 32),
     pairingDeeplinkScheme: .polkadotApp
 )

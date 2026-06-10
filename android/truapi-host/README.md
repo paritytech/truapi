@@ -70,13 +70,18 @@ Both return a `Boolean` granted flag. SCALE decoding for the UI prompt is done b
 
 ## Example
 
-> **Threading:** when the WS bridge is running, the Rust core invokes every
-> `HostBridge` callback on the dedicated `truapi-ws-bridge` worker thread, never
-> the UI thread. Marshal any UI work (navigation, prompts, notifications,
-> touching the `WebView`) onto the main thread with
-> `Handler(Looper.getMainLooper())` or a `Dispatchers.Main` `CoroutineScope`.
-> Permission callbacks return synchronously, so block the worker thread (e.g. a
-> `CountDownLatch`) until the main-thread prompt resolves.
+> **Threading:** the Rust core invokes every `HostBridge` callback on a
+> background thread it owns, never the UI thread. Marshal any UI work
+> (navigation, prompts, notifications, touching the `WebView`) onto the main
+> thread with `Handler(Looper.getMainLooper())` or a `Dispatchers.Main`
+> `CoroutineScope`. UI-decision callbacks (`navigateTo`, `devicePermission`,
+> `remotePermission`, `presentPairing`, the `confirm*` family,
+> `submitPreimage`) each run on their own blocking-pool thread, so it is safe
+> to block the calling thread (e.g. with a `CountDownLatch`) until the
+> main-thread prompt resolves; other TrUAPI traffic keeps flowing while you
+> wait. The remaining callbacks (storage, session, chain, feature, theme,
+> preimage lookups) run inline on the dispatcher thread and must return
+> promptly without blocking.
 
 ```kt
 import android.os.Handler
@@ -117,7 +122,8 @@ class MyBridge(private val webView: WebView) : HostBridge {
     }
 
     override fun devicePermission(request: ByteArray): Boolean {
-        // Called on the worker thread; prompt on the main thread and wait.
+        // Called on a blocking-pool thread; prompt on the main thread and
+        // wait. Blocking here does not stall other TrUAPI traffic.
         val latch = CountDownLatch(1)
         var granted = false
         main.post { /* show prompt, set granted, then */ latch.countDown() }
@@ -148,7 +154,8 @@ val runtimeConfig = RuntimeConfig(
     productLabel = "my-product",
     productId = "my-product.dot",
     siteId = "host.example",
-    hostMetadataUrl = "https://host.example/metadata.json",
+    hostName = "My Host",
+    hostIcon = "https://host.example/icon.png",
     peopleChainGenesisHash = ByteArray(32),
     pairingDeeplinkScheme = PairingDeeplinkScheme.POLKADOT_APP,
 )

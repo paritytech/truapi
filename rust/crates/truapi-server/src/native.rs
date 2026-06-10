@@ -236,9 +236,16 @@ impl From<HostNavigateRejection> for v01::HostNavigateToError {
     }
 }
 
-/// Callback surface that iOS and Android implement. The Rust core invokes
-/// these synchronously from `async` trait methods, which is acceptable for
-/// UniFFI because every callback hop is short-lived and reentrant.
+/// Callback surface that iOS and Android implement.
+///
+/// Threading contract: every callback is invoked on a background thread
+/// owned by the Rust core, never the host's main/UI thread. UI-decision
+/// callbacks (`navigate_to`, `device_permission`, `remote_permission`,
+/// `present_pairing`, the `confirm_*` family) plus the potentially slow
+/// `submit_preimage` run on the tokio blocking pool, so an implementation
+/// may block its calling thread until the user decides without stalling
+/// concurrent dispatches. All other callbacks run inline on the dispatcher
+/// thread and must return promptly.
 #[uniffi::export(callback_interface)]
 pub trait HostCallbacks: Send + Sync {
     /// Lifecycle logger. Marker is a stable slug, detail is free-form.
@@ -265,8 +272,8 @@ pub trait HostCallbacks: Send + Sync {
     fn remote_permission(&self, request: Vec<u8>) -> Result<bool, HostRejection>;
 
     /// Present an SSO pairing deeplink or QR payload built by the Rust core.
-    /// Implementations should show and return immediately; user cancellation
-    /// is reported through `NativeTrUApiCore.notify_pairing_cancelled()`.
+    /// Implementations should show the UI and return; user cancellation is
+    /// reported through `NativeTrUApiCore.notify_pairing_cancelled()`.
     fn present_pairing(&self, deeplink: String) -> Result<(), HostRejection>;
 
     /// Close any active SSO pairing presentation.
@@ -506,6 +513,28 @@ struct CallbackPlatform {
     events: Arc<NativeEventBus>,
 }
 
+/// Run a host callback that may block awaiting a user decision.
+///
+/// UI-decision callbacks are allowed to block their calling thread until the
+/// user decides. Running them inline would stall the single-threaded
+/// WS-bridge dispatcher (and deadlock if the decision UI itself issues a
+/// TrUAPI call), so inside a tokio runtime the callback is moved to the
+/// blocking pool. Outside a tokio context the callback runs inline.
+async fn run_blocking_callback<T, F>(callback: F) -> T
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    #[cfg(feature = "ws-bridge")]
+    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+        return handle
+            .spawn_blocking(callback)
+            .await
+            .expect("blocking host callback panicked");
+    }
+    callback()
+}
+
 #[derive(Default)]
 struct NativeEventBus {
     pairing_cancels: Mutex<Vec<oneshot::Sender<()>>>,
@@ -638,7 +667,10 @@ impl Navigation for CallbackPlatform {
             "truapi.native.callback.navigate_to".to_string(),
             url.clone(),
         );
-        self.callbacks.navigate_to(url).map_err(Into::into)
+        let callbacks = self.callbacks.clone();
+        run_blocking_callback(move || callbacks.navigate_to(url))
+            .await
+            .map_err(Into::into)
     }
 }
 
@@ -678,9 +710,10 @@ impl Permissions for CallbackPlatform {
             "truapi.native.callback.device_permission".to_string(),
             format!("{request}"),
         );
-        let granted = self
-            .callbacks
-            .device_permission(request.encode())
+        let callbacks = self.callbacks.clone();
+        let payload = request.encode();
+        let granted = run_blocking_callback(move || callbacks.device_permission(payload))
+            .await
             .map_err(v01::GenericError::from)?;
         Ok(v01::HostDevicePermissionResponse { granted })
     }
@@ -693,9 +726,10 @@ impl Permissions for CallbackPlatform {
             "truapi.native.callback.remote_permission".to_string(),
             format!("{request}"),
         );
-        let granted = self
-            .callbacks
-            .remote_permission(request.encode())
+        let callbacks = self.callbacks.clone();
+        let payload = request.encode();
+        let granted = run_blocking_callback(move || callbacks.remote_permission(payload))
+            .await
             .map_err(v01::GenericError::from)?;
         Ok(v01::RemotePermissionResponse { granted })
     }
@@ -819,8 +853,9 @@ impl PairingPresenter for CallbackPlatform {
             String::new(),
         );
         let cancel = self.events.register_pairing_cancel();
-        self.callbacks
-            .present_pairing(deeplink)
+        let callbacks = self.callbacks.clone();
+        run_blocking_callback(move || callbacks.present_pairing(deeplink))
+            .await
             .map_err(v01::GenericError::from)?;
         let _dismiss = NativePairingDismiss {
             callbacks: self.callbacks.clone(),
@@ -875,8 +910,9 @@ impl UserConfirmation for CallbackPlatform {
             "truapi.native.callback.confirm_sign_payload".to_string(),
             String::new(),
         );
-        self.callbacks
-            .confirm_sign_payload(review)
+        let callbacks = self.callbacks.clone();
+        run_blocking_callback(move || callbacks.confirm_sign_payload(review))
+            .await
             .map_err(v01::GenericError::from)
     }
 
@@ -885,8 +921,9 @@ impl UserConfirmation for CallbackPlatform {
             "truapi.native.callback.confirm_sign_raw".to_string(),
             String::new(),
         );
-        self.callbacks
-            .confirm_sign_raw(review)
+        let callbacks = self.callbacks.clone();
+        run_blocking_callback(move || callbacks.confirm_sign_raw(review))
+            .await
             .map_err(v01::GenericError::from)
     }
 
@@ -895,8 +932,9 @@ impl UserConfirmation for CallbackPlatform {
             "truapi.native.callback.confirm_create_transaction".to_string(),
             String::new(),
         );
-        self.callbacks
-            .confirm_create_transaction(review)
+        let callbacks = self.callbacks.clone();
+        run_blocking_callback(move || callbacks.confirm_create_transaction(review))
+            .await
             .map_err(v01::GenericError::from)
     }
 
@@ -905,8 +943,9 @@ impl UserConfirmation for CallbackPlatform {
             "truapi.native.callback.confirm_account_alias".to_string(),
             String::new(),
         );
-        self.callbacks
-            .confirm_account_alias(review)
+        let callbacks = self.callbacks.clone();
+        run_blocking_callback(move || callbacks.confirm_account_alias(review))
+            .await
             .map_err(v01::GenericError::from)
     }
 
@@ -918,8 +957,9 @@ impl UserConfirmation for CallbackPlatform {
             "truapi.native.callback.confirm_resource_allocation".to_string(),
             String::new(),
         );
-        self.callbacks
-            .confirm_resource_allocation(review)
+        let callbacks = self.callbacks.clone();
+        run_blocking_callback(move || callbacks.confirm_resource_allocation(review))
+            .await
             .map_err(v01::GenericError::from)
     }
 }
@@ -937,16 +977,18 @@ impl ThemeHost for CallbackPlatform {
 
 impl PreimageHost for CallbackPlatform {
     async fn confirm_preimage_submit(&self, size: u64) -> Result<(), v01::PreimageSubmitError> {
-        self.callbacks.confirm_preimage_submit(size).map_err(|err| {
-            v01::PreimageSubmitError::Unknown {
+        let callbacks = self.callbacks.clone();
+        run_blocking_callback(move || callbacks.confirm_preimage_submit(size))
+            .await
+            .map_err(|err| v01::PreimageSubmitError::Unknown {
                 reason: err.to_string(),
-            }
-        })
+            })
     }
 
     async fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, v01::PreimageSubmitError> {
-        self.callbacks
-            .submit_preimage(value)
+        let callbacks = self.callbacks.clone();
+        run_blocking_callback(move || callbacks.submit_preimage(value))
+            .await
             .map_err(|err| v01::PreimageSubmitError::Unknown {
                 reason: err.to_string(),
             })
@@ -1463,5 +1505,255 @@ mod tests {
             .expect_err("second start must error");
         assert!(matches!(err, WsBridgeStartError::AlreadyRunning));
         core.stop_ws_bridge();
+    }
+
+    /// A permission callback that blocks awaiting the user's decision runs on
+    /// the blocking pool, so an unrelated request on the same connection
+    /// still round-trips while the callback is blocked.
+    #[cfg(feature = "ws-bridge")]
+    #[test]
+    fn blocked_permission_callback_does_not_stall_bridge() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        use futures::SinkExt;
+        use parity_scale_codec::Decode;
+        use tokio_tungstenite::tungstenite::Message as WsMessage;
+        use truapi::versioned::permissions::HostDevicePermissionRequest;
+        use truapi_platform::PairingDeeplinkScheme;
+
+        use crate::frame::{Payload, ProtocolMessage, request_ids};
+
+        /// `device_permission` blocks until the test sends on `release`;
+        /// every other callback is a trivial success.
+        struct GatedPermissionCallbacks {
+            permission_entered: Arc<AtomicBool>,
+            release: Mutex<std::sync::mpsc::Receiver<()>>,
+        }
+
+        impl HostCallbacks for GatedPermissionCallbacks {
+            fn on_core_log(&self, _marker: String, _detail: String) {}
+            fn navigate_to(&self, _url: String) -> Result<(), HostNavigateRejection> {
+                Ok(())
+            }
+            fn push_notification(&self, _payload: Vec<u8>) -> Result<u32, HostRejection> {
+                Ok(0)
+            }
+            fn cancel_notification(&self, _id: u32) -> Result<(), HostRejection> {
+                Ok(())
+            }
+            fn device_permission(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
+                self.permission_entered.store(true, Ordering::SeqCst);
+                self.release
+                    .lock()
+                    .expect("release receiver mutex poisoned")
+                    .recv()
+                    .expect("release signal");
+                Ok(true)
+            }
+            fn remote_permission(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
+                Ok(false)
+            }
+            fn present_pairing(&self, _deeplink: String) -> Result<(), HostRejection> {
+                Ok(())
+            }
+            fn dismiss_pairing(&self) {}
+            fn read_session(&self) -> Result<Option<Vec<u8>>, HostRejection> {
+                Ok(None)
+            }
+            fn write_session(&self, _value: Vec<u8>) -> Result<(), HostRejection> {
+                Ok(())
+            }
+            fn clear_session(&self) -> Result<(), HostRejection> {
+                Ok(())
+            }
+            fn chain_connect(&self, _genesis_hash: Vec<u8>) -> Result<Option<u32>, HostRejection> {
+                Ok(None)
+            }
+            fn chain_send(
+                &self,
+                _connection_id: u32,
+                _request: String,
+            ) -> Result<(), HostRejection> {
+                Ok(())
+            }
+            fn chain_close(&self, _connection_id: u32) -> Result<(), HostRejection> {
+                Ok(())
+            }
+            fn confirm_sign_payload(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
+                Ok(false)
+            }
+            fn confirm_sign_raw(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
+                Ok(false)
+            }
+            fn confirm_create_transaction(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
+                Ok(false)
+            }
+            fn confirm_account_alias(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
+                Ok(false)
+            }
+            fn confirm_resource_allocation(&self, _review: Vec<u8>) -> Result<bool, HostRejection> {
+                Ok(false)
+            }
+            fn confirm_preimage_submit(&self, _size: u64) -> Result<(), HostRejection> {
+                Ok(())
+            }
+            fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, HostRejection> {
+                Ok(value)
+            }
+            fn lookup_preimage(&self, _key: Vec<u8>) -> Result<Option<Vec<u8>>, HostRejection> {
+                Ok(None)
+            }
+            fn current_theme(&self) -> Result<HostTheme, HostRejection> {
+                Ok(HostTheme::Light)
+            }
+            fn feature_supported(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
+                Ok(true)
+            }
+            fn local_storage_read(
+                &self,
+                _key: String,
+            ) -> Result<Option<Vec<u8>>, HostStorageError> {
+                Ok(None)
+            }
+            fn local_storage_write(
+                &self,
+                _key: String,
+                _value: Vec<u8>,
+            ) -> Result<(), HostStorageError> {
+                Ok(())
+            }
+            fn local_storage_clear(&self, _key: String) -> Result<(), HostStorageError> {
+                Ok(())
+            }
+        }
+
+        let (release_tx, release_rx) = std::sync::mpsc::channel::<()>();
+        let permission_entered = Arc::new(AtomicBool::new(false));
+        let callbacks: Arc<dyn HostCallbacks> = Arc::new(GatedPermissionCallbacks {
+            permission_entered: permission_entered.clone(),
+            release: Mutex::new(release_rx),
+        });
+        let events = Arc::new(NativeEventBus::default());
+        let platform = Arc::new(CallbackPlatform { callbacks, events });
+        let core = Arc::new(TrUApiCore::from_platform_with_config(
+            platform,
+            RuntimeConfig {
+                product_label: "dotli".to_string(),
+                product_id: "dotli.dot".to_string(),
+                site_id: "dot.li".to_string(),
+                host_name: "Polkadot Web".to_string(),
+                host_icon: Some("https://dot.li/dotli.png".to_string()),
+                host_version: None,
+                platform_type: None,
+                platform_version: None,
+                people_chain_genesis_hash: [0xa2; 32],
+                pairing_deeplink_scheme: PairingDeeplinkScheme::PolkadotApp,
+            },
+            crate::subscription::thread_per_subscription_spawner(),
+        ));
+        let logger: BridgeLogger = Arc::new(|_, _| {});
+        let (mut bridge, endpoint) = WsBridge::start(0, core, logger).expect("start bridge");
+        let url = format!("ws://127.0.0.1:{}/?t={}", endpoint.port, endpoint.token);
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime");
+
+        let permission_ids =
+            request_ids("permissions_request_device_permission").expect("known request method");
+        let feature_ids = request_ids("system_feature_supported").expect("known request method");
+        let (feature_response, permission_response) = rt.block_on(async {
+            let (mut ws, _) = tokio_tungstenite::connect_async(&url).await.expect("dial");
+
+            let permission_frame = ProtocolMessage {
+                request_id: "p:permission".into(),
+                payload: Payload {
+                    id: permission_ids.request_id,
+                    value: HostDevicePermissionRequest::V1(
+                        v01::HostDevicePermissionRequest::Camera,
+                    )
+                    .encode(),
+                },
+            };
+            ws.send(WsMessage::Binary(permission_frame.encode()))
+                .await
+                .expect("send device permission");
+
+            // Wait until the permission callback is blocked on the decision.
+            for _ in 0..1000 {
+                if permission_entered.load(Ordering::SeqCst) {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+            assert!(
+                permission_entered.load(Ordering::SeqCst),
+                "permission callback was not invoked"
+            );
+
+            let feature_frame = ProtocolMessage {
+                request_id: "p:feature".into(),
+                payload: Payload {
+                    id: feature_ids.request_id,
+                    value: HostFeatureSupportedRequest::V1(
+                        v01::HostFeatureSupportedRequest::Chain {
+                            genesis_hash: vec![0u8; 32],
+                        },
+                    )
+                    .encode(),
+                },
+            };
+            ws.send(WsMessage::Binary(feature_frame.encode()))
+                .await
+                .expect("send feature_supported");
+
+            let feature_response =
+                tokio::time::timeout(std::time::Duration::from_secs(10), async {
+                    loop {
+                        match ws.next().await {
+                            Some(Ok(WsMessage::Binary(bytes))) => {
+                                break ProtocolMessage::decode(&mut &bytes[..])
+                                    .expect("decode response");
+                            }
+                            Some(Ok(_)) => continue,
+                            Some(Err(err)) => panic!("ws error: {err}"),
+                            None => panic!("connection closed before response"),
+                        }
+                    }
+                })
+                .await
+                .expect("feature_supported must answer while the permission is blocked");
+
+            release_tx.send(()).expect("release permission callback");
+            let permission_response =
+                tokio::time::timeout(std::time::Duration::from_secs(10), async {
+                    loop {
+                        match ws.next().await {
+                            Some(Ok(WsMessage::Binary(bytes))) => {
+                                break ProtocolMessage::decode(&mut &bytes[..])
+                                    .expect("decode response");
+                            }
+                            Some(Ok(_)) => continue,
+                            Some(Err(err)) => panic!("ws error: {err}"),
+                            None => panic!("connection closed before response"),
+                        }
+                    }
+                })
+                .await
+                .expect("released permission must answer");
+
+            (feature_response, permission_response)
+        });
+
+        assert_eq!(feature_response.request_id, "p:feature");
+        assert_eq!(feature_response.payload.id, feature_ids.response_id);
+
+        assert_eq!(permission_response.request_id, "p:permission");
+        assert_eq!(permission_response.payload.id, permission_ids.response_id);
+        // [Ok 0x00][V1 0x00][granted=1]
+        assert_eq!(permission_response.payload.value, vec![0x00, 0x00, 0x01]);
+
+        bridge.stop();
     }
 }
