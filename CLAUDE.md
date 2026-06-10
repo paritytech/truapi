@@ -20,7 +20,7 @@ js/packages/
   truapi-host-wasm/        @parity/truapi-host-wasm: WASM-backed host runtime. Subpath entries:
                            `.` (core Provider + dispatcher + node runtime), `/web` (iframe + Web
                            Worker), `/electron` (MessagePortMain), `/worker-runtime` (Worker entry).
-                           Pre-built WASM under dist/wasm/{web,node}/
+                           WASM bundle (gitignored) under dist/wasm/{web,node}/, built via `make wasm`
 android/
   truapi-host/             io.parity:truapi-host-android Maven library (AAR + UniFFI Kotlin bindings)
 ios/
@@ -40,11 +40,11 @@ scripts/codegen.sh         regenerate the TS client from the Rust crate
 - All types exposed by `truapi-platform` and `truapi-server` come from
   `truapi::versioned::*` and `truapi::v01::*`. The runtime crates re-export
   rather than redefine.
-- Pre-built `truapi-server` WASM artifacts are committed under
-  `js/packages/truapi-host-wasm/dist/wasm/{web,node}/`. Regenerate via
-  `make wasm` whenever `rust/crates/truapi-server/` changes. CI rebuilds the
-  bundle as a smoke check; exact byte-identity isn't enforced because
-  wasm-pack output depends on Rust/wasm-bindgen versions.
+- `truapi-server` WASM artifacts live under
+  `js/packages/truapi-host-wasm/dist/wasm/{web,node}/` and are gitignored.
+  Build them locally with `make wasm` (rerun whenever
+  `rust/crates/truapi-server/` changes); CI builds the bundle fresh from the
+  Rust source on every run.
 - UniFFI bindings under `android/truapi-host/` and `ios/truapi-host/` are generated from the
   `truapi-server` cdylib via `make uniffi`. The generated Swift modulemap may
   need a one-time relocation into `Sources/truapi_serverFFI/include/`, the
