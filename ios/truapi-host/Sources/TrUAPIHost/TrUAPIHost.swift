@@ -48,7 +48,11 @@ public struct RuntimeConfig: Sendable {
     public let productLabel: String
     public let productId: String
     public let siteId: String
-    public let hostMetadataUrl: String
+    public let hostName: String
+    public let hostIcon: String?
+    public let hostVersion: String?
+    public let platformType: String?
+    public let platformVersion: String?
     public let peopleChainGenesisHash: Data
     public let pairingDeeplinkScheme: PairingDeeplinkScheme
 
@@ -56,14 +60,22 @@ public struct RuntimeConfig: Sendable {
         productLabel: String,
         productId: String,
         siteId: String,
-        hostMetadataUrl: String,
+        hostName: String,
+        hostIcon: String? = nil,
+        hostVersion: String? = nil,
+        platformType: String? = nil,
+        platformVersion: String? = nil,
         peopleChainGenesisHash: Data,
         pairingDeeplinkScheme: PairingDeeplinkScheme = .polkadotApp
     ) {
         self.productLabel = productLabel
         self.productId = productId
         self.siteId = siteId
-        self.hostMetadataUrl = hostMetadataUrl
+        self.hostName = hostName
+        self.hostIcon = hostIcon
+        self.hostVersion = hostVersion
+        self.platformType = platformType
+        self.platformVersion = platformVersion
         self.peopleChainGenesisHash = peopleChainGenesisHash
         self.pairingDeeplinkScheme = pairingDeeplinkScheme
     }
@@ -73,7 +85,11 @@ public struct RuntimeConfig: Sendable {
             productLabel: productLabel,
             productId: productId,
             siteId: siteId,
-            hostMetadataUrl: hostMetadataUrl,
+            hostName: hostName,
+            hostIcon: hostIcon,
+            hostVersion: hostVersion,
+            platformType: platformType,
+            platformVersion: platformVersion,
             peopleChainGenesisHash: peopleChainGenesisHash,
             pairingDeeplinkScheme: pairingDeeplinkScheme.native
         )
@@ -128,18 +144,8 @@ public protocol HostStorageBackend: AnyObject, Sendable {
 }
 
 /// Host-side callback bundle that the Rust core invokes for capabilities the
-/// native shell owns. The permission split mirrors the Rust `Permissions`
-/// trait:
-///
-///   * ``devicePermission(request:)`` handles OS-scoped grants (camera,
-///     mic, location). `request` is a SCALE-encoded
-///     `v01::HostDevicePermissionRequest`.
-///   * ``remotePermission(request:)`` handles per-product capability
-///     bundles. `request` is a SCALE-encoded `v01::RemotePermissionRequest`.
-///
-/// Embedders typically forward the SCALE payloads through the
-/// `@parity/truapi` JS client for UI prompts, then return the boolean
-/// granted flag.
+/// native shell owns. Rust owns the wire/protocol decoding and calls this
+/// surface with native-friendly values.
 ///
 /// Threading: when the WS bridge is running, the Rust core invokes every
 /// callback on the dedicated `truapi-ws-bridge` worker thread, never the main
@@ -155,10 +161,10 @@ public protocol HostBridge: AnyObject, Sendable {
     /// worker thread; hop to the main thread to present UI.
     func navigateTo(url: String) throws
 
-    /// Deliver a push notification (SCALE-encoded `HostPushNotificationRequest`)
-    /// and return the host-assigned notification id. Invoked on the
-    /// `truapi-ws-bridge` worker thread; hop to the main thread for any UI work.
-    func pushNotification(payload: Data) throws -> UInt32
+    /// Deliver a push notification and return the host-assigned notification
+    /// id. Invoked on the `truapi-ws-bridge` worker thread; hop to the main
+    /// thread for any UI work.
+    func pushNotification(text: String, deeplink: String?, scheduledAtMs: UInt64?) throws -> UInt32
 
     /// Cancel a previously scheduled notification id.
     func cancelNotification(id: UInt32) throws
@@ -166,12 +172,12 @@ public protocol HostBridge: AnyObject, Sendable {
     /// Prompt for a device-level permission. Returns the granted flag. Invoked
     /// on the `truapi-ws-bridge` worker thread; present the prompt on the main
     /// thread and block this thread until the user decides.
-    func devicePermission(request: Data) throws -> Bool
+    func devicePermission(capability: String) throws -> Bool
 
     /// Prompt for a remote (product-scoped) permission bundle. Invoked on the
     /// `truapi-ws-bridge` worker thread; present the prompt on the main thread
     /// and block this thread until the user decides.
-    func remotePermission(request: Data) throws -> Bool
+    func remotePermission(permission: String, domains: [String]) throws -> Bool
 
     /// Present an SSO pairing deeplink or QR payload built by the Rust core.
     /// Show the UI and return immediately. Call
@@ -226,9 +232,17 @@ public protocol HostBridge: AnyObject, Sendable {
     /// Return the current host theme.
     func currentTheme() throws -> HostTheme
 
-    /// Answer a feature-support query. Invoked on the `truapi-ws-bridge` worker
-    /// thread.
-    func featureSupported(request: Data) throws -> Bool
+    /// Answer whether a chain is supported. Invoked on the
+    /// `truapi-ws-bridge` worker thread.
+    func featureSupportedChain(genesisHash: Data) throws -> Bool
+
+    /// Post a text message into the host chat system and return the
+    /// host-assigned message id.
+    func chatPostTextMessage(roomId: String, text: String) throws -> String
+
+    /// Post a custom message into the host chat system and return the
+    /// host-assigned message id.
+    func chatPostCustomMessage(roomId: String, messageType: String, payload: Data) throws -> String
 
     /// Scoped key-value storage for the Rust core.
     var storage: HostStorageBackend { get }
@@ -237,7 +251,7 @@ public protocol HostBridge: AnyObject, Sendable {
 public extension HostBridge {
     /// Default no-op logger. Override to plumb into your logging framework.
     func onCoreLog(marker: String, detail: String) {}
-    func pushNotification(payload: Data) throws -> UInt32 { 0 }
+    func pushNotification(text: String, deeplink: String?, scheduledAtMs: UInt64?) throws -> UInt32 { 0 }
     func cancelNotification(id: UInt32) throws {}
     func presentPairing(deeplink: String) throws {
         throw HostRejection.Rejected(reason: "pairing presenter unavailable")
@@ -258,6 +272,12 @@ public extension HostBridge {
     func submitPreimage(value: Data) throws -> Data { value }
     func lookupPreimage(key: Data) throws -> Data? { nil }
     func currentTheme() throws -> HostTheme { .dark }
+    func chatPostTextMessage(roomId: String, text: String) throws -> String {
+        throw HostRejection.Rejected(reason: "chat posting unavailable")
+    }
+    func chatPostCustomMessage(roomId: String, messageType: String, payload: Data) throws -> String {
+        throw HostRejection.Rejected(reason: "chat posting unavailable")
+    }
 }
 
 /// Adapter that bridges the public `HostBridge` to the generated UniFFI
@@ -278,20 +298,20 @@ private final class HostCallbackAdapter: HostCallbacks, @unchecked Sendable {
         try bridge.navigateTo(url: url)
     }
 
-    func pushNotification(payload: Data) throws -> UInt32 {
-        try bridge.pushNotification(payload: payload)
+    func pushNotification(text: String, deeplink: String?, scheduledAtMs: UInt64?) throws -> UInt32 {
+        try bridge.pushNotification(text: text, deeplink: deeplink, scheduledAtMs: scheduledAtMs)
     }
 
     func cancelNotification(id: UInt32) throws {
         try bridge.cancelNotification(id: id)
     }
 
-    func devicePermission(request: Data) throws -> Bool {
-        try bridge.devicePermission(request: request)
+    func devicePermission(capability: String) throws -> Bool {
+        try bridge.devicePermission(capability: capability)
     }
 
-    func remotePermission(request: Data) throws -> Bool {
-        try bridge.remotePermission(request: request)
+    func remotePermission(permission: String, domains: [String]) throws -> Bool {
+        try bridge.remotePermission(permission: permission, domains: domains)
     }
 
     func presentPairing(deeplink: String) throws {
@@ -362,8 +382,16 @@ private final class HostCallbackAdapter: HostCallbacks, @unchecked Sendable {
         try bridge.currentTheme()
     }
 
-    func featureSupported(request: Data) throws -> Bool {
-        try bridge.featureSupported(request: request)
+    func featureSupportedChain(genesisHash: Data) throws -> Bool {
+        try bridge.featureSupportedChain(genesisHash: genesisHash)
+    }
+
+    func chatPostTextMessage(roomId: String, text: String) throws -> String {
+        try bridge.chatPostTextMessage(roomId: roomId, text: text)
+    }
+
+    func chatPostCustomMessage(roomId: String, messageType: String, payload: Data) throws -> String {
+        try bridge.chatPostCustomMessage(roomId: roomId, messageType: messageType, payload: payload)
     }
 
     func localStorageRead(key: String) throws -> Data? {
@@ -387,7 +415,7 @@ private final class HostCallbackAdapter: HostCallbacks, @unchecked Sendable {
 /// and pass the resulting `ws://127.0.0.1:<port>/?t=<token>` URL to the
 /// product via `LocalhostBridgeBootstrap.script(...)`. The product wires
 /// that URL into `@parity/truapi`'s `createWebSocketProvider`.
-public final class TrUAPIHostCore {
+public final class TrUAPIHostCore: @unchecked Sendable {
     private let inner: NativeTrUApiCore
     // Co-owns the adapter alongside the generated FfiConverter handle map,
     // which is what actually keeps the callback object alive for the core.
@@ -435,6 +463,30 @@ public final class TrUAPIHostCore {
     /// Push a host theme update to active TrUAPI theme subscriptions.
     public func notifyThemeChanged(theme: HostTheme) {
         inner.notifyThemeChanged(theme: theme)
+    }
+
+    /// Push a host-originated plain-text chat message to active
+    /// `chat.actionSubscribe()` subscriptions.
+    public func notifyChatMessagePosted(roomId: String, peer: String, text: String) {
+        inner.notifyChatMessagePosted(roomId: roomId, peer: peer, text: text)
+    }
+
+    /// Push a host-originated chat action trigger to active
+    /// `chat.actionSubscribe()` subscriptions.
+    public func notifyChatActionTriggered(
+        roomId: String,
+        peer: String,
+        messageId: String,
+        actionId: String,
+        payload: Data?
+    ) {
+        inner.notifyChatActionTriggered(
+            roomId: roomId,
+            peer: peer,
+            messageId: messageId,
+            actionId: actionId,
+            payload: payload
+        )
     }
 
     /// Push a preimage lookup update to active subscriptions for `key`.

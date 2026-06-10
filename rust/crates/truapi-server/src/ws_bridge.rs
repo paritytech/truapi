@@ -415,7 +415,7 @@ mod tests {
     use truapi::v01;
     use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
     use truapi_platform::{
-        ChainProvider, Features, JsonRpcConnection, Navigation, Notifications,
+        ChainProvider, ChatHost, Features, JsonRpcConnection, Navigation, Notifications,
         PairingDeeplinkScheme, PairingPresenter, Permissions, PreimageHost, RuntimeConfig,
         SessionStore, Storage, ThemeHost, UserConfirmation,
     };
@@ -486,6 +486,16 @@ mod tests {
             Ok(HostFeatureSupportedResponse::V1(
                 v01::HostFeatureSupportedResponse { supported: true },
             ))
+        }
+    }
+
+    impl ChatHost for StubPlatform {
+        async fn post_chat_message(
+            &self,
+            _room_id: String,
+            _payload: v01::ChatMessageContent,
+        ) -> Result<String, v01::HostChatPostMessageError> {
+            Ok("message-1".to_string())
         }
     }
 

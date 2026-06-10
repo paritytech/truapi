@@ -5,6 +5,7 @@
 // `HostCallbacks` interface that mirrors the `Platform` super-trait.
 
 import type {
+  ChatMessageContent,
   GenericError,
   HostDevicePermissionRequest,
   HostDevicePermissionResponse,
@@ -31,6 +32,17 @@ export interface ChainProvider {
    * Drop the returned connection to disconnect.
    */
   connect(genesisHash: Uint8Array): Promise<JsonRpcConnection>;
+}
+
+/**
+ * Host-owned chat output surface.
+ */
+export interface ChatHost {
+  /**
+   * Post a product message into the native chat system and return the
+   * host-assigned message id.
+   */
+  postChatMessage(roomId: string, payload: ChatMessageContent): Promise<string>;
 }
 
 /**
@@ -227,4 +239,4 @@ export interface UserConfirmation {
 /**
  * Combined platform interface. A host must provide all capability traits.
  */
-export interface HostCallbacks extends Navigation, Notifications, Permissions, Features, Storage, ChainProvider, PairingPresenter, SessionStore, UserConfirmation, ThemeHost, PreimageHost {}
+export interface HostCallbacks extends Navigation, Notifications, Permissions, Features, Storage, ChainProvider, PairingPresenter, SessionStore, UserConfirmation, ThemeHost, ChatHost, PreimageHost {}

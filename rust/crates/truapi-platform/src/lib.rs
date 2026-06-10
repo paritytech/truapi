@@ -15,10 +15,10 @@
 use futures::stream::BoxStream;
 
 use truapi::v01::{
-    GenericError, HostDevicePermissionRequest, HostDevicePermissionResponse,
-    HostLocalStorageReadError, HostNavigateToError, HostPushNotificationRequest,
-    HostPushNotificationResponse, NotificationId, PreimageSubmitError, RemotePermissionRequest,
-    RemotePermissionResponse, ThemeVariant,
+    ChatMessageContent, GenericError, HostChatPostMessageError, HostDevicePermissionRequest,
+    HostDevicePermissionResponse, HostLocalStorageReadError, HostNavigateToError,
+    HostPushNotificationRequest, HostPushNotificationResponse, NotificationId, PreimageSubmitError,
+    RemotePermissionRequest, RemotePermissionResponse, ThemeVariant,
 };
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use url::Url;
@@ -299,6 +299,17 @@ pub trait ThemeHost: Send + Sync {
     fn subscribe_theme(&self) -> BoxStream<'static, Result<ThemeVariant, GenericError>>;
 }
 
+/// Host-owned chat output surface.
+pub trait ChatHost: Send + Sync {
+    /// Post a product message into the native chat system and return the
+    /// host-assigned message id.
+    fn post_chat_message(
+        &self,
+        room_id: String,
+        payload: ChatMessageContent,
+    ) -> impl Future<Output = Result<String, HostChatPostMessageError>> + Send;
+}
+
 /// Host preimage backend. The core owns wire mapping and subscription
 /// lifecycle; the host owns the selected backend.
 pub trait PreimageHost: Send + Sync {
@@ -333,6 +344,7 @@ pub trait Platform:
     + SessionStore
     + UserConfirmation
     + ThemeHost
+    + ChatHost
     + PreimageHost
 {
 }
@@ -348,6 +360,7 @@ impl<T> Platform for T where
         + SessionStore
         + UserConfirmation
         + ThemeHost
+        + ChatHost
         + PreimageHost
 {
 }

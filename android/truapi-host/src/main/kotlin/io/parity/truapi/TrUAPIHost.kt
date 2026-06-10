@@ -127,13 +127,12 @@ interface HostBridge {
     fun navigateTo(url: String)
 
     /**
-     * Deliver a push notification (SCALE-encoded `HostPushNotificationRequest`)
-     * and return the host-assigned notification id.
+     * Deliver a push notification and return the host-assigned notification id.
      * Invoked on the `truapi-ws-bridge` worker thread; marshal any UI work to
      * the main thread.
      */
     @Throws(HostRejection::class)
-    fun pushNotification(payload: ByteArray): UInt = 0u
+    fun pushNotification(text: String, deeplink: String?, scheduledAtMs: ULong?): UInt = 0u
 
     /** Cancel a previously scheduled notification id. */
     @Throws(HostRejection::class)
@@ -145,7 +144,7 @@ interface HostBridge {
      * the main thread and block this thread until the user decides.
      */
     @Throws(HostRejection::class)
-    fun devicePermission(request: ByteArray): Boolean
+    fun devicePermission(capability: String): Boolean
 
     /**
      * Prompt for a remote (product-scoped) permission bundle. Invoked on the
@@ -153,7 +152,7 @@ interface HostBridge {
      * and block this thread until the user decides.
      */
     @Throws(HostRejection::class)
-    fun remotePermission(request: ByteArray): Boolean
+    fun remotePermission(permission: String, domains: List<String>): Boolean
 
     /**
      * Present an SSO pairing deeplink or QR payload built by the Rust core.
@@ -229,11 +228,11 @@ interface HostBridge {
     fun currentTheme(): HostTheme = HostTheme.DARK
 
     /**
-     * Answer a feature-support query. Invoked on the `truapi-ws-bridge` worker
-     * thread.
+     * Answer whether a chain is supported. Invoked on the `truapi-ws-bridge`
+     * worker thread.
      */
     @Throws(HostRejection::class)
-    fun featureSupported(request: ByteArray): Boolean
+    fun featureSupportedChain(genesisHash: ByteArray): Boolean
 
     /** Scoped key-value storage for the Rust core. */
     val storage: HostStorage
@@ -251,17 +250,17 @@ private class HostCallbackAdapter(private val bridge: HostBridge) : HostCallback
     override fun navigateTo(url: String) =
         bridge.navigateTo(url)
 
-    override fun pushNotification(payload: ByteArray): UInt =
-        bridge.pushNotification(payload)
+    override fun pushNotification(text: String, deeplink: String?, scheduledAtMs: ULong?): UInt =
+        bridge.pushNotification(text, deeplink, scheduledAtMs)
 
     override fun cancelNotification(id: UInt) =
         bridge.cancelNotification(id)
 
-    override fun devicePermission(request: ByteArray): Boolean =
-        bridge.devicePermission(request)
+    override fun devicePermission(capability: String): Boolean =
+        bridge.devicePermission(capability)
 
-    override fun remotePermission(request: ByteArray): Boolean =
-        bridge.remotePermission(request)
+    override fun remotePermission(permission: String, domains: List<String>): Boolean =
+        bridge.remotePermission(permission, domains)
 
     override fun presentPairing(deeplink: String) =
         bridge.presentPairing(deeplink)
@@ -314,8 +313,8 @@ private class HostCallbackAdapter(private val bridge: HostBridge) : HostCallback
     override fun currentTheme(): HostTheme =
         bridge.currentTheme()
 
-    override fun featureSupported(request: ByteArray): Boolean =
-        bridge.featureSupported(request)
+    override fun featureSupportedChain(genesisHash: ByteArray): Boolean =
+        bridge.featureSupportedChain(genesisHash)
 
     override fun localStorageRead(key: String): ByteArray? =
         bridge.storage.read(key)

@@ -17,11 +17,13 @@ use std::sync::{Arc, Mutex};
 use futures::future::BoxFuture;
 use parity_scale_codec::{Decode, Encode};
 use truapi::api::TrUApi;
+use truapi::v01;
+use truapi::versioned::chat::HostChatActionSubscribeItem;
 use truapi_platform::{Platform, RuntimeConfig};
 
 use crate::generated::dispatcher;
 use crate::host_logic::session::SessionState;
-use crate::runtime::PlatformRuntimeHost;
+use crate::runtime::{ChatEvents, PlatformRuntimeHost};
 use crate::subscription::Spawner;
 use crate::{Dispatcher, ProtocolMessage, Transport};
 
@@ -34,6 +36,7 @@ pub struct TrUApiCore {
     /// Always present; empty for [`Self::new`] (direct host path), connected
     /// to a [`PlatformRuntimeHost`] for [`Self::from_platform_with_config`].
     session_state: Arc<SessionState>,
+    chat_events: Arc<ChatEvents>,
     disconnect: DisconnectFn,
 }
 
@@ -53,6 +56,7 @@ impl TrUApiCore {
         Self {
             dispatcher,
             session_state,
+            chat_events: Arc::new(ChatEvents::default()),
             disconnect: Arc::new(move || {
                 let state = disconnect_state.clone();
                 Box::pin(async move {
@@ -79,12 +83,14 @@ impl TrUApiCore {
         ));
         runtime.start_session_store_sync(spawner.clone());
         let session_state = runtime.session_state();
+        let chat_events = runtime.chat_events();
         let disconnect_runtime = runtime.clone();
         let mut dispatcher = Dispatcher::new(spawner);
         dispatcher::register(&mut dispatcher, runtime);
         Self {
             dispatcher,
             session_state,
+            chat_events,
             disconnect: Arc::new(move || {
                 let runtime = disconnect_runtime.clone();
                 Box::pin(async move {
@@ -99,6 +105,46 @@ impl TrUApiCore {
     /// `disconnect`.
     pub fn session_state(&self) -> Arc<SessionState> {
         self.session_state.clone()
+    }
+
+    /// Publish a plain-text chat message to active `chat.actionSubscribe()`
+    /// subscribers. Platform-backed cores use this for host-originated chat
+    /// input; direct cores have no internal chat event stream to dispatch to.
+    pub fn notify_chat_message_posted(&self, room_id: String, peer: String, text: String) {
+        self.chat_events
+            .notify_action(HostChatActionSubscribeItem::V1(
+                v01::HostChatActionSubscribeItem {
+                    room_id,
+                    peer,
+                    payload: v01::ChatActionPayload::MessagePosted(v01::ChatMessageContent::Text {
+                        text,
+                    }),
+                },
+            ));
+    }
+
+    /// Publish a chat action-button trigger to active
+    /// `chat.actionSubscribe()` subscribers.
+    pub fn notify_chat_action_triggered(
+        &self,
+        room_id: String,
+        peer: String,
+        message_id: String,
+        action_id: String,
+        payload: Option<Vec<u8>>,
+    ) {
+        self.chat_events
+            .notify_action(HostChatActionSubscribeItem::V1(
+                v01::HostChatActionSubscribeItem {
+                    room_id,
+                    peer,
+                    payload: v01::ChatActionPayload::ActionTriggered(v01::ActionTrigger {
+                        message_id,
+                        action_id,
+                        payload,
+                    }),
+                },
+            ));
     }
 
     /// Core-owned logout/disconnect. Platform-backed cores best-effort notify
@@ -176,6 +222,7 @@ mod tests {
     use futures::stream::{self, BoxStream};
     use parity_scale_codec::Encode;
     use truapi::v01;
+    use truapi::versioned::chat::{HostChatPostMessageRequest, HostChatPostMessageResponse};
     use truapi::versioned::local_storage::{
         HostLocalStorageClearRequest, HostLocalStorageReadRequest, HostLocalStorageWriteRequest,
     };
@@ -183,7 +230,7 @@ mod tests {
     use truapi::versioned::permissions::RemotePermissionRequest;
     use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
     use truapi_platform::{
-        ChainProvider, Features, JsonRpcConnection, Navigation, Notifications,
+        ChainProvider, ChatHost, Features, JsonRpcConnection, Navigation, Notifications,
         PairingDeeplinkScheme, PairingPresenter, Permissions, PreimageHost, SessionStore, Storage,
         ThemeHost, UserConfirmation,
     };
@@ -280,6 +327,16 @@ mod tests {
             Ok(HostFeatureSupportedResponse::V1(
                 v01::HostFeatureSupportedResponse { supported: true },
             ))
+        }
+    }
+
+    impl ChatHost for StubPlatform {
+        async fn post_chat_message(
+            &self,
+            _room_id: String,
+            _payload: v01::ChatMessageContent,
+        ) -> Result<String, v01::HostChatPostMessageError> {
+            Ok("message-1".to_string())
         }
     }
 
@@ -438,6 +495,89 @@ mod tests {
             test_runtime_config(),
             test_spawner(),
         )
+    }
+
+    struct ChannelTransport {
+        tx: std::sync::mpsc::Sender<ProtocolMessage>,
+    }
+
+    impl Transport for ChannelTransport {
+        fn send(&self, message: ProtocolMessage) {
+            self.tx
+                .send(message)
+                .expect("test transport receives message");
+        }
+
+        fn on_message(
+            &self,
+            _handler: Box<dyn Fn(ProtocolMessage) + Send + Sync>,
+        ) -> Box<dyn FnOnce()> {
+            Box::new(|| {})
+        }
+    }
+
+    #[test]
+    fn chat_action_subscribe_receives_core_notified_message() {
+        let core = make_core();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let transport = Arc::new(ChannelTransport { tx });
+        let start = ProtocolMessage {
+            request_id: "chat:1".into(),
+            payload: Payload {
+                tag: compose_action("chat_action_subscribe", FrameKind::Start),
+                value: Vec::new(),
+            },
+        };
+
+        futures::executor::block_on(core.dispatch(start, transport));
+        core.notify_chat_message_posted(
+            "room-1".to_string(),
+            "peer-1".to_string(),
+            "hello".to_string(),
+        );
+
+        let message = rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("subscription receive frame");
+        assert_eq!(message.request_id, "chat:1");
+        assert_eq!(
+            message.payload.tag,
+            compose_action("chat_action_subscribe", FrameKind::Receive)
+        );
+        let item = HostChatActionSubscribeItem::decode(&mut &message.payload.value[..])
+            .expect("decode chat action item");
+        assert_eq!(
+            item,
+            HostChatActionSubscribeItem::V1(v01::HostChatActionSubscribeItem {
+                room_id: "room-1".to_string(),
+                peer: "peer-1".to_string(),
+                payload: v01::ChatActionPayload::MessagePosted(v01::ChatMessageContent::Text {
+                    text: "hello".to_string(),
+                }),
+            })
+        );
+    }
+
+    #[test]
+    fn chat_post_message_round_trips_through_platform() {
+        let core = make_core();
+        let request = HostChatPostMessageRequest::V1(v01::HostChatPostMessageRequest {
+            room_id: "room-1".to_string(),
+            payload: v01::ChatMessageContent::Text {
+                text: "hello".to_string(),
+            },
+        });
+        let payload = run_request(&core, "chat_post_message", request.encode());
+
+        assert_eq!(payload[0], 0x00);
+        let response = HostChatPostMessageResponse::decode(&mut &payload[1..])
+            .expect("decode chat post response");
+        assert_eq!(
+            response,
+            HostChatPostMessageResponse::V1(v01::HostChatPostMessageResponse {
+                message_id: "message-1".to_string(),
+            })
+        );
     }
 
     #[test]

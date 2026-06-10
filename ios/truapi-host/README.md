@@ -6,12 +6,12 @@
 
 The public surface lives in [`Sources/TrUAPIHost/TrUAPIHost.swift`](Sources/TrUAPIHost/TrUAPIHost.swift):
 
-- `HostBridge` - callback bundle the embedding app implements. Split into device permissions, remote permissions, navigation, push, feature support, and scoped storage.
+- `HostBridge` - callback bundle the embedding app implements. Split into device permissions, remote permissions, navigation, push, chat posting, feature support, and scoped storage.
 - `HostStorageBackend` - simple read/write/clear protocol the host backs with its own persistence.
-- `TrUAPIHostCore` - owning wrapper around the UniFFI-generated `NativeTrUApiCore`. Holds the bridge alive for the lifetime of the core and exposes the localhost WebSocket bridge, core-owned disconnect, and native change notifications for session storage, theme, and preimage updates.
+- `TrUAPIHostCore` - owning wrapper around the UniFFI-generated `NativeTrUApiCore`. Holds the bridge alive for the lifetime of the core and exposes the localhost WebSocket bridge, core-owned disconnect, and native change notifications for session storage, theme, preimage, chain, and chat action updates.
 - `LocalhostBridgeBootstrap` - helper that produces a JS snippet publishing the WS bridge endpoint to the product page so it can dial back in.
 
-The generated UniFFI bindings live alongside the shell in `Sources/TrUAPIHost/truapi_server.swift` and the C header / module map in `Sources/truapi_serverFFI/include/`. They are ignored build outputs; regenerate them before building or publishing the Swift package.
+The generated UniFFI bindings live alongside the shell in `Sources/TrUAPIHost/truapi_server.swift` and the C header / module map in `Sources/truapi_serverFFI/`. They are ignored build outputs; regenerate them before building or publishing the Swift package.
 
 ## Architecture
 
@@ -25,16 +25,18 @@ TrUAPIHostCore.startWsBridge()
   → Rust dispatcher
 ```
 
-The product running in the `WKWebView` opens a `WebSocket` to the localhost port + token returned by `startWsBridge`. From there the Rust core handles the wire protocol directly. Outbound responses and host-side capability callbacks (`navigateTo`, `pushNotification`, `cancelNotification`, `devicePermission`, `remotePermission`, `presentPairing`, session storage, chain JSON-RPC, confirmations, preimage, theme, `featureSupported`, `storage`) reach the embedder through `HostBridge`.
+The product running in the `WKWebView` opens a `WebSocket` to the localhost port + token returned by `startWsBridge`. From there the Rust core handles the wire protocol directly. Outbound responses and host-side capability callbacks (`navigateTo`, `pushNotification`, `cancelNotification`, `devicePermission`, `remotePermission`, `presentPairing`, session storage, chain JSON-RPC, confirmations, preimage, theme, `featureSupportedChain`, `chatPostTextMessage`, `chatPostCustomMessage`, `storage`) reach the embedder through `HostBridge`.
+
+For chain JSON-RPC, the embedder returns a host-assigned connection id from `chainConnect(genesisHash:)`, sends each raw JSON-RPC request in `chainSend(connectionId:request:)`, and later calls `TrUAPIHostCore.notifyChainResponse(connectionId:json:)` with the raw response. The response JSON keeps the request's original `id` so the Rust runtime can match it to the in-flight TrUAPI chain call. If the native connection closes independently, call `notifyChainClosed(connectionId:)`.
 
 ## Permissions split
 
 The core's `Permissions` platform trait has two methods, and so does the bridge:
 
-- `devicePermission(request:)` - OS-scoped grants (camera, mic, location, push). `request` is a SCALE-encoded `v01::HostDevicePermissionRequest`.
-- `remotePermission(request:)` - per-product capability bundles. `request` is a SCALE-encoded `v01::RemotePermissionRequest`.
+- `devicePermission(capability:)` - OS-scoped grants (camera, mic, location, push).
+- `remotePermission(permission:domains:)` - per-product capability bundles.
 
-Both return a `Bool` granted flag. SCALE decoding for the UI prompt is done by the `@parity/truapi` JS client (or any consumer that links the protocol crate's types directly).
+Both return a `Bool` granted flag. Rust owns protocol decoding and calls the bridge with native-friendly values.
 
 ## Example
 
@@ -66,7 +68,7 @@ final class MyBridge: HostBridge, @unchecked Sendable {
         DispatchQueue.main.async { /* UIApplication.shared.open(...) */ }
     }
 
-    func pushNotification(payload: Data) throws -> UInt32 {
+    func pushNotification(text: String, deeplink: String?, scheduledAtMs: UInt64?) throws -> UInt32 {
         let id: UInt32 = 1
         DispatchQueue.main.async { /* schedule notification */ }
         return id
@@ -76,16 +78,24 @@ final class MyBridge: HostBridge, @unchecked Sendable {
         DispatchQueue.main.async { /* cancel notification */ }
     }
 
-    func devicePermission(request: Data) throws -> Bool {
+    func devicePermission(capability: String) throws -> Bool {
         // Present synchronously on the main thread and return the decision.
         DispatchQueue.main.sync { /* show prompt; */ false }
     }
 
-    func remotePermission(request: Data) throws -> Bool {
+    func remotePermission(permission: String, domains: [String]) throws -> Bool {
         DispatchQueue.main.sync { /* show prompt; */ false }
     }
 
-    func featureSupported(request: Data) throws -> Bool { false }
+    func featureSupportedChain(genesisHash: Data) throws -> Bool { false }
+
+    func chatPostTextMessage(roomId: String, text: String) throws -> String {
+        "message-1"
+    }
+
+    func chatPostCustomMessage(roomId: String, messageType: String, payload: Data) throws -> String {
+        "message-1"
+    }
 
     func chainConnect(genesisHash: Data) throws -> UInt32? {
         let id: UInt32 = 1
@@ -107,7 +117,11 @@ let runtimeConfig = RuntimeConfig(
     productLabel: "my-product",
     productId: "my-product.dot",
     siteId: "host.example",
-    hostMetadataUrl: "https://host.example/metadata.json",
+    hostName: "Polkadot",
+    hostIcon: "https://host.example/icon.png",
+    hostVersion: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+    platformType: "iOS",
+    platformVersion: UIDevice.current.systemVersion,
     peopleChainGenesisHash: Data(repeating: 0, count: 32),
     pairingDeeplinkScheme: .polkadotApp
 )
@@ -121,6 +135,14 @@ core.notifyThemeChanged(theme: .dark)
 core.notifyPreimageChanged(key: preimageKey, value: preimageBytesOrNil)
 core.notifyChainResponse(connectionId: chainConnectionId, json: jsonRpcResponse)
 core.notifyChainClosed(connectionId: chainConnectionId)
+core.notifyChatMessagePosted(roomId: roomId, peer: userId, text: text)
+core.notifyChatActionTriggered(
+    roomId: roomId,
+    peer: userId,
+    messageId: messageId,
+    actionId: actionId,
+    payload: actionPayload
+)
 
 let contentController = WKUserContentController()
 let bootstrapScript = LocalhostBridgeBootstrap.script(port: endpoint.port, token: endpoint.token)
@@ -157,7 +179,7 @@ Then either bundle the `.a` files as a `.xcframework` and add it under "Framewor
 
 ## Regenerating the bindings
 
-The ignored bindings under `Sources/TrUAPIHost/truapi_server.swift` and `Sources/truapi_serverFFI/include/` are produced from the workspace `uniffi-bindgen-cli`. Regenerate them before building or publishing the Swift package. The CLI emits `truapi_server.swift`, `truapi_serverFFI.h`, and `truapi_serverFFI.modulemap` into a single output directory; the modulemap is renamed to `module.modulemap` and the header is colocated under `Sources/truapi_serverFFI/include/` so SwiftPM's `systemLibrary` target picks them up.
+The ignored bindings under `Sources/TrUAPIHost/truapi_server.swift` and `Sources/truapi_serverFFI/` are produced from the workspace `uniffi-bindgen-cli`. Regenerate them before building or publishing the Swift package. The CLI emits `truapi_server.swift`, `truapi_serverFFI.h`, and `truapi_serverFFI.modulemap` into a single output directory; the modulemap is renamed to `module.modulemap` and colocated with the header so SwiftPM's `systemLibrary` target picks them up.
 
 ```bash
 cargo build -p truapi-server --release --features ws-bridge
@@ -169,9 +191,9 @@ cargo run -p uniffi-bindgen-cli -- generate \
 cp /tmp/uniffi-swift-out/truapi_server.swift \
    ios/truapi-host/Sources/TrUAPIHost/truapi_server.swift
 cp /tmp/uniffi-swift-out/truapi_serverFFI.h \
-   ios/truapi-host/Sources/truapi_serverFFI/include/truapi_serverFFI.h
+   ios/truapi-host/Sources/truapi_serverFFI/truapi_serverFFI.h
 cp /tmp/uniffi-swift-out/truapi_serverFFI.modulemap \
-   ios/truapi-host/Sources/truapi_serverFFI/include/module.modulemap
+   ios/truapi-host/Sources/truapi_serverFFI/module.modulemap
 ```
 
 Or run `make uniffi` from the repo root.

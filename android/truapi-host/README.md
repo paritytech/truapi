@@ -57,16 +57,16 @@ TrUAPIHostCore.startWsBridge()
   → Rust dispatcher
 ```
 
-The product running in the `WebView` opens a `WebSocket` to the localhost port + token returned by `startWsBridge`. From there the Rust core handles the wire protocol directly. Outbound responses and host-side capability callbacks (`navigateTo`, `pushNotification`, `cancelNotification`, `devicePermission`, `remotePermission`, `presentPairing`, session storage, chain JSON-RPC, confirmations, preimage, theme, `featureSupported`, `storage`) reach the embedder through `HostBridge`.
+The product running in the `WebView` opens a `WebSocket` to the localhost port + token returned by `startWsBridge`. From there the Rust core handles the wire protocol directly. Outbound responses and host-side capability callbacks (`navigateTo`, `pushNotification`, `cancelNotification`, `devicePermission`, `remotePermission`, `presentPairing`, session storage, chain JSON-RPC, confirmations, preimage, theme, `featureSupportedChain`, `storage`) reach the embedder through `HostBridge`.
 
 ## Permissions split
 
 The core's `Permissions` platform trait has two methods, and so does the bridge:
 
-- `devicePermission(request)` - OS-scoped grants (camera, mic, location, push). `request` is a SCALE-encoded `v01::HostDevicePermissionRequest`.
-- `remotePermission(request)` - per-product capability bundles. `request` is a SCALE-encoded `v01::RemotePermissionRequest`.
+- `devicePermission(capability)` - OS-scoped grants (camera, mic, location, push).
+- `remotePermission(permission, domains)` - per-product capability bundles.
 
-Both return a `Boolean` granted flag. SCALE decoding for the UI prompt is done by the `@parity/truapi` JS client (or any consumer that links the protocol crate's types directly).
+Both return a `Boolean` granted flag. Rust owns protocol decoding and calls the bridge with native-friendly values.
 
 ## Example
 
@@ -106,7 +106,7 @@ class MyBridge(private val webView: WebView) : HostBridge {
         main.post { /* startActivity(Intent(ACTION_VIEW, Uri.parse(url))) */ }
     }
 
-    override fun pushNotification(payload: ByteArray): UInt {
+    override fun pushNotification(text: String, deeplink: String?, scheduledAtMs: ULong?): UInt {
         val id = 1u
         main.post { /* show notification */ }
         return id
@@ -116,7 +116,7 @@ class MyBridge(private val webView: WebView) : HostBridge {
         main.post { /* cancel notification */ }
     }
 
-    override fun devicePermission(request: ByteArray): Boolean {
+    override fun devicePermission(capability: String): Boolean {
         // Called on the worker thread; prompt on the main thread and wait.
         val latch = CountDownLatch(1)
         var granted = false
@@ -125,8 +125,8 @@ class MyBridge(private val webView: WebView) : HostBridge {
         return granted
     }
 
-    override fun remotePermission(request: ByteArray): Boolean = TODO("prompt user")
-    override fun featureSupported(request: ByteArray): Boolean = false
+    override fun remotePermission(permission: String, domains: List<String>): Boolean = TODO("prompt user")
+    override fun featureSupportedChain(genesisHash: ByteArray): Boolean = false
 
     override fun chainConnect(genesisHash: ByteArray): UInt? {
         val id = 1u

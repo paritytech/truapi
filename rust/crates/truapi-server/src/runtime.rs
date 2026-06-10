@@ -54,7 +54,7 @@ use crate::host_logic::statement_store::{
 };
 use crate::subscription::Spawner;
 
-use futures::channel::oneshot;
+use futures::channel::{mpsc, oneshot};
 use futures::stream::BoxStream;
 use futures::{FutureExt, StreamExt, pin_mut};
 use parity_scale_codec::{Decode, Encode};
@@ -94,6 +94,10 @@ use truapi::versioned::chain::{
     RemoteChainTransactionBroadcastRequest, RemoteChainTransactionBroadcastResponse,
     RemoteChainTransactionStopError, RemoteChainTransactionStopRequest,
     RemoteChainTransactionStopResponse,
+};
+use truapi::versioned::chat::{
+    HostChatActionSubscribeItem, HostChatPostMessageError, HostChatPostMessageRequest,
+    HostChatPostMessageResponse,
 };
 use truapi::versioned::entropy::{
     HostDeriveEntropyError, HostDeriveEntropyRequest, HostDeriveEntropyResponse,
@@ -152,11 +156,11 @@ use truapi::versioned::system::{
 use truapi::versioned::theme::HostThemeSubscribeItem;
 use truapi::{CallContext, CallError, CancellationToken, Subscription};
 use truapi_platform::{
-    ChainProvider as PlatformChainProvider, JsonRpcConnection, Navigation as PlatformNavigation,
-    Notifications as PlatformNotifications, PairingPresenter as PlatformPairingPresenter, Platform,
-    PreimageHost as PlatformPreimageHost, RuntimeConfig, SessionStore as PlatformSessionStore,
-    Storage as PlatformStorage, ThemeHost as PlatformThemeHost,
-    UserConfirmation as PlatformUserConfirmation,
+    ChainProvider as PlatformChainProvider, ChatHost as PlatformChatHost, JsonRpcConnection,
+    Navigation as PlatformNavigation, Notifications as PlatformNotifications,
+    PairingPresenter as PlatformPairingPresenter, Platform, PreimageHost as PlatformPreimageHost,
+    RuntimeConfig, SessionStore as PlatformSessionStore, Storage as PlatformStorage,
+    ThemeHost as PlatformThemeHost, UserConfirmation as PlatformUserConfirmation,
 };
 
 const PAIRING_SUBSCRIBE_REQUEST_ID: &str = "truapi:sso-pairing:1";
@@ -220,6 +224,31 @@ impl SessionDisconnects {
     }
 }
 
+#[derive(Default)]
+pub(crate) struct ChatEvents {
+    action_subscribers: Mutex<Vec<mpsc::UnboundedSender<HostChatActionSubscribeItem>>>,
+}
+
+impl ChatEvents {
+    pub(crate) fn subscribe_actions(
+        &self,
+    ) -> Pin<Box<dyn futures::Stream<Item = HostChatActionSubscribeItem> + Send>> {
+        let (tx, rx) = mpsc::unbounded();
+        self.action_subscribers
+            .lock()
+            .expect("chat action subscribers mutex poisoned")
+            .push(tx);
+        Box::pin(rx)
+    }
+
+    pub(crate) fn notify_action(&self, item: HostChatActionSubscribeItem) {
+        self.action_subscribers
+            .lock()
+            .expect("chat action subscribers mutex poisoned")
+            .retain(|tx| tx.unbounded_send(item.clone()).is_ok());
+    }
+}
+
 /// Adapter that exposes a [`truapi_platform::Platform`] through the
 /// `truapi::api::*` trait set the generated dispatcher routes to.
 pub struct PlatformRuntimeHost<P> {
@@ -233,6 +262,7 @@ pub struct PlatformRuntimeHost<P> {
     /// a callback on every connection-status query.
     session_state: Arc<SessionState>,
     session_disconnects: Arc<SessionDisconnects>,
+    chat_events: Arc<ChatEvents>,
 }
 
 impl<P> PlatformRuntimeHost<P> {
@@ -250,6 +280,7 @@ impl<P> PlatformRuntimeHost<P> {
             chain: ChainRuntime::new(chain_provider, spawner),
             session_state: SessionState::new(),
             session_disconnects: Arc::new(SessionDisconnects::default()),
+            chat_events: Arc::new(ChatEvents::default()),
         }
     }
 
@@ -307,6 +338,11 @@ impl<P> PlatformRuntimeHost<P> {
     /// `disconnect`.
     pub fn session_state(&self) -> Arc<SessionState> {
         self.session_state.clone()
+    }
+
+    /// Host-pushed chat events consumed by `chat.actionSubscribe()`.
+    pub(crate) fn chat_events(&self) -> Arc<ChatEvents> {
+        self.chat_events.clone()
     }
 
     /// Start syncing the in-memory session from the host-global session store.
@@ -2907,12 +2943,41 @@ where
 // Payment and full account proof are explicitly out of current dotli parity,
 // but products should still observe dotli's typed "not implemented" errors
 // rather than a generic transport failure.
-// Chat and CoinPayment remain outside this milestone and keep their generated
-// trait defaults until another host/product needs real implementations.
+// CoinPayment remains outside this milestone and keeps its generated trait
+// defaults until another host/product needs real implementations.
 
 const PAYMENTS_NOT_IMPLEMENTED: &str = "Payments are not supported in dot.li";
 
-impl<P> Chat for PlatformRuntimeHost<P> where P: Platform + 'static {}
+impl<P> Chat for PlatformRuntimeHost<P>
+where
+    P: Platform + 'static,
+{
+    async fn post_message(
+        &self,
+        _cx: &CallContext,
+        request: HostChatPostMessageRequest,
+    ) -> Result<HostChatPostMessageResponse, CallError<HostChatPostMessageError>> {
+        let HostChatPostMessageRequest::V1(inner) = request;
+        let message_id = PlatformChatHost::post_chat_message(
+            self.platform.as_ref(),
+            inner.room_id,
+            inner.payload,
+        )
+        .await
+        .map_err(|err| CallError::Domain(HostChatPostMessageError::V1(err)))?;
+
+        Ok(HostChatPostMessageResponse::V1(
+            v01::HostChatPostMessageResponse { message_id },
+        ))
+    }
+
+    async fn action_subscribe(
+        &self,
+        _cx: &CallContext,
+    ) -> Subscription<HostChatActionSubscribeItem> {
+        Subscription::new(self.chat_events.subscribe_actions())
+    }
+}
 impl<P> CoinPayment for PlatformRuntimeHost<P> where P: Platform + 'static {}
 impl<P> Payment for PlatformRuntimeHost<P>
 where
@@ -3225,8 +3290,9 @@ mod tests {
     use std::sync::Mutex;
     use truapi::v01;
     use truapi_platform::{
-        ChainProvider, Features as PlatformFeatures, JsonRpcConnection,
-        Navigation as PlatformNavigation, Notifications as PlatformNotifications, PairingPresenter,
+        ChainProvider, ChatHost as PlatformChatHost, Features as PlatformFeatures,
+        JsonRpcConnection, Navigation as PlatformNavigation,
+        Notifications as PlatformNotifications, PairingPresenter,
         Permissions as PlatformPermissions, PreimageHost, SessionStore, Storage as PlatformStorage,
         ThemeHost, UserConfirmation,
     };
@@ -3276,6 +3342,7 @@ mod tests {
         notification_id: v01::NotificationId,
         pushed_notifications: Arc<Mutex<Vec<v01::HostPushNotificationRequest>>>,
         cancelled_notifications: Arc<Mutex<Vec<v01::NotificationId>>>,
+        sent_messages: Arc<Mutex<Vec<(String, v01::ChatMessageContent)>>>,
         sent_rpc: Arc<Mutex<Vec<String>>>,
         rpc_responses: Vec<String>,
         chain_connect_error: Option<&'static str>,
@@ -3307,6 +3374,7 @@ mod tests {
                 notification_id: 0,
                 pushed_notifications: Arc::new(Mutex::new(Vec::new())),
                 cancelled_notifications: Arc::new(Mutex::new(Vec::new())),
+                sent_messages: Arc::new(Mutex::new(Vec::new())),
                 sent_rpc: Arc::new(Mutex::new(Vec::new())),
                 rpc_responses: Vec::new(),
                 chain_connect_error: None,
@@ -3834,6 +3902,21 @@ mod tests {
             Ok(HostFeatureSupportedResponse::V1(
                 v01::HostFeatureSupportedResponse { supported: true },
             ))
+        }
+    }
+
+    impl PlatformChatHost for StubPlatform {
+        async fn post_chat_message(
+            &self,
+            room_id: String,
+            payload: v01::ChatMessageContent,
+        ) -> Result<String, v01::HostChatPostMessageError> {
+            let mut sent = self
+                .sent_messages
+                .lock()
+                .expect("sent messages mutex poisoned");
+            sent.push((room_id, payload));
+            Ok(format!("message-{}", sent.len()))
         }
     }
 

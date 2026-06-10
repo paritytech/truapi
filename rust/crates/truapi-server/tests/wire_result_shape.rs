@@ -27,9 +27,9 @@ use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupporte
 use truapi::versioned::{account, payment, statement_store};
 
 use truapi_platform::{
-    ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, PairingDeeplinkScheme,
-    PairingPresenter, Permissions, PreimageHost, RuntimeConfig, SessionStore, Storage, ThemeHost,
-    UserConfirmation,
+    ChainProvider, ChatHost, Features, JsonRpcConnection, Navigation, Notifications,
+    PairingDeeplinkScheme, PairingPresenter, Permissions, PreimageHost, RuntimeConfig,
+    SessionStore, Storage, ThemeHost, UserConfirmation,
 };
 
 use truapi_server::{
@@ -100,6 +100,16 @@ impl Features for StubPlatform {
         Ok(HostFeatureSupportedResponse::V1(
             v01::HostFeatureSupportedResponse { supported: true },
         ))
+    }
+}
+
+impl ChatHost for StubPlatform {
+    async fn post_chat_message(
+        &self,
+        _room_id: String,
+        _payload: v01::ChatMessageContent,
+    ) -> Result<String, v01::HostChatPostMessageError> {
+        Ok("message-1".to_string())
     }
 }
 

@@ -71,6 +71,7 @@ ios/
   truapi-host/             TrUAPIHost Swift Package (sources + UniFFI Swift bindings)
 playground/                Interactive Next.js playground (truapi-playground.dot)
 hosts/dotli/               dotli host, vendored as a submodule
+hosts/ios/                 Polkadot iOS host app, vendored as a submodule
 docs/                      Design docs, RFCs, feature proposals
 scripts/codegen.sh         Regenerate the TS client from the Rust source
 ```
@@ -97,6 +98,14 @@ Native shells sit one level under `android/` and `ios/` and ship as versioned pa
 The nested layout leaves room for additional packages alongside (e.g. `android/widgets/`, `ios/something-else/`) without re-shaping the top-level directories.
 
 Both link the `truapi-server` cdylib via UniFFI-generated bindings. The bindings are regenerated from the same Rust source via `make uniffi`.
+
+The vendored iOS host under [`hosts/ios/`](hosts/ios) consumes `ios/truapi-host` as a local Swift package and links the Rust core from Cargo's iOS release target directories. Its Products chat and SPA host paths start the core's localhost WebSocket bridge and inject the resulting endpoint for product pages to open with `@parity/truapi`'s `createWebSocketProvider(url)`; Products chat also routes `chat.actionSubscribe()` and `chat.postMessage()` through the shared core bridge. Native callbacks for push notifications, permissions, and chain feature support receive typed Swift values after the Rust core decodes protocol requests. Before building the app locally, regenerate the Swift bindings and build the staticlib slices the Xcode project references:
+
+```bash
+make uniffi
+cargo build -p truapi-server --release --features ws-bridge --target aarch64-apple-ios
+cargo build -p truapi-server --release --features ws-bridge --target aarch64-apple-ios-sim
+```
 
 ## How it works
 

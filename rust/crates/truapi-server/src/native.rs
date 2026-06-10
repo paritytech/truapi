@@ -16,14 +16,13 @@ use futures::executor::ThreadPool;
 use futures::future::BoxFuture;
 use futures::stream::{self, BoxStream, StreamExt};
 use futures::task::SpawnExt;
-use parity_scale_codec::Encode;
 use truapi::v01;
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use truapi_platform::PairingDeeplinkScheme as PlatformPairingDeeplinkScheme;
 use truapi_platform::{
-    ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, PairingPresenter,
-    Permissions, PreimageHost, RuntimeConfig, RuntimeConfigValidationError, SessionStore, Storage,
-    ThemeHost, UserConfirmation,
+    ChainProvider, ChatHost, Features, JsonRpcConnection, Navigation, Notifications,
+    PairingPresenter, Permissions, PreimageHost, RuntimeConfig, RuntimeConfigValidationError,
+    SessionStore, Storage, ThemeHost, UserConfirmation,
 };
 
 use crate::TrUApiCore;
@@ -247,22 +246,26 @@ pub trait HostCallbacks: Send + Sync {
     /// Open a URL in the system browser.
     fn navigate_to(&self, url: String) -> Result<(), HostNavigateRejection>;
 
-    /// Deliver a push notification. The payload is the SCALE-encoded
-    /// [`v01::HostPushNotificationRequest`].
-    fn push_notification(&self, payload: Vec<u8>) -> Result<u32, HostRejection>;
+    /// Deliver a push notification and return the host-assigned id.
+    fn push_notification(
+        &self,
+        text: String,
+        deeplink: Option<String>,
+        scheduled_at_ms: Option<u64>,
+    ) -> Result<u32, HostRejection>;
 
     /// Cancel a notification by id.
     fn cancel_notification(&self, id: u32) -> Result<(), HostRejection>;
 
     /// Prompt the user for a device-level permission (camera, mic, ...).
-    /// `request` is the SCALE-encoded
-    /// [`v01::HostDevicePermissionRequest`]; the host returns whether the
-    /// permission was granted.
-    fn device_permission(&self, request: Vec<u8>) -> Result<bool, HostRejection>;
+    fn device_permission(&self, capability: String) -> Result<bool, HostRejection>;
 
     /// Prompt the user for a remote (product-scoped) permission bundle.
-    /// `request` is the SCALE-encoded [`v01::RemotePermissionRequest`].
-    fn remote_permission(&self, request: Vec<u8>) -> Result<bool, HostRejection>;
+    fn remote_permission(
+        &self,
+        permission: String,
+        domains: Vec<String>,
+    ) -> Result<bool, HostRejection>;
 
     /// Present an SSO pairing deeplink or QR payload built by the Rust core.
     /// Implementations should show and return immediately; user cancellation
@@ -325,9 +328,25 @@ pub trait HostCallbacks: Send + Sync {
     /// its subscription stream.
     fn current_theme(&self) -> Result<HostTheme, HostRejection>;
 
-    /// Answer a feature-support query. `request` is the SCALE-encoded
-    /// [`HostFeatureSupportedRequest`].
-    fn feature_supported(&self, request: Vec<u8>) -> Result<bool, HostRejection>;
+    /// Answer whether the host supports the chain identified by genesis hash.
+    fn feature_supported_chain(&self, genesis_hash: Vec<u8>) -> Result<bool, HostRejection>;
+
+    /// Post a text message into the native chat system and return the
+    /// host-assigned message id.
+    fn chat_post_text_message(
+        &self,
+        room_id: String,
+        text: String,
+    ) -> Result<String, HostRejection>;
+
+    /// Post a custom message into the native chat system and return the
+    /// host-assigned message id.
+    fn chat_post_custom_message(
+        &self,
+        room_id: String,
+        message_type: String,
+        payload: Vec<u8>,
+    ) -> Result<String, HostRejection>;
 
     /// Read a value from the host's scoped key-value store.
     fn local_storage_read(&self, key: String) -> Result<Option<Vec<u8>>, HostStorageError>;
@@ -402,6 +421,26 @@ impl NativeTrUApiCore {
     /// Notify the core that a native chain connection closed externally.
     pub fn notify_chain_closed(&self, connection_id: u32) {
         self.events.notify_chain_closed(connection_id);
+    }
+
+    /// Publish a host-originated plain-text chat message to product
+    /// `chat.actionSubscribe()` streams.
+    pub fn notify_chat_message_posted(&self, room_id: String, peer: String, text: String) {
+        self.core.notify_chat_message_posted(room_id, peer, text);
+    }
+
+    /// Publish a host-originated chat action trigger to product
+    /// `chat.actionSubscribe()` streams.
+    pub fn notify_chat_action_triggered(
+        &self,
+        room_id: String,
+        peer: String,
+        message_id: String,
+        action_id: String,
+        payload: Option<Vec<u8>>,
+    ) {
+        self.core
+            .notify_chat_action_triggered(room_id, peer, message_id, action_id, payload);
     }
 }
 
@@ -653,7 +692,11 @@ impl Notifications for CallbackPlatform {
         );
         let id = self
             .callbacks
-            .push_notification(notification.encode())
+            .push_notification(
+                notification.text,
+                notification.deeplink,
+                notification.scheduled_at,
+            )
             .map_err(v01::GenericError::from)?;
         Ok(v01::HostPushNotificationResponse { id })
     }
@@ -669,6 +712,28 @@ impl Notifications for CallbackPlatform {
     }
 }
 
+fn remote_permission_name(permission: &v01::RemotePermission) -> &'static str {
+    match permission {
+        v01::RemotePermission::Remote { .. } => "Remote",
+        v01::RemotePermission::WebRtc => "WebRTC",
+        v01::RemotePermission::ChainSubmit => "ChainSubmit",
+        v01::RemotePermission::PreimageSubmit => "PreimageSubmit",
+        v01::RemotePermission::StatementSubmit => "StatementSubmit",
+        v01::RemotePermission::UserId => "UserId",
+    }
+}
+
+fn remote_permission_domains(permission: &v01::RemotePermission) -> Vec<String> {
+    match permission {
+        v01::RemotePermission::Remote { domains } => domains.clone(),
+        v01::RemotePermission::WebRtc
+        | v01::RemotePermission::ChainSubmit
+        | v01::RemotePermission::PreimageSubmit
+        | v01::RemotePermission::StatementSubmit
+        | v01::RemotePermission::UserId => Vec::new(),
+    }
+}
+
 impl Permissions for CallbackPlatform {
     async fn device_permission(
         &self,
@@ -680,7 +745,7 @@ impl Permissions for CallbackPlatform {
         );
         let granted = self
             .callbacks
-            .device_permission(request.encode())
+            .device_permission(format!("{request}"))
             .map_err(v01::GenericError::from)?;
         Ok(v01::HostDevicePermissionResponse { granted })
     }
@@ -695,7 +760,10 @@ impl Permissions for CallbackPlatform {
         );
         let granted = self
             .callbacks
-            .remote_permission(request.encode())
+            .remote_permission(
+                remote_permission_name(&request.permission).to_string(),
+                remote_permission_domains(&request.permission),
+            )
             .map_err(v01::GenericError::from)?;
         Ok(v01::RemotePermissionResponse { granted })
     }
@@ -706,10 +774,13 @@ impl Features for CallbackPlatform {
         &self,
         request: HostFeatureSupportedRequest,
     ) -> Result<HostFeatureSupportedResponse, v01::GenericError> {
-        let supported = self
-            .callbacks
-            .feature_supported(request.encode())
-            .map_err(v01::GenericError::from)?;
+        let HostFeatureSupportedRequest::V1(request) = request;
+        let supported = match request {
+            v01::HostFeatureSupportedRequest::Chain { genesis_hash } => self
+                .callbacks
+                .feature_supported_chain(genesis_hash)
+                .map_err(v01::GenericError::from)?,
+        };
         Ok(HostFeatureSupportedResponse::V1(
             v01::HostFeatureSupportedResponse { supported },
         ))
@@ -733,6 +804,40 @@ impl Storage for CallbackPlatform {
 
     async fn clear(&self, key: String) -> Result<(), v01::HostLocalStorageReadError> {
         self.callbacks.local_storage_clear(key).map_err(Into::into)
+    }
+}
+
+impl ChatHost for CallbackPlatform {
+    async fn post_chat_message(
+        &self,
+        room_id: String,
+        payload: v01::ChatMessageContent,
+    ) -> Result<String, v01::HostChatPostMessageError> {
+        self.callbacks.on_core_log(
+            "truapi.native.callback.chat_post_message".to_string(),
+            room_id.clone(),
+        );
+
+        match payload {
+            v01::ChatMessageContent::Text { text } => self
+                .callbacks
+                .chat_post_text_message(room_id, text)
+                .map_err(chat_post_rejection_to_error),
+            v01::ChatMessageContent::Custom(custom) => self
+                .callbacks
+                .chat_post_custom_message(room_id, custom.message_type, custom.payload)
+                .map_err(chat_post_rejection_to_error),
+            _ => Err(v01::HostChatPostMessageError::Unknown {
+                reason: "chat message type is not available through the native TrUAPI bridge yet"
+                    .to_string(),
+            }),
+        }
+    }
+}
+
+fn chat_post_rejection_to_error(err: HostRejection) -> v01::HostChatPostMessageError {
+    v01::HostChatPostMessageError::Unknown {
+        reason: err.to_string(),
     }
 }
 
@@ -969,6 +1074,7 @@ mod tests {
     use super::*;
 
     type PreimageFixtureEntries = Vec<(Vec<u8>, Option<Vec<u8>>)>;
+    type PushNotificationFixtureEntries = Vec<(String, Option<String>, Option<u64>)>;
 
     struct EventCallbacks {
         theme: Mutex<HostTheme>,
@@ -979,6 +1085,10 @@ mod tests {
         chain_connects: Mutex<Vec<Vec<u8>>>,
         chain_sends: Mutex<Vec<(u32, String)>>,
         chain_closes: Mutex<Vec<u32>>,
+        push_notifications: Mutex<PushNotificationFixtureEntries>,
+        device_permissions: Mutex<Vec<String>>,
+        remote_permissions: Mutex<Vec<(String, Vec<String>)>>,
+        feature_supported_chains: Mutex<Vec<Vec<u8>>>,
     }
 
     impl EventCallbacks {
@@ -992,6 +1102,10 @@ mod tests {
                 chain_connects: Mutex::new(Vec::new()),
                 chain_sends: Mutex::new(Vec::new()),
                 chain_closes: Mutex::new(Vec::new()),
+                push_notifications: Mutex::new(Vec::new()),
+                device_permissions: Mutex::new(Vec::new()),
+                remote_permissions: Mutex::new(Vec::new()),
+                feature_supported_chains: Mutex::new(Vec::new()),
             }
         }
     }
@@ -1001,17 +1115,38 @@ mod tests {
         fn navigate_to(&self, _url: String) -> Result<(), HostNavigateRejection> {
             Ok(())
         }
-        fn push_notification(&self, _payload: Vec<u8>) -> Result<u32, HostRejection> {
-            Ok(0)
+        fn push_notification(
+            &self,
+            text: String,
+            deeplink: Option<String>,
+            scheduled_at_ms: Option<u64>,
+        ) -> Result<u32, HostRejection> {
+            self.push_notifications
+                .lock()
+                .expect("push notifications mutex poisoned")
+                .push((text, deeplink, scheduled_at_ms));
+            Ok(7)
         }
         fn cancel_notification(&self, _id: u32) -> Result<(), HostRejection> {
             Ok(())
         }
-        fn device_permission(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
-            Ok(false)
+        fn device_permission(&self, capability: String) -> Result<bool, HostRejection> {
+            self.device_permissions
+                .lock()
+                .expect("device permissions mutex poisoned")
+                .push(capability);
+            Ok(true)
         }
-        fn remote_permission(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
-            Ok(false)
+        fn remote_permission(
+            &self,
+            permission: String,
+            domains: Vec<String>,
+        ) -> Result<bool, HostRejection> {
+            self.remote_permissions
+                .lock()
+                .expect("remote permissions mutex poisoned")
+                .push((permission, domains));
+            Ok(true)
         }
         fn present_pairing(&self, deeplink: String) -> Result<(), HostRejection> {
             self.presented_pairings
@@ -1089,8 +1224,27 @@ mod tests {
         fn current_theme(&self) -> Result<HostTheme, HostRejection> {
             Ok(*self.theme.lock().expect("theme mutex poisoned"))
         }
-        fn feature_supported(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
-            Ok(false)
+        fn feature_supported_chain(&self, genesis_hash: Vec<u8>) -> Result<bool, HostRejection> {
+            self.feature_supported_chains
+                .lock()
+                .expect("feature chains mutex poisoned")
+                .push(genesis_hash);
+            Ok(true)
+        }
+        fn chat_post_text_message(
+            &self,
+            _room_id: String,
+            _text: String,
+        ) -> Result<String, HostRejection> {
+            Ok("message-1".to_string())
+        }
+        fn chat_post_custom_message(
+            &self,
+            _room_id: String,
+            _message_type: String,
+            _payload: Vec<u8>,
+        ) -> Result<String, HostRejection> {
+            Ok("message-1".to_string())
         }
         fn local_storage_read(&self, _key: String) -> Result<Option<Vec<u8>>, HostStorageError> {
             Ok(None)
@@ -1255,6 +1409,86 @@ mod tests {
     }
 
     #[test]
+    fn native_callbacks_receive_typed_protocol_values() {
+        let (callbacks, _events, platform) = event_platform();
+        let push_response = futures::executor::block_on(Notifications::push_notification(
+            &platform,
+            v01::HostPushNotificationRequest {
+                text: "hello".to_string(),
+                deeplink: Some("polkadot://chat".to_string()),
+                scheduled_at: Some(42),
+            },
+        ))
+        .expect("push notification callback succeeds");
+        let device_response = futures::executor::block_on(Permissions::device_permission(
+            &platform,
+            v01::HostDevicePermissionRequest::Camera,
+        ))
+        .expect("device permission callback succeeds");
+        let remote_response = futures::executor::block_on(Permissions::remote_permission(
+            &platform,
+            v01::RemotePermissionRequest {
+                permission: v01::RemotePermission::Remote {
+                    domains: vec!["example.com".to_string()],
+                },
+            },
+        ))
+        .expect("remote permission callback succeeds");
+        let genesis_hash = vec![9; 32];
+        let feature_response = futures::executor::block_on(Features::feature_supported(
+            &platform,
+            HostFeatureSupportedRequest::V1(v01::HostFeatureSupportedRequest::Chain {
+                genesis_hash: genesis_hash.clone(),
+            }),
+        ))
+        .expect("feature support callback succeeds");
+
+        assert_eq!(push_response.id, 7);
+        assert!(device_response.granted);
+        assert!(remote_response.granted);
+        assert_eq!(
+            feature_response,
+            HostFeatureSupportedResponse::V1(v01::HostFeatureSupportedResponse { supported: true })
+        );
+        assert_eq!(
+            callbacks
+                .push_notifications
+                .lock()
+                .expect("push notifications mutex poisoned")
+                .as_slice(),
+            &[(
+                "hello".to_string(),
+                Some("polkadot://chat".to_string()),
+                Some(42)
+            )]
+        );
+        assert_eq!(
+            callbacks
+                .device_permissions
+                .lock()
+                .expect("device permissions mutex poisoned")
+                .as_slice(),
+            &["camera".to_string()]
+        );
+        assert_eq!(
+            callbacks
+                .remote_permissions
+                .lock()
+                .expect("remote permissions mutex poisoned")
+                .as_slice(),
+            &[("Remote".to_string(), vec!["example.com".to_string()])]
+        );
+        assert_eq!(
+            callbacks
+                .feature_supported_chains
+                .lock()
+                .expect("feature chains mutex poisoned")
+                .as_slice(),
+            &[genesis_hash]
+        );
+    }
+
+    #[test]
     fn runtime_config_rejects_wrong_size_genesis_hash() {
         let err = RuntimeConfig::try_from(NativeRuntimeConfig {
             product_label: "app".to_string(),
@@ -1355,16 +1589,25 @@ mod tests {
             fn navigate_to(&self, _url: String) -> Result<(), HostNavigateRejection> {
                 Ok(())
             }
-            fn push_notification(&self, _payload: Vec<u8>) -> Result<u32, HostRejection> {
+            fn push_notification(
+                &self,
+                _text: String,
+                _deeplink: Option<String>,
+                _scheduled_at_ms: Option<u64>,
+            ) -> Result<u32, HostRejection> {
                 Ok(0)
             }
             fn cancel_notification(&self, _id: u32) -> Result<(), HostRejection> {
                 Ok(())
             }
-            fn device_permission(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
+            fn device_permission(&self, _capability: String) -> Result<bool, HostRejection> {
                 Ok(false)
             }
-            fn remote_permission(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
+            fn remote_permission(
+                &self,
+                _permission: String,
+                _domains: Vec<String>,
+            ) -> Result<bool, HostRejection> {
                 Ok(false)
             }
             fn present_pairing(&self, _deeplink: String) -> Result<(), HostRejection> {
@@ -1420,8 +1663,26 @@ mod tests {
             fn current_theme(&self) -> Result<HostTheme, HostRejection> {
                 Ok(HostTheme::Light)
             }
-            fn feature_supported(&self, _request: Vec<u8>) -> Result<bool, HostRejection> {
+            fn feature_supported_chain(
+                &self,
+                _genesis_hash: Vec<u8>,
+            ) -> Result<bool, HostRejection> {
                 Ok(false)
+            }
+            fn chat_post_text_message(
+                &self,
+                _room_id: String,
+                _text: String,
+            ) -> Result<String, HostRejection> {
+                Ok("message-1".to_string())
+            }
+            fn chat_post_custom_message(
+                &self,
+                _room_id: String,
+                _message_type: String,
+                _payload: Vec<u8>,
+            ) -> Result<String, HostRejection> {
+                Ok("message-1".to_string())
             }
             fn local_storage_read(
                 &self,
