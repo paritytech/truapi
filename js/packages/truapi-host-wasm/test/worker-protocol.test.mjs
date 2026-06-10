@@ -10,11 +10,14 @@ import test from "node:test";
 import * as shared from "../dist/index.js";
 import * as workerProtocol from "../dist/worker-protocol.js";
 
-test("worker-protocol module loads without runtime types (TS-only)", () => {
-  // The .js module compiles down to an empty body, assert that no
-  // runtime symbols are exported, since CallbackName / SubscriptionName
-  // / MainToWorker / WorkerToMain are type-only.
-  assert.deepEqual(Object.keys(workerProtocol), []);
+test("worker-protocol exports callback-name tables", () => {
+  assert.deepEqual(Object.keys(workerProtocol), [
+    "CALLBACK_NAMES",
+    "OPTIONAL_CALLBACK_NAMES",
+  ]);
+  assert.ok(workerProtocol.CALLBACK_NAMES.includes("navigateTo"));
+  assert.ok(workerProtocol.OPTIONAL_CALLBACK_NAMES.includes("readSession"));
+  assert.ok(!workerProtocol.OPTIONAL_CALLBACK_NAMES.includes("navigateTo"));
 });
 
 test("@parity/truapi-host-wasm exposes the documented surface", () => {

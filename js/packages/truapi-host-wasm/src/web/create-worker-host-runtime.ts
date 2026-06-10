@@ -1,15 +1,18 @@
 import type {
-  CallbackName,
   ChainConnection,
   LogLevel,
   MainToWorker,
-  OptionalCallbackName,
   SubscriptionName,
   TrUApiHostWasmProvider,
   WasmRuntimeConfig,
   WasmRawCallbacks,
   WorkerToMain,
 } from "../index.js";
+import {
+  OPTIONAL_CALLBACK_NAMES,
+  type CallbackName,
+  type OptionalCallbackName,
+} from "../worker-protocol.js";
 import { errorMessage } from "../error-message.js";
 import {
   SUBSCRIPTION_DISPATCH,
@@ -40,22 +43,6 @@ function debugLoggingEnabled(state: WorkerProviderState): boolean {
 let nextDisconnectRequestId = 0;
 let devLogLevelOverride: LogLevel | null = null;
 const devGlobalProviders = new Set<TrUApiHostWasmProvider>();
-
-const OPTIONAL_CALLBACK_NAMES: readonly OptionalCallbackName[] = [
-  "cancelNotification",
-  "presentPairing",
-  "readSession",
-  "writeSession",
-  "clearSession",
-  "sessionUiChanged",
-  "confirmSignPayload",
-  "confirmSignRaw",
-  "confirmCreateTransaction",
-  "confirmAccountAlias",
-  "confirmResourceAllocation",
-  "confirmPreimageSubmit",
-  "submitPreimage",
-];
 
 function optionalCallbacks(
   callbacks: Omit<WasmRawCallbacks, "emitFrame">,

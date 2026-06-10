@@ -16,43 +16,49 @@ import type { LogLevel } from "./runtime.js";
  * Names of every request/response style host callback the wasm core can
  * invoke. Names match the camelCase property keys of `WasmRawCallbacks`.
  */
-export type CallbackName =
-  | "navigateTo"
-  | "pushNotification"
-  | "cancelNotification"
-  | "devicePermission"
-  | "remotePermission"
-  | "featureSupported"
-  | "localStorageRead"
-  | "localStorageWrite"
-  | "localStorageClear"
-  | "presentPairing"
-  | "readSession"
-  | "writeSession"
-  | "clearSession"
-  | "sessionUiChanged"
-  | "confirmSignPayload"
-  | "confirmSignRaw"
-  | "confirmCreateTransaction"
-  | "confirmAccountAlias"
-  | "confirmResourceAllocation"
-  | "confirmPreimageSubmit"
-  | "submitPreimage";
+export const CALLBACK_NAMES = [
+  "navigateTo",
+  "pushNotification",
+  "cancelNotification",
+  "devicePermission",
+  "remotePermission",
+  "featureSupported",
+  "localStorageRead",
+  "localStorageWrite",
+  "localStorageClear",
+  "presentPairing",
+  "readSession",
+  "writeSession",
+  "clearSession",
+  "sessionUiChanged",
+  "confirmSignPayload",
+  "confirmSignRaw",
+  "confirmCreateTransaction",
+  "confirmAccountAlias",
+  "confirmResourceAllocation",
+  "confirmPreimageSubmit",
+  "submitPreimage",
+] as const;
 
-export type OptionalCallbackName =
-  | "cancelNotification"
-  | "presentPairing"
-  | "readSession"
-  | "writeSession"
-  | "clearSession"
-  | "sessionUiChanged"
-  | "confirmSignPayload"
-  | "confirmSignRaw"
-  | "confirmCreateTransaction"
-  | "confirmAccountAlias"
-  | "confirmResourceAllocation"
-  | "confirmPreimageSubmit"
-  | "submitPreimage";
+export type CallbackName = (typeof CALLBACK_NAMES)[number];
+
+export const OPTIONAL_CALLBACK_NAMES = [
+  "cancelNotification",
+  "presentPairing",
+  "readSession",
+  "writeSession",
+  "clearSession",
+  "sessionUiChanged",
+  "confirmSignPayload",
+  "confirmSignRaw",
+  "confirmCreateTransaction",
+  "confirmAccountAlias",
+  "confirmResourceAllocation",
+  "confirmPreimageSubmit",
+  "submitPreimage",
+] as const satisfies readonly CallbackName[];
+
+export type OptionalCallbackName = (typeof OPTIONAL_CALLBACK_NAMES)[number];
 
 /**
  * Names of every subscription host callback. Each has the shape
