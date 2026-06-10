@@ -46,6 +46,16 @@ pub fn encode_call_error_payload<E: Encode>(err: CallError<E>) -> Vec<u8> {
     encode_call_error(&err)
 }
 
+/// Encode a successful `Result` payload. The leading `0u8` is the SCALE
+/// discriminant for `Ok`, followed by the encoded success value. For `()`,
+/// this returns just the discriminant because unit encodes to zero bytes.
+pub fn encode_ok_payload<T: Encode>(value: T) -> Vec<u8> {
+    let mut out = Vec::with_capacity(1 + value.size_hint());
+    0u8.encode_to(&mut out);
+    value.encode_to(&mut out);
+    out
+}
+
 impl Encode for ProtocolMessage {
     fn encode_to<T: Output + ?Sized>(&self, dest: &mut T) {
         self.request_id.encode_to(dest);
@@ -391,6 +401,15 @@ mod tests {
         let mut expected = vec![4u8];
         "x".to_string().encode_to(&mut expected);
         assert_eq!(encode_call_error_payload(host), expected);
+    }
+
+    #[test]
+    fn encode_ok_payload_wraps_success_values() {
+        assert_eq!(encode_ok_payload(()), vec![0u8]);
+
+        let mut expected = vec![0u8];
+        7u32.encode_to(&mut expected);
+        assert_eq!(encode_ok_payload(7u32), expected);
     }
 
     /// IdFactory mints monotonically increasing ids prefixed with the

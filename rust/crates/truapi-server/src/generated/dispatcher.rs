@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::Decode;
 
 use truapi::CallContext;
 use truapi::api::{
@@ -14,7 +14,7 @@ use truapi::api::{
 use truapi::versioned;
 
 use crate::dispatcher::Dispatcher;
-use crate::frame::{encode_call_error_payload, encode_decode_error};
+use crate::frame::{encode_call_error_payload, encode_decode_error, encode_ok_payload};
 use crate::generated::wire_table;
 use crate::subscription::subscription_stream;
 
@@ -95,10 +95,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -119,10 +116,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -143,10 +137,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -167,10 +158,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -191,10 +179,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -215,10 +200,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -265,10 +247,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -289,10 +268,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -313,10 +289,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -337,10 +310,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -361,10 +331,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -385,10 +352,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -409,10 +373,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -433,10 +394,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -457,10 +415,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -481,10 +436,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -505,10 +457,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -529,10 +478,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -559,10 +505,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -583,10 +526,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -625,10 +565,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -693,10 +630,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -717,10 +651,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -787,10 +718,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -811,10 +739,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -910,10 +835,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -940,10 +862,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -964,10 +883,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -988,10 +904,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -1018,10 +931,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -1042,10 +952,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -1095,10 +1002,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -1142,10 +1046,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -1172,10 +1073,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -1196,10 +1094,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -1246,10 +1141,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -1272,10 +1164,7 @@ where
                     Ok(value) => value,
                     Err(err) => return Err(encode_call_error_payload(err)),
                 };
-                let mut buf = Vec::with_capacity(1 + response.size_hint());
-                buf.push(0u8);
-                response.encode_to(&mut buf);
-                Ok(buf)
+                Ok(encode_ok_payload(response))
             })
         });
     }
@@ -1301,10 +1190,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -1321,10 +1207,7 @@ where
                     Ok(value) => value,
                     Err(err) => return Err(encode_call_error_payload(err)),
                 };
-                let mut buf = Vec::with_capacity(1 + response.size_hint());
-                buf.push(0u8);
-                response.encode_to(&mut buf);
-                Ok(buf)
+                Ok(encode_ok_payload(response))
             })
         });
     }
@@ -1344,10 +1227,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -1368,10 +1248,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -1392,10 +1269,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -1416,10 +1290,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -1465,10 +1336,7 @@ where
                     Ok(value) => value,
                     Err(err) => return Err(encode_call_error_payload(err)),
                 };
-                let mut buf = Vec::with_capacity(1 + response.size_hint());
-                buf.push(0u8);
-                response.encode_to(&mut buf);
-                Ok(buf)
+                Ok(encode_ok_payload(response))
             })
         });
     }
@@ -1484,10 +1352,7 @@ where
                     Ok(value) => value,
                     Err(err) => return Err(encode_call_error_payload(err)),
                 };
-                let mut buf = Vec::with_capacity(1 + response.size_hint());
-                buf.push(0u8);
-                response.encode_to(&mut buf);
-                Ok(buf)
+                Ok(encode_ok_payload(response))
             })
         });
     }
@@ -1503,7 +1368,7 @@ where
                             .map_err(|e| encode_decode_error(e.to_string()))?;
                     let cx = CallContext::with_request_id(request_id.clone());
                     match host.submit(&cx, request).await {
-                        Ok(()) => Ok(vec![0u8]),
+                        Ok(()) => Ok(encode_ok_payload(())),
                         Err(err) => Err(encode_call_error_payload(err)),
                     }
                 })
@@ -1532,10 +1397,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -1556,10 +1418,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
@@ -1580,10 +1439,7 @@ where
                             Ok(value) => value,
                             Err(err) => return Err(encode_call_error_payload(err)),
                         };
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                 })
             },
         );
