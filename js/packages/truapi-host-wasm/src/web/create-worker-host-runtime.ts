@@ -611,11 +611,6 @@ function exposeDevGlobal(provider: TrUApiHostWasmProvider): void {
   const target = globalThis as {
     __truapi?: { setLogLevel(level: LogLevel): void };
   };
-  if (target.__truapi) {
-    console.debug(
-      "[truapi worker] dev console helper rebound to the latest provider",
-    );
-  }
   target.__truapi = {
     setLogLevel(level: LogLevel): void {
       provider.setLogLevel?.(level);
