@@ -70,6 +70,7 @@ uniffi: ## Regenerate Kotlin + Swift bindings from truapi-server cdylib.
 		--library $(UNIFFI_CDYLIB) \
 		--language swift \
 		--out-dir $(UNIFFI_SWIFT_TMP)
+	mkdir -p ios/truapi-host/Sources/truapi_serverFFI/include
 	cp $(UNIFFI_SWIFT_TMP)/truapi_server.swift \
 		ios/truapi-host/Sources/TrUAPIHost/truapi_server.swift
 	cp $(UNIFFI_SWIFT_TMP)/truapi_serverFFI.h \
