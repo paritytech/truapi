@@ -105,7 +105,7 @@ dev-bootstrap: ## Prepare ignored generated/build artifacts needed by dotli prev
 	if [ ! -d node_modules ]; then npm ci; fi
 	if [ ! -f "$(HOST_WASM_GENERATED)" ]; then ./scripts/codegen.sh; fi
 	cd $(HOST_WASM_PKG) && npm run build
-	$(MAKE) wasm
+	TRUAPI_WASM_PROFILE=dev $(MAKE) wasm
 	cd $(PLAYGROUND) && yarn install --frozen-lockfile
 	cd $(DOTLI) && bun install --frozen-lockfile
 	$(MAKE) dev-link-check

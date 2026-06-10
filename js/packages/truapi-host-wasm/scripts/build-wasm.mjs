@@ -13,24 +13,36 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const pkgRoot = resolve(__dirname, "..");
 const repoRoot = resolve(pkgRoot, "../../..");
 const rustCrate = resolve(repoRoot, "rust/crates/truapi-server");
+const wasmProfile = process.env.TRUAPI_WASM_PROFILE ?? "release";
 
 function args(target, outDir) {
-  return [
+  const command = [
     "build",
-    rustCrate,
     "--target",
     target,
     "--out-dir",
     outDir,
     "--out-name",
     "truapi_server",
-    "--no-default-features",
   ];
+  if (wasmProfile === "dev") {
+    command.push("--dev");
+  } else if (wasmProfile === "profiling") {
+    command.push("--profiling");
+  } else if (wasmProfile !== "release") {
+    throw new Error(
+      `Unsupported TRUAPI_WASM_PROFILE=${wasmProfile}; expected release, dev, or profiling`,
+    );
+  }
+  command.push(rustCrate, "--no-default-features");
+  return command;
 }
 
 async function build(target, subdir) {
   const outDir = resolve(pkgRoot, "dist/wasm", subdir);
-  process.stdout.write(`wasm-pack build --target ${target} → ${outDir}\n`);
+  process.stdout.write(
+    `wasm-pack build --target ${target} --${wasmProfile} → ${outDir}\n`,
+  );
   try {
     await execFileAsync("wasm-pack", args(target, outDir), { cwd: repoRoot });
   } catch (err) {
