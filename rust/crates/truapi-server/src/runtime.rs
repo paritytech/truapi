@@ -309,10 +309,10 @@ impl<P> PlatformRuntimeHost<P> {
     {
         self.session_disconnects.notify(SSO_LOCAL_DISCONNECT_REASON);
         let session = self.session_state.current();
+        self.clear_disconnected_session().await;
         if let Some(session) = session.as_ref() {
             let _ = self.submit_sso_disconnected(session).await;
         }
-        self.clear_disconnected_session().await;
     }
 
     /// Static product/host configuration for this runtime instance.

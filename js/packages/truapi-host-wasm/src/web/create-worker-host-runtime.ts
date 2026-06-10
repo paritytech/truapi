@@ -613,7 +613,7 @@ function exposeDevGlobal(provider: TrUApiHostWasmProvider): void {
   };
   if (target.__truapi) {
     console.debug(
-      "[truapi worker] globalThis.__truapi replaced by a newer provider",
+      "[truapi worker] dev console helper rebound to the latest provider",
     );
   }
   target.__truapi = {
