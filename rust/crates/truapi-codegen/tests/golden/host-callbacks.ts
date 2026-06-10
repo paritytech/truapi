@@ -21,12 +21,12 @@ import type {
 
 /**
  * Decoded session fields a host shell needs to render account UI without
- * parsing the opaque session blob the core persists through [`SessionStore`].
+ * parsing the opaque session blob the core persists through `SessionStore`.
  */
 export interface SessionUiInfo {
   /**
    * Whether a session is currently active. When `false` every other
-   * field is `None`.
+   * field is ``undefined``.
    */
   connected: boolean;
 
@@ -115,7 +115,7 @@ export interface Notifications {
 
   /**
    * Cancel a notification by id. Idempotent: cancelling an already-fired or
-   * unknown id still returns `Ok(())`.
+   * unknown id still returns `success`.
    */
   cancelNotification(id: NotificationId): Promise<void>;
 }
@@ -206,7 +206,7 @@ export interface SessionStore {
  * Scoped key-value storage. The platform namespaces keys so different products
  * cannot read each other's data.
  */
-export interface Storage {
+export interface HostStorage {
   /**
    * Read a value by key.
    */
@@ -267,4 +267,4 @@ export interface UserConfirmation {
 /**
  * Combined platform interface. A host must provide all capability traits.
  */
-export interface HostCallbacks extends Navigation, Notifications, Permissions, Features, Storage, ChainProvider, PairingPresenter, SessionStore, UserConfirmation, ThemeHost, PreimageHost {}
+export interface HostCallbacks extends Navigation, Notifications, Permissions, Features, HostStorage, ChainProvider, PairingPresenter, SessionStore, UserConfirmation, ThemeHost, PreimageHost {}

@@ -101,7 +101,7 @@ fn emit_trait_interface(trait_def: &PlatformTrait) -> Result<String> {
         {body}
         }}
         "#,
-        name = trait_def.name,
+        name = ts_local_name(&trait_def.name),
     })
 }
 
@@ -164,7 +164,11 @@ fn emit_super_interface(name: &str, composes: &[String], docs: Option<&str>) -> 
     if composes.is_empty() {
         return format!("{jsdoc}export interface {name} {{}}\n");
     }
-    let extends = composes.join(", ");
+    let extends = composes
+        .iter()
+        .map(|name| ts_local_name(name))
+        .collect::<Vec<_>>()
+        .join(", ");
     format!("{jsdoc}export interface {name} extends {extends} {{}}\n")
 }
 
@@ -285,6 +289,13 @@ fn ts_type(ty: &TypeRef) -> Result<String> {
     }
 }
 
+fn ts_local_name(name: &str) -> String {
+    match name {
+        "Storage" => "HostStorage".to_string(),
+        _ => name.to_string(),
+    }
+}
+
 fn render_jsdoc(indent: &str, docs: Option<&str>) -> String {
     let Some(docs) = docs else {
         return String::new();
@@ -299,12 +310,19 @@ fn render_jsdoc(indent: &str, docs: Option<&str>) -> String {
             if line.is_empty() {
                 format!("{indent} *")
             } else {
-                format!("{indent} * {line}")
+                format!("{indent} * {}", render_ts_doc_line(line))
             }
         })
         .collect::<Vec<_>>()
         .join("\n");
     format!("{indent}/**\n{body}\n{indent} */\n")
+}
+
+fn render_ts_doc_line(line: &str) -> String {
+    line.replace("[`", "`")
+        .replace("`]", "`")
+        .replace("Ok(())", "success")
+        .replace("None", "`undefined`")
 }
 
 fn to_camel_case(name: &str) -> String {

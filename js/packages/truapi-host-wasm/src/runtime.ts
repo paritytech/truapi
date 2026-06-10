@@ -18,7 +18,7 @@ export type {
   Permissions,
   PreimageHost,
   SessionUiInfo,
-  Storage,
+  HostStorage,
   ThemeHost,
 } from "./generated/host-callbacks.js";
 import type { SessionUiInfo } from "./generated/host-callbacks.js";

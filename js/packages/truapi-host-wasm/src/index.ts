@@ -19,7 +19,7 @@ export type {
   PreimageHost,
   PlatformJsonRpcConnection,
   SessionUiInfo,
-  Storage,
+  HostStorage,
   ThemeHost,
   TrUApiHostWasmProvider,
   WasmCoreLike,
