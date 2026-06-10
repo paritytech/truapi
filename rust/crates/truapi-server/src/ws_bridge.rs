@@ -309,6 +309,12 @@ async fn handle_connection(
         let _ = sink.close().await;
     });
 
+    // Dispatch each inbound frame on its own local task so a slow request
+    // handler (e.g. a login pending on the pairing prompt) cannot stall the
+    // read loop and starve later frames on the same connection. Responses may
+    // interleave; the wire protocol matches them by request id, and
+    // `WsTransport::send` is safe to call from concurrent local tasks.
+    let mut in_flight: Vec<tokio::task::JoinHandle<()>> = Vec::new();
     while let Some(frame) = source.next().await {
         match frame {
             Ok(WsMessage::Binary(bytes)) => {
@@ -319,7 +325,12 @@ async fn handle_connection(
                         continue;
                     }
                 };
-                core.dispatch(message, transport.clone()).await;
+                in_flight.retain(|task| !task.is_finished());
+                let core = core.clone();
+                let transport = transport.clone();
+                in_flight.push(tokio::task::spawn_local(async move {
+                    core.dispatch(message, transport).await;
+                }));
             }
             Ok(WsMessage::Text(_)) => {
                 logger("truapi.ws_bridge.text_frame_ignored", "");
@@ -331,6 +342,12 @@ async fn handle_connection(
                 break;
             }
         }
+    }
+
+    // The connection is gone: cancel in-flight dispatches so long-pending
+    // handlers unwind instead of outliving the connection.
+    for task in &in_flight {
+        task.abort();
     }
 
     drop(transport);
@@ -413,6 +430,7 @@ mod tests {
     use futures::stream::{self, BoxStream};
     use parity_scale_codec::Encode;
     use truapi::v01;
+    use truapi::versioned::account::HostRequestLoginRequest;
     use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
     use truapi_platform::{
         ChainProvider, Features, JsonRpcConnection, Navigation, Notifications,
@@ -421,8 +439,26 @@ mod tests {
     };
 
     use crate::frame::{Payload, request_ids};
+    use std::sync::atomic::{AtomicBool, Ordering};
 
-    struct StubPlatform;
+    /// Sets the wrapped flag when dropped; used to observe that a pending
+    /// handler future was cancelled.
+    struct SetFlagOnDrop(Arc<AtomicBool>);
+
+    impl Drop for SetFlagOnDrop {
+        fn drop(&mut self) {
+            self.0.store(true, Ordering::SeqCst);
+        }
+    }
+
+    #[derive(Default)]
+    struct StubPlatform {
+        /// When true, `present_pairing` and the chain connect pend forever so
+        /// `request_login` stays in flight.
+        pairing_pending: bool,
+        pairing_started: Arc<AtomicBool>,
+        pairing_dropped: Arc<AtomicBool>,
+    }
 
     impl Storage for StubPlatform {
         async fn read(
@@ -502,12 +538,20 @@ mod tests {
             &self,
             _genesis_hash: Vec<u8>,
         ) -> Result<Box<dyn JsonRpcConnection>, v01::GenericError> {
+            if self.pairing_pending {
+                futures::future::pending::<()>().await;
+            }
             Ok(Box::new(DeadConnection))
         }
     }
 
     impl PairingPresenter for StubPlatform {
         async fn present_pairing(&self, _deeplink: String) -> Result<(), v01::GenericError> {
+            if self.pairing_pending {
+                self.pairing_started.store(true, Ordering::SeqCst);
+                let _dropped = SetFlagOnDrop(self.pairing_dropped.clone());
+                futures::future::pending::<()>().await;
+            }
             Err(v01::GenericError {
                 reason: "pairing presenter callback not provided by host".to_string(),
             })
@@ -598,8 +642,12 @@ mod tests {
     }
 
     fn test_core() -> Arc<TrUApiCore> {
+        core_for(Arc::new(StubPlatform::default()))
+    }
+
+    fn core_for(platform: Arc<StubPlatform>) -> Arc<TrUApiCore> {
         Arc::new(TrUApiCore::from_platform_with_config(
-            Arc::new(StubPlatform),
+            platform,
             test_runtime_config(),
             crate::subscription::thread_per_subscription_spawner(),
         ))
@@ -670,6 +718,146 @@ mod tests {
         // [Ok disc=0x00][V1 variant 0x00][supported=1]
         assert_eq!(response.payload.value, vec![0x00, 0x00, 0x01]);
 
+        bridge.stop();
+    }
+
+    fn request_frame(request_id: &str, method: &str, value: Vec<u8>) -> WsMessage {
+        let ids = request_ids(method).expect("known request method");
+        WsMessage::Binary(
+            ProtocolMessage {
+                request_id: request_id.into(),
+                payload: Payload {
+                    id: ids.request_id,
+                    value,
+                },
+            }
+            .encode(),
+        )
+    }
+
+    fn login_frame(request_id: &str) -> WsMessage {
+        request_frame(
+            request_id,
+            "account_request_login",
+            HostRequestLoginRequest::V1(v01::HostRequestLoginRequest { reason: None }).encode(),
+        )
+    }
+
+    /// A request whose handler pends (a login waiting on the pairing prompt)
+    /// must not serialize the connection: a concurrent `feature_supported`
+    /// on the same socket still round-trips while the login is in flight.
+    #[test]
+    fn slow_request_does_not_block_concurrent_round_trip() {
+        let platform = Arc::new(StubPlatform {
+            pairing_pending: true,
+            ..Default::default()
+        });
+        let pairing_started = platform.pairing_started.clone();
+        let core = core_for(platform);
+        let logger: BridgeLogger = Arc::new(|_, _| {});
+        let (mut bridge, endpoint) = WsBridge::start(0, core, logger).expect("start bridge");
+        let url = format!("ws://127.0.0.1:{}/?t={}", endpoint.port, endpoint.token);
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime");
+
+        let feature_ids = request_ids("system_feature_supported").expect("known request method");
+        let response = rt.block_on(async {
+            let (mut ws, _) = tokio_tungstenite::connect_async(&url).await.expect("dial");
+            ws.send(login_frame("p:login")).await.expect("send login");
+
+            // Wait until the login handler is pending on the pairing prompt.
+            for _ in 0..1000 {
+                if pairing_started.load(Ordering::SeqCst) {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+            assert!(
+                pairing_started.load(Ordering::SeqCst),
+                "login handler did not reach the pairing prompt"
+            );
+
+            ws.send(request_frame(
+                "p:feature",
+                "system_feature_supported",
+                HostFeatureSupportedRequest::V1(v01::HostFeatureSupportedRequest::Chain {
+                    genesis_hash: vec![0u8; 32],
+                })
+                .encode(),
+            ))
+            .await
+            .expect("send feature_supported");
+
+            let bytes = tokio::time::timeout(std::time::Duration::from_secs(10), async {
+                loop {
+                    match ws.next().await {
+                        Some(Ok(WsMessage::Binary(bytes))) => break bytes,
+                        Some(Ok(_)) => continue,
+                        Some(Err(err)) => panic!("ws error: {err}"),
+                        None => panic!("connection closed before response"),
+                    }
+                }
+            })
+            .await
+            .expect("feature_supported must answer while the login is pending");
+            ProtocolMessage::decode(&mut &bytes[..]).expect("decode response")
+        });
+
+        assert_eq!(response.request_id, "p:feature");
+        assert_eq!(response.payload.id, feature_ids.response_id);
+        bridge.stop();
+    }
+
+    /// Dropping the client connection cancels in-flight requests: a pending
+    /// `request_login` unwinds (its pairing-prompt future is dropped) instead
+    /// of outliving the connection.
+    #[test]
+    fn connection_drop_cancels_pending_request_login() {
+        let platform = Arc::new(StubPlatform {
+            pairing_pending: true,
+            ..Default::default()
+        });
+        let pairing_started = platform.pairing_started.clone();
+        let pairing_dropped = platform.pairing_dropped.clone();
+        let core = core_for(platform);
+        let logger: BridgeLogger = Arc::new(|_, _| {});
+        let (mut bridge, endpoint) = WsBridge::start(0, core, logger).expect("start bridge");
+        let url = format!("ws://127.0.0.1:{}/?t={}", endpoint.port, endpoint.token);
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime");
+
+        rt.block_on(async {
+            let (mut ws, _) = tokio_tungstenite::connect_async(&url).await.expect("dial");
+            ws.send(login_frame("p:login")).await.expect("send login");
+
+            for _ in 0..1000 {
+                if pairing_started.load(Ordering::SeqCst) {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+            assert!(
+                pairing_started.load(Ordering::SeqCst),
+                "login handler did not reach the pairing prompt"
+            );
+
+            ws.close(None).await.ok();
+        });
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        while !pairing_dropped.load(Ordering::SeqCst) {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "pending request_login was not cancelled on connection drop"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
         bridge.stop();
     }
 

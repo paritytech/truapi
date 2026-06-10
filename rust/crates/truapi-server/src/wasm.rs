@@ -8,7 +8,8 @@
 //! platform trait set imposes; sound on wasm32 because the runtime is
 //! single-threaded.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -16,6 +17,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};
 
 use futures::channel::mpsc;
+use futures::future::{AbortHandle, Abortable};
 use futures::stream::{self, BoxStream, Stream, StreamExt};
 use js_sys::{Function, Reflect, Uint8Array};
 use parity_scale_codec::{Decode, Encode};
@@ -25,7 +27,7 @@ use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupporte
 use truapi_platform::{
     ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, PairingDeeplinkScheme,
     PairingPresenter, Permissions, PreimageHost, RuntimeConfig, RuntimeConfigValidationError,
-    SessionStore, Storage, ThemeHost, UserConfirmation,
+    SessionStore, SessionUiInfo, Storage, ThemeHost, UserConfirmation,
 };
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -61,6 +63,7 @@ struct JsBridge {
     write_session: Option<Function>,
     clear_session: Option<Function>,
     subscribe_session_store: Option<Function>,
+    session_ui_changed: Option<Function>,
     /// Optional. Hosts that own JSON-RPC connections (e.g. dotli with its
     /// "smoldot vs RPC node" toggle) provide this; otherwise chain calls
     /// fail with an "unavailable" reason.
@@ -101,6 +104,7 @@ impl JsBridge {
             write_session: get_optional_function(callbacks, "writeSession")?,
             clear_session: get_optional_function(callbacks, "clearSession")?,
             subscribe_session_store: get_optional_function(callbacks, "subscribeSessionStore")?,
+            session_ui_changed: get_optional_function(callbacks, "sessionUiChanged")?,
             chain_connect: get_optional_function(callbacks, "chainConnect")?,
             emit_frame: get_function(callbacks, "emitFrame")?,
             dispose: get_optional_function(callbacks, "dispose")?.unwrap_or_else(noop_function),
@@ -331,6 +335,15 @@ impl SessionStore for WasmPlatform {
             return stream::once(async { Ok(()) }).boxed();
         };
         invoke_js_subscription(fn_, None, parse_session_store_tick).boxed()
+    }
+
+    fn session_ui_changed(&self, info: SessionUiInfo) {
+        let Some(fn_) = self.bridge.session_ui_changed.as_ref() else {
+            return;
+        };
+        if let Err(err) = fn_.call1(&JsValue::NULL, &session_ui_info_to_js(&info)) {
+            web_sys::console::error_1(&err);
+        }
     }
 }
 
@@ -705,6 +718,32 @@ fn parse_session_store_tick(_value: JsValue) -> Result<(), String> {
     Ok(())
 }
 
+/// Plain JS object mirroring the generated `SessionUiInfo` TS interface:
+/// `connected` is always present, the optional fields only when `Some`.
+fn session_ui_info_to_js(info: &SessionUiInfo) -> JsValue {
+    let object = js_sys::Object::new();
+    let set = |key: &str, value: &JsValue| {
+        let _ = Reflect::set(&object, &JsValue::from_str(key), value);
+    };
+    set("connected", &JsValue::from_bool(info.connected));
+    if let Some(public_key) = &info.public_key {
+        set("publicKey", &Uint8Array::from(public_key.as_slice()));
+    }
+    if let Some(identity_account_id) = &info.identity_account_id {
+        set(
+            "identityAccountId",
+            &Uint8Array::from(identity_account_id.as_slice()),
+        );
+    }
+    if let Some(lite_username) = &info.lite_username {
+        set("liteUsername", &JsValue::from_str(lite_username));
+    }
+    if let Some(full_username) = &info.full_username {
+        set("fullUsername", &JsValue::from_str(full_username));
+    }
+    object.into()
+}
+
 fn invoke_no_args_unit(
     fn_: &Function,
 ) -> impl std::future::Future<Output = Result<(), String>> + Send {
@@ -939,6 +978,11 @@ struct WasmCoreInner {
     dispose_fn: SendWrapper<Function>,
     disposed: Cell<bool>,
     disposing: Cell<bool>,
+    /// Abort handles for in-flight `receive_from_product` dispatches, keyed
+    /// by a local counter. `dispose` aborts them all so long-pending handlers
+    /// unwind instead of outliving the core.
+    in_flight: RefCell<HashMap<u64, AbortHandle>>,
+    next_dispatch_id: Cell<u64>,
 }
 
 /// Set the live log level (`off`/`error`/`warn`/`info`/`debug`/`trace`).
@@ -989,6 +1033,8 @@ impl WasmTrUApiCore {
                 dispose_fn,
                 disposed: Cell::new(false),
                 disposing: Cell::new(false),
+                in_flight: RefCell::new(HashMap::new()),
+                next_dispatch_id: Cell::new(0),
             }),
         })
     }
@@ -1006,7 +1052,21 @@ impl WasmTrUApiCore {
             .map_err(|err| JsValue::from_str(&format!("invalid frame: {err}")))?;
 
         let transport: Arc<dyn Transport> = self.inner.transport.clone();
-        self.inner.core.dispatch(message, transport).await;
+        // Register the dispatch so `dispose` can abort it; a long-pending
+        // handler then unwinds instead of outliving the core.
+        let dispatch_id = self.inner.next_dispatch_id.get();
+        self.inner.next_dispatch_id.set(dispatch_id.wrapping_add(1));
+        let (abort_handle, abort_registration) = AbortHandle::new_pair();
+        self.inner
+            .in_flight
+            .borrow_mut()
+            .insert(dispatch_id, abort_handle);
+        let _ = Abortable::new(
+            self.inner.core.dispatch(message, transport),
+            abort_registration,
+        )
+        .await;
+        self.inner.in_flight.borrow_mut().remove(&dispatch_id);
         Ok(())
     }
 
@@ -1018,6 +1078,9 @@ impl WasmTrUApiCore {
         }
 
         self.inner.transport.disposed.store(true, Ordering::Relaxed);
+        for (_, handle) in self.inner.in_flight.borrow_mut().drain() {
+            handle.abort();
+        }
 
         let result = self.inner.dispose_fn.call0(&JsValue::NULL).map(|_| ());
 
