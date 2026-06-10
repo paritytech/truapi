@@ -256,7 +256,7 @@ struct SsoRemoteResponseTarget<'a> {
 
 /// Shared slot a response waiter fills with the remote subscription id so
 /// the owning guard can unsubscribe on drop.
-pub(super) type SharedRemoteSubscriptionId = Arc<Mutex<Option<String>>>;
+pub(crate) type SharedRemoteSubscriptionId = Arc<Mutex<Option<String>>>;
 
 struct SsoRemoteSubscriptionGuard {
     connection: Box<dyn JsonRpcConnection>,
@@ -489,7 +489,7 @@ fn fresh_statement_expiry() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime::test_support::{remote_subscription_slot, sso_session_info};
+    use crate::test_support::{remote_subscription_slot, sso_session_info};
     use futures::stream;
 
     #[test]

@@ -1,6 +1,7 @@
 //! Shared fixtures for the runtime test modules: a stub platform, a
 //! recording json-rpc connection, and SSO statement/frame builders.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -8,10 +9,10 @@ use std::time::Duration;
 #[cfg(target_arch = "wasm32")]
 use web_time::Duration;
 
-use super::sso_pairing::PAIRING_SUBSCRIBE_REQUEST_ID;
-use super::sso_remote::SharedRemoteSubscriptionId;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::chain_runtime::thread_per_task_spawner;
+use crate::runtime::sso_pairing::PAIRING_SUBSCRIBE_REQUEST_ID;
+use crate::runtime::sso_remote::SharedRemoteSubscriptionId;
 use crate::subscription::Spawner;
 
 use aes_gcm::aead::{Aead, KeyInit};
@@ -37,7 +38,7 @@ use truapi_platform::{
     Storage as PlatformStorage, ThemeHost, UserConfirmation,
 };
 
-pub(super) fn test_spawner() -> Spawner {
+pub(crate) fn test_spawner() -> Spawner {
     #[cfg(not(target_arch = "wasm32"))]
     {
         thread_per_task_spawner()
@@ -48,59 +49,62 @@ pub(super) fn test_spawner() -> Spawner {
     }
 }
 
-pub(super) fn immediate_spawner() -> Spawner {
+pub(crate) fn immediate_spawner() -> Spawner {
     Arc::new(futures::executor::block_on)
 }
 
-pub(super) fn remote_subscription_slot() -> SharedRemoteSubscriptionId {
+pub(crate) fn remote_subscription_slot() -> SharedRemoteSubscriptionId {
     Arc::new(Mutex::new(None))
 }
 
 /// Minimal Platform impl that only answers `feature_supported`. Every
 /// other callback returns a unit value or empty stream, so the runtime
 /// can exercise its delegation paths without pulling in a real backend.
-pub(super) struct StubPlatform {
-    pub(super) remote_permission_granted: bool,
-    pub(super) account_alias_confirmed: bool,
-    pub(super) account_alias_error: Option<&'static str>,
-    pub(super) sign_payload_confirmed: bool,
-    pub(super) sign_payload_error: Option<&'static str>,
-    pub(super) sign_raw_confirmed: bool,
-    pub(super) sign_raw_error: Option<&'static str>,
-    pub(super) create_transaction_confirmed: bool,
-    pub(super) create_transaction_error: Option<&'static str>,
-    pub(super) resource_allocation_confirmed: bool,
-    pub(super) resource_allocation_error: Option<&'static str>,
-    pub(super) session_blob: Option<Vec<u8>>,
-    pub(super) session_error: Option<&'static str>,
-    pub(super) session_clears: Arc<Mutex<usize>>,
-    pub(super) session_writes: Arc<Mutex<Vec<Vec<u8>>>>,
-    pub(super) session_ui_events: Arc<Mutex<Vec<SessionUiInfo>>>,
-    pub(super) pairing_error: Option<&'static str>,
-    pub(super) pairing_pending: bool,
-    pub(super) presented_pairings: Arc<Mutex<Vec<String>>>,
-    pub(super) pairing_success_response: bool,
+pub(crate) struct StubPlatform {
+    pub(crate) remote_permission_granted: bool,
+    pub(crate) account_alias_confirmed: bool,
+    pub(crate) account_alias_error: Option<&'static str>,
+    pub(crate) sign_payload_confirmed: bool,
+    pub(crate) sign_payload_error: Option<&'static str>,
+    pub(crate) sign_raw_confirmed: bool,
+    pub(crate) sign_raw_error: Option<&'static str>,
+    pub(crate) create_transaction_confirmed: bool,
+    pub(crate) create_transaction_error: Option<&'static str>,
+    pub(crate) resource_allocation_confirmed: bool,
+    pub(crate) resource_allocation_error: Option<&'static str>,
+    pub(crate) session_blob: Option<Vec<u8>>,
+    pub(crate) session_error: Option<&'static str>,
+    pub(crate) session_clears: Arc<Mutex<usize>>,
+    pub(crate) session_writes: Arc<Mutex<Vec<Vec<u8>>>>,
+    pub(crate) session_ui_events: Arc<Mutex<Vec<SessionUiInfo>>>,
+    pub(crate) pairing_error: Option<&'static str>,
+    pub(crate) pairing_pending: bool,
+    pub(crate) pairing_started: Arc<AtomicBool>,
+    pub(crate) pairing_dropped: Arc<AtomicBool>,
+    pub(crate) presented_pairings: Arc<Mutex<Vec<String>>>,
+    pub(crate) pairing_success_response: bool,
     /// Deliver the pairing success statement only through a snapshot
     /// query page; the live subscription stays silent.
-    pub(super) pairing_success_via_query: bool,
-    pub(super) notification_id: v01::NotificationId,
-    pub(super) pushed_notifications: Arc<Mutex<Vec<v01::HostPushNotificationRequest>>>,
-    pub(super) cancelled_notifications: Arc<Mutex<Vec<v01::NotificationId>>>,
-    pub(super) sent_rpc: Arc<Mutex<Vec<String>>>,
-    pub(super) rpc_responses: Vec<String>,
-    pub(super) chain_connect_error: Option<&'static str>,
-    pub(super) local_storage: Arc<Mutex<std::collections::HashMap<String, Vec<u8>>>>,
+    pub(crate) pairing_success_via_query: bool,
+    pub(crate) notification_id: v01::NotificationId,
+    pub(crate) pushed_notifications: Arc<Mutex<Vec<v01::HostPushNotificationRequest>>>,
+    pub(crate) cancelled_notifications: Arc<Mutex<Vec<v01::NotificationId>>>,
+    pub(crate) sent_rpc: Arc<Mutex<Vec<String>>>,
+    pub(crate) rpc_responses: Vec<String>,
+    pub(crate) chain_connect_error: Option<&'static str>,
+    pub(crate) chain_connect_pending: bool,
+    pub(crate) local_storage: Arc<Mutex<std::collections::HashMap<String, Vec<u8>>>>,
     /// When set, `clear_session` notifies the session-store subscription
     /// through this sender, mimicking native hosts.
-    pub(super) session_store_tick_tx:
+    pub(crate) session_store_tick_tx:
         Option<futures::channel::mpsc::UnboundedSender<SessionStoreTick>>,
     /// When set, `subscribe_session_store` yields this channel instead of
     /// the default single tick.
-    pub(super) session_store_ticks:
+    pub(crate) session_store_ticks:
         Arc<Mutex<Option<futures::channel::mpsc::UnboundedReceiver<SessionStoreTick>>>>,
 }
 
-pub(super) type SessionStoreTick = Result<(), v01::GenericError>;
+pub(crate) type SessionStoreTick = Result<(), v01::GenericError>;
 
 impl Default for StubPlatform {
     fn default() -> Self {
@@ -123,6 +127,8 @@ impl Default for StubPlatform {
             session_ui_events: Arc::new(Mutex::new(Vec::new())),
             pairing_error: None,
             pairing_pending: false,
+            pairing_started: Arc::new(AtomicBool::new(false)),
+            pairing_dropped: Arc::new(AtomicBool::new(false)),
             presented_pairings: Arc::new(Mutex::new(Vec::new())),
             pairing_success_response: false,
             pairing_success_via_query: false,
@@ -132,6 +138,7 @@ impl Default for StubPlatform {
             sent_rpc: Arc::new(Mutex::new(Vec::new())),
             rpc_responses: Vec::new(),
             chain_connect_error: None,
+            chain_connect_pending: false,
             local_storage: Arc::new(Mutex::new(std::collections::HashMap::new())),
             session_store_tick_tx: None,
             session_store_ticks: Arc::new(Mutex::new(None)),
@@ -139,11 +146,19 @@ impl Default for StubPlatform {
     }
 }
 
-pub(super) fn stub_platform() -> Arc<StubPlatform> {
+struct PendingPairingGuard(Arc<AtomicBool>);
+
+impl Drop for PendingPairingGuard {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+}
+
+pub(crate) fn stub_platform() -> Arc<StubPlatform> {
     Arc::new(StubPlatform::default())
 }
 
-pub(super) fn runtime_config(product_id: &str) -> RuntimeConfig {
+pub(crate) fn runtime_config(product_id: &str) -> RuntimeConfig {
     RuntimeConfig {
         product_label: product_id.trim_end_matches(".dot").to_string(),
         product_id: product_id.to_string(),
@@ -158,7 +173,7 @@ pub(super) fn runtime_config(product_id: &str) -> RuntimeConfig {
     }
 }
 
-pub(super) fn session_info() -> crate::host_logic::session::SessionInfo {
+pub(crate) fn session_info() -> crate::host_logic::session::SessionInfo {
     crate::host_logic::session::SessionInfo {
         public_key: [
             0x80, 0x05, 0x28, 0xc9, 0x55, 0x87, 0x3e, 0x4c, 0x78, 0xb7, 0xdf, 0x24, 0xf7, 0x1d,
@@ -181,7 +196,7 @@ pub(super) fn session_info() -> crate::host_logic::session::SessionInfo {
     }
 }
 
-pub(super) fn sso_session_info() -> crate::host_logic::session::SessionInfo {
+pub(crate) fn sso_session_info() -> crate::host_logic::session::SessionInfo {
     let mut session = session_info();
     let mini_secret = MiniSecretKey::from_bytes(&[7; 32]).unwrap();
     let keypair = mini_secret.expand_to_keypair(ExpansionMode::Ed25519);
@@ -209,13 +224,13 @@ pub(super) fn sso_session_info() -> crate::host_logic::session::SessionInfo {
     session
 }
 
-pub(super) fn peer_statement_keypair() -> ([u8; 64], [u8; 32]) {
+pub(crate) fn peer_statement_keypair() -> ([u8; 64], [u8; 32]) {
     let mini_secret = MiniSecretKey::from_bytes(&[9; 32]).unwrap();
     let keypair = mini_secret.expand_to_keypair(ExpansionMode::Ed25519);
     (keypair.secret.to_bytes(), keypair.public.to_bytes())
 }
 
-pub(super) fn signed_test_statement(data: Vec<u8>) -> Vec<u8> {
+pub(crate) fn signed_test_statement(data: Vec<u8>) -> Vec<u8> {
     let (secret, public) = peer_statement_keypair();
     crate::host_logic::statement_store::sign_statement_fields(
         secret,
@@ -228,7 +243,7 @@ pub(super) fn signed_test_statement(data: Vec<u8>) -> Vec<u8> {
     .encode()
 }
 
-pub(super) fn submitted_remote_message(
+pub(crate) fn submitted_remote_message(
     platform: &Arc<StubPlatform>,
     session: &crate::host_logic::session::SessionInfo,
 ) -> crate::host_logic::sso_messages::RemoteMessage {
@@ -255,7 +270,7 @@ pub(super) fn submitted_remote_message(
         .expect("remote message should decode")
 }
 
-pub(super) fn sso_success_responses(
+pub(crate) fn sso_success_responses(
     session: &crate::host_logic::session::SessionInfo,
     message_id: &str,
     response: crate::host_logic::sso_messages::RemoteMessage,
@@ -296,7 +311,7 @@ pub(super) fn sso_success_responses(
     ]
 }
 
-pub(super) fn sso_peer_disconnect_responses(
+pub(crate) fn sso_peer_disconnect_responses(
     session: &crate::host_logic::session::SessionInfo,
     message_id: &str,
 ) -> Vec<String> {
@@ -344,7 +359,7 @@ pub(super) fn sso_peer_disconnect_responses(
     ]
 }
 
-pub(super) fn subscribe_ack_frame(request_id: &str, subscription_id: &str) -> String {
+pub(crate) fn subscribe_ack_frame(request_id: &str, subscription_id: &str) -> String {
     serde_json::json!({
         "jsonrpc": "2.0",
         "id": request_id,
@@ -353,7 +368,7 @@ pub(super) fn subscribe_ack_frame(request_id: &str, subscription_id: &str) -> St
     .to_string()
 }
 
-pub(super) fn new_statements_frame(subscription_id: &str, statements: Vec<Vec<u8>>) -> String {
+pub(crate) fn new_statements_frame(subscription_id: &str, statements: Vec<Vec<u8>>) -> String {
     let statements = statements
         .into_iter()
         .map(|statement| format!("0x{}", hex::encode(statement)))
@@ -395,7 +410,7 @@ fn core_encryption_public_key_from_deeplink(deeplink: &str) -> [u8; 65] {
     pairing_device_from_deeplink(deeplink).1
 }
 
-pub(super) fn pairing_device_from_deeplink(deeplink: &str) -> ([u8; 32], [u8; 65]) {
+pub(crate) fn pairing_device_from_deeplink(deeplink: &str) -> ([u8; 32], [u8; 65]) {
     let encoded = deeplink
         .split("handshake=")
         .nth(1)
@@ -462,7 +477,7 @@ fn wallet_handshake_statement(deeplink: &str) -> Vec<u8> {
     signed_test_statement(handshake.encode())
 }
 
-pub(super) fn sign_response_message(
+pub(crate) fn sign_response_message(
     message_id: &str,
     signature: Vec<u8>,
     signed_transaction: Option<Vec<u8>>,
@@ -485,26 +500,26 @@ pub(super) fn sign_response_message(
     }
 }
 
-pub(super) fn account_id(identifier: &str, derivation_index: u32) -> v01::ProductAccountId {
+pub(crate) fn account_id(identifier: &str, derivation_index: u32) -> v01::ProductAccountId {
     v01::ProductAccountId {
         dot_ns_identifier: identifier.to_string(),
         derivation_index,
     }
 }
 
-pub(super) fn account_alias_request(identifier: &str) -> HostAccountGetAliasRequest {
+pub(crate) fn account_alias_request(identifier: &str) -> HostAccountGetAliasRequest {
     HostAccountGetAliasRequest::V1(v01::HostAccountGetAliasRequest {
         product_account_id: account_id(identifier, 0),
     })
 }
 
-pub(super) fn raw_payload() -> v01::RawPayload {
+pub(crate) fn raw_payload() -> v01::RawPayload {
     v01::RawPayload::Bytes {
         bytes: b"hello".to_vec(),
     }
 }
 
-pub(super) fn sign_payload_data() -> v01::HostSignPayloadData {
+pub(crate) fn sign_payload_data() -> v01::HostSignPayloadData {
     v01::HostSignPayloadData {
         block_hash: vec![0; 32],
         block_number: vec![0; 4],
@@ -524,7 +539,7 @@ pub(super) fn sign_payload_data() -> v01::HostSignPayloadData {
     }
 }
 
-pub(super) fn product_tx_payload(identifier: &str) -> v01::ProductAccountTxPayload {
+pub(crate) fn product_tx_payload(identifier: &str) -> v01::ProductAccountTxPayload {
     v01::ProductAccountTxPayload {
         signer: account_id(identifier, 0),
         genesis_hash: [1; 32],
@@ -534,7 +549,7 @@ pub(super) fn product_tx_payload(identifier: &str) -> v01::ProductAccountTxPaylo
     }
 }
 
-pub(super) fn resource_allocation_request() -> HostRequestResourceAllocationRequest {
+pub(crate) fn resource_allocation_request() -> HostRequestResourceAllocationRequest {
     HostRequestResourceAllocationRequest::V1(v01::HostRequestResourceAllocationRequest {
         resources: vec![
             v01::AllocatableResource::StatementStoreAllowance,
@@ -543,7 +558,7 @@ pub(super) fn resource_allocation_request() -> HostRequestResourceAllocationRequ
     })
 }
 
-pub(super) fn statement() -> v01::Statement {
+pub(crate) fn statement() -> v01::Statement {
     v01::Statement {
         proof: None,
         decryption_key: None,
@@ -554,7 +569,7 @@ pub(super) fn statement() -> v01::Statement {
     }
 }
 
-pub(super) fn signed_statement(topic: [u8; 32]) -> v01::SignedStatement {
+pub(crate) fn signed_statement(topic: [u8; 32]) -> v01::SignedStatement {
     v01::SignedStatement {
         proof: v01::StatementProof::Sr25519 {
             signature: [9; 64],
@@ -781,6 +796,9 @@ impl ChainProvider for StubPlatform {
                 reason: reason.to_string(),
             });
         }
+        if self.chain_connect_pending {
+            futures::future::pending::<()>().await;
+        }
         Ok(Box::new(RecordingConnection {
             sent: self.sent_rpc.clone(),
             responses: self.rpc_responses.clone(),
@@ -798,6 +816,8 @@ impl PairingPresenter for StubPlatform {
             .expect("pairing list mutex poisoned")
             .push(deeplink);
         if self.pairing_pending {
+            self.pairing_started.store(true, Ordering::SeqCst);
+            let _guard = PendingPairingGuard(self.pairing_dropped.clone());
             futures::future::pending::<()>().await;
         }
         if let Some(reason) = self.pairing_error {

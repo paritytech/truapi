@@ -36,7 +36,7 @@ use truapi_platform::{
 };
 
 /// Request id for the long-lived pairing topic subscription.
-pub(super) const PAIRING_SUBSCRIBE_REQUEST_ID: &str = "truapi:sso-pairing:1";
+pub(crate) const PAIRING_SUBSCRIBE_REQUEST_ID: &str = "truapi:sso-pairing:1";
 /// Local-storage key persisting the pairing device identity between logins.
 pub(super) const PAIRING_DEVICE_IDENTITY_STORAGE_KEY: &str = "truapi:sso-device-identity:v1";
 #[cfg(not(test))]
@@ -508,7 +508,7 @@ fn decode_v2_pairing_statement(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime::test_support::{
+    use crate::test_support::{
         StubPlatform, pairing_device_from_deeplink, peer_statement_keypair, runtime_config,
         session_info, signed_test_statement, stub_platform, test_spawner,
     };

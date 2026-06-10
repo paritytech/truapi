@@ -393,7 +393,7 @@ fn statement_proof_authorized_error(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::runtime::test_support::{
+    use crate::test_support::{
         StubPlatform, account_id, new_statements_frame, runtime_config, signed_statement,
         sso_session_info, statement, stub_platform, subscribe_ack_frame, test_spawner,
     };

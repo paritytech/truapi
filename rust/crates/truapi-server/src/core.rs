@@ -181,7 +181,6 @@ impl Transport for ResponseTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use futures::stream::{self, BoxStream};
     use parity_scale_codec::Encode;
     use truapi::v01;
     use truapi::versioned::local_storage::{
@@ -189,206 +188,16 @@ mod tests {
     };
     use truapi::versioned::notifications::HostPushNotificationRequest;
     use truapi::versioned::permissions::RemotePermissionRequest;
-    use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
-    use truapi_platform::{
-        ChainProvider, Features, JsonRpcConnection, Navigation, Notifications,
-        PairingDeeplinkScheme, PairingPresenter, Permissions, PreimageHost, SessionStore, Storage,
-        ThemeHost, UserConfirmation,
-    };
+    use truapi::versioned::system::HostFeatureSupportedRequest;
 
     use crate::frame::{Payload, request_ids, subscription_ids};
-
-    fn test_spawner() -> crate::subscription::Spawner {
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            crate::subscription::thread_per_subscription_spawner()
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            Arc::new(futures::executor::block_on)
-        }
-    }
-
-    fn test_runtime_config() -> RuntimeConfig {
-        RuntimeConfig {
-            product_label: "dotli".to_string(),
-            product_id: "dotli.dot".to_string(),
-            site_id: "dot.li".to_string(),
-            host_name: "Polkadot Web".to_string(),
-            host_icon: Some("https://dot.li/dotli.png".to_string()),
-            host_version: None,
-            platform_type: None,
-            platform_version: None,
-            people_chain_genesis_hash: [0xa2; 32],
-            pairing_deeplink_scheme: PairingDeeplinkScheme::PolkadotApp,
-        }
-    }
-
-    struct StubPlatform;
-
-    impl Storage for StubPlatform {
-        async fn read(
-            &self,
-            _key: String,
-        ) -> Result<Option<Vec<u8>>, v01::HostLocalStorageReadError> {
-            Ok(None)
-        }
-        async fn write(
-            &self,
-            _key: String,
-            _value: Vec<u8>,
-        ) -> Result<(), v01::HostLocalStorageReadError> {
-            Ok(())
-        }
-        async fn clear(&self, _key: String) -> Result<(), v01::HostLocalStorageReadError> {
-            Ok(())
-        }
-    }
-
-    impl Navigation for StubPlatform {
-        async fn navigate_to(&self, _url: String) -> Result<(), v01::HostNavigateToError> {
-            Ok(())
-        }
-    }
-
-    impl Notifications for StubPlatform {
-        async fn push_notification(
-            &self,
-            _notification: v01::HostPushNotificationRequest,
-        ) -> Result<v01::HostPushNotificationResponse, v01::GenericError> {
-            Ok(v01::HostPushNotificationResponse { id: 0 })
-        }
-
-        async fn cancel_notification(&self, _id: u32) -> Result<(), v01::GenericError> {
-            Ok(())
-        }
-    }
-
-    impl Permissions for StubPlatform {
-        async fn device_permission(
-            &self,
-            _request: v01::HostDevicePermissionRequest,
-        ) -> Result<v01::HostDevicePermissionResponse, v01::GenericError> {
-            Ok(v01::HostDevicePermissionResponse { granted: true })
-        }
-        async fn remote_permission(
-            &self,
-            _request: v01::RemotePermissionRequest,
-        ) -> Result<v01::RemotePermissionResponse, v01::GenericError> {
-            Ok(v01::RemotePermissionResponse { granted: true })
-        }
-    }
-
-    impl Features for StubPlatform {
-        async fn feature_supported(
-            &self,
-            request: HostFeatureSupportedRequest,
-        ) -> Result<HostFeatureSupportedResponse, v01::GenericError> {
-            let HostFeatureSupportedRequest::V1(_) = request;
-            Ok(HostFeatureSupportedResponse::V1(
-                v01::HostFeatureSupportedResponse { supported: true },
-            ))
-        }
-    }
-
-    struct DeadConnection;
-    impl JsonRpcConnection for DeadConnection {
-        fn send(&self, _request: String) {}
-        fn responses(&self) -> BoxStream<'static, String> {
-            Box::pin(stream::empty())
-        }
-    }
-
-    impl ChainProvider for StubPlatform {
-        async fn connect(
-            &self,
-            _genesis_hash: Vec<u8>,
-        ) -> Result<Box<dyn JsonRpcConnection>, v01::GenericError> {
-            Ok(Box::new(DeadConnection))
-        }
-    }
-
-    impl PairingPresenter for StubPlatform {
-        async fn present_pairing(&self, _deeplink: String) -> Result<(), v01::GenericError> {
-            Err(v01::GenericError {
-                reason: "pairing presenter callback not provided by host".to_string(),
-            })
-        }
-    }
-
-    impl SessionStore for StubPlatform {
-        async fn read_session(&self) -> Result<Option<Vec<u8>>, v01::GenericError> {
-            Ok(None)
-        }
-        async fn write_session(&self, _value: Vec<u8>) -> Result<(), v01::GenericError> {
-            Ok(())
-        }
-        async fn clear_session(&self) -> Result<(), v01::GenericError> {
-            Ok(())
-        }
-        fn subscribe_session_store(&self) -> BoxStream<'static, Result<(), v01::GenericError>> {
-            Box::pin(stream::once(async { Ok(()) }))
-        }
-    }
-
-    impl UserConfirmation for StubPlatform {
-        async fn confirm_sign_payload(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
-            Ok(false)
-        }
-        async fn confirm_sign_raw(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
-            Ok(false)
-        }
-        async fn confirm_create_transaction(
-            &self,
-            _review: Vec<u8>,
-        ) -> Result<bool, v01::GenericError> {
-            Ok(false)
-        }
-        async fn confirm_account_alias(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
-            Ok(false)
-        }
-        async fn confirm_resource_allocation(
-            &self,
-            _review: Vec<u8>,
-        ) -> Result<bool, v01::GenericError> {
-            Ok(false)
-        }
-    }
-
-    impl ThemeHost for StubPlatform {
-        fn subscribe_theme(
-            &self,
-        ) -> BoxStream<'static, Result<v01::ThemeVariant, v01::GenericError>> {
-            Box::pin(stream::empty())
-        }
-    }
-
-    impl PreimageHost for StubPlatform {
-        async fn confirm_preimage_submit(
-            &self,
-            _size: u64,
-        ) -> Result<(), v01::PreimageSubmitError> {
-            Ok(())
-        }
-        async fn submit_preimage(
-            &self,
-            value: Vec<u8>,
-        ) -> Result<Vec<u8>, v01::PreimageSubmitError> {
-            Ok(value)
-        }
-        fn lookup_preimage(
-            &self,
-            _key: Vec<u8>,
-        ) -> BoxStream<'static, Result<Option<Vec<u8>>, v01::GenericError>> {
-            Box::pin(stream::empty())
-        }
-    }
+    use crate::test_support::{StubPlatform, runtime_config, test_spawner};
 
     #[test]
     fn from_platform_dispatches_feature_supported() {
         let core = TrUApiCore::from_platform_with_config(
-            Arc::new(StubPlatform),
-            test_runtime_config(),
+            Arc::new(StubPlatform::default()),
+            runtime_config("dotli.dot"),
             test_spawner(),
         );
         let request = HostFeatureSupportedRequest::V1(v01::HostFeatureSupportedRequest::Chain {
@@ -438,8 +247,8 @@ mod tests {
 
     fn make_core() -> TrUApiCore {
         TrUApiCore::from_platform_with_config(
-            Arc::new(StubPlatform),
-            test_runtime_config(),
+            Arc::new(StubPlatform::default()),
+            runtime_config("dotli.dot"),
             test_spawner(),
         )
     }

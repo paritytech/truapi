@@ -8,11 +8,9 @@
 //! `CallError::unavailable()`.
 
 mod identity;
-mod sso_pairing;
-mod sso_remote;
-mod statement_store;
-#[cfg(test)]
-mod test_support;
+pub(crate) mod sso_pairing;
+pub(crate) mod sso_remote;
+pub(crate) mod statement_store;
 
 use std::sync::Arc;
 
@@ -1833,9 +1831,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::test_support::*;
     use super::*;
     use crate::host_logic::sso_messages::{RemoteMessageData, RemoteMessageV1};
+    use crate::test_support::*;
     use std::sync::Mutex;
 
     use super::sso_remote::SSO_PEER_DISCONNECT_REASON;
