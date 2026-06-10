@@ -57,6 +57,11 @@ const MAX_PENDING_FOLLOW_EVENTS_PER_ID: usize = 256;
 /// each opening (and leaking) a separate remote subscription.
 type FollowSetup = Shared<BoxFuture<'static, Result<String, RuntimeFailure>>>;
 
+/// Shared, single-flight provider connect keyed by genesis hash. Concurrent
+/// first connections for the same chain await one in-flight `connect` rather
+/// than each opening a connection and orphaning all but the last insert.
+type ConnectionSetup = Shared<BoxFuture<'static, Result<Arc<ChainConnection>, RuntimeFailure>>>;
+
 /// Classification of framework-level chain failures separate from JSON-RPC
 /// domain errors. Maps cleanly to [`truapi::CallError`] variants at the
 /// `PlatformRuntimeHost` boundary.
@@ -156,6 +161,7 @@ pub struct ChainRuntime {
     provider: Arc<dyn RuntimeChainProvider>,
     spawner: Spawner,
     connections: Arc<Mutex<HashMap<String, Arc<ChainConnection>>>>,
+    connection_setups: Arc<Mutex<HashMap<String, ConnectionSetup>>>,
 }
 
 impl ChainRuntime {
@@ -166,6 +172,7 @@ impl ChainRuntime {
             provider,
             spawner,
             connections: Arc::new(Mutex::new(HashMap::new())),
+            connection_setups: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -538,29 +545,54 @@ impl ChainRuntime {
         genesis_hash: &[u8],
     ) -> Result<Arc<ChainConnection>, RuntimeFailure> {
         let key = encode_hex(genesis_hash);
-        if let Some(connection) = self.connections.lock().unwrap().get(&key).cloned() {
-            if !connection.is_closed() {
-                return Ok(connection);
-            }
-            self.connections.lock().unwrap().remove(&key);
-        }
-
-        let rpc = self
-            .provider
-            .connect(genesis_hash.to_owned())
-            .await
-            .map_err(|failure| match failure.kind() {
-                RuntimeFailureKind::Unavailable => RuntimeFailure::unavailable(method),
-                RuntimeFailureKind::HostFailure => {
-                    RuntimeFailure::host_failure(method, failure.reason())
+        let setup = {
+            let mut connections = self.connections.lock().unwrap();
+            match connections.get(&key) {
+                Some(connection) if !connection.is_closed() => return Ok(connection.clone()),
+                Some(_) => {
+                    connections.remove(&key);
                 }
-            })?;
-        let connection = ChainConnection::new(rpc, self.spawner.clone());
-        self.connections
-            .lock()
-            .unwrap()
-            .insert(key, connection.clone());
-        Ok(connection)
+                None => {}
+            }
+            // Single-flight the provider connect (same shape as
+            // `follow_setups`): concurrent first connections for the same
+            // chain share one in-flight `connect` instead of racing the
+            // insert and orphaning the loser's connection.
+            let mut setups = self.connection_setups.lock().unwrap();
+            if let Some(existing) = setups.get(&key) {
+                existing.clone()
+            } else {
+                let provider = self.provider.clone();
+                let spawner = self.spawner.clone();
+                let connections = self.connections.clone();
+                let setups_map = self.connection_setups.clone();
+                let setup_key = key.clone();
+                let genesis_hash = genesis_hash.to_owned();
+                let setup: ConnectionSetup = async move {
+                    let result = provider.connect(genesis_hash).await.map(|rpc| {
+                        let connection = ChainConnection::new(rpc, spawner);
+                        connections
+                            .lock()
+                            .unwrap()
+                            .insert(setup_key.clone(), connection.clone());
+                        connection
+                    });
+                    setups_map.lock().unwrap().remove(&setup_key);
+                    result
+                }
+                .boxed()
+                .shared();
+                setups.insert(key, setup.clone());
+                setup
+            }
+        };
+
+        setup.await.map_err(|failure| match failure.kind() {
+            RuntimeFailureKind::Unavailable => RuntimeFailure::unavailable(method),
+            RuntimeFailureKind::HostFailure => {
+                RuntimeFailure::host_failure(method, failure.reason())
+            }
+        })
     }
 
     #[instrument(skip_all, fields(runtime.method = "chain_runtime.start_follow"))]
@@ -1361,7 +1393,6 @@ pub fn thread_per_task_spawner() -> Spawner {
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use futures::SinkExt;
     use futures::channel::mpsc as fut_mpsc;
     use futures::stream::BoxStream;
     use std::sync::atomic::{AtomicUsize, Ordering};
@@ -1453,65 +1484,16 @@ mod tests {
         }
     }
 
-    /// Connection backed by an mpsc channel: tests push frames into `tx`
-    /// to simulate asynchronous notifications. Used for follow-event tests.
-    struct ChannelConnection {
-        rx: Mutex<Option<fut_mpsc::UnboundedReceiver<String>>>,
-        sent: Arc<Mutex<Vec<String>>>,
-    }
-
-    impl JsonRpcConnection for ChannelConnection {
-        fn send(&self, request: String) {
-            self.sent.lock().unwrap().push(request);
-        }
-        fn responses(&self) -> BoxStream<'static, String> {
-            let rx = self
-                .rx
-                .lock()
-                .unwrap()
-                .take()
-                .expect("responses taken twice");
-            rx.boxed()
-        }
-    }
-
-    struct ChannelProvider {
-        sender: Arc<Mutex<Option<fut_mpsc::UnboundedSender<String>>>>,
-        receiver: Arc<Mutex<Option<fut_mpsc::UnboundedReceiver<String>>>>,
-        sent: Arc<Mutex<Vec<String>>>,
-    }
-
-    impl ChannelProvider {
-        fn new() -> Self {
-            let (tx, rx) = fut_mpsc::unbounded();
-            Self {
-                sender: Arc::new(Mutex::new(Some(tx))),
-                receiver: Arc::new(Mutex::new(Some(rx))),
-                sent: Arc::new(Mutex::new(Vec::new())),
-            }
-        }
-
-        fn take_sender(&self) -> fut_mpsc::UnboundedSender<String> {
-            self.sender
-                .lock()
-                .unwrap()
-                .take()
-                .expect("sender taken twice")
-        }
-    }
-
-    #[async_trait]
-    impl RuntimeChainProvider for ChannelProvider {
-        async fn connect(
-            &self,
-            _genesis_hash: Vec<u8>,
-        ) -> Result<Arc<dyn JsonRpcConnection>, RuntimeFailure> {
-            let rx = self.receiver.lock().unwrap().take();
-            Ok(Arc::new(ChannelConnection {
-                rx: Mutex::new(rx),
-                sent: self.sent.clone(),
-            }))
-        }
+    /// Clone of the scripted notification sender, used by tests to push
+    /// asynchronous frames (e.g. follow events) into the response stream.
+    fn notification_sender(provider: &ScriptedProvider) -> fut_mpsc::UnboundedSender<String> {
+        provider
+            .sender
+            .lock()
+            .unwrap()
+            .as_ref()
+            .expect("notification sender available")
+            .clone()
     }
 
     #[test]
@@ -1566,6 +1548,50 @@ mod tests {
         assert!(sent[1].contains("chainHead_v1_header"));
     }
 
+    /// Two concurrent calls for the same chain must share one provider
+    /// `connect` instead of racing the first connection and orphaning the
+    /// loser.
+    #[test]
+    fn concurrent_connection_for_shares_one_connect() {
+        struct SlowConnectProvider {
+            inner: ScriptedProvider,
+        }
+
+        #[async_trait]
+        impl RuntimeChainProvider for SlowConnectProvider {
+            async fn connect(
+                &self,
+                genesis_hash: Vec<u8>,
+            ) -> Result<Arc<dyn JsonRpcConnection>, RuntimeFailure> {
+                futures_timer::Delay::new(std::time::Duration::from_millis(50)).await;
+                self.inner.connect(genesis_hash).await
+            }
+        }
+
+        let provider = Arc::new(SlowConnectProvider {
+            inner: ScriptedProvider::new(|request| {
+                let id = extract_id(request).unwrap();
+                if request.contains("chainSpec_v1_chainName") {
+                    Some(format!(
+                        r#"{{"jsonrpc":"2.0","id":"{id}","result":"Polkadot"}}"#
+                    ))
+                } else {
+                    None
+                }
+            }),
+        });
+        let runtime = ChainRuntime::new(provider.clone(), spawner_for_tests());
+
+        let (first, second) = futures::executor::block_on(futures::future::join(
+            runtime.remote_chain_spec_chain_name(vec![0u8; 32]),
+            runtime.remote_chain_spec_chain_name(vec![0u8; 32]),
+        ));
+
+        assert_eq!(first.unwrap().chain_name, "Polkadot");
+        assert_eq!(second.unwrap().chain_name, "Polkadot");
+        assert_eq!(provider.inner.connect_calls.load(Ordering::SeqCst), 1);
+    }
+
     #[test]
     fn unknown_genesis_chain_spec_propagates_failure() {
         let provider = Arc::new(UnavailableChainProvider);
@@ -1605,19 +1631,20 @@ mod tests {
 
     #[test]
     fn follow_event_initialized_translates_to_v01_item() {
-        let provider = Arc::new(ChannelProvider::new());
-        let tx = provider.take_sender();
+        // Answer `chainHead_v1_follow` through the synchronized responder so
+        // the ack cannot reach the response loop before the pending request
+        // is registered.
+        let provider = Arc::new(ScriptedProvider::new(|request| {
+            let id = extract_id(request).unwrap();
+            if request.contains("chainHead_v1_follow") {
+                Some(format!(
+                    r#"{{"jsonrpc":"2.0","id":"{id}","result":"REMOTE-FOLLOW"}}"#
+                ))
+            } else {
+                None
+            }
+        }));
         let runtime = ChainRuntime::new(provider.clone(), spawner_for_tests());
-
-        // The follow setup needs to wait for the rpc response, so we splice
-        // it in before starting the subscription.
-        let mut tx_owned = tx.clone();
-        futures::executor::block_on(async move {
-            tx_owned
-                .send(r#"{"jsonrpc":"2.0","id":"truapi:1","result":"REMOTE-FOLLOW"}"#.to_string())
-                .await
-                .unwrap();
-        });
 
         let mut stream = runtime.remote_chain_head_follow(
             "local-follow".to_string(),
@@ -1627,18 +1654,18 @@ mod tests {
             },
         );
 
-        // Now push a follow event keyed by remote subscription id.
-        let mut tx_owned = tx.clone();
-        futures::executor::block_on(async move {
-            tx_owned.send(
-                r#"{"jsonrpc":"2.0","method":"chainHead_v1_followEvent","params":{"subscription":"REMOTE-FOLLOW","result":{"event":"initialized","finalizedBlockHashes":["0xaabbccdd"]}}}"#
-                    .to_string(),
-            ).await.unwrap();
-            tx_owned.send(
-                r#"{"jsonrpc":"2.0","method":"chainHead_v1_followEvent","params":{"subscription":"REMOTE-FOLLOW","result":{"event":"stop"}}}"#
-                    .to_string(),
-            ).await.unwrap();
-        });
+        // Push follow events keyed by remote subscription id. Events that
+        // land before the follow ack are buffered by remote id and replayed
+        // once the follow is established.
+        let tx = notification_sender(&provider);
+        tx.unbounded_send(
+            r#"{"jsonrpc":"2.0","method":"chainHead_v1_followEvent","params":{"subscription":"REMOTE-FOLLOW","result":{"event":"initialized","finalizedBlockHashes":["0xaabbccdd"]}}}"#
+                .to_string(),
+        ).unwrap();
+        tx.unbounded_send(
+            r#"{"jsonrpc":"2.0","method":"chainHead_v1_followEvent","params":{"subscription":"REMOTE-FOLLOW","result":{"event":"stop"}}}"#
+                .to_string(),
+        ).unwrap();
 
         let items: Vec<_> = futures::executor::block_on(async {
             let mut out = Vec::new();
@@ -1668,19 +1695,18 @@ mod tests {
     #[cfg_attr(target_arch = "wasm32", ignore)]
     #[test]
     fn drop_follow_stream_sends_unfollow() {
-        let provider = Arc::new(ChannelProvider::new());
-        let tx = provider.take_sender();
+        let provider = Arc::new(ScriptedProvider::new(|request| {
+            let id = extract_id(request).unwrap();
+            if request.contains("chainHead_v1_follow") {
+                Some(format!(
+                    r#"{{"jsonrpc":"2.0","id":"{id}","result":"REMOTE-FOLLOW"}}"#
+                ))
+            } else {
+                None
+            }
+        }));
         let runtime = ChainRuntime::new(provider.clone(), spawner_for_tests());
         let sent = provider.sent.clone();
-
-        // Pre-load the follow setup response.
-        let mut tx_owned = tx.clone();
-        futures::executor::block_on(async move {
-            tx_owned
-                .send(r#"{"jsonrpc":"2.0","id":"truapi:1","result":"REMOTE-FOLLOW"}"#.to_string())
-                .await
-                .unwrap();
-        });
 
         let stream = runtime.remote_chain_head_follow(
             "local-follow".to_string(),
