@@ -20,6 +20,38 @@ import type {
 } from "@parity/truapi";
 
 /**
+ * Decoded session fields a host shell needs to render account UI without
+ * parsing the opaque session blob the core persists through [`SessionStore`].
+ */
+export interface SessionUiInfo {
+  /**
+   * Whether a session is currently active. When `false` every other
+   * field is `None`.
+   */
+  connected: boolean;
+
+  /**
+   * 32-byte sr25519 root public key of the active session.
+   */
+  publicKey?: Uint8Array;
+
+  /**
+   * Wallet identity account id used for People-chain username lookup.
+   */
+  identityAccountId?: Uint8Array;
+
+  /**
+   * Short username from the People-chain identity record.
+   */
+  liteUsername?: string;
+
+  /**
+   * Fully qualified username from the People-chain identity record.
+   */
+  fullUsername?: string;
+}
+
+/**
  * JSON-RPC provider factory for chain access.
  *
  * The platform provides a way to get a JSON-RPC connection for a given chain.
@@ -160,6 +192,14 @@ export interface SessionStore {
    * Emit once immediately, then on future local/cross-runtime changes.
    */
   subscribeSessionStore(): AsyncIterable<Result<void, GenericError>>;
+
+  /**
+   * Observe decoded session changes for host UI. The core calls this with
+   * the active session's fields whenever it persists or restores a
+   * session, and with a disconnected value when the session is cleared.
+   * Default is a no-op for hosts that render no session UI.
+   */
+  sessionUiChanged?(info: SessionUiInfo): void;
 }
 
 /**

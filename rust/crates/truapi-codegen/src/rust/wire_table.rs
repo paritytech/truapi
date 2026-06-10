@@ -16,7 +16,7 @@ use indoc::{formatdoc, writedoc};
 
 use crate::rustdoc::*;
 
-use super::wire_method_name;
+use super::{const_name, wire_method_name};
 
 #[derive(Debug, Clone, Copy)]
 struct WireEntry {
@@ -69,12 +69,6 @@ pub fn generate_wire_table(api: &ApiDefinition) -> Result<String> {
     });
 
     render(&method_entries)
-}
-
-/// The `SCREAMING_SNAKE_CASE` const name holding a method's wire ids. Mirrors
-/// the TS codegen, which emits `export const PREIMAGE_SUBMIT = { ... }`.
-pub(super) fn const_name(wire_method: &str) -> String {
-    wire_method.to_uppercase()
 }
 
 fn method_entry(trait_def: &TraitDef, method: &MethodDef) -> Result<MethodEntry> {

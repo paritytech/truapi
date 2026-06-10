@@ -21,8 +21,7 @@ use indoc::{formatdoc, indoc, writedoc};
 
 use crate::rustdoc::*;
 
-use super::wire_table::const_name;
-use super::{module_for_trait, wire_method_name};
+use super::{const_name, module_for_trait, wire_method_name};
 
 /// Emit the contents of `dispatcher.rs`.
 pub fn generate_dispatcher(api: &ApiDefinition) -> Result<String> {
@@ -194,11 +193,7 @@ impl MethodEmission {
             name: method.name.clone(),
             wire_name: wire_method.to_string(),
             module: module.to_string(),
-            kind: match method.kind {
-                MethodKind::Request => MethodKind::Request,
-                MethodKind::Subscription => MethodKind::Subscription,
-                MethodKind::ResultSubscription => MethodKind::ResultSubscription,
-            },
+            kind: method.kind,
             request_wrapper,
             response_wrapper,
             item_wrapper,

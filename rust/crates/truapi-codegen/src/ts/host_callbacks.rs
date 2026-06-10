@@ -18,7 +18,7 @@ use indoc::{formatdoc, writedoc};
 use crate::platform::{
     PlatformDefinition, PlatformInner, PlatformMethod, PlatformReturn, PlatformTrait,
 };
-use crate::rustdoc::TypeRef;
+use crate::rustdoc::{TypeDef, TypeDefKind, TypeRef};
 
 /// Write the typed host-callbacks TS file into `output_dir`.
 pub fn generate(definition: &PlatformDefinition, output_dir: &str) -> Result<()> {
@@ -60,6 +60,11 @@ fn emit_host_callbacks(definition: &PlatformDefinition) -> Result<String> {
             "#,
         )
         .unwrap();
+    }
+
+    for struct_def in &definition.structs {
+        out.push_str(&emit_struct_interface(struct_def)?);
+        out.push('\n');
     }
 
     for trait_def in &definition.traits {
@@ -113,7 +118,45 @@ fn emit_method(method: &PlatformMethod) -> Result<String> {
         .join(", ");
     let ret = format_return(&method.return_shape)?;
     let name = to_camel_case(&method.name);
-    Ok(format!("{jsdoc}  {name}({params}): {ret};"))
+    // A Rust default body makes the method optional for host implementations.
+    let optional = if method.has_default { "?" } else { "" };
+    Ok(format!("{jsdoc}  {name}{optional}({params}): {ret};"))
+}
+
+/// Emit a TS interface for a local platform struct. `Option<T>` fields become
+/// optional members so hosts receive plain objects with absent-when-`None`
+/// properties.
+fn emit_struct_interface(struct_def: &TypeDef) -> Result<String> {
+    let TypeDefKind::Struct(fields) = &struct_def.kind else {
+        bail!(
+            "Platform struct `{}` must have named fields",
+            struct_def.name
+        );
+    };
+    if !struct_def.generic_params.is_empty() {
+        bail!("Platform struct `{}` must not be generic", struct_def.name);
+    }
+    let jsdoc = render_jsdoc("", struct_def.docs.as_deref());
+    let body = fields
+        .iter()
+        .map(|field| {
+            let jsdoc = render_jsdoc("  ", field.docs.as_deref());
+            let name = to_camel_case(&field.name);
+            match &field.type_ref {
+                TypeRef::Option(inner) => Ok(format!("{jsdoc}  {name}?: {};", ts_type(inner)?)),
+                other => Ok(format!("{jsdoc}  {name}: {};", ts_type(other)?)),
+            }
+        })
+        .collect::<Result<Vec<_>>>()?
+        .join("\n\n");
+    Ok(formatdoc! {
+        r#"
+        {jsdoc}export interface {name} {{
+        {body}
+        }}
+        "#,
+        name = struct_def.name,
+    })
 }
 
 fn emit_super_interface(name: &str, composes: &[String], docs: Option<&str>) -> String {
@@ -149,8 +192,14 @@ fn collect_named_types(definition: &PlatformDefinition) -> BTreeSet<String> {
             }
         }
     }
-    // Filter out names defined locally (the capability trait interfaces).
-    let local: BTreeSet<String> = definition.traits.iter().map(|t| t.name.clone()).collect();
+    // Filter out names defined locally (the capability trait interfaces and
+    // the platform struct interfaces emitted into this file).
+    let local: BTreeSet<String> = definition
+        .traits
+        .iter()
+        .map(|t| t.name.clone())
+        .chain(definition.structs.iter().map(|s| s.name.clone()))
+        .collect();
     out.into_iter().filter(|n| !local.contains(n)).collect()
 }
 
