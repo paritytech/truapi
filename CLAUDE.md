@@ -154,14 +154,42 @@ the ignored WASM/build artifacts, verifies dotli can resolve
 `@parity/truapi-host-wasm`, then starts dotli on `:5173` and the playground on
 `:3000`. Open `http://localhost:5173/localhost:3000`.
 
-When automating with Playwright, prefer a persistent headed Chrome profile and
-reuse the same browser context across checks. SSO pairing needs a real phone QR
-scan, and signing/resource-allocation flows may need web or mobile confirmation;
-if the human or companion app is unavailable, skip those methods and record the
+When automating with Playwright, block service workers for smoke tests unless
+the test is explicitly about SW behavior. Stale host/product bundles can mask
+runtime fixes. Use a fresh cache-busting query string on
+`http://localhost:5173/localhost:3000?...`, collect `pageerror` and
+`console` messages, and fail on unexpected page errors.
+
+For interactive SSO checks, prefer a persistent headed Chrome profile and reuse
+the same browser context across checks. SSO pairing needs a real phone QR scan,
+and signing/resource-allocation flows may need web or mobile confirmation; if
+the human or companion app is unavailable, skip those methods and record the
 skip instead of treating it as a protocol failure. Non-interactive checks should
 still verify that the playground renders, the TrUAPI debug panel receives
 host/product events, generated examples can call non-confirmation methods, and
 logout/relogin does not restore a stale session.
+
+The dotli Playwright e2e suite under `hosts/dotli/apps/host/tests/e2e/`
+pairs through the signer-bot service. It requires `SIGNER_BOT_SVC_TOKEN`,
+`SIGNER_BOT_BASE_URL`, and `SIGNER_BOT_NETWORK`; without those, do not treat
+the suite as locally runnable. Use the local smoke path above instead.
+
+A useful no-phone smoke assertion is:
+
+1. Start `make dev DEBUG=1`.
+2. Open `http://localhost:5173/localhost:3000?debug=truapi&cachebust=<ts>` with
+   service workers blocked.
+3. Wait for `globalThis.__truapi?.setLogLevel`, call
+   `__truapi.setLogLevel("debug")`, and confirm the console logs
+   `[truapi worker] logLevel=debug providers=0`.
+4. Click `#auth-button`, wait for `#auth-modal-backdrop.open`, and confirm:
+   the modal shows `Login with Polkadot Mobile`, `__truapi.getProviderCount()`
+   is greater than zero, worker frame/callback logs appear, and there are no
+   page errors.
+
+If `make dev` reports `EADDRINUSE` on `:5173` or the playground moves from
+`:3000` to `:3001`, kill stale `preview-server.ts` / `next dev` processes and
+restart the tmux session. Port drift causes false-negative local e2e results.
 
 Useful debug signals:
 
