@@ -378,6 +378,14 @@ where
             .map_err(|err| format!("permission storage failed: {err:?}"))
     }
 
+    async fn require_chain_submit<E>(&self, denied_error: E) -> Result<(), CallError<E>> {
+        match self.chain_submit_decision().await {
+            Ok(Decision::Granted) => Ok(()),
+            Ok(Decision::Denied) => Err(CallError::Domain(denied_error)),
+            Err(reason) => Err(CallError::HostFailure { reason }),
+        }
+    }
+
     fn validate_legacy_address_signer(
         &self,
         session: &SessionInfo,
@@ -833,6 +841,27 @@ fn connected_session_ui_info(session: &SessionInfo) -> SessionUiInfo {
     }
 }
 
+const UNEXPECTED_SSO_SIGNING_RESPONSE: &str = "Unexpected SSO response for signing request";
+const UNEXPECTED_SSO_TRANSACTION_RESPONSE: &str = "Unexpected SSO response for transaction request";
+
+fn signing_unknown_call_error<E>(
+    wrap: fn(v01::HostSignPayloadError) -> E,
+    reason: impl Into<String>,
+) -> CallError<E> {
+    CallError::Domain(wrap(v01::HostSignPayloadError::Unknown {
+        reason: reason.into(),
+    }))
+}
+
+fn transaction_unknown_call_error<E>(
+    wrap: fn(v01::HostCreateTransactionError) -> E,
+    reason: impl Into<String>,
+) -> CallError<E> {
+    CallError::Domain(wrap(v01::HostCreateTransactionError::Unknown {
+        reason: reason.into(),
+    }))
+}
+
 impl<P> Signing for PlatformRuntimeHost<P>
 where
     P: Platform + 'static,
@@ -851,15 +880,10 @@ where
                 v01::HostSignPayloadError::PermissionDenied,
             )));
         }
-        match self.chain_submit_decision().await {
-            Ok(Decision::Granted) => {}
-            Ok(Decision::Denied) => {
-                return Err(CallError::Domain(HostSignPayloadError::V1(
-                    v01::HostSignPayloadError::PermissionDenied,
-                )));
-            }
-            Err(reason) => return Err(CallError::HostFailure { reason }),
-        }
+        self.require_chain_submit(HostSignPayloadError::V1(
+            v01::HostSignPayloadError::PermissionDenied,
+        ))
+        .await?;
         let Some(session) = self.session_state.current() else {
             return Err(CallError::Domain(HostSignPayloadError::V1(
                 v01::HostSignPayloadError::Rejected,
@@ -883,17 +907,12 @@ where
         let response = self
             .submit_sso_remote_message(cx, &session, "sign-payload", message)
             .await
-            .map_err(|reason| {
-                CallError::Domain(HostSignPayloadError::V1(
-                    v01::HostSignPayloadError::Unknown { reason },
-                ))
-            })?;
+            .map_err(|reason| signing_unknown_call_error(HostSignPayloadError::V1, reason))?;
         let SsoRemoteResponse::Sign(response) = response else {
-            return Err(CallError::Domain(HostSignPayloadError::V1(
-                v01::HostSignPayloadError::Unknown {
-                    reason: "Unexpected SSO response for signing request".to_string(),
-                },
-            )));
+            return Err(signing_unknown_call_error(
+                HostSignPayloadError::V1,
+                UNEXPECTED_SSO_SIGNING_RESPONSE,
+            ));
         };
         response
             .payload
@@ -903,11 +922,7 @@ where
                     signed_transaction: payload.signed_transaction,
                 })
             })
-            .map_err(|reason| {
-                CallError::Domain(HostSignPayloadError::V1(
-                    v01::HostSignPayloadError::Unknown { reason },
-                ))
-            })
+            .map_err(|reason| signing_unknown_call_error(HostSignPayloadError::V1, reason))
     }
 
     #[instrument(skip_all, fields(runtime.method = "signing.sign_raw"))]
@@ -924,15 +939,10 @@ where
                 v01::HostSignPayloadError::PermissionDenied,
             )));
         }
-        match self.chain_submit_decision().await {
-            Ok(Decision::Granted) => {}
-            Ok(Decision::Denied) => {
-                return Err(CallError::Domain(HostSignRawError::V1(
-                    v01::HostSignPayloadError::PermissionDenied,
-                )));
-            }
-            Err(reason) => return Err(CallError::HostFailure { reason }),
-        }
+        self.require_chain_submit(HostSignRawError::V1(
+            v01::HostSignPayloadError::PermissionDenied,
+        ))
+        .await?;
         let Some(session) = self.session_state.current() else {
             return Err(CallError::Domain(HostSignRawError::V1(
                 v01::HostSignPayloadError::Rejected,
@@ -956,17 +966,12 @@ where
         let response = self
             .submit_sso_remote_message(cx, &session, "sign-raw", message)
             .await
-            .map_err(|reason| {
-                CallError::Domain(HostSignRawError::V1(v01::HostSignPayloadError::Unknown {
-                    reason,
-                }))
-            })?;
+            .map_err(|reason| signing_unknown_call_error(HostSignRawError::V1, reason))?;
         let SsoRemoteResponse::Sign(response) = response else {
-            return Err(CallError::Domain(HostSignRawError::V1(
-                v01::HostSignPayloadError::Unknown {
-                    reason: "Unexpected SSO response for signing request".to_string(),
-                },
-            )));
+            return Err(signing_unknown_call_error(
+                HostSignRawError::V1,
+                UNEXPECTED_SSO_SIGNING_RESPONSE,
+            ));
         };
         response
             .payload
@@ -976,11 +981,7 @@ where
                     signed_transaction: payload.signed_transaction,
                 })
             })
-            .map_err(|reason| {
-                CallError::Domain(HostSignRawError::V1(v01::HostSignPayloadError::Unknown {
-                    reason,
-                }))
-            })
+            .map_err(|reason| signing_unknown_call_error(HostSignRawError::V1, reason))
     }
 
     #[instrument(skip_all, fields(runtime.method = "signing.create_transaction"))]
@@ -997,15 +998,10 @@ where
                 v01::HostCreateTransactionError::PermissionDenied,
             )));
         }
-        match self.chain_submit_decision().await {
-            Ok(Decision::Granted) => {}
-            Ok(Decision::Denied) => {
-                return Err(CallError::Domain(HostCreateTransactionError::V1(
-                    v01::HostCreateTransactionError::PermissionDenied,
-                )));
-            }
-            Err(reason) => return Err(CallError::HostFailure { reason }),
-        }
+        self.require_chain_submit(HostCreateTransactionError::V1(
+            v01::HostCreateTransactionError::PermissionDenied,
+        ))
+        .await?;
         let Some(session) = self.session_state.current() else {
             return Err(CallError::Domain(HostCreateTransactionError::V1(
                 v01::HostCreateTransactionError::Rejected,
@@ -1030,16 +1026,13 @@ where
             .submit_sso_remote_message(cx, &session, "create-transaction", message)
             .await
             .map_err(|reason| {
-                CallError::Domain(HostCreateTransactionError::V1(
-                    v01::HostCreateTransactionError::Unknown { reason },
-                ))
+                transaction_unknown_call_error(HostCreateTransactionError::V1, reason)
             })?;
         let SsoRemoteResponse::CreateTransaction(response) = response else {
-            return Err(CallError::Domain(HostCreateTransactionError::V1(
-                v01::HostCreateTransactionError::Unknown {
-                    reason: "Unexpected SSO response for transaction request".to_string(),
-                },
-            )));
+            return Err(transaction_unknown_call_error(
+                HostCreateTransactionError::V1,
+                UNEXPECTED_SSO_TRANSACTION_RESPONSE,
+            ));
         };
         response
             .signed_transaction
@@ -1049,9 +1042,7 @@ where
                 })
             })
             .map_err(|reason| {
-                CallError::Domain(HostCreateTransactionError::V1(
-                    v01::HostCreateTransactionError::Unknown { reason },
-                ))
+                transaction_unknown_call_error(HostCreateTransactionError::V1, reason)
             })
     }
 
@@ -1072,17 +1063,10 @@ where
         };
         self.validate_legacy_address_signer(&session, &inner.signer)
             .map_err(|err| CallError::Domain(HostSignPayloadWithLegacyAccountError::V1(err)))?;
-        match self.chain_submit_decision().await {
-            Ok(Decision::Granted) => {}
-            Ok(Decision::Denied) => {
-                return Err(CallError::Domain(
-                    HostSignPayloadWithLegacyAccountError::V1(
-                        v01::HostSignPayloadError::PermissionDenied,
-                    ),
-                ));
-            }
-            Err(reason) => return Err(CallError::HostFailure { reason }),
-        }
+        self.require_chain_submit(HostSignPayloadWithLegacyAccountError::V1(
+            v01::HostSignPayloadError::PermissionDenied,
+        ))
+        .await?;
         let confirmed = PlatformUserConfirmation::confirm_sign_payload(
             self.platform.as_ref(),
             inner.clone().encode(),
@@ -1111,15 +1095,12 @@ where
             .submit_sso_remote_message(cx, &session, "legacy-sign-payload", message)
             .await
             .map_err(|reason| {
-                CallError::Domain(HostSignPayloadWithLegacyAccountError::V1(
-                    v01::HostSignPayloadError::Unknown { reason },
-                ))
+                signing_unknown_call_error(HostSignPayloadWithLegacyAccountError::V1, reason)
             })?;
         let SsoRemoteResponse::Sign(response) = response else {
-            return Err(CallError::Domain(
-                HostSignPayloadWithLegacyAccountError::V1(v01::HostSignPayloadError::Unknown {
-                    reason: "Unexpected SSO response for signing request".to_string(),
-                }),
+            return Err(signing_unknown_call_error(
+                HostSignPayloadWithLegacyAccountError::V1,
+                UNEXPECTED_SSO_SIGNING_RESPONSE,
             ));
         };
         response
@@ -1131,9 +1112,7 @@ where
                 })
             })
             .map_err(|reason| {
-                CallError::Domain(HostSignPayloadWithLegacyAccountError::V1(
-                    v01::HostSignPayloadError::Unknown { reason },
-                ))
+                signing_unknown_call_error(HostSignPayloadWithLegacyAccountError::V1, reason)
             })
     }
 
@@ -1152,15 +1131,10 @@ where
         };
         self.validate_legacy_address_signer(&session, &inner.signer)
             .map_err(|err| CallError::Domain(HostSignRawWithLegacyAccountError::V1(err)))?;
-        match self.chain_submit_decision().await {
-            Ok(Decision::Granted) => {}
-            Ok(Decision::Denied) => {
-                return Err(CallError::Domain(HostSignRawWithLegacyAccountError::V1(
-                    v01::HostSignPayloadError::PermissionDenied,
-                )));
-            }
-            Err(reason) => return Err(CallError::HostFailure { reason }),
-        }
+        self.require_chain_submit(HostSignRawWithLegacyAccountError::V1(
+            v01::HostSignPayloadError::PermissionDenied,
+        ))
+        .await?;
         let confirmed = PlatformUserConfirmation::confirm_sign_raw(
             self.platform.as_ref(),
             inner.clone().encode(),
@@ -1189,16 +1163,13 @@ where
             .submit_sso_remote_message(cx, &session, "legacy-sign-raw", message)
             .await
             .map_err(|reason| {
-                CallError::Domain(HostSignRawWithLegacyAccountError::V1(
-                    v01::HostSignPayloadError::Unknown { reason },
-                ))
+                signing_unknown_call_error(HostSignRawWithLegacyAccountError::V1, reason)
             })?;
         let SsoRemoteResponse::Sign(response) = response else {
-            return Err(CallError::Domain(HostSignRawWithLegacyAccountError::V1(
-                v01::HostSignPayloadError::Unknown {
-                    reason: "Unexpected SSO response for signing request".to_string(),
-                },
-            )));
+            return Err(signing_unknown_call_error(
+                HostSignRawWithLegacyAccountError::V1,
+                UNEXPECTED_SSO_SIGNING_RESPONSE,
+            ));
         };
         response
             .payload
@@ -1209,9 +1180,7 @@ where
                 })
             })
             .map_err(|reason| {
-                CallError::Domain(HostSignRawWithLegacyAccountError::V1(
-                    v01::HostSignPayloadError::Unknown { reason },
-                ))
+                signing_unknown_call_error(HostSignRawWithLegacyAccountError::V1, reason)
             })
     }
 
@@ -1236,17 +1205,10 @@ where
             .map_err(|err| {
                 CallError::Domain(HostCreateTransactionWithLegacyAccountError::V1(err))
             })?;
-        match self.chain_submit_decision().await {
-            Ok(Decision::Granted) => {}
-            Ok(Decision::Denied) => {
-                return Err(CallError::Domain(
-                    HostCreateTransactionWithLegacyAccountError::V1(
-                        v01::HostCreateTransactionError::PermissionDenied,
-                    ),
-                ));
-            }
-            Err(reason) => return Err(CallError::HostFailure { reason }),
-        }
+        self.require_chain_submit(HostCreateTransactionWithLegacyAccountError::V1(
+            v01::HostCreateTransactionError::PermissionDenied,
+        ))
+        .await?;
         let confirmed = PlatformUserConfirmation::confirm_create_transaction(
             self.platform.as_ref(),
             inner.clone().encode(),
@@ -1280,17 +1242,15 @@ where
             .submit_sso_remote_message(cx, &session, "legacy-create-transaction", message)
             .await
             .map_err(|reason| {
-                CallError::Domain(HostCreateTransactionWithLegacyAccountError::V1(
-                    v01::HostCreateTransactionError::Unknown { reason },
-                ))
+                transaction_unknown_call_error(
+                    HostCreateTransactionWithLegacyAccountError::V1,
+                    reason,
+                )
             })?;
         let SsoRemoteResponse::CreateTransaction(response) = response else {
-            return Err(CallError::Domain(
-                HostCreateTransactionWithLegacyAccountError::V1(
-                    v01::HostCreateTransactionError::Unknown {
-                        reason: "Unexpected SSO response for transaction request".to_string(),
-                    },
-                ),
+            return Err(transaction_unknown_call_error(
+                HostCreateTransactionWithLegacyAccountError::V1,
+                UNEXPECTED_SSO_TRANSACTION_RESPONSE,
             ));
         };
         response
@@ -1301,9 +1261,10 @@ where
                 )
             })
             .map_err(|reason| {
-                CallError::Domain(HostCreateTransactionWithLegacyAccountError::V1(
-                    v01::HostCreateTransactionError::Unknown { reason },
-                ))
+                transaction_unknown_call_error(
+                    HostCreateTransactionWithLegacyAccountError::V1,
+                    reason,
+                )
             })
     }
 }
