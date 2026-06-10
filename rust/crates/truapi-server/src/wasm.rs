@@ -1073,6 +1073,9 @@ impl WasmTrUApiCore {
     /// Tear down the bridge. Invokes the JS-side `dispose` callback so the
     /// host can drop its end of the wiring.
     pub fn dispose(&self) -> Result<(), JsValue> {
+        if self.inner.disposed.get() {
+            return Ok(());
+        }
         if self.inner.disposing.replace(true) {
             return Ok(());
         }

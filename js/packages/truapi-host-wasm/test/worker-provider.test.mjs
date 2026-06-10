@@ -344,6 +344,13 @@ test("worker fault terminates the worker and runs the full teardown", async () =
   // The fault teardown is terminal; a second fault is a no-op.
   worker.emitError("again");
   assert.equal(closes.length, 1);
+
+  let lateClose = null;
+  provider.subscribeClose((error) => {
+    lateClose = error;
+  });
+  assert.ok(lateClose instanceof Error);
+  assert.match(lateClose.message, /boom/);
 });
 
 test("worker provider routes payload-carrying subscriptions by name", async () => {

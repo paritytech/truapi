@@ -32,6 +32,7 @@ interface WorkerProviderState {
     number,
     { resolve: () => void; reject: (error: Error) => void }
   >;
+  closedError: Error | null;
   logLevel: LogLevel;
   disposed: boolean;
 }
@@ -320,6 +321,7 @@ function teardown(
 ): void {
   if (state.disposed) return;
   state.disposed = true;
+  state.closedError = error;
   rejectPendingDisconnects(state, error);
   for (const fn of state.subscriptionDisposers.values()) {
     try {
@@ -339,7 +341,6 @@ function teardown(
   state.chainConnections.clear();
   if (fault) {
     state.worker.terminate();
-    for (const listener of [...state.closeListeners]) listener(error);
   } else {
     try {
       const post: MainToWorker = { kind: "dispose" };
@@ -350,6 +351,7 @@ function teardown(
     // Give the worker a tick to free the core before terminating.
     setTimeout(() => state.worker.terminate(), 0);
   }
+  for (const listener of [...state.closeListeners]) listener(error);
   state.listeners.clear();
   state.closeListeners.clear();
 }
@@ -408,6 +410,7 @@ export function createWebWorkerProvider(
       subscriptionDisposers: new Map(),
       chainConnections: new Map(),
       pendingDisconnects: new Map(),
+      closedError: null,
       logLevel: devLogLevelOverride ?? options.logLevel ?? "off",
       disposed: false,
     };
@@ -560,6 +563,10 @@ function buildProvider(state: WorkerProviderState): TrUApiHostWasmProvider {
       };
     },
     subscribeClose(callback) {
+      if (state.closedError) {
+        callback(state.closedError);
+        return () => {};
+      }
       state.closeListeners.add(callback);
       return () => {
         state.closeListeners.delete(callback);

@@ -135,9 +135,19 @@ test("createNodeWasmProvider dispose is idempotent", async () => {
   const provider = await createNodeWasmProvider(makeCallbacks(), {
     runtimeConfig: runtimeConfig(),
   });
+  const closes = [];
+  provider.subscribeClose((error) => closes.push(error));
   provider.dispose();
   // Second call must not throw.
   provider.dispose();
+  assert.equal(closes.length, 1);
+  assert.match(closes[0].message, /disposed/);
+
+  let lateClose = null;
+  provider.subscribeClose((error) => {
+    lateClose = error;
+  });
+  assert.ok(lateClose instanceof Error);
 });
 
 test("createNodeWasmProvider round-trips a featureSupported request through the WASM core", async () => {
@@ -204,6 +214,12 @@ test("createNodeWasmProvider surfaces a rejected receiveFromProduct through subs
   provider.postMessage(new Uint8Array([0xff, 0xff, 0xff, 0xff, 0xff]));
   await new Promise((r) => setTimeout(r, 50));
   assert.equal(closes.length, 1, "close listener does not fire again");
+
+  let lateClose = null;
+  provider.subscribeClose((error) => {
+    lateClose = error;
+  });
+  assert.ok(lateClose instanceof Error);
 
   provider.dispose();
 });

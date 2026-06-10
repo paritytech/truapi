@@ -161,8 +161,8 @@ export function createUnavailableCallbacks(): Omit<
     remotePermission: async () => false,
     featureSupported: unavailable("featureSupported"),
     localStorageRead: async () => undefined,
-    localStorageWrite: async () => {},
-    localStorageClear: async () => {},
+    localStorageWrite: unavailable("localStorageWrite"),
+    localStorageClear: unavailable("localStorageClear"),
     confirmPreimageSubmit: unavailable("confirmPreimageSubmit"),
     submitPreimage: unavailable("submitPreimage"),
     subscribeSessionStore: emitCurrentTick,
@@ -255,7 +255,10 @@ export function createWasmProvider(
       };
     },
     subscribeClose(callback) {
-      if (closedError) return () => {};
+      if (closedError) {
+        callback(closedError);
+        return () => {};
+      }
       closeListeners.add(callback);
       return () => {
         closeListeners.delete(callback);
@@ -281,8 +284,7 @@ export function createWasmProvider(
       } catch {
         // already freed
       }
-      listeners.clear();
-      closeListeners.clear();
+      close(new Error("wasm provider disposed"));
       partial.dispose?.();
     },
   };

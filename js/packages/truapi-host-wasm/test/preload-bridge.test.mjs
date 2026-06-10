@@ -89,6 +89,12 @@ test("createElectronProvider notifies close subscribers when the port closes", (
   assert.equal(closes.length, 1);
   assert.ok(closes[0] instanceof Error);
 
+  let lateClose = null;
+  provider.subscribeClose((error) => {
+    lateClose = error;
+  });
+  assert.ok(lateClose instanceof Error);
+
   provider.dispose();
 });
 
@@ -100,6 +106,11 @@ test("dispose removes both port listeners and blocks further traffic", () => {
   provider.subscribe((message) => received.push(message));
 
   provider.dispose();
+  let lateClose = null;
+  provider.subscribeClose((error) => {
+    lateClose = error;
+  });
+  assert.ok(lateClose instanceof Error);
   assert.deepEqual(
     [...fake.offCalls].sort(),
     ["close", "message"],

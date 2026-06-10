@@ -8,13 +8,30 @@ import {
   RemotePermissionRequest,
 } from "@parity/truapi";
 
-import { createWasmRawCallbacks } from "../dist/index.js";
+import {
+  createUnavailableCallbacks,
+  createWasmRawCallbacks,
+} from "../dist/index.js";
 
 const GENESIS = `0x${"11".repeat(32)}`;
 
 function settle() {
   return new Promise((resolve) => setImmediate(resolve));
 }
+
+test("createUnavailableCallbacks rejects storage write paths", async () => {
+  const callbacks = createUnavailableCallbacks();
+
+  await assert.rejects(
+    () => callbacks.localStorageWrite("key", new Uint8Array([1])),
+    /localStorageWrite unavailable/,
+  );
+  await assert.rejects(
+    () => callbacks.localStorageClear("key"),
+    /localStorageClear unavailable/,
+  );
+  assert.equal(await callbacks.localStorageRead("key"), undefined);
+});
 
 test("createWasmRawCallbacks decodes SCALE request callbacks into typed host calls", async () => {
   const writes = [];

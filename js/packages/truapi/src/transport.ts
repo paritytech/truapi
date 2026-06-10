@@ -283,6 +283,10 @@ export interface Provider {
 
   /**
    * Register a callback for provider-level close or failure events.
+   *
+   * Providers keep a terminal close reason. The callback fires at most once
+   * for an active subscription, and fires immediately when registered after
+   * the provider has already closed.
    **/
   subscribeClose?(callback: (error: Error) => void): () => void;
 
