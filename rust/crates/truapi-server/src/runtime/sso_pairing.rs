@@ -389,18 +389,14 @@ fn parse_pairing_query_subscribe_ack(
     frame: &str,
     pending_query_request_id: Option<&str>,
 ) -> Result<Option<(String, String)>, String> {
-    if let Some(query_request_id) = pending_query_request_id
-        && let Some(id) =
-            parse_subscribe_ack(frame, query_request_id).map_err(|err| err.to_string())?
-    {
-        return Ok(Some((query_request_id.to_string(), id)));
-    }
-
     let value: serde_json::Value = serde_json::from_str(frame).map_err(|err| err.to_string())?;
     let Some(request_id) = value.get("id").and_then(serde_json::Value::as_str) else {
         return Ok(None);
     };
-    if !request_id.starts_with(&format!("{PAIRING_SUBSCRIBE_REQUEST_ID}:query:")) {
+    let is_pending_query = pending_query_request_id == Some(request_id);
+    let is_pairing_query =
+        request_id.starts_with(&format!("{PAIRING_SUBSCRIBE_REQUEST_ID}:query:"));
+    if !is_pending_query && !is_pairing_query {
         return Ok(None);
     }
     if value
@@ -421,7 +417,7 @@ fn parse_pairing_query_subscribe_ack(
             .to_string());
     }
     let Some(remote_id) = value.get("result").and_then(serde_json::Value::as_str) else {
-        return Err("missing query subscribe result".to_string());
+        return Ok(None);
     };
     Ok(Some((request_id.to_string(), remote_id.to_string())))
 }
@@ -746,6 +742,20 @@ mod tests {
     #[test]
     fn pairing_query_parser_ignores_echoed_subscribe_request() {
         let frame = r#"{"jsonrpc":"2.0","id":"truapi:sso-pairing:1:query:7","method":"statement_subscribeStatement","params":[{"matchAll":["0x0707070707070707070707070707070707070707070707070707070707070707"]}]}"#;
+
+        assert_eq!(
+            parse_pairing_query_subscribe_ack(frame, Some("truapi:sso-pairing:1:query:7")).unwrap(),
+            None
+        );
+        assert_eq!(
+            parse_pairing_query_subscribe_ack(frame, None).unwrap(),
+            None
+        );
+    }
+
+    #[test]
+    fn pairing_query_parser_ignores_no_result_subscribe_response() {
+        let frame = r#"{"jsonrpc":"2.0","id":"truapi:sso-pairing:1:query:7"}"#;
 
         assert_eq!(
             parse_pairing_query_subscribe_ack(frame, Some("truapi:sso-pairing:1:query:7")).unwrap(),
