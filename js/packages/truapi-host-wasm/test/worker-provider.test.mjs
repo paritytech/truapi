@@ -89,9 +89,13 @@ async function settle() {
 }
 
 async function readyProvider(worker, options = {}) {
-  const providerPromise = createWebWorkerProvider(worker, makeCallbacks(), {
+  const {
+    createWebWorkerProvider: createProvider = createWebWorkerProvider,
+    ...providerOptions
+  } = options;
+  const providerPromise = createProvider(worker, makeCallbacks(), {
     runtimeConfig: runtimeConfig(),
-    ...options,
+    ...providerOptions,
   });
   worker.emit({ kind: "loaded" });
   worker.emit({ kind: "ready" });
@@ -169,14 +173,24 @@ test("dev global setLogLevel updates every live worker provider", async () => {
 test("dev global setLogLevel applies to providers created later", async () => {
   const previous = globalThis.__truapi;
   delete globalThis.__truapi;
-  const firstWorker = new FakeWorker();
-  const first = await readyProvider(firstWorker);
+  const moduleUrl = `../dist/web/create-worker-host-runtime.js?dev-global-${Date.now()}`;
+  const { createWebWorkerProvider: freshCreateWebWorkerProvider } =
+    await import(moduleUrl);
 
+  assert.equal(typeof globalThis.__truapi.setLogLevel, "function");
+  assert.equal(globalThis.__truapi.getProviderCount(), 0);
   globalThis.__truapi.setLogLevel("trace");
+
+  const firstWorker = new FakeWorker();
+  const first = await readyProvider(firstWorker, {
+    createWebWorkerProvider: freshCreateWebWorkerProvider,
+  });
   first.dispose();
 
   const secondWorker = new FakeWorker();
-  const second = await readyProvider(secondWorker);
+  const second = await readyProvider(secondWorker, {
+    createWebWorkerProvider: freshCreateWebWorkerProvider,
+  });
 
   assert.equal(secondWorker.messages[0].kind, "init");
   assert.equal(secondWorker.messages[0].logLevel, "trace");

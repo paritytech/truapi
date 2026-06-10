@@ -618,13 +618,17 @@ function buildProvider(state: WorkerProviderState): TrUApiHostWasmProvider {
  * Pair with the DevTools console "Verbose" level to surface debug/trace.
  */
 function exposeDevGlobal(provider: TrUApiHostWasmProvider): void {
-  const target = globalThis as {
-    __truapi?: TrUApiDevConsole;
-  };
   devGlobalProviders.add(provider);
   if (devLogLevelOverride !== null) {
     provider.setLogLevel?.(devLogLevelOverride);
   }
+  publishDevGlobal();
+}
+
+function publishDevGlobal(): void {
+  const target = globalThis as {
+    __truapi?: TrUApiDevConsole;
+  };
   target.__truapi = {
     setLogLevel(level: LogLevel): void {
       devLogLevelOverride = level;
@@ -643,3 +647,5 @@ function exposeDevGlobal(provider: TrUApiHostWasmProvider): void {
     },
   };
 }
+
+publishDevGlobal();
