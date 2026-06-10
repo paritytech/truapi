@@ -38,6 +38,8 @@ function debugLoggingEnabled(state: WorkerProviderState): boolean {
 }
 
 let nextDisconnectRequestId = 0;
+let devLogLevelOverride: LogLevel | null = null;
+const devGlobalProviders = new Set<TrUApiHostWasmProvider>();
 
 const OPTIONAL_CALLBACK_NAMES: readonly OptionalCallbackName[] = [
   "cancelNotification",
@@ -419,7 +421,7 @@ export function createWebWorkerProvider(
       subscriptionDisposers: new Map(),
       chainConnections: new Map(),
       pendingDisconnects: new Map(),
-      logLevel: options.logLevel ?? "off",
+      logLevel: devLogLevelOverride ?? options.logLevel ?? "off",
       disposed: false,
     };
 
@@ -510,7 +512,7 @@ export function createWebWorkerProvider(
       if (msg.kind === "loaded") {
         const init: MainToWorker = {
           kind: "init",
-          logLevel: options.logLevel ?? "off",
+          logLevel: devLogLevelOverride ?? options.logLevel ?? "off",
           runtimeConfig: options.runtimeConfig,
           optionalCallbacks: optionalCallbacks(callbacks),
           optionalSubscriptions: optionalSubscriptions(callbacks),
@@ -555,7 +557,7 @@ export function createWebWorkerProvider(
 }
 
 function buildProvider(state: WorkerProviderState): TrUApiHostWasmProvider {
-  return {
+  const provider: TrUApiHostWasmProvider = {
     postMessage(bytes: Uint8Array): void {
       if (state.disposed) return;
       const post: MainToWorker = { kind: "frame", bytes };
@@ -597,9 +599,11 @@ function buildProvider(state: WorkerProviderState): TrUApiHostWasmProvider {
       state.worker.postMessage(post);
     },
     dispose() {
+      devGlobalProviders.delete(provider);
       teardown(state, new Error("provider disposed"), false);
     },
   };
+  return provider;
 }
 
 /**
@@ -611,9 +615,16 @@ function exposeDevGlobal(provider: TrUApiHostWasmProvider): void {
   const target = globalThis as {
     __truapi?: { setLogLevel(level: LogLevel): void };
   };
+  devGlobalProviders.add(provider);
+  if (devLogLevelOverride !== null) {
+    provider.setLogLevel?.(devLogLevelOverride);
+  }
   target.__truapi = {
     setLogLevel(level: LogLevel): void {
-      provider.setLogLevel?.(level);
+      devLogLevelOverride = level;
+      for (const provider of [...devGlobalProviders]) {
+        provider.setLogLevel?.(level);
+      }
     },
   };
 }

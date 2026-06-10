@@ -88,6 +88,16 @@ async function settle() {
   await new Promise((resolve) => setImmediate(resolve));
 }
 
+async function readyProvider(worker, options = {}) {
+  const providerPromise = createWebWorkerProvider(worker, makeCallbacks(), {
+    runtimeConfig: runtimeConfig(),
+    ...options,
+  });
+  worker.emit({ kind: "loaded" });
+  worker.emit({ kind: "ready" });
+  return providerPromise;
+}
+
 test("createWebWorkerProvider advertises only supplied optional hooks", async () => {
   const worker = new FakeWorker();
   const config = runtimeConfig();
@@ -123,6 +133,63 @@ test("createWebWorkerProvider advertises only supplied optional hooks", async ()
   assert.equal(typeof provider.disconnect, "function");
 
   provider.dispose();
+});
+
+test("dev global setLogLevel updates every live worker provider", async () => {
+  const previous = globalThis.__truapi;
+  delete globalThis.__truapi;
+  const firstWorker = new FakeWorker();
+  const secondWorker = new FakeWorker();
+  const first = await readyProvider(firstWorker);
+  const second = await readyProvider(secondWorker);
+
+  globalThis.__truapi.setLogLevel("debug");
+
+  assert.deepEqual(firstWorker.messages.at(-1), {
+    kind: "setLogLevel",
+    level: "debug",
+  });
+  assert.deepEqual(secondWorker.messages.at(-1), {
+    kind: "setLogLevel",
+    level: "debug",
+  });
+
+  globalThis.__truapi.setLogLevel("off");
+  first.dispose();
+  second.dispose();
+  if (previous === undefined) {
+    delete globalThis.__truapi;
+  } else {
+    globalThis.__truapi = previous;
+  }
+});
+
+test("dev global setLogLevel applies to providers created later", async () => {
+  const previous = globalThis.__truapi;
+  delete globalThis.__truapi;
+  const firstWorker = new FakeWorker();
+  const first = await readyProvider(firstWorker);
+
+  globalThis.__truapi.setLogLevel("trace");
+  first.dispose();
+
+  const secondWorker = new FakeWorker();
+  const second = await readyProvider(secondWorker);
+
+  assert.equal(secondWorker.messages[0].kind, "init");
+  assert.equal(secondWorker.messages[0].logLevel, "trace");
+  assert.deepEqual(secondWorker.messages.at(-1), {
+    kind: "setLogLevel",
+    level: "trace",
+  });
+
+  second.dispose();
+  globalThis.__truapi.setLogLevel("off");
+  if (previous === undefined) {
+    delete globalThis.__truapi;
+  } else {
+    globalThis.__truapi = previous;
+  }
 });
 
 test("worker provider resolves disconnect responses", async () => {
