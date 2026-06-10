@@ -210,7 +210,7 @@ let wasm: WasmModuleShape | null = null;
     await wasm.default();
     postToMain({ kind: "loaded" });
   } catch (err) {
-    postToMain({ kind: "error", error: errorMessage(err) });
+    postToMain({ kind: "fatalError", error: errorMessage(err) });
   }
 })();
 
@@ -219,11 +219,17 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
   switch (msg.kind) {
     case "init":
       if (!wasm) {
-        postToMain({ kind: "error", error: "init received before WASM loaded" });
+        postToMain({
+          kind: "fatalError",
+          error: "init received before WASM loaded",
+        });
         break;
       }
       if (core) {
-        postToMain({ kind: "error", error: "init: core already initialized" });
+        postToMain({
+          kind: "fatalError",
+          error: "init: core already initialized",
+        });
         break;
       }
       wasm.setLogLevel?.(msg.logLevel);
@@ -231,7 +237,7 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
         core = new wasm.WasmTrUApiCore(buildRawCallbacks(msg), msg.runtimeConfig);
         postToMain({ kind: "ready" });
       } catch (err) {
-        postToMain({ kind: "error", error: `init: ${errorMessage(err)}` });
+        postToMain({ kind: "fatalError", error: `init: ${errorMessage(err)}` });
       }
       break;
     case "setLogLevel":
@@ -278,7 +284,7 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
         core?.dispose();
         core?.free();
       } catch (err) {
-        postToMain({ kind: "error", error: `dispose: ${errorMessage(err)}` });
+        postToMain({ kind: "disposeError", error: errorMessage(err) });
       }
       core = null;
       break;
@@ -316,15 +322,18 @@ async function handleDisconnect(requestId: number): Promise<void> {
 
 async function handleFrame(bytes: Uint8Array): Promise<void> {
   if (!core) {
-    postToMain({ kind: "error", error: "frame received before core is ready" });
+    postToMain({
+      kind: "frameError",
+      error: "frame received before core is ready",
+    });
     return;
   }
   try {
     await core.receiveFromProduct(bytes);
   } catch (err) {
     postToMain({
-      kind: "error",
-      error: `receiveFromProduct: ${errorMessage(err)}`,
+      kind: "frameError",
+      error: errorMessage(err),
     });
   }
 }

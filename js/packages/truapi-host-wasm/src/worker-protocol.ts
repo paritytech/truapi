@@ -98,7 +98,9 @@ export type MainToWorker =
 export type WorkerToMain =
   | { kind: "loaded" }
   | { kind: "ready" }
-  | { kind: "error"; error: string }
+  | { kind: "fatalError"; error: string }
+  | { kind: "frameError"; error: string }
+  | { kind: "disposeError"; error: string }
   | { kind: "frame"; bytes: Uint8Array }
   | { kind: "disconnectResponse"; requestId: number; ok: true }
   | { kind: "disconnectResponse"; requestId: number; ok: false; error: string }

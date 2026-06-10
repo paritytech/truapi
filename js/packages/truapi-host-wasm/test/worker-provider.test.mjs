@@ -353,6 +353,37 @@ test("worker fault terminates the worker and runs the full teardown", async () =
   assert.match(lateClose.message, /boom/);
 });
 
+test("worker fatalError during init rejects provider creation", async () => {
+  const worker = new FakeWorker();
+  const providerPromise = createWebWorkerProvider(worker, makeCallbacks(), {
+    runtimeConfig: runtimeConfig(),
+  });
+
+  worker.emit({ kind: "fatalError", error: "bad wasm" });
+
+  await assert.rejects(providerPromise, /worker init reported error: bad wasm/);
+  assert.equal(worker.terminated, true);
+});
+
+test("worker frameError after init closes the provider", async () => {
+  const worker = new FakeWorker();
+  const provider = await readyProvider(worker);
+  const closes = [];
+  provider.subscribeClose((error) => closes.push(error));
+
+  worker.emit({ kind: "frameError", error: "bad frame" });
+
+  assert.equal(worker.terminated, true);
+  assert.equal(closes.length, 1);
+  assert.match(closes[0].message, /worker frame error: bad frame/);
+
+  let lateClose = null;
+  provider.subscribeClose((error) => {
+    lateClose = error;
+  });
+  assert.ok(lateClose instanceof Error);
+});
+
 test("worker provider routes payload-carrying subscriptions by name", async () => {
   const worker = new FakeWorker();
   const keys = [];

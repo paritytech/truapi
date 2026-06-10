@@ -422,10 +422,16 @@ export function createWebWorkerProvider(
           break;
         case "ready":
           break;
-        case "error":
+        case "fatalError":
           console.error("[truapi worker]", msg.error);
-          for (const listener of [...state.closeListeners])
-            listener(new Error(msg.error));
+          notifyFault(new Error(`worker fatal error: ${msg.error}`));
+          break;
+        case "frameError":
+          console.error("[truapi worker]", msg.error);
+          notifyFault(new Error(`worker frame error: ${msg.error}`));
+          break;
+        case "disposeError":
+          console.warn("[truapi worker] dispose:", msg.error);
           break;
         case "frame":
           if (debugLoggingEnabled(state)) {
@@ -519,7 +525,7 @@ export function createWebWorkerProvider(
         const provider = buildProvider(state);
         exposeDevGlobal(provider);
         resolve(provider);
-      } else if (msg.kind === "error") {
+      } else if (msg.kind === "fatalError") {
         cleanupInit();
         worker.terminate();
         reject(new Error(`worker init reported error: ${msg.error}`));
