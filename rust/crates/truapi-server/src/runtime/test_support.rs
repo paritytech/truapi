@@ -1,0 +1,932 @@
+//! Shared fixtures for the runtime test modules: a stub platform, a
+//! recording json-rpc connection, and SSO statement/frame builders.
+
+use std::sync::{Arc, Mutex};
+
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Duration;
+#[cfg(target_arch = "wasm32")]
+use web_time::Duration;
+
+use super::sso_pairing::PAIRING_SUBSCRIBE_REQUEST_ID;
+use super::sso_remote::SharedRemoteSubscriptionId;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::chain_runtime::thread_per_task_spawner;
+use crate::subscription::Spawner;
+
+use aes_gcm::aead::{Aead, KeyInit};
+use aes_gcm::{Aes256Gcm, Nonce};
+use futures::StreamExt;
+use futures::stream::{self, BoxStream};
+use hkdf::Hkdf;
+use p256::PublicKey as P256PublicKey;
+use p256::SecretKey as P256SecretKey;
+use p256::ecdh::diffie_hellman;
+use p256::elliptic_curve::sec1::ToEncodedPoint;
+use parity_scale_codec::{Decode, Encode};
+use schnorrkel::{ExpansionMode, MiniSecretKey};
+use sha2::Sha256;
+use truapi::v01;
+use truapi::versioned::account::HostAccountGetAliasRequest;
+use truapi::versioned::resource_allocation::HostRequestResourceAllocationRequest;
+use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
+use truapi_platform::{
+    ChainProvider, Features as PlatformFeatures, JsonRpcConnection,
+    Navigation as PlatformNavigation, Notifications as PlatformNotifications, PairingPresenter,
+    Permissions as PlatformPermissions, PreimageHost, RuntimeConfig, SessionStore, SessionUiInfo,
+    Storage as PlatformStorage, ThemeHost, UserConfirmation,
+};
+
+pub(super) fn test_spawner() -> Spawner {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        thread_per_task_spawner()
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        immediate_spawner()
+    }
+}
+
+pub(super) fn immediate_spawner() -> Spawner {
+    Arc::new(futures::executor::block_on)
+}
+
+pub(super) fn remote_subscription_slot() -> SharedRemoteSubscriptionId {
+    Arc::new(Mutex::new(None))
+}
+
+/// Minimal Platform impl that only answers `feature_supported`. Every
+/// other callback returns a unit value or empty stream, so the runtime
+/// can exercise its delegation paths without pulling in a real backend.
+pub(super) struct StubPlatform {
+    pub(super) remote_permission_granted: bool,
+    pub(super) account_alias_confirmed: bool,
+    pub(super) account_alias_error: Option<&'static str>,
+    pub(super) sign_payload_confirmed: bool,
+    pub(super) sign_payload_error: Option<&'static str>,
+    pub(super) sign_raw_confirmed: bool,
+    pub(super) sign_raw_error: Option<&'static str>,
+    pub(super) create_transaction_confirmed: bool,
+    pub(super) create_transaction_error: Option<&'static str>,
+    pub(super) resource_allocation_confirmed: bool,
+    pub(super) resource_allocation_error: Option<&'static str>,
+    pub(super) session_blob: Option<Vec<u8>>,
+    pub(super) session_error: Option<&'static str>,
+    pub(super) session_clears: Arc<Mutex<usize>>,
+    pub(super) session_writes: Arc<Mutex<Vec<Vec<u8>>>>,
+    pub(super) session_ui_events: Arc<Mutex<Vec<SessionUiInfo>>>,
+    pub(super) pairing_error: Option<&'static str>,
+    pub(super) pairing_pending: bool,
+    pub(super) presented_pairings: Arc<Mutex<Vec<String>>>,
+    pub(super) pairing_success_response: bool,
+    /// Deliver the pairing success statement only through a snapshot
+    /// query page; the live subscription stays silent.
+    pub(super) pairing_success_via_query: bool,
+    pub(super) notification_id: v01::NotificationId,
+    pub(super) pushed_notifications: Arc<Mutex<Vec<v01::HostPushNotificationRequest>>>,
+    pub(super) cancelled_notifications: Arc<Mutex<Vec<v01::NotificationId>>>,
+    pub(super) sent_rpc: Arc<Mutex<Vec<String>>>,
+    pub(super) rpc_responses: Vec<String>,
+    pub(super) chain_connect_error: Option<&'static str>,
+    pub(super) local_storage: Arc<Mutex<std::collections::HashMap<String, Vec<u8>>>>,
+    /// When set, `clear_session` notifies the session-store subscription
+    /// through this sender, mimicking native hosts.
+    pub(super) session_store_tick_tx:
+        Option<futures::channel::mpsc::UnboundedSender<SessionStoreTick>>,
+    /// When set, `subscribe_session_store` yields this channel instead of
+    /// the default single tick.
+    pub(super) session_store_ticks:
+        Arc<Mutex<Option<futures::channel::mpsc::UnboundedReceiver<SessionStoreTick>>>>,
+}
+
+pub(super) type SessionStoreTick = Result<(), v01::GenericError>;
+
+impl Default for StubPlatform {
+    fn default() -> Self {
+        Self {
+            remote_permission_granted: true,
+            account_alias_confirmed: false,
+            account_alias_error: None,
+            sign_payload_confirmed: false,
+            sign_payload_error: None,
+            sign_raw_confirmed: false,
+            sign_raw_error: None,
+            create_transaction_confirmed: false,
+            create_transaction_error: None,
+            resource_allocation_confirmed: false,
+            resource_allocation_error: None,
+            session_blob: None,
+            session_error: None,
+            session_clears: Arc::new(Mutex::new(0)),
+            session_writes: Arc::new(Mutex::new(Vec::new())),
+            session_ui_events: Arc::new(Mutex::new(Vec::new())),
+            pairing_error: None,
+            pairing_pending: false,
+            presented_pairings: Arc::new(Mutex::new(Vec::new())),
+            pairing_success_response: false,
+            pairing_success_via_query: false,
+            notification_id: 0,
+            pushed_notifications: Arc::new(Mutex::new(Vec::new())),
+            cancelled_notifications: Arc::new(Mutex::new(Vec::new())),
+            sent_rpc: Arc::new(Mutex::new(Vec::new())),
+            rpc_responses: Vec::new(),
+            chain_connect_error: None,
+            local_storage: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            session_store_tick_tx: None,
+            session_store_ticks: Arc::new(Mutex::new(None)),
+        }
+    }
+}
+
+pub(super) fn stub_platform() -> Arc<StubPlatform> {
+    Arc::new(StubPlatform::default())
+}
+
+pub(super) fn runtime_config(product_id: &str) -> RuntimeConfig {
+    RuntimeConfig {
+        product_label: product_id.trim_end_matches(".dot").to_string(),
+        product_id: product_id.to_string(),
+        site_id: "test".to_string(),
+        host_name: "Polkadot Web".to_string(),
+        host_icon: Some("https://example.invalid/dotli.png".to_string()),
+        host_version: None,
+        platform_type: None,
+        platform_version: None,
+        people_chain_genesis_hash: [0; 32],
+        pairing_deeplink_scheme: truapi_platform::PairingDeeplinkScheme::PolkadotApp,
+    }
+}
+
+pub(super) fn session_info() -> crate::host_logic::session::SessionInfo {
+    crate::host_logic::session::SessionInfo {
+        public_key: [
+            0x80, 0x05, 0x28, 0xc9, 0x55, 0x87, 0x3e, 0x4c, 0x78, 0xb7, 0xdf, 0x24, 0xf7, 0x1d,
+            0xb8, 0xf5, 0x81, 0xaa, 0x99, 0xe3, 0x49, 0x3b, 0xf4, 0x96, 0xed, 0xf1, 0x51, 0xab,
+            0xc1, 0xd7, 0x20, 0x23,
+        ],
+        sso: None,
+        root_entropy_source: Some([
+            0x15, 0xcb, 0x94, 0x34, 0x84, 0x0b, 0x56, 0xbe, 0x1f, 0xdd, 0x91, 0xc4, 0x6a, 0x13,
+            0xf5, 0x20, 0xf4, 0x91, 0x61, 0x2e, 0xa5, 0xd6, 0x06, 0x92, 0x0d, 0x91, 0x38, 0xe8,
+            0xbd, 0xd6, 0x3c, 0xb0,
+        ]),
+        identity_account_id: Some([
+            0x80, 0x05, 0x28, 0xc9, 0x55, 0x87, 0x3e, 0x4c, 0x78, 0xb7, 0xdf, 0x24, 0xf7, 0x1d,
+            0xb8, 0xf5, 0x81, 0xaa, 0x99, 0xe3, 0x49, 0x3b, 0xf4, 0x96, 0xed, 0xf1, 0x51, 0xab,
+            0xc1, 0xd7, 0x20, 0x23,
+        ]),
+        lite_username: Some("alice".to_string()),
+        full_username: Some("Alice Smith".to_string()),
+    }
+}
+
+pub(super) fn sso_session_info() -> crate::host_logic::session::SessionInfo {
+    let mut session = session_info();
+    let mini_secret = MiniSecretKey::from_bytes(&[7; 32]).unwrap();
+    let keypair = mini_secret.expand_to_keypair(ExpansionMode::Ed25519);
+    let (_, peer_public_key) = peer_statement_keypair();
+    let core_secret = P256SecretKey::from_slice(&[1; 32]).unwrap();
+    let peer_secret = P256SecretKey::from_slice(&[2; 32]).unwrap();
+    session.sso = Some(crate::host_logic::session::SsoSessionInfo {
+        ss_secret: keypair.secret.to_bytes(),
+        ss_public_key: keypair.public.to_bytes(),
+        enc_secret: core_secret.to_bytes().into(),
+        peer_enc_pubkey: peer_secret
+            .public_key()
+            .to_encoded_point(false)
+            .as_bytes()
+            .try_into()
+            .unwrap(),
+        identity_account_id: peer_public_key,
+        session_id_own: [4; 32],
+        session_id_peer: [5; 32],
+        request_channel: [6; 32],
+        response_channel: [7; 32],
+        peer_request_channel: [8; 32],
+    });
+    session.root_entropy_source = Some(keypair.secret.to_bytes()[..32].try_into().unwrap());
+    session
+}
+
+pub(super) fn peer_statement_keypair() -> ([u8; 64], [u8; 32]) {
+    let mini_secret = MiniSecretKey::from_bytes(&[9; 32]).unwrap();
+    let keypair = mini_secret.expand_to_keypair(ExpansionMode::Ed25519);
+    (keypair.secret.to_bytes(), keypair.public.to_bytes())
+}
+
+pub(super) fn signed_test_statement(data: Vec<u8>) -> Vec<u8> {
+    let (secret, public) = peer_statement_keypair();
+    crate::host_logic::statement_store::sign_statement_fields(
+        secret,
+        public,
+        vec![crate::host_logic::statement_store::StatementField::Data(
+            data,
+        )],
+    )
+    .unwrap()
+    .encode()
+}
+
+pub(super) fn submitted_remote_message(
+    platform: &Arc<StubPlatform>,
+    session: &crate::host_logic::session::SessionInfo,
+) -> crate::host_logic::sso_messages::RemoteMessage {
+    let sent = platform.sent_rpc.lock().expect("rpc list mutex poisoned");
+    let submit = sent
+        .iter()
+        .rev()
+        .find(|request| request.contains("\"statement_submit\""))
+        .expect("statement_submit request should be sent");
+    let value: serde_json::Value = serde_json::from_str(submit).unwrap();
+    let statement_hex = value["params"][0].as_str().unwrap();
+    let statement = hex::decode(statement_hex.strip_prefix("0x").unwrap_or(statement_hex)).unwrap();
+    let encrypted = crate::host_logic::statement_store::decode_statement_data(&statement)
+        .expect("statement data should decode");
+    let data = crate::host_logic::sso_pairing::decrypt_session_statement_data(
+        session.sso.as_ref().unwrap(),
+        &encrypted,
+    )
+    .expect("statement data should decrypt");
+    let crate::host_logic::sso_pairing::SsoStatementData::Request { data, .. } = data else {
+        panic!("expected request statement data");
+    };
+    crate::host_logic::sso_messages::RemoteMessage::decode(&mut data[0].as_slice())
+        .expect("remote message should decode")
+}
+
+pub(super) fn sso_success_responses(
+    session: &crate::host_logic::session::SessionInfo,
+    message_id: &str,
+    response: crate::host_logic::sso_messages::RemoteMessage,
+) -> Vec<String> {
+    let own_subscription_id = format!("own-sub-{message_id}");
+    let peer_subscription_id = format!("peer-sub-{message_id}");
+    vec![
+        subscribe_ack_frame(
+            &format!("truapi:sso-sub-own:{message_id}"),
+            &own_subscription_id,
+        ),
+        subscribe_ack_frame(
+            &format!("truapi:sso-sub-peer:{message_id}"),
+            &peer_subscription_id,
+        ),
+        new_statements_frame(
+            &own_subscription_id,
+            vec![sso_statement(
+                session,
+                crate::host_logic::sso_pairing::SsoStatementData::Response {
+                    request_id: message_id.to_string(),
+                    response_code: 0,
+                },
+                1,
+            )],
+        ),
+        new_statements_frame(
+            &peer_subscription_id,
+            vec![sso_statement(
+                session,
+                crate::host_logic::sso_pairing::SsoStatementData::Request {
+                    request_id: format!("wallet-response-{message_id}"),
+                    data: vec![response.encode()],
+                },
+                2,
+            )],
+        ),
+    ]
+}
+
+pub(super) fn sso_peer_disconnect_responses(
+    session: &crate::host_logic::session::SessionInfo,
+    message_id: &str,
+) -> Vec<String> {
+    let own_subscription_id = format!("own-sub-{message_id}");
+    let peer_subscription_id = format!("peer-sub-{message_id}");
+    vec![
+        subscribe_ack_frame(
+            &format!("truapi:sso-sub-own:{message_id}"),
+            &own_subscription_id,
+        ),
+        subscribe_ack_frame(
+            &format!("truapi:sso-sub-peer:{message_id}"),
+            &peer_subscription_id,
+        ),
+        new_statements_frame(
+            &own_subscription_id,
+            vec![sso_statement(
+                session,
+                crate::host_logic::sso_pairing::SsoStatementData::Response {
+                    request_id: message_id.to_string(),
+                    response_code: 0,
+                },
+                1,
+            )],
+        ),
+        new_statements_frame(
+            &peer_subscription_id,
+            vec![sso_statement(
+                session,
+                crate::host_logic::sso_pairing::SsoStatementData::Request {
+                    request_id: format!("wallet-disconnect-{message_id}"),
+                    data: vec![
+                        crate::host_logic::sso_messages::RemoteMessage {
+                            message_id: format!("wallet-disconnect-{message_id}"),
+                            data: crate::host_logic::sso_messages::RemoteMessageData::V1(
+                                crate::host_logic::sso_messages::RemoteMessageV1::Disconnected,
+                            ),
+                        }
+                        .encode(),
+                    ],
+                },
+                2,
+            )],
+        ),
+    ]
+}
+
+pub(super) fn subscribe_ack_frame(request_id: &str, subscription_id: &str) -> String {
+    serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": request_id,
+        "result": subscription_id,
+    })
+    .to_string()
+}
+
+pub(super) fn new_statements_frame(subscription_id: &str, statements: Vec<Vec<u8>>) -> String {
+    let statements = statements
+        .into_iter()
+        .map(|statement| format!("0x{}", hex::encode(statement)))
+        .collect::<Vec<_>>();
+    serde_json::json!({
+        "jsonrpc": "2.0",
+        "method": "statement_subscribeStatement",
+        "params": {
+            "subscription": subscription_id,
+            "result": {
+                "event": "newStatements",
+                "data": {
+                    "statements": statements,
+                    "remaining": 0,
+                },
+            },
+        },
+    })
+    .to_string()
+}
+
+fn sso_statement(
+    session: &crate::host_logic::session::SessionInfo,
+    data: crate::host_logic::sso_pairing::SsoStatementData,
+    nonce_seed: u8,
+) -> Vec<u8> {
+    let mut nonce = [0; crate::host_logic::sso_pairing::AES_GCM_NONCE_LEN];
+    nonce[0] = nonce_seed;
+    let encrypted = crate::host_logic::sso_pairing::encrypt_session_statement_data_with_nonce(
+        session.sso.as_ref().unwrap(),
+        &data,
+        nonce,
+    )
+    .unwrap();
+    signed_test_statement(encrypted)
+}
+
+fn core_encryption_public_key_from_deeplink(deeplink: &str) -> [u8; 65] {
+    pairing_device_from_deeplink(deeplink).1
+}
+
+pub(super) fn pairing_device_from_deeplink(deeplink: &str) -> ([u8; 32], [u8; 65]) {
+    let encoded = deeplink
+        .split("handshake=")
+        .nth(1)
+        .expect("pairing deeplink should include handshake");
+    let handshake = hex::decode(encoded).expect("handshake should be hex");
+    let decoded = crate::host_logic::sso_pairing::VersionedHandshakeProposal::decode(
+        &mut handshake.as_slice(),
+    )
+    .expect("handshake should decode");
+    let crate::host_logic::sso_pairing::VersionedHandshakeProposal::V2(proposal) = decoded else {
+        panic!("handshake should be V2");
+    };
+    (
+        proposal.device.statement_account_id,
+        proposal.device.encryption_public_key,
+    )
+}
+
+fn wallet_handshake_statement(deeplink: &str) -> Vec<u8> {
+    let core_public_key =
+        P256PublicKey::from_sec1_bytes(&core_encryption_public_key_from_deeplink(deeplink))
+            .expect("core encryption public key should decode");
+    let wallet_ephemeral_secret = P256SecretKey::from_slice(&[3; 32]).unwrap();
+    let wallet_ephemeral_public = wallet_ephemeral_secret.public_key().to_encoded_point(false);
+    let mut wallet_ephemeral_public_bytes = [0u8; 65];
+    wallet_ephemeral_public_bytes.copy_from_slice(wallet_ephemeral_public.as_bytes());
+    let wallet_persistent_public: [u8; 65] = P256SecretKey::from_slice(&[2; 32])
+        .unwrap()
+        .public_key()
+        .to_encoded_point(false)
+        .as_bytes()
+        .try_into()
+        .unwrap();
+    let answer = crate::host_logic::sso_pairing::EncryptedHandshakeResponseV2::Success(Box::new(
+        crate::host_logic::sso_pairing::HandshakeSuccessV2 {
+            identity_account_id: peer_statement_keypair().1,
+            root_account_id: session_info().public_key,
+            identity_chat_private_key: [0x77; 32],
+            sso_enc_pub_key: wallet_persistent_public,
+            device_enc_pub_key: wallet_persistent_public,
+            root_entropy_source: [0x66; 32],
+        },
+    ));
+    let shared_secret = diffie_hellman(
+        wallet_ephemeral_secret.to_nonzero_scalar(),
+        core_public_key.as_affine(),
+    );
+    let hkdf = Hkdf::<Sha256>::new(None, shared_secret.raw_secret_bytes());
+    let mut aes_key = [0u8; 32];
+    hkdf.expand(&[], &mut aes_key).unwrap();
+    let nonce = [0x44; crate::host_logic::sso_pairing::AES_GCM_NONCE_LEN];
+    let cipher = Aes256Gcm::new_from_slice(&aes_key).unwrap();
+    let mut encrypted_message = nonce.to_vec();
+    encrypted_message.extend(
+        cipher
+            .encrypt(Nonce::from_slice(&nonce), answer.encode().as_slice())
+            .unwrap(),
+    );
+    let handshake = crate::host_logic::sso_pairing::VersionedHandshakeResponse::V2 {
+        encrypted_message,
+        public_key: wallet_ephemeral_public_bytes,
+    };
+
+    signed_test_statement(handshake.encode())
+}
+
+pub(super) fn sign_response_message(
+    message_id: &str,
+    signature: Vec<u8>,
+    signed_transaction: Option<Vec<u8>>,
+) -> crate::host_logic::sso_messages::RemoteMessage {
+    crate::host_logic::sso_messages::RemoteMessage {
+        message_id: format!("wallet-{message_id}"),
+        data: crate::host_logic::sso_messages::RemoteMessageData::V1(
+            crate::host_logic::sso_messages::RemoteMessageV1::SignResponse(
+                crate::host_logic::sso_messages::SigningResponse {
+                    responding_to: message_id.to_string(),
+                    payload: Ok(
+                        crate::host_logic::sso_messages::SigningPayloadResponseData {
+                            signature,
+                            signed_transaction,
+                        },
+                    ),
+                },
+            ),
+        ),
+    }
+}
+
+pub(super) fn account_id(identifier: &str, derivation_index: u32) -> v01::ProductAccountId {
+    v01::ProductAccountId {
+        dot_ns_identifier: identifier.to_string(),
+        derivation_index,
+    }
+}
+
+pub(super) fn account_alias_request(identifier: &str) -> HostAccountGetAliasRequest {
+    HostAccountGetAliasRequest::V1(v01::HostAccountGetAliasRequest {
+        product_account_id: account_id(identifier, 0),
+    })
+}
+
+pub(super) fn raw_payload() -> v01::RawPayload {
+    v01::RawPayload::Bytes {
+        bytes: b"hello".to_vec(),
+    }
+}
+
+pub(super) fn sign_payload_data() -> v01::HostSignPayloadData {
+    v01::HostSignPayloadData {
+        block_hash: vec![0; 32],
+        block_number: vec![0; 4],
+        era: vec![0],
+        genesis_hash: vec![1; 32],
+        method: vec![0],
+        nonce: vec![0],
+        spec_version: vec![0],
+        tip: vec![0],
+        transaction_version: vec![0],
+        signed_extensions: vec![],
+        version: 4,
+        asset_id: None,
+        metadata_hash: None,
+        mode: None,
+        with_signed_transaction: None,
+    }
+}
+
+pub(super) fn product_tx_payload(identifier: &str) -> v01::ProductAccountTxPayload {
+    v01::ProductAccountTxPayload {
+        signer: account_id(identifier, 0),
+        genesis_hash: [1; 32],
+        call_data: vec![0],
+        extensions: vec![],
+        tx_ext_version: 0,
+    }
+}
+
+pub(super) fn resource_allocation_request() -> HostRequestResourceAllocationRequest {
+    HostRequestResourceAllocationRequest::V1(v01::HostRequestResourceAllocationRequest {
+        resources: vec![
+            v01::AllocatableResource::StatementStoreAllowance,
+            v01::AllocatableResource::AutoSigning,
+        ],
+    })
+}
+
+pub(super) fn statement() -> v01::Statement {
+    v01::Statement {
+        proof: None,
+        decryption_key: None,
+        expiry: Some(99),
+        channel: Some([1; 32]),
+        topics: vec![[2; 32], [3; 32]],
+        data: Some(vec![4, 5, 6]),
+    }
+}
+
+pub(super) fn signed_statement(topic: [u8; 32]) -> v01::SignedStatement {
+    v01::SignedStatement {
+        proof: v01::StatementProof::Sr25519 {
+            signature: [9; 64],
+            signer: [8; 32],
+        },
+        decryption_key: None,
+        expiry: Some(99),
+        channel: Some([1; 32]),
+        topics: vec![topic],
+        data: Some(vec![4, 5, 6]),
+    }
+}
+
+impl PlatformStorage for StubPlatform {
+    async fn read(&self, key: String) -> Result<Option<Vec<u8>>, v01::HostLocalStorageReadError> {
+        Ok(self
+            .local_storage
+            .lock()
+            .expect("local storage mutex poisoned")
+            .get(&key)
+            .cloned())
+    }
+    async fn write(
+        &self,
+        key: String,
+        value: Vec<u8>,
+    ) -> Result<(), v01::HostLocalStorageReadError> {
+        self.local_storage
+            .lock()
+            .expect("local storage mutex poisoned")
+            .insert(key, value);
+        Ok(())
+    }
+    async fn clear(&self, key: String) -> Result<(), v01::HostLocalStorageReadError> {
+        self.local_storage
+            .lock()
+            .expect("local storage mutex poisoned")
+            .remove(&key);
+        Ok(())
+    }
+}
+
+impl PlatformNavigation for StubPlatform {
+    async fn navigate_to(&self, _url: String) -> Result<(), v01::HostNavigateToError> {
+        Ok(())
+    }
+}
+
+impl PlatformNotifications for StubPlatform {
+    async fn push_notification(
+        &self,
+        notification: v01::HostPushNotificationRequest,
+    ) -> Result<v01::HostPushNotificationResponse, v01::GenericError> {
+        self.pushed_notifications
+            .lock()
+            .expect("notification list mutex poisoned")
+            .push(notification);
+        Ok(v01::HostPushNotificationResponse {
+            id: self.notification_id,
+        })
+    }
+
+    async fn cancel_notification(&self, id: u32) -> Result<(), v01::GenericError> {
+        self.cancelled_notifications
+            .lock()
+            .expect("notification cancellation list mutex poisoned")
+            .push(id);
+        Ok(())
+    }
+}
+
+impl PlatformPermissions for StubPlatform {
+    async fn device_permission(
+        &self,
+        _request: v01::HostDevicePermissionRequest,
+    ) -> Result<v01::HostDevicePermissionResponse, v01::GenericError> {
+        Ok(v01::HostDevicePermissionResponse { granted: true })
+    }
+
+    async fn remote_permission(
+        &self,
+        _request: v01::RemotePermissionRequest,
+    ) -> Result<v01::RemotePermissionResponse, v01::GenericError> {
+        Ok(v01::RemotePermissionResponse {
+            granted: self.remote_permission_granted,
+        })
+    }
+}
+
+impl PlatformFeatures for StubPlatform {
+    async fn feature_supported(
+        &self,
+        request: HostFeatureSupportedRequest,
+    ) -> Result<HostFeatureSupportedResponse, v01::GenericError> {
+        let HostFeatureSupportedRequest::V1(_) = request;
+        Ok(HostFeatureSupportedResponse::V1(
+            v01::HostFeatureSupportedResponse { supported: true },
+        ))
+    }
+}
+
+struct RecordingConnection {
+    sent: Arc<Mutex<Vec<String>>>,
+    responses: Vec<String>,
+    presented_pairings: Arc<Mutex<Vec<String>>>,
+    pairing_success_response: bool,
+    pairing_success_via_query: bool,
+}
+
+impl JsonRpcConnection for RecordingConnection {
+    fn send(&self, request: String) {
+        self.sent
+            .lock()
+            .expect("rpc list mutex poisoned")
+            .push(request);
+    }
+    fn responses(&self) -> BoxStream<'static, String> {
+        if self.pairing_success_via_query {
+            let presented_pairings = self.presented_pairings.clone();
+            let sent = self.sent.clone();
+            return Box::pin(stream::unfold(0, move |state| {
+                let presented_pairings = presented_pairings.clone();
+                let sent = sent.clone();
+                async move {
+                    match state {
+                        0 => Some((
+                            subscribe_ack_frame(PAIRING_SUBSCRIBE_REQUEST_ID, "pairing-sub"),
+                            1,
+                        )),
+                        1 => {
+                            for _ in 0..100 {
+                                let query_id = sent
+                                    .lock()
+                                    .expect("rpc list mutex poisoned")
+                                    .iter()
+                                    .find_map(|request| {
+                                        let value: serde_json::Value =
+                                            serde_json::from_str(request).ok()?;
+                                        let id = value.get("id")?.as_str()?;
+                                        id.contains(":query:").then(|| id.to_string())
+                                    });
+                                if let Some(query_id) = query_id {
+                                    return Some((subscribe_ack_frame(&query_id, "query-sub"), 2));
+                                }
+                                futures_timer::Delay::new(Duration::from_millis(1)).await;
+                            }
+                            panic!("pairing snapshot query was not issued");
+                        }
+                        2 => {
+                            for _ in 0..100 {
+                                let deeplink = presented_pairings
+                                    .lock()
+                                    .expect("pairing list mutex poisoned")
+                                    .first()
+                                    .cloned();
+                                if let Some(deeplink) = deeplink {
+                                    return Some((
+                                        new_statements_frame(
+                                            "query-sub",
+                                            vec![wallet_handshake_statement(&deeplink)],
+                                        ),
+                                        3,
+                                    ));
+                                }
+                                futures_timer::Delay::new(Duration::from_millis(1)).await;
+                            }
+                            panic!("pairing deeplink was not presented");
+                        }
+                        _ => None,
+                    }
+                }
+            }));
+        }
+        if self.pairing_success_response {
+            let presented_pairings = self.presented_pairings.clone();
+            return Box::pin(stream::unfold(0, move |state| {
+                let presented_pairings = presented_pairings.clone();
+                async move {
+                    match state {
+                        0 => Some((
+                            subscribe_ack_frame(PAIRING_SUBSCRIBE_REQUEST_ID, "pairing-sub"),
+                            1,
+                        )),
+                        1 => {
+                            for _ in 0..100 {
+                                let deeplink = presented_pairings
+                                    .lock()
+                                    .expect("pairing list mutex poisoned")
+                                    .first()
+                                    .cloned();
+                                if let Some(deeplink) = deeplink {
+                                    return Some((
+                                        new_statements_frame(
+                                            "pairing-sub",
+                                            vec![wallet_handshake_statement(&deeplink)],
+                                        ),
+                                        2,
+                                    ));
+                                }
+                                futures_timer::Delay::new(Duration::from_millis(1)).await;
+                            }
+                            panic!("pairing deeplink was not presented");
+                        }
+                        _ => None,
+                    }
+                }
+            }));
+        }
+        if self.responses.is_empty() {
+            Box::pin(futures::stream::pending())
+        } else {
+            Box::pin(stream::iter(self.responses.clone()))
+        }
+    }
+}
+
+impl ChainProvider for StubPlatform {
+    async fn connect(
+        &self,
+        _genesis_hash: Vec<u8>,
+    ) -> Result<Box<dyn JsonRpcConnection>, v01::GenericError> {
+        if let Some(reason) = self.chain_connect_error {
+            return Err(v01::GenericError {
+                reason: reason.to_string(),
+            });
+        }
+        Ok(Box::new(RecordingConnection {
+            sent: self.sent_rpc.clone(),
+            responses: self.rpc_responses.clone(),
+            presented_pairings: self.presented_pairings.clone(),
+            pairing_success_response: self.pairing_success_response,
+            pairing_success_via_query: self.pairing_success_via_query,
+        }))
+    }
+}
+
+impl PairingPresenter for StubPlatform {
+    async fn present_pairing(&self, deeplink: String) -> Result<(), v01::GenericError> {
+        self.presented_pairings
+            .lock()
+            .expect("pairing list mutex poisoned")
+            .push(deeplink);
+        if self.pairing_pending {
+            futures::future::pending::<()>().await;
+        }
+        if let Some(reason) = self.pairing_error {
+            Err(v01::GenericError {
+                reason: reason.to_string(),
+            })
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl SessionStore for StubPlatform {
+    async fn read_session(&self) -> Result<Option<Vec<u8>>, v01::GenericError> {
+        if let Some(reason) = self.session_error {
+            Err(v01::GenericError {
+                reason: reason.to_string(),
+            })
+        } else {
+            Ok(self.session_blob.clone())
+        }
+    }
+    async fn write_session(&self, value: Vec<u8>) -> Result<(), v01::GenericError> {
+        self.session_writes
+            .lock()
+            .expect("session write list mutex poisoned")
+            .push(value);
+        Ok(())
+    }
+    async fn clear_session(&self) -> Result<(), v01::GenericError> {
+        *self
+            .session_clears
+            .lock()
+            .expect("session clear counter mutex poisoned") += 1;
+        if let Some(sender) = &self.session_store_tick_tx {
+            let _ = sender.unbounded_send(Ok(()));
+        }
+        Ok(())
+    }
+    fn subscribe_session_store(&self) -> BoxStream<'static, Result<(), v01::GenericError>> {
+        if let Some(ticks) = self
+            .session_store_ticks
+            .lock()
+            .expect("session tick receiver mutex poisoned")
+            .take()
+        {
+            return ticks.boxed();
+        }
+        Box::pin(stream::once(async { Ok(()) }))
+    }
+    fn session_ui_changed(&self, info: SessionUiInfo) {
+        self.session_ui_events
+            .lock()
+            .expect("session ui event list mutex poisoned")
+            .push(info);
+    }
+}
+
+impl UserConfirmation for StubPlatform {
+    async fn confirm_sign_payload(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
+        if let Some(reason) = self.sign_payload_error {
+            Err(v01::GenericError {
+                reason: reason.to_string(),
+            })
+        } else {
+            Ok(self.sign_payload_confirmed)
+        }
+    }
+    async fn confirm_sign_raw(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
+        if let Some(reason) = self.sign_raw_error {
+            Err(v01::GenericError {
+                reason: reason.to_string(),
+            })
+        } else {
+            Ok(self.sign_raw_confirmed)
+        }
+    }
+    async fn confirm_create_transaction(
+        &self,
+        _review: Vec<u8>,
+    ) -> Result<bool, v01::GenericError> {
+        if let Some(reason) = self.create_transaction_error {
+            Err(v01::GenericError {
+                reason: reason.to_string(),
+            })
+        } else {
+            Ok(self.create_transaction_confirmed)
+        }
+    }
+    async fn confirm_account_alias(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
+        if let Some(reason) = self.account_alias_error {
+            Err(v01::GenericError {
+                reason: reason.to_string(),
+            })
+        } else {
+            Ok(self.account_alias_confirmed)
+        }
+    }
+    async fn confirm_resource_allocation(
+        &self,
+        _review: Vec<u8>,
+    ) -> Result<bool, v01::GenericError> {
+        if let Some(reason) = self.resource_allocation_error {
+            Err(v01::GenericError {
+                reason: reason.to_string(),
+            })
+        } else {
+            Ok(self.resource_allocation_confirmed)
+        }
+    }
+}
+
+impl ThemeHost for StubPlatform {
+    fn subscribe_theme(&self) -> BoxStream<'static, Result<v01::ThemeVariant, v01::GenericError>> {
+        Box::pin(stream::once(async { Ok(v01::ThemeVariant::Dark) }))
+    }
+}
+
+impl PreimageHost for StubPlatform {
+    async fn confirm_preimage_submit(&self, _size: u64) -> Result<(), v01::PreimageSubmitError> {
+        Ok(())
+    }
+    async fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, v01::PreimageSubmitError> {
+        Ok(value)
+    }
+    fn lookup_preimage(
+        &self,
+        _key: Vec<u8>,
+    ) -> BoxStream<'static, Result<Option<Vec<u8>>, v01::GenericError>> {
+        Box::pin(stream::once(async { Ok(Some(vec![9, 8, 7])) }))
+    }
+}

@@ -241,6 +241,23 @@ pub trait PairingPresenter: Send + Sync {
     ) -> impl Future<Output = Result<(), GenericError>> + Send;
 }
 
+/// Decoded session fields a host shell needs to render account UI without
+/// parsing the opaque session blob the core persists through [`SessionStore`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SessionUiInfo {
+    /// Whether a session is currently active. When `false` every other
+    /// field is `None`.
+    pub connected: bool,
+    /// 32-byte sr25519 root public key of the active session.
+    pub public_key: Option<[u8; 32]>,
+    /// Wallet identity account id used for People-chain username lookup.
+    pub identity_account_id: Option<[u8; 32]>,
+    /// Short username from the People-chain identity record.
+    pub lite_username: Option<String>,
+    /// Fully qualified username from the People-chain identity record.
+    pub full_username: Option<String>,
+}
+
 /// Host-global opaque session persistence for core-owned SSO state.
 pub trait SessionStore: Send + Sync {
     /// Read the currently persisted core session blob.
@@ -257,6 +274,14 @@ pub trait SessionStore: Send + Sync {
 
     /// Emit once immediately, then on future local/cross-runtime changes.
     fn subscribe_session_store(&self) -> BoxStream<'static, Result<(), GenericError>>;
+
+    /// Observe decoded session changes for host UI. The core calls this with
+    /// the active session's fields whenever it persists or restores a
+    /// session, and with a disconnected value when the session is cleared.
+    /// Default is a no-op for hosts that render no session UI.
+    fn session_ui_changed(&self, info: SessionUiInfo) {
+        let _ = info;
+    }
 }
 
 /// Local user confirmation UI for session-channel operations.
