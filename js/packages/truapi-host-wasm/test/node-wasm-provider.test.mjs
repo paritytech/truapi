@@ -1,0 +1,225 @@
+// Smoke test that `createNodeWasmProvider` instantiates the WASM core,
+// returns a usable `Provider`, and disposes cleanly without leaking
+// resources back to the caller.
+
+import assert from "node:assert/strict";
+import test from "node:test";
+
+import {
+  encodeWireMessage,
+  decodeWireMessage,
+  VersionedHostFeatureSupportedRequest,
+  HostFeatureSupportedResponse,
+  GenericError,
+  scale as S,
+} from "@parity/truapi";
+import { SYSTEM_FEATURE_SUPPORTED } from "@parity/truapi/wire-table";
+
+import { createNodeWasmProvider } from "../dist/index.js";
+
+function makeCallbacks(overrides = {}) {
+  const noopSubscribe = () => () => {};
+  return {
+    navigateTo: async () => {},
+    pushNotification: async () => 0,
+    devicePermission: async () => false,
+    remotePermission: async () => false,
+    featureSupported: async () => false,
+    localStorageRead: async () => undefined,
+    localStorageWrite: async () => {},
+    localStorageClear: async () => {},
+    clearSession: async () => {},
+    preimageLookupSubscribe: noopSubscribe,
+    dispose: () => {},
+    ...overrides,
+  };
+}
+
+function runtimeConfig(overrides = {}) {
+  return {
+    productLabel: "dotli",
+    productId: "dotli.dot",
+    siteId: "dot.li",
+    hostName: "Polkadot Web",
+    hostIcon: "https://dot.li/dotli.png",
+    hostVersion: "0.5.0",
+    platformType: "node",
+    platformVersion: process.versions.node,
+    peopleChainGenesisHash:
+      "0xa22a2424d2cbf561eaecf7da8b1b548fa9d1939f60265e942b1049616a012f71",
+    pairingDeeplinkScheme: "polkadotapp",
+    ...overrides,
+  };
+}
+
+test("createNodeWasmProvider returns a usable Provider", async () => {
+  const provider = await createNodeWasmProvider(makeCallbacks(), {
+    runtimeConfig: runtimeConfig(),
+  });
+  assert.equal(typeof provider.postMessage, "function");
+  assert.equal(typeof provider.subscribe, "function");
+  assert.equal(typeof provider.disconnect, "function");
+  assert.equal(typeof provider.dispose, "function");
+
+  // Subscribe and immediately unsubscribe to exercise the listener
+  // bookkeeping without needing a valid frame.
+  const unsubscribe = provider.subscribe(() => {});
+  unsubscribe();
+
+  provider.dispose();
+});
+
+test("createNodeWasmProvider exposes core disconnect", async () => {
+  let clears = 0;
+  const provider = await createNodeWasmProvider(
+    makeCallbacks({
+      clearSession: async () => {
+        clears += 1;
+      },
+    }),
+    {
+      runtimeConfig: runtimeConfig(),
+    },
+  );
+
+  await provider.disconnect();
+
+  assert.equal(clears, 1);
+  provider.dispose();
+});
+
+test("createNodeWasmProvider validates runtimeConfig in the WASM core", async () => {
+  await assert.rejects(
+    () =>
+      createNodeWasmProvider(makeCallbacks(), {
+        runtimeConfig: runtimeConfig({
+          peopleChainGenesisHash: "0x1234",
+        }),
+      }),
+    /runtimeConfig\.peopleChainGenesisHash: expected 32-byte hex string/,
+  );
+});
+
+test("createNodeWasmProvider requires runtimeConfig", async () => {
+  await assert.rejects(
+    () => createNodeWasmProvider(makeCallbacks(), undefined),
+    /runtimeConfig is required/,
+  );
+});
+
+test("createNodeWasmProvider rejects empty runtime config identity fields", async () => {
+  await assert.rejects(
+    () =>
+      createNodeWasmProvider(makeCallbacks(), {
+        runtimeConfig: runtimeConfig({
+          productId: " ",
+        }),
+      }),
+    /runtimeConfig\.productId must not be empty/,
+  );
+});
+
+test("createNodeWasmProvider rejects non-HTTPS runtime host icons", async () => {
+  await assert.rejects(
+    () =>
+      createNodeWasmProvider(makeCallbacks(), {
+        runtimeConfig: runtimeConfig({
+          hostIcon: "http://localhost:3000/dotli.png",
+        }),
+      }),
+    /runtimeConfig\.hostIcon must use https scheme/,
+  );
+});
+
+test("createNodeWasmProvider dispose is idempotent", async () => {
+  const provider = await createNodeWasmProvider(makeCallbacks(), {
+    runtimeConfig: runtimeConfig(),
+  });
+  const closes = [];
+  provider.subscribeClose((error) => closes.push(error));
+  provider.dispose();
+  // Second call must not throw.
+  provider.dispose();
+  assert.equal(closes.length, 1);
+  assert.match(closes[0].message, /disposed/);
+
+  let lateClose = null;
+  provider.subscribeClose((error) => {
+    lateClose = error;
+  });
+  assert.ok(lateClose instanceof Error);
+});
+
+test("createNodeWasmProvider round-trips a featureSupported request through the WASM core", async () => {
+  const callbacks = makeCallbacks();
+  callbacks.featureSupported = async () => true;
+  const provider = await createNodeWasmProvider(callbacks, {
+    runtimeConfig: runtimeConfig(),
+  });
+
+  const frames = [];
+  provider.subscribe((bytes) => frames.push(bytes));
+
+  const payload = VersionedHostFeatureSupportedRequest.enc({
+    tag: "V1",
+    value: { tag: "Chain", value: { genesisHash: "0x00" } },
+  });
+  const inbound = encodeWireMessage({
+    requestId: "rt-1",
+    payload: { id: SYSTEM_FEATURE_SUPPORTED.request, value: payload },
+  });
+  assert.ok(inbound.isOk(), "request frame must encode");
+  provider.postMessage(inbound.value);
+
+  // Let the WASM dispatch + host callback + emit cycle settle.
+  await new Promise((r) => setTimeout(r, 50));
+
+  assert.equal(frames.length, 1, "exactly one response frame emitted");
+  const decoded = decodeWireMessage(frames[0]);
+  assert.ok(decoded.isOk(), "response frame must decode");
+  assert.equal(decoded.value.requestId, "rt-1");
+  assert.equal(decoded.value.payload.id, SYSTEM_FEATURE_SUPPORTED.response);
+
+  const responseCodec = S.indexedTaggedUnion({
+    V1: [0, S.Result(HostFeatureSupportedResponse, GenericError)],
+  });
+  const response = responseCodec.dec(decoded.value.payload.value);
+  assert.deepEqual(response, {
+    tag: "V1",
+    value: { success: true, value: { supported: true } },
+  });
+
+  provider.dispose();
+});
+
+test("createNodeWasmProvider surfaces a rejected receiveFromProduct through subscribeClose", async () => {
+  const provider = await createNodeWasmProvider(makeCallbacks(), {
+    runtimeConfig: runtimeConfig(),
+  });
+
+  const closes = [];
+  provider.subscribeClose((error) => closes.push(error));
+  const frames = [];
+  provider.subscribe((bytes) => frames.push(bytes));
+
+  // A garbage buffer the core cannot decode rejects receiveFromProduct.
+  provider.postMessage(new Uint8Array([0xff, 0xff, 0xff, 0xff, 0xff]));
+  await new Promise((r) => setTimeout(r, 50));
+
+  assert.equal(closes.length, 1, "close listener fires once on decode failure");
+  assert.ok(closes[0] instanceof Error);
+  assert.equal(frames.length, 0, "no response frame on a rejected frame");
+
+  // Close is terminal: further frames are dropped and close fires only once.
+  provider.postMessage(new Uint8Array([0xff, 0xff, 0xff, 0xff, 0xff]));
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(closes.length, 1, "close listener does not fire again");
+
+  let lateClose = null;
+  provider.subscribeClose((error) => {
+    lateClose = error;
+  });
+  assert.ok(lateClose instanceof Error);
+
+  provider.dispose();
+});

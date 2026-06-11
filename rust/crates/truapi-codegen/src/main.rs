@@ -1,7 +1,10 @@
 use anyhow::{Context, Result};
 use clap::Parser;
+use std::path::PathBuf;
 use std::str::FromStr;
 
+mod platform;
+mod rust;
 mod rustdoc;
 mod ts;
 
@@ -49,6 +52,27 @@ struct Cli {
     /// Output directory for the generated `@parity/truapi-host` TypeScript surface (optional).
     #[arg(long)]
     host_output: Option<String>,
+
+    /// Output directory for the generated Rust dispatcher / wire-table (optional).
+    ///
+    /// When set, emits `dispatcher.rs` and `wire_table.rs` for the
+    /// `truapi-server` crate to include.
+    #[arg(long)]
+    rust_output: Option<PathBuf>,
+
+    /// Path to rustdoc JSON for the `truapi-platform` crate (optional).
+    ///
+    /// When provided together with `--platform-ts-output`, walks the
+    /// platform crate's capability traits and emits the typed TS
+    /// `HostCallbacks` surface so all host implementations (TS, Kotlin via
+    /// UniFFI, Swift via UniFFI) track the same Rust source.
+    #[arg(long)]
+    platform_input: Option<String>,
+
+    /// Output directory for the generated typed `HostCallbacks` TypeScript
+    /// surface (optional). Only honored when `--platform-input` is also set.
+    #[arg(long)]
+    platform_ts_output: Option<String>,
 
     /// Output directory for generated explorer metadata (optional). When set,
     /// writes `codegen/types.ts` with the DataType list consumed by the
@@ -121,6 +145,24 @@ fn main() -> Result<()> {
     if let Some(path) = &cli.host_output {
         ts::generate_host(&api, path).with_context(|| format!("writing host package to {path}"))?;
         println!("Generated host package in {path}");
+    }
+    if let Some(path) = &cli.rust_output {
+        rust::generate(&api, path)
+            .with_context(|| format!("writing Rust dispatcher to {}", path.display()))?;
+        println!("Wrote Rust dispatcher to {}", path.display());
+    }
+    if let (Some(input), Some(output)) = (&cli.platform_input, &cli.platform_ts_output) {
+        let json = std::fs::read_to_string(input)
+            .with_context(|| format!("reading platform rustdoc JSON from {input}"))?;
+        let krate =
+            rustdoc::parse(&json).with_context(|| format!("parsing platform rustdoc {input}"))?;
+        let definition = platform::extract(&krate)
+            .with_context(|| format!("extracting platform definition from {input}"))?;
+        ts::generate_host_callbacks(&definition, output)
+            .with_context(|| format!("writing host callbacks TS to {output}"))?;
+        println!("Generated typed HostCallbacks TS surface in {output}");
+    } else if cli.platform_input.is_some() != cli.platform_ts_output.is_some() {
+        anyhow::bail!("--platform-input and --platform-ts-output must be provided together");
     }
     if let Some(path) = &cli.explorer_output {
         ts::generate_explorer(&api, path, client_version)

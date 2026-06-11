@@ -94,7 +94,7 @@ await new Promise((resolveTest, rejectTest) => {
 
   const server = createTrUApiServer(b, makeStubHandlers({ payment: paymentStub }));
   const received = [];
-  client.payment.balanceSubscribe().subscribe({
+  client.payment.balanceSubscribe({ request: {} }).subscribe({
     next(item) {
       received.push(item);
     },

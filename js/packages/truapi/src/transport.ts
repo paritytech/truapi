@@ -9,6 +9,12 @@ function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
 
+function toWebSocketPayload(message: Uint8Array): Uint8Array<ArrayBuffer> {
+  const copy: Uint8Array<ArrayBuffer> = new Uint8Array(message.byteLength);
+  copy.set(message);
+  return copy;
+}
+
 /**
  * Handle returned by TrUAPI subscription APIs.
  **/
@@ -277,6 +283,10 @@ export interface Provider {
 
   /**
    * Register a callback for provider-level close or failure events.
+   *
+   * Providers keep a terminal close reason. The callback fires at most once
+   * for an active subscription, and fires immediately when registered after
+   * the provider has already closed.
    **/
   subscribeClose?(callback: (error: Error) => void): () => void;
 
@@ -577,6 +587,105 @@ export function createMessagePortProvider(
     dispose() {
       base.close(new Error("message port provider disposed"));
       pending.length = 0;
+    },
+  };
+}
+
+/**
+ * Options accepted by `createWebSocketProvider`.
+ **/
+export interface WebSocketProviderOptions {
+  /**
+   * Override the `WebSocket` constructor. Useful for non-browser runtimes
+   * (Node, tests) where the global isn't available.
+   **/
+  WebSocket?: typeof WebSocket;
+}
+
+/**
+ * Create a provider backed by a binary WebSocket. Used by products that
+ * connect through the native host's localhost WS bridge, the host exposes
+ * an endpoint shaped like `ws://127.0.0.1:<port>/?t=<token>` and the product
+ * passes that URL straight to this constructor.
+ **/
+export function createWebSocketProvider(
+  url: string,
+  options: WebSocketProviderOptions = {},
+): Provider {
+  const WebSocketCtor = options.WebSocket ?? globalThis.WebSocket;
+  if (!WebSocketCtor) {
+    throw new Error("WebSocket constructor not available in this environment");
+  }
+
+  const base = createBaseProvider();
+  const socket = new WebSocketCtor(url);
+  socket.binaryType = "arraybuffer";
+
+  const pending: Uint8Array[] = [];
+  base.onClose(() => {
+    pending.length = 0;
+  });
+
+  socket.onopen = () => {
+    for (const msg of pending) {
+      try {
+        socket.send(toWebSocketPayload(msg));
+      } catch (error) {
+        base.close(error);
+        return;
+      }
+    }
+    pending.length = 0;
+  };
+
+  socket.onmessage = (event: MessageEvent) => {
+    const data = event.data;
+    if (!(data instanceof ArrayBuffer)) {
+      return;
+    }
+    base.deliver(new Uint8Array(data));
+  };
+
+  socket.onerror = () => {
+    base.close(new Error("websocket error"));
+  };
+
+  socket.onclose = (event: CloseEvent) => {
+    base.close(
+      new Error(
+        `websocket closed (code=${event.code}, reason=${event.reason || "unknown"})`,
+      ),
+    );
+  };
+
+  return {
+    postMessage(message) {
+      const error = base.closed();
+      if (error) {
+        throw error;
+      }
+      if (socket.readyState === WebSocketCtor.OPEN) {
+        try {
+          socket.send(toWebSocketPayload(message));
+        } catch (error) {
+          base.close(error);
+          throw toError(error);
+        }
+      } else if (socket.readyState === WebSocketCtor.CONNECTING) {
+        pending.push(message);
+      } else {
+        throw new Error("websocket not open");
+      }
+    },
+    subscribe: base.subscribe,
+    subscribeClose: base.subscribeClose,
+    dispose() {
+      base.close(new Error("websocket provider disposed"));
+      try {
+        socket.close();
+      } catch {
+        // ignore duplicate close during shutdown
+      }
     },
   };
 }

@@ -17,10 +17,12 @@ pub trait Account: Send + Sync {
     /// Subscribe to account connection status changes.
     ///
     /// ```ts
-    /// import { firstValueFrom, from } from "rxjs";
+    /// import { filter, firstValueFrom, from } from "rxjs";
     ///
     /// const status = await firstValueFrom(
-    ///   from(truapi.account.connectionStatusSubscribe()),
+    ///   from(truapi.account.connectionStatusSubscribe()).pipe(
+    ///     filter((status) => status === "Connected"),
+    ///   ),
     /// );
     /// console.log("connection status:", status);
     /// ```
