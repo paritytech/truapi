@@ -7,6 +7,7 @@
 //! permission cache layer). Methods with no platform backing return
 //! `CallError::unavailable()`.
 
+pub(crate) mod auth_state;
 mod identity;
 pub(crate) mod sso_pairing;
 pub(crate) mod sso_remote;
@@ -34,6 +35,7 @@ use crate::host_logic::sso_messages::{
     sign_raw_message,
 };
 use crate::subscription::Spawner;
+use auth_state::AuthStateMachine;
 use identity::resolve_session_identity_with_chain;
 use sso_pairing::PAIRING_DEVICE_IDENTITY_STORAGE_KEY;
 use sso_remote::{SSO_LOCAL_DISCONNECT_REASON, SessionDisconnects, sso_message_id};
@@ -140,6 +142,8 @@ pub struct PlatformRuntimeHost<P> {
     /// a callback on every connection-status query.
     session_state: Arc<SessionState>,
     session_disconnects: Arc<SessionDisconnects>,
+    /// Auth UI state machine; the single funnel for `auth_state_changed`.
+    auth_state: AuthStateMachine<P>,
 }
 
 impl<P> PlatformRuntimeHost<P> {
@@ -152,6 +156,7 @@ impl<P> PlatformRuntimeHost<P> {
     {
         let chain_provider = Self::chain_provider(platform.clone());
         Self {
+            auth_state: AuthStateMachine::new(platform.clone()),
             platform,
             runtime_config,
             chain: ChainRuntime::new(chain_provider, spawner),
@@ -228,6 +233,7 @@ impl<P> PlatformRuntimeHost<P> {
         let chain = self.chain.clone();
         let runtime_config = self.runtime_config.clone();
         let session_state = self.session_state.clone();
+        let auth_state = self.auth_state.clone();
         spawner(Box::pin(async move {
             let mut ticks = PlatformSessionStore::subscribe_session_store(platform.as_ref());
             // Clearing the store can itself notify this subscription; clear at
@@ -256,37 +262,25 @@ impl<P> PlatformRuntimeHost<P> {
                                     )
                                     .await;
                                 }
-                                PlatformSessionStore::session_ui_changed(
-                                    platform.as_ref(),
-                                    connected_session_ui_info(&resolved),
-                                );
+                                auth_state.connected(&connected_session_ui_info(&resolved));
                                 session_state.set_session(resolved);
                             }
                             Err(_) => {
                                 session_state.clear_session();
                                 let _ =
                                     PlatformSessionStore::clear_session(platform.as_ref()).await;
-                                PlatformSessionStore::session_ui_changed(
-                                    platform.as_ref(),
-                                    SessionUiInfo::default(),
-                                );
+                                auth_state.store_disconnected();
                             }
                         }
                     }
                     Ok(None) => {
                         cleared_after_read_error = false;
                         session_state.clear_session();
-                        PlatformSessionStore::session_ui_changed(
-                            platform.as_ref(),
-                            SessionUiInfo::default(),
-                        );
+                        auth_state.store_disconnected();
                     }
                     Err(_) => {
                         session_state.clear_session();
-                        PlatformSessionStore::session_ui_changed(
-                            platform.as_ref(),
-                            SessionUiInfo::default(),
-                        );
+                        auth_state.store_disconnected();
                         if !cleared_after_read_error {
                             cleared_after_read_error = true;
                             let _ = PlatformSessionStore::clear_session(platform.as_ref()).await;
@@ -305,12 +299,24 @@ impl<P> PlatformRuntimeHost<P> {
     where
         P: Platform + 'static,
     {
+        self.cancel_login();
         self.session_disconnects.notify(SSO_LOCAL_DISCONNECT_REASON);
         let session = self.session_state.current();
         self.clear_disconnected_session().await;
         if let Some(session) = session.as_ref() {
             let _ = self.submit_sso_disconnected(session).await;
         }
+    }
+
+    /// Cancel any in-flight `request_login` pairing: the host UI gets a
+    /// `Disconnected` state immediately and the login flow resolves to
+    /// `Rejected`. A no-op when no login is in progress.
+    #[instrument(skip_all, fields(runtime.method = "account.cancel_login"))]
+    pub(crate) fn cancel_login(&self)
+    where
+        P: Platform + 'static,
+    {
+        self.auth_state.login_cancelled();
     }
 
     /// Static product/host configuration for this runtime instance.
@@ -354,7 +360,7 @@ impl<P> PlatformRuntimeHost<P> {
         debug!("clearing disconnected SSO session state");
         self.session_state.clear_session();
         let _ = PlatformSessionStore::clear_session(self.platform.as_ref()).await;
-        PlatformSessionStore::session_ui_changed(self.platform.as_ref(), SessionUiInfo::default());
+        self.auth_state.store_disconnected();
         let _ = PlatformStorage::clear(
             self.platform.as_ref(),
             PAIRING_DEVICE_IDENTITY_STORAGE_KEY.to_string(),
@@ -830,7 +836,7 @@ where
     }
 }
 
-/// Host-UI projection of an active session for `SessionStore::session_ui_changed`.
+/// Host-UI projection of an active session for `AuthState::Connected`.
 fn connected_session_ui_info(session: &SessionInfo) -> SessionUiInfo {
     SessionUiInfo {
         connected: true,
@@ -1796,6 +1802,7 @@ mod tests {
     use crate::host_logic::sso_messages::{RemoteMessageData, RemoteMessageV1};
     use crate::test_support::*;
     use std::sync::Mutex;
+    use truapi_platform::AuthState;
 
     use super::sso_remote::SSO_PEER_DISCONNECT_REASON;
 
@@ -2958,10 +2965,10 @@ mod tests {
         assert_eq!(host.session_state().current(), Some(stored.clone()));
         assert_eq!(
             *platform
-                .session_ui_events
+                .auth_states
                 .lock()
-                .expect("session ui event list mutex poisoned"),
-            vec![connected_session_ui_info(&stored)]
+                .expect("auth state list mutex poisoned"),
+            vec![AuthState::Connected(connected_session_ui_info(&stored))]
         );
     }
 
@@ -3005,12 +3012,14 @@ mod tests {
         host.start_session_store_sync(immediate_spawner());
 
         assert!(host.session_state().current().is_none());
-        assert_eq!(
-            *platform
-                .session_ui_events
+        // `set_session` bypasses the auth state cell, so the cell never left
+        // `Disconnected` and clearing the invalid blob emits nothing.
+        assert!(
+            platform
+                .auth_states
                 .lock()
-                .expect("session ui event list mutex poisoned"),
-            vec![SessionUiInfo::default()]
+                .expect("auth state list mutex poisoned")
+                .is_empty()
         );
     }
 
@@ -3140,12 +3149,40 @@ mod tests {
                 v01::HostAccountConnectionStatusSubscribeItem::Disconnected
             )
         );
+        // `set_session` bypasses the auth state cell, so the cell never left
+        // `Disconnected` and the logout emits nothing new.
+        assert!(
+            platform
+                .auth_states
+                .lock()
+                .expect("auth state list mutex poisoned")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn disconnect_emits_disconnected_auth_state_after_store_sync_connected() {
+        let stored = sso_session_info();
+        let platform = Arc::new(StubPlatform {
+            session_blob: Some(crate::host_logic::session::encode_persisted_session(
+                &stored,
+            )),
+            ..Default::default()
+        });
+        let host = PlatformRuntimeHost::new_compat(platform.clone(), test_spawner());
+        host.start_session_store_sync(immediate_spawner());
+
+        futures::executor::block_on(host.disconnect());
+
         assert_eq!(
             *platform
-                .session_ui_events
+                .auth_states
                 .lock()
-                .expect("session ui event list mutex poisoned"),
-            vec![SessionUiInfo::default()]
+                .expect("auth state list mutex poisoned"),
+            vec![
+                AuthState::Connected(connected_session_ui_info(&stored)),
+                AuthState::Disconnected,
+            ]
         );
     }
 

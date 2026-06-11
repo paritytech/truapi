@@ -17,6 +17,7 @@ import { SUBSCRIPTION_DISPATCH } from "./subscription-table.js";
 interface WasmCore {
   receiveFromProduct(frame: Uint8Array): Promise<void>;
   disconnect(): Promise<void>;
+  cancelLogin(): void;
   dispose(): void;
   free(): void;
 }
@@ -146,8 +147,9 @@ const requiredRawCallbacks: Record<string, RawCallbackFn> = {
 const optionalRawCallbacks: Record<OptionalCallbackName, RawCallbackFn> = {
   cancelNotification: (id: number) =>
     callbackRequest("cancelNotification", [id]),
-  presentPairing: (deeplink: string) =>
-    callbackRequest("presentPairing", [deeplink]),
+  // Fire-and-forget notification: the wasm core ignores the returned promise.
+  authStateChanged: (state: unknown) =>
+    void callbackRequest("authStateChanged", [state]).catch(() => {}),
   readSession: () =>
     callbackRequest("readSession", []) as Promise<
       Uint8Array | null | undefined
@@ -155,9 +157,6 @@ const optionalRawCallbacks: Record<OptionalCallbackName, RawCallbackFn> = {
   writeSession: (value: Uint8Array) =>
     callbackRequest("writeSession", [value]),
   clearSession: () => callbackRequest("clearSession", []),
-  // Fire-and-forget notification: the wasm core ignores the returned promise.
-  sessionUiChanged: (info: unknown) =>
-    void callbackRequest("sessionUiChanged", [info]).catch(() => {}),
   confirmSignPayload: (payload: Uint8Array) =>
     callbackRequest("confirmSignPayload", [payload]) as Promise<boolean>,
   confirmSignRaw: (payload: Uint8Array) =>
@@ -248,6 +247,9 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
       break;
     case "disconnect":
       void handleDisconnect(msg.requestId);
+      break;
+    case "cancelLogin":
+      core?.cancelLogin();
       break;
     case "callbackResponse": {
       const cb = pendingCallbacks.get(msg.requestId);

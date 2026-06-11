@@ -20,6 +20,31 @@ import type {
 } from "@parity/truapi";
 
 /**
+ * Auth/session lifecycle state the core projects for host UI. The core owns
+ * every transition and emits states in order; hosts render the current state
+ * and never derive auth UI from any other signal.
+ */
+export type AuthState =
+  /**
+   * No active session and no login in progress.
+   */
+  | { tag: "Disconnected"; value?: undefined }
+  /**
+   * A login is in progress: present the pairing deeplink/QR. Leave this
+   * state only on a subsequent emission (connected, failed, or
+   * disconnected after cancellation).
+   */
+  | { tag: "Pairing"; value: { deeplink: string } }
+  /**
+   * A session is active.
+   */
+  | { tag: "Connected"; value: SessionUiInfo }
+  /**
+   * The last login attempt failed; show the reason and offer a retry.
+   */
+  | { tag: "LoginFailed"; value: { reason: string } };
+
+/**
  * Decoded session fields a host shell needs to render account UI without
  * parsing the opaque session blob the core persists through `SessionStore`.
  */
@@ -49,6 +74,18 @@ export interface SessionUiInfo {
    * Fully qualified username from the People-chain identity record.
    */
   fullUsername?: string;
+}
+
+/**
+ * Host auth UI driven by core-owned `AuthState` transitions.
+ */
+export interface AuthPresenter {
+  /**
+   * Observe an auth state change. Emitted only when the state actually
+   * changes, in transition order. Default is a no-op for hosts that
+   * render no auth UI.
+   */
+  authStateChanged?(state: AuthState): void;
 }
 
 /**
@@ -121,17 +158,6 @@ export interface Notifications {
 }
 
 /**
- * Show the pairing deeplink/QR built by the core.
- */
-export interface PairingPresenter {
-  /**
-   * Resolve when the user cancels/dismisses the presentation. The core owns
-   * success and timeout; dropping the future should close the host UI.
-   */
-  presentPairing(deeplink: string): Promise<void>;
-}
-
-/**
  * Permission prompts. v0.1 keeps device permissions (camera, mic, NFC, ...)
  * separate from remote permissions (domain access, chain submit, ...), so the
  * platform surface mirrors that split.
@@ -192,14 +218,6 @@ export interface SessionStore {
    * Emit once immediately, then on future local/cross-runtime changes.
    */
   subscribeSessionStore(): AsyncIterable<Result<void, GenericError>>;
-
-  /**
-   * Observe decoded session changes for host UI. The core calls this with
-   * the active session's fields whenever it persists or restores a
-   * session, and with a disconnected value when the session is cleared.
-   * Default is a no-op for hosts that render no session UI.
-   */
-  sessionUiChanged?(info: SessionUiInfo): void;
 }
 
 /**
@@ -267,4 +285,4 @@ export interface UserConfirmation {
 /**
  * Combined platform interface. A host must provide all capability traits.
  */
-export interface HostCallbacks extends Navigation, Notifications, Permissions, Features, HostStorage, ChainProvider, PairingPresenter, SessionStore, UserConfirmation, ThemeHost, PreimageHost {}
+export interface HostCallbacks extends Navigation, Notifications, Permissions, Features, HostStorage, ChainProvider, AuthPresenter, SessionStore, UserConfirmation, ThemeHost, PreimageHost {}

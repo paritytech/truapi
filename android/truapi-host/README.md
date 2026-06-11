@@ -57,7 +57,7 @@ TrUAPIHostCore.startWsBridge()
   → Rust dispatcher
 ```
 
-The product running in the `WebView` opens a `WebSocket` to the localhost port + token returned by `startWsBridge`. From there the Rust core handles the wire protocol directly. Outbound responses and host-side capability callbacks (`navigateTo`, `pushNotification`, `cancelNotification`, `devicePermission`, `remotePermission`, `presentPairing`, session storage, chain JSON-RPC, confirmations, preimage, theme, `featureSupported`, `storage`) reach the embedder through `HostBridge`.
+The product running in the `WebView` opens a `WebSocket` to the localhost port + token returned by `startWsBridge`. From there the Rust core handles the wire protocol directly. Outbound responses and host-side capability callbacks (`navigateTo`, `pushNotification`, `cancelNotification`, `devicePermission`, `remotePermission`, `authStateChanged`, session storage, chain JSON-RPC, confirmations, preimage, theme, `featureSupported`, `storage`) reach the embedder through `HostBridge`.
 
 ## Permissions split
 
@@ -75,13 +75,12 @@ Both return a `Boolean` granted flag. SCALE decoding for the UI prompt is done b
 > (navigation, prompts, notifications, touching the `WebView`) onto the main
 > thread with `Handler(Looper.getMainLooper())` or a `Dispatchers.Main`
 > `CoroutineScope`. UI-decision callbacks (`navigateTo`, `devicePermission`,
-> `remotePermission`, `presentPairing`, the `confirm*` family,
-> `submitPreimage`) each run on their own blocking-pool thread, so it is safe
-> to block the calling thread (e.g. with a `CountDownLatch`) until the
-> main-thread prompt resolves; other TrUAPI traffic keeps flowing while you
-> wait. The remaining callbacks (storage, session, chain, feature, theme,
-> preimage lookups) run inline on the dispatcher thread and must return
-> promptly without blocking.
+> `remotePermission`, the `confirm*` family, `submitPreimage`) each run on
+> their own blocking-pool thread, so it is safe to block the calling thread
+> (e.g. with a `CountDownLatch`) until the main-thread prompt resolves; other
+> TrUAPI traffic keeps flowing while you wait. The remaining callbacks (auth
+> state, storage, session, chain, feature, theme, preimage lookups) run
+> inline on the dispatcher thread and must return promptly without blocking.
 
 ```kt
 import android.os.Handler
@@ -92,6 +91,7 @@ import io.parity.truapi.HostStorage
 import io.parity.truapi.PairingDeeplinkScheme
 import io.parity.truapi.RuntimeConfig
 import io.parity.truapi.TrUAPIHostCore
+import uniffi.truapi_server.AuthState
 import uniffi.truapi_server.HostTheme
 import java.util.concurrent.CountDownLatch
 
@@ -133,6 +133,14 @@ class MyBridge(private val webView: WebView) : HostBridge {
 
     override fun remotePermission(request: ByteArray): Boolean = false
     override fun featureSupported(request: ByteArray): Boolean = false
+
+    // Core-owned auth state stream: render AuthState.Pairing as the pairing
+    // QR sheet, connected/disconnected as the account badge, and login-failed
+    // as a retryable error. When the user closes the pairing sheet, report it
+    // with `core.cancelLogin()`.
+    override fun authStateChanged(state: AuthState) {
+        main.post { /* render the state */ }
+    }
 
     override fun chainConnect(genesisHash: ByteArray): UInt? {
         val id = 1u

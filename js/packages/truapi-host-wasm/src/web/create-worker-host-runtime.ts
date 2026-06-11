@@ -634,6 +634,11 @@ function buildProvider(state: WorkerProviderState): TrUApiHostWasmProvider {
         }
       });
     },
+    cancelLogin(): void {
+      if (state.disposed) return;
+      const post: MainToWorker = { kind: "cancelLogin" };
+      state.worker.postMessage(post);
+    },
     setLogLevel(level: LogLevel): void {
       if (state.disposed) return;
       state.logLevel = level;

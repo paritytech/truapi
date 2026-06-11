@@ -25,9 +25,10 @@ use send_wrapper::SendWrapper;
 use truapi::v01;
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use truapi_platform::{
-    ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, PairingDeeplinkScheme,
-    PairingPresenter, Permissions, PreimageHost, RuntimeConfig, RuntimeConfigValidationError,
-    SessionStore, SessionUiInfo, Storage, ThemeHost, UserConfirmation,
+    AuthPresenter, AuthState, ChainProvider, Features, JsonRpcConnection, Navigation,
+    Notifications, PairingDeeplinkScheme, Permissions, PreimageHost, RuntimeConfig,
+    RuntimeConfigValidationError, SessionStore, SessionUiInfo, Storage, ThemeHost,
+    UserConfirmation,
 };
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -58,12 +59,11 @@ struct JsBridge {
     submit_preimage: Option<Function>,
     lookup_preimage: Option<Function>,
     subscribe_theme: Option<Function>,
-    present_pairing: Option<Function>,
+    auth_state_changed: Option<Function>,
     read_session: Option<Function>,
     write_session: Option<Function>,
     clear_session: Option<Function>,
     subscribe_session_store: Option<Function>,
-    session_ui_changed: Option<Function>,
     /// Optional. Hosts that own JSON-RPC connections (e.g. dotli with its
     /// "smoldot vs RPC node" toggle) provide this; otherwise chain calls
     /// fail with an "unavailable" reason.
@@ -99,12 +99,11 @@ impl JsBridge {
             submit_preimage: get_optional_function(callbacks, "submitPreimage")?,
             lookup_preimage: get_optional_function(callbacks, "preimageLookupSubscribe")?,
             subscribe_theme: get_optional_function(callbacks, "themeSubscribe")?,
-            present_pairing: get_optional_function(callbacks, "presentPairing")?,
+            auth_state_changed: get_optional_function(callbacks, "authStateChanged")?,
             read_session: get_optional_function(callbacks, "readSession")?,
             write_session: get_optional_function(callbacks, "writeSession")?,
             clear_session: get_optional_function(callbacks, "clearSession")?,
             subscribe_session_store: get_optional_function(callbacks, "subscribeSessionStore")?,
-            session_ui_changed: get_optional_function(callbacks, "sessionUiChanged")?,
             chain_connect: get_optional_function(callbacks, "chainConnect")?,
             emit_frame: get_function(callbacks, "emitFrame")?,
             dispose: get_optional_function(callbacks, "dispose")?.unwrap_or_else(noop_function),
@@ -297,14 +296,14 @@ impl ChainProvider for WasmPlatform {
     }
 }
 
-impl PairingPresenter for WasmPlatform {
-    async fn present_pairing(&self, deeplink: String) -> Result<(), v01::GenericError> {
-        let Some(fn_) = self.bridge.present_pairing.as_ref() else {
-            return Err(v01::GenericError {
-                reason: "presentPairing callback not provided by host".to_string(),
-            });
+impl AuthPresenter for WasmPlatform {
+    fn auth_state_changed(&self, state: AuthState) {
+        let Some(fn_) = self.bridge.auth_state_changed.as_ref() else {
+            return;
         };
-        invoke_string_unit(fn_, deeplink).await.map_err(generic)
+        if let Err(err) = fn_.call1(&JsValue::NULL, &auth_state_to_js(&state)) {
+            web_sys::console::error_1(&err);
+        }
     }
 }
 
@@ -335,15 +334,6 @@ impl SessionStore for WasmPlatform {
             return stream::once(async { Ok(()) }).boxed();
         };
         invoke_js_subscription(fn_, None, parse_session_store_tick).boxed()
-    }
-
-    fn session_ui_changed(&self, info: SessionUiInfo) {
-        let Some(fn_) = self.bridge.session_ui_changed.as_ref() else {
-            return;
-        };
-        if let Err(err) = fn_.call1(&JsValue::NULL, &session_ui_info_to_js(&info)) {
-            web_sys::console::error_1(&err);
-        }
     }
 }
 
@@ -640,18 +630,6 @@ fn invoke_u64_unit(
     })
 }
 
-fn invoke_string_unit(
-    fn_: &Function,
-    value: String,
-) -> impl std::future::Future<Output = Result<(), String>> + Send {
-    let fn_ = fn_.clone();
-    SendWrapper::new(async move {
-        let arg = JsValue::from_str(&value);
-        let returned = fn_.call1(&JsValue::NULL, &arg).map_err(js_to_string)?;
-        await_optional_promise(returned).await.map(|_| ())
-    })
-}
-
 fn invoke_bytes_return(
     fn_: &Function,
     value: Vec<u8>,
@@ -716,6 +694,45 @@ fn parse_theme_item(value: JsValue) -> Result<v01::ThemeVariant, String> {
 
 fn parse_session_store_tick(_value: JsValue) -> Result<(), String> {
     Ok(())
+}
+
+/// Plain JS object mirroring the generated `AuthState` TS tagged union:
+/// `{ tag, value }` with `value` omitted for unit variants.
+fn auth_state_to_js(state: &AuthState) -> JsValue {
+    let object = js_sys::Object::new();
+    let set = |key: &str, value: &JsValue| {
+        let _ = Reflect::set(&object, &JsValue::from_str(key), value);
+    };
+    match state {
+        AuthState::Disconnected => {
+            set("tag", &JsValue::from_str("Disconnected"));
+        }
+        AuthState::Pairing { deeplink } => {
+            set("tag", &JsValue::from_str("Pairing"));
+            let value = js_sys::Object::new();
+            let _ = Reflect::set(
+                &value,
+                &JsValue::from_str("deeplink"),
+                &JsValue::from_str(deeplink),
+            );
+            set("value", &value.into());
+        }
+        AuthState::Connected(info) => {
+            set("tag", &JsValue::from_str("Connected"));
+            set("value", &session_ui_info_to_js(info));
+        }
+        AuthState::LoginFailed { reason } => {
+            set("tag", &JsValue::from_str("LoginFailed"));
+            let value = js_sys::Object::new();
+            let _ = Reflect::set(
+                &value,
+                &JsValue::from_str("reason"),
+                &JsValue::from_str(reason),
+            );
+            set("value", &value.into());
+        }
+    }
+    object.into()
 }
 
 /// Plain JS object mirroring the generated `SessionUiInfo` TS interface:
@@ -1099,5 +1116,13 @@ impl WasmTrUApiCore {
     pub async fn disconnect(&self) -> Result<(), JsValue> {
         self.inner.core.disconnect_async().await;
         Ok(())
+    }
+
+    /// Cancel any in-flight `request_login` pairing. The host receives a
+    /// `Disconnected` auth state immediately and the pending login resolves
+    /// to `Rejected`. A no-op when no login is in progress.
+    #[wasm_bindgen(js_name = cancelLogin)]
+    pub fn cancel_login(&self) {
+        self.inner.core.cancel_login();
     }
 }

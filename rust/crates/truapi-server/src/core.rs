@@ -27,6 +27,7 @@ use crate::subscription::Spawner;
 use crate::{Dispatcher, ProtocolMessage, Transport};
 
 type DisconnectFn = Arc<dyn Fn() -> BoxFuture<'static, ()> + Send + Sync>;
+type CancelLoginFn = Arc<dyn Fn() + Send + Sync>;
 
 /// Top-level core. Owns the dispatcher and, on the platform path, the shared
 /// session-state holder.
@@ -36,6 +37,7 @@ pub struct TrUApiCore {
     /// to a [`PlatformRuntimeHost`] for [`Self::from_platform_with_config`].
     session_state: Arc<SessionState>,
     disconnect: DisconnectFn,
+    cancel_login: CancelLoginFn,
 }
 
 impl TrUApiCore {
@@ -61,6 +63,7 @@ impl TrUApiCore {
                     state.clear_session();
                 })
             }),
+            cancel_login: Arc::new(|| {}),
         }
     }
 
@@ -83,6 +86,7 @@ impl TrUApiCore {
         runtime.start_session_store_sync(spawner.clone());
         let session_state = runtime.session_state();
         let disconnect_runtime = runtime.clone();
+        let cancel_login_runtime = runtime.clone();
         let mut dispatcher = Dispatcher::new(spawner);
         dispatcher::register(&mut dispatcher, runtime);
         Self {
@@ -94,6 +98,7 @@ impl TrUApiCore {
                     runtime.disconnect().await;
                 })
             }),
+            cancel_login: Arc::new(move || cancel_login_runtime.cancel_login()),
         }
     }
 
@@ -116,6 +121,15 @@ impl TrUApiCore {
     #[instrument(skip_all, fields(runtime.method = "core.disconnect_blocking"))]
     pub fn disconnect(&self) {
         futures::executor::block_on(self.disconnect_async());
+    }
+
+    /// Cancel any in-flight `request_login` pairing. The host UI receives a
+    /// `Disconnected` auth state immediately and the pending login resolves
+    /// to `Rejected`. A no-op when no login is in progress (and always a
+    /// no-op on the direct host path).
+    #[instrument(skip_all, fields(runtime.method = "core.cancel_login"))]
+    pub fn cancel_login(&self) {
+        (self.cancel_login)();
     }
 
     /// Asynchronous form of [`Self::receive_from_product`]. Decodes the

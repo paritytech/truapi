@@ -6,6 +6,7 @@ export type {
 } from "./types.js";
 
 export type {
+  AuthState,
   Awaitable,
   ChainConnect,
   ChainConnection,

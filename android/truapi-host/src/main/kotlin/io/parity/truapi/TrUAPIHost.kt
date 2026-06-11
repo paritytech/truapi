@@ -22,6 +22,7 @@
 
 package io.parity.truapi
 
+import uniffi.truapi_server.AuthState
 import uniffi.truapi_server.HostCallbacks
 import uniffi.truapi_server.HostNavigateRejection
 import uniffi.truapi_server.HostRejection
@@ -149,15 +150,15 @@ interface HostStorage {
  *
  * Threading: the Rust core invokes every callback on a background thread it
  * owns, never the UI (main) thread. UI-decision callbacks ([navigateTo],
- * [devicePermission], [remotePermission], [presentPairing], the `confirm*`
- * family, and [submitPreimage]) each run on their own thread from a blocking
- * pool, so an implementation may safely block its calling thread (e.g. with a
+ * [devicePermission], [remotePermission], the `confirm*` family, and
+ * [submitPreimage]) each run on their own thread from a blocking pool, so an
+ * implementation may safely block its calling thread (e.g. with a
  * `CountDownLatch`) until the user decides; other TrUAPI traffic keeps
- * flowing. The remaining callbacks (storage, session, chain, feature, theme,
- * preimage lookups) run inline on the dispatcher thread and must return
- * promptly without blocking. Any UI work MUST still be marshalled onto the
- * main thread, e.g. with `Handler(Looper.getMainLooper()).post { ... }` or a
- * `CoroutineScope` bound to `Dispatchers.Main`. Touching views or the
+ * flowing. The remaining callbacks (auth state, storage, session, chain,
+ * feature, theme, preimage lookups) run inline on the dispatcher thread and
+ * must return promptly without blocking. Any UI work MUST still be marshalled
+ * onto the main thread, e.g. with `Handler(Looper.getMainLooper()).post { ... }`
+ * or a `CoroutineScope` bound to `Dispatchers.Main`. Touching views or the
  * `WebView` directly from a callback throws `CalledFromWrongThreadException`.
  */
 interface HostBridge {
@@ -203,17 +204,15 @@ interface HostBridge {
     fun remotePermission(request: ByteArray): Boolean
 
     /**
-     * Present an SSO pairing deeplink or QR payload built by the Rust core.
-     * Show the UI and return immediately. Call
-     * [TrUAPIHostCore.notifyPairingCancelled] when the user dismisses it.
+     * Observe an auth state change. The core emits states only when they
+     * actually change, in transition order: render [AuthState.Pairing]
+     * as the pairing QR UI, connected/disconnected as the account badge, and
+     * login-failed as a retryable error. Report a user dismissal of the
+     * pairing UI through [TrUAPIHostCore.cancelLogin]. Invoked on the
+     * dispatcher thread; marshal the state to the main thread and return
+     * promptly.
      */
-    @Throws(HostRejection::class)
-    fun presentPairing(deeplink: String) {
-        throw HostRejection.Rejected("pairing presenter unavailable")
-    }
-
-    /** Close any active SSO pairing presentation. */
-    fun dismissPairing() {}
+    fun authStateChanged(state: AuthState) {}
 
     /** Read the opaque core-owned SSO session blob from host-global storage. */
     @Throws(HostRejection::class)
@@ -310,11 +309,8 @@ private class HostCallbackAdapter(private val bridge: HostBridge) : HostCallback
     override fun remotePermission(request: ByteArray): Boolean =
         bridge.remotePermission(request)
 
-    override fun presentPairing(deeplink: String) =
-        bridge.presentPairing(deeplink)
-
-    override fun dismissPairing() =
-        bridge.dismissPairing()
+    override fun authStateChanged(state: AuthState) =
+        bridge.authStateChanged(state)
 
     override fun readSession(): ByteArray? =
         bridge.readSession()
@@ -430,9 +426,14 @@ class TrUAPIHostCore private constructor(
         inner.notifySessionStoreChanged()
     }
 
-    /** Notify the core that the user dismissed the active SSO pairing UI. */
-    fun notifyPairingCancelled() {
-        inner.notifyPairingCancelled()
+    /**
+     * Cancel any in-flight login pairing (e.g. the user dismissed the pairing
+     * UI). The bridge receives a disconnected auth state immediately and the
+     * pending login resolves as rejected. A no-op when no login is in
+     * progress.
+     */
+    fun cancelLogin() {
+        inner.cancelLogin()
     }
 
     /** Push a host theme update to active TrUAPI theme subscriptions. */

@@ -18,7 +18,7 @@ use indoc::{formatdoc, writedoc};
 use crate::platform::{
     PlatformDefinition, PlatformInner, PlatformMethod, PlatformReturn, PlatformTrait,
 };
-use crate::rustdoc::{TypeDef, TypeDefKind, TypeRef};
+use crate::rustdoc::{FieldDef, TypeDef, TypeDefKind, TypeRef, VariantDef, VariantFields};
 
 /// Write the typed host-callbacks TS file into `output_dir`.
 pub fn generate(definition: &PlatformDefinition, output_dir: &str) -> Result<()> {
@@ -62,8 +62,12 @@ fn emit_host_callbacks(definition: &PlatformDefinition) -> Result<String> {
         .unwrap();
     }
 
-    for struct_def in &definition.structs {
-        out.push_str(&emit_struct_interface(struct_def)?);
+    for type_def in &definition.types {
+        let rendered = match &type_def.kind {
+            TypeDefKind::Enum(_) => emit_enum_type(type_def)?,
+            _ => emit_struct_interface(type_def)?,
+        };
+        out.push_str(&rendered);
         out.push('\n');
     }
 
@@ -159,6 +163,93 @@ fn emit_struct_interface(struct_def: &TypeDef) -> Result<String> {
     })
 }
 
+/// Emit a TS type for a local platform enum. Unit-only enums become string
+/// literal unions; payload enums become `{ tag, value }` tagged unions
+/// matching the `@parity/truapi` client convention.
+fn emit_enum_type(enum_def: &TypeDef) -> Result<String> {
+    let TypeDefKind::Enum(variants) = &enum_def.kind else {
+        bail!("Platform enum `{}` must have variants", enum_def.name);
+    };
+    if !enum_def.generic_params.is_empty() {
+        bail!("Platform enum `{}` must not be generic", enum_def.name);
+    }
+    let jsdoc = render_jsdoc("", enum_def.docs.as_deref());
+    if variants
+        .iter()
+        .all(|variant| matches!(variant.fields, VariantFields::Unit))
+    {
+        let union = variants
+            .iter()
+            .map(|variant| format!("\"{}\"", variant.name))
+            .collect::<Vec<_>>()
+            .join(" | ");
+        return Ok(format!(
+            "{jsdoc}export type {name} = {union};\n",
+            name = enum_def.name,
+        ));
+    }
+    let mut body = String::new();
+    for variant in variants {
+        body.push_str(&render_jsdoc("  ", variant.docs.as_deref()));
+        writeln!(body, "  | {}", enum_variant_type(variant)?).unwrap();
+    }
+    Ok(formatdoc! {
+        r#"
+        {jsdoc}export type {name} =
+        {body};
+        "#,
+        name = enum_def.name,
+        body = body.trim_end(),
+    })
+}
+
+/// Render one enum variant as a `{ tag, value }` member. Unit variants mark
+/// `value` optional so consumers can write `{ tag: "X" }`.
+fn enum_variant_type(variant: &VariantDef) -> Result<String> {
+    Ok(match &variant.fields {
+        VariantFields::Unit => format!("{{ tag: \"{}\"; value?: undefined }}", variant.name),
+        VariantFields::Unnamed(types) => format!(
+            "{{ tag: \"{}\"; value: {} }}",
+            variant.name,
+            unnamed_variant_value_type(types)?
+        ),
+        VariantFields::Named(fields) => format!(
+            "{{ tag: \"{}\"; value: {} }}",
+            variant.name,
+            inline_object_type(fields)?
+        ),
+    })
+}
+
+fn unnamed_variant_value_type(types: &[TypeRef]) -> Result<String> {
+    match types {
+        [single] => ts_type(single),
+        many => {
+            let rendered = many
+                .iter()
+                .map(ts_type)
+                .collect::<Result<Vec<_>>>()?
+                .join(", ");
+            Ok(format!("[{rendered}]"))
+        }
+    }
+}
+
+fn inline_object_type(fields: &[FieldDef]) -> Result<String> {
+    let body = fields
+        .iter()
+        .map(|field| {
+            let name = to_camel_case(&field.name);
+            match &field.type_ref {
+                TypeRef::Option(inner) => Ok(format!("{name}?: {}", ts_type(inner)?)),
+                other => Ok(format!("{name}: {}", ts_type(other)?)),
+            }
+        })
+        .collect::<Result<Vec<_>>>()?
+        .join("; ");
+    Ok(format!("{{ {body} }}"))
+}
+
 fn emit_super_interface(name: &str, composes: &[String], docs: Option<&str>) -> String {
     let jsdoc = render_jsdoc("", docs);
     if composes.is_empty() {
@@ -197,12 +288,12 @@ fn collect_named_types(definition: &PlatformDefinition) -> BTreeSet<String> {
         }
     }
     // Filter out names defined locally (the capability trait interfaces and
-    // the platform struct interfaces emitted into this file).
+    // the platform struct/enum types emitted into this file).
     let local: BTreeSet<String> = definition
         .traits
         .iter()
         .map(|t| t.name.clone())
-        .chain(definition.structs.iter().map(|s| s.name.clone()))
+        .chain(definition.types.iter().map(|s| s.name.clone()))
         .collect();
     out.into_iter().filter(|n| !local.contains(n)).collect()
 }

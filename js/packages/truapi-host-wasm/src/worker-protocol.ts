@@ -26,11 +26,10 @@ export const CALLBACK_NAMES = [
   "localStorageRead",
   "localStorageWrite",
   "localStorageClear",
-  "presentPairing",
+  "authStateChanged",
   "readSession",
   "writeSession",
   "clearSession",
-  "sessionUiChanged",
   "confirmSignPayload",
   "confirmSignRaw",
   "confirmCreateTransaction",
@@ -44,11 +43,10 @@ export type CallbackName = (typeof CALLBACK_NAMES)[number];
 
 export const OPTIONAL_CALLBACK_NAMES = [
   "cancelNotification",
-  "presentPairing",
+  "authStateChanged",
   "readSession",
   "writeSession",
   "clearSession",
-  "sessionUiChanged",
   "confirmSignPayload",
   "confirmSignRaw",
   "confirmCreateTransaction",
@@ -87,6 +85,7 @@ export type MainToWorker =
   | { kind: "setLogLevel"; level: LogLevel }
   | { kind: "frame"; bytes: Uint8Array }
   | { kind: "disconnect"; requestId: number }
+  | { kind: "cancelLogin" }
   | { kind: "callbackResponse"; requestId: number; ok: true; value: unknown }
   | { kind: "callbackResponse"; requestId: number; ok: false; error: string }
   | { kind: "subscriptionItem"; subId: number; value: unknown }

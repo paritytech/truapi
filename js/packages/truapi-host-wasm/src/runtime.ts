@@ -9,6 +9,7 @@ import type { Provider } from "@parity/truapi";
 // `createWasmRawCallbacks` to adapt this typed surface into the raw
 // callback surface consumed by `createWasmProvider`.
 export type {
+  AuthState,
   ChainProvider,
   Features,
   HostCallbacks,
@@ -21,7 +22,7 @@ export type {
   HostStorage,
   ThemeHost,
 } from "./generated/host-callbacks.js";
-import type { SessionUiInfo } from "./generated/host-callbacks.js";
+import type { AuthState } from "./generated/host-callbacks.js";
 
 /**
  * Async-or-sync return. Synchronous hosts (e.g. the dotli main-thread
@@ -99,12 +100,11 @@ export interface WasmRawCallbacks {
   localStorageRead(key: string): Promise<Uint8Array | null | undefined>;
   localStorageWrite(key: string, value: Uint8Array): Promise<void>;
   localStorageClear(key: string): Promise<void>;
-  presentPairing?(deeplink: string): Promise<void>;
+  authStateChanged?(state: AuthState): void;
   readSession?(): Promise<Uint8Array | null | undefined>;
   writeSession?(value: Uint8Array): Promise<void>;
   clearSession?(): Promise<void>;
   subscribeSessionStore?(sendItem: () => void): (() => void) | void;
-  sessionUiChanged?(info: SessionUiInfo): void;
   confirmSignPayload?(payload: Uint8Array): Promise<boolean>;
   confirmSignRaw?(payload: Uint8Array): Promise<boolean>;
   confirmCreateTransaction?(payload: Uint8Array): Promise<boolean>;
@@ -179,6 +179,7 @@ export function createUnavailableCallbacks(): Omit<
 export interface WasmCoreLike {
   receiveFromProduct(frame: Uint8Array): Promise<void>;
   disconnect?(): Promise<void>;
+  cancelLogin?(): void;
   dispose(): void;
   free(): void;
 }
@@ -190,6 +191,13 @@ export interface TrUApiHostWasmProvider extends Provider {
    * Disconnected from the Rust core.
    */
   disconnect(): Promise<void>;
+
+  /**
+   * Cancel any in-flight `requestLogin` pairing (e.g. the user closed the
+   * pairing UI). The core emits a `Disconnected` auth state and resolves
+   * the pending login as `Rejected`. A no-op when no login is in progress.
+   */
+  cancelLogin(): void;
 
   /**
    * Re-tune the wasm core's log level at runtime. Present on runtimes that
@@ -270,6 +278,10 @@ export function createWasmProvider(
         throw new Error("disconnect unavailable on this WASM core");
       }
       await core.disconnect();
+    },
+    cancelLogin() {
+      if (disposed || closedError) return;
+      core.cancelLogin?.();
     },
     dispose() {
       if (disposed) return;

@@ -106,7 +106,7 @@ test("createWebWorkerProvider advertises only supplied optional hooks", async ()
     makeCallbacks({
       clearSession: async () => {},
       readSession: async () => new Uint8Array([1]),
-      sessionUiChanged: () => {},
+      authStateChanged: () => {},
       subscribeSessionStore: () => () => {},
       preimageLookupSubscribe: () => () => {},
       chainConnect: () => ({ send: () => {}, close: () => {} }),
@@ -123,7 +123,7 @@ test("createWebWorkerProvider advertises only supplied optional hooks", async ()
     kind: "init",
     logLevel: "debug",
     runtimeConfig: config,
-    optionalCallbacks: ["readSession", "clearSession", "sessionUiChanged"],
+    optionalCallbacks: ["authStateChanged", "readSession", "clearSession"],
     optionalSubscriptions: ["sessionStoreSubscribe", "preimageLookupSubscribe"],
     chainConnect: true,
   });
@@ -131,6 +131,7 @@ test("createWebWorkerProvider advertises only supplied optional hooks", async ()
   worker.emit({ kind: "ready" });
   const provider = await providerPromise;
   assert.equal(typeof provider.disconnect, "function");
+  assert.equal(typeof provider.cancelLogin, "function");
 
   provider.dispose();
 });
@@ -293,14 +294,14 @@ test("worker provider dispatches optional callback requests to host hooks", asyn
   provider.dispose();
 });
 
-test("worker provider forwards sessionUiChanged callback requests", async () => {
+test("worker provider forwards authStateChanged callback requests", async () => {
   const worker = new FakeWorker();
-  const infos = [];
+  const states = [];
   const providerPromise = createWebWorkerProvider(
     worker,
     makeCallbacks({
-      sessionUiChanged: (info) => {
-        infos.push(info);
+      authStateChanged: (state) => {
+        states.push(state);
       },
     }),
     {
@@ -314,22 +315,28 @@ test("worker provider forwards sessionUiChanged callback requests", async () => 
   worker.emit({
     kind: "callbackRequest",
     requestId: 3,
-    name: "sessionUiChanged",
+    name: "authStateChanged",
     args: [
       {
-        connected: true,
-        publicKey: new Uint8Array([1, 2]),
-        liteUsername: "alice",
+        tag: "Connected",
+        value: {
+          connected: true,
+          publicKey: new Uint8Array([1, 2]),
+          liteUsername: "alice",
+        },
       },
     ],
   });
   await settle();
 
-  assert.deepEqual(infos, [
+  assert.deepEqual(states, [
     {
-      connected: true,
-      publicKey: new Uint8Array([1, 2]),
-      liteUsername: "alice",
+      tag: "Connected",
+      value: {
+        connected: true,
+        publicKey: new Uint8Array([1, 2]),
+        liteUsername: "alice",
+      },
     },
   ]);
   assert.deepEqual(worker.messages.at(-1), {
@@ -339,6 +346,16 @@ test("worker provider forwards sessionUiChanged callback requests", async () => 
     value: undefined,
   });
 
+  provider.dispose();
+});
+
+test("worker provider posts cancelLogin to the worker", async () => {
+  const worker = new FakeWorker();
+  const provider = await readyProvider(worker);
+
+  provider.cancelLogin();
+
+  assert.deepEqual(worker.messages.at(-1), { kind: "cancelLogin" });
   provider.dispose();
 });
 

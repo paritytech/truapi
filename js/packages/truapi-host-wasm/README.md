@@ -54,9 +54,9 @@ const provider = await createNodeWasmProvider(
     localStorageRead: async () => undefined,
     localStorageWrite: async () => {},
     localStorageClear: async () => {},
-    // Optional: presentPairing, readSession/writeSession/clearSession,
-    // subscribeSessionStore, sessionUiChanged (typed session info for host
-    // UI), confirmation, preimage, theme, and chain callbacks.
+    // Optional: authStateChanged (core-owned auth UI state stream),
+    // readSession/writeSession/clearSession, subscribeSessionStore,
+    // confirmation, preimage, theme, and chain callbacks.
   },
   {
     runtimeConfig: {

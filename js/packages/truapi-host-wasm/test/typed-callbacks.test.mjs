@@ -116,8 +116,8 @@ test("createWasmRawCallbacks bridges lifecycle, confirmations, and preimage call
   }
 
   const raw = createWasmRawCallbacks({
-    presentPairing: async (deeplink) => {
-      calls.push(["presentPairing", deeplink]);
+    authStateChanged: (state) => {
+      calls.push(["authStateChanged", state]);
     },
     readSession: async () => new Uint8Array([1, 2, 3]),
     writeSession: async (value) => {
@@ -127,9 +127,6 @@ test("createWasmRawCallbacks bridges lifecycle, confirmations, and preimage call
       calls.push(["clearSession"]);
     },
     subscribeSessionStore: () => sessionTicks(),
-    sessionUiChanged: (info) => {
-      calls.push(["sessionUiChanged", info]);
-    },
     confirmSignPayload: async (payload) => payload[0] === 1,
     confirmSignRaw: async (payload) => payload[0] === 2,
     confirmCreateTransaction: async (payload) => payload[0] === 3,
@@ -158,15 +155,13 @@ test("createWasmRawCallbacks bridges lifecycle, confirmations, and preimage call
     (value) => preimageEvents.push(value ? [...value] : null),
   );
 
-  await raw.presentPairing?.("polkadotapp://example");
+  raw.authStateChanged?.({
+    tag: "Pairing",
+    value: { deeplink: "polkadotapp://example" },
+  });
   assert.deepEqual(await raw.readSession?.(), new Uint8Array([1, 2, 3]));
   await raw.writeSession?.(new Uint8Array([3, 2, 1]));
   await raw.clearSession?.();
-  raw.sessionUiChanged?.({
-    connected: true,
-    publicKey: new Uint8Array([7]),
-    liteUsername: "alice",
-  });
   assert.equal(await raw.confirmSignPayload?.(new Uint8Array([1])), true);
   assert.equal(await raw.confirmSignRaw?.(new Uint8Array([2])), true);
   assert.equal(await raw.confirmCreateTransaction?.(new Uint8Array([3])), true);
@@ -188,13 +183,12 @@ test("createWasmRawCallbacks bridges lifecycle, confirmations, and preimage call
   assert.deepEqual(preimageEvents, [null, [4, 5, 6]]);
   assert.deepEqual(calls, [
     ["lookupPreimage", [9]],
-    ["presentPairing", "polkadotapp://example"],
+    [
+      "authStateChanged",
+      { tag: "Pairing", value: { deeplink: "polkadotapp://example" } },
+    ],
     ["writeSession", [3, 2, 1]],
     ["clearSession"],
-    [
-      "sessionUiChanged",
-      { connected: true, publicKey: new Uint8Array([7]), liteUsername: "alice" },
-    ],
     ["confirmPreimageSubmit", 42n],
     ["submitPreimage", [6]],
   ]);

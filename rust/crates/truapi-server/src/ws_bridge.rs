@@ -433,8 +433,9 @@ mod tests {
     use truapi::versioned::system::HostFeatureSupportedRequest;
 
     use crate::frame::{Payload, request_ids};
-    use crate::test_support::{StubPlatform, runtime_config};
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use crate::test_support::{StubPlatform, first_pairing_deeplink, runtime_config};
+    use std::sync::atomic::Ordering;
+    use truapi_platform::AuthState;
 
     fn test_core() -> Arc<TrUApiCore> {
         core_for(Arc::new(StubPlatform::default()))
@@ -544,11 +545,10 @@ mod tests {
     #[test]
     fn slow_request_does_not_block_concurrent_round_trip() {
         let platform = Arc::new(StubPlatform {
-            pairing_pending: true,
             chain_connect_pending: true,
             ..Default::default()
         });
-        let pairing_started = platform.pairing_started.clone();
+        let auth_states = platform.auth_states.clone();
         let core = core_for(platform);
         let logger: BridgeLogger = Arc::new(|_, _| {});
         let (mut bridge, endpoint) = WsBridge::start(0, core, logger).expect("start bridge");
@@ -564,15 +564,16 @@ mod tests {
             let (mut ws, _) = tokio_tungstenite::connect_async(&url).await.expect("dial");
             ws.send(login_frame("p:login")).await.expect("send login");
 
-            // Wait until the login handler is pending on the pairing prompt.
+            // Wait until the login handler has emitted the pairing state and
+            // is pending on the statement-store connect.
             for _ in 0..1000 {
-                if pairing_started.load(Ordering::SeqCst) {
+                if first_pairing_deeplink(&auth_states).is_some() {
                     break;
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(5)).await;
             }
             assert!(
-                pairing_started.load(Ordering::SeqCst),
+                first_pairing_deeplink(&auth_states).is_some(),
                 "login handler did not reach the pairing prompt"
             );
 
@@ -608,17 +609,17 @@ mod tests {
     }
 
     /// Dropping the client connection cancels in-flight requests: a pending
-    /// `request_login` unwinds (its pairing-prompt future is dropped) instead
-    /// of outliving the connection.
+    /// `request_login` unwinds (its statement-store connect future is
+    /// dropped) instead of outliving the connection, and the abandoned
+    /// pairing state is reset for the host UI.
     #[test]
     fn connection_drop_cancels_pending_request_login() {
         let platform = Arc::new(StubPlatform {
-            pairing_pending: true,
             chain_connect_pending: true,
             ..Default::default()
         });
-        let pairing_started = platform.pairing_started.clone();
-        let pairing_dropped = platform.pairing_dropped.clone();
+        let auth_states = platform.auth_states.clone();
+        let pending_connect_dropped = platform.pending_connect_dropped.clone();
         let core = core_for(platform);
         let logger: BridgeLogger = Arc::new(|_, _| {});
         let (mut bridge, endpoint) = WsBridge::start(0, core, logger).expect("start bridge");
@@ -634,13 +635,13 @@ mod tests {
             ws.send(login_frame("p:login")).await.expect("send login");
 
             for _ in 0..1000 {
-                if pairing_started.load(Ordering::SeqCst) {
+                if first_pairing_deeplink(&auth_states).is_some() {
                     break;
                 }
                 tokio::time::sleep(std::time::Duration::from_millis(5)).await;
             }
             assert!(
-                pairing_started.load(Ordering::SeqCst),
+                first_pairing_deeplink(&auth_states).is_some(),
                 "login handler did not reach the pairing prompt"
             );
 
@@ -648,10 +649,26 @@ mod tests {
         });
 
         let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
-        while !pairing_dropped.load(Ordering::SeqCst) {
+        while !pending_connect_dropped.load(Ordering::SeqCst) {
             assert!(
                 std::time::Instant::now() < deadline,
                 "pending request_login was not cancelled on connection drop"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let last = auth_states
+                .lock()
+                .expect("auth state list mutex poisoned")
+                .last()
+                .cloned();
+            if last == Some(AuthState::Disconnected) {
+                break;
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "abandoned pairing was not reset to Disconnected, last state: {last:?}"
             );
             std::thread::sleep(std::time::Duration::from_millis(5));
         }

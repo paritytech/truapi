@@ -164,13 +164,13 @@ public protocol HostStorageBackend: AnyObject, Sendable {
 /// Threading: the Rust core invokes every callback on a background thread it
 /// owns, never the main thread. UI-decision callbacks
 /// (``navigateTo(url:)``, ``devicePermission(request:)``,
-/// ``remotePermission(request:)``, ``presentPairing(deeplink:cancel:)``, the
-/// `confirm*` family, and ``submitPreimage(value:)``) each run on their own
-/// thread from a blocking pool, so an implementation may safely block its
-/// calling thread (e.g. with `DispatchQueue.main.sync` or a semaphore) until
-/// the user decides; other TrUAPI traffic keeps flowing. The remaining
-/// callbacks (storage, session, chain, feature, theme, preimage lookups) run
-/// inline on the dispatcher thread and must return promptly without blocking.
+/// ``remotePermission(request:)``, the `confirm*` family, and
+/// ``submitPreimage(value:)``) each run on their own thread from a blocking
+/// pool, so an implementation may safely block its calling thread (e.g. with
+/// `DispatchQueue.main.sync` or a semaphore) until the user decides; other
+/// TrUAPI traffic keeps flowing. The remaining callbacks (auth state,
+/// storage, session, chain, feature, theme, preimage lookups) run inline on
+/// the dispatcher thread and must return promptly without blocking.
 /// Any UI work MUST still hop to the main thread, e.g.
 /// `await MainActor.run { ... }` or `DispatchQueue.main.async { ... }`. Calling
 /// UIKit/WebKit off the main thread is undefined behaviour.
@@ -203,16 +203,14 @@ public protocol HostBridge: AnyObject, Sendable {
     /// stall other TrUAPI traffic.
     func remotePermission(request: Data) throws -> Bool
 
-    /// Present an SSO pairing deeplink or QR payload built by the Rust core.
-    /// Show the UI and return; invoke `cancel` when the user dismisses the
-    /// presentation so the core can abandon the pairing wait. The closure is
-    /// safe to call from any thread and holds no strong reference back to the
-    /// core, so storing it in the presenting view (or the bridge itself) does
-    /// not create a retain cycle.
-    func presentPairing(deeplink: String, cancel: @escaping @Sendable () -> Void) throws
-
-    /// Close any active SSO pairing presentation.
-    func dismissPairing()
+    /// Observe an auth state change. The core emits states only when they
+    /// actually change, in transition order: render `.pairing` as the pairing
+    /// QR UI, `.connected`/`.disconnected` as the account badge, and
+    /// `.loginFailed` as a retryable error. Report a user dismissal of the
+    /// pairing UI through ``TrUAPIHostCore/cancelLogin()``. Invoked on the
+    /// dispatcher thread; hand the state to the main thread and return
+    /// promptly.
+    func authStateChanged(state: AuthState)
 
     /// Read the opaque core-owned SSO session blob from host-global storage.
     func readSession() throws -> Data?
@@ -272,10 +270,7 @@ public extension HostBridge {
     func onCoreLog(marker: String, detail: String) {}
     func pushNotification(payload: Data) throws -> UInt32 { 0 }
     func cancelNotification(id: UInt32) throws {}
-    func presentPairing(deeplink: String, cancel: @escaping @Sendable () -> Void) throws {
-        throw HostRejection.Rejected(reason: "pairing presenter unavailable")
-    }
-    func dismissPairing() {}
+    func authStateChanged(state: AuthState) {}
     func readSession() throws -> Data? { nil }
     func writeSession(value: Data) throws {}
     func clearSession() throws {}
@@ -298,10 +293,6 @@ public extension HostBridge {
 /// leak into consumers.
 private final class HostCallbackAdapter: HostCallbacks, @unchecked Sendable {
     private let bridge: HostBridge
-    /// Back-reference used to build the pairing cancel handle. Weak: the core
-    /// retains this adapter for its whole lifetime, so a strong reference here
-    /// would form a retain cycle.
-    weak var core: NativeTrUApiCore?
 
     init(bridge: HostBridge) {
         self.bridge = bridge
@@ -331,14 +322,8 @@ private final class HostCallbackAdapter: HostCallbacks, @unchecked Sendable {
         try bridge.remotePermission(request: request)
     }
 
-    func presentPairing(deeplink: String) throws {
-        try bridge.presentPairing(deeplink: deeplink) { [weak self] in
-            self?.core?.notifyPairingCancelled()
-        }
-    }
-
-    func dismissPairing() {
-        bridge.dismissPairing()
+    func authStateChanged(state: AuthState) {
+        bridge.authStateChanged(state: state)
     }
 
     func readSession() throws -> Data? {
@@ -439,9 +424,6 @@ public final class TrUAPIHostCore {
             callbacks: adapter,
             runtimeConfig: runtimeConfig.native
         )
-        // Weak back-reference for the pairing cancel handle; keeps
-        // core -> adapter -> core from becoming a retain cycle.
-        adapter.core = inner
     }
 
     /// Start the localhost WebSocket bridge. Requires the `ws-bridge`
@@ -470,12 +452,12 @@ public final class TrUAPIHostCore {
         inner.notifySessionStoreChanged()
     }
 
-    /// Notify the core that the user dismissed the active SSO pairing UI.
-    /// Usually reported through the `cancel` handle passed to
-    /// ``HostBridge/presentPairing(deeplink:cancel:)``; this method covers
-    /// hosts that route dismissal through their own plumbing.
-    public func notifyPairingCancelled() {
-        inner.notifyPairingCancelled()
+    /// Cancel any in-flight login pairing (e.g. the user dismissed the
+    /// pairing UI). The bridge receives a `.disconnected` auth state
+    /// immediately and the pending login resolves as rejected. A no-op when
+    /// no login is in progress.
+    public func cancelLogin() {
+        inner.cancelLogin()
     }
 
     /// Push a host theme update to active TrUAPI theme subscriptions.

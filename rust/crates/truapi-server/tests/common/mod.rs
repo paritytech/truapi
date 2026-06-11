@@ -5,9 +5,9 @@ use futures::stream::{self, BoxStream};
 use truapi::v01;
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use truapi_platform::{
-    ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, PairingDeeplinkScheme,
-    PairingPresenter, Permissions, PreimageHost, RuntimeConfig, SessionStore, Storage, ThemeHost,
-    UserConfirmation,
+    AuthPresenter, ChainProvider, Features, JsonRpcConnection, Navigation, Notifications,
+    PairingDeeplinkScheme, Permissions, PreimageHost, RuntimeConfig, SessionStore, Storage,
+    ThemeHost, UserConfirmation,
 };
 
 pub fn test_spawner() -> truapi_server::subscription::Spawner {
@@ -117,13 +117,7 @@ impl ChainProvider for WireShapePlatform {
     }
 }
 
-impl PairingPresenter for WireShapePlatform {
-    async fn present_pairing(&self, _deeplink: String) -> Result<(), v01::GenericError> {
-        Err(v01::GenericError {
-            reason: "pairing presenter callback not provided by host".to_string(),
-        })
-    }
-}
+impl AuthPresenter for WireShapePlatform {}
 
 impl SessionStore for WireShapePlatform {
     async fn read_session(&self) -> Result<Option<Vec<u8>>, v01::GenericError> {

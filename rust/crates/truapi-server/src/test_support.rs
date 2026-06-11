@@ -32,9 +32,9 @@ use truapi::versioned::account::HostAccountGetAliasRequest;
 use truapi::versioned::resource_allocation::HostRequestResourceAllocationRequest;
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use truapi_platform::{
-    ChainProvider, Features as PlatformFeatures, JsonRpcConnection,
-    Navigation as PlatformNavigation, Notifications as PlatformNotifications, PairingPresenter,
-    Permissions as PlatformPermissions, PreimageHost, RuntimeConfig, SessionStore, SessionUiInfo,
+    AuthPresenter, AuthState, ChainProvider, Features as PlatformFeatures, JsonRpcConnection,
+    Navigation as PlatformNavigation, Notifications as PlatformNotifications,
+    Permissions as PlatformPermissions, PreimageHost, RuntimeConfig, SessionStore,
     Storage as PlatformStorage, ThemeHost, UserConfirmation,
 };
 
@@ -57,6 +57,9 @@ pub(crate) fn remote_subscription_slot() -> SharedRemoteSubscriptionId {
     Arc::new(Mutex::new(None))
 }
 
+/// Test hook invoked after each recorded auth state.
+pub(crate) type AuthStateHook = Arc<dyn Fn(&AuthState) + Send + Sync>;
+
 /// Minimal Platform impl that only answers `feature_supported`. Every
 /// other callback returns a unit value or empty stream, so the runtime
 /// can exercise its delegation paths without pulling in a real backend.
@@ -76,12 +79,14 @@ pub(crate) struct StubPlatform {
     pub(crate) session_error: Option<&'static str>,
     pub(crate) session_clears: Arc<Mutex<usize>>,
     pub(crate) session_writes: Arc<Mutex<Vec<Vec<u8>>>>,
-    pub(crate) session_ui_events: Arc<Mutex<Vec<SessionUiInfo>>>,
-    pub(crate) pairing_error: Option<&'static str>,
-    pub(crate) pairing_pending: bool,
-    pub(crate) pairing_started: Arc<AtomicBool>,
-    pub(crate) pairing_dropped: Arc<AtomicBool>,
-    pub(crate) presented_pairings: Arc<Mutex<Vec<String>>>,
+    /// Every `auth_state_changed` emission in order.
+    pub(crate) auth_states: Arc<Mutex<Vec<AuthState>>>,
+    /// Invoked after each recorded auth state, outside any stub lock, so a
+    /// test can react to a transition (e.g. cancel the login it observes).
+    pub(crate) on_auth_state: Arc<Mutex<Option<AuthStateHook>>>,
+    /// Set when a `chain_connect_pending` connect future is dropped, which is
+    /// how a dropped login flow manifests on the stub.
+    pub(crate) pending_connect_dropped: Arc<AtomicBool>,
     pub(crate) pairing_success_response: bool,
     /// Deliver the pairing success statement only through a snapshot
     /// query page; the live subscription stays silent.
@@ -94,6 +99,8 @@ pub(crate) struct StubPlatform {
     pub(crate) chain_connect_error: Option<&'static str>,
     pub(crate) chain_connect_pending: bool,
     pub(crate) local_storage: Arc<Mutex<std::collections::HashMap<String, Vec<u8>>>>,
+    /// When set, `Storage::read` fails with this reason.
+    pub(crate) local_storage_error: Option<&'static str>,
     /// When set, `clear_session` notifies the session-store subscription
     /// through this sender, mimicking native hosts.
     pub(crate) session_store_tick_tx:
@@ -124,12 +131,9 @@ impl Default for StubPlatform {
             session_error: None,
             session_clears: Arc::new(Mutex::new(0)),
             session_writes: Arc::new(Mutex::new(Vec::new())),
-            session_ui_events: Arc::new(Mutex::new(Vec::new())),
-            pairing_error: None,
-            pairing_pending: false,
-            pairing_started: Arc::new(AtomicBool::new(false)),
-            pairing_dropped: Arc::new(AtomicBool::new(false)),
-            presented_pairings: Arc::new(Mutex::new(Vec::new())),
+            auth_states: Arc::new(Mutex::new(Vec::new())),
+            on_auth_state: Arc::new(Mutex::new(None)),
+            pending_connect_dropped: Arc::new(AtomicBool::new(false)),
             pairing_success_response: false,
             pairing_success_via_query: false,
             notification_id: 0,
@@ -140,18 +144,31 @@ impl Default for StubPlatform {
             chain_connect_error: None,
             chain_connect_pending: false,
             local_storage: Arc::new(Mutex::new(std::collections::HashMap::new())),
+            local_storage_error: None,
             session_store_tick_tx: None,
             session_store_ticks: Arc::new(Mutex::new(None)),
         }
     }
 }
 
-struct PendingPairingGuard(Arc<AtomicBool>);
+struct DropFlagGuard(Arc<AtomicBool>);
 
-impl Drop for PendingPairingGuard {
+impl Drop for DropFlagGuard {
     fn drop(&mut self) {
         self.0.store(true, Ordering::SeqCst);
     }
+}
+
+/// First `Pairing` deeplink recorded on `auth_states`, if any.
+pub(crate) fn first_pairing_deeplink(auth_states: &Mutex<Vec<AuthState>>) -> Option<String> {
+    auth_states
+        .lock()
+        .expect("auth state list mutex poisoned")
+        .iter()
+        .find_map(|state| match state {
+            AuthState::Pairing { deeplink } => Some(deeplink.clone()),
+            _ => None,
+        })
 }
 
 pub(crate) fn stub_platform() -> Arc<StubPlatform> {
@@ -585,6 +602,11 @@ pub(crate) fn signed_statement(topic: [u8; 32]) -> v01::SignedStatement {
 
 impl PlatformStorage for StubPlatform {
     async fn read(&self, key: String) -> Result<Option<Vec<u8>>, v01::HostLocalStorageReadError> {
+        if let Some(reason) = self.local_storage_error {
+            return Err(v01::HostLocalStorageReadError::Unknown {
+                reason: reason.to_string(),
+            });
+        }
         Ok(self
             .local_storage
             .lock()
@@ -674,7 +696,7 @@ impl PlatformFeatures for StubPlatform {
 struct RecordingConnection {
     sent: Arc<Mutex<Vec<String>>>,
     responses: Vec<String>,
-    presented_pairings: Arc<Mutex<Vec<String>>>,
+    auth_states: Arc<Mutex<Vec<AuthState>>>,
     pairing_success_response: bool,
     pairing_success_via_query: bool,
 }
@@ -688,10 +710,10 @@ impl JsonRpcConnection for RecordingConnection {
     }
     fn responses(&self) -> BoxStream<'static, String> {
         if self.pairing_success_via_query {
-            let presented_pairings = self.presented_pairings.clone();
+            let auth_states = self.auth_states.clone();
             let sent = self.sent.clone();
             return Box::pin(stream::unfold(0, move |state| {
-                let presented_pairings = presented_pairings.clone();
+                let auth_states = auth_states.clone();
                 let sent = sent.clone();
                 async move {
                     match state {
@@ -720,12 +742,7 @@ impl JsonRpcConnection for RecordingConnection {
                         }
                         2 => {
                             for _ in 0..100 {
-                                let deeplink = presented_pairings
-                                    .lock()
-                                    .expect("pairing list mutex poisoned")
-                                    .first()
-                                    .cloned();
-                                if let Some(deeplink) = deeplink {
+                                if let Some(deeplink) = first_pairing_deeplink(&auth_states) {
                                     return Some((
                                         new_statements_frame(
                                             "query-sub",
@@ -744,9 +761,9 @@ impl JsonRpcConnection for RecordingConnection {
             }));
         }
         if self.pairing_success_response {
-            let presented_pairings = self.presented_pairings.clone();
+            let auth_states = self.auth_states.clone();
             return Box::pin(stream::unfold(0, move |state| {
-                let presented_pairings = presented_pairings.clone();
+                let auth_states = auth_states.clone();
                 async move {
                     match state {
                         0 => Some((
@@ -755,12 +772,7 @@ impl JsonRpcConnection for RecordingConnection {
                         )),
                         1 => {
                             for _ in 0..100 {
-                                let deeplink = presented_pairings
-                                    .lock()
-                                    .expect("pairing list mutex poisoned")
-                                    .first()
-                                    .cloned();
-                                if let Some(deeplink) = deeplink {
+                                if let Some(deeplink) = first_pairing_deeplink(&auth_states) {
                                     return Some((
                                         new_statements_frame(
                                             "pairing-sub",
@@ -797,35 +809,32 @@ impl ChainProvider for StubPlatform {
             });
         }
         if self.chain_connect_pending {
+            let _guard = DropFlagGuard(self.pending_connect_dropped.clone());
             futures::future::pending::<()>().await;
         }
         Ok(Box::new(RecordingConnection {
             sent: self.sent_rpc.clone(),
             responses: self.rpc_responses.clone(),
-            presented_pairings: self.presented_pairings.clone(),
+            auth_states: self.auth_states.clone(),
             pairing_success_response: self.pairing_success_response,
             pairing_success_via_query: self.pairing_success_via_query,
         }))
     }
 }
 
-impl PairingPresenter for StubPlatform {
-    async fn present_pairing(&self, deeplink: String) -> Result<(), v01::GenericError> {
-        self.presented_pairings
+impl AuthPresenter for StubPlatform {
+    fn auth_state_changed(&self, state: AuthState) {
+        self.auth_states
             .lock()
-            .expect("pairing list mutex poisoned")
-            .push(deeplink);
-        if self.pairing_pending {
-            self.pairing_started.store(true, Ordering::SeqCst);
-            let _guard = PendingPairingGuard(self.pairing_dropped.clone());
-            futures::future::pending::<()>().await;
-        }
-        if let Some(reason) = self.pairing_error {
-            Err(v01::GenericError {
-                reason: reason.to_string(),
-            })
-        } else {
-            Ok(())
+            .expect("auth state list mutex poisoned")
+            .push(state.clone());
+        let hook = self
+            .on_auth_state
+            .lock()
+            .expect("auth state hook mutex poisoned")
+            .clone();
+        if let Some(hook) = hook {
+            hook(&state);
         }
     }
 }
@@ -867,12 +876,6 @@ impl SessionStore for StubPlatform {
             return ticks.boxed();
         }
         Box::pin(stream::once(async { Ok(()) }))
-    }
-    fn session_ui_changed(&self, info: SessionUiInfo) {
-        self.session_ui_events
-            .lock()
-            .expect("session ui event list mutex poisoned")
-            .push(info);
     }
 }
 

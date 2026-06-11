@@ -12,8 +12,8 @@ use std::collections::BTreeSet;
 use anyhow::{Context, Result, bail};
 
 use crate::rustdoc::{
-    Crate, Item, NameContext, TypeDef, TypeRef, clean_docs, extract_struct, resolve_type,
-    summarize_json,
+    Crate, Item, NameContext, TypeDef, TypeDefKind, TypeRef, VariantFields, clean_docs,
+    extract_enum, extract_struct, resolve_type, summarize_json,
 };
 
 /// Top-level extracted shape of a `truapi-platform`-style crate.
@@ -21,10 +21,10 @@ use crate::rustdoc::{
 pub struct PlatformDefinition {
     /// Capability traits sorted alphabetically by name.
     pub traits: Vec<PlatformTrait>,
-    /// Local structs referenced from trait method signatures, sorted
-    /// alphabetically by name. Emitted alongside the trait interfaces so the
-    /// generated TS does not have to import them from the API client.
-    pub structs: Vec<TypeDef>,
+    /// Local structs and enums referenced from trait method signatures,
+    /// sorted alphabetically by name. Emitted alongside the trait interfaces
+    /// so the generated TS does not have to import them from the API client.
+    pub types: Vec<TypeDef>,
     /// Composite super-trait (`Platform: Storage + Navigation + ...`), if any.
     pub super_trait: Option<PlatformSuperTrait>,
 }
@@ -140,17 +140,18 @@ pub fn extract(krate: &Crate) -> Result<PlatformDefinition> {
     }
 
     traits.sort_by(|a, b| a.name.cmp(&b.name));
-    let structs = collect_referenced_local_structs(krate, &traits, &names)?;
+    let types = collect_referenced_local_types(krate, &traits, &names)?;
 
     Ok(PlatformDefinition {
         traits,
-        structs,
+        types,
         super_trait,
     })
 }
 
-/// Extract every local struct whose name appears in a trait method signature.
-fn collect_referenced_local_structs(
+/// Extract every local struct or enum whose name appears in a trait method
+/// signature.
+fn collect_referenced_local_types(
     krate: &Crate,
     traits: &[PlatformTrait],
     names: &NameContext,
@@ -173,26 +174,80 @@ fn collect_referenced_local_structs(
         }
     }
 
-    let mut structs = Vec::new();
-    for (item_id, item_path) in &krate.paths {
-        if item_path.crate_id != 0 || item_path.kind != "struct" {
-            continue;
+    // Local types can reference further local types from their fields or
+    // variant payloads (e.g. `AuthState::Connected(SessionUiInfo)`), so keep
+    // extracting until the referenced set stops growing.
+    let mut types: Vec<TypeDef> = Vec::new();
+    let mut extracted: BTreeSet<String> = BTreeSet::new();
+    loop {
+        let mut grew = false;
+        for (item_id, item_path) in &krate.paths {
+            if item_path.crate_id != 0 || !matches!(item_path.kind.as_str(), "struct" | "enum") {
+                continue;
+            }
+            let Some(name) = item_path.path.last() else {
+                continue;
+            };
+            if !referenced.contains(name) || extracted.contains(name) {
+                continue;
+            }
+            let item = krate.index.get(item_id).with_context(|| {
+                format!(
+                    "Missing rustdoc item `{item_id}` for {} `{name}`",
+                    item_path.kind
+                )
+            })?;
+            let module_path = item_path.path[..item_path.path.len() - 1].to_vec();
+            let type_def = if item_path.kind == "struct" {
+                extract_struct(item_id, item, krate, names, module_path)?
+            } else {
+                extract_enum(item_id, item, krate, names, module_path)?
+            };
+            collect_type_def_references(&type_def, &mut referenced);
+            extracted.insert(name.clone());
+            types.push(type_def);
+            grew = true;
         }
-        let Some(name) = item_path.path.last() else {
-            continue;
-        };
-        if !referenced.contains(name) {
-            continue;
+        if !grew {
+            break;
         }
-        let item = krate
-            .index
-            .get(item_id)
-            .with_context(|| format!("Missing rustdoc item `{item_id}` for struct `{name}`"))?;
-        let module_path = item_path.path[..item_path.path.len() - 1].to_vec();
-        structs.push(extract_struct(item_id, item, krate, names, module_path)?);
     }
-    structs.sort_by(|a, b| a.name.cmp(&b.name));
-    Ok(structs)
+    types.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(types)
+}
+
+/// Collect named types referenced from a local type's fields or variants.
+fn collect_type_def_references(type_def: &TypeDef, out: &mut BTreeSet<String>) {
+    match &type_def.kind {
+        TypeDefKind::Alias(ty) => collect_named_types(ty, out),
+        TypeDefKind::Struct(fields) => {
+            for field in fields {
+                collect_named_types(&field.type_ref, out);
+            }
+        }
+        TypeDefKind::TupleStruct(types) => {
+            for ty in types {
+                collect_named_types(ty, out);
+            }
+        }
+        TypeDefKind::Enum(variants) => {
+            for variant in variants {
+                match &variant.fields {
+                    VariantFields::Unit => {}
+                    VariantFields::Unnamed(types) => {
+                        for ty in types {
+                            collect_named_types(ty, out);
+                        }
+                    }
+                    VariantFields::Named(fields) => {
+                        for field in fields {
+                            collect_named_types(&field.type_ref, out);
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn collect_named_types(ty: &TypeRef, out: &mut BTreeSet<String>) {

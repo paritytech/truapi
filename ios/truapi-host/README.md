@@ -25,7 +25,7 @@ TrUAPIHostCore.startWsBridge()
   → Rust dispatcher
 ```
 
-The product running in the `WKWebView` opens a `WebSocket` to the localhost port + token returned by `startWsBridge`. From there the Rust core handles the wire protocol directly. Outbound responses and host-side capability callbacks (`navigateTo`, `pushNotification`, `cancelNotification`, `devicePermission`, `remotePermission`, `presentPairing`, session storage, chain JSON-RPC, confirmations, preimage, theme, `featureSupported`, `storage`) reach the embedder through `HostBridge`.
+The product running in the `WKWebView` opens a `WebSocket` to the localhost port + token returned by `startWsBridge`. From there the Rust core handles the wire protocol directly. Outbound responses and host-side capability callbacks (`navigateTo`, `pushNotification`, `cancelNotification`, `devicePermission`, `remotePermission`, `authStateChanged`, session storage, chain JSON-RPC, confirmations, preimage, theme, `featureSupported`, `storage`) reach the embedder through `HostBridge`.
 
 ## Permissions split
 
@@ -42,13 +42,13 @@ Both return a `Bool` granted flag. SCALE decoding for the UI prompt is done by t
 > background thread it owns, never the main thread. Hop to the main thread
 > (`DispatchQueue.main` / `MainActor`) before touching UIKit, WebKit, or the
 > `WKWebView`. UI-decision callbacks (`navigateTo`, `devicePermission`,
-> `remotePermission`, `presentPairing`, the `confirm*` family,
-> `submitPreimage`) each run on their own blocking-pool thread, so it is safe
-> to use `DispatchQueue.main.sync` (or a semaphore) to present the prompt on
-> the main thread and block the calling thread until the user decides; other
-> TrUAPI traffic keeps flowing while you wait. The remaining callbacks
-> (storage, session, chain, feature, theme, preimage lookups) run inline on
-> the dispatcher thread and must return promptly without blocking.
+> `remotePermission`, the `confirm*` family, `submitPreimage`) each run on
+> their own blocking-pool thread, so it is safe to use
+> `DispatchQueue.main.sync` (or a semaphore) to present the prompt on the
+> main thread and block the calling thread until the user decides; other
+> TrUAPI traffic keeps flowing while you wait. The remaining callbacks (auth
+> state, storage, session, chain, feature, theme, preimage lookups) run
+> inline on the dispatcher thread and must return promptly without blocking.
 
 ```swift
 import Foundation
@@ -92,22 +92,13 @@ final class MyBridge: HostBridge, @unchecked Sendable {
         DispatchQueue.main.sync { /* show prompt; */ false }
     }
 
-    // The `cancel` handle holds no strong reference back to the core, so
-    // storing it (even in a view controller) cannot create a retain cycle.
-    private var pairingCancel: (@Sendable () -> Void)?
-
-    func presentPairing(deeplink: String, cancel: @escaping @Sendable () -> Void) throws {
-        pairingCancel = cancel
-        DispatchQueue.main.async { /* present the pairing QR / deeplink sheet */ }
+    // Core-owned auth state stream: render `.pairing` as the pairing QR
+    // sheet, `.connected`/`.disconnected` as the account badge, and
+    // `.loginFailed` as a retryable error. When the user closes the pairing
+    // sheet, report it with `core.cancelLogin()`.
+    func authStateChanged(state: AuthState) {
+        DispatchQueue.main.async { /* render the state */ }
     }
-
-    func dismissPairing() {
-        pairingCancel = nil
-        DispatchQueue.main.async { /* tear down the pairing sheet */ }
-    }
-
-    // When the user closes the pairing sheet, report it to the core:
-    // pairingCancel?()
 
     func featureSupported(request: Data) throws -> Bool { false }
 

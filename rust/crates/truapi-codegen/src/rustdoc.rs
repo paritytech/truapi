@@ -1108,7 +1108,7 @@ pub(crate) fn extract_struct(
     })
 }
 
-fn extract_enum(
+pub(crate) fn extract_enum(
     item_id: &str,
     item: &Item,
     krate: &Crate,
