@@ -72,13 +72,17 @@ export function DiagnosisView({
     };
   }, [services, testResults]);
 
+  const reportMarkdown = useMemo(
+    () =>
+      hasResults && !isRunning
+        ? renderReportMarkdown(services, testResults)
+        : "",
+    [hasResults, isRunning, services, testResults],
+  );
+
   const handleCopyReport = async () => {
     try {
-      // Rendered on demand: the full report is only needed on copy, not on
-      // every per-method result update during a run.
-      await navigator.clipboard.writeText(
-        renderReportMarkdown(services, testResults),
-      );
+      await navigator.clipboard.writeText(reportMarkdown);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -92,7 +96,7 @@ export function DiagnosisView({
   // Copy the report to the clipboard first as a fallback if the body is
   // truncated.
   const handleSubmitReport = () => {
-    const report = renderReportMarkdown(services, testResults);
+    const report = reportMarkdown;
     void navigator.clipboard?.writeText(report).catch(() => {});
     const url = reportIssueUrl(report, detectHostMode());
     try {
@@ -167,6 +171,13 @@ export function DiagnosisView({
         )}
         {hasResults && !isRunning && (
           <div className="diag__report-actions">
+            <pre
+              hidden
+              data-testid="diagnosis-report-markdown"
+              data-report-ready={reportMarkdown.length > 0}
+            >
+              {reportMarkdown}
+            </pre>
             <button
               type="button"
               className="autotest__report-copy"
