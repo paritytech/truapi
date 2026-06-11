@@ -3,7 +3,7 @@
 # Run `make help` for the list of targets.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup build codegen test check playground wasm wasm-crypto-test uniffi android-publish-local dev dev-bootstrap dev-link-check matrix explorer
+.PHONY: help setup build codegen test check playground wasm wasm-crypto-test uniffi android-publish-local dev dev-bootstrap dev-link-check e2e-dotli matrix explorer
 
 TRUAPI_PKG := js/packages/truapi
 PLAYGROUND := playground
@@ -25,7 +25,7 @@ endif
 
 help: ## Show this help.
 	@awk 'BEGIN { FS = ":.*##"; printf "Usage: make <target>\n\nTargets:\n" } \
-	      /^[a-zA-Z_-]+:.*?##/ { printf "  %-12s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
+	      /^[a-zA-Z0-9_-]+:.*?##/ { printf "  %-12s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
 setup: ## First-time setup: submodules, JS dependencies, generated artifacts.
 	git submodule update --init --recursive
@@ -127,6 +127,13 @@ dev: dev-bootstrap ## Start dotli host (:5173) + playground (:3000) together; op
 	( cd $(DOTLI) && bun run $(DOTLI_PREVIEW) ) & \
 	( cd $(PLAYGROUND) && yarn dev ) & \
 	wait
+
+e2e-dotli: ## Fully automated dotli + playground diagnosis e2e. Requires SIGNER_BOT_SVC_TOKEN, SIGNER_BOT_BASE_URL, SIGNER_BOT_NETWORK.
+	@test -n "$$SIGNER_BOT_SVC_TOKEN" || (echo "Missing SIGNER_BOT_SVC_TOKEN. e2e-dotli requires signer-bot; without it a human phone scan is required."; exit 1)
+	@test -n "$$SIGNER_BOT_BASE_URL" || (echo "Missing SIGNER_BOT_BASE_URL. e2e-dotli requires signer-bot; without it a human phone scan is required."; exit 1)
+	@test -n "$$SIGNER_BOT_NETWORK" || (echo "Missing SIGNER_BOT_NETWORK. e2e-dotli requires signer-bot; without it a human phone scan is required."; exit 1)
+	$(MAKE) dev-bootstrap
+	cd $(DOTLI)/apps/host && bun tests/e2e/playground-diagnosis.ts
 
 matrix: ## Regenerate the host compatibility matrix from explorer/diagnosis-reports.
 	cd $(EXPLORER) && npm run generate-matrix

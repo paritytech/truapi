@@ -174,6 +174,20 @@ pairs through the signer-bot service. It requires `SIGNER_BOT_SVC_TOKEN`,
 `SIGNER_BOT_BASE_URL`, and `SIGNER_BOT_NETWORK`; without those, do not treat
 the suite as locally runnable. Use the local smoke path above instead.
 
+For a fully automated local playground diagnosis run, use:
+
+```bash
+SIGNER_BOT_SVC_TOKEN=... \
+SIGNER_BOT_BASE_URL=... \
+SIGNER_BOT_NETWORK=paseo-next-v2 \
+make e2e-dotli
+```
+
+`make e2e-dotli` starts dotli preview and the playground, signs out any
+restored host session, signs in through signer-bot by extracting the QR payload,
+runs the playground Diagnosis screen, auto-accepts host-side Allow/Sign modals,
+and writes `hosts/dotli/test-results/e2e-dotli/diagnosis-report.md`.
+
 A useful no-phone smoke assertion is:
 
 1. Start `make dev DEBUG=1`.
