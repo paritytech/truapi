@@ -15,6 +15,10 @@ import {
   u8,
   type Codec,
 } from "scale-ts";
+import {
+  bytesToHex as encodeHex,
+  hexToBytes as decodeHex,
+} from "@noble/hashes/utils.js";
 
 export type { Codec };
 export type { ResultPayload } from "scale-ts";
@@ -80,22 +84,12 @@ export function toHexString(value: string): HexString {
 
 /** Encode a byte array as a lower-case hex string with a `0x` prefix. */
 export function bytesToHex(bytes: Uint8Array): HexString {
-  let hex = "0x";
-  for (let i = 0; i < bytes.length; i++) {
-    hex += bytes[i]!.toString(16).padStart(2, "0");
-  }
-  return hex as HexString;
+  return `0x${encodeHex(bytes)}`;
 }
 
 /** Decode a hex string into a byte array. Tolerates a missing `0x` prefix. */
 export function hexToBytes(hex: string): Uint8Array {
-  const start = hex.startsWith("0x") ? 2 : 0;
-  const length = (hex.length - start) >> 1;
-  const bytes = new Uint8Array(length);
-  for (let i = 0; i < length; i++) {
-    bytes[i] = parseInt(hex.substring(start + i * 2, start + i * 2 + 2), 16);
-  }
-  return bytes;
+  return decodeHex(hex.startsWith("0x") ? hex.slice(2) : hex);
 }
 
 /**

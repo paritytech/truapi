@@ -72,13 +72,17 @@ export function DiagnosisView({
     };
   }, [services, testResults]);
 
+  const reportMarkdown = useMemo(
+    () =>
+      hasResults && !isRunning
+        ? renderReportMarkdown(services, testResults)
+        : "",
+    [hasResults, isRunning, services, testResults],
+  );
+
   const handleCopyReport = async () => {
     try {
-      // Rendered on demand: the full report is only needed on copy, not on
-      // every per-method result update during a run.
-      await navigator.clipboard.writeText(
-        renderReportMarkdown(services, testResults),
-      );
+      await navigator.clipboard.writeText(reportMarkdown);
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
@@ -92,7 +96,7 @@ export function DiagnosisView({
   // Copy the report to the clipboard first as a fallback if the body is
   // truncated.
   const handleSubmitReport = () => {
-    const report = renderReportMarkdown(services, testResults);
+    const report = reportMarkdown;
     void navigator.clipboard?.writeText(report).catch(() => {});
     const url = reportIssueUrl(report, detectHostMode());
     try {
@@ -123,11 +127,12 @@ export function DiagnosisView({
           <span className="panel__label">About</span>
         </div>
         <p className="panel__desc">
-          Runs every TrUAPI method against the connected host to build a coverage
-          report — which methods work, which fail, and which aren&apos;t wired
-          yet. Methods run one at a time, in order; those that need your approval
-          (signing, permission and resource requests) wait on your response
-          before the run continues. When it finishes, copy the report below.
+          Runs every TrUAPI method against the connected host to build a
+          coverage report — which methods work, which fail, and which
+          aren&apos;t wired yet. Methods run one at a time, in order; those that
+          need your approval (signing, permission and resource requests) wait on
+          your response before the run continues. When it finishes, copy the
+          report below.
         </p>
         <p className="diag__callout">
           Before you start: make sure you are <strong>logged in</strong>, and
@@ -145,7 +150,12 @@ export function DiagnosisView({
             Stop
           </button>
         ) : (
-          <button type="button" className="btn btn--primary" onClick={onRun}>
+          <button
+            type="button"
+            className="btn btn--primary"
+            data-testid="diagnosis-run"
+            onClick={onRun}
+          >
             <span className="btn__glyph">▶</span>
             Run diagnosis
           </button>
@@ -153,6 +163,7 @@ export function DiagnosisView({
         {hasResults && (
           <span
             className="autotest__summary"
+            data-testid="diagnosis-summary"
             data-has-fail={!isRunning && failCount > 0}
           >
             {passCount} success · {failCount} failed
@@ -160,9 +171,17 @@ export function DiagnosisView({
         )}
         {hasResults && !isRunning && (
           <div className="diag__report-actions">
+            <pre
+              hidden
+              data-testid="diagnosis-report-markdown"
+              data-report-ready={reportMarkdown.length > 0}
+            >
+              {reportMarkdown}
+            </pre>
             <button
               type="button"
               className="autotest__report-copy"
+              data-testid="diagnosis-copy-report"
               onClick={handleCopyReport}
             >
               {copied ? "Copied ✓" : "Copy report"}
@@ -188,6 +207,7 @@ export function DiagnosisView({
               <div key={r.id}>
                 <div
                   className="diag__row"
+                  data-testid="diagnosis-row"
                   data-status={r.status}
                   data-expandable={expandable}
                   onClick={

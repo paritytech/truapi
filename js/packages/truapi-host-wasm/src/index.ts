@@ -6,6 +6,7 @@ export type {
 } from "./types.js";
 
 export type {
+  AuthState,
   Awaitable,
   ChainConnect,
   ChainConnection,
@@ -18,7 +19,8 @@ export type {
   Permissions,
   PreimageHost,
   PlatformJsonRpcConnection,
-  Storage,
+  SessionUiInfo,
+  HostStorage,
   ThemeHost,
   TrUApiHostWasmProvider,
   WasmCoreLike,

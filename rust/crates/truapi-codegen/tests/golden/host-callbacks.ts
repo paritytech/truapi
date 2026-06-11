@@ -21,6 +21,75 @@ import type {
 } from "@parity/truapi";
 
 /**
+ * Auth/session lifecycle state the core projects for host UI. The core owns
+ * every transition and emits states in order; hosts render the current state
+ * and never derive auth UI from any other signal.
+ */
+export type AuthState =
+  /**
+   * No active session and no login in progress.
+   */
+  | { tag: "Disconnected"; value?: undefined }
+  /**
+   * A login is in progress: present the pairing deeplink/QR. Leave this
+   * state only on a subsequent emission (connected, failed, or
+   * disconnected after cancellation).
+   */
+  | { tag: "Pairing"; value: { deeplink: string } }
+  /**
+   * A session is active.
+   */
+  | { tag: "Connected"; value: SessionUiInfo }
+  /**
+   * The last login attempt failed; show the reason and offer a retry.
+   */
+  | { tag: "LoginFailed"; value: { reason: string } };
+
+/**
+ * Decoded session fields a host shell needs to render account UI without
+ * parsing the opaque session blob the core persists through `SessionStore`.
+ */
+export interface SessionUiInfo {
+  /**
+   * Whether a session is currently active. When `false` every other
+   * field is ``undefined``.
+   */
+  connected: boolean;
+
+  /**
+   * 32-byte sr25519 root public key of the active session.
+   */
+  publicKey?: Uint8Array;
+
+  /**
+   * Wallet identity account id used for People-chain username lookup.
+   */
+  identityAccountId?: Uint8Array;
+
+  /**
+   * Short username from the People-chain identity record.
+   */
+  liteUsername?: string;
+
+  /**
+   * Fully qualified username from the People-chain identity record.
+   */
+  fullUsername?: string;
+}
+
+/**
+ * Host auth UI driven by core-owned `AuthState` transitions.
+ */
+export interface AuthPresenter {
+  /**
+   * Observe an auth state change. Emitted only when the state actually
+   * changes, in transition order. Default is a no-op for hosts that
+   * render no auth UI.
+   */
+  authStateChanged?(state: AuthState): void;
+}
+
+/**
  * JSON-RPC provider factory for chain access.
  *
  * The platform provides a way to get a JSON-RPC connection for a given chain.
@@ -95,20 +164,9 @@ export interface Notifications {
 
   /**
    * Cancel a notification by id. Idempotent: cancelling an already-fired or
-   * unknown id still returns `Ok(())`.
+   * unknown id still returns `success`.
    */
   cancelNotification(id: NotificationId): Promise<void>;
-}
-
-/**
- * Show the pairing deeplink/QR built by the core.
- */
-export interface PairingPresenter {
-  /**
-   * Resolve when the user cancels/dismisses the presentation. The core owns
-   * success and timeout; dropping the future should close the host UI.
-   */
-  presentPairing(deeplink: string): Promise<void>;
 }
 
 /**
@@ -178,7 +236,7 @@ export interface SessionStore {
  * Scoped key-value storage. The platform namespaces keys so different products
  * cannot read each other's data.
  */
-export interface Storage {
+export interface HostStorage {
   /**
    * Read a value by key.
    */
@@ -239,4 +297,4 @@ export interface UserConfirmation {
 /**
  * Combined platform interface. A host must provide all capability traits.
  */
-export interface HostCallbacks extends Navigation, Notifications, Permissions, Features, Storage, ChainProvider, PairingPresenter, SessionStore, UserConfirmation, ThemeHost, ChatHost, PreimageHost {}
+export interface HostCallbacks extends Navigation, Notifications, Permissions, Features, HostStorage, ChainProvider, AuthPresenter, SessionStore, UserConfirmation, ThemeHost, ChatHost, PreimageHost {}

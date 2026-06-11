@@ -34,16 +34,11 @@ jobs:
         with: { node-version: 22 }
       - name: Install wasm-pack
         run: cargo install wasm-pack
-      # Rebuilds the bundle from the current truapi-server source and runs the
-      # truapi-host-wasm node smoke test against those freshly-built artifacts, so a
-      # stale committed bundle cannot pass green. Byte-equality against the
-      # committed bundle is intentionally not asserted: wasm-pack output varies
-      # with the Rust toolchain and wasm-bindgen version, so cross-machine
-      # reproducibility is not achievable. The committed artifacts under
-      # js/packages/truapi-host-wasm/dist/wasm/ serve as a convenience for
-      # consumers that don't run Rust; regenerate locally with `make wasm`
-      # before changing truapi-server source.
-      - name: Rebuild WASM
+      # Builds the bundle from the current truapi-server source and runs the
+      # truapi-host-wasm node smoke test against those freshly-built artifacts.
+      # The dist/wasm/ artifacts are gitignored; every consumer (local dev via
+      # `make wasm`, CI here) builds them from the Rust source.
+      - name: Build WASM
         run: make wasm
       - name: Sanity-check artifact presence
         run: |
@@ -61,8 +56,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
       - uses: actions/setup-node@v4
         with: { node-version: 22 }
+      - name: Install wasm-pack
+        run: cargo install wasm-pack
+      # The truapi-host-wasm tests load dist/wasm/{web,node}, which is
+      # gitignored, so build it from the Rust source first.
+      - name: Build WASM
+        run: make wasm
       - name: Build @parity/truapi-host (dep)
         run: cd js/packages/truapi-host && npm install --no-fund --no-audit && npm run build
       - name: Build @parity/truapi client (dep)
@@ -77,11 +81,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
+      # No Gradle wrapper in the repo: pin the Gradle version here instead of
+      # drifting with the runner image. 8.7 is the AGP 8.5.x baseline.
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      # The Kotlin sources import the gitignored uniffi.truapi_server.*
+      # bindings; generate them from the truapi-server cdylib first.
+      - name: Generate UniFFI bindings
+        run: make uniffi
       - name: Assemble truapi-host-android (release)
         run: gradle :truapi-host:assembleRelease --no-daemon --stacktrace
       - name: Build Maven publication into local repo

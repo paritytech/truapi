@@ -14,7 +14,7 @@ import {
   type ChainConnection,
   type WasmRawCallbacks,
 } from "./runtime.js";
-import type { HostCallbacks } from "./generated/host-callbacks.js";
+import type { AuthState, HostCallbacks } from "./generated/host-callbacks.js";
 
 type WireResult<T, E> =
   | { success: true; value: T }
@@ -180,10 +180,10 @@ export function createWasmRawCallbacks(
     localStorageClear: callbacks.clear
       ? (key) => callbacks.clear!(key)
       : unavailable.localStorageClear,
-    ...(callbacks.presentPairing
+    ...(callbacks.authStateChanged
       ? {
-          presentPairing: (deeplink: string) =>
-            callbacks.presentPairing!(deeplink),
+          authStateChanged: (state: AuthState) =>
+            callbacks.authStateChanged!(state),
         }
       : {}),
     ...(callbacks.readSession

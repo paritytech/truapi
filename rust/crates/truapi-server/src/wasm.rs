@@ -8,7 +8,8 @@
 //! platform trait set imposes; sound on wasm32 because the runtime is
 //! single-threaded.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -16,6 +17,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};
 
 use futures::channel::mpsc;
+use futures::future::{AbortHandle, Abortable};
 use futures::stream::{self, BoxStream, Stream, StreamExt};
 use js_sys::{Function, Reflect, Uint8Array};
 use parity_scale_codec::{Decode, Encode};
@@ -23,9 +25,10 @@ use send_wrapper::SendWrapper;
 use truapi::v01;
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use truapi_platform::{
-    ChainProvider, Features, JsonRpcConnection, Navigation, Notifications, PairingDeeplinkScheme,
-    PairingPresenter, Permissions, PreimageHost, RuntimeConfig, RuntimeConfigValidationError,
-    SessionStore, Storage, ThemeHost, UserConfirmation,
+    AuthPresenter, AuthState, ChainProvider, Features, JsonRpcConnection, Navigation,
+    Notifications, PairingDeeplinkScheme, Permissions, PreimageHost, RuntimeConfig,
+    RuntimeConfigValidationError, SessionStore, SessionUiInfo, Storage, ThemeHost,
+    UserConfirmation,
 };
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -56,7 +59,7 @@ struct JsBridge {
     submit_preimage: Option<Function>,
     lookup_preimage: Option<Function>,
     subscribe_theme: Option<Function>,
-    present_pairing: Option<Function>,
+    auth_state_changed: Option<Function>,
     read_session: Option<Function>,
     write_session: Option<Function>,
     clear_session: Option<Function>,
@@ -96,7 +99,7 @@ impl JsBridge {
             submit_preimage: get_optional_function(callbacks, "submitPreimage")?,
             lookup_preimage: get_optional_function(callbacks, "preimageLookupSubscribe")?,
             subscribe_theme: get_optional_function(callbacks, "themeSubscribe")?,
-            present_pairing: get_optional_function(callbacks, "presentPairing")?,
+            auth_state_changed: get_optional_function(callbacks, "authStateChanged")?,
             read_session: get_optional_function(callbacks, "readSession")?,
             write_session: get_optional_function(callbacks, "writeSession")?,
             clear_session: get_optional_function(callbacks, "clearSession")?,
@@ -261,15 +264,7 @@ impl ChainProvider for WasmPlatform {
                 }
             }) as Box<dyn FnMut(JsValue)>);
 
-            let genesis_hex = genesis_hash.iter().fold(
-                String::with_capacity(2 + genesis_hash.len() * 2),
-                |mut s, b| {
-                    use std::fmt::Write;
-                    let _ = write!(s, "{b:02x}");
-                    s
-                },
-            );
-            let genesis_arg = JsValue::from_str(&format!("0x{genesis_hex}"));
+            let genesis_arg = JsValue::from_str(&format!("0x{}", hex::encode(&genesis_hash)));
             let returned = chain_connect
                 .call2(
                     &JsValue::NULL,
@@ -301,14 +296,14 @@ impl ChainProvider for WasmPlatform {
     }
 }
 
-impl PairingPresenter for WasmPlatform {
-    async fn present_pairing(&self, deeplink: String) -> Result<(), v01::GenericError> {
-        let Some(fn_) = self.bridge.present_pairing.as_ref() else {
-            return Err(v01::GenericError {
-                reason: "presentPairing callback not provided by host".to_string(),
-            });
+impl AuthPresenter for WasmPlatform {
+    fn auth_state_changed(&self, state: AuthState) {
+        let Some(fn_) = self.bridge.auth_state_changed.as_ref() else {
+            return;
         };
-        invoke_string_unit(fn_, deeplink).await.map_err(generic)
+        if let Err(err) = fn_.call1(&JsValue::NULL, &auth_state_to_js(&state)) {
+            web_sys::console::error_1(&err);
+        }
     }
 }
 
@@ -635,18 +630,6 @@ fn invoke_u64_unit(
     })
 }
 
-fn invoke_string_unit(
-    fn_: &Function,
-    value: String,
-) -> impl std::future::Future<Output = Result<(), String>> + Send {
-    let fn_ = fn_.clone();
-    SendWrapper::new(async move {
-        let arg = JsValue::from_str(&value);
-        let returned = fn_.call1(&JsValue::NULL, &arg).map_err(js_to_string)?;
-        await_optional_promise(returned).await.map(|_| ())
-    })
-}
-
 fn invoke_bytes_return(
     fn_: &Function,
     value: Vec<u8>,
@@ -711,6 +694,71 @@ fn parse_theme_item(value: JsValue) -> Result<v01::ThemeVariant, String> {
 
 fn parse_session_store_tick(_value: JsValue) -> Result<(), String> {
     Ok(())
+}
+
+/// Plain JS object mirroring the generated `AuthState` TS tagged union:
+/// `{ tag, value }` with `value` omitted for unit variants.
+fn auth_state_to_js(state: &AuthState) -> JsValue {
+    let object = js_sys::Object::new();
+    let set = |key: &str, value: &JsValue| {
+        let _ = Reflect::set(&object, &JsValue::from_str(key), value);
+    };
+    match state {
+        AuthState::Disconnected => {
+            set("tag", &JsValue::from_str("Disconnected"));
+        }
+        AuthState::Pairing { deeplink } => {
+            set("tag", &JsValue::from_str("Pairing"));
+            let value = js_sys::Object::new();
+            let _ = Reflect::set(
+                &value,
+                &JsValue::from_str("deeplink"),
+                &JsValue::from_str(deeplink),
+            );
+            set("value", &value.into());
+        }
+        AuthState::Connected(info) => {
+            set("tag", &JsValue::from_str("Connected"));
+            set("value", &session_ui_info_to_js(info));
+        }
+        AuthState::LoginFailed { reason } => {
+            set("tag", &JsValue::from_str("LoginFailed"));
+            let value = js_sys::Object::new();
+            let _ = Reflect::set(
+                &value,
+                &JsValue::from_str("reason"),
+                &JsValue::from_str(reason),
+            );
+            set("value", &value.into());
+        }
+    }
+    object.into()
+}
+
+/// Plain JS object mirroring the generated `SessionUiInfo` TS interface:
+/// `connected` is always present, the optional fields only when `Some`.
+fn session_ui_info_to_js(info: &SessionUiInfo) -> JsValue {
+    let object = js_sys::Object::new();
+    let set = |key: &str, value: &JsValue| {
+        let _ = Reflect::set(&object, &JsValue::from_str(key), value);
+    };
+    set("connected", &JsValue::from_bool(info.connected));
+    if let Some(public_key) = &info.public_key {
+        set("publicKey", &Uint8Array::from(public_key.as_slice()));
+    }
+    if let Some(identity_account_id) = &info.identity_account_id {
+        set(
+            "identityAccountId",
+            &Uint8Array::from(identity_account_id.as_slice()),
+        );
+    }
+    if let Some(lite_username) = &info.lite_username {
+        set("liteUsername", &JsValue::from_str(lite_username));
+    }
+    if let Some(full_username) = &info.full_username {
+        set("fullUsername", &JsValue::from_str(full_username));
+    }
+    object.into()
 }
 
 fn invoke_no_args_unit(
@@ -928,20 +976,17 @@ fn get_required_bytes32(value: &JsValue, name: &str) -> Result<[u8; 32], JsValue
 }
 
 fn parse_hex32(value: &str) -> Result<[u8; 32], String> {
-    let hex = value.strip_prefix("0x").unwrap_or(value);
-    if hex.len() != 64 {
+    let raw = value.strip_prefix("0x").unwrap_or(value);
+    if raw.len() != 64 {
         return Err(format!(
             "expected 32-byte hex string, got {} hex chars",
-            hex.len()
+            raw.len()
         ));
     }
-    let mut out = [0u8; 32];
-    for (idx, byte) in out.iter_mut().enumerate() {
-        let start = idx * 2;
-        *byte = u8::from_str_radix(&hex[start..start + 2], 16)
-            .map_err(|_| "invalid hex".to_string())?;
-    }
-    Ok(out)
+    let bytes = hex::decode(raw).map_err(|_| "invalid hex".to_string())?;
+    bytes
+        .try_into()
+        .map_err(|bytes: Vec<u8>| format!("expected 32 bytes, got {}", bytes.len()))
 }
 
 struct WasmCoreInner {
@@ -950,6 +995,11 @@ struct WasmCoreInner {
     dispose_fn: SendWrapper<Function>,
     disposed: Cell<bool>,
     disposing: Cell<bool>,
+    /// Abort handles for in-flight `receive_from_product` dispatches, keyed
+    /// by a local counter. `dispose` aborts them all so long-pending handlers
+    /// unwind instead of outliving the core.
+    in_flight: RefCell<HashMap<u64, AbortHandle>>,
+    next_dispatch_id: Cell<u64>,
 }
 
 /// Set the live log level (`off`/`error`/`warn`/`info`/`debug`/`trace`).
@@ -957,7 +1007,7 @@ struct WasmCoreInner {
 /// during boot, or again at any time to re-tune verbosity.
 #[wasm_bindgen(js_name = setLogLevel)]
 pub fn set_log_level(level: &str) {
-    crate::logging::set_level(crate::logging::parse_level(level));
+    crate::logging::set_level_from_str(level);
 }
 
 /// JS-callable handle to the TrUAPI core. Constructed once per shell boot.
@@ -1000,6 +1050,8 @@ impl WasmTrUApiCore {
                 dispose_fn,
                 disposed: Cell::new(false),
                 disposing: Cell::new(false),
+                in_flight: RefCell::new(HashMap::new()),
+                next_dispatch_id: Cell::new(0),
             }),
         })
     }
@@ -1017,18 +1069,38 @@ impl WasmTrUApiCore {
             .map_err(|err| JsValue::from_str(&format!("invalid frame: {err}")))?;
 
         let transport: Arc<dyn Transport> = self.inner.transport.clone();
-        self.inner.core.dispatch(message, transport).await;
+        // Register the dispatch so `dispose` can abort it; a long-pending
+        // handler then unwinds instead of outliving the core.
+        let dispatch_id = self.inner.next_dispatch_id.get();
+        self.inner.next_dispatch_id.set(dispatch_id.wrapping_add(1));
+        let (abort_handle, abort_registration) = AbortHandle::new_pair();
+        self.inner
+            .in_flight
+            .borrow_mut()
+            .insert(dispatch_id, abort_handle);
+        let _ = Abortable::new(
+            self.inner.core.dispatch(message, transport),
+            abort_registration,
+        )
+        .await;
+        self.inner.in_flight.borrow_mut().remove(&dispatch_id);
         Ok(())
     }
 
     /// Tear down the bridge. Invokes the JS-side `dispose` callback so the
     /// host can drop its end of the wiring.
     pub fn dispose(&self) -> Result<(), JsValue> {
+        if self.inner.disposed.get() {
+            return Ok(());
+        }
         if self.inner.disposing.replace(true) {
             return Ok(());
         }
 
         self.inner.transport.disposed.store(true, Ordering::Relaxed);
+        for (_, handle) in self.inner.in_flight.borrow_mut().drain() {
+            handle.abort();
+        }
 
         let result = self.inner.dispose_fn.call0(&JsValue::NULL).map(|_| ());
 
@@ -1044,5 +1116,13 @@ impl WasmTrUApiCore {
     pub async fn disconnect(&self) -> Result<(), JsValue> {
         self.inner.core.disconnect_async().await;
         Ok(())
+    }
+
+    /// Cancel any in-flight `request_login` pairing. The host receives a
+    /// `Disconnected` auth state immediately and the pending login resolves
+    /// to `Rejected`. A no-op when no login is in progress.
+    #[wasm_bindgen(js_name = cancelLogin)]
+    pub fn cancel_login(&self) {
+        self.inner.core.cancel_login();
     }
 }

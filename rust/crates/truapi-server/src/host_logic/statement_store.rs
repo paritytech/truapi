@@ -1,8 +1,8 @@
 //! People-chain statement-store JSON-RPC helpers.
 //!
 //! The core talks to the statement-store pallet through the host-provided
-//! `ChainProvider` JSON-RPC connection. These helpers keep the dotli/
-//! `@novasamatech/sdk-statement` request shapes in one place.
+//! `ChainProvider` JSON-RPC connection. These helpers keep dotli-compatible
+//! request shapes in one place.
 
 use parity_scale_codec::{Compact, Decode, Encode};
 use schnorrkel::{PublicKey, SecretKey, Signature};
@@ -13,21 +13,32 @@ use truapi::v01;
 
 use crate::host_logic::session::SsoSessionInfo;
 
+/// Statement-store RPC method used to open a topic subscription.
 pub const SUBSCRIBE_STATEMENT_METHOD: &str = "statement_subscribeStatement";
+/// Statement-store RPC method used for subscription notifications.
 pub const STATEMENT_NOTIFICATION_METHOD: &str = "statement_statement";
+/// Statement-store RPC method used to close a topic subscription.
 pub const UNSUBSCRIBE_STATEMENT_METHOD: &str = "statement_unsubscribeStatement";
+/// Statement-store RPC method used to submit a signed statement.
 pub const SUBMIT_STATEMENT_METHOD: &str = "statement_submit";
+/// Maximum `matchAll` topic count accepted by the statement-store RPC.
 pub const MAX_MATCH_ALL_TOPICS: usize = 4;
+/// Maximum `matchAny` topic count accepted by the statement-store RPC.
 pub const MAX_MATCH_ANY_TOPICS: usize = 128;
 const SR25519_SIGNING_CONTEXT: &[u8] = b"substrate";
 
+/// Decoded `newStatements` subscription notification.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewStatements {
+    /// Remote subscription id included in the notification.
     pub remote_subscription_id: String,
+    /// SCALE-encoded signed statements carried by the notification.
     pub statements: Vec<Vec<u8>>,
+    /// Optional server-side backlog count.
     pub remaining: Option<u64>,
 }
 
+/// Error while parsing statement-store JSON-RPC or SCALE statement payloads.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum StatementStoreParseError {
     #[error("invalid json-rpc frame: {0}")]
@@ -42,18 +53,27 @@ pub enum StatementStoreParseError {
     InvalidStatementProof(String),
 }
 
+/// Topic filter flavor used by statement-store subscribe requests.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TopicFilterKind {
+    /// Require every listed topic to match.
     MatchAll,
+    /// Accept any listed topic match.
     MatchAny,
 }
 
+/// Verified statement payload plus the sr25519 signer recovered from proof.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VerifiedStatementData {
+    /// Raw statement data field.
     pub data: Vec<u8>,
+    /// Sr25519 signer recovered from the proof.
     pub signer: [u8; 32],
+    /// Raw `Expiry` field, if present: unix seconds in the upper 32 bits.
+    pub expiry: Option<u64>,
 }
 
+/// SCALE statement proof variants mirrored from the statement-store pallet.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum StatementProof {
     #[codec(index = 0)]
@@ -79,6 +99,7 @@ pub enum StatementProof {
     },
 }
 
+/// SCALE statement field variants mirrored from the statement-store pallet.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum StatementField {
     #[codec(index = 0)]
@@ -101,14 +122,17 @@ pub enum StatementField {
     Data(Vec<u8>),
 }
 
+/// Build a statement-store subscription request that requires all topics.
 pub fn subscribe_match_all_request(id: &str, topics: &[[u8; 32]]) -> String {
     subscribe_request(id, TopicFilterKind::MatchAll, topics)
 }
 
+/// Build a statement-store subscription request that accepts any topic.
 pub fn subscribe_match_any_request(id: &str, topics: &[[u8; 32]]) -> String {
     subscribe_request(id, TopicFilterKind::MatchAny, topics)
 }
 
+/// Build a statement-store subscription JSON-RPC request.
 pub fn subscribe_request(id: &str, kind: TopicFilterKind, topics: &[[u8; 32]]) -> String {
     let topics = topics.iter().map(hex_topic).collect::<Vec<_>>();
     match kind {
@@ -128,6 +152,7 @@ pub fn subscribe_request(id: &str, kind: TopicFilterKind, topics: &[[u8; 32]]) -
     .to_string()
 }
 
+/// Build a statement-store unsubscribe JSON-RPC request.
 pub fn unsubscribe_request(id: &str, remote_subscription_id: &str) -> String {
     json!({
         "jsonrpc": "2.0",
@@ -138,6 +163,7 @@ pub fn unsubscribe_request(id: &str, remote_subscription_id: &str) -> String {
     .to_string()
 }
 
+/// Build a statement-store submit JSON-RPC request for a signed statement.
 pub fn submit_statement_request(id: &str, statement: &[u8]) -> String {
     json!({
         "jsonrpc": "2.0",
@@ -148,12 +174,16 @@ pub fn submit_statement_request(id: &str, statement: &[u8]) -> String {
     .to_string()
 }
 
+/// Parse the subscription acknowledgement for `expected_id`.
 pub fn parse_subscribe_ack(
     frame: &str,
     expected_id: &str,
 ) -> Result<Option<String>, StatementStoreParseError> {
     let value = parse_frame(frame)?;
     if value.get("id").and_then(Value::as_str) != Some(expected_id) {
+        return Ok(None);
+    }
+    if is_json_rpc_request_echo(&value) {
         return Ok(None);
     }
     if let Some(error) = value.get("error") {
@@ -173,12 +203,16 @@ pub fn parse_subscribe_ack(
     Ok(Some(result.to_string()))
 }
 
+/// Parse the submit acknowledgement for `expected_id`.
 pub fn parse_submit_ack(
     frame: &str,
     expected_id: &str,
 ) -> Result<Option<()>, StatementStoreParseError> {
     let value = parse_frame(frame)?;
     if value.get("id").and_then(Value::as_str) != Some(expected_id) {
+        return Ok(None);
+    }
+    if is_json_rpc_request_echo(&value) {
         return Ok(None);
     }
     if let Some(error) = value.get("error") {
@@ -198,6 +232,7 @@ pub fn parse_submit_ack(
     Ok(Some(()))
 }
 
+/// Parse a statement-store `newStatements` notification.
 pub fn parse_new_statements(
     frame: &str,
 ) -> Result<Option<NewStatements>, StatementStoreParseError> {
@@ -252,26 +287,63 @@ pub fn parse_new_statements(
     }))
 }
 
+/// Extract the raw `Data` field from a SCALE-encoded statement.
 pub fn decode_statement_data(statement: &[u8]) -> Result<Vec<u8>, StatementStoreParseError> {
     statement_data_from_fields(decode_statement_fields(statement)?)
 }
 
+/// Verify statement proof and extract signer, expiry, and raw `Data` field.
 pub fn decode_verified_statement_data(
     statement: &[u8],
     expected_signer: Option<[u8; 32]>,
 ) -> Result<VerifiedStatementData, StatementStoreParseError> {
     let fields = decode_statement_fields(statement)?;
     let signer = verify_statement_proof(&fields, expected_signer)?;
+    let expiry = fields.iter().find_map(|field| match field {
+        StatementField::Expiry(value) => Some(*value),
+        _ => None,
+    });
     let data = statement_data_from_fields(fields)?;
-    Ok(VerifiedStatementData { data, signer })
+    Ok(VerifiedStatementData {
+        data,
+        signer,
+        expiry,
+    })
 }
 
+/// Whether a statement `Expiry` field (unix seconds in the upper 32 bits) is
+/// in the past relative to `now_unix_secs`.
+pub fn statement_expiry_elapsed(expiry: u64, now_unix_secs: u64) -> bool {
+    (expiry >> 32) < now_unix_secs
+}
+
+/// Current unix time in seconds, used to stamp outgoing statement expiries
+/// and to gate inbound statement freshness. Trusts the local clock on both
+/// native and wasm targets.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn current_unix_secs() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+/// Current unix time in seconds on wasm32, sourced from the JS clock.
+#[cfg(target_arch = "wasm32")]
+pub(crate) fn current_unix_secs() -> u64 {
+    (js_sys::Date::now() / 1000.0) as u64
+}
+
+/// Decode a SCALE signed statement into the public v01 statement shape.
 pub fn decode_signed_statement(
     statement: &[u8],
 ) -> Result<v01::SignedStatement, StatementStoreParseError> {
     signed_statement_from_fields(decode_statement_fields(statement)?)
 }
 
+/// Build a signed statement on the active SSO request channel.
 pub fn build_signed_session_request_statement(
     session: &SsoSessionInfo,
     encrypted_data: Vec<u8>,
@@ -286,6 +358,7 @@ pub fn build_signed_session_request_statement(
     )
 }
 
+/// Build a signed statement for an arbitrary channel/topic pair.
 pub fn build_signed_statement(
     session: &SsoSessionInfo,
     channel: [u8; 32],
@@ -303,6 +376,7 @@ pub fn build_signed_statement(
         .map(|fields| fields.encode())
 }
 
+/// Sort fields, insert an sr25519 proof, and return signed fields.
 pub fn sign_statement_fields(
     ss_secret: [u8; 64],
     expected_public_key: [u8; 32],
@@ -337,6 +411,7 @@ pub fn sign_statement_fields(
     Ok(signed)
 }
 
+/// Build the statement signing payload from sorted fields.
 pub fn statement_signing_payload(fields: &[StatementField]) -> Result<Vec<u8>, String> {
     let encoded = fields.to_vec().encode();
     let mut input = encoded.as_slice();
@@ -425,6 +500,7 @@ fn verify_statement_proof(
     Ok(signer)
 }
 
+/// Convert a public v01 statement into SCALE statement fields.
 pub fn statement_fields_from_v01(statement: v01::Statement) -> Result<Vec<StatementField>, String> {
     let mut fields = Vec::new();
     if let Some(proof) = statement.proof {
@@ -446,6 +522,7 @@ pub fn statement_fields_from_v01(statement: v01::Statement) -> Result<Vec<Statem
     Ok(fields)
 }
 
+/// Convert a public v01 signed statement into SCALE bytes.
 pub fn signed_statement_to_scale(statement: v01::SignedStatement) -> Result<Vec<u8>, String> {
     Ok(signed_statement_fields(statement)?.encode())
 }
@@ -537,6 +614,7 @@ fn signed_statement_from_fields(
     })
 }
 
+/// Convert an internal proof into the public v01 proof shape.
 pub fn statement_proof_to_v01(proof: StatementProof) -> v01::StatementProof {
     match proof {
         StatementProof::Sr25519 { signature, signer } => {
@@ -628,6 +706,13 @@ fn parse_frame(frame: &str) -> Result<Value, StatementStoreParseError> {
         .map_err(|error| StatementStoreParseError::InvalidJson(error.to_string()))
 }
 
+fn is_json_rpc_request_echo(value: &Value) -> bool {
+    value.get("method").and_then(Value::as_str).is_some()
+        && value.get("params").is_some()
+        && value.get("result").is_none()
+        && value.get("error").is_none()
+}
+
 fn decode_hex(value: &str) -> Result<Vec<u8>, StatementStoreParseError> {
     hex::decode(value.strip_prefix("0x").unwrap_or(value))
         .map_err(|error| StatementStoreParseError::InvalidStatementHex(error.to_string()))
@@ -715,6 +800,13 @@ mod tests {
     }
 
     #[test]
+    fn ignores_echoed_subscribe_request_for_expected_request_id() {
+        let frame = r#"{"jsonrpc":"2.0","id":"truapi:ss:1","method":"statement_subscribeStatement","params":[{"matchAll":["0x0707070707070707070707070707070707070707070707070707070707070707"]}]}"#;
+
+        assert_eq!(parse_subscribe_ack(frame, "truapi:ss:1").unwrap(), None);
+    }
+
+    #[test]
     fn parses_submit_ack_for_expected_request_id() {
         let frame = r#"{"jsonrpc":"2.0","id":"truapi:ss:submit","result":"0xabc"}"#;
 
@@ -723,6 +815,13 @@ mod tests {
             Some(())
         );
         assert_eq!(parse_submit_ack(frame, "other").unwrap(), None);
+    }
+
+    #[test]
+    fn ignores_echoed_submit_request_for_expected_request_id() {
+        let frame = r#"{"jsonrpc":"2.0","id":"truapi:ss:submit","method":"statement_submit","params":["0xdeadbeef"]}"#;
+
+        assert_eq!(parse_submit_ack(frame, "truapi:ss:submit").unwrap(), None);
     }
 
     #[test]
@@ -858,8 +957,14 @@ mod tests {
         let verified =
             decode_verified_statement_data(&statement, Some(session.ss_public_key)).unwrap();
 
-        assert_eq!(verified.signer, session.ss_public_key);
-        assert_eq!(verified.data, vec![0xde, 0xad]);
+        assert_eq!(
+            verified,
+            VerifiedStatementData {
+                data: vec![0xde, 0xad],
+                signer: session.ss_public_key,
+                expiry: Some(42),
+            }
+        );
     }
 
     #[test]

@@ -46,6 +46,18 @@ pub fn set_level(level: LevelFilter) {
     }
 }
 
+/// Apply a host-supplied level string, installing the subscriber first so the
+/// call works regardless of whether the core has been constructed yet, then
+/// emitting a confirmation event so hosts can verify the logging pipeline end
+/// to end. The confirmation is logged at `INFO` (mapping to `console.info`,
+/// visible without DevTools "Verbose") rather than at the level just set, so it
+/// surfaces even when `debug`/`trace` events land on the hidden `console.debug`.
+pub fn set_level_from_str(level: &str) {
+    init();
+    set_level(parse_level(level));
+    tracing::info!(level, "log level set");
+}
+
 /// Parse a host-supplied level string. Unknown values disable logging.
 pub fn parse_level(level: &str) -> LevelFilter {
     match level.to_ascii_lowercase().as_str() {

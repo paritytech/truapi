@@ -7,19 +7,24 @@
 //! walks the rustdoc index for every public trait in the platform crate and
 //! produces a [`PlatformDefinition`] the TS emitter can render directly.
 
-use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 
 use anyhow::{Context, Result, bail};
 
 use crate::rustdoc::{
-    Crate, Item, ItemPath, NameContext, TypeRef, clean_docs, resolve_type, summarize_json,
+    Crate, Item, NameContext, TypeDef, TypeDefKind, TypeRef, VariantFields, clean_docs,
+    extract_enum, extract_struct, resolve_type, summarize_json,
 };
 
 /// Top-level extracted shape of a `truapi-platform`-style crate.
 #[derive(Debug, PartialEq, Eq)]
 pub struct PlatformDefinition {
-    /// Capability traits in source declaration order.
+    /// Capability traits sorted alphabetically by name.
     pub traits: Vec<PlatformTrait>,
+    /// Local structs and enums referenced from trait method signatures,
+    /// sorted alphabetically by name. Emitted alongside the trait interfaces
+    /// so the generated TS does not have to import them from the API client.
+    pub types: Vec<TypeDef>,
     /// Composite super-trait (`Platform: Storage + Navigation + ...`), if any.
     pub super_trait: Option<PlatformSuperTrait>,
 }
@@ -46,6 +51,9 @@ pub struct PlatformMethod {
     pub params: Vec<PlatformParam>,
     /// Return shape decoded from the method signature.
     pub return_shape: PlatformReturn,
+    /// Whether the trait provides a default body, making the method optional
+    /// for host implementations.
+    pub has_default: bool,
 }
 
 /// Method parameter (name + type).
@@ -94,12 +102,12 @@ pub struct PlatformSuperTrait {
 
 /// Walk the platform crate and extract every public trait + its methods.
 pub fn extract(krate: &Crate) -> Result<PlatformDefinition> {
-    let trait_paths = collect_local_trait_paths(krate);
+    let trait_ids = collect_local_trait_ids(krate);
     let names = NameContext::default();
 
     let mut traits = Vec::new();
     let mut super_trait = None;
-    for (item_id, item_path) in &trait_paths {
+    for item_id in &trait_ids {
         let item = krate
             .index
             .get(item_id)
@@ -129,26 +137,146 @@ pub fn extract(krate: &Crate) -> Result<PlatformDefinition> {
             krate,
             &names,
         )?);
-
-        // Touch item_path so a future use can rely on the same iteration order.
-        let _ = item_path;
     }
 
     traits.sort_by(|a, b| a.name.cmp(&b.name));
+    let types = collect_referenced_local_types(krate, &traits, &names)?;
 
     Ok(PlatformDefinition {
         traits,
+        types,
         super_trait,
     })
 }
 
-fn collect_local_trait_paths(krate: &Crate) -> BTreeMap<String, &ItemPath> {
-    let mut out = BTreeMap::new();
+/// Extract every local struct or enum whose name appears in a trait method
+/// signature.
+fn collect_referenced_local_types(
+    krate: &Crate,
+    traits: &[PlatformTrait],
+    names: &NameContext,
+) -> Result<Vec<TypeDef>> {
+    let mut referenced = BTreeSet::new();
+    for trait_def in traits {
+        for method in &trait_def.methods {
+            for param in &method.params {
+                collect_named_types(&param.type_ref, &mut referenced);
+            }
+            match &method.return_shape.inner {
+                // Err types never reach the TS signature (errors throw), so
+                // their names are not emitted either.
+                PlatformInner::Result { ok, .. } => collect_named_types(ok, &mut referenced),
+                PlatformInner::Stream(inner) | PlatformInner::Plain(inner) => {
+                    collect_named_types(inner, &mut referenced)
+                }
+                PlatformInner::TraitObject(_) | PlatformInner::Unit => {}
+            }
+        }
+    }
+
+    // Local types can reference further local types from their fields or
+    // variant payloads (e.g. `AuthState::Connected(SessionUiInfo)`), so keep
+    // extracting until the referenced set stops growing.
+    let mut types: Vec<TypeDef> = Vec::new();
+    let mut extracted: BTreeSet<String> = BTreeSet::new();
+    loop {
+        let mut grew = false;
+        for (item_id, item_path) in &krate.paths {
+            if item_path.crate_id != 0 || !matches!(item_path.kind.as_str(), "struct" | "enum") {
+                continue;
+            }
+            let Some(name) = item_path.path.last() else {
+                continue;
+            };
+            if !referenced.contains(name) || extracted.contains(name) {
+                continue;
+            }
+            let item = krate.index.get(item_id).with_context(|| {
+                format!(
+                    "Missing rustdoc item `{item_id}` for {} `{name}`",
+                    item_path.kind
+                )
+            })?;
+            let module_path = item_path.path[..item_path.path.len() - 1].to_vec();
+            let type_def = if item_path.kind == "struct" {
+                extract_struct(item_id, item, krate, names, module_path)?
+            } else {
+                extract_enum(item_id, item, krate, names, module_path)?
+            };
+            collect_type_def_references(&type_def, &mut referenced);
+            extracted.insert(name.clone());
+            types.push(type_def);
+            grew = true;
+        }
+        if !grew {
+            break;
+        }
+    }
+    types.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(types)
+}
+
+/// Collect named types referenced from a local type's fields or variants.
+fn collect_type_def_references(type_def: &TypeDef, out: &mut BTreeSet<String>) {
+    match &type_def.kind {
+        TypeDefKind::Alias(ty) => collect_named_types(ty, out),
+        TypeDefKind::Struct(fields) => {
+            for field in fields {
+                collect_named_types(&field.type_ref, out);
+            }
+        }
+        TypeDefKind::TupleStruct(types) => {
+            for ty in types {
+                collect_named_types(ty, out);
+            }
+        }
+        TypeDefKind::Enum(variants) => {
+            for variant in variants {
+                match &variant.fields {
+                    VariantFields::Unit => {}
+                    VariantFields::Unnamed(types) => {
+                        for ty in types {
+                            collect_named_types(ty, out);
+                        }
+                    }
+                    VariantFields::Named(fields) => {
+                        for field in fields {
+                            collect_named_types(&field.type_ref, out);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn collect_named_types(ty: &TypeRef, out: &mut BTreeSet<String>) {
+    match ty {
+        TypeRef::Named { name, args } => {
+            out.insert(name.clone());
+            for arg in args {
+                collect_named_types(arg, out);
+            }
+        }
+        TypeRef::Vec(inner) | TypeRef::Option(inner) | TypeRef::Array(inner, _) => {
+            collect_named_types(inner, out)
+        }
+        TypeRef::Tuple(items) => {
+            for item in items {
+                collect_named_types(item, out);
+            }
+        }
+        TypeRef::Primitive(_) | TypeRef::Generic(_) | TypeRef::Unit => {}
+    }
+}
+
+fn collect_local_trait_ids(krate: &Crate) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
     for (item_id, item_path) in &krate.paths {
         if item_path.crate_id != 0 || item_path.kind != "trait" {
             continue;
         }
-        out.insert(item_id.clone(), item_path);
+        out.insert(item_id.clone());
     }
     out
 }
@@ -286,12 +414,17 @@ fn extract_method(item: &Item, names: &NameContext) -> Result<Option<PlatformMet
 
     let return_shape = resolve_return(sig.get("output"), names)
         .with_context(|| format!("Method `{name}` has an unsupported return type"))?;
+    let has_default = fn_inner
+        .get("has_body")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
 
     Ok(Some(PlatformMethod {
         name,
         docs: clean_docs(item.docs.as_deref()),
         params,
         return_shape,
+        has_default,
     }))
 }
 
@@ -330,10 +463,12 @@ fn resolve_return(
 fn extract_impl_future_output(output: &serde_json::Value) -> Option<serde_json::Value> {
     let bounds = output.get("impl_trait")?.as_array()?;
     for bound in bounds {
-        let trait_bound = bound.get("trait_bound")?;
-        let trait_obj = trait_bound.get("trait")?;
-        let path = trait_obj.get("path")?.as_str()?;
-        if path != "Future" {
+        // Skip non-trait bounds (outlives, `use<..>` captures) instead of
+        // aborting: a `Future` trait bound may come after them.
+        let Some(trait_obj) = bound.get("trait_bound").and_then(|tb| tb.get("trait")) else {
+            continue;
+        };
+        if trait_obj.get("path").and_then(|p| p.as_str()) != Some("Future") {
             continue;
         }
         let constraints = trait_obj
@@ -469,4 +604,51 @@ fn value_to_id(value: &serde_json::Value) -> Result<String> {
         return Ok(id.to_string());
     }
     bail!("Expected rustdoc item id, got non-id value")
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    /// A non-trait bound (e.g. an outlives or `use<..>` capture bound)
+    /// preceding the `Future` bound must be skipped, not misclassify the
+    /// method as synchronous.
+    #[test]
+    fn extract_impl_future_output_skips_non_trait_bounds() {
+        let output = json!({
+            "impl_trait": [
+                { "outlives": "'static" },
+                {
+                    "trait_bound": {
+                        "trait": {
+                            "path": "Future",
+                            "args": {
+                                "angle_bracketed": {
+                                    "args": [],
+                                    "constraints": [
+                                        {
+                                            "name": "Output",
+                                            "binding": {
+                                                "equality": {
+                                                    "type": { "primitive": "u8" }
+                                                }
+                                            }
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                },
+                { "trait_bound": { "trait": { "path": "Send" } } }
+            ]
+        });
+
+        assert_eq!(
+            extract_impl_future_output(&output),
+            Some(json!({ "primitive": "u8" }))
+        );
+    }
 }

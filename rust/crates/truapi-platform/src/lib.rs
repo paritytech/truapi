@@ -231,14 +231,55 @@ pub trait JsonRpcConnection: Send + Sync {
     fn responses(&self) -> BoxStream<'static, String>;
 }
 
-/// Show the pairing deeplink/QR built by the core.
-pub trait PairingPresenter: Send + Sync {
-    /// Resolve when the user cancels/dismisses the presentation. The core owns
-    /// success and timeout; dropping the future should close the host UI.
-    fn present_pairing(
-        &self,
+/// Decoded session fields a host shell needs to render account UI without
+/// parsing the opaque session blob the core persists through [`SessionStore`].
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SessionUiInfo {
+    /// Whether a session is currently active. When `false` every other
+    /// field is `None`.
+    pub connected: bool,
+    /// 32-byte sr25519 root public key of the active session.
+    pub public_key: Option<[u8; 32]>,
+    /// Wallet identity account id used for People-chain username lookup.
+    pub identity_account_id: Option<[u8; 32]>,
+    /// Short username from the People-chain identity record.
+    pub lite_username: Option<String>,
+    /// Fully qualified username from the People-chain identity record.
+    pub full_username: Option<String>,
+}
+
+/// Auth/session lifecycle state the core projects for host UI. The core owns
+/// every transition and emits states in order; hosts render the current state
+/// and never derive auth UI from any other signal.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum AuthState {
+    /// No active session and no login in progress.
+    #[default]
+    Disconnected,
+    /// A login is in progress: present the pairing deeplink/QR. Leave this
+    /// state only on a subsequent emission (connected, failed, or
+    /// disconnected after cancellation).
+    Pairing {
+        /// Wallet pairing deeplink to render as a QR code or open directly.
         deeplink: String,
-    ) -> impl Future<Output = Result<(), GenericError>> + Send;
+    },
+    /// A session is active.
+    Connected(SessionUiInfo),
+    /// The last login attempt failed; show the reason and offer a retry.
+    LoginFailed {
+        /// Human-readable failure reason.
+        reason: String,
+    },
+}
+
+/// Host auth UI driven by core-owned [`AuthState`] transitions.
+pub trait AuthPresenter: Send + Sync {
+    /// Observe an auth state change. Emitted only when the state actually
+    /// changes, in transition order. Default is a no-op for hosts that
+    /// render no auth UI.
+    fn auth_state_changed(&self, state: AuthState) {
+        let _ = state;
+    }
 }
 
 /// Host-global opaque session persistence for core-owned SSO state.
@@ -340,7 +381,7 @@ pub trait Platform:
     + Features
     + Storage
     + ChainProvider
-    + PairingPresenter
+    + AuthPresenter
     + SessionStore
     + UserConfirmation
     + ThemeHost
@@ -356,7 +397,7 @@ impl<T> Platform for T where
         + Features
         + Storage
         + ChainProvider
-        + PairingPresenter
+        + AuthPresenter
         + SessionStore
         + UserConfirmation
         + ThemeHost

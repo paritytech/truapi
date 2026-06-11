@@ -30,6 +30,7 @@ pub struct SessionInfo {
     pub full_username: Option<String>,
 }
 
+/// Core-owned SSO session material negotiated with the wallet during pairing.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SsoSessionInfo {
     /// Core's own 64-byte expanded sr25519 statement-store secret.

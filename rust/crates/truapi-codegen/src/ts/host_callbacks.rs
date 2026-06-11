@@ -18,7 +18,7 @@ use indoc::{formatdoc, writedoc};
 use crate::platform::{
     PlatformDefinition, PlatformInner, PlatformMethod, PlatformReturn, PlatformTrait,
 };
-use crate::rustdoc::TypeRef;
+use crate::rustdoc::{FieldDef, TypeDef, TypeDefKind, TypeRef, VariantDef, VariantFields};
 
 /// Write the typed host-callbacks TS file into `output_dir`.
 pub fn generate(definition: &PlatformDefinition, output_dir: &str) -> Result<()> {
@@ -62,6 +62,15 @@ fn emit_host_callbacks(definition: &PlatformDefinition) -> Result<String> {
         .unwrap();
     }
 
+    for type_def in &definition.types {
+        let rendered = match &type_def.kind {
+            TypeDefKind::Enum(_) => emit_enum_type(type_def)?,
+            _ => emit_struct_interface(type_def)?,
+        };
+        out.push_str(&rendered);
+        out.push('\n');
+    }
+
     for trait_def in &definition.traits {
         out.push_str(&emit_trait_interface(trait_def)?);
         out.push('\n');
@@ -96,7 +105,7 @@ fn emit_trait_interface(trait_def: &PlatformTrait) -> Result<String> {
         {body}
         }}
         "#,
-        name = trait_def.name,
+        name = ts_local_name(&trait_def.name),
     })
 }
 
@@ -113,7 +122,132 @@ fn emit_method(method: &PlatformMethod) -> Result<String> {
         .join(", ");
     let ret = format_return(&method.return_shape)?;
     let name = to_camel_case(&method.name);
-    Ok(format!("{jsdoc}  {name}({params}): {ret};"))
+    // A Rust default body makes the method optional for host implementations.
+    let optional = if method.has_default { "?" } else { "" };
+    Ok(format!("{jsdoc}  {name}{optional}({params}): {ret};"))
+}
+
+/// Emit a TS interface for a local platform struct. `Option<T>` fields become
+/// optional members so hosts receive plain objects with absent-when-`None`
+/// properties.
+fn emit_struct_interface(struct_def: &TypeDef) -> Result<String> {
+    let TypeDefKind::Struct(fields) = &struct_def.kind else {
+        bail!(
+            "Platform struct `{}` must have named fields",
+            struct_def.name
+        );
+    };
+    if !struct_def.generic_params.is_empty() {
+        bail!("Platform struct `{}` must not be generic", struct_def.name);
+    }
+    let jsdoc = render_jsdoc("", struct_def.docs.as_deref());
+    let body = fields
+        .iter()
+        .map(|field| {
+            let jsdoc = render_jsdoc("  ", field.docs.as_deref());
+            let name = to_camel_case(&field.name);
+            match &field.type_ref {
+                TypeRef::Option(inner) => Ok(format!("{jsdoc}  {name}?: {};", ts_type(inner)?)),
+                other => Ok(format!("{jsdoc}  {name}: {};", ts_type(other)?)),
+            }
+        })
+        .collect::<Result<Vec<_>>>()?
+        .join("\n\n");
+    Ok(formatdoc! {
+        r#"
+        {jsdoc}export interface {name} {{
+        {body}
+        }}
+        "#,
+        name = struct_def.name,
+    })
+}
+
+/// Emit a TS type for a local platform enum. Unit-only enums become string
+/// literal unions; payload enums become `{ tag, value }` tagged unions
+/// matching the `@parity/truapi` client convention.
+fn emit_enum_type(enum_def: &TypeDef) -> Result<String> {
+    let TypeDefKind::Enum(variants) = &enum_def.kind else {
+        bail!("Platform enum `{}` must have variants", enum_def.name);
+    };
+    if !enum_def.generic_params.is_empty() {
+        bail!("Platform enum `{}` must not be generic", enum_def.name);
+    }
+    let jsdoc = render_jsdoc("", enum_def.docs.as_deref());
+    if variants
+        .iter()
+        .all(|variant| matches!(variant.fields, VariantFields::Unit))
+    {
+        let union = variants
+            .iter()
+            .map(|variant| format!("\"{}\"", variant.name))
+            .collect::<Vec<_>>()
+            .join(" | ");
+        return Ok(format!(
+            "{jsdoc}export type {name} = {union};\n",
+            name = enum_def.name,
+        ));
+    }
+    let mut body = String::new();
+    for variant in variants {
+        body.push_str(&render_jsdoc("  ", variant.docs.as_deref()));
+        writeln!(body, "  | {}", enum_variant_type(variant)?).unwrap();
+    }
+    Ok(formatdoc! {
+        r#"
+        {jsdoc}export type {name} =
+        {body};
+        "#,
+        name = enum_def.name,
+        body = body.trim_end(),
+    })
+}
+
+/// Render one enum variant as a `{ tag, value }` member. Unit variants mark
+/// `value` optional so consumers can write `{ tag: "X" }`.
+fn enum_variant_type(variant: &VariantDef) -> Result<String> {
+    Ok(match &variant.fields {
+        VariantFields::Unit => format!("{{ tag: \"{}\"; value?: undefined }}", variant.name),
+        VariantFields::Unnamed(types) => format!(
+            "{{ tag: \"{}\"; value: {} }}",
+            variant.name,
+            unnamed_variant_value_type(types)?
+        ),
+        VariantFields::Named(fields) => format!(
+            "{{ tag: \"{}\"; value: {} }}",
+            variant.name,
+            inline_object_type(fields)?
+        ),
+    })
+}
+
+fn unnamed_variant_value_type(types: &[TypeRef]) -> Result<String> {
+    match types {
+        [single] => ts_type(single),
+        many => {
+            let rendered = many
+                .iter()
+                .map(ts_type)
+                .collect::<Result<Vec<_>>>()?
+                .join(", ");
+            Ok(format!("[{rendered}]"))
+        }
+    }
+}
+
+fn inline_object_type(fields: &[FieldDef]) -> Result<String> {
+    let body = fields
+        .iter()
+        .map(|field| {
+            let name = to_camel_case(&field.name);
+            match &field.type_ref {
+                TypeRef::Option(inner) => Ok(format!("{name}?: {}", ts_type(inner)?)),
+                other => Ok(format!("{name}: {}", ts_type(other)?)),
+            }
+        })
+        .collect::<Result<Vec<_>>>()?
+        .join("; ");
+    Ok(format!("{{ {body} }}"))
 }
 
 fn emit_super_interface(name: &str, composes: &[String], docs: Option<&str>) -> String {
@@ -121,7 +255,11 @@ fn emit_super_interface(name: &str, composes: &[String], docs: Option<&str>) -> 
     if composes.is_empty() {
         return format!("{jsdoc}export interface {name} {{}}\n");
     }
-    let extends = composes.join(", ");
+    let extends = composes
+        .iter()
+        .map(|name| ts_local_name(name))
+        .collect::<Vec<_>>()
+        .join(", ");
     format!("{jsdoc}export interface {name} extends {extends} {{}}\n")
 }
 
@@ -149,8 +287,14 @@ fn collect_named_types(definition: &PlatformDefinition) -> BTreeSet<String> {
             }
         }
     }
-    // Filter out names defined locally (the capability trait interfaces).
-    let local: BTreeSet<String> = definition.traits.iter().map(|t| t.name.clone()).collect();
+    // Filter out names defined locally (the capability trait interfaces and
+    // the platform struct/enum types emitted into this file).
+    let local: BTreeSet<String> = definition
+        .traits
+        .iter()
+        .map(|t| t.name.clone())
+        .chain(definition.types.iter().map(|s| s.name.clone()))
+        .collect();
     out.into_iter().filter(|n| !local.contains(n)).collect()
 }
 
@@ -236,6 +380,13 @@ fn ts_type(ty: &TypeRef) -> Result<String> {
     }
 }
 
+fn ts_local_name(name: &str) -> String {
+    match name {
+        "Storage" => "HostStorage".to_string(),
+        _ => name.to_string(),
+    }
+}
+
 fn render_jsdoc(indent: &str, docs: Option<&str>) -> String {
     let Some(docs) = docs else {
         return String::new();
@@ -250,12 +401,19 @@ fn render_jsdoc(indent: &str, docs: Option<&str>) -> String {
             if line.is_empty() {
                 format!("{indent} *")
             } else {
-                format!("{indent} * {line}")
+                format!("{indent} * {}", render_ts_doc_line(line))
             }
         })
         .collect::<Vec<_>>()
         .join("\n");
     format!("{indent}/**\n{body}\n{indent} */\n")
+}
+
+fn render_ts_doc_line(line: &str) -> String {
+    line.replace("[`", "`")
+        .replace("`]", "`")
+        .replace("Ok(())", "success")
+        .replace("None", "`undefined`")
 }
 
 fn to_camel_case(name: &str) -> String {

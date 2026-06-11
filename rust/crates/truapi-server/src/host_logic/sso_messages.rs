@@ -12,23 +12,29 @@ use crate::host_logic::sso_pairing::{
     encrypt_session_statement_data, encrypt_session_statement_data_with_nonce,
 };
 use crate::host_logic::statement_store::{
-    build_signed_session_request_statement, decode_verified_statement_data,
+    build_signed_session_request_statement, current_unix_secs, decode_verified_statement_data,
+    statement_expiry_elapsed,
 };
 
 const SSO_RESPONSE_CODE_SUCCESS: u8 = 0;
 
+/// Top-level wallet remote message sent over the encrypted SSO channel.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct RemoteMessage {
+    /// Correlation id used to match wallet responses to host requests.
     pub message_id: String,
+    /// Versioned remote message body.
     pub data: RemoteMessageData,
 }
 
+/// Versioned remote message body.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum RemoteMessageData {
     #[codec(index = 0)]
     V1(RemoteMessageV1),
 }
 
+/// Host-papp v1 remote message variants.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum RemoteMessageV1 {
     #[codec(index = 0)]
@@ -51,6 +57,7 @@ pub enum RemoteMessageV1 {
     CreateTransactionResponse(CreateTransactionResponse),
 }
 
+/// Signing request flavor sent to the wallet.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SigningRequest {
     #[codec(index = 0)]
@@ -59,6 +66,7 @@ pub enum SigningRequest {
     Raw(SigningRawRequest),
 }
 
+/// Product-account payload signing request mirrored from host-papp.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SigningPayloadRequest {
     pub product_account_id: v01::ProductAccountId,
@@ -103,6 +111,7 @@ impl From<v01::HostSignPayloadRequest> for SigningPayloadRequest {
     }
 }
 
+/// Raw signing request mirrored from host-papp.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SigningRawRequest {
     pub product_account_id: v01::ProductAccountId,
@@ -118,6 +127,7 @@ impl From<v01::HostSignRawRequest> for SigningRawRequest {
     }
 }
 
+/// Host-papp ternary optional-bool encoding (`none`, `false`, `true`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OptionBool(pub Option<bool>);
 
@@ -152,6 +162,7 @@ impl Decode for OptionBool {
     }
 }
 
+/// Raw signing payload shape mirrored from host-papp.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SigningRawPayload {
     #[codec(index = 0)]
@@ -169,30 +180,35 @@ impl From<v01::RawPayload> for SigningRawPayload {
     }
 }
 
+/// Wallet response to a signing request.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SigningResponse {
     pub responding_to: String,
     pub payload: Result<SigningPayloadResponseData, String>,
 }
 
+/// Successful signing response payload.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct SigningPayloadResponseData {
     pub signature: Vec<u8>,
     pub signed_transaction: Option<Vec<u8>>,
 }
 
+/// Wallet alias request for a product account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct RingVrfAliasRequest {
     pub product_account_id: v01::ProductAccountId,
     pub product_id: String,
 }
 
+/// Wallet alias response.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct RingVrfAliasResponse {
     pub responding_to: String,
     pub payload: Result<v01::HostAccountGetAliasResponse, String>,
 }
 
+/// Wallet resource-allocation request.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct ResourceAllocationRequest {
     pub calling_product_id: String,
@@ -200,6 +216,7 @@ pub struct ResourceAllocationRequest {
     pub on_existing: OnExistingAllowancePolicy,
 }
 
+/// Resources the wallet may allocate for the calling product.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SsoAllocatableResource {
     #[codec(index = 0)]
@@ -225,6 +242,7 @@ impl From<v01::AllocatableResource> for SsoAllocatableResource {
     }
 }
 
+/// Wallet policy for already-existing resource allowance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
 pub enum OnExistingAllowancePolicy {
     #[codec(index = 0)]
@@ -233,12 +251,14 @@ pub enum OnExistingAllowancePolicy {
     Increase,
 }
 
+/// Wallet resource-allocation response.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct ResourceAllocationResponse {
     pub responding_to: String,
     pub payload: Result<Vec<SsoAllocationOutcome>, String>,
 }
 
+/// Per-resource allocation result from the wallet.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SsoAllocationOutcome {
     #[codec(index = 0)]
@@ -249,6 +269,7 @@ pub enum SsoAllocationOutcome {
     NotAvailable,
 }
 
+/// Resource material allocated by the wallet.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum SsoAllocatedResource {
     #[codec(index = 0)]
@@ -264,23 +285,27 @@ pub enum SsoAllocatedResource {
     },
 }
 
+/// Wallet transaction-creation request.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct CreateTransactionRequest {
     pub payload: CreateTransactionPayload,
 }
 
+/// Versioned transaction-creation payload.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum CreateTransactionPayload {
     #[codec(index = 0)]
     V1(v01::ProductAccountTxPayload),
 }
 
+/// Wallet transaction-creation response.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct CreateTransactionResponse {
     pub responding_to: String,
     pub signed_transaction: Result<Vec<u8>, String>,
 }
 
+/// Decoded inbound statement-channel outcome.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SsoSessionStatement {
     RequestAccepted,
@@ -288,6 +313,7 @@ pub enum SsoSessionStatement {
     Disconnected,
 }
 
+/// Wallet response variants that can satisfy a pending remote request.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SsoRemoteResponse {
     Sign(SigningResponse),
@@ -296,6 +322,7 @@ pub enum SsoRemoteResponse {
     CreateTransaction(CreateTransactionResponse),
 }
 
+/// Decode and classify an inbound encrypted SSO session statement.
 pub fn decode_sso_session_statement(
     session: &SsoSessionInfo,
     statement: &[u8],
@@ -304,6 +331,14 @@ pub fn decode_sso_session_statement(
 ) -> Result<Option<SsoSessionStatement>, String> {
     let verified =
         decode_verified_statement_data(statement, None).map_err(|err| err.to_string())?;
+    // Freshness gate against replay: a statement whose expiry is in the past
+    // is ignored. Trusts the local clock.
+    if verified
+        .expiry
+        .is_some_and(|expiry| statement_expiry_elapsed(expiry, current_unix_secs()))
+    {
+        return Ok(None);
+    }
     let encrypted = verified.data;
     let data = decrypt_session_statement_data(session, &encrypted)?;
     if verified.signer == session.ss_public_key {
@@ -402,6 +437,7 @@ fn sso_response_code_name(code: u8) -> &'static str {
     }
 }
 
+/// Build a wallet payload-signing request message.
 pub fn sign_payload_message(
     message_id: String,
     request: v01::HostSignPayloadRequest,
@@ -414,6 +450,7 @@ pub fn sign_payload_message(
     }
 }
 
+/// Build a wallet raw-signing request message.
 pub fn sign_raw_message(message_id: String, request: v01::HostSignRawRequest) -> RemoteMessage {
     RemoteMessage {
         message_id,
@@ -423,6 +460,7 @@ pub fn sign_raw_message(message_id: String, request: v01::HostSignRawRequest) ->
     }
 }
 
+/// Build a wallet account-alias request message.
 pub fn alias_request_message(
     message_id: String,
     product_account_id: v01::ProductAccountId,
@@ -437,6 +475,7 @@ pub fn alias_request_message(
     }
 }
 
+/// Build a wallet resource-allocation request message.
 pub fn resource_allocation_message(
     message_id: String,
     calling_product_id: String,
@@ -455,6 +494,7 @@ pub fn resource_allocation_message(
     }
 }
 
+/// Build a wallet transaction-creation request message.
 pub fn create_transaction_message(
     message_id: String,
     payload: v01::ProductAccountTxPayload,
@@ -469,6 +509,7 @@ pub fn create_transaction_message(
     }
 }
 
+/// Build a signed outbound SSO request statement with a random nonce.
 pub fn build_outgoing_request_statement(
     session: &SsoSessionInfo,
     statement_request_id: String,
@@ -479,6 +520,7 @@ pub fn build_outgoing_request_statement(
     build_signed_session_request_statement(session, encrypted, expiry)
 }
 
+/// Build a signed outbound SSO request statement with a caller-supplied nonce.
 pub fn build_outgoing_request_statement_with_nonce(
     session: &SsoSessionInfo,
     statement_request_id: String,
@@ -546,6 +588,14 @@ mod tests {
         }
     }
 
+    fn fresh_expiry() -> u64 {
+        (current_unix_secs() + 60) << 32
+    }
+
+    fn elapsed_expiry() -> u64 {
+        (current_unix_secs() - 60) << 32
+    }
+
     fn session() -> SsoSessionInfo {
         let mini_secret = MiniSecretKey::from_bytes(&[7; 32]).unwrap();
         let keypair = mini_secret.expand_to_keypair(ExpansionMode::Ed25519);
@@ -600,7 +650,7 @@ mod tests {
     }
 
     #[test]
-    fn option_bool_matches_nova_option_bool_encoding() {
+    fn option_bool_matches_host_papp_option_bool_encoding() {
         let mut request = v01::HostSignPayloadRequest {
             account: account(),
             payload: v01::HostSignPayloadData {
@@ -719,7 +769,7 @@ mod tests {
             &session,
             "statement-1".to_string(),
             vec![remote_message],
-            99,
+            fresh_expiry(),
             [9; AES_GCM_NONCE_LEN],
         )
         .unwrap();
@@ -730,11 +780,9 @@ mod tests {
         assert_eq!(decoded, None);
     }
 
-    #[test]
-    fn accepts_own_echoed_session_response_ack() {
-        let session = session();
+    fn response_ack_statement(session: &SsoSessionInfo, expiry: u64) -> Vec<u8> {
         let encrypted = encrypt_session_statement_data_with_nonce(
-            &session,
+            session,
             &SsoStatementData::Response {
                 request_id: "statement-1".to_string(),
                 response_code: SSO_RESPONSE_CODE_SUCCESS,
@@ -742,18 +790,37 @@ mod tests {
             [9; AES_GCM_NONCE_LEN],
         )
         .unwrap();
-        let statement = build_signed_statement(
-            &session,
+        build_signed_statement(
+            session,
             session.response_channel,
             session.session_id_own,
             encrypted,
-            99,
+            expiry,
         )
-        .unwrap();
+        .unwrap()
+    }
+
+    #[test]
+    fn accepts_own_echoed_session_response_ack() {
+        let session = session();
+        let statement = response_ack_statement(&session, fresh_expiry());
 
         let decoded =
             decode_sso_session_statement(&session, &statement, "statement-1", "remote-1").unwrap();
 
         assert_eq!(decoded, Some(SsoSessionStatement::RequestAccepted));
+    }
+
+    /// A statement whose expiry is in the past must be ignored even when it
+    /// would otherwise match the pending request (replay protection).
+    #[test]
+    fn ignores_expired_session_response_ack() {
+        let session = session();
+        let statement = response_ack_statement(&session, elapsed_expiry());
+
+        let decoded =
+            decode_sso_session_statement(&session, &statement, "statement-1", "remote-1").unwrap();
+
+        assert_eq!(decoded, None);
     }
 }

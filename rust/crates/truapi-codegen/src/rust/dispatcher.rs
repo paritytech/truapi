@@ -21,7 +21,7 @@ use indoc::{formatdoc, indoc, writedoc};
 
 use crate::rustdoc::*;
 
-use super::{module_for_trait, wire_method_name};
+use super::{const_name, module_for_trait, wire_method_name};
 
 /// Emit the contents of `dispatcher.rs`.
 pub fn generate_dispatcher(api: &ApiDefinition) -> Result<String> {
@@ -125,8 +125,8 @@ impl ModuleEmission {
 struct MethodEmission {
     /// Rust method name on the host trait (used for the `host.<name>(...)` call).
     name: String,
-    /// Fully-qualified wire method name (`{trait_snake}_{method}`); used as the
-    /// dispatcher registration key and the tag prefix.
+    /// Fully-qualified wire method name (`{trait_snake}_{method}`); uppercased
+    /// to the `wire_table` const this method registers against.
     wire_name: String,
     module: String,
     kind: MethodKind,
@@ -193,11 +193,7 @@ impl MethodEmission {
             name: method.name.clone(),
             wire_name: wire_method.to_string(),
             module: module.to_string(),
-            kind: match method.kind {
-                MethodKind::Request => MethodKind::Request,
-                MethodKind::Subscription => MethodKind::Subscription,
-                MethodKind::ResultSubscription => MethodKind::ResultSubscription,
-            },
+            kind: method.kind,
             request_wrapper,
             response_wrapper,
             item_wrapper,
@@ -216,7 +212,7 @@ impl MethodEmission {
     fn write_request(&self, out: &mut String, host_expr: &str) {
         let module = &self.module;
         let method = &self.name;
-        let wire = &self.wire_name;
+        let ids = const_name(&self.wire_name);
 
         write_indented(
             out,
@@ -225,7 +221,7 @@ impl MethodEmission {
                 r#"
                 {{
                     let host = {host_expr};
-                    dispatcher.on_request("{wire}", move |request_id: String, bytes: Vec<u8>| {{
+                    dispatcher.on_request(wire_table::{ids}, move |request_id: String, bytes: Vec<u8>| {{
                         let host = host.clone();
                         Box::pin(async move {{
                 "#
@@ -262,10 +258,7 @@ impl MethodEmission {
                         Ok(value) => value,
                         Err(err) => return Err(encode_call_error_payload(err)),
                     }};
-                    let mut buf = Vec::with_capacity(1 + response.size_hint());
-                    buf.push(0u8);
-                    response.encode_to(&mut buf);
-                    Ok(buf)
+                    Ok(encode_ok_payload(response))
                     "#
                 },
             ),
@@ -275,7 +268,7 @@ impl MethodEmission {
                 &formatdoc! {
                     r#"
                     match host.{method}({call_args}).await {{
-                        Ok(()) => Ok(vec![0u8]),
+                        Ok(()) => Ok(encode_ok_payload(())),
                         Err(err) => Err(encode_call_error_payload(err)),
                     }}
                     "#
@@ -298,7 +291,7 @@ impl MethodEmission {
     fn write_subscription(&self, out: &mut String, host_expr: &str) {
         let module = &self.module;
         let method = &self.name;
-        let wire = &self.wire_name;
+        let ids = const_name(&self.wire_name);
         let item = self
             .item_wrapper
             .as_deref()
@@ -313,7 +306,7 @@ impl MethodEmission {
                 r#"
                 {{
                     let host = {host_expr};
-                    dispatcher.on_subscription("{wire}", move |request_id: String, bytes: Vec<u8>| {{
+                    dispatcher.on_subscription(wire_table::{ids}, move |request_id: String, bytes: Vec<u8>| {{
                         let host = host.clone();
                         Box::pin(async move {{
                 "#
@@ -419,7 +412,7 @@ fn write_imports(out: &mut String, traits: &[&TraitDef]) {
         r#"
         use std::sync::Arc;
 
-        use parity_scale_codec::{{Decode, Encode}};
+        use parity_scale_codec::Decode;
 
         use truapi::CallContext;
         use truapi::api::{{
@@ -436,7 +429,8 @@ fn write_imports(out: &mut String, traits: &[&TraitDef]) {
         use truapi::versioned;
 
         use crate::dispatcher::Dispatcher;
-        use crate::frame::{{encode_call_error_payload, encode_decode_error}};
+        use crate::frame::{{encode_call_error_payload, encode_decode_error, encode_ok_payload}};
+        use crate::generated::wire_table;
         use crate::subscription::subscription_stream;
         "#
     )

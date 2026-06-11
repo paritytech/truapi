@@ -54,8 +54,9 @@ const provider = await createNodeWasmProvider(
     localStorageRead: async () => undefined,
     localStorageWrite: async () => {},
     localStorageClear: async () => {},
-    // Optional: presentPairing, readSession/writeSession/clearSession,
-    // subscribeSessionStore, confirmation, preimage, theme, and chain callbacks.
+    // Optional: authStateChanged (core-owned auth UI state stream),
+    // readSession/writeSession/clearSession, subscribeSessionStore,
+    // confirmation, preimage, theme, and chain callbacks.
   },
   {
     runtimeConfig: {
@@ -95,7 +96,7 @@ MessageChannel handshake.
 
 ## Publishing
 
-TODO: npm publish workflow not yet wired. A release-process discussion is needed before adding a
+The npm publish workflow is not wired yet. A release-process discussion is needed before adding a
 publish job to `.github/workflows/`. Until then, consumers depend on the package via the workspace
 `file:` link or by publishing locally with `npm pack`.
 

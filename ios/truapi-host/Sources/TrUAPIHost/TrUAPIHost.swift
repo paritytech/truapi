@@ -44,6 +44,10 @@ public enum PairingDeeplinkScheme: Sendable {
 
 /// Static product and pairing config supplied before the Rust core handles
 /// product calls. One core instance represents one product identity.
+///
+/// `hostName`, `hostIcon`, `hostVersion`, `platformType`, and
+/// `platformVersion` describe the host to the wallet during SSO pairing.
+/// `peopleChainGenesisHash` must be exactly 32 bytes.
 public struct RuntimeConfig: Sendable {
     public let productLabel: String
     public let productId: String
@@ -147,18 +151,26 @@ public protocol HostStorageBackend: AnyObject, Sendable {
 /// native shell owns. Rust owns the wire/protocol decoding and calls this
 /// surface with native-friendly values.
 ///
-/// Threading: when the WS bridge is running, the Rust core invokes every
-/// callback on the dedicated `truapi-ws-bridge` worker thread, never the main
-/// thread. Any UI work an implementation does (navigation, prompts,
-/// notifications, touching the `WKWebView`) MUST hop to the main thread, e.g.
+/// Threading: the Rust core invokes every callback on a background thread it
+/// owns, never the main thread. UI-decision callbacks
+/// (``navigateTo(url:)``, ``devicePermission(capability:)``,
+/// ``remotePermission(permission:domains:)``, the `confirm*` family, and
+/// ``submitPreimage(value:)``) each run on their own thread from a blocking
+/// pool, so an implementation may safely block its calling thread (e.g. with
+/// `DispatchQueue.main.sync` or a semaphore) until the user decides; other
+/// TrUAPI traffic keeps flowing. The remaining callbacks (auth state,
+/// storage, session, chain, feature, theme, preimage lookups) run inline on
+/// the dispatcher thread and must return promptly without blocking.
+/// Any UI work MUST still hop to the main thread, e.g.
 /// `await MainActor.run { ... }` or `DispatchQueue.main.async { ... }`. Calling
 /// UIKit/WebKit off the main thread is undefined behaviour.
 public protocol HostBridge: AnyObject, Sendable {
     /// Lifecycle logger. Marker is a stable slug, detail is free-form.
     func onCoreLog(marker: String, detail: String)
 
-    /// Open a URL in the system browser. Invoked on the `truapi-ws-bridge`
-    /// worker thread; hop to the main thread to present UI.
+    /// Open a URL in the system browser. Invoked on a blocking-pool thread;
+    /// hop to the main thread to present UI. May block the calling thread if
+    /// the user has to approve the navigation.
     func navigateTo(url: String) throws
 
     /// Deliver a push notification and return the host-assigned notification
@@ -179,13 +191,14 @@ public protocol HostBridge: AnyObject, Sendable {
     /// and block this thread until the user decides.
     func remotePermission(permission: String, domains: [String]) throws -> Bool
 
-    /// Present an SSO pairing deeplink or QR payload built by the Rust core.
-    /// Show the UI and return immediately. Call
-    /// ``TrUAPIHostCore/notifyPairingCancelled()`` when the user dismisses it.
-    func presentPairing(deeplink: String) throws
-
-    /// Close any active SSO pairing presentation.
-    func dismissPairing()
+    /// Observe an auth state change. The core emits states only when they
+    /// actually change, in transition order: render `.pairing` as the pairing
+    /// QR UI, `.connected`/`.disconnected` as the account badge, and
+    /// `.loginFailed` as a retryable error. Report a user dismissal of the
+    /// pairing UI through ``TrUAPIHostCore/cancelLogin()``. Invoked on the
+    /// dispatcher thread; hand the state to the main thread and return
+    /// promptly.
+    func authStateChanged(state: AuthState)
 
     /// Read the opaque core-owned SSO session blob from host-global storage.
     func readSession() throws -> Data?
@@ -253,10 +266,7 @@ public extension HostBridge {
     func onCoreLog(marker: String, detail: String) {}
     func pushNotification(text: String, deeplink: String?, scheduledAtMs: UInt64?) throws -> UInt32 { 0 }
     func cancelNotification(id: UInt32) throws {}
-    func presentPairing(deeplink: String) throws {
-        throw HostRejection.Rejected(reason: "pairing presenter unavailable")
-    }
-    func dismissPairing() {}
+    func authStateChanged(state: AuthState) {}
     func readSession() throws -> Data? { nil }
     func writeSession(value: Data) throws {}
     func clearSession() throws {}
@@ -314,12 +324,8 @@ private final class HostCallbackAdapter: HostCallbacks, @unchecked Sendable {
         try bridge.remotePermission(permission: permission, domains: domains)
     }
 
-    func presentPairing(deeplink: String) throws {
-        try bridge.presentPairing(deeplink: deeplink)
-    }
-
-    func dismissPairing() {
-        bridge.dismissPairing()
+    func authStateChanged(state: AuthState) {
+        bridge.authStateChanged(state: state)
     }
 
     func readSession() throws -> Data? {
@@ -444,8 +450,9 @@ public final class TrUAPIHostCore: @unchecked Sendable {
     }
 
     /// Core-owned logout/disconnect path. Best-effort notifies the SSO peer,
-    /// clears in-memory session state, clears `HostBridge.sessionStore`, and
-    /// broadcasts `Disconnected` to active account-status subscribers.
+    /// clears in-memory session state, clears the persisted session via
+    /// ``HostBridge/clearSession()``, and broadcasts `Disconnected` to active
+    /// account-status subscribers.
     public func disconnect() {
         inner.disconnect()
     }
@@ -455,9 +462,12 @@ public final class TrUAPIHostCore: @unchecked Sendable {
         inner.notifySessionStoreChanged()
     }
 
-    /// Notify the core that the user dismissed the active SSO pairing UI.
-    public func notifyPairingCancelled() {
-        inner.notifyPairingCancelled()
+    /// Cancel any in-flight login pairing (e.g. the user dismissed the
+    /// pairing UI). The bridge receives a `.disconnected` auth state
+    /// immediately and the pending login resolves as rejected. A no-op when
+    /// no login is in progress.
+    public func cancelLogin() {
+        inner.cancelLogin()
     }
 
     /// Push a host theme update to active TrUAPI theme subscriptions.

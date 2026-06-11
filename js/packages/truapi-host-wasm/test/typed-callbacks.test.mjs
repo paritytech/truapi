@@ -8,13 +8,30 @@ import {
   RemotePermissionRequest,
 } from "@parity/truapi";
 
-import { createWasmRawCallbacks } from "../dist/index.js";
+import {
+  createUnavailableCallbacks,
+  createWasmRawCallbacks,
+} from "../dist/index.js";
 
 const GENESIS = `0x${"11".repeat(32)}`;
 
 function settle() {
   return new Promise((resolve) => setImmediate(resolve));
 }
+
+test("createUnavailableCallbacks rejects storage write paths", async () => {
+  const callbacks = createUnavailableCallbacks();
+
+  await assert.rejects(
+    () => callbacks.localStorageWrite("key", new Uint8Array([1])),
+    /localStorageWrite unavailable/,
+  );
+  await assert.rejects(
+    () => callbacks.localStorageClear("key"),
+    /localStorageClear unavailable/,
+  );
+  assert.equal(await callbacks.localStorageRead("key"), undefined);
+});
 
 test("createWasmRawCallbacks decodes SCALE request callbacks into typed host calls", async () => {
   const writes = [];
@@ -99,8 +116,8 @@ test("createWasmRawCallbacks bridges lifecycle, confirmations, and preimage call
   }
 
   const raw = createWasmRawCallbacks({
-    presentPairing: async (deeplink) => {
-      calls.push(["presentPairing", deeplink]);
+    authStateChanged: (state) => {
+      calls.push(["authStateChanged", state]);
     },
     readSession: async () => new Uint8Array([1, 2, 3]),
     writeSession: async (value) => {
@@ -138,7 +155,10 @@ test("createWasmRawCallbacks bridges lifecycle, confirmations, and preimage call
     (value) => preimageEvents.push(value ? [...value] : null),
   );
 
-  await raw.presentPairing?.("polkadotapp://example");
+  raw.authStateChanged?.({
+    tag: "Pairing",
+    value: { deeplink: "polkadotapp://example" },
+  });
   assert.deepEqual(await raw.readSession?.(), new Uint8Array([1, 2, 3]));
   await raw.writeSession?.(new Uint8Array([3, 2, 1]));
   await raw.clearSession?.();
@@ -163,7 +183,10 @@ test("createWasmRawCallbacks bridges lifecycle, confirmations, and preimage call
   assert.deepEqual(preimageEvents, [null, [4, 5, 6]]);
   assert.deepEqual(calls, [
     ["lookupPreimage", [9]],
-    ["presentPairing", "polkadotapp://example"],
+    [
+      "authStateChanged",
+      { tag: "Pairing", value: { deeplink: "polkadotapp://example" } },
+    ],
     ["writeSession", [3, 2, 1]],
     ["clearSession"],
     ["confirmPreimageSubmit", 42n],

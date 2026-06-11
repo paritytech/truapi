@@ -14,7 +14,7 @@ use futures::future::{BoxFuture, Either, select};
 use futures::stream::BoxStream;
 use parity_scale_codec::Encode;
 
-use crate::frame::{FrameKind, Payload, ProtocolMessage, compose_action};
+use crate::frame::{Payload, ProtocolMessage};
 use crate::transport::Transport;
 
 type StopFn = Box<dyn FnOnce() + Send>;
@@ -146,7 +146,8 @@ impl SubscriptionManager {
     pub fn activate(
         &self,
         token: ReservationToken,
-        method: &str,
+        receive_id: u8,
+        interrupt_id: u8,
         mut stream: SubscriptionStream,
         transport: Arc<dyn Transport>,
     ) {
@@ -154,9 +155,6 @@ impl SubscriptionManager {
             request_id,
             generation,
         } = token;
-        let action = compose_action(method, FrameKind::Receive);
-        let interrupt_action = compose_action(method, FrameKind::Interrupt);
-        let completed_interrupt_action = interrupt_action.clone();
         let rid = request_id.clone();
         let stream_transport = transport.clone();
 
@@ -205,7 +203,7 @@ impl SubscriptionManager {
                                     stream_transport.send(ProtocolMessage {
                                         request_id: rid.clone(),
                                         payload: Payload {
-                                            tag: action.clone(),
+                                            id: receive_id,
                                             value,
                                         },
                                     })
@@ -214,7 +212,7 @@ impl SubscriptionManager {
                                     stream_transport.send(ProtocolMessage {
                                         request_id: rid.clone(),
                                         payload: Payload {
-                                            tag: interrupt_action.clone(),
+                                            id: interrupt_id,
                                             value,
                                         },
                                     });
@@ -245,7 +243,7 @@ impl SubscriptionManager {
                 transport.send(ProtocolMessage {
                     request_id,
                     payload: Payload {
-                        tag: completed_interrupt_action,
+                        id: interrupt_id,
                         value: Vec::new(),
                     },
                 });
@@ -260,12 +258,13 @@ impl SubscriptionManager {
     pub fn register(
         &self,
         request_id: String,
-        method: &str,
+        receive_id: u8,
+        interrupt_id: u8,
         stream: SubscriptionStream,
         transport: Arc<dyn Transport>,
     ) {
         let token = self.reserve(request_id);
-        self.activate(token, method, stream, transport);
+        self.activate(token, receive_id, interrupt_id, stream, transport);
     }
 
     /// Handle a `_stop` frame from the product side. Cancels a live
@@ -357,7 +356,7 @@ mod tests {
         let transport_dyn: Arc<dyn Transport> = transport_typed.clone();
         let manager = SubscriptionManager::new(thread_per_subscription_spawner());
         let slow_stream: SubscriptionStream = Box::pin(stream::pending());
-        manager.register("p:1".to_string(), "demo_method", slow_stream, transport_dyn);
+        manager.register("p:1".to_string(), 99, 98, slow_stream, transport_dyn);
         manager.handle_stop("p:1");
         // Give the worker thread a beat to observe the cancel.
         std::thread::sleep(std::time::Duration::from_millis(50));
@@ -375,15 +374,15 @@ mod tests {
         let transport_dyn: Arc<dyn Transport> = transport_typed.clone();
         let manager = SubscriptionManager::new(thread_per_subscription_spawner());
         let items = dummy_stream(vec![vec![0xaa], vec![0xbb]]);
-        manager.register("p:1".to_string(), "demo_method", items, transport_dyn);
+        manager.register("p:1".to_string(), 99, 98, items, transport_dyn);
         let observed = transport_typed.wait_for(3, std::time::Duration::from_secs(2));
         assert_eq!(observed, 3, "expected 2 receive frames + 1 interrupt");
         let frames = transport_typed.sent();
-        assert_eq!(frames[0].payload.tag, "demo_method_receive");
+        assert_eq!(frames[0].payload.id, 99);
         assert_eq!(frames[0].payload.value, vec![0xaa]);
-        assert_eq!(frames[1].payload.tag, "demo_method_receive");
+        assert_eq!(frames[1].payload.id, 99);
         assert_eq!(frames[1].payload.value, vec![0xbb]);
-        assert_eq!(frames[2].payload.tag, "demo_method_interrupt");
+        assert_eq!(frames[2].payload.id, 98);
         assert_eq!(frames[2].payload.value, Vec::<u8>::new());
     }
 
@@ -396,7 +395,7 @@ mod tests {
         let transport_dyn: Arc<dyn Transport> = transport_typed.clone();
         let manager = SubscriptionManager::new(thread_per_subscription_spawner());
         let slow_stream: SubscriptionStream = Box::pin(stream::pending());
-        manager.register("p:1".to_string(), "demo_method", slow_stream, transport_dyn);
+        manager.register("p:1".to_string(), 99, 98, slow_stream, transport_dyn);
         manager.handle_stop("p:1");
         // Second call must not panic and must not emit any frame.
         manager.handle_stop("p:1");
@@ -423,7 +422,7 @@ mod tests {
         let transport_dyn: Arc<dyn Transport> = transport_typed.clone();
         let manager = SubscriptionManager::new(spawner);
         let items = dummy_stream(vec![vec![0xcc]]);
-        manager.register("p:1".to_string(), "demo_method", items, transport_dyn);
+        manager.register("p:1".to_string(), 99, 98, items, transport_dyn);
 
         // Wait for the worker future to drain to completion so we know
         // the spawner closure ran on this path.
@@ -446,7 +445,7 @@ mod tests {
         let token = manager.reserve("p:1".to_string());
         manager.handle_stop("p:1");
         let items = dummy_stream(vec![vec![0x01], vec![0x02]]);
-        manager.activate(token, "demo_method", items, transport_dyn);
+        manager.activate(token, 99, 98, items, transport_dyn);
         std::thread::sleep(std::time::Duration::from_millis(50));
         assert!(
             transport_typed.sent().is_empty(),
@@ -467,16 +466,11 @@ mod tests {
         // First subscription never yields; the second reservation for the
         // same id must stop it.
         let pending: SubscriptionStream = Box::pin(stream::pending());
-        manager.register(
-            "p:1".to_string(),
-            "demo_method",
-            pending,
-            transport_dyn.clone(),
-        );
+        manager.register("p:1".to_string(), 99, 98, pending, transport_dyn.clone());
 
         // Second subscription yields one item then ends.
         let items = dummy_stream(vec![vec![0xaa]]);
-        manager.register("p:1".to_string(), "demo_method", items, transport_dyn);
+        manager.register("p:1".to_string(), 99, 98, items, transport_dyn);
 
         // Exactly the second stream's frames appear: one receive + one
         // completion interrupt. The first (pending) stream contributes none.
@@ -486,9 +480,9 @@ mod tests {
             "expected the second stream's receive + interrupt only"
         );
         let frames = transport_typed.sent();
-        assert_eq!(frames[0].payload.tag, "demo_method_receive");
+        assert_eq!(frames[0].payload.id, 99);
         assert_eq!(frames[0].payload.value, vec![0xaa]);
-        assert_eq!(frames[1].payload.tag, "demo_method_interrupt");
+        assert_eq!(frames[1].payload.id, 98);
 
         manager.handle_stop("p:1");
         std::thread::sleep(std::time::Duration::from_millis(50));

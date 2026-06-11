@@ -9,6 +9,7 @@ use anyhow::{Result, bail};
 use convert_case::{Case, Casing};
 use indoc::{formatdoc, writedoc};
 
+use crate::rust::wire_const_name;
 use crate::rustdoc::*;
 
 mod examples;
@@ -458,10 +459,6 @@ fn trim_doc_lines(lines: &[&str]) -> Option<String> {
 
 fn ts_string_literal(value: &str) -> String {
     serde_json::to_string(value).expect("string serialization is infallible")
-}
-
-fn wire_const_name(trait_name: &str, method_name: &str) -> String {
-    format!("{trait_name}_{method_name}").to_case(Case::UpperSnake)
 }
 
 /// Sort key for stable, wire-id-ordered method emission shared by the

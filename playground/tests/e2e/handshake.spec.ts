@@ -11,9 +11,9 @@ test.describe("handshake", () => {
     await waitForOnline(frame);
 
     // Once connected, the splash unmounts and the service rail mounts.
-    // The Auto-Test entry button is the simplest stable proof of that.
+    // The diagnosis entry is the simplest stable proof of that.
     await expect(
-      frame.getByRole("button", { name: /Auto-Test Run all methods/ }),
+      frame.getByRole("button", { name: /Diagnosis Full host coverage report/ }),
     ).toBeVisible();
   });
 });

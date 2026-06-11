@@ -41,9 +41,10 @@ export function createElectronProvider(
   const listeners = new Set<(message: Uint8Array) => void>();
   const closeListeners = new Set<(error: Error) => void>();
   let disposed = false;
+  let closedError: Error | null = null;
 
   const onMessage = (event: { data: unknown }): void => {
-    if (disposed) return;
+    if (closedError) return;
     const data = event.data;
     if (!(data instanceof Uint8Array)) return;
     for (const listener of [...listeners]) listener(data);
@@ -58,14 +59,17 @@ export function createElectronProvider(
     }
   };
 
-  const onClose = (): void => {
-    if (disposed) return;
-    disposed = true;
+  const close = (error: Error): void => {
+    if (closedError) return;
+    closedError = error;
     removePortListeners();
-    const error = new Error("electron message port closed");
     for (const listener of [...closeListeners]) listener(error);
     listeners.clear();
     closeListeners.clear();
+  };
+
+  const onClose = (): void => {
+    close(new Error("electron message port closed"));
   };
 
   port.on("message", onMessage);
@@ -74,16 +78,21 @@ export function createElectronProvider(
 
   return {
     postMessage(bytes: Uint8Array): void {
-      if (disposed) return;
+      if (closedError) return;
       port.postMessage(bytes);
     },
     subscribe(callback) {
+      if (closedError) return () => {};
       listeners.add(callback);
       return () => {
         listeners.delete(callback);
       };
     },
     subscribeClose(callback) {
+      if (closedError) {
+        callback(closedError);
+        return () => {};
+      }
       closeListeners.add(callback);
       return () => {
         closeListeners.delete(callback);
@@ -92,14 +101,12 @@ export function createElectronProvider(
     dispose() {
       if (disposed) return;
       disposed = true;
-      removePortListeners();
       try {
         port.close();
       } catch {
         // already closed
       }
-      listeners.clear();
-      closeListeners.clear();
+      close(new Error("electron provider disposed"));
     },
   };
 }

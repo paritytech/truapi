@@ -3,7 +3,7 @@
 //! The TS host/client codec expects every request response to be
 //! `Result<Ok, Err>`-shaped on the wire (one leading discriminant byte
 //! followed by the SCALE-encoded value). This test stands up a
-//! `TrUApiCore::from_platform_with_config` with a `StubPlatform` whose `Features`
+//! `TrUApiCore::from_platform_with_config` with a platform whose `Features`
 //! impl returns `Ok(supported = true)` and asserts:
 //!
 //! - A `system_feature_supported_request` produces a response whose
@@ -19,184 +19,20 @@
 
 use std::sync::Arc;
 
-use futures::stream::{self, BoxStream};
 use parity_scale_codec::{Decode, Encode};
 
 use truapi::v01;
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use truapi::versioned::{account, payment, statement_store};
 
-use truapi_platform::{
-    ChainProvider, ChatHost, Features, JsonRpcConnection, Navigation, Notifications,
-    PairingDeeplinkScheme, PairingPresenter, Permissions, PreimageHost, RuntimeConfig,
-    SessionStore, Storage, ThemeHost, UserConfirmation,
+use truapi_server::{
+    Payload, ProtocolMessage, TrUApiCore, encode_call_error_payload, request_ids, subscription_ids,
 };
 
-use truapi_server::{
-    FrameKind, Payload, ProtocolMessage, TrUApiCore, compose_action, encode_call_error_payload,
-};
+mod common;
+use common::{WireShapePlatform, test_runtime_config, test_spawner};
 
 const PAYMENTS_NOT_IMPLEMENTED: &str = "Payments are not supported in dot.li";
-
-struct StubPlatform;
-
-impl Storage for StubPlatform {
-    async fn read(&self, _key: String) -> Result<Option<Vec<u8>>, v01::HostLocalStorageReadError> {
-        // Drive the error-path test: return `Full` so we can assert the
-        // wire-Err discriminant precedes the SCALE-encoded `CallError::Domain(Full)`.
-        Err(v01::HostLocalStorageReadError::Full)
-    }
-    async fn write(
-        &self,
-        _key: String,
-        _value: Vec<u8>,
-    ) -> Result<(), v01::HostLocalStorageReadError> {
-        Ok(())
-    }
-    async fn clear(&self, _key: String) -> Result<(), v01::HostLocalStorageReadError> {
-        Ok(())
-    }
-}
-
-impl Navigation for StubPlatform {
-    async fn navigate_to(&self, _url: String) -> Result<(), v01::HostNavigateToError> {
-        Ok(())
-    }
-}
-
-impl Notifications for StubPlatform {
-    async fn push_notification(
-        &self,
-        _notification: v01::HostPushNotificationRequest,
-    ) -> Result<v01::HostPushNotificationResponse, v01::GenericError> {
-        Ok(v01::HostPushNotificationResponse { id: 0 })
-    }
-
-    async fn cancel_notification(&self, _id: u32) -> Result<(), v01::GenericError> {
-        Ok(())
-    }
-}
-
-impl Permissions for StubPlatform {
-    async fn device_permission(
-        &self,
-        _request: v01::HostDevicePermissionRequest,
-    ) -> Result<v01::HostDevicePermissionResponse, v01::GenericError> {
-        Ok(v01::HostDevicePermissionResponse { granted: true })
-    }
-    async fn remote_permission(
-        &self,
-        _request: v01::RemotePermissionRequest,
-    ) -> Result<v01::RemotePermissionResponse, v01::GenericError> {
-        Ok(v01::RemotePermissionResponse { granted: true })
-    }
-}
-
-impl Features for StubPlatform {
-    async fn feature_supported(
-        &self,
-        _request: HostFeatureSupportedRequest,
-    ) -> Result<HostFeatureSupportedResponse, v01::GenericError> {
-        Ok(HostFeatureSupportedResponse::V1(
-            v01::HostFeatureSupportedResponse { supported: true },
-        ))
-    }
-}
-
-impl ChatHost for StubPlatform {
-    async fn post_chat_message(
-        &self,
-        _room_id: String,
-        _payload: v01::ChatMessageContent,
-    ) -> Result<String, v01::HostChatPostMessageError> {
-        Ok("message-1".to_string())
-    }
-}
-
-struct DeadConnection;
-impl JsonRpcConnection for DeadConnection {
-    fn send(&self, _request: String) {}
-    fn responses(&self) -> BoxStream<'static, String> {
-        Box::pin(stream::empty())
-    }
-}
-
-impl ChainProvider for StubPlatform {
-    async fn connect(
-        &self,
-        _genesis_hash: Vec<u8>,
-    ) -> Result<Box<dyn JsonRpcConnection>, v01::GenericError> {
-        Ok(Box::new(DeadConnection))
-    }
-}
-
-impl PairingPresenter for StubPlatform {
-    async fn present_pairing(&self, _deeplink: String) -> Result<(), v01::GenericError> {
-        Err(v01::GenericError {
-            reason: "pairing presenter callback not provided by host".to_string(),
-        })
-    }
-}
-
-impl SessionStore for StubPlatform {
-    async fn read_session(&self) -> Result<Option<Vec<u8>>, v01::GenericError> {
-        Ok(None)
-    }
-    async fn write_session(&self, _value: Vec<u8>) -> Result<(), v01::GenericError> {
-        Ok(())
-    }
-    async fn clear_session(&self) -> Result<(), v01::GenericError> {
-        Ok(())
-    }
-    fn subscribe_session_store(&self) -> BoxStream<'static, Result<(), v01::GenericError>> {
-        Box::pin(stream::once(async { Ok(()) }))
-    }
-}
-
-impl UserConfirmation for StubPlatform {
-    async fn confirm_sign_payload(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
-        Ok(false)
-    }
-    async fn confirm_sign_raw(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
-        Ok(false)
-    }
-    async fn confirm_create_transaction(
-        &self,
-        _review: Vec<u8>,
-    ) -> Result<bool, v01::GenericError> {
-        Ok(false)
-    }
-    async fn confirm_account_alias(&self, _review: Vec<u8>) -> Result<bool, v01::GenericError> {
-        Ok(false)
-    }
-    async fn confirm_resource_allocation(
-        &self,
-        _review: Vec<u8>,
-    ) -> Result<bool, v01::GenericError> {
-        Ok(false)
-    }
-}
-
-impl ThemeHost for StubPlatform {
-    fn subscribe_theme(&self) -> BoxStream<'static, Result<v01::ThemeVariant, v01::GenericError>> {
-        Box::pin(stream::empty())
-    }
-}
-
-impl PreimageHost for StubPlatform {
-    async fn confirm_preimage_submit(&self, _size: u64) -> Result<(), v01::PreimageSubmitError> {
-        Ok(())
-    }
-    async fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, v01::PreimageSubmitError> {
-        Ok(value)
-    }
-    fn lookup_preimage(
-        &self,
-        _key: Vec<u8>,
-    ) -> BoxStream<'static, Result<Option<Vec<u8>>, v01::GenericError>> {
-        Box::pin(stream::empty())
-    }
-}
 
 fn dispatch(core: &TrUApiCore, frame: ProtocolMessage) -> ProtocolMessage {
     let encoded = frame.encode();
@@ -206,51 +42,23 @@ fn dispatch(core: &TrUApiCore, frame: ProtocolMessage) -> ProtocolMessage {
     ProtocolMessage::decode(&mut &response_bytes[..]).expect("decode response")
 }
 
-fn test_spawner() -> truapi_server::subscription::Spawner {
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        truapi_server::subscription::thread_per_subscription_spawner()
-    }
-    #[cfg(target_arch = "wasm32")]
-    {
-        Arc::new(futures::executor::block_on)
-    }
-}
-
-fn test_runtime_config() -> RuntimeConfig {
-    RuntimeConfig {
-        product_label: "dotli".to_string(),
-        product_id: "dotli.dot".to_string(),
-        site_id: "dot.li".to_string(),
-        host_name: "Polkadot Web".to_string(),
-        host_icon: Some("https://dot.li/dotli.png".to_string()),
-        host_version: None,
-        platform_type: None,
-        platform_version: None,
-        people_chain_genesis_hash: [0xa2; 32],
-        pairing_deeplink_scheme: PairingDeeplinkScheme::PolkadotApp,
-    }
-}
-
 #[test]
 fn feature_supported_ok_response_uses_ok_discriminant() {
     let core = make_core();
     let request = HostFeatureSupportedRequest::V1(v01::HostFeatureSupportedRequest::Chain {
         genesis_hash: vec![0u8; 32],
     });
+    let ids = request_ids("system_feature_supported").expect("known request method");
     let frame = ProtocolMessage {
         request_id: "p:1".into(),
         payload: Payload {
-            tag: compose_action("system_feature_supported", FrameKind::Request),
+            id: ids.request_id,
             value: request.encode(),
         },
     };
     let response = dispatch(&core, frame);
     assert_eq!(response.request_id, "p:1");
-    assert_eq!(
-        response.payload.tag,
-        compose_action("system_feature_supported", FrameKind::Response),
-    );
+    assert_eq!(response.payload.id, ids.response_id);
 
     // Wire payload: [Ok disc=0x00][encoded versioned response]
     let mut expected = vec![0x00u8];
@@ -269,19 +77,17 @@ fn local_storage_read_err_response_uses_err_discriminant() {
             key: "missing".to_string(),
         },
     );
+    let ids = request_ids("local_storage_read").expect("known request method");
     let frame = ProtocolMessage {
         request_id: "p:2".into(),
         payload: Payload {
-            tag: compose_action("local_storage_read", FrameKind::Request),
+            id: ids.request_id,
             value: request.encode(),
         },
     };
     let response = dispatch(&core, frame);
     assert_eq!(response.request_id, "p:2");
-    assert_eq!(
-        response.payload.tag,
-        compose_action("local_storage_read", FrameKind::Response),
-    );
+    assert_eq!(response.payload.id, ids.response_id);
 
     // Wire payload: `[Err disc=0x01][CallError::Domain variant=0x00][encoded
     // domain error]`. Build the expected bytes from the typed value the runtime
@@ -302,21 +108,19 @@ fn assert_request_returns_unsupported(
     method: &str,
     value: Vec<u8>,
 ) {
+    let ids = request_ids(method).expect("known request method");
     let response = dispatch(
         core,
         ProtocolMessage {
             request_id: request_id.into(),
             payload: Payload {
-                tag: compose_action(method, FrameKind::Request),
+                id: ids.request_id,
                 value,
             },
         },
     );
     assert_eq!(response.request_id, request_id);
-    assert_eq!(
-        response.payload.tag,
-        compose_action(method, FrameKind::Response),
-    );
+    assert_eq!(response.payload.id, ids.response_id);
     assert_eq!(
         response.payload.value,
         vec![0x01, 0x02],
@@ -331,21 +135,19 @@ fn assert_request_returns_domain_error<E: Encode>(
     value: Vec<u8>,
     error: truapi::CallError<E>,
 ) {
+    let ids = request_ids(method).expect("known request method");
     let response = dispatch(
         core,
         ProtocolMessage {
             request_id: request_id.into(),
             payload: Payload {
-                tag: compose_action(method, FrameKind::Request),
+                id: ids.request_id,
                 value,
             },
         },
     );
     assert_eq!(response.request_id, request_id);
-    assert_eq!(
-        response.payload.tag,
-        compose_action(method, FrameKind::Response),
-    );
+    assert_eq!(response.payload.id, ids.response_id);
     let mut expected = vec![0x01u8];
     expected.extend(encode_call_error_payload(error));
     assert_eq!(response.payload.value, expected);
@@ -377,12 +179,13 @@ fn assert_subscription_start_interrupts_error<E: Encode>(
         }
     }
 
+    let ids = subscription_ids(method).expect("known subscription method");
     let transport = Arc::new(RecordingTransport::default());
     futures::executor::block_on(core.dispatch(
         ProtocolMessage {
             request_id: request_id.into(),
             payload: Payload {
-                tag: compose_action(method, FrameKind::Start),
+                id: ids.start_id,
                 value,
             },
         },
@@ -392,10 +195,7 @@ fn assert_subscription_start_interrupts_error<E: Encode>(
     let sent = transport.sent.lock().unwrap();
     assert_eq!(sent.len(), 1);
     assert_eq!(sent[0].request_id, request_id);
-    assert_eq!(
-        sent[0].payload.tag,
-        compose_action(method, FrameKind::Interrupt),
-    );
+    assert_eq!(sent[0].payload.id, ids.interrupt_id);
     assert_eq!(sent[0].payload.value, encode_call_error_payload(error));
 }
 
@@ -520,7 +320,7 @@ fn statement_store_subscribe_topic_limit_interrupts_with_typed_error() {
 
 fn make_core() -> TrUApiCore {
     TrUApiCore::from_platform_with_config(
-        Arc::new(StubPlatform),
+        Arc::new(WireShapePlatform),
         test_runtime_config(),
         test_spawner(),
     )
@@ -585,10 +385,11 @@ fn subscription_start_receive_stop_through_wire_boundary() {
     let dyn_transport: Arc<dyn Transport> = transport.clone();
 
     let method = "account_connection_status_subscribe";
+    let ids = subscription_ids(method).expect("known subscription method");
     let start = ProtocolMessage {
         request_id: "p:1".into(),
         payload: Payload {
-            tag: compose_action(method, FrameKind::Start),
+            id: ids.start_id,
             value: Vec::new(),
         },
     };
@@ -600,17 +401,14 @@ fn subscription_start_receive_stop_through_wire_boundary() {
         assert!(Instant::now() < deadline, "no initial _receive frame");
         std::thread::sleep(Duration::from_millis(10));
     }
-    assert_eq!(
-        transport.sent.lock().unwrap()[0].payload.tag,
-        compose_action(method, FrameKind::Receive),
-    );
+    assert_eq!(transport.sent.lock().unwrap()[0].payload.id, ids.receive_id);
 
     // Stop the subscription, then push a session change. A live subscription
     // would emit a Connected `_receive`; a stopped one must stay silent.
     let stop = ProtocolMessage {
         request_id: "p:1".into(),
         payload: Payload {
-            tag: compose_action(method, FrameKind::Stop),
+            id: ids.stop_id,
             value: Vec::new(),
         },
     };

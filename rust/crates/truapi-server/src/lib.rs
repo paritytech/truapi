@@ -22,6 +22,9 @@ pub mod runtime;
 pub mod subscription;
 pub mod transport;
 
+#[cfg(test)]
+pub(crate) mod test_support;
+
 pub mod generated;
 
 #[cfg(feature = "smoldot")]

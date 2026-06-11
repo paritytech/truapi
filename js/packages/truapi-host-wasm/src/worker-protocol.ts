@@ -4,6 +4,11 @@
 // Frames (`kind: 'frame'`) carry SCALE-encoded `ProtocolMessage` bytes
 // untouched in either direction. Everything else is a control message
 // for callback dispatch, subscription bookkeeping, or chain connections.
+//
+// Frame bytes cross the boundary by structured clone, deliberately not as
+// transferables: the sender keeps using its buffer (the worker side posts
+// views into WASM memory) and frames are small, so the copy is the simpler
+// safe choice.
 
 import type { LogLevel } from "./runtime.js";
 
@@ -11,41 +16,47 @@ import type { LogLevel } from "./runtime.js";
  * Names of every request/response style host callback the wasm core can
  * invoke. Names match the camelCase property keys of `WasmRawCallbacks`.
  */
-export type CallbackName =
-  | "navigateTo"
-  | "pushNotification"
-  | "cancelNotification"
-  | "devicePermission"
-  | "remotePermission"
-  | "featureSupported"
-  | "localStorageRead"
-  | "localStorageWrite"
-  | "localStorageClear"
-  | "presentPairing"
-  | "readSession"
-  | "writeSession"
-  | "clearSession"
-  | "confirmSignPayload"
-  | "confirmSignRaw"
-  | "confirmCreateTransaction"
-  | "confirmAccountAlias"
-  | "confirmResourceAllocation"
-  | "confirmPreimageSubmit"
-  | "submitPreimage";
+export const CALLBACK_NAMES = [
+  "navigateTo",
+  "pushNotification",
+  "cancelNotification",
+  "devicePermission",
+  "remotePermission",
+  "featureSupported",
+  "localStorageRead",
+  "localStorageWrite",
+  "localStorageClear",
+  "authStateChanged",
+  "readSession",
+  "writeSession",
+  "clearSession",
+  "confirmSignPayload",
+  "confirmSignRaw",
+  "confirmCreateTransaction",
+  "confirmAccountAlias",
+  "confirmResourceAllocation",
+  "confirmPreimageSubmit",
+  "submitPreimage",
+] as const;
 
-export type OptionalCallbackName =
-  | "cancelNotification"
-  | "presentPairing"
-  | "readSession"
-  | "writeSession"
-  | "clearSession"
-  | "confirmSignPayload"
-  | "confirmSignRaw"
-  | "confirmCreateTransaction"
-  | "confirmAccountAlias"
-  | "confirmResourceAllocation"
-  | "confirmPreimageSubmit"
-  | "submitPreimage";
+export type CallbackName = (typeof CALLBACK_NAMES)[number];
+
+export const OPTIONAL_CALLBACK_NAMES = [
+  "cancelNotification",
+  "authStateChanged",
+  "readSession",
+  "writeSession",
+  "clearSession",
+  "confirmSignPayload",
+  "confirmSignRaw",
+  "confirmCreateTransaction",
+  "confirmAccountAlias",
+  "confirmResourceAllocation",
+  "confirmPreimageSubmit",
+  "submitPreimage",
+] as const satisfies readonly CallbackName[];
+
+export type OptionalCallbackName = (typeof OPTIONAL_CALLBACK_NAMES)[number];
 
 /**
  * Names of every subscription host callback. Each has the shape
@@ -74,6 +85,7 @@ export type MainToWorker =
   | { kind: "setLogLevel"; level: LogLevel }
   | { kind: "frame"; bytes: Uint8Array }
   | { kind: "disconnect"; requestId: number }
+  | { kind: "cancelLogin" }
   | { kind: "callbackResponse"; requestId: number; ok: true; value: unknown }
   | { kind: "callbackResponse"; requestId: number; ok: false; error: string }
   | { kind: "subscriptionItem"; subId: number; value: unknown }
@@ -85,7 +97,9 @@ export type MainToWorker =
 export type WorkerToMain =
   | { kind: "loaded" }
   | { kind: "ready" }
-  | { kind: "error"; error: string }
+  | { kind: "fatalError"; error: string }
+  | { kind: "frameError"; error: string }
+  | { kind: "disposeError"; error: string }
   | { kind: "frame"; bytes: Uint8Array }
   | { kind: "disconnectResponse"; requestId: number; ok: true }
   | { kind: "disconnectResponse"; requestId: number; ok: false; error: string }

@@ -11,10 +11,13 @@ import type {
   SubscriptionName,
   WorkerToMain,
 } from "./worker-protocol.js";
+import { errorMessage } from "./error-message.js";
+import { SUBSCRIPTION_DISPATCH } from "./subscription-table.js";
 
 interface WasmCore {
   receiveFromProduct(frame: Uint8Array): Promise<void>;
   disconnect(): Promise<void>;
+  cancelLogin(): void;
   dispose(): void;
   free(): void;
 }
@@ -38,12 +41,6 @@ const ctx = self as unknown as DedicatedWorkerGlobalScope;
 
 function postToMain(msg: WorkerToMain): void {
   ctx.postMessage(msg);
-}
-
-function errMsg(err: unknown): string {
-  if (err instanceof Error) return err.message;
-  if (typeof err === "string") return err;
-  return JSON.stringify(err);
 }
 
 let nextRequestId = 0;
@@ -150,8 +147,9 @@ const requiredRawCallbacks: Record<string, RawCallbackFn> = {
 const optionalRawCallbacks: Record<OptionalCallbackName, RawCallbackFn> = {
   cancelNotification: (id: number) =>
     callbackRequest("cancelNotification", [id]),
-  presentPairing: (deeplink: string) =>
-    callbackRequest("presentPairing", [deeplink]),
+  // Fire-and-forget notification: the wasm core ignores the returned promise.
+  authStateChanged: (state: unknown) =>
+    void callbackRequest("authStateChanged", [state]).catch(() => {}),
   readSession: () =>
     callbackRequest("readSession", []) as Promise<
       Uint8Array | null | undefined
@@ -181,20 +179,14 @@ function buildRawCallbacks(msg: Extract<MainToWorker, { kind: "init" }>) {
     callbacks[name] = optionalRawCallbacks[name];
   }
   const optionalSubscriptions = new Set(msg.optionalSubscriptions ?? []);
-  if (optionalSubscriptions.has("sessionStoreSubscribe")) {
-    callbacks.subscribeSessionStore = (sendItem: () => void) =>
-      startSubscription("sessionStoreSubscribe", null, sendItem);
-  }
-  if (optionalSubscriptions.has("themeSubscribe")) {
-    callbacks.themeSubscribe = (
-      sendItem: (theme: "Light" | "Dark" | 0 | 1 | Uint8Array) => void,
-    ) => startSubscription("themeSubscribe", null, sendItem);
-  }
-  if (optionalSubscriptions.has("preimageLookupSubscribe")) {
-    callbacks.preimageLookupSubscribe = (
-      key: Uint8Array,
-      sendItem: (value: Uint8Array | null | undefined) => void,
-    ) => startSubscription("preimageLookupSubscribe", key, sendItem);
+  for (const entry of SUBSCRIPTION_DISPATCH) {
+    if (!optionalSubscriptions.has(entry.protocol)) continue;
+    callbacks[entry.callback] =
+      entry.payload === "required"
+        ? (payload: Uint8Array, sendItem: (value: unknown) => void) =>
+            startSubscription(entry.protocol, payload, sendItem)
+        : (sendItem: (value: unknown) => void) =>
+            startSubscription(entry.protocol, null, sendItem);
   }
   if (msg.chainConnect) {
     callbacks.chainConnect = chainConnect;
@@ -217,7 +209,7 @@ let wasm: WasmModuleShape | null = null;
     await wasm.default();
     postToMain({ kind: "loaded" });
   } catch (err) {
-    postToMain({ kind: "error", error: errMsg(err) });
+    postToMain({ kind: "fatalError", error: errorMessage(err) });
   }
 })();
 
@@ -226,7 +218,17 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
   switch (msg.kind) {
     case "init":
       if (!wasm) {
-        postToMain({ kind: "error", error: "init received before WASM loaded" });
+        postToMain({
+          kind: "fatalError",
+          error: "init received before WASM loaded",
+        });
+        break;
+      }
+      if (core) {
+        postToMain({
+          kind: "fatalError",
+          error: "init: core already initialized",
+        });
         break;
       }
       wasm.setLogLevel?.(msg.logLevel);
@@ -234,7 +236,7 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
         core = new wasm.WasmTrUApiCore(buildRawCallbacks(msg), msg.runtimeConfig);
         postToMain({ kind: "ready" });
       } catch (err) {
-        postToMain({ kind: "error", error: `init: ${errMsg(err)}` });
+        postToMain({ kind: "fatalError", error: `init: ${errorMessage(err)}` });
       }
       break;
     case "setLogLevel":
@@ -245,6 +247,9 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
       break;
     case "disconnect":
       void handleDisconnect(msg.requestId);
+      break;
+    case "cancelLogin":
+      core?.cancelLogin();
       break;
     case "callbackResponse": {
       const cb = pendingCallbacks.get(msg.requestId);
@@ -281,10 +286,16 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
         core?.dispose();
         core?.free();
       } catch (err) {
-        postToMain({ kind: "error", error: `dispose: ${errMsg(err)}` });
+        postToMain({ kind: "disposeError", error: errorMessage(err) });
       }
       core = null;
       break;
+    default: {
+      const { kind } = msg as { kind?: unknown };
+      console.warn(
+        `[truapi worker-runtime] unknown message kind: ${String(kind)}`,
+      );
+    }
   }
 });
 
@@ -306,19 +317,25 @@ async function handleDisconnect(requestId: number): Promise<void> {
       kind: "disconnectResponse",
       requestId,
       ok: false,
-      error: errMsg(err),
+      error: errorMessage(err),
     });
   }
 }
 
 async function handleFrame(bytes: Uint8Array): Promise<void> {
   if (!core) {
-    postToMain({ kind: "error", error: "frame received before core is ready" });
+    postToMain({
+      kind: "frameError",
+      error: "frame received before core is ready",
+    });
     return;
   }
   try {
     await core.receiveFromProduct(bytes);
   } catch (err) {
-    postToMain({ kind: "error", error: `receiveFromProduct: ${errMsg(err)}` });
+    postToMain({
+      kind: "frameError",
+      error: errorMessage(err),
+    });
   }
 }

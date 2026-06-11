@@ -25,7 +25,7 @@ TrUAPIHostCore.startWsBridge()
   → Rust dispatcher
 ```
 
-The product running in the `WKWebView` opens a `WebSocket` to the localhost port + token returned by `startWsBridge`. From there the Rust core handles the wire protocol directly. Outbound responses and host-side capability callbacks (`navigateTo`, `pushNotification`, `cancelNotification`, `devicePermission`, `remotePermission`, `presentPairing`, session storage, chain JSON-RPC, confirmations, preimage, theme, `featureSupportedChain`, `chatPostTextMessage`, `chatPostCustomMessage`, `storage`) reach the embedder through `HostBridge`.
+The product running in the `WKWebView` opens a `WebSocket` to the localhost port + token returned by `startWsBridge`. From there the Rust core handles the wire protocol directly. Outbound responses and host-side capability callbacks (`navigateTo`, `pushNotification`, `cancelNotification`, `devicePermission`, `remotePermission`, `authStateChanged`, session storage, chain JSON-RPC, confirmations, preimage, theme, `featureSupportedChain`, `chatPostTextMessage`, `chatPostCustomMessage`, `storage`) reach the embedder through `HostBridge`.
 
 For chain JSON-RPC, the embedder returns a host-assigned connection id from `chainConnect(genesisHash:)`, sends each raw JSON-RPC request in `chainSend(connectionId:request:)`, and later calls `TrUAPIHostCore.notifyChainResponse(connectionId:json:)` with the raw response. The response JSON keeps the request's original `id` so the Rust runtime can match it to the in-flight TrUAPI chain call. If the native connection closes independently, call `notifyChainClosed(connectionId:)`.
 
@@ -40,12 +40,17 @@ Both return a `Bool` granted flag. Rust owns protocol decoding and calls the bri
 
 ## Example
 
-> **Threading:** when the WS bridge is running, the Rust core invokes every
-> `HostBridge` callback on the dedicated `truapi-ws-bridge` worker thread, never
-> the main thread. Hop to the main thread (`DispatchQueue.main` / `MainActor`)
-> before touching UIKit, WebKit, or the `WKWebView`. Permission callbacks return
-> synchronously, so use `DispatchQueue.main.sync` (or a semaphore) to present
-> the prompt on the main thread and block the worker until the user decides.
+> **Threading:** the Rust core invokes every `HostBridge` callback on a
+> background thread it owns, never the main thread. Hop to the main thread
+> (`DispatchQueue.main` / `MainActor`) before touching UIKit, WebKit, or the
+> `WKWebView`. UI-decision callbacks (`navigateTo`, `devicePermission`,
+> `remotePermission`, the `confirm*` family, `submitPreimage`) each run on
+> their own blocking-pool thread, so it is safe to use
+> `DispatchQueue.main.sync` (or a semaphore) to present the prompt on the
+> main thread and block the calling thread until the user decides; other
+> TrUAPI traffic keeps flowing while you wait. The remaining callbacks (auth
+> state, storage, session, chain, feature, theme, preimage lookups) run
+> inline on the dispatcher thread and must return promptly without blocking.
 
 ```swift
 import Foundation
@@ -62,8 +67,8 @@ final class MyStorage: HostStorageBackend, @unchecked Sendable {
 final class MyBridge: HostBridge, @unchecked Sendable {
     let storage: HostStorageBackend = MyStorage()
 
-    // Callbacks arrive on the `truapi-ws-bridge` worker thread, never the main
-    // thread. Hop to the main thread before touching UIKit/WebKit.
+    // Callbacks arrive on background threads, never the main thread.
+    // Hop to the main thread before touching UIKit/WebKit.
     func navigateTo(url: String) throws {
         DispatchQueue.main.async { /* UIApplication.shared.open(...) */ }
     }
@@ -88,6 +93,14 @@ final class MyBridge: HostBridge, @unchecked Sendable {
     }
 
     func featureSupportedChain(genesisHash: Data) throws -> Bool { false }
+
+    // Core-owned auth state stream: render `.pairing` as the pairing QR
+    // sheet, `.connected`/`.disconnected` as the account badge, and
+    // `.loginFailed` as a retryable error. When the user closes the pairing
+    // sheet, report it with `core.cancelLogin()`.
+    func authStateChanged(state: AuthState) {
+        DispatchQueue.main.async { /* render the state */ }
+    }
 
     func chatPostTextMessage(roomId: String, text: String) throws -> String {
         "message-1"
