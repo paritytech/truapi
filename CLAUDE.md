@@ -172,7 +172,8 @@ logout/relogin does not restore a stale session.
 The dotli Playwright e2e suite under `hosts/dotli/apps/host/tests/e2e/`
 pairs through the signer-bot service. It requires `SIGNER_BOT_SVC_TOKEN`,
 `SIGNER_BOT_BASE_URL`, and `SIGNER_BOT_NETWORK`; without those, do not treat
-the suite as locally runnable. Use the local smoke path above instead.
+the full suite as locally runnable. Use `E2E_DOTLI_SMOKE=1 make e2e-dotli`
+for the no-phone QR smoke path.
 
 For a fully automated local playground diagnosis run, use:
 
@@ -189,6 +190,12 @@ runs the playground Diagnosis screen, auto-accepts host-side Allow/Sign modals,
 and writes `hosts/dotli/test-results/e2e-dotli/diagnosis-report.md`.
 
 A useful no-phone smoke assertion is:
+
+```bash
+E2E_DOTLI_SMOKE=1 make e2e-dotli
+```
+
+For manual debugging of that smoke path:
 
 1. Start `make dev DEBUG=1`.
 2. Open `http://localhost:5173/localhost:3000?debug=truapi&cachebust=<ts>` with
