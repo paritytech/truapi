@@ -241,38 +241,61 @@ jobs:
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          submodules: recursive
           persist-credentials: false
 
+      - name: Check dotli submodule access
+        id: dotli-access
+        env:
+          DOTLI_CHECKOUT_TOKEN: ${{ secrets.DOTLI_CHECKOUT_TOKEN }}
+        run: |
+          if [ -n "$DOTLI_CHECKOUT_TOKEN" ]; then
+            git config --global url."https://x-access-token:${DOTLI_CHECKOUT_TOKEN}@github.com/".insteadOf "https://github.com/"
+          fi
+          if git ls-remote https://github.com/paritytech/dotli.git >/dev/null 2>&1; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            git submodule update --init --recursive hosts/dotli
+          else
+            echo "::warning::dotli submodule is not accessible to this workflow; skipping dotli e2e."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        if: steps.dotli-access.outputs.available == 'true'
         with:
           node-version: 22
 
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        if: steps.dotli-access.outputs.available == 'true'
         with:
           bun-version: latest
 
       - uses: dtolnay/rust-toolchain@5b842231ba77f5c045dba54ac5560fed2db780e2 # stable
+        if: steps.dotli-access.outputs.available == 'true'
         with:
           toolchain: stable
 
       - name: Download codegen output
+        if: steps.dotli-access.outputs.available == 'true'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: codegen-output
 
       - name: Install wasm-pack
+        if: steps.dotli-access.outputs.available == 'true'
         run: cargo install wasm-pack --version 0.14.0 --locked
 
       - name: Install dotli deps
+        if: steps.dotli-access.outputs.available == 'true'
         working-directory: hosts/dotli
         run: bun install --frozen-lockfile
 
       - name: Install Playwright browsers
+        if: steps.dotli-access.outputs.available == 'true'
         working-directory: hosts/dotli/apps/host
         run: bunx playwright install --with-deps chromium
 
       - name: Run dotli diagnosis e2e
+        if: steps.dotli-access.outputs.available == 'true'
         run: |
           if [ -n "$SIGNER_BOT_SVC_TOKEN" ]; then
             make e2e-dotli
