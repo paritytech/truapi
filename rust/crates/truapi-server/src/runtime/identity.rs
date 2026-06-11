@@ -17,7 +17,7 @@ use crate::host_logic::session::SessionInfo;
 
 use futures::stream::BoxStream;
 use futures::{FutureExt, StreamExt, pin_mut};
-use tracing::{instrument, warn};
+use tracing::{debug, instrument, warn};
 use truapi::v01;
 use truapi::v01::{
     OperationStartedResult, RemoteChainHeadFollowItem as V01RemoteChainHeadFollowItem,
@@ -59,10 +59,19 @@ pub(super) async fn resolve_session_identity_with_chain(
     let preferred_account = session.identity_account_id.unwrap_or(session.public_key);
     match lookup_people_identity(chain, people_chain_genesis_hash, preferred_account).await {
         Ok(Some(identity)) => {
+            debug!(
+                account = %hex::encode(preferred_account),
+                lite_username = identity.lite_username.as_deref().unwrap_or(""),
+                full_username = identity.full_username.as_deref().unwrap_or(""),
+                "People-chain identity lookup found username"
+            );
             apply_people_identity(&mut session, identity);
             return session;
         }
-        Ok(None) => {}
+        Ok(None) => debug!(
+            account = %hex::encode(preferred_account),
+            "People-chain identity lookup found no consumer record"
+        ),
         Err(reason) => warn!(
             account = %hex::encode(preferred_account),
             %reason,
@@ -72,8 +81,19 @@ pub(super) async fn resolve_session_identity_with_chain(
 
     if preferred_account != session.public_key {
         match lookup_people_identity(chain, people_chain_genesis_hash, session.public_key).await {
-            Ok(Some(identity)) => apply_people_identity(&mut session, identity),
-            Ok(None) => {}
+            Ok(Some(identity)) => {
+                debug!(
+                    account = %hex::encode(session.public_key),
+                    lite_username = identity.lite_username.as_deref().unwrap_or(""),
+                    full_username = identity.full_username.as_deref().unwrap_or(""),
+                    "People-chain root identity lookup found username"
+                );
+                apply_people_identity(&mut session, identity);
+            }
+            Ok(None) => debug!(
+                account = %hex::encode(session.public_key),
+                "People-chain root identity lookup found no consumer record"
+            ),
             Err(reason) => warn!(
                 account = %hex::encode(session.public_key),
                 %reason,
@@ -174,9 +194,8 @@ async fn wait_for_identity_follow_hash(
         futures::select! {
             item = next => match item {
                 Some(V01RemoteChainHeadFollowItem::Initialized { finalized_block_hashes, .. }) => {
-                    if let Some(hash) = finalized_block_hashes.last() {
-                        return Ok(hash.clone());
-                    }
+                    let fallback = finalized_block_hashes.last().cloned();
+                    return wait_for_identity_best_hash(follow, fallback).await;
                 }
                 Some(V01RemoteChainHeadFollowItem::BestBlockChanged { best_block_hash }) => {
                     return Ok(best_block_hash);
@@ -187,6 +206,40 @@ async fn wait_for_identity_follow_hash(
                 _ => {}
             },
             () = timeout => return Err("People-chain follow initialization timed out".to_string()),
+        }
+    }
+}
+
+async fn wait_for_identity_best_hash(
+    follow: &mut BoxStream<'static, V01RemoteChainHeadFollowItem>,
+    fallback: Option<Vec<u8>>,
+) -> Result<Vec<u8>, String> {
+    let timeout = futures_timer::Delay::new(Duration::from_secs(2)).fuse();
+    pin_mut!(timeout);
+    let mut candidate = fallback;
+    loop {
+        let next = follow.next().fuse();
+        pin_mut!(next);
+        futures::select! {
+            item = next => match item {
+                Some(V01RemoteChainHeadFollowItem::BestBlockChanged { best_block_hash }) => {
+                    return Ok(best_block_hash);
+                }
+                Some(V01RemoteChainHeadFollowItem::NewBlock { block_hash, .. }) => {
+                    candidate = Some(block_hash);
+                }
+                Some(V01RemoteChainHeadFollowItem::Stop) | None => {
+                    return candidate.ok_or_else(|| {
+                        "People-chain follow stopped before best block".to_string()
+                    });
+                }
+                _ => {}
+            },
+            () = timeout => {
+                return candidate.ok_or_else(|| {
+                    "People-chain follow best block timed out".to_string()
+                });
+            },
         }
     }
 }
@@ -236,5 +289,52 @@ async fn wait_for_identity_storage_value(
             },
             () = timeout => return Err("People-chain storage lookup timed out".to_string()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use futures::stream;
+
+    #[test]
+    fn identity_follow_prefers_best_block_after_initialization() {
+        let mut follow = stream::iter(vec![
+            V01RemoteChainHeadFollowItem::Initialized {
+                finalized_block_hashes: vec![vec![0x01]],
+                finalized_block_runtime: None,
+            },
+            V01RemoteChainHeadFollowItem::BestBlockChanged {
+                best_block_hash: vec![0x02],
+            },
+        ])
+        .boxed();
+
+        let hash = futures::executor::block_on(wait_for_identity_follow_hash(&mut follow))
+            .expect("best hash should resolve");
+
+        assert_eq!(hash, vec![0x02]);
+    }
+
+    #[test]
+    fn identity_follow_uses_new_block_before_stale_finalized_fallback() {
+        let mut follow = stream::iter(vec![
+            V01RemoteChainHeadFollowItem::Initialized {
+                finalized_block_hashes: vec![vec![0x01]],
+                finalized_block_runtime: None,
+            },
+            V01RemoteChainHeadFollowItem::NewBlock {
+                block_hash: vec![0x03],
+                parent_block_hash: vec![0x01],
+                new_runtime: None,
+            },
+            V01RemoteChainHeadFollowItem::Stop,
+        ])
+        .boxed();
+
+        let hash = futures::executor::block_on(wait_for_identity_follow_hash(&mut follow))
+            .expect("new block hash should resolve");
+
+        assert_eq!(hash, vec![0x03]);
     }
 }
