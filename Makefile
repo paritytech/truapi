@@ -133,9 +133,15 @@ dev: dev-bootstrap ## Start dotli host (:5173) + playground (:3000) together; op
 	wait
 
 e2e-dotli: ## Fully automated dotli + playground diagnosis e2e. Requires SIGNER_BOT_SVC_TOKEN unless E2E_DOTLI_SMOKE=1.
-	@set -a; \
+	@SIGNER_BOT_SVC_TOKEN_ENV="$$SIGNER_BOT_SVC_TOKEN"; \
+	SIGNER_BOT_BASE_URL_ENV="$$SIGNER_BOT_BASE_URL"; \
+	SIGNER_BOT_NETWORK_ENV="$$SIGNER_BOT_NETWORK"; \
+	set -a; \
 	if [ -f .env ]; then . ./.env; fi; \
 	set +a; \
+	if [ -n "$$SIGNER_BOT_SVC_TOKEN_ENV" ]; then SIGNER_BOT_SVC_TOKEN="$$SIGNER_BOT_SVC_TOKEN_ENV"; export SIGNER_BOT_SVC_TOKEN; fi; \
+	if [ -n "$$SIGNER_BOT_BASE_URL_ENV" ]; then SIGNER_BOT_BASE_URL="$$SIGNER_BOT_BASE_URL_ENV"; export SIGNER_BOT_BASE_URL; fi; \
+	if [ -n "$$SIGNER_BOT_NETWORK_ENV" ]; then SIGNER_BOT_NETWORK="$$SIGNER_BOT_NETWORK_ENV"; export SIGNER_BOT_NETWORK; fi; \
 	if [ "$$E2E_DOTLI_SMOKE" != "1" ]; then test -n "$$SIGNER_BOT_SVC_TOKEN" || (echo "Missing SIGNER_BOT_SVC_TOKEN. e2e-dotli requires signer-bot; without it a human phone scan is required."; exit 1); fi; \
 	$(MAKE) dev-bootstrap; \
 	cd $(DOTLI)/apps/host && bun tests/e2e/playground-diagnosis.ts
