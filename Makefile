@@ -27,9 +27,12 @@ help: ## Show this help.
 	@awk 'BEGIN { FS = ":.*##"; printf "Usage: make <target>\n\nTargets:\n" } \
 	      /^[a-zA-Z_-]+:.*?##/ { printf "  %-12s %s\n", $$1, $$2 }' $(MAKEFILE_LIST)
 
-setup: ## First-time setup: submodules + JS dependencies.
+setup: ## First-time setup: submodules, JS dependencies, generated artifacts.
 	git submodule update --init --recursive
-	npm ci
+	# --ignore-scripts: the workspace `prepare` builds need generated sources
+	# that only exist after codegen.sh, which also builds the packages.
+	npm ci --ignore-scripts
+	./scripts/codegen.sh
 	cd $(PLAYGROUND) && yarn install --frozen-lockfile
 	cd $(DOTLI) && bun install --frozen-lockfile
 
@@ -102,7 +105,9 @@ playground: ## Refresh the playground's @parity/truapi snapshot and rebuild.
 
 dev-bootstrap: ## Prepare ignored generated/build artifacts needed by dotli preview.
 	git submodule update --init --recursive
-	if [ ! -d node_modules ]; then npm ci; fi
+	# --ignore-scripts: the workspace `prepare` builds need generated sources
+	# that only exist after codegen.sh, which also builds the packages.
+	if [ ! -d node_modules ]; then npm ci --ignore-scripts; fi
 	if [ ! -f "$(HOST_WASM_GENERATED)" ]; then ./scripts/codegen.sh; fi
 	cd $(HOST_WASM_PKG) && npm run build
 	TRUAPI_WASM_PROFILE=dev $(MAKE) wasm
