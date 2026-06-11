@@ -3,8 +3,8 @@
 # callback TypeScript from rust/crates/truapi-platform.
 #
 # Pipeline:
-#   1. cargo +nightly rustdoc -p truapi --output-format json -> target/doc/truapi.json
-#   2. cargo +nightly rustdoc -p truapi-platform --output-format json -> target/doc/truapi_platform.json
+#   1. cargo +$RUSTDOC_TOOLCHAIN rustdoc -p truapi --output-format json -> target/doc/truapi.json
+#   2. cargo +$RUSTDOC_TOOLCHAIN rustdoc -p truapi-platform --output-format json -> target/doc/truapi_platform.json
 #   3. cargo run -p truapi-codegen -- --input target/doc/truapi.json
 #                                     --output js/packages/truapi/src/generated
 #                                     --playground-output js/packages/truapi/src/playground
@@ -27,8 +27,38 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
-cargo +nightly rustdoc -p truapi -- -Z unstable-options --output-format json
-cargo +nightly rustdoc -p truapi-platform -- -Z unstable-options --output-format json
+# rustdoc JSON output requires nightly. `cargo +nightly` is preferred (CI
+# installs a fresh one), but a given day's rolling nightly can be broken on a
+# platform (e.g. an LLVM-init SIGSEGV). Probe for a usable toolchain and fall
+# back to the newest installed dated `nightly-YYYY-MM-DD` that actually runs.
+# Set RUSTDOC_TOOLCHAIN to pin one explicitly and skip the probe.
+toolchain_runs() {
+  rustc "+$1" --crate-name probe --crate-type cdylib --print=file-names - \
+    </dev/null >/dev/null 2>&1
+}
+
+select_rustdoc_toolchain() {
+  if [ -n "${RUSTDOC_TOOLCHAIN:-}" ]; then
+    echo "$RUSTDOC_TOOLCHAIN"
+    return
+  fi
+  local candidate
+  for candidate in nightly $(rustup toolchain list 2>/dev/null \
+    | grep -oE '^nightly-[0-9]{4}-[0-9]{2}-[0-9]{2}' | sort -ru); do
+    if toolchain_runs "$candidate"; then
+      echo "$candidate"
+      return
+    fi
+  done
+  echo "no working nightly toolchain found; install one with \`rustup toolchain install nightly\` or set RUSTDOC_TOOLCHAIN" >&2
+  exit 1
+}
+
+RUSTDOC_TOOLCHAIN="$(select_rustdoc_toolchain)"
+echo "Using rustdoc toolchain: $RUSTDOC_TOOLCHAIN"
+
+cargo "+$RUSTDOC_TOOLCHAIN" rustdoc -p truapi -- -Z unstable-options --output-format json
+cargo "+$RUSTDOC_TOOLCHAIN" rustdoc -p truapi-platform -- -Z unstable-options --output-format json
 cargo run -p truapi-codegen -- \
   --input target/doc/truapi.json \
   --output js/packages/truapi/src/generated \

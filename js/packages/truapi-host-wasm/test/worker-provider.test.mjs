@@ -1,12 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import {
-  HostPushNotificationRequest,
-} from "../../truapi/dist/index.js";
-import {
-  createWasmRawCallbacks,
-} from "../dist/index.js";
+import { HostPushNotificationRequest } from "../../truapi/dist/index.js";
+import { createWasmRawCallbacks } from "../dist/index.js";
 import { createWebWorkerProvider } from "../dist/web/index.js";
 
 class FakeWorker {
@@ -208,6 +204,34 @@ test("dev global setLogLevel applies to providers created later", async () => {
   }
 });
 
+test("dev global setLogLevel persists the level to localStorage", async () => {
+  const previousGlobal = globalThis.__truapi;
+  const previousStorage = globalThis.localStorage;
+  delete globalThis.__truapi;
+  const store = new Map();
+  globalThis.localStorage = {
+    getItem: (key) => (store.has(key) ? store.get(key) : null),
+    setItem: (key, value) => store.set(key, String(value)),
+  };
+
+  const worker = new FakeWorker();
+  const provider = await readyProvider(worker);
+
+  globalThis.__truapi.setLogLevel("debug");
+  assert.equal(store.get("truapi:logLevel"), "debug");
+
+  globalThis.__truapi.setLogLevel("off");
+  assert.equal(store.get("truapi:logLevel"), "off");
+
+  provider.dispose();
+  globalThis.localStorage = previousStorage;
+  if (previousGlobal === undefined) {
+    delete globalThis.__truapi;
+  } else {
+    globalThis.__truapi = previousGlobal;
+  }
+});
+
 test("worker provider resolves disconnect responses", async () => {
   const worker = new FakeWorker();
   const providerPromise = createWebWorkerProvider(worker, makeCallbacks(), {
@@ -302,7 +326,11 @@ test("worker provider forwards sessionUiChanged callback requests", async () => 
   await settle();
 
   assert.deepEqual(infos, [
-    { connected: true, publicKey: new Uint8Array([1, 2]), liteUsername: "alice" },
+    {
+      connected: true,
+      publicKey: new Uint8Array([1, 2]),
+      liteUsername: "alice",
+    },
   ]);
   assert.deepEqual(worker.messages.at(-1), {
     kind: "callbackResponse",

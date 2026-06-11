@@ -990,7 +990,7 @@ struct WasmCoreInner {
 /// during boot, or again at any time to re-tune verbosity.
 #[wasm_bindgen(js_name = setLogLevel)]
 pub fn set_log_level(level: &str) {
-    crate::logging::set_level(crate::logging::parse_level(level));
+    crate::logging::set_level_from_str(level);
 }
 
 /// JS-callable handle to the TrUAPI core. Constructed once per shell boot.

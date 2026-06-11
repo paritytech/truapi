@@ -418,7 +418,7 @@ impl NativeTrUApiCore {
 /// this controls the cross-platform `tracing` events shared with wasm.
 #[uniffi::export]
 pub fn set_log_level(level: String) {
-    crate::logging::set_level(crate::logging::parse_level(&level));
+    crate::logging::set_level_from_str(&level);
 }
 
 fn native_core_from_platform_config(

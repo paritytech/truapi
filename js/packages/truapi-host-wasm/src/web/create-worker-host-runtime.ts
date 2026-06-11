@@ -42,7 +42,43 @@ function debugLoggingEnabled(state: WorkerProviderState): boolean {
 }
 
 let nextDisconnectRequestId = 0;
-let devLogLevelOverride: LogLevel | null = null;
+
+/** localStorage key the dev log level is persisted under, so it survives reloads. */
+const DEV_LOG_LEVEL_KEY = "truapi:logLevel";
+const LOG_LEVELS: readonly LogLevel[] = [
+  "off",
+  "error",
+  "warn",
+  "info",
+  "debug",
+  "trace",
+];
+
+function isLogLevel(value: string | null): value is LogLevel {
+  return value !== null && (LOG_LEVELS as readonly string[]).includes(value);
+}
+
+/** Read the persisted dev log level. Returns null when unset or unavailable. */
+function readPersistedLogLevel(): LogLevel | null {
+  try {
+    const stored = globalThis.localStorage?.getItem(DEV_LOG_LEVEL_KEY);
+    return isLogLevel(stored) ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Persist the dev log level so it re-applies on the next reload. */
+function persistLogLevel(level: LogLevel): void {
+  try {
+    globalThis.localStorage?.setItem(DEV_LOG_LEVEL_KEY, level);
+  } catch {
+    // Storage unavailable (sandboxed iframe / privacy mode); the level still
+    // applies for the current session.
+  }
+}
+
+let devLogLevelOverride: LogLevel | null = readPersistedLogLevel();
 const devGlobalProviders = new Set<TrUApiHostWasmProvider>();
 
 interface TrUApiDevConsole {
@@ -614,8 +650,10 @@ function buildProvider(state: WorkerProviderState): TrUApiHostWasmProvider {
 
 /**
  * Publish `globalThis.__truapi.setLogLevel(level)` so a developer can re-tune
- * the wasm core's verbosity live from the browser console without a reload.
- * Pair with the DevTools console "Verbose" level to surface debug/trace.
+ * the wasm core's verbosity live from the browser console without a reload. The
+ * level is persisted to `localStorage["truapi:logLevel"]` and re-applied on the
+ * next load, so it survives refreshes. Pair with the DevTools console "Verbose"
+ * level to surface debug/trace.
  */
 function exposeDevGlobal(provider: TrUApiHostWasmProvider): void {
   devGlobalProviders.add(provider);
@@ -632,6 +670,7 @@ function publishDevGlobal(): void {
   target.__truapi = {
     setLogLevel(level: LogLevel): void {
       devLogLevelOverride = level;
+      persistLogLevel(level);
       for (const provider of [...devGlobalProviders]) {
         provider.setLogLevel?.(level);
       }
