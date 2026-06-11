@@ -170,17 +170,16 @@ host/product events, generated examples can call non-confirmation methods, and
 logout/relogin does not restore a stale session.
 
 The dotli Playwright e2e suite under `hosts/dotli/apps/host/tests/e2e/`
-pairs through the signer-bot service. It requires `SIGNER_BOT_SVC_TOKEN`,
-`SIGNER_BOT_BASE_URL`, and `SIGNER_BOT_NETWORK`; without those, do not treat
-the full suite as locally runnable. Use `E2E_DOTLI_SMOKE=1 make e2e-dotli`
-for the no-phone QR smoke path.
+pairs through the signer-bot service. It requires `SIGNER_BOT_SVC_TOKEN`;
+`SIGNER_BOT_BASE_URL` and `SIGNER_BOT_NETWORK` default to dotli CI's
+`https://signing-bot-dev.novasama-tech.org/` and `paseo-next-v2`. Without the
+token, do not treat the full suite as locally runnable. Use
+`E2E_DOTLI_SMOKE=1 make e2e-dotli` for the no-phone QR smoke path.
 
 For a fully automated local playground diagnosis run, use:
 
 ```bash
 SIGNER_BOT_SVC_TOKEN=... \
-SIGNER_BOT_BASE_URL=... \
-SIGNER_BOT_NETWORK=paseo-next-v2 \
 make e2e-dotli
 ```
 

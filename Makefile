@@ -16,6 +16,10 @@ HOST_WASM_WEB := $(HOST_WASM_PKG)/dist/wasm/web/truapi_server.js
 HOST_WASM_NODE := $(HOST_WASM_PKG)/dist/wasm/node/truapi_server.js
 DOTLI_UI := $(DOTLI)/packages/ui
 DOTLI_HOST_WASM_LINK := $(DOTLI_UI)/node_modules/@parity/truapi-host-wasm
+SIGNER_BOT_BASE_URL ?= https://signing-bot-dev.novasama-tech.org/
+SIGNER_BOT_NETWORK ?= paseo-next-v2
+export SIGNER_BOT_BASE_URL
+export SIGNER_BOT_NETWORK
 
 # `make dev DEBUG=1` runs dotli with VITE_APP_DEBUG=true to log every wire frame.
 DOTLI_PREVIEW := preview
@@ -128,10 +132,8 @@ dev: dev-bootstrap ## Start dotli host (:5173) + playground (:3000) together; op
 	( cd $(PLAYGROUND) && yarn dev ) & \
 	wait
 
-e2e-dotli: ## Fully automated dotli + playground diagnosis e2e. Use E2E_DOTLI_SMOKE=1 for no-phone QR smoke.
+e2e-dotli: ## Fully automated dotli + playground diagnosis e2e. Requires SIGNER_BOT_SVC_TOKEN unless E2E_DOTLI_SMOKE=1.
 	@if [ "$$E2E_DOTLI_SMOKE" != "1" ]; then test -n "$$SIGNER_BOT_SVC_TOKEN" || (echo "Missing SIGNER_BOT_SVC_TOKEN. e2e-dotli requires signer-bot; without it a human phone scan is required."; exit 1); fi
-	@if [ "$$E2E_DOTLI_SMOKE" != "1" ]; then test -n "$$SIGNER_BOT_BASE_URL" || (echo "Missing SIGNER_BOT_BASE_URL. e2e-dotli requires signer-bot; without it a human phone scan is required."; exit 1); fi
-	@if [ "$$E2E_DOTLI_SMOKE" != "1" ]; then test -n "$$SIGNER_BOT_NETWORK" || (echo "Missing SIGNER_BOT_NETWORK. e2e-dotli requires signer-bot; without it a human phone scan is required."; exit 1); fi
 	$(MAKE) dev-bootstrap
 	cd $(DOTLI)/apps/host && bun tests/e2e/playground-diagnosis.ts
 
