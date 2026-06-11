@@ -188,6 +188,12 @@ restored host session, signs in through signer-bot by extracting the QR payload,
 runs the playground Diagnosis screen, auto-accepts host-side Allow/Sign modals,
 and writes `hosts/dotli/test-results/e2e-dotli/diagnosis-report.md`.
 
+Root CI runs the same target when it can read the private dotli submodule. It
+needs `DOTLI_CHECKOUT_TOKEN` for submodule checkout; without that token, the
+job warns and skips dotli e2e rather than failing unrelated PR checks. With
+dotli access but without `SIGNER_BOT_SVC_TOKEN`, CI runs the no-phone smoke
+path only.
+
 A useful no-phone smoke assertion is:
 
 ```bash
