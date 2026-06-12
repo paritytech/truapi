@@ -721,17 +721,13 @@ fn auth_state_to_js(state: &AuthState) -> JsValue {
     object.into()
 }
 
-/// Plain JS object mirroring the generated `SessionUiInfo` TS interface:
-/// `connected` is always present, the optional fields only when `Some`.
+/// Plain JS object mirroring the generated `SessionUiInfo` TS interface.
 fn session_ui_info_to_js(info: &SessionUiInfo) -> JsValue {
     let object = js_sys::Object::new();
     let set = |key: &str, value: &JsValue| {
         let _ = Reflect::set(&object, &JsValue::from_str(key), value);
     };
-    set("connected", &JsValue::from_bool(info.connected));
-    if let Some(public_key) = &info.public_key {
-        set("publicKey", &Uint8Array::from(public_key.as_slice()));
-    }
+    set("publicKey", &Uint8Array::from(info.public_key.as_slice()));
     if let Some(identity_account_id) = &info.identity_account_id {
         set(
             "identityAccountId",
@@ -863,17 +859,15 @@ fn runtime_config_from_js(value: &JsValue) -> Result<RuntimeConfig, JsValue> {
         return Err(JsValue::from_str("runtimeConfig is required"));
     }
 
-    let config = RuntimeConfig {
-        product_label: get_required_string(value, "productLabel")?,
-        product_id: get_required_string(value, "productId")?,
-        site_id: get_required_string(value, "siteId")?,
-        host_name: get_required_string(value, "hostName")?,
-        host_icon: get_optional_string(value, "hostIcon")?,
-        host_version: get_optional_string(value, "hostVersion")?,
-        platform_type: get_optional_string(value, "platformType")?,
-        platform_version: get_optional_string(value, "platformVersion")?,
-        people_chain_genesis_hash: get_required_bytes32(value, "peopleChainGenesisHash")?,
-        pairing_deeplink_scheme: {
+    RuntimeConfig::new(
+        get_required_string(value, "productId")?,
+        get_required_string(value, "hostName")?,
+        get_optional_string(value, "hostIcon")?,
+        get_optional_string(value, "hostVersion")?,
+        get_optional_string(value, "platformType")?,
+        get_optional_string(value, "platformVersion")?,
+        get_required_bytes32(value, "peopleChainGenesisHash")?,
+        {
             let scheme = get_required_string(value, "pairingDeeplinkScheme")?;
             match scheme.as_str() {
                 "polkadotapp" | "polkadotApp" | "PolkadotApp" => PairingDeeplinkScheme::PolkadotApp,
@@ -887,9 +881,8 @@ fn runtime_config_from_js(value: &JsValue) -> Result<RuntimeConfig, JsValue> {
                 }
             }
         },
-    };
-    config.validate().map_err(runtime_config_validation_to_js)?;
-    Ok(config)
+    )
+    .map_err(runtime_config_validation_to_js)
 }
 
 fn runtime_config_validation_to_js(err: RuntimeConfigValidationError) -> JsValue {
@@ -909,9 +902,7 @@ fn runtime_config_validation_to_js(err: RuntimeConfigValidationError) -> JsValue
 
 fn runtime_config_field_to_js(field: &str) -> &str {
     match field {
-        "product_label" => "productLabel",
         "product_id" => "productId",
-        "site_id" => "siteId",
         "host_name" => "hostName",
         "people_chain_genesis_hash" => "peopleChainGenesisHash",
         other => other,

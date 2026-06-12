@@ -8,7 +8,10 @@ import {
 } from "./runtime.js";
 
 interface NodeWasmModuleShape {
-  WasmTrUApiCore: new (callbacks: unknown, runtimeConfig: unknown) => WasmCoreLike;
+  WasmTrUApiCore: new (
+    callbacks: unknown,
+    runtimeConfig: unknown,
+  ) => WasmCoreLike;
   setLogLevel: (level: string) => void;
 }
 
@@ -33,17 +36,13 @@ export async function createNodeWasmProvider(
   host: Partial<HostCallbacks>,
   options: CreateNodeWasmProviderOptions,
 ): Promise<TrUApiHostWasmProvider> {
-  if (!options?.runtimeConfig) {
-    throw new Error("runtimeConfig is required");
-  }
-
   // Dynamic import keeps the WASM module out of the package's static
   // dependency graph and out of the tsc rootDir. Indirected through a
   // variable so TS skips the static module-existence check.
   const wasmNodePath = "./wasm/node/truapi_server.js";
-  const mod = (await import(
-    /* @vite-ignore */ wasmNodePath
-  )) as NodeWasmModuleShape | { default: NodeWasmModuleShape };
+  const mod = (await import(/* @vite-ignore */ wasmNodePath)) as
+    | NodeWasmModuleShape
+    | { default: NodeWasmModuleShape };
 
   const wasm: NodeWasmModuleShape =
     "WasmTrUApiCore" in mod

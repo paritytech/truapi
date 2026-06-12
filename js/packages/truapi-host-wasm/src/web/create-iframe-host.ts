@@ -1,5 +1,3 @@
-import type { Provider } from "@parity/truapi";
-
 /**
  * Options for `createIframeHost`.
  */
@@ -42,7 +40,7 @@ function resolveAllowedOrigin(
   const targetUrl = new URL(iframeUrl, window.location.href);
   if (targetUrl.protocol !== "http:" && targetUrl.protocol !== "https:") {
     throw new Error(
-      `Iframe host only allows http(s) playground URLs, received ${targetUrl.protocol}`,
+      `Iframe host only allows http(s) product URLs, received ${targetUrl.protocol}`,
     );
   }
 
@@ -114,7 +112,7 @@ export function createIframeHost(options: IframeHostOptions): IframeHost {
   const onWindowMessage = (event: MessageEvent): void => {
     if (event.source !== iframe.contentWindow) return;
     if (event.origin !== targetOrigin && event.origin !== "null") return;
-    if (event.data?.type === "truapi-playground-ready") {
+    if (event.data?.type === "truapi-ready") {
       sendInit();
     }
   };
@@ -141,6 +139,4 @@ export function createIframeHost(options: IframeHostOptions): IframeHost {
   };
 }
 
-// Suppress unused-symbol warning when consumers do not import Provider
-// directly; declaring the type relationship keeps the contract visible.
-export type { Provider };
+export type { Provider } from "@parity/truapi";

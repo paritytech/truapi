@@ -177,9 +177,7 @@ pub(crate) fn stub_platform() -> Arc<StubPlatform> {
 
 pub(crate) fn runtime_config(product_id: &str) -> RuntimeConfig {
     RuntimeConfig {
-        product_label: product_id.trim_end_matches(".dot").to_string(),
         product_id: product_id.to_string(),
-        site_id: "test".to_string(),
         host_name: "Polkadot Web".to_string(),
         host_icon: Some("https://example.invalid/dotli.png".to_string()),
         host_version: None,

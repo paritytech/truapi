@@ -135,7 +135,7 @@ test("createIframeHost hands back a MessagePort and configures the iframe", () =
   }
 });
 
-test("createIframeHost sends truapi-init on a same-origin playground-ready message", () => {
+test("createIframeHost sends truapi-init on a same-origin product-ready message", () => {
   const { contentPostMessage, windowListeners, contentWindow } = setupFakeDom();
 
   try {
@@ -152,7 +152,7 @@ test("createIframeHost sends truapi-init on a same-origin playground-ready messa
     onMessage({
       source: { other: true },
       origin: "http://localhost:5174",
-      data: { type: "truapi-playground-ready" },
+      data: { type: "truapi-ready" },
     });
     assert.equal(
       contentPostMessage.mock.callCount(),
@@ -164,7 +164,7 @@ test("createIframeHost sends truapi-init on a same-origin playground-ready messa
     onMessage({
       source: contentWindow,
       origin: "http://evil.example",
-      data: { type: "truapi-playground-ready" },
+      data: { type: "truapi-ready" },
     });
     assert.equal(
       contentPostMessage.mock.callCount(),
@@ -176,7 +176,7 @@ test("createIframeHost sends truapi-init on a same-origin playground-ready messa
     onMessage({
       source: contentWindow,
       origin: "http://localhost:5174",
-      data: { type: "truapi-playground-ready" },
+      data: { type: "truapi-ready" },
     });
     assert.equal(contentPostMessage.mock.callCount(), 1, "ready triggers init");
     const [body, origin] = contentPostMessage.mock.calls[0].arguments;
@@ -187,7 +187,7 @@ test("createIframeHost sends truapi-init on a same-origin playground-ready messa
     onMessage({
       source: contentWindow,
       origin: "http://localhost:5174",
-      data: { type: "truapi-playground-ready" },
+      data: { type: "truapi-ready" },
     });
     assert.equal(contentPostMessage.mock.callCount(), 1, "init sent only once");
   } finally {
@@ -195,7 +195,7 @@ test("createIframeHost sends truapi-init on a same-origin playground-ready messa
   }
 });
 
-test("createIframeHost accepts playground-ready from a credentialless opaque origin", () => {
+test("createIframeHost accepts product-ready from a credentialless opaque origin", () => {
   const { contentPostMessage, windowListeners, contentWindow } = setupFakeDom();
 
   try {
@@ -211,7 +211,7 @@ test("createIframeHost accepts playground-ready from a credentialless opaque ori
     onMessage({
       source: contentWindow,
       origin: "null",
-      data: { type: "truapi-playground-ready" },
+      data: { type: "truapi-ready" },
     });
     assert.equal(
       contentPostMessage.mock.callCount(),

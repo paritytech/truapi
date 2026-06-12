@@ -23,9 +23,7 @@ pub fn test_spawner() -> truapi_server::subscription::Spawner {
 
 pub fn test_runtime_config() -> RuntimeConfig {
     RuntimeConfig {
-        product_label: "dotli".to_string(),
         product_id: "dotli.dot".to_string(),
-        site_id: "dot.li".to_string(),
         host_name: "Polkadot Web".to_string(),
         host_icon: Some("https://dot.li/dotli.png".to_string()),
         host_version: None,

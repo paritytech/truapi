@@ -12,7 +12,6 @@ import type {
   WorkerToMain,
 } from "./worker-protocol.js";
 import { errorMessage } from "./error-message.js";
-import { SUBSCRIPTION_DISPATCH } from "./subscription-table.js";
 
 interface WasmCore {
   receiveFromProduct(frame: Uint8Array): Promise<void>;
@@ -46,16 +45,11 @@ function postToMain(msg: WorkerToMain): void {
 let nextRequestId = 0;
 const pendingCallbacks = new Map<
   number,
-  (
-    result: { ok: true; value: unknown } | { ok: false; error: string },
-  ) => void
+  (result: { ok: true; value: unknown } | { ok: false; error: string }) => void
 >();
 
 let nextSubId = 0;
-const subscriptionItemListeners = new Map<
-  number,
-  (value: unknown) => void
->();
+const subscriptionItemListeners = new Map<number, (value: unknown) => void>();
 
 let nextConnId = 0;
 type ChainConnectAck = { ok: true } | { ok: false; error: string };
@@ -135,13 +129,10 @@ const requiredRawCallbacks: Record<string, RawCallbackFn> = {
   featureSupported: (payload: Uint8Array) =>
     callbackRequest("featureSupported", [payload]) as Promise<boolean>,
   read: (key: string) =>
-    callbackRequest("read", [key]) as Promise<
-      Uint8Array | null | undefined
-    >,
+    callbackRequest("read", [key]) as Promise<Uint8Array | null | undefined>,
   write: (key: string, value: Uint8Array) =>
     callbackRequest("write", [key, value]),
-  clear: (key: string) =>
-    callbackRequest("clear", [key]),
+  clear: (key: string) => callbackRequest("clear", [key]),
 };
 
 const optionalRawCallbacks: Record<OptionalCallbackName, RawCallbackFn> = {
@@ -154,8 +145,7 @@ const optionalRawCallbacks: Record<OptionalCallbackName, RawCallbackFn> = {
     callbackRequest("readSession", []) as Promise<
       Uint8Array | null | undefined
     >,
-  writeSession: (value: Uint8Array) =>
-    callbackRequest("writeSession", [value]),
+  writeSession: (value: Uint8Array) => callbackRequest("writeSession", [value]),
   clearSession: () => callbackRequest("clearSession", []),
   confirmSignPayload: (payload: Uint8Array) =>
     callbackRequest("confirmSignPayload", [payload]) as Promise<boolean>,
@@ -179,14 +169,19 @@ function buildRawCallbacks(msg: Extract<MainToWorker, { kind: "init" }>) {
     callbacks[name] = optionalRawCallbacks[name];
   }
   const optionalSubscriptions = new Set(msg.optionalSubscriptions ?? []);
-  for (const entry of SUBSCRIPTION_DISPATCH) {
-    if (!optionalSubscriptions.has(entry.protocol)) continue;
-    callbacks[entry.callback] =
-      entry.payload === "required"
-        ? (payload: Uint8Array, sendItem: (value: unknown) => void) =>
-            startSubscription(entry.protocol, payload, sendItem)
-        : (sendItem: (value: unknown) => void) =>
-            startSubscription(entry.protocol, null, sendItem);
+  if (optionalSubscriptions.has("subscribeSessionStore")) {
+    callbacks.subscribeSessionStore = (sendItem: (value: unknown) => void) =>
+      startSubscription("subscribeSessionStore", null, sendItem);
+  }
+  if (optionalSubscriptions.has("subscribeTheme")) {
+    callbacks.subscribeTheme = (sendItem: (value: unknown) => void) =>
+      startSubscription("subscribeTheme", null, sendItem);
+  }
+  if (optionalSubscriptions.has("lookupPreimage")) {
+    callbacks.lookupPreimage = (
+      payload: Uint8Array,
+      sendItem: (value: unknown) => void,
+    ) => startSubscription("lookupPreimage", payload, sendItem);
   }
   if (msg.chainConnect) {
     callbacks.chainConnect = chainConnect;
@@ -233,7 +228,10 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
       }
       wasm.setLogLevel?.(msg.logLevel);
       try {
-        core = new wasm.WasmTrUApiCore(buildRawCallbacks(msg), msg.runtimeConfig);
+        core = new wasm.WasmTrUApiCore(
+          buildRawCallbacks(msg),
+          msg.runtimeConfig,
+        );
         postToMain({ kind: "ready" });
       } catch (err) {
         postToMain({ kind: "fatalError", error: `init: ${errorMessage(err)}` });

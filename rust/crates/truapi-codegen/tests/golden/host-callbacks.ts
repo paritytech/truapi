@@ -50,15 +50,9 @@ export type AuthState =
  */
 export interface SessionUiInfo {
   /**
-   * Whether a session is currently active. When `false` every other
-   * field is ``undefined``.
-   */
-  connected: boolean;
-
-  /**
    * 32-byte sr25519 root public key of the active session.
    */
-  publicKey?: Uint8Array;
+  publicKey: Uint8Array;
 
   /**
    * Wallet identity account id used for People-chain username lookup.
@@ -110,7 +104,9 @@ export interface Features {
   /**
    * Report whether the requested feature is supported.
    */
-  featureSupported(request: HostFeatureSupportedRequest): Promise<HostFeatureSupportedResponse>;
+  featureSupported(
+    request: HostFeatureSupportedRequest,
+  ): Promise<HostFeatureSupportedResponse>;
 }
 
 /**
@@ -148,7 +144,9 @@ export interface Notifications {
    * Schedule or immediately display the given notification and return the
    * host-assigned id.
    */
-  pushNotification(notification: HostPushNotificationRequest): Promise<HostPushNotificationResponse>;
+  pushNotification(
+    notification: HostPushNotificationRequest,
+  ): Promise<HostPushNotificationResponse>;
 
   /**
    * Cancel a notification by id. Idempotent: cancelling an already-fired or
@@ -166,12 +164,16 @@ export interface Permissions {
   /**
    * Prompt the user for a device-level permission.
    */
-  devicePermission(request: HostDevicePermissionRequest): Promise<HostDevicePermissionResponse>;
+  devicePermission(
+    request: HostDevicePermissionRequest,
+  ): Promise<HostDevicePermissionResponse>;
 
   /**
    * Prompt the user for a remote (product-scoped) permission bundle.
    */
-  remotePermission(request: RemotePermissionRequest): Promise<RemotePermissionResponse>;
+  remotePermission(
+    request: RemotePermissionRequest,
+  ): Promise<RemotePermissionResponse>;
 }
 
 /**
@@ -192,7 +194,9 @@ export interface PreimageHost {
   /**
    * Emits current value/miss immediately, then future updates.
    */
-  lookupPreimage(key: Uint8Array): AsyncIterable<Result<Uint8Array | undefined, GenericError>>;
+  lookupPreimage(
+    key: Uint8Array,
+  ): AsyncIterable<Result<Uint8Array | undefined, GenericError>>;
 }
 
 /**
@@ -285,4 +289,16 @@ export interface UserConfirmation {
 /**
  * Combined platform interface. A host must provide all capability traits.
  */
-export interface HostCallbacks extends Navigation, Notifications, Permissions, Features, HostStorage, ChainProvider, AuthPresenter, SessionStore, UserConfirmation, ThemeHost, PreimageHost {}
+export interface HostCallbacks
+  extends
+    Navigation,
+    Notifications,
+    Permissions,
+    Features,
+    HostStorage,
+    ChainProvider,
+    AuthPresenter,
+    SessionStore,
+    UserConfirmation,
+    ThemeHost,
+    PreimageHost {}

@@ -11,73 +11,66 @@ use truapi_platform::{
 fn _assert_platform_bounds<T: Platform + Send + Sync + 'static>() {}
 
 fn valid_runtime_config() -> RuntimeConfig {
-    RuntimeConfig {
-        product_label: "dotli".to_string(),
-        product_id: "dotli.dot".to_string(),
-        site_id: "dot.li".to_string(),
-        host_name: "Polkadot Web".to_string(),
-        host_icon: Some("https://dot.li/dotli.png".to_string()),
-        host_version: None,
-        platform_type: None,
-        platform_version: None,
-        people_chain_genesis_hash: [0xa2; 32],
-        pairing_deeplink_scheme: PairingDeeplinkScheme::PolkadotApp,
-    }
+    runtime_config(
+        "dotli.dot",
+        "Polkadot Web",
+        Some("https://dot.li/dotli.png"),
+    )
+    .expect("valid runtime config")
+}
+
+fn runtime_config(
+    product_id: &str,
+    host_name: &str,
+    host_icon: Option<&str>,
+) -> Result<RuntimeConfig, RuntimeConfigValidationError> {
+    RuntimeConfig::new(
+        product_id.to_string(),
+        host_name.to_string(),
+        host_icon.map(str::to_string),
+        None,
+        None,
+        None,
+        [0xa2; 32],
+        PairingDeeplinkScheme::PolkadotApp,
+    )
 }
 
 #[test]
 fn runtime_config_accepts_https_host_icon() {
-    valid_runtime_config()
-        .validate()
-        .expect("host icon is valid https");
+    valid_runtime_config();
 }
 
 #[test]
 fn runtime_config_rejects_empty_required_fields() {
-    let mut config = valid_runtime_config();
-    config.product_label = " ".to_string();
     assert_eq!(
-        config.validate(),
-        Err(RuntimeConfigValidationError::EmptyField {
-            field: "product_label"
-        })
-    );
-
-    let mut config = valid_runtime_config();
-    config.product_id = String::new();
-    assert_eq!(
-        config.validate(),
+        runtime_config("", "Polkadot Web", Some("https://dot.li/dotli.png")),
         Err(RuntimeConfigValidationError::EmptyField {
             field: "product_id"
         })
     );
-
-    let mut config = valid_runtime_config();
-    config.site_id = "\t".to_string();
     assert_eq!(
-        config.validate(),
-        Err(RuntimeConfigValidationError::EmptyField { field: "site_id" })
+        runtime_config("dotli.dot", " ", Some("https://dot.li/dotli.png")),
+        Err(RuntimeConfigValidationError::EmptyField { field: "host_name" })
     );
 }
 
 #[test]
 fn runtime_config_rejects_relative_host_icon() {
-    let mut config = valid_runtime_config();
-    config.host_icon = Some("/dotli.png".to_string());
-
     assert!(matches!(
-        config.validate(),
+        runtime_config("dotli.dot", "Polkadot Web", Some("/dotli.png")),
         Err(RuntimeConfigValidationError::InvalidHostIcon { .. })
     ));
 }
 
 #[test]
 fn runtime_config_rejects_non_https_host_icon() {
-    let mut config = valid_runtime_config();
-    config.host_icon = Some("http://localhost:3000/dotli.png".to_string());
-
     assert_eq!(
-        config.validate(),
+        runtime_config(
+            "dotli.dot",
+            "Polkadot Web",
+            Some("http://localhost:3000/dotli.png")
+        ),
         Err(RuntimeConfigValidationError::InsecureHostIcon {
             scheme: "http".to_string(),
         })

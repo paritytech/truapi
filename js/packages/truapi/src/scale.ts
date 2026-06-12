@@ -8,6 +8,8 @@
 import {
   Bytes,
   Enum,
+  Struct,
+  _void,
   createCodec,
   createDecoder,
   enhanceCodec,
@@ -64,7 +66,9 @@ export const OptionBool: Codec<boolean | undefined> = enhanceCodec(
       case 2:
         return false;
       default:
-        throw new Error(`Unknown OptionBool byte: ${byte}. Expected 0, 1, or 2.`);
+        throw new Error(
+          `Unknown OptionBool byte: ${byte}. Expected 0, 1, or 2.`,
+        );
     }
   },
 );
@@ -128,31 +132,38 @@ export function TaggedUnion<O extends TaggedUnionCodecs>(
  * value and throws for framework-level failures that have no public `D` shape.
  */
 export function CallError<D>(domain: Codec<D>): Codec<D> {
-  return createCodec(
-    (value: D) => {
-      const payload = domain.enc(value);
-      const out = new Uint8Array(payload.length + 1);
-      out[0] = 0;
-      out.set(payload, 1);
-      return out;
-    },
-    createDecoder((input) => {
-      const tag = u8.dec(input);
-      switch (tag) {
-        case 0:
-          return domain.dec(input);
-        case 1:
+  type WireCallError =
+    | { tag: "Domain"; value: D }
+    | { tag: "Denied"; value?: undefined }
+    | { tag: "Unsupported"; value?: undefined }
+    | { tag: "MalformedFrame"; value: { reason: string } }
+    | { tag: "HostFailure"; value: { reason: string } };
+
+  const wire = Enum({
+    Domain: domain,
+    Denied: _void,
+    Unsupported: _void,
+    MalformedFrame: Struct({ reason: scaleStr }),
+    HostFailure: Struct({ reason: scaleStr }),
+  }) as unknown as Codec<WireCallError>;
+
+  return enhanceCodec(
+    wire,
+    (value: D): WireCallError => ({ tag: "Domain", value }),
+    (value: WireCallError): D => {
+      switch (value.tag) {
+        case "Domain":
+          return value.value;
+        case "Denied":
           throw new Error("Host denied the request");
-        case 2:
+        case "Unsupported":
           throw new Error("Host does not support this request");
-        case 3:
-          throw new Error(`Malformed request frame: ${scaleStr.dec(input)}`);
-        case 4:
-          throw new Error(`Host failure: ${scaleStr.dec(input)}`);
-        default:
-          throw new Error(`Unknown CallError discriminant: ${tag}`);
+        case "MalformedFrame":
+          throw new Error(`Malformed request frame: ${value.value.reason}`);
+        case "HostFailure":
+          throw new Error(`Host failure: ${value.value.reason}`);
       }
-    }),
+    },
   );
 }
 

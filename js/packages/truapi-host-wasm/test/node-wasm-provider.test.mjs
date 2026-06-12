@@ -37,9 +37,7 @@ function makeCallbacks(overrides = {}) {
 
 function runtimeConfig(overrides = {}) {
   return {
-    productLabel: "dotli",
     productId: "dotli.dot",
-    siteId: "dot.li",
     hostName: "Polkadot Web",
     hostIcon: "https://dot.li/dotli.png",
     hostVersion: "0.5.0",
@@ -97,13 +95,6 @@ test("createNodeWasmProvider validates runtimeConfig in the WASM core", async ()
         }),
       }),
     /runtimeConfig\.peopleChainGenesisHash: expected 32-byte hex string/,
-  );
-});
-
-test("createNodeWasmProvider requires runtimeConfig", async () => {
-  await assert.rejects(
-    () => createNodeWasmProvider(makeCallbacks(), undefined),
-    /runtimeConfig is required/,
   );
 });
 

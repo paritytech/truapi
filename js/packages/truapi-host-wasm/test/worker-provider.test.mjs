@@ -68,9 +68,7 @@ function makeCallbacks(overrides = {}) {
 
 function runtimeConfig(overrides = {}) {
   return {
-    productLabel: "dotli",
     productId: "dotli.dot",
-    siteId: "dot.li",
     hostName: "Polkadot Web",
     hostIcon: "https://dot.li/dotli.png",
     hostVersion: "0.5.0",
@@ -177,7 +175,6 @@ test("dev global setLogLevel updates every live worker provider", async () => {
     level: "debug",
   });
   assert.equal(globalThis.__truapi.getLogLevel(), "debug");
-  assert.equal(globalThis.__truapi.getProviderCount(), 2);
 
   globalThis.__truapi.setLogLevel("off");
   first.dispose();
@@ -197,7 +194,6 @@ test("dev global setLogLevel applies to providers created later", async () => {
     await import(moduleUrl);
 
   assert.equal(typeof globalThis.__truapi.setLogLevel, "function");
-  assert.equal(globalThis.__truapi.getProviderCount(), 0);
   globalThis.__truapi.setLogLevel("trace");
 
   const firstWorker = new FakeWorker();
@@ -342,7 +338,6 @@ test("worker provider forwards authStateChanged callback requests", async () => 
       {
         tag: "Connected",
         value: {
-          connected: true,
           publicKey: new Uint8Array([1, 2]),
           liteUsername: "alice",
         },
@@ -355,7 +350,6 @@ test("worker provider forwards authStateChanged callback requests", async () => 
     {
       tag: "Connected",
       value: {
-        connected: true,
         publicKey: new Uint8Array([1, 2]),
         liteUsername: "alice",
       },

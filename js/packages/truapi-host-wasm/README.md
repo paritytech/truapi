@@ -15,7 +15,6 @@ The package exposes tree-shakeable subpath exports — import only what your env
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
 | `@parity/truapi-host-wasm`                 | Core: `createWasmProvider`, `createNodeWasmProvider`, `createHostServer`, the dispatcher adapter, and the shared types. |
 | `@parity/truapi-host-wasm/web`             | Browser host: `createIframeHost` (iframe MessageChannel handshake) and `createWebWorkerProvider`.                       |
-| `@parity/truapi-host-wasm/electron`        | `createElectronProvider` — wraps an Electron `MessagePortMain` as a `Provider`.                                         |
 | `@parity/truapi-host-wasm/worker-runtime`  | Web Worker entrypoint (import with your bundler's `?worker` suffix) so the WASM core runs off the page main thread.     |
 | `@parity/truapi-host-wasm/wasm/{web,node}` | The raw `wasm-bindgen` glue, if you need to instantiate the core yourself.                                              |
 
@@ -33,14 +32,13 @@ tests that load the raw WASM bundle (requires `wasm-pack` on PATH):
 npm run build:wasm   # or `make wasm` from the repo root
 ```
 
-## Example — Node / Electron
+## Example — Node
 
 ```ts
 import {
   createNodeWasmProvider,
   createHostServer,
 } from "@parity/truapi-host-wasm";
-import { createElectronProvider } from "@parity/truapi-host-wasm/electron";
 
 const provider = await createNodeWasmProvider(
   {
@@ -60,9 +58,7 @@ const provider = await createNodeWasmProvider(
   },
   {
     runtimeConfig: {
-      productLabel: "example",
       productId: "example.dot",
-      siteId: "dot.li",
       hostName: "Polkadot Web",
       hostIcon: "https://dot.li/dotli.png",
       hostVersion: "0.5.0",

@@ -560,9 +560,7 @@ mod tests {
 
     fn runtime_config() -> RuntimeConfig {
         RuntimeConfig {
-            product_label: "myapp".to_string(),
             product_id: "myapp.dot".to_string(),
-            site_id: "test".to_string(),
             host_name: "Polkadot Web".to_string(),
             host_icon: Some("https://example.invalid/dotli.png".to_string()),
             host_version: Some("1.2.3".to_string()),

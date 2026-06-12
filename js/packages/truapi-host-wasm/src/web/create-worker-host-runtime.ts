@@ -2,25 +2,19 @@ import type {
   ChainConnection,
   HostCallbacks,
   LogLevel,
-  MainToWorker,
-  SubscriptionName,
   TrUApiHostWasmProvider,
   WasmRuntimeConfig,
   WasmRawCallbacks,
-  WorkerToMain,
 } from "../index.js";
 import { createWasmRawCallbacks } from "../generated/host-callbacks-adapter.js";
-import {
-  OPTIONAL_CALLBACK_NAMES,
-  type CallbackName,
-  type OptionalCallbackName,
+import type {
+  CallbackName,
+  MainToWorker,
+  OptionalCallbackName,
+  SubscriptionName,
+  WorkerToMain,
 } from "../worker-protocol.js";
 import { errorMessage } from "../error-message.js";
-import {
-  SUBSCRIPTION_DISPATCH,
-  subscriptionDispatchEntry,
-} from "../subscription-table.js";
-import { decodeWireMessage, describeWireId } from "@parity/truapi";
 import { bytesToHex } from "@parity/truapi/scale";
 
 interface WorkerProviderState {
@@ -62,31 +56,35 @@ function isLogLevel(value: string | null): value is LogLevel {
 
 /** Read the persisted dev log level. Returns null when unset or unavailable. */
 function readPersistedLogLevel(): LogLevel | null {
-  try {
-    const stored = globalThis.localStorage?.getItem(DEV_LOG_LEVEL_KEY);
-    return isLogLevel(stored) ? stored : null;
-  } catch {
-    return null;
-  }
+  const stored = globalThis.localStorage?.getItem(DEV_LOG_LEVEL_KEY) ?? null;
+  return isLogLevel(stored) ? stored : null;
 }
 
 /** Persist the dev log level so it re-applies on the next reload. */
 function persistLogLevel(level: LogLevel): void {
-  try {
-    globalThis.localStorage?.setItem(DEV_LOG_LEVEL_KEY, level);
-  } catch {
-    // Storage unavailable (sandboxed iframe / privacy mode); the level still
-    // applies for the current session.
-  }
+  globalThis.localStorage?.setItem(DEV_LOG_LEVEL_KEY, level);
 }
 
 let devLogLevelOverride: LogLevel | null = readPersistedLogLevel();
 const devGlobalProviders = new Set<TrUApiHostWasmProvider>();
+const OPTIONAL_CALLBACK_NAMES: readonly OptionalCallbackName[] = [
+  "cancelNotification",
+  "authStateChanged",
+  "readSession",
+  "writeSession",
+  "clearSession",
+  "confirmSignPayload",
+  "confirmSignRaw",
+  "confirmCreateTransaction",
+  "confirmAccountAlias",
+  "confirmResourceAllocation",
+  "confirmPreimageSubmit",
+  "submitPreimage",
+];
 
 interface TrUApiDevConsole {
   setLogLevel(level: LogLevel): void;
   getLogLevel(): LogLevel | null;
-  getProviderCount(): number;
 }
 
 function optionalCallbacks(
@@ -100,37 +98,17 @@ function optionalCallbacks(
 function optionalSubscriptions(
   callbacks: Omit<WasmRawCallbacks, "emitFrame">,
 ): SubscriptionName[] {
-  return SUBSCRIPTION_DISPATCH.filter(
-    ({ callback }) => typeof callbacks[callback] === "function",
-  ).map(({ protocol }) => protocol);
-}
-
-function bytesToHexPreview(bytes: Uint8Array, maxBytes = 96): string {
-  const visible = bytes.subarray(0, maxBytes);
-  const suffix =
-    bytes.length > maxBytes ? `…(+${bytes.length - maxBytes})` : "";
-  return `${bytesToHex(visible)}${suffix}`;
-}
-
-function describeWireFrame(bytes: Uint8Array) {
-  const decoded = decodeWireMessage(bytes);
-  if (decoded.isErr()) {
-    return {
-      frameBytes: bytes.byteLength,
-      decodeError: decoded.error.message,
-      frameHex: bytesToHexPreview(bytes),
-    };
+  const names: SubscriptionName[] = [];
+  if (typeof callbacks.subscribeSessionStore === "function") {
+    names.push("subscribeSessionStore");
   }
-  const wireId = decoded.value.payload.id;
-  const payload = decoded.value.payload.value;
-  return {
-    frame: describeWireId(wireId),
-    requestId: decoded.value.requestId,
-    wireId,
-    frameBytes: bytes.byteLength,
-    payloadBytes: payload.byteLength,
-    payloadHex: bytesToHexPreview(payload),
-  };
+  if (typeof callbacks.subscribeTheme === "function") {
+    names.push("subscribeTheme");
+  }
+  if (typeof callbacks.lookupPreimage === "function") {
+    names.push("lookupPreimage");
+  }
+  return names;
 }
 
 function handleCallbackRequest(
@@ -193,11 +171,6 @@ function handleSubscriptionStart(
     payload: Uint8Array | null;
   },
 ): void {
-  const entry = subscriptionDispatchEntry(msg.name);
-  if (!entry) {
-    console.warn(`[truapi worker] unknown subscription: ${msg.name}`);
-    return;
-  }
   const sendItem = (value?: unknown): void => {
     if (state.disposed) return;
     const post: MainToWorker = {
@@ -207,18 +180,22 @@ function handleSubscriptionStart(
     };
     state.worker.postMessage(post);
   };
-  let dispose: (() => void) | void;
+  let dispose: (() => void) | void = undefined;
   try {
-    if (entry.payload === "required") {
-      if (msg.payload === null) {
-        console.warn(
-          `[truapi worker] ${msg.name} requires payload, none received`,
-        );
-        return;
-      }
-      dispose = entry.start(state.rawCallbacks, msg.payload, sendItem);
-    } else {
-      dispose = entry.start(state.rawCallbacks, sendItem);
+    switch (msg.name) {
+      case "subscribeSessionStore":
+        dispose = state.rawCallbacks.subscribeSessionStore?.(sendItem);
+        break;
+      case "subscribeTheme":
+        dispose = state.rawCallbacks.subscribeTheme?.(sendItem);
+        break;
+      case "lookupPreimage":
+        if (msg.payload === null) {
+          console.warn("[truapi worker] lookupPreimage requires payload");
+          return;
+        }
+        dispose = state.rawCallbacks.lookupPreimage(msg.payload, sendItem);
+        break;
     }
   } catch (err) {
     console.error(`[truapi worker] ${msg.name} threw on start:`, err);
@@ -436,9 +413,6 @@ export function createWebWorkerProvider(
   host: Partial<HostCallbacks>,
   options: CreateWebWorkerProviderOptions,
 ): Promise<TrUApiHostWasmProvider> {
-  if (!options?.runtimeConfig) {
-    return Promise.reject(new Error("runtimeConfig is required"));
-  }
   const callbacks = createWasmRawCallbacks(host);
 
   return new Promise((resolve, reject) => {
@@ -480,10 +454,7 @@ export function createWebWorkerProvider(
           break;
         case "frame":
           if (debugLoggingEnabled(state)) {
-            console.debug(
-              "[truapi worker] frame <-",
-              describeWireFrame(msg.bytes),
-            );
+            console.debug("[truapi worker] frame <-", bytesToHex(msg.bytes));
           }
           for (const listener of [...state.listeners]) listener(msg.bytes);
           break;
@@ -603,7 +574,7 @@ function buildProvider(state: WorkerProviderState): TrUApiHostWasmProvider {
       if (state.disposed) return;
       const post: MainToWorker = { kind: "frame", bytes };
       if (debugLoggingEnabled(state)) {
-        console.debug("[truapi worker] frame ->", describeWireFrame(bytes));
+        console.debug("[truapi worker] frame ->", bytesToHex(bytes));
       }
       state.worker.postMessage(post);
     },
@@ -682,15 +653,10 @@ function publishDevGlobal(): void {
       for (const provider of [...devGlobalProviders]) {
         provider.setLogLevel?.(level);
       }
-      console.info(
-        `[truapi worker] logLevel=${level} providers=${String(devGlobalProviders.size)}`,
-      );
+      console.info(`[truapi worker] logLevel=${level}`);
     },
     getLogLevel(): LogLevel | null {
       return devLogLevelOverride;
-    },
-    getProviderCount(): number {
-      return devGlobalProviders.size;
     },
   };
 }

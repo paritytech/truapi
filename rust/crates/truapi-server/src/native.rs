@@ -113,11 +113,8 @@ impl From<HostTheme> for v01::ThemeVariant {
 /// for the FFI surface.
 #[derive(Debug, Clone, PartialEq, Eq, uniffi::Record)]
 pub struct SessionUiInfo {
-    /// Whether a session is currently active. When `false` every other
-    /// field is `None`.
-    pub connected: bool,
     /// 32-byte sr25519 root public key of the active session.
-    pub public_key: Option<Vec<u8>>,
+    pub public_key: Vec<u8>,
     /// Wallet identity account id used for People-chain username lookup.
     pub identity_account_id: Option<Vec<u8>>,
     /// Short username from the People-chain identity record.
@@ -129,8 +126,7 @@ pub struct SessionUiInfo {
 impl From<truapi_platform::SessionUiInfo> for SessionUiInfo {
     fn from(info: truapi_platform::SessionUiInfo) -> Self {
         Self {
-            connected: info.connected,
-            public_key: info.public_key.map(|key| key.to_vec()),
+            public_key: info.public_key.to_vec(),
             identity_account_id: info.identity_account_id.map(|id| id.to_vec()),
             lite_username: info.lite_username,
             full_username: info.full_username,
@@ -197,12 +193,8 @@ impl From<NativePairingDeeplinkScheme> for PlatformPairingDeeplinkScheme {
 /// Native runtime configuration supplied before product calls are handled.
 #[derive(Debug, Clone, uniffi::Record)]
 pub struct NativeRuntimeConfig {
-    /// Human-readable dotli label, e.g. `my-app`.
-    pub product_label: String,
     /// Canonical product identifier used for account derivation.
     pub product_id: String,
-    /// Host deployment/site identifier.
-    pub site_id: String,
     /// Host name shown by the wallet during SSO pairing.
     pub host_name: String,
     /// Optional host icon URL shown by the wallet during SSO pairing.
@@ -258,20 +250,16 @@ impl TryFrom<NativeRuntimeConfig> for RuntimeConfig {
                     actual: config.people_chain_genesis_hash.len() as u64,
                 }
             })?;
-        let runtime_config = Self {
-            product_label: config.product_label,
-            product_id: config.product_id,
-            site_id: config.site_id,
-            host_name: config.host_name,
-            host_icon: config.host_icon,
-            host_version: config.host_version,
-            platform_type: config.platform_type,
-            platform_version: config.platform_version,
+        Ok(Self::new(
+            config.product_id,
+            config.host_name,
+            config.host_icon,
+            config.host_version,
+            config.platform_type,
+            config.platform_version,
             people_chain_genesis_hash,
-            pairing_deeplink_scheme: config.pairing_deeplink_scheme.into(),
-        };
-        runtime_config.validate()?;
-        Ok(runtime_config)
+            config.pairing_deeplink_scheme.into(),
+        )?)
     }
 }
 
@@ -1188,8 +1176,7 @@ mod tests {
         });
         platform.auth_state_changed(truapi_platform::AuthState::Connected(
             truapi_platform::SessionUiInfo {
-                connected: true,
-                public_key: Some([7; 32]),
+                public_key: [7; 32],
                 identity_account_id: None,
                 lite_username: Some("alice".to_string()),
                 full_username: None,
@@ -1209,8 +1196,7 @@ mod tests {
                 },
                 AuthState::Connected {
                     info: SessionUiInfo {
-                        connected: true,
-                        public_key: Some(vec![7; 32]),
+                        public_key: vec![7; 32],
                         identity_account_id: None,
                         lite_username: Some("alice".to_string()),
                         full_username: None,
@@ -1313,9 +1299,7 @@ mod tests {
     #[test]
     fn runtime_config_rejects_wrong_size_genesis_hash() {
         let err = RuntimeConfig::try_from(NativeRuntimeConfig {
-            product_label: "app".to_string(),
             product_id: "app.dot".to_string(),
-            site_id: "dot.li".to_string(),
             host_name: "Polkadot Web".to_string(),
             host_icon: Some("https://example.invalid/dotli.png".to_string()),
             host_version: None,
@@ -1335,9 +1319,7 @@ mod tests {
     #[test]
     fn runtime_config_rejects_empty_required_fields() {
         let err = RuntimeConfig::try_from(NativeRuntimeConfig {
-            product_label: "app".to_string(),
             product_id: " ".to_string(),
-            site_id: "dot.li".to_string(),
             host_name: "Polkadot Web".to_string(),
             host_icon: Some("https://example.invalid/dotli.png".to_string()),
             host_version: None,
@@ -1357,9 +1339,7 @@ mod tests {
     #[test]
     fn runtime_config_rejects_relative_host_icon() {
         let err = RuntimeConfig::try_from(NativeRuntimeConfig {
-            product_label: "app".to_string(),
             product_id: "app.dot".to_string(),
-            site_id: "dot.li".to_string(),
             host_name: "Polkadot Web".to_string(),
             host_icon: Some("/dotli.png".to_string()),
             host_version: None,
@@ -1379,9 +1359,7 @@ mod tests {
     #[test]
     fn runtime_config_rejects_non_https_host_icon() {
         let err = RuntimeConfig::try_from(NativeRuntimeConfig {
-            product_label: "app".to_string(),
             product_id: "app.dot".to_string(),
-            site_id: "dot.li".to_string(),
             host_name: "Polkadot Web".to_string(),
             host_icon: Some("http://localhost:3000/dotli.png".to_string()),
             host_version: None,
@@ -1497,9 +1475,7 @@ mod tests {
         let core = NativeTrUApiCore::with_runtime_config(
             Box::new(Noop),
             NativeRuntimeConfig {
-                product_label: "dotli".to_string(),
                 product_id: "dotli.dot".to_string(),
-                site_id: "dot.li".to_string(),
                 host_name: "Polkadot Web".to_string(),
                 host_icon: Some("https://dot.li/dotli.png".to_string()),
                 host_version: None,
@@ -1646,9 +1622,7 @@ mod tests {
         let core = Arc::new(TrUApiCore::from_platform_with_config(
             platform,
             RuntimeConfig {
-                product_label: "dotli".to_string(),
                 product_id: "dotli.dot".to_string(),
-                site_id: "dot.li".to_string(),
                 host_name: "Polkadot Web".to_string(),
                 host_icon: Some("https://dot.li/dotli.png".to_string()),
                 host_version: None,

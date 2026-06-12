@@ -61,9 +61,7 @@ export interface ChainConnection {
 export type LogLevel = "off" | "error" | "warn" | "info" | "debug" | "trace";
 
 export interface WasmRuntimeConfig {
-  productLabel: string;
   productId: string;
-  siteId: string;
   hostName: string;
   hostIcon?: string;
   hostVersion?: string;

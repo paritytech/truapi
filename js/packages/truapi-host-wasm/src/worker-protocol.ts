@@ -12,51 +12,41 @@
 
 import type { LogLevel } from "./runtime.js";
 
-/**
- * Names of every request/response style host callback the wasm core can
- * invoke. Names match the camelCase property keys of `WasmRawCallbacks`.
- */
-export const CALLBACK_NAMES = [
-  "navigateTo",
-  "pushNotification",
-  "cancelNotification",
-  "devicePermission",
-  "remotePermission",
-  "featureSupported",
-  "read",
-  "write",
-  "clear",
-  "authStateChanged",
-  "readSession",
-  "writeSession",
-  "clearSession",
-  "confirmSignPayload",
-  "confirmSignRaw",
-  "confirmCreateTransaction",
-  "confirmAccountAlias",
-  "confirmResourceAllocation",
-  "confirmPreimageSubmit",
-  "submitPreimage",
-] as const;
+export type CallbackName =
+  | "navigateTo"
+  | "pushNotification"
+  | "cancelNotification"
+  | "devicePermission"
+  | "remotePermission"
+  | "featureSupported"
+  | "read"
+  | "write"
+  | "clear"
+  | "authStateChanged"
+  | "readSession"
+  | "writeSession"
+  | "clearSession"
+  | "confirmSignPayload"
+  | "confirmSignRaw"
+  | "confirmCreateTransaction"
+  | "confirmAccountAlias"
+  | "confirmResourceAllocation"
+  | "confirmPreimageSubmit"
+  | "submitPreimage";
 
-export type CallbackName = (typeof CALLBACK_NAMES)[number];
-
-export const OPTIONAL_CALLBACK_NAMES = [
-  "cancelNotification",
-  "authStateChanged",
-  "readSession",
-  "writeSession",
-  "clearSession",
-  "confirmSignPayload",
-  "confirmSignRaw",
-  "confirmCreateTransaction",
-  "confirmAccountAlias",
-  "confirmResourceAllocation",
-  "confirmPreimageSubmit",
-  "submitPreimage",
-] as const satisfies readonly CallbackName[];
-
-export type OptionalCallbackName = (typeof OPTIONAL_CALLBACK_NAMES)[number];
+export type OptionalCallbackName =
+  | "cancelNotification"
+  | "authStateChanged"
+  | "readSession"
+  | "writeSession"
+  | "clearSession"
+  | "confirmSignPayload"
+  | "confirmSignRaw"
+  | "confirmCreateTransaction"
+  | "confirmAccountAlias"
+  | "confirmResourceAllocation"
+  | "confirmPreimageSubmit"
+  | "submitPreimage";
 
 /**
  * Names of every subscription host callback. Each has the shape

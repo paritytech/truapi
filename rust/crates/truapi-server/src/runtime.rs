@@ -175,9 +175,7 @@ impl<P> PlatformRuntimeHost<P> {
         Self::new(
             platform,
             RuntimeConfig {
-                product_label: "unknown".to_string(),
                 product_id: "unknown.dot".to_string(),
-                site_id: "test".to_string(),
                 host_name: "Polkadot Web".to_string(),
                 host_icon: Some("https://example.invalid/dotli.png".to_string()),
                 host_version: None,
@@ -327,7 +325,7 @@ impl<P> PlatformRuntimeHost<P> {
     fn is_product_account_valid_for_caller(&self, dot_ns_identifier: &str) -> bool {
         let dot_ns_identifier = normalize_product_identifier(dot_ns_identifier);
         let product_id = normalize_product_identifier(&self.runtime_config.product_id);
-        if self.runtime_config.product_label.starts_with("localhost:") {
+        if self.runtime_config.product_id.starts_with("localhost:") {
             is_product_identifier(&dot_ns_identifier)
         } else {
             dot_ns_identifier == product_id
@@ -839,8 +837,7 @@ where
 /// Host-UI projection of an active session for `AuthState::Connected`.
 fn connected_session_ui_info(session: &SessionInfo) -> SessionUiInfo {
     SessionUiInfo {
-        connected: true,
-        public_key: Some(session.public_key),
+        public_key: session.public_key,
         identity_account_id: session.identity_account_id,
         lite_username: session.lite_username.clone(),
         full_username: session.full_username.clone(),

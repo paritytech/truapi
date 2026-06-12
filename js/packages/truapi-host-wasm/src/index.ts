@@ -1,9 +1,4 @@
-export type {
-  Payload,
-  ProtocolMessage,
-  Provider,
-  HostPermissionKind,
-} from "./types.js";
+export type { Payload, ProtocolMessage, Provider } from "./types.js";
 
 export type {
   AuthState,
@@ -34,15 +29,6 @@ export { createWasmRawCallbacks } from "./generated/host-callbacks-adapter.js";
 
 export type { CreateNodeWasmProviderOptions } from "./node-runtime.js";
 export { createNodeWasmProvider } from "./node-runtime.js";
-
-export type {
-  CallbackArgs,
-  CallbackName,
-  MainToWorker,
-  OptionalCallbackName,
-  SubscriptionName,
-  WorkerToMain,
-} from "./worker-protocol.js";
 
 export type {
   CallContext,

@@ -1,7 +1,7 @@
 {
   "name": "@parity/truapi-host-wasm",
   "version": "0.1.0",
-  "description": "WASM-backed TrUAPI host runtime: embeds the Rust core, with web (iframe + Web Worker) and Electron (MessagePortMain) entry points",
+  "description": "WASM-backed TrUAPI host runtime: embeds the Rust core, with web iframe and Web Worker entry points",
   "license": "MIT",
   "author": "Parity Technologies <admin@parity.io>",
   "type": "module",
@@ -19,10 +19,6 @@
     "./web": {
       "types": "./dist/web/index.d.ts",
       "import": "./dist/web/index.js"
-    },
-    "./electron": {
-      "types": "./dist/electron/index.d.ts",
-      "import": "./dist/electron/index.js"
     },
     "./node-runtime": {
       "types": "./dist/node-runtime.d.ts",

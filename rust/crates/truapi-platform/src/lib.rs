@@ -32,12 +32,8 @@ pub use truapi::versioned;
 /// core handles product-scoped calls.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RuntimeConfig {
-    /// Human-readable dotli label, e.g. `my-app`.
-    pub product_label: String,
     /// Canonical product identifier used for account derivation.
     pub product_id: String,
-    /// Host deployment/site identifier, e.g. `dot.li`.
-    pub site_id: String,
     /// Host name shown by the wallet during SSO pairing.
     pub host_name: String,
     /// Optional host icon URL/CID shown by the wallet during SSO pairing.
@@ -55,12 +51,35 @@ pub struct RuntimeConfig {
 }
 
 impl RuntimeConfig {
-    /// Validate fields whose representation cannot be made invalid by Rust
-    /// types alone.
-    pub fn validate(&self) -> Result<(), RuntimeConfigValidationError> {
-        require_non_empty("product_label", &self.product_label)?;
+    /// Build a runtime config, validating fields whose representation cannot
+    /// be made invalid by Rust types alone.
+    #[allow(clippy::too_many_arguments)]
+    pub fn new(
+        product_id: String,
+        host_name: String,
+        host_icon: Option<String>,
+        host_version: Option<String>,
+        platform_type: Option<String>,
+        platform_version: Option<String>,
+        people_chain_genesis_hash: [u8; 32],
+        pairing_deeplink_scheme: PairingDeeplinkScheme,
+    ) -> Result<Self, RuntimeConfigValidationError> {
+        let config = Self {
+            product_id,
+            host_name,
+            host_icon,
+            host_version,
+            platform_type,
+            platform_version,
+            people_chain_genesis_hash,
+            pairing_deeplink_scheme,
+        };
+        config.validate()?;
+        Ok(config)
+    }
+
+    fn validate(&self) -> Result<(), RuntimeConfigValidationError> {
         require_non_empty("product_id", &self.product_id)?;
-        require_non_empty("site_id", &self.site_id)?;
         require_non_empty("host_name", &self.host_name)?;
         if let Some(icon) = &self.host_icon {
             let parsed =
@@ -235,11 +254,8 @@ pub trait JsonRpcConnection: Send + Sync {
 /// parsing the opaque session blob the core persists through [`SessionStore`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SessionUiInfo {
-    /// Whether a session is currently active. When `false` every other
-    /// field is `None`.
-    pub connected: bool,
     /// 32-byte sr25519 root public key of the active session.
-    pub public_key: Option<[u8; 32]>,
+    pub public_key: [u8; 32],
     /// Wallet identity account id used for People-chain username lookup.
     pub identity_account_id: Option<[u8; 32]>,
     /// Short username from the People-chain identity record.
