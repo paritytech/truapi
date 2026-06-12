@@ -1,0 +1,13 @@
+# JitPack build configuration.
+#
+# JitPack consumes this file when a consumer pulls a tag from
+# https://jitpack.io/com.github.paritytech.truapi/. It tells JitPack
+# which JDK to use and which Gradle command to run to produce the
+# Maven publication. Consumers depend on the resulting artifact as
+# `com.github.paritytech.truapi:truapi-host:<tag>`.
+
+jdk:
+  - openjdk17
+
+install:
+  - make android-publish-local
