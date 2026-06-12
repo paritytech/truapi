@@ -154,7 +154,9 @@ public protocol HostStorageBackend: AnyObject, Sendable {
 /// Threading: the Rust core invokes every callback on a background thread it
 /// owns, never the main thread. UI-decision callbacks
 /// (``navigateTo(url:)``, ``devicePermission(capability:)``,
-/// ``remotePermission(permission:domains:)``, the `confirm*` family, and
+/// ``remotePermission(permission:domains:)``, ``paymentRequest(amountInPlanks:destination:)``,
+/// ``paymentBalanceSubscribe()``, ``paymentTopUp(amountInPlanks:source:)``,
+/// ``paymentStatusSubscribe(paymentId:)``, the `confirm*` family, and
 /// ``submitPreimage(value:)``) each run on their own thread from a blocking
 /// pool, so an implementation may safely block its calling thread (e.g. with
 /// `DispatchQueue.main.sync` or a semaphore) until the user decides; other
@@ -249,6 +251,9 @@ public protocol HostBridge: AnyObject, Sendable {
     /// `truapi-ws-bridge` worker thread.
     func featureSupportedChain(genesisHash: Data) throws -> Bool
 
+    /// Create or join a chat room and return the registration status.
+    func chatCreateRoom(roomId: String, name: String, icon: String) throws -> HostChatRoomRegistrationStatus
+
     /// Post a text message into the host chat system and return the
     /// host-assigned message id.
     func chatPostTextMessage(roomId: String, text: String) throws -> String
@@ -256,6 +261,20 @@ public protocol HostBridge: AnyObject, Sendable {
     /// Post a custom message into the host chat system and return the
     /// host-assigned message id.
     func chatPostCustomMessage(roomId: String, messageType: String, payload: Data) throws -> String
+
+    /// Start forwarding payment balance changes and return the first balance.
+    func paymentBalanceSubscribe() throws -> String
+
+    /// Initiate a payment and return the host-assigned payment id. Invoked on
+    /// a blocking-pool thread because the host may present approval UI.
+    func paymentRequest(amountInPlanks: String, destination: Data) throws -> String
+
+    /// Top up the product payment balance. Invoked on a blocking-pool thread
+    /// because the host may present approval UI.
+    func paymentTopUp(amountInPlanks: String, source: NativePaymentTopUpSource) throws
+
+    /// Start forwarding status changes for a payment and return its current status.
+    func paymentStatusSubscribe(paymentId: String) throws -> NativePaymentStatus
 
     /// Scoped key-value storage for the Rust core.
     var storage: HostStorageBackend { get }
@@ -287,6 +306,18 @@ public extension HostBridge {
     }
     func chatPostCustomMessage(roomId: String, messageType: String, payload: Data) throws -> String {
         throw HostRejection.Rejected(reason: "chat posting unavailable")
+    }
+    func paymentBalanceSubscribe() throws -> String {
+        throw HostPaymentBalanceSubscriptionRejection.Unknown(reason: "payment balance unavailable")
+    }
+    func paymentRequest(amountInPlanks: String, destination: Data) throws -> String {
+        throw HostPaymentRequestRejection.Unknown(reason: "payment request unavailable")
+    }
+    func paymentTopUp(amountInPlanks: String, source: NativePaymentTopUpSource) throws {
+        throw HostPaymentTopUpRejection.Unknown(reason: "payment top-up unavailable")
+    }
+    func paymentStatusSubscribe(paymentId: String) throws -> NativePaymentStatus {
+        throw HostPaymentStatusSubscriptionRejection.Unknown(reason: "payment status unavailable")
     }
 }
 
@@ -392,12 +423,32 @@ private final class HostCallbackAdapter: HostCallbacks, @unchecked Sendable {
         try bridge.featureSupportedChain(genesisHash: genesisHash)
     }
 
+    func chatCreateRoom(roomId: String, name: String, icon: String) throws -> HostChatRoomRegistrationStatus {
+        try bridge.chatCreateRoom(roomId: roomId, name: name, icon: icon)
+    }
+
     func chatPostTextMessage(roomId: String, text: String) throws -> String {
         try bridge.chatPostTextMessage(roomId: roomId, text: text)
     }
 
     func chatPostCustomMessage(roomId: String, messageType: String, payload: Data) throws -> String {
         try bridge.chatPostCustomMessage(roomId: roomId, messageType: messageType, payload: payload)
+    }
+
+    func paymentBalanceSubscribe() throws -> String {
+        try bridge.paymentBalanceSubscribe()
+    }
+
+    func paymentRequest(amountInPlanks: String, destination: Data) throws -> String {
+        try bridge.paymentRequest(amountInPlanks: amountInPlanks, destination: destination)
+    }
+
+    func paymentTopUp(amountInPlanks: String, source: NativePaymentTopUpSource) throws {
+        try bridge.paymentTopUp(amountInPlanks: amountInPlanks, source: source)
+    }
+
+    func paymentStatusSubscribe(paymentId: String) throws -> NativePaymentStatus {
+        try bridge.paymentStatusSubscribe(paymentId: paymentId)
     }
 
     func localStorageRead(key: String) throws -> Data? {
@@ -475,10 +526,36 @@ public final class TrUAPIHostCore: @unchecked Sendable {
         inner.notifyThemeChanged(theme: theme)
     }
 
+    /// Push a payment balance update to active `payment.balanceSubscribe()` subscriptions.
+    public func notifyPaymentBalanceChanged(amountInPlanks: String) {
+        inner.notifyPaymentBalanceChanged(amountInPlanks: amountInPlanks)
+    }
+
+    /// Push a payment status update to active `payment.statusSubscribe()` subscriptions.
+    public func notifyPaymentStatusChanged(paymentId: String, status: NativePaymentStatus) {
+        inner.notifyPaymentStatusChanged(paymentId: paymentId, status: status)
+    }
+
     /// Push a host-originated plain-text chat message to active
     /// `chat.actionSubscribe()` subscriptions.
     public func notifyChatMessagePosted(roomId: String, peer: String, text: String) {
         inner.notifyChatMessagePosted(roomId: roomId, peer: peer, text: text)
+    }
+
+    /// Push a host-originated custom chat message to active
+    /// `chat.actionSubscribe()` subscriptions.
+    public func notifyChatCustomMessagePosted(
+        roomId: String,
+        peer: String,
+        messageType: String,
+        payload: Data
+    ) {
+        inner.notifyChatCustomMessagePosted(
+            roomId: roomId,
+            peer: peer,
+            messageType: messageType,
+            payload: payload
+        )
     }
 
     /// Push a host-originated chat action trigger to active

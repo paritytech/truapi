@@ -6,8 +6,8 @@ use truapi::v01;
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use truapi_platform::{
     AuthPresenter, ChainProvider, ChatHost, Features, JsonRpcConnection, Navigation, Notifications,
-    PairingDeeplinkScheme, Permissions, PreimageHost, RuntimeConfig, SessionStore, Storage,
-    ThemeHost, UserConfirmation,
+    PairingDeeplinkScheme, PaymentHost, Permissions, PreimageHost, RuntimeConfig, SessionStore,
+    Storage, ThemeHost, UserConfirmation,
 };
 
 pub fn test_spawner() -> truapi_server::subscription::Spawner {
@@ -100,12 +100,57 @@ impl Features for WireShapePlatform {
 }
 
 impl ChatHost for WireShapePlatform {
+    async fn create_chat_room(
+        &self,
+        _room_id: String,
+        _name: String,
+        _icon: String,
+    ) -> Result<v01::ChatRoomRegistrationStatus, v01::HostChatCreateRoomError> {
+        Ok(v01::ChatRoomRegistrationStatus::New)
+    }
+
     async fn post_chat_message(
         &self,
         _room_id: String,
         _payload: v01::ChatMessageContent,
     ) -> Result<String, v01::HostChatPostMessageError> {
         Ok("message-1".to_string())
+    }
+}
+
+impl PaymentHost for WireShapePlatform {
+    async fn subscribe_payment_balance(
+        &self,
+    ) -> Result<BoxStream<'static, v01::Balance>, v01::HostPaymentBalanceSubscribeError> {
+        Ok(Box::pin(stream::iter([0])))
+    }
+
+    async fn request_payment(
+        &self,
+        _amount: v01::Balance,
+        _destination: [u8; 32],
+    ) -> Result<String, v01::HostPaymentError> {
+        Ok("payment-1".to_string())
+    }
+
+    async fn top_up_payment(
+        &self,
+        _amount: v01::Balance,
+        _source: v01::PaymentTopUpSource,
+    ) -> Result<(), v01::HostPaymentTopUpError> {
+        Ok(())
+    }
+
+    async fn subscribe_payment_status(
+        &self,
+        _payment_id: String,
+    ) -> Result<
+        BoxStream<'static, v01::HostPaymentStatusSubscribeItem>,
+        v01::HostPaymentStatusSubscribeError,
+    > {
+        Ok(Box::pin(stream::iter([
+            v01::HostPaymentStatusSubscribeItem::Completed,
+        ])))
     }
 }
 

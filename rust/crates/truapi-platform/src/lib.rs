@@ -15,10 +15,13 @@
 use futures::stream::BoxStream;
 
 use truapi::v01::{
-    ChatMessageContent, GenericError, HostChatPostMessageError, HostDevicePermissionRequest,
-    HostDevicePermissionResponse, HostLocalStorageReadError, HostNavigateToError,
-    HostPushNotificationRequest, HostPushNotificationResponse, NotificationId, PreimageSubmitError,
-    RemotePermissionRequest, RemotePermissionResponse, ThemeVariant,
+    ChatMessageContent, ChatRoomRegistrationStatus, GenericError, HostChatCreateRoomError,
+    HostChatPostMessageError, HostDevicePermissionRequest, HostDevicePermissionResponse,
+    HostLocalStorageReadError, HostNavigateToError, HostPaymentBalanceSubscribeError,
+    HostPaymentError, HostPaymentStatusSubscribeError, HostPaymentStatusSubscribeItem,
+    HostPaymentTopUpError, HostPushNotificationRequest, HostPushNotificationResponse,
+    NotificationId, PaymentTopUpSource, PreimageSubmitError, RemotePermissionRequest,
+    RemotePermissionResponse, ThemeVariant,
 };
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use url::Url;
@@ -342,6 +345,14 @@ pub trait ThemeHost: Send + Sync {
 
 /// Host-owned chat output surface.
 pub trait ChatHost: Send + Sync {
+    /// Create or join a product chat room and return the registration status.
+    fn create_chat_room(
+        &self,
+        room_id: String,
+        name: String,
+        icon: String,
+    ) -> impl Future<Output = Result<ChatRoomRegistrationStatus, HostChatCreateRoomError>> + Send;
+
     /// Post a product message into the native chat system and return the
     /// host-assigned message id.
     fn post_chat_message(
@@ -349,6 +360,41 @@ pub trait ChatHost: Send + Sync {
         room_id: String,
         payload: ChatMessageContent,
     ) -> impl Future<Output = Result<String, HostChatPostMessageError>> + Send;
+}
+
+/// Host-owned payment surface.
+pub trait PaymentHost: Send + Sync {
+    /// Subscribe to the current payment balance and future updates.
+    fn subscribe_payment_balance(
+        &self,
+    ) -> impl Future<
+        Output = Result<BoxStream<'static, v01::Balance>, HostPaymentBalanceSubscribeError>,
+    > + Send;
+
+    /// Initiate a payment and return the host-assigned payment id.
+    fn request_payment(
+        &self,
+        amount: v01::Balance,
+        destination: [u8; 32],
+    ) -> impl Future<Output = Result<String, HostPaymentError>> + Send;
+
+    /// Top up the product payment balance.
+    fn top_up_payment(
+        &self,
+        amount: v01::Balance,
+        source: PaymentTopUpSource,
+    ) -> impl Future<Output = Result<(), HostPaymentTopUpError>> + Send;
+
+    /// Subscribe to lifecycle updates for a host-assigned payment id.
+    fn subscribe_payment_status(
+        &self,
+        payment_id: String,
+    ) -> impl Future<
+        Output = Result<
+            BoxStream<'static, HostPaymentStatusSubscribeItem>,
+            HostPaymentStatusSubscribeError,
+        >,
+    > + Send;
 }
 
 /// Host preimage backend. The core owns wire mapping and subscription
@@ -386,6 +432,7 @@ pub trait Platform:
     + UserConfirmation
     + ThemeHost
     + ChatHost
+    + PaymentHost
     + PreimageHost
 {
 }
@@ -402,6 +449,7 @@ impl<T> Platform for T where
         + UserConfirmation
         + ThemeHost
         + ChatHost
+        + PaymentHost
         + PreimageHost
 {
 }

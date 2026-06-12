@@ -433,7 +433,9 @@ mod tests {
     use truapi::versioned::system::HostFeatureSupportedRequest;
 
     use crate::frame::{Payload, request_ids};
-    use crate::test_support::{StubPlatform, first_pairing_deeplink, runtime_config};
+    use crate::test_support::{
+        StubPlatform, first_pairing_deeplink, runtime_config, stub_platform,
+    };
     use std::sync::atomic::Ordering;
     use truapi_platform::AuthState;
 
@@ -605,6 +607,63 @@ mod tests {
 
         assert_eq!(response.request_id, "p:feature");
         assert_eq!(response.payload.id, feature_ids.response_id);
+        bridge.stop();
+    }
+
+    /// Host-side login cancellation must resolve the pending request with
+    /// `Rejected` on the same WebSocket connection.
+    #[test]
+    fn host_cancel_resolves_pending_request_login() {
+        let platform = stub_platform();
+        let auth_states = platform.auth_states.clone();
+        let core = core_for(platform);
+        let logger: BridgeLogger = Arc::new(|_, _| {});
+        let (mut bridge, endpoint) =
+            WsBridge::start(0, core.clone(), logger).expect("start bridge");
+        let url = format!("ws://127.0.0.1:{}/?t={}", endpoint.port, endpoint.token);
+
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .expect("test runtime");
+
+        let login_ids = request_ids("account_request_login").expect("known request method");
+        let response_bytes = rt.block_on(async {
+            let (mut ws, _) = tokio_tungstenite::connect_async(&url).await.expect("dial");
+            ws.send(login_frame("p:login")).await.expect("send login");
+
+            for _ in 0..1000 {
+                if first_pairing_deeplink(&auth_states).is_some() {
+                    break;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+            assert!(
+                first_pairing_deeplink(&auth_states).is_some(),
+                "login handler did not reach the pairing prompt"
+            );
+
+            core.cancel_login();
+
+            tokio::time::timeout(std::time::Duration::from_secs(10), async {
+                loop {
+                    match ws.next().await {
+                        Some(Ok(WsMessage::Binary(bytes))) => break bytes,
+                        Some(Ok(_)) => continue,
+                        Some(Err(err)) => panic!("websocket error before response: {err}"),
+                        None => panic!("connection closed before response"),
+                    }
+                }
+            })
+            .await
+            .expect("cancelled login must answer")
+        });
+
+        let response = ProtocolMessage::decode(&mut &response_bytes[..]).expect("decode response");
+        assert_eq!(response.request_id, "p:login");
+        assert_eq!(response.payload.id, login_ids.response_id);
+        assert_eq!(response.payload.value, vec![0x00, 0x00, 0x02]);
+
         bridge.stop();
     }
 

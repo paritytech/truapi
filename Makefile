@@ -77,13 +77,13 @@ uniffi: ## Regenerate Kotlin + Swift bindings from truapi-server cdylib.
 		--library $(UNIFFI_CDYLIB) \
 		--language swift \
 		--out-dir $(UNIFFI_SWIFT_TMP)
-	mkdir -p ios/truapi-host/Sources/truapi_serverFFI/include
+	mkdir -p ios/truapi-host/Sources/truapi_serverFFI
 	cp $(UNIFFI_SWIFT_TMP)/truapi_server.swift \
 		ios/truapi-host/Sources/TrUAPIHost/truapi_server.swift
 	cp $(UNIFFI_SWIFT_TMP)/truapi_serverFFI.h \
-		ios/truapi-host/Sources/truapi_serverFFI/include/truapi_serverFFI.h
+		ios/truapi-host/Sources/truapi_serverFFI/truapi_serverFFI.h
 	cp $(UNIFFI_SWIFT_TMP)/truapi_serverFFI.modulemap \
-		ios/truapi-host/Sources/truapi_serverFFI/include/module.modulemap
+		ios/truapi-host/Sources/truapi_serverFFI/module.modulemap
 
 android-publish-local: uniffi ## Publish io.parity:truapi-host-android to ~/.m2 (dev workflow).
 	gradle :truapi-host:publishReleasePublicationToMavenLocal --no-daemon

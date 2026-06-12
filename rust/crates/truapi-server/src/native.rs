@@ -21,8 +21,8 @@ use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupporte
 use truapi_platform::PairingDeeplinkScheme as PlatformPairingDeeplinkScheme;
 use truapi_platform::{
     AuthPresenter, ChainProvider, ChatHost, Features, JsonRpcConnection, Navigation, Notifications,
-    Permissions, PreimageHost, RuntimeConfig, RuntimeConfigValidationError, SessionStore, Storage,
-    ThemeHost, UserConfirmation,
+    PaymentHost, Permissions, PreimageHost, RuntimeConfig, RuntimeConfigValidationError,
+    SessionStore, Storage, ThemeHost, UserConfirmation,
 };
 
 use crate::TrUApiCore;
@@ -72,6 +72,227 @@ impl From<HostRejection> for v01::GenericError {
     fn from(err: HostRejection) -> Self {
         let HostRejection::Rejected { reason } = err;
         v01::GenericError { reason }
+    }
+}
+
+/// Native-friendly payment request error.
+#[derive(Debug, Clone, thiserror::Error, uniffi::Error)]
+pub enum HostPaymentRequestRejection {
+    /// User rejected the payment request.
+    #[error("payment rejected")]
+    Rejected,
+    /// User's available balance is not sufficient.
+    #[error("insufficient balance")]
+    InsufficientBalance,
+    /// Catch-all.
+    #[error("{reason}")]
+    Unknown {
+        /// Human-readable failure reason.
+        reason: String,
+    },
+}
+
+impl From<HostPaymentRequestRejection> for v01::HostPaymentError {
+    fn from(err: HostPaymentRequestRejection) -> Self {
+        match err {
+            HostPaymentRequestRejection::Rejected => v01::HostPaymentError::Rejected,
+            HostPaymentRequestRejection::InsufficientBalance => {
+                v01::HostPaymentError::InsufficientBalance
+            }
+            HostPaymentRequestRejection::Unknown { reason } => {
+                v01::HostPaymentError::Unknown { reason }
+            }
+        }
+    }
+}
+
+/// Native-friendly payment balance subscription error.
+#[derive(Debug, Clone, thiserror::Error, uniffi::Error)]
+pub enum HostPaymentBalanceSubscriptionRejection {
+    /// User denied balance disclosure.
+    #[error("permission denied")]
+    PermissionDenied,
+    /// Catch-all.
+    #[error("{reason}")]
+    Unknown {
+        /// Human-readable failure reason.
+        reason: String,
+    },
+}
+
+impl From<HostPaymentBalanceSubscriptionRejection> for v01::HostPaymentBalanceSubscribeError {
+    fn from(err: HostPaymentBalanceSubscriptionRejection) -> Self {
+        match err {
+            HostPaymentBalanceSubscriptionRejection::PermissionDenied => {
+                v01::HostPaymentBalanceSubscribeError::PermissionDenied
+            }
+            HostPaymentBalanceSubscriptionRejection::Unknown { reason } => {
+                v01::HostPaymentBalanceSubscribeError::Unknown { reason }
+            }
+        }
+    }
+}
+
+/// Native-friendly payment lifecycle status.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum NativePaymentStatus {
+    /// Payment is being processed.
+    Processing,
+    /// Payment has completed.
+    Completed,
+    /// Payment failed.
+    Failed {
+        /// Human-readable failure reason.
+        reason: String,
+    },
+}
+
+impl From<v01::HostPaymentStatusSubscribeItem> for NativePaymentStatus {
+    fn from(status: v01::HostPaymentStatusSubscribeItem) -> Self {
+        match status {
+            v01::HostPaymentStatusSubscribeItem::Processing => Self::Processing,
+            v01::HostPaymentStatusSubscribeItem::Completed => Self::Completed,
+            v01::HostPaymentStatusSubscribeItem::Failed { reason } => Self::Failed { reason },
+        }
+    }
+}
+
+impl From<NativePaymentStatus> for v01::HostPaymentStatusSubscribeItem {
+    fn from(status: NativePaymentStatus) -> Self {
+        match status {
+            NativePaymentStatus::Processing => Self::Processing,
+            NativePaymentStatus::Completed => Self::Completed,
+            NativePaymentStatus::Failed { reason } => Self::Failed { reason },
+        }
+    }
+}
+
+/// Native-friendly payment status subscription error.
+#[derive(Debug, Clone, thiserror::Error, uniffi::Error)]
+pub enum HostPaymentStatusSubscriptionRejection {
+    /// Payment id was not found for the current product.
+    #[error("payment not found")]
+    PaymentNotFound,
+    /// Catch-all.
+    #[error("{reason}")]
+    Unknown {
+        /// Human-readable failure reason.
+        reason: String,
+    },
+}
+
+impl From<HostPaymentStatusSubscriptionRejection> for v01::HostPaymentStatusSubscribeError {
+    fn from(err: HostPaymentStatusSubscriptionRejection) -> Self {
+        match err {
+            HostPaymentStatusSubscriptionRejection::PaymentNotFound => {
+                v01::HostPaymentStatusSubscribeError::PaymentNotFound
+            }
+            HostPaymentStatusSubscriptionRejection::Unknown { reason } => {
+                v01::HostPaymentStatusSubscribeError::Unknown { reason }
+            }
+        }
+    }
+}
+
+/// Native-friendly payment top-up source.
+#[derive(Debug, Clone, PartialEq, Eq, uniffi::Enum)]
+pub enum NativePaymentTopUpSource {
+    /// Fund from one of the calling product's scoped accounts.
+    ProductAccount {
+        /// Product account derivation index.
+        derivation_index: u32,
+    },
+    /// Fund from a one-time sr25519 account.
+    PrivateKey {
+        /// Sr25519 secret key bytes.
+        sr25519_secret_key: Vec<u8>,
+    },
+    /// Fund directly from coin secret keys.
+    Coins {
+        /// Sr25519 secret keys, one per coin.
+        sr25519_secret_keys: Vec<Vec<u8>>,
+    },
+}
+
+impl From<v01::PaymentTopUpSource> for NativePaymentTopUpSource {
+    fn from(source: v01::PaymentTopUpSource) -> Self {
+        match source {
+            v01::PaymentTopUpSource::ProductAccount { derivation_index } => {
+                Self::ProductAccount { derivation_index }
+            }
+            v01::PaymentTopUpSource::PrivateKey { sr25519_secret_key } => Self::PrivateKey {
+                sr25519_secret_key: sr25519_secret_key.to_vec(),
+            },
+            v01::PaymentTopUpSource::Coins {
+                sr25519_secret_keys,
+            } => Self::Coins {
+                sr25519_secret_keys: sr25519_secret_keys
+                    .into_iter()
+                    .map(|key| key.to_vec())
+                    .collect(),
+            },
+        }
+    }
+}
+
+/// Native-friendly payment top-up error.
+#[derive(Debug, Clone, thiserror::Error, uniffi::Error)]
+pub enum HostPaymentTopUpRejection {
+    /// The source account does not hold sufficient funds.
+    #[error("insufficient funds")]
+    InsufficientFunds,
+    /// The source account was not found or is invalid.
+    #[error("invalid source")]
+    InvalidSource,
+    /// Catch-all.
+    #[error("{reason}")]
+    Unknown {
+        /// Human-readable failure reason.
+        reason: String,
+    },
+    /// Some coins were claimed but the total fell short of the requested amount.
+    #[error("partial payment credited {credited}")]
+    PartialPayment {
+        /// Amount that was successfully credited, encoded as a decimal string.
+        credited: String,
+    },
+}
+
+impl From<HostPaymentTopUpRejection> for v01::HostPaymentTopUpError {
+    fn from(err: HostPaymentTopUpRejection) -> Self {
+        match err {
+            HostPaymentTopUpRejection::InsufficientFunds => {
+                v01::HostPaymentTopUpError::InsufficientFunds
+            }
+            HostPaymentTopUpRejection::InvalidSource => v01::HostPaymentTopUpError::InvalidSource,
+            HostPaymentTopUpRejection::Unknown { reason } => {
+                v01::HostPaymentTopUpError::Unknown { reason }
+            }
+            HostPaymentTopUpRejection::PartialPayment { credited } => credited
+                .parse()
+                .map(|credited| v01::HostPaymentTopUpError::PartialPayment { credited })
+                .unwrap_or_else(|err| v01::HostPaymentTopUpError::Unknown {
+                    reason: format!("invalid partial payment amount {credited:?}: {err}"),
+                }),
+        }
+    }
+}
+
+/// Native-friendly chat room creation status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, uniffi::Enum)]
+pub enum HostChatRoomRegistrationStatus {
+    /// The host created a new room.
+    New,
+    /// The requested room already exists.
+    Exists,
+}
+
+impl From<HostChatRoomRegistrationStatus> for v01::ChatRoomRegistrationStatus {
+    fn from(status: HostChatRoomRegistrationStatus) -> Self {
+        match status {
+            HostChatRoomRegistrationStatus::New => v01::ChatRoomRegistrationStatus::New,
+            HostChatRoomRegistrationStatus::Exists => v01::ChatRoomRegistrationStatus::Exists,
+        }
     }
 }
 
@@ -306,9 +527,11 @@ impl From<HostNavigateRejection> for v01::HostNavigateToError {
 /// Threading contract: every callback is invoked on a background thread
 /// owned by the Rust core, never the host's main/UI thread. UI-decision
 /// callbacks (`navigate_to`, `device_permission`, `remote_permission`,
-/// the `confirm_*` family) plus the potentially slow `submit_preimage` run
-/// on the tokio blocking pool, so an implementation may block its calling
-/// thread until the user decides without stalling concurrent dispatches.
+/// `payment_balance_subscribe`, `payment_request`, `payment_top_up`,
+/// `payment_status_subscribe`, the `confirm_*` family) plus the potentially
+/// slow `submit_preimage` run on the tokio blocking pool, so an implementation
+/// may block its calling thread until the user decides without stalling
+/// concurrent dispatches.
 /// All other callbacks run inline on the dispatcher thread and must return
 /// promptly; in particular `auth_state_changed` should only hand the state
 /// to the host UI thread, never wait for the user. As the one exception to
@@ -406,6 +629,14 @@ pub trait HostCallbacks: Send + Sync {
     /// Answer whether the host supports the chain identified by genesis hash.
     fn feature_supported_chain(&self, genesis_hash: Vec<u8>) -> Result<bool, HostRejection>;
 
+    /// Create or join a native chat room and return its registration status.
+    fn chat_create_room(
+        &self,
+        room_id: String,
+        name: String,
+        icon: String,
+    ) -> Result<HostChatRoomRegistrationStatus, HostRejection>;
+
     /// Post a text message into the native chat system and return the
     /// host-assigned message id.
     fn chat_post_text_message(
@@ -422,6 +653,29 @@ pub trait HostCallbacks: Send + Sync {
         message_type: String,
         payload: Vec<u8>,
     ) -> Result<String, HostRejection>;
+
+    /// Start forwarding payment balance updates and return the first balance.
+    fn payment_balance_subscribe(&self) -> Result<String, HostPaymentBalanceSubscriptionRejection>;
+
+    /// Initiate a native payment and return the host-assigned payment id.
+    fn payment_request(
+        &self,
+        amount_in_planks: String,
+        destination: Vec<u8>,
+    ) -> Result<String, HostPaymentRequestRejection>;
+
+    /// Top up the product payment balance.
+    fn payment_top_up(
+        &self,
+        amount_in_planks: String,
+        source: NativePaymentTopUpSource,
+    ) -> Result<(), HostPaymentTopUpRejection>;
+
+    /// Start forwarding updates for a payment and return its current status.
+    fn payment_status_subscribe(
+        &self,
+        payment_id: String,
+    ) -> Result<NativePaymentStatus, HostPaymentStatusSubscriptionRejection>;
 
     /// Read a value from the host's scoped key-value store.
     fn local_storage_read(&self, key: String) -> Result<Option<Vec<u8>>, HostStorageError>;
@@ -501,10 +755,36 @@ impl NativeTrUApiCore {
         self.events.notify_chain_closed(connection_id);
     }
 
+    /// Push a native payment balance update into active `payment.balanceSubscribe()` streams.
+    pub fn notify_payment_balance_changed(&self, amount_in_planks: String) {
+        if let Ok(balance) = amount_in_planks.parse() {
+            self.events.notify_payment_balance_changed(balance);
+        }
+    }
+
+    /// Push a native payment status update into active `payment.statusSubscribe()` streams.
+    pub fn notify_payment_status_changed(&self, payment_id: String, status: NativePaymentStatus) {
+        self.events
+            .notify_payment_status_changed(&payment_id, status.into());
+    }
+
     /// Publish a host-originated plain-text chat message to product
     /// `chat.actionSubscribe()` streams.
     pub fn notify_chat_message_posted(&self, room_id: String, peer: String, text: String) {
         self.core.notify_chat_message_posted(room_id, peer, text);
+    }
+
+    /// Publish a host-originated custom chat message to product
+    /// `chat.actionSubscribe()` streams.
+    pub fn notify_chat_custom_message_posted(
+        &self,
+        room_id: String,
+        peer: String,
+        message_type: String,
+        payload: Vec<u8>,
+    ) {
+        self.core
+            .notify_chat_custom_message_posted(room_id, peer, message_type, payload);
     }
 
     /// Publish a host-originated chat action trigger to product
@@ -651,6 +931,9 @@ struct NativeEventBus {
     theme_changes: Mutex<Vec<mpsc::UnboundedSender<Result<v01::ThemeVariant, v01::GenericError>>>>,
     preimage_changes: Mutex<Vec<PreimageSubscription>>,
     chain_responses: Mutex<HashMap<u32, mpsc::UnboundedSender<String>>>,
+    payment_balances: Mutex<Vec<mpsc::UnboundedSender<v01::Balance>>>,
+    payment_statuses:
+        Mutex<HashMap<String, Vec<mpsc::UnboundedSender<v01::HostPaymentStatusSubscribeItem>>>>,
 }
 
 struct PreimageSubscription {
@@ -746,6 +1029,55 @@ impl NativeEventBus {
             .lock()
             .expect("native chain subscribers mutex poisoned")
             .remove(&connection_id);
+    }
+
+    fn subscribe_payment_balance(&self, current: v01::Balance) -> BoxStream<'static, v01::Balance> {
+        let (tx, rx) = mpsc::unbounded();
+        self.payment_balances
+            .lock()
+            .expect("native payment balance subscribers mutex poisoned")
+            .push(tx);
+        stream::once(async move { current }).chain(rx).boxed()
+    }
+
+    fn notify_payment_balance_changed(&self, balance: v01::Balance) {
+        self.payment_balances
+            .lock()
+            .expect("native payment balance subscribers mutex poisoned")
+            .retain(|tx| tx.unbounded_send(balance).is_ok());
+    }
+
+    fn subscribe_payment_status(
+        &self,
+        payment_id: String,
+        current: v01::HostPaymentStatusSubscribeItem,
+    ) -> BoxStream<'static, v01::HostPaymentStatusSubscribeItem> {
+        let (tx, rx) = mpsc::unbounded();
+        self.payment_statuses
+            .lock()
+            .expect("native payment status subscribers mutex poisoned")
+            .entry(payment_id)
+            .or_default()
+            .push(tx);
+        stream::once(async move { current }).chain(rx).boxed()
+    }
+
+    fn notify_payment_status_changed(
+        &self,
+        payment_id: &str,
+        status: v01::HostPaymentStatusSubscribeItem,
+    ) {
+        let mut subscriptions = self
+            .payment_statuses
+            .lock()
+            .expect("native payment status subscribers mutex poisoned");
+        let Some(senders) = subscriptions.get_mut(payment_id) else {
+            return;
+        };
+        senders.retain(|tx| tx.unbounded_send(status.clone()).is_ok());
+        if senders.is_empty() {
+            subscriptions.remove(payment_id);
+        }
     }
 }
 
@@ -890,6 +1222,23 @@ impl Storage for CallbackPlatform {
 }
 
 impl ChatHost for CallbackPlatform {
+    async fn create_chat_room(
+        &self,
+        room_id: String,
+        name: String,
+        icon: String,
+    ) -> Result<v01::ChatRoomRegistrationStatus, v01::HostChatCreateRoomError> {
+        self.callbacks.on_core_log(
+            "truapi.native.callback.chat_create_room".to_string(),
+            room_id.clone(),
+        );
+
+        self.callbacks
+            .chat_create_room(room_id, name, icon)
+            .map(Into::into)
+            .map_err(chat_create_room_rejection_to_error)
+    }
+
     async fn post_chat_message(
         &self,
         room_id: String,
@@ -914,6 +1263,89 @@ impl ChatHost for CallbackPlatform {
                     .to_string(),
             }),
         }
+    }
+}
+
+impl PaymentHost for CallbackPlatform {
+    async fn subscribe_payment_balance(
+        &self,
+    ) -> Result<BoxStream<'static, v01::Balance>, v01::HostPaymentBalanceSubscribeError> {
+        self.callbacks.on_core_log(
+            "truapi.native.callback.payment_balance_subscribe".to_string(),
+            String::new(),
+        );
+        let callbacks = self.callbacks.clone();
+        let balance: v01::Balance =
+            run_blocking_callback(move || callbacks.payment_balance_subscribe())
+                .await
+                .map_err(v01::HostPaymentBalanceSubscribeError::from)?
+                .parse()
+                .map_err(|err| v01::HostPaymentBalanceSubscribeError::Unknown {
+                    reason: format!("invalid payment balance amount: {err}"),
+                })?;
+        Ok(self.events.subscribe_payment_balance(balance))
+    }
+
+    async fn request_payment(
+        &self,
+        amount: v01::Balance,
+        destination: [u8; 32],
+    ) -> Result<String, v01::HostPaymentError> {
+        self.callbacks.on_core_log(
+            "truapi.native.callback.payment_request".to_string(),
+            amount.to_string(),
+        );
+        let callbacks = self.callbacks.clone();
+        run_blocking_callback(move || {
+            callbacks.payment_request(amount.to_string(), destination.to_vec())
+        })
+        .await
+        .map_err(Into::into)
+    }
+
+    async fn top_up_payment(
+        &self,
+        amount: v01::Balance,
+        source: v01::PaymentTopUpSource,
+    ) -> Result<(), v01::HostPaymentTopUpError> {
+        self.callbacks.on_core_log(
+            "truapi.native.callback.payment_top_up".to_string(),
+            amount.to_string(),
+        );
+        let callbacks = self.callbacks.clone();
+        let source = NativePaymentTopUpSource::from(source);
+        run_blocking_callback(move || callbacks.payment_top_up(amount.to_string(), source))
+            .await
+            .map_err(Into::into)
+    }
+
+    async fn subscribe_payment_status(
+        &self,
+        payment_id: String,
+    ) -> Result<
+        BoxStream<'static, v01::HostPaymentStatusSubscribeItem>,
+        v01::HostPaymentStatusSubscribeError,
+    > {
+        self.callbacks.on_core_log(
+            "truapi.native.callback.payment_status_subscribe".to_string(),
+            payment_id.clone(),
+        );
+        let callbacks = self.callbacks.clone();
+        let current = run_blocking_callback({
+            let payment_id = payment_id.clone();
+            move || callbacks.payment_status_subscribe(payment_id)
+        })
+        .await
+        .map_err(v01::HostPaymentStatusSubscribeError::from)?;
+        Ok(self
+            .events
+            .subscribe_payment_status(payment_id, current.into()))
+    }
+}
+
+fn chat_create_room_rejection_to_error(err: HostRejection) -> v01::HostChatCreateRoomError {
+    v01::HostChatCreateRoomError::Unknown {
+        reason: err.to_string(),
     }
 }
 
@@ -1292,6 +1724,14 @@ mod tests {
                 .push(genesis_hash);
             Ok(true)
         }
+        fn chat_create_room(
+            &self,
+            _room_id: String,
+            _name: String,
+            _icon: String,
+        ) -> Result<HostChatRoomRegistrationStatus, HostRejection> {
+            Ok(HostChatRoomRegistrationStatus::New)
+        }
         fn chat_post_text_message(
             &self,
             _room_id: String,
@@ -1306,6 +1746,31 @@ mod tests {
             _payload: Vec<u8>,
         ) -> Result<String, HostRejection> {
             Ok("message-1".to_string())
+        }
+        fn payment_balance_subscribe(
+            &self,
+        ) -> Result<String, HostPaymentBalanceSubscriptionRejection> {
+            Ok("0".to_string())
+        }
+        fn payment_request(
+            &self,
+            _amount_in_planks: String,
+            _destination: Vec<u8>,
+        ) -> Result<String, HostPaymentRequestRejection> {
+            Ok("payment-1".to_string())
+        }
+        fn payment_top_up(
+            &self,
+            _amount_in_planks: String,
+            _source: NativePaymentTopUpSource,
+        ) -> Result<(), HostPaymentTopUpRejection> {
+            Ok(())
+        }
+        fn payment_status_subscribe(
+            &self,
+            _payment_id: String,
+        ) -> Result<NativePaymentStatus, HostPaymentStatusSubscriptionRejection> {
+            Ok(NativePaymentStatus::Completed)
         }
         fn local_storage_read(&self, _key: String) -> Result<Option<Vec<u8>>, HostStorageError> {
             Ok(None)
@@ -1721,6 +2186,14 @@ mod tests {
             ) -> Result<bool, HostRejection> {
                 Ok(false)
             }
+            fn chat_create_room(
+                &self,
+                _room_id: String,
+                _name: String,
+                _icon: String,
+            ) -> Result<HostChatRoomRegistrationStatus, HostRejection> {
+                Ok(HostChatRoomRegistrationStatus::New)
+            }
             fn chat_post_text_message(
                 &self,
                 _room_id: String,
@@ -1735,6 +2208,31 @@ mod tests {
                 _payload: Vec<u8>,
             ) -> Result<String, HostRejection> {
                 Ok("message-1".to_string())
+            }
+            fn payment_balance_subscribe(
+                &self,
+            ) -> Result<String, HostPaymentBalanceSubscriptionRejection> {
+                Ok("0".to_string())
+            }
+            fn payment_request(
+                &self,
+                _amount_in_planks: String,
+                _destination: Vec<u8>,
+            ) -> Result<String, HostPaymentRequestRejection> {
+                Ok("payment-1".to_string())
+            }
+            fn payment_top_up(
+                &self,
+                _amount_in_planks: String,
+                _source: NativePaymentTopUpSource,
+            ) -> Result<(), HostPaymentTopUpRejection> {
+                Ok(())
+            }
+            fn payment_status_subscribe(
+                &self,
+                _payment_id: String,
+            ) -> Result<NativePaymentStatus, HostPaymentStatusSubscriptionRejection> {
+                Ok(NativePaymentStatus::Completed)
             }
             fn local_storage_read(
                 &self,
@@ -1889,6 +2387,14 @@ mod tests {
             ) -> Result<bool, HostRejection> {
                 Ok(true)
             }
+            fn chat_create_room(
+                &self,
+                _room_id: String,
+                _name: String,
+                _icon: String,
+            ) -> Result<HostChatRoomRegistrationStatus, HostRejection> {
+                Ok(HostChatRoomRegistrationStatus::New)
+            }
             fn chat_post_text_message(
                 &self,
                 _room_id: String,
@@ -1903,6 +2409,31 @@ mod tests {
                 _payload: Vec<u8>,
             ) -> Result<String, HostRejection> {
                 Ok("message-1".to_string())
+            }
+            fn payment_balance_subscribe(
+                &self,
+            ) -> Result<String, HostPaymentBalanceSubscriptionRejection> {
+                Ok("0".to_string())
+            }
+            fn payment_request(
+                &self,
+                _amount_in_planks: String,
+                _destination: Vec<u8>,
+            ) -> Result<String, HostPaymentRequestRejection> {
+                Ok("payment-1".to_string())
+            }
+            fn payment_top_up(
+                &self,
+                _amount_in_planks: String,
+                _source: NativePaymentTopUpSource,
+            ) -> Result<(), HostPaymentTopUpRejection> {
+                Ok(())
+            }
+            fn payment_status_subscribe(
+                &self,
+                _payment_id: String,
+            ) -> Result<NativePaymentStatus, HostPaymentStatusSubscriptionRejection> {
+                Ok(NativePaymentStatus::Completed)
             }
             fn local_storage_read(
                 &self,

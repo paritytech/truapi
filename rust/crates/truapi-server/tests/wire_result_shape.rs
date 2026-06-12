@@ -23,7 +23,7 @@ use parity_scale_codec::{Decode, Encode};
 
 use truapi::v01;
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
-use truapi::versioned::{account, payment, statement_store};
+use truapi::versioned::{account, statement_store};
 
 use truapi_server::{
     Payload, ProtocolMessage, TrUApiCore, encode_call_error_payload, request_ids, subscription_ids,
@@ -31,8 +31,6 @@ use truapi_server::{
 
 mod common;
 use common::{WireShapePlatform, test_runtime_config, test_spawner};
-
-const PAYMENTS_NOT_IMPLEMENTED: &str = "Payments are not supported in dot.li";
 
 fn dispatch(core: &TrUApiCore, frame: ProtocolMessage) -> ProtocolMessage {
     let encoded = frame.encode();
@@ -128,31 +126,6 @@ fn assert_request_returns_unsupported(
     );
 }
 
-fn assert_request_returns_domain_error<E: Encode>(
-    core: &TrUApiCore,
-    request_id: &str,
-    method: &str,
-    value: Vec<u8>,
-    error: truapi::CallError<E>,
-) {
-    let ids = request_ids(method).expect("known request method");
-    let response = dispatch(
-        core,
-        ProtocolMessage {
-            request_id: request_id.into(),
-            payload: Payload {
-                id: ids.request_id,
-                value,
-            },
-        },
-    );
-    assert_eq!(response.request_id, request_id);
-    assert_eq!(response.payload.id, ids.response_id);
-    let mut expected = vec![0x01u8];
-    expected.extend(encode_call_error_payload(error));
-    assert_eq!(response.payload.value, expected);
-}
-
 fn assert_subscription_start_interrupts_error<E: Encode>(
     core: &TrUApiCore,
     request_id: &str,
@@ -220,81 +193,6 @@ fn deferred_account_proof_returns_unsupported() {
         "p:account-proof",
         "account_create_account_proof",
         request.encode(),
-    );
-}
-
-#[test]
-fn deferred_payment_requests_return_dotli_not_implemented_errors() {
-    let core = make_core();
-    let request = payment::HostPaymentRequest::V1(v01::HostPaymentRequest {
-        from: None,
-        amount: 1,
-        destination: [0u8; 32],
-    });
-
-    assert_request_returns_domain_error(
-        &core,
-        "p:payment",
-        "payment_request",
-        request.encode(),
-        truapi::CallError::Domain(payment::HostPaymentError::V1(
-            v01::HostPaymentError::Unknown {
-                reason: PAYMENTS_NOT_IMPLEMENTED.to_string(),
-            },
-        )),
-    );
-
-    let top_up = payment::HostPaymentTopUpRequest::V1(v01::HostPaymentTopUpRequest {
-        into: None,
-        amount: 1,
-        source: v01::PaymentTopUpSource::ProductAccount {
-            derivation_index: 0,
-        },
-    });
-    assert_request_returns_domain_error(
-        &core,
-        "p:top-up",
-        "payment_top_up",
-        top_up.encode(),
-        truapi::CallError::Domain(payment::HostPaymentTopUpError::V1(
-            v01::HostPaymentTopUpError::Unknown {
-                reason: PAYMENTS_NOT_IMPLEMENTED.to_string(),
-            },
-        )),
-    );
-}
-
-#[test]
-fn deferred_payment_subscriptions_interrupt_dotli_not_implemented_errors() {
-    let core = make_core();
-    let balance =
-        payment::HostPaymentBalanceSubscribeRequest::V1(v01::HostPaymentBalanceSubscribeRequest {
-            purse: None,
-        });
-    assert_subscription_start_interrupts_error(
-        &core,
-        "p:balance",
-        "payment_balance_subscribe",
-        balance.encode(),
-        truapi::CallError::Domain(payment::HostPaymentBalanceSubscribeError::V1(
-            v01::HostPaymentBalanceSubscribeError::PermissionDenied,
-        )),
-    );
-
-    let status =
-        payment::HostPaymentStatusSubscribeRequest::V1(v01::HostPaymentStatusSubscribeRequest {
-            payment_id: "payment-id".to_string(),
-        });
-    assert_subscription_start_interrupts_error(
-        &core,
-        "p:status",
-        "payment_status_subscribe",
-        status.encode(),
-        truapi::CallError::Domain(payment::HostPaymentStatusSubscribeError::V1(
-            v01::HostPaymentStatusSubscribeError::Unknown {
-                reason: PAYMENTS_NOT_IMPLEMENTED.to_string(),
-            },
-        )),
     );
 }
 

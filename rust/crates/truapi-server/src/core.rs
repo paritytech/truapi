@@ -131,6 +131,30 @@ impl TrUApiCore {
             ));
     }
 
+    /// Publish a custom chat message to active `chat.actionSubscribe()`
+    /// subscribers.
+    pub fn notify_chat_custom_message_posted(
+        &self,
+        room_id: String,
+        peer: String,
+        message_type: String,
+        payload: Vec<u8>,
+    ) {
+        self.chat_events
+            .notify_action(HostChatActionSubscribeItem::V1(
+                v01::HostChatActionSubscribeItem {
+                    room_id,
+                    peer,
+                    payload: v01::ChatActionPayload::MessagePosted(
+                        v01::ChatMessageContent::Custom(v01::ChatCustomMessage {
+                            message_type,
+                            payload,
+                        }),
+                    ),
+                },
+            ));
+    }
+
     /// Publish a chat action-button trigger to active
     /// `chat.actionSubscribe()` subscribers.
     pub fn notify_chat_action_triggered(
@@ -243,11 +267,19 @@ mod tests {
     use super::*;
     use parity_scale_codec::Encode;
     use truapi::v01;
-    use truapi::versioned::chat::{HostChatPostMessageRequest, HostChatPostMessageResponse};
+    use truapi::versioned::chat::{
+        HostChatCreateRoomRequest, HostChatCreateRoomResponse, HostChatPostMessageRequest,
+        HostChatPostMessageResponse,
+    };
     use truapi::versioned::local_storage::{
         HostLocalStorageClearRequest, HostLocalStorageReadRequest, HostLocalStorageWriteRequest,
     };
     use truapi::versioned::notifications::HostPushNotificationRequest;
+    use truapi::versioned::payment::{
+        HostPaymentBalanceSubscribeItem, HostPaymentBalanceSubscribeRequest, HostPaymentRequest,
+        HostPaymentResponse, HostPaymentStatusSubscribeItem, HostPaymentStatusSubscribeRequest,
+        HostPaymentTopUpRequest, HostPaymentTopUpResponse,
+    };
     use truapi::versioned::permissions::RemotePermissionRequest;
     use truapi::versioned::system::HostFeatureSupportedRequest;
 
@@ -374,6 +406,71 @@ mod tests {
     }
 
     #[test]
+    fn chat_action_subscribe_receives_core_notified_custom_message() {
+        let core = make_core();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let transport = Arc::new(ChannelTransport { tx });
+        let sub_ids = subscription_ids("chat_action_subscribe").expect("known subscription");
+        let start = ProtocolMessage {
+            request_id: "chat:1".into(),
+            payload: Payload {
+                id: sub_ids.start_id,
+                value: Vec::new(),
+            },
+        };
+
+        futures::executor::block_on(core.dispatch(start, transport));
+        core.notify_chat_custom_message_posted(
+            "room-1".to_string(),
+            "peer-1".to_string(),
+            "product.card".to_string(),
+            vec![1, 2, 3],
+        );
+
+        let message = rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("subscription receive frame");
+        assert_eq!(message.request_id, "chat:1");
+        assert_eq!(message.payload.id, sub_ids.receive_id);
+        let item = HostChatActionSubscribeItem::decode(&mut &message.payload.value[..])
+            .expect("decode chat action item");
+        assert_eq!(
+            item,
+            HostChatActionSubscribeItem::V1(v01::HostChatActionSubscribeItem {
+                room_id: "room-1".to_string(),
+                peer: "peer-1".to_string(),
+                payload: v01::ChatActionPayload::MessagePosted(v01::ChatMessageContent::Custom(
+                    v01::ChatCustomMessage {
+                        message_type: "product.card".to_string(),
+                        payload: vec![1, 2, 3],
+                    }
+                )),
+            })
+        );
+    }
+
+    #[test]
+    fn chat_create_room_round_trips_through_platform() {
+        let core = make_core();
+        let request = HostChatCreateRoomRequest::V1(v01::HostChatCreateRoomRequest {
+            room_id: "room-1".to_string(),
+            name: "Room 1".to_string(),
+            icon: "https://example.com/icon.png".to_string(),
+        });
+        let payload = run_request(&core, "chat_create_room", request.encode());
+
+        assert_eq!(payload[0], 0x00);
+        let response = HostChatCreateRoomResponse::decode(&mut &payload[1..])
+            .expect("decode chat create room response");
+        assert_eq!(
+            response,
+            HostChatCreateRoomResponse::V1(v01::HostChatCreateRoomResponse {
+                status: v01::ChatRoomRegistrationStatus::New,
+            })
+        );
+    }
+
+    #[test]
     fn chat_post_message_round_trips_through_platform() {
         let core = make_core();
         let request = HostChatPostMessageRequest::V1(v01::HostChatPostMessageRequest {
@@ -393,6 +490,132 @@ mod tests {
                 message_id: "message-1".to_string(),
             })
         );
+    }
+
+    #[test]
+    fn payment_request_round_trips_through_platform() {
+        let core = make_core();
+        let request = HostPaymentRequest::V1(v01::HostPaymentRequest {
+            from: None,
+            amount: 123,
+            destination: [7u8; 32],
+        });
+        let payload = run_request(&core, "payment_request", request.encode());
+
+        assert_eq!(payload[0], 0x00);
+        let response = HostPaymentResponse::decode(&mut &payload[1..])
+            .expect("decode payment request response");
+        assert_eq!(
+            response,
+            HostPaymentResponse::V1(v01::HostPaymentResponse {
+                id: "payment-1".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn payment_balance_subscribe_round_trips_through_platform() {
+        let platform = Arc::new(StubPlatform::default());
+        *platform
+            .payment_balances
+            .lock()
+            .expect("payment balances mutex poisoned") = vec![123];
+        let core = TrUApiCore::from_platform_with_config(
+            platform,
+            runtime_config("dotli.dot"),
+            test_spawner(),
+        );
+        let (tx, rx) = std::sync::mpsc::channel();
+        let transport = Arc::new(ChannelTransport { tx });
+        let sub_ids = subscription_ids("payment_balance_subscribe").expect("known subscription");
+        let request =
+            HostPaymentBalanceSubscribeRequest::V1(v01::HostPaymentBalanceSubscribeRequest {
+                purse: None,
+            });
+        let start = ProtocolMessage {
+            request_id: "payment-balance:1".into(),
+            payload: Payload {
+                id: sub_ids.start_id,
+                value: request.encode(),
+            },
+        };
+
+        futures::executor::block_on(core.dispatch(start, transport));
+
+        let message = rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("subscription receive frame");
+        assert_eq!(message.request_id, "payment-balance:1");
+        assert_eq!(message.payload.id, sub_ids.receive_id);
+        let item = HostPaymentBalanceSubscribeItem::decode(&mut &message.payload.value[..])
+            .expect("decode payment balance item");
+        assert_eq!(
+            item,
+            HostPaymentBalanceSubscribeItem::V1(v01::HostPaymentBalanceSubscribeItem {
+                available: 123,
+            })
+        );
+    }
+
+    #[test]
+    fn payment_status_subscribe_round_trips_through_platform() {
+        let platform = Arc::new(StubPlatform::default());
+        *platform
+            .payment_statuses
+            .lock()
+            .expect("payment statuses mutex poisoned") =
+            vec![v01::HostPaymentStatusSubscribeItem::Processing];
+        let core = TrUApiCore::from_platform_with_config(
+            platform,
+            runtime_config("dotli.dot"),
+            test_spawner(),
+        );
+        let (tx, rx) = std::sync::mpsc::channel();
+        let transport = Arc::new(ChannelTransport { tx });
+        let sub_ids = subscription_ids("payment_status_subscribe").expect("known subscription");
+        let request =
+            HostPaymentStatusSubscribeRequest::V1(v01::HostPaymentStatusSubscribeRequest {
+                payment_id: "payment-1".to_string(),
+            });
+        let start = ProtocolMessage {
+            request_id: "payment-status:1".into(),
+            payload: Payload {
+                id: sub_ids.start_id,
+                value: request.encode(),
+            },
+        };
+
+        futures::executor::block_on(core.dispatch(start, transport));
+
+        let message = rx
+            .recv_timeout(std::time::Duration::from_secs(2))
+            .expect("subscription receive frame");
+        assert_eq!(message.request_id, "payment-status:1");
+        assert_eq!(message.payload.id, sub_ids.receive_id);
+        let item = HostPaymentStatusSubscribeItem::decode(&mut &message.payload.value[..])
+            .expect("decode payment status item");
+        assert_eq!(
+            item,
+            HostPaymentStatusSubscribeItem::V1(v01::HostPaymentStatusSubscribeItem::Processing)
+        );
+    }
+
+    #[test]
+    fn payment_top_up_round_trips_through_platform() {
+        let core = make_core();
+        let request = HostPaymentTopUpRequest::V1(v01::HostPaymentTopUpRequest {
+            into: None,
+            amount: 123,
+            source: v01::PaymentTopUpSource::ProductAccount {
+                derivation_index: 0,
+            },
+        });
+        let payload = run_request(&core, "payment_top_up", request.encode());
+
+        assert_eq!(payload[0], 0x00);
+        let response = HostPaymentTopUpResponse::decode(&mut &payload[1..])
+            .expect("decode payment top-up response");
+        assert_eq!(response, HostPaymentTopUpResponse::V1);
     }
 
     #[test]

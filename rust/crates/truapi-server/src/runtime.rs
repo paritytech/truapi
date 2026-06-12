@@ -78,7 +78,8 @@ use truapi::versioned::chain::{
     RemoteChainTransactionStopResponse,
 };
 use truapi::versioned::chat::{
-    HostChatActionSubscribeItem, HostChatPostMessageError, HostChatPostMessageRequest,
+    HostChatActionSubscribeItem, HostChatCreateRoomError, HostChatCreateRoomRequest,
+    HostChatCreateRoomResponse, HostChatPostMessageError, HostChatPostMessageRequest,
     HostChatPostMessageResponse,
 };
 use truapi::versioned::entropy::{
@@ -130,10 +131,10 @@ use truapi::versioned::theme::HostThemeSubscribeItem;
 use truapi::{CallContext, CallError, Subscription};
 use truapi_platform::{
     ChainProvider as PlatformChainProvider, ChatHost as PlatformChatHost, JsonRpcConnection,
-    Navigation as PlatformNavigation, Notifications as PlatformNotifications, Platform,
-    PreimageHost as PlatformPreimageHost, RuntimeConfig, SessionStore as PlatformSessionStore,
-    SessionUiInfo, Storage as PlatformStorage, ThemeHost as PlatformThemeHost,
-    UserConfirmation as PlatformUserConfirmation,
+    Navigation as PlatformNavigation, Notifications as PlatformNotifications,
+    PaymentHost as PlatformPaymentHost, Platform, PreimageHost as PlatformPreimageHost,
+    RuntimeConfig, SessionStore as PlatformSessionStore, SessionUiInfo, Storage as PlatformStorage,
+    ThemeHost as PlatformThemeHost, UserConfirmation as PlatformUserConfirmation,
 };
 
 #[derive(Default)]
@@ -1522,18 +1523,36 @@ where
 // ---------------------------------------------------------------------------
 // Deferred product surfaces.
 //
-// Payment and full account proof are explicitly out of current dotli parity,
-// but products should still observe dotli's typed "not implemented" errors
-// rather than a generic transport failure.
+// Full account proof is explicitly out of current dotli parity, but products
+// should still observe dotli's typed "not implemented" errors rather than a
+// generic transport failure.
 // CoinPayment remains outside this milestone and keeps its generated trait
 // defaults until another host/product needs real implementations.
-
-const PAYMENTS_NOT_IMPLEMENTED: &str = "Payments are not supported in dot.li";
 
 impl<P> Chat for PlatformRuntimeHost<P>
 where
     P: Platform + 'static,
 {
+    async fn create_room(
+        &self,
+        _cx: &CallContext,
+        request: HostChatCreateRoomRequest,
+    ) -> Result<HostChatCreateRoomResponse, CallError<HostChatCreateRoomError>> {
+        let HostChatCreateRoomRequest::V1(inner) = request;
+        let status = PlatformChatHost::create_chat_room(
+            self.platform.as_ref(),
+            inner.room_id,
+            inner.name,
+            inner.icon,
+        )
+        .await
+        .map_err(|err| CallError::Domain(HostChatCreateRoomError::V1(err)))?;
+
+        Ok(HostChatCreateRoomResponse::V1(
+            v01::HostChatCreateRoomResponse { status },
+        ))
+    }
+
     async fn post_message(
         &self,
         _cx: &CallContext,
@@ -1569,56 +1588,97 @@ where
     async fn balance_subscribe(
         &self,
         _cx: &CallContext,
-        _request: HostPaymentBalanceSubscribeRequest,
+        request: HostPaymentBalanceSubscribeRequest,
     ) -> Result<
         Subscription<HostPaymentBalanceSubscribeItem>,
         CallError<HostPaymentBalanceSubscribeError>,
     > {
-        Err(CallError::Domain(HostPaymentBalanceSubscribeError::V1(
-            v01::HostPaymentBalanceSubscribeError::PermissionDenied,
-        )))
+        let HostPaymentBalanceSubscribeRequest::V1(inner) = request;
+        if inner.purse.is_some() {
+            return Err(CallError::Domain(HostPaymentBalanceSubscribeError::V1(
+                v01::HostPaymentBalanceSubscribeError::Unknown {
+                    reason: "payment.balanceSubscribe only supports MAIN_PURSE".to_string(),
+                },
+            )));
+        }
+
+        let stream = PlatformPaymentHost::subscribe_payment_balance(self.platform.as_ref())
+            .await
+            .map_err(|err| CallError::Domain(HostPaymentBalanceSubscribeError::V1(err)))?
+            .map(|available| {
+                HostPaymentBalanceSubscribeItem::V1(v01::HostPaymentBalanceSubscribeItem {
+                    available,
+                })
+            });
+
+        Ok(Subscription::new(Box::pin(stream)))
     }
 
     #[instrument(skip_all, fields(runtime.method = "payment.request"))]
     async fn request(
         &self,
         _cx: &CallContext,
-        _request: HostPaymentRequest,
+        request: HostPaymentRequest,
     ) -> Result<HostPaymentResponse, CallError<HostPaymentError>> {
-        Err(CallError::Domain(HostPaymentError::V1(
-            v01::HostPaymentError::Unknown {
-                reason: PAYMENTS_NOT_IMPLEMENTED.to_string(),
-            },
-        )))
+        let HostPaymentRequest::V1(inner) = request;
+        if inner.from.is_some() {
+            return Err(CallError::Domain(HostPaymentError::V1(
+                v01::HostPaymentError::Unknown {
+                    reason: "payment.request only supports MAIN_PURSE".to_string(),
+                },
+            )));
+        }
+
+        let id = PlatformPaymentHost::request_payment(
+            self.platform.as_ref(),
+            inner.amount,
+            inner.destination,
+        )
+        .await
+        .map_err(|err| CallError::Domain(HostPaymentError::V1(err)))?;
+
+        Ok(HostPaymentResponse::V1(v01::HostPaymentResponse { id }))
     }
 
     #[instrument(skip_all, fields(runtime.method = "payment.status_subscribe"))]
     async fn status_subscribe(
         &self,
         _cx: &CallContext,
-        _request: HostPaymentStatusSubscribeRequest,
+        request: HostPaymentStatusSubscribeRequest,
     ) -> Result<
         Subscription<HostPaymentStatusSubscribeItem>,
         CallError<HostPaymentStatusSubscribeError>,
     > {
-        Err(CallError::Domain(HostPaymentStatusSubscribeError::V1(
-            v01::HostPaymentStatusSubscribeError::Unknown {
-                reason: PAYMENTS_NOT_IMPLEMENTED.to_string(),
-            },
-        )))
+        let HostPaymentStatusSubscribeRequest::V1(inner) = request;
+        let stream =
+            PlatformPaymentHost::subscribe_payment_status(self.platform.as_ref(), inner.payment_id)
+                .await
+                .map_err(|err| CallError::Domain(HostPaymentStatusSubscribeError::V1(err)))?
+                .map(HostPaymentStatusSubscribeItem::V1);
+
+        Ok(Subscription::new(Box::pin(stream)))
     }
 
     #[instrument(skip_all, fields(runtime.method = "payment.top_up"))]
     async fn top_up(
         &self,
         _cx: &CallContext,
-        _request: HostPaymentTopUpRequest,
+        request: HostPaymentTopUpRequest,
     ) -> Result<HostPaymentTopUpResponse, CallError<HostPaymentTopUpError>> {
-        Err(CallError::Domain(HostPaymentTopUpError::V1(
-            v01::HostPaymentTopUpError::Unknown {
-                reason: PAYMENTS_NOT_IMPLEMENTED.to_string(),
-            },
-        )))
+        let HostPaymentTopUpRequest::V1(inner) = request;
+        if inner.into.is_some() {
+            return Err(CallError::Domain(HostPaymentTopUpError::V1(
+                v01::HostPaymentTopUpError::Unknown {
+                    reason: "payment.topUp only supports MAIN_PURSE".to_string(),
+                },
+            )));
+        }
+
+        PlatformPaymentHost::top_up_payment(self.platform.as_ref(), inner.amount, inner.source)
+            .await
+            .map_err(|err| CallError::Domain(HostPaymentTopUpError::V1(err)))?;
+
+        Ok(HostPaymentTopUpResponse::V1)
     }
 }
 

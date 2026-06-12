@@ -26,7 +26,7 @@ use truapi::v01;
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use truapi_platform::{
     AuthPresenter, AuthState, ChainProvider, Features, JsonRpcConnection, Navigation,
-    Notifications, PairingDeeplinkScheme, Permissions, PreimageHost, RuntimeConfig,
+    Notifications, PairingDeeplinkScheme, PaymentHost, Permissions, PreimageHost, RuntimeConfig,
     RuntimeConfigValidationError, SessionStore, SessionUiInfo, Storage, ThemeHost,
     UserConfirmation,
 };
@@ -417,6 +417,48 @@ impl PreimageHost for WasmPlatform {
             return stream::once(async { Ok(None) }).boxed();
         };
         invoke_js_subscription(fn_, Some(key), parse_preimage_lookup_item).boxed()
+    }
+}
+
+impl PaymentHost for WasmPlatform {
+    async fn subscribe_payment_balance(
+        &self,
+    ) -> Result<BoxStream<'static, v01::Balance>, v01::HostPaymentBalanceSubscribeError> {
+        Err(v01::HostPaymentBalanceSubscribeError::Unknown {
+            reason: "payment balance callback not provided by host".to_string(),
+        })
+    }
+
+    async fn request_payment(
+        &self,
+        _amount: v01::Balance,
+        _destination: [u8; 32],
+    ) -> Result<String, v01::HostPaymentError> {
+        Err(v01::HostPaymentError::Unknown {
+            reason: "payment request callback not provided by host".to_string(),
+        })
+    }
+
+    async fn top_up_payment(
+        &self,
+        _amount: v01::Balance,
+        _source: v01::PaymentTopUpSource,
+    ) -> Result<(), v01::HostPaymentTopUpError> {
+        Err(v01::HostPaymentTopUpError::Unknown {
+            reason: "payment top-up callback not provided by host".to_string(),
+        })
+    }
+
+    async fn subscribe_payment_status(
+        &self,
+        _payment_id: String,
+    ) -> Result<
+        BoxStream<'static, v01::HostPaymentStatusSubscribeItem>,
+        v01::HostPaymentStatusSubscribeError,
+    > {
+        Err(v01::HostPaymentStatusSubscribeError::Unknown {
+            reason: "payment status callback not provided by host".to_string(),
+        })
     }
 }
 

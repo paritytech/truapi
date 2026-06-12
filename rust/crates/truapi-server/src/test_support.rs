@@ -34,8 +34,9 @@ use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupporte
 use truapi_platform::{
     AuthPresenter, AuthState, ChainProvider, ChatHost as PlatformChatHost,
     Features as PlatformFeatures, JsonRpcConnection, Navigation as PlatformNavigation,
-    Notifications as PlatformNotifications, Permissions as PlatformPermissions, PreimageHost,
-    RuntimeConfig, SessionStore, Storage as PlatformStorage, ThemeHost, UserConfirmation,
+    Notifications as PlatformNotifications, PaymentHost as PlatformPaymentHost,
+    Permissions as PlatformPermissions, PreimageHost, RuntimeConfig, SessionStore,
+    Storage as PlatformStorage, ThemeHost, UserConfirmation,
 };
 
 pub(crate) fn test_spawner() -> Spawner {
@@ -59,6 +60,9 @@ pub(crate) fn remote_subscription_slot() -> SharedRemoteSubscriptionId {
 
 /// Test hook invoked after each recorded auth state.
 pub(crate) type AuthStateHook = Arc<dyn Fn(&AuthState) + Send + Sync>;
+pub(crate) type PaymentRequestFixtureEntries = Vec<(v01::Balance, [u8; 32])>;
+pub(crate) type PaymentTopUpFixtureEntries = Vec<(v01::Balance, v01::PaymentTopUpSource)>;
+pub(crate) type PaymentStatusFixtureEntries = Vec<v01::HostPaymentStatusSubscribeItem>;
 
 /// Minimal Platform impl that only answers `feature_supported`. Every
 /// other callback returns a unit value or empty stream, so the runtime
@@ -95,6 +99,10 @@ pub(crate) struct StubPlatform {
     pub(crate) pushed_notifications: Arc<Mutex<Vec<v01::HostPushNotificationRequest>>>,
     pub(crate) cancelled_notifications: Arc<Mutex<Vec<v01::NotificationId>>>,
     pub(crate) sent_messages: Arc<Mutex<Vec<(String, v01::ChatMessageContent)>>>,
+    pub(crate) requested_payments: Arc<Mutex<PaymentRequestFixtureEntries>>,
+    pub(crate) payment_top_ups: Arc<Mutex<PaymentTopUpFixtureEntries>>,
+    pub(crate) payment_balances: Arc<Mutex<Vec<v01::Balance>>>,
+    pub(crate) payment_statuses: Arc<Mutex<PaymentStatusFixtureEntries>>,
     pub(crate) sent_rpc: Arc<Mutex<Vec<String>>>,
     pub(crate) rpc_responses: Vec<String>,
     pub(crate) chain_connect_error: Option<&'static str>,
@@ -141,6 +149,12 @@ impl Default for StubPlatform {
             pushed_notifications: Arc::new(Mutex::new(Vec::new())),
             cancelled_notifications: Arc::new(Mutex::new(Vec::new())),
             sent_messages: Arc::new(Mutex::new(Vec::new())),
+            requested_payments: Arc::new(Mutex::new(Vec::new())),
+            payment_top_ups: Arc::new(Mutex::new(Vec::new())),
+            payment_balances: Arc::new(Mutex::new(vec![0])),
+            payment_statuses: Arc::new(Mutex::new(vec![
+                v01::HostPaymentStatusSubscribeItem::Completed,
+            ])),
             sent_rpc: Arc::new(Mutex::new(Vec::new())),
             rpc_responses: Vec::new(),
             chain_connect_error: None,
@@ -696,6 +710,15 @@ impl PlatformFeatures for StubPlatform {
 }
 
 impl PlatformChatHost for StubPlatform {
+    async fn create_chat_room(
+        &self,
+        _room_id: String,
+        _name: String,
+        _icon: String,
+    ) -> Result<v01::ChatRoomRegistrationStatus, v01::HostChatCreateRoomError> {
+        Ok(v01::ChatRoomRegistrationStatus::New)
+    }
+
     async fn post_chat_message(
         &self,
         room_id: String,
@@ -707,6 +730,59 @@ impl PlatformChatHost for StubPlatform {
             .expect("sent messages mutex poisoned");
         sent.push((room_id, payload));
         Ok(format!("message-{}", sent.len()))
+    }
+}
+
+impl PlatformPaymentHost for StubPlatform {
+    async fn subscribe_payment_balance(
+        &self,
+    ) -> Result<BoxStream<'static, v01::Balance>, v01::HostPaymentBalanceSubscribeError> {
+        let values = self
+            .payment_balances
+            .lock()
+            .expect("payment balances mutex poisoned")
+            .clone();
+        Ok(Box::pin(stream::iter(values)))
+    }
+
+    async fn request_payment(
+        &self,
+        amount: v01::Balance,
+        destination: [u8; 32],
+    ) -> Result<String, v01::HostPaymentError> {
+        let mut requested = self
+            .requested_payments
+            .lock()
+            .expect("requested payments mutex poisoned");
+        requested.push((amount, destination));
+        Ok(format!("payment-{}", requested.len()))
+    }
+
+    async fn top_up_payment(
+        &self,
+        amount: v01::Balance,
+        source: v01::PaymentTopUpSource,
+    ) -> Result<(), v01::HostPaymentTopUpError> {
+        self.payment_top_ups
+            .lock()
+            .expect("payment top-ups mutex poisoned")
+            .push((amount, source));
+        Ok(())
+    }
+
+    async fn subscribe_payment_status(
+        &self,
+        _payment_id: String,
+    ) -> Result<
+        BoxStream<'static, v01::HostPaymentStatusSubscribeItem>,
+        v01::HostPaymentStatusSubscribeError,
+    > {
+        let values = self
+            .payment_statuses
+            .lock()
+            .expect("payment statuses mutex poisoned")
+            .clone();
+        Ok(Box::pin(stream::iter(values)))
     }
 }
 
