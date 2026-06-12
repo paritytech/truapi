@@ -16,15 +16,19 @@
 
 use std::fmt::{self, Write as _};
 use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tracing::field::{Field, Visit};
-use tracing::{Event, Level, Subscriber};
+use tracing::span::{Attributes, Record};
+use tracing::{Event, Id, Level, Subscriber};
 use tracing_subscriber::Registry;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::layer::{Context, Layer, SubscriberExt as _};
+use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::reload;
 
 static RELOAD_HANDLE: OnceLock<reload::Handle<LevelFilter, Registry>> = OnceLock::new();
+static TRACE_SPANS: AtomicBool = AtomicBool::new(false);
 
 /// Install the global subscriber. Idempotent: the first call wins, later
 /// calls (and a foreign subscriber already being set) are no-ops.
@@ -41,6 +45,7 @@ pub fn init() {
 
 /// Set the live verbosity threshold. No-op until [`init`] has run.
 pub fn set_level(level: LevelFilter) {
+    TRACE_SPANS.store(level == LevelFilter::TRACE, Ordering::Relaxed);
     if let Some(handle) = RELOAD_HANDLE.get() {
         let _ = handle.reload(level);
     }
@@ -73,7 +78,57 @@ pub fn parse_level(level: &str) -> LevelFilter {
 /// Routes each event to the console method matching its level.
 struct ConsoleLayer;
 
-impl<S: Subscriber> Layer<S> for ConsoleLayer {
+impl<S> Layer<S> for ConsoleLayer
+where
+    S: Subscriber,
+    S: for<'a> LookupSpan<'a>,
+{
+    fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
+        let Some(span) = ctx.span(id) else {
+            return;
+        };
+        let mut visitor = EventVisitor::default();
+        attrs.record(&mut visitor);
+        span.extensions_mut().insert(SpanFields {
+            fields: visitor.fields,
+        });
+        if trace_spans_enabled() {
+            emit_span("new", &span);
+        }
+    }
+
+    fn on_record(&self, id: &Id, values: &Record<'_>, ctx: Context<'_, S>) {
+        let Some(span) = ctx.span(id) else {
+            return;
+        };
+        let mut visitor = EventVisitor::default();
+        values.record(&mut visitor);
+        if visitor.fields.is_empty() {
+            return;
+        }
+        let mut extensions = span.extensions_mut();
+        if let Some(fields) = extensions.get_mut::<SpanFields>() {
+            if !fields.fields.is_empty() {
+                fields.fields.push_str(", ");
+            }
+            fields.fields.push_str(&visitor.fields);
+        } else {
+            extensions.insert(SpanFields {
+                fields: visitor.fields,
+            });
+        }
+    }
+
+    fn on_close(&self, id: Id, ctx: Context<'_, S>) {
+        if !trace_spans_enabled() {
+            return;
+        }
+        let Some(span) = ctx.span(&id) else {
+            return;
+        };
+        emit_span("close", &span);
+    }
+
     fn on_event(&self, event: &Event<'_>, _ctx: Context<'_, S>) {
         let meta = event.metadata();
         let mut visitor = EventVisitor::default();
@@ -88,6 +143,34 @@ impl<S: Subscriber> Layer<S> for ConsoleLayer {
         }
         emit(*meta.level(), &line);
     }
+}
+
+#[derive(Default)]
+struct SpanFields {
+    fields: String,
+}
+
+fn trace_spans_enabled() -> bool {
+    TRACE_SPANS.load(Ordering::Relaxed)
+}
+
+fn emit_span<S>(kind: &str, span: &tracing_subscriber::registry::SpanRef<'_, S>)
+where
+    S: Subscriber,
+    S: for<'a> LookupSpan<'a>,
+{
+    let meta = span.metadata();
+    let mut line = format!("[truapi] TRACE {}: span {}", meta.target(), kind);
+    let extensions = span.extensions();
+    let fields = extensions.get::<SpanFields>();
+    let _ = write!(line, " {{span={:?}", meta.name());
+    if let Some(fields) = fields
+        && !fields.fields.is_empty()
+    {
+        let _ = write!(line, ", {}", fields.fields);
+    }
+    line.push('}');
+    emit(Level::TRACE, &line);
 }
 
 /// Collects the implicit `message` field separately from explicit key-values.
