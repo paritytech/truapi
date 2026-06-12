@@ -2,8 +2,8 @@
 
 use crate::versioned::navigation::{
     HostNavigateToError, HostNavigateToRequest, HostNavigateToResponse, HostRouteChangedItem,
-    HostRouteGetError, HostRouteGetResponse, HostRouteSetError, HostRouteSetRequest,
-    HostRouteSetResponse,
+    HostRouteGetError, HostRouteGetRequest, HostRouteGetResponse, HostRouteSetError,
+    HostRouteSetRequest, HostRouteSetResponse,
 };
 use crate::wire;
 use crate::{CallContext, CallError, Subscription};
@@ -46,10 +46,11 @@ pub trait Navigation: Send + Sync {
     ///   return result.value.route ?? null;
     /// }
     /// ```
-    #[wire(request_id = 134)]
+    #[wire(request_id = 168)]
     async fn route_get(
         &self,
         cx: &CallContext,
+        request: HostRouteGetRequest,
     ) -> Result<HostRouteGetResponse, CallError<HostRouteGetError>>;
 
     /// Publish the app's current route to the host's address bar.
@@ -69,7 +70,7 @@ pub trait Navigation: Send + Sync {
     ///   if (result.isErr()) throw result.error;
     /// }
     /// ```
-    #[wire(request_id = 136)]
+    #[wire(request_id = 170)]
     async fn route_set(
         &self,
         cx: &CallContext,
@@ -98,7 +99,7 @@ pub trait Navigation: Send + Sync {
     ///   });
     /// }
     /// ```
-    #[wire(start_id = 138)]
+    #[wire(start_id = 172)]
     async fn route_changed(&self, _cx: &CallContext) -> Subscription<HostRouteChangedItem> {
         Subscription::empty()
     }
