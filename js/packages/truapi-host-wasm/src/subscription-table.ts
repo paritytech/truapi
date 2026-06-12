@@ -44,22 +44,22 @@ export type SubscriptionDispatchEntry = {
 export const SUBSCRIPTION_DISPATCH: readonly SubscriptionDispatchEntry[] = [
   {
     callback: "subscribeSessionStore",
-    protocol: "sessionStoreSubscribe",
+    protocol: "subscribeSessionStore",
     payload: "none",
     start: (callbacks, push) => callbacks.subscribeSessionStore?.(push),
   },
   {
-    callback: "themeSubscribe",
-    protocol: "themeSubscribe",
+    callback: "subscribeTheme",
+    protocol: "subscribeTheme",
     payload: "none",
-    start: (callbacks, push) => callbacks.themeSubscribe?.(push),
+    start: (callbacks, push) => callbacks.subscribeTheme?.(push),
   },
   {
-    callback: "preimageLookupSubscribe",
-    protocol: "preimageLookupSubscribe",
+    callback: "lookupPreimage",
+    protocol: "lookupPreimage",
     payload: "required",
     start: (callbacks, payload, push) =>
-      callbacks.preimageLookupSubscribe(payload, push),
+      callbacks.lookupPreimage(payload, push),
   },
 ];
 

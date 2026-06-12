@@ -134,14 +134,14 @@ const requiredRawCallbacks: Record<string, RawCallbackFn> = {
     callbackRequest("remotePermission", [payload]) as Promise<boolean>,
   featureSupported: (payload: Uint8Array) =>
     callbackRequest("featureSupported", [payload]) as Promise<boolean>,
-  localStorageRead: (key: string) =>
-    callbackRequest("localStorageRead", [key]) as Promise<
+  read: (key: string) =>
+    callbackRequest("read", [key]) as Promise<
       Uint8Array | null | undefined
     >,
-  localStorageWrite: (key: string, value: Uint8Array) =>
-    callbackRequest("localStorageWrite", [key, value]),
-  localStorageClear: (key: string) =>
-    callbackRequest("localStorageClear", [key]),
+  write: (key: string, value: Uint8Array) =>
+    callbackRequest("write", [key, value]),
+  clear: (key: string) =>
+    callbackRequest("clear", [key]),
 };
 
 const optionalRawCallbacks: Record<OptionalCallbackName, RawCallbackFn> = {

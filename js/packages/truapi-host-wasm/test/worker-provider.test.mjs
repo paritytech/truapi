@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { HostPushNotificationRequest } from "../../truapi/dist/index.js";
+import {
+  HostPushNotificationRequest,
+  HostPushNotificationResponse,
+} from "../../truapi/dist/index.js";
 import { createWasmRawCallbacks } from "../dist/index.js";
 import { createWebWorkerProvider } from "../dist/web/index.js";
 
@@ -52,13 +55,13 @@ class FakeWorker {
 function makeCallbacks(overrides = {}) {
   return {
     navigateTo: async () => {},
-    pushNotification: async () => 0,
-    devicePermission: async () => false,
-    remotePermission: async () => false,
-    featureSupported: async () => false,
-    localStorageRead: async () => undefined,
-    localStorageWrite: async () => {},
-    localStorageClear: async () => {},
+    pushNotification: async () => ({ id: 0 }),
+    devicePermission: async () => ({ granted: false }),
+    remotePermission: async () => ({ granted: false }),
+    featureSupported: async () => ({ supported: false }),
+    read: async () => undefined,
+    write: async () => {},
+    clear: async () => {},
     ...overrides,
   };
 }
@@ -98,18 +101,20 @@ async function readyProvider(worker, options = {}) {
   return providerPromise;
 }
 
-test("createWebWorkerProvider advertises only supplied optional hooks", async () => {
+test("createWebWorkerProvider advertises the full optional callback surface", async () => {
+  // The generated adapter fills every optional callback with a default, so the
+  // provider advertises the complete optional surface; `chainConnect` reflects
+  // whether the host supplied a `connect` capability.
   const worker = new FakeWorker();
   const config = runtimeConfig();
   const providerPromise = createWebWorkerProvider(
     worker,
     makeCallbacks({
-      clearSession: async () => {},
-      readSession: async () => new Uint8Array([1]),
-      authStateChanged: () => {},
-      subscribeSessionStore: () => () => {},
-      preimageLookupSubscribe: () => () => {},
-      chainConnect: () => ({ send: () => {}, close: () => {} }),
+      connect: async () => ({
+        send() {},
+        // eslint-disable-next-line require-yield
+        async *responses() {},
+      }),
     }),
     {
       logLevel: "debug",
@@ -123,8 +128,25 @@ test("createWebWorkerProvider advertises only supplied optional hooks", async ()
     kind: "init",
     logLevel: "debug",
     runtimeConfig: config,
-    optionalCallbacks: ["authStateChanged", "readSession", "clearSession"],
-    optionalSubscriptions: ["sessionStoreSubscribe", "preimageLookupSubscribe"],
+    optionalCallbacks: [
+      "cancelNotification",
+      "authStateChanged",
+      "readSession",
+      "writeSession",
+      "clearSession",
+      "confirmSignPayload",
+      "confirmSignRaw",
+      "confirmCreateTransaction",
+      "confirmAccountAlias",
+      "confirmResourceAllocation",
+      "confirmPreimageSubmit",
+      "submitPreimage",
+    ],
+    optionalSubscriptions: [
+      "subscribeSessionStore",
+      "subscribeTheme",
+      "lookupPreimage",
+    ],
     chainConnect: true,
   });
 
@@ -366,14 +388,30 @@ test("worker fault terminates the worker and runs the full teardown", async () =
   const providerPromise = createWebWorkerProvider(
     worker,
     makeCallbacks({
-      subscribeSessionStore: () => () => {
-        subscriptionDisposes += 1;
-      },
-      chainConnect: () => ({
-        send: () => {},
-        close: () => {
-          chainCloses += 1;
+      // Manual async iterables whose `return()` records disposal; the provider
+      // disposes subscriptions and closes chain connections on a worker fault.
+      subscribeSessionStore: () => ({
+        [Symbol.asyncIterator]() {
+          return this;
         },
+        next: () => new Promise(() => {}),
+        return: async () => {
+          subscriptionDisposes += 1;
+          return { done: true, value: undefined };
+        },
+      }),
+      connect: async () => ({
+        send() {},
+        responses: () => ({
+          [Symbol.asyncIterator]() {
+            return this;
+          },
+          next: () => new Promise(() => {}),
+          return: async () => {
+            chainCloses += 1;
+            return { done: true, value: undefined };
+          },
+        }),
       }),
     }),
     { runtimeConfig: runtimeConfig() },
@@ -385,16 +423,19 @@ test("worker fault terminates the worker and runs the full teardown", async () =
   worker.emit({
     kind: "subscriptionStart",
     subId: 1,
-    name: "sessionStoreSubscribe",
+    name: "subscribeSessionStore",
     payload: null,
   });
   worker.emit({ kind: "chainConnectStart", connId: 1, genesisHash: "0xab" });
+  await settle();
   await settle();
 
   const closes = [];
   provider.subscribeClose((error) => closes.push(error));
 
   worker.emitError("boom");
+  await settle();
+  await settle();
 
   assert.equal(worker.terminated, true);
   assert.equal(subscriptionDisposes, 1);
@@ -448,14 +489,12 @@ test("worker frameError after init closes the provider", async () => {
 test("worker provider routes payload-carrying subscriptions by name", async () => {
   const worker = new FakeWorker();
   const keys = [];
-  let push;
   const providerPromise = createWebWorkerProvider(
     worker,
     makeCallbacks({
-      preimageLookupSubscribe: (key, sendItem) => {
+      lookupPreimage: async function* (key) {
         keys.push(key);
-        push = sendItem;
-        return () => {};
+        yield { success: true, value: new Uint8Array([1]) };
       },
     }),
     { runtimeConfig: runtimeConfig() },
@@ -467,12 +506,13 @@ test("worker provider routes payload-carrying subscriptions by name", async () =
   worker.emit({
     kind: "subscriptionStart",
     subId: 4,
-    name: "preimageLookupSubscribe",
+    name: "lookupPreimage",
     payload: new Uint8Array([9, 9]),
   });
 
+  await settle();
+  await settle();
   assert.deepEqual(keys, [new Uint8Array([9, 9])]);
-  push(new Uint8Array([1]));
   assert.deepEqual(worker.messages.at(-1), {
     kind: "subscriptionItem",
     subId: 4,
@@ -488,7 +528,7 @@ test("unknown subscription names never fall through to another callback", async 
   const providerPromise = createWebWorkerProvider(
     worker,
     makeCallbacks({
-      preimageLookupSubscribe: () => {
+      lookupPreimage: () => {
         preimageStarts += 1;
         return () => {};
       },
@@ -521,7 +561,7 @@ test("payload-carrying subscription without payload is not dispatched", async ()
   const providerPromise = createWebWorkerProvider(
     worker,
     makeCallbacks({
-      preimageLookupSubscribe: () => {
+      lookupPreimage: () => {
         preimageStarts += 1;
         return () => {};
       },
@@ -535,7 +575,7 @@ test("payload-carrying subscription without payload is not dispatched", async ()
   worker.emit({
     kind: "subscriptionStart",
     subId: 6,
-    name: "preimageLookupSubscribe",
+    name: "lookupPreimage",
     payload: null,
   });
 
@@ -574,7 +614,7 @@ test("typed callbacks decode raw v01 push notification payloads", async () => {
     },
   });
 
-  const id = await callbacks.pushNotification(
+  const encoded = await callbacks.pushNotification(
     HostPushNotificationRequest.enc({
       text: "Hello!",
       deeplink: undefined,
@@ -582,7 +622,7 @@ test("typed callbacks decode raw v01 push notification payloads", async () => {
     }),
   );
 
-  assert.equal(id, 42);
+  assert.equal(HostPushNotificationResponse.dec(encoded).id, 42);
   assert.deepEqual(notification, {
     text: "Hello!",
     deeplink: undefined,

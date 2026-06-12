@@ -193,4 +193,18 @@ fn golden_host_callbacks_ts() {
             dump.display()
         );
     }
+
+    let adapter_golden_path = manifest_dir.join("tests/golden/host-callbacks-adapter.ts");
+    let adapter_actual =
+        fs::read_to_string(tempdir.path().join("platform/host-callbacks-adapter.ts"))
+            .expect("read generated host-callbacks-adapter.ts");
+    let adapter_golden = fs::read_to_string(&adapter_golden_path).unwrap_or_default();
+    if adapter_golden != adapter_actual {
+        let dump = manifest_dir.join("tests/golden/host-callbacks-adapter.ts.actual");
+        let _ = fs::write(&dump, &adapter_actual);
+        panic!(
+            "golden mismatch for host-callbacks-adapter.ts; wrote actual to {}",
+            dump.display()
+        );
+    }
 }

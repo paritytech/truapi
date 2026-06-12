@@ -81,9 +81,9 @@ impl JsBridge {
             device_permission: get_function(callbacks, "devicePermission")?,
             remote_permission: get_function(callbacks, "remotePermission")?,
             feature_supported: get_function(callbacks, "featureSupported")?,
-            local_storage_read: get_function(callbacks, "localStorageRead")?,
-            local_storage_write: get_function(callbacks, "localStorageWrite")?,
-            local_storage_clear: get_function(callbacks, "localStorageClear")?,
+            local_storage_read: get_function(callbacks, "read")?,
+            local_storage_write: get_function(callbacks, "write")?,
+            local_storage_clear: get_function(callbacks, "clear")?,
             confirm_sign_payload: get_optional_function(callbacks, "confirmSignPayload")?,
             confirm_sign_raw: get_optional_function(callbacks, "confirmSignRaw")?,
             confirm_create_transaction: get_optional_function(
@@ -97,8 +97,8 @@ impl JsBridge {
             )?,
             confirm_preimage_submit: get_optional_function(callbacks, "confirmPreimageSubmit")?,
             submit_preimage: get_optional_function(callbacks, "submitPreimage")?,
-            lookup_preimage: get_optional_function(callbacks, "preimageLookupSubscribe")?,
-            subscribe_theme: get_optional_function(callbacks, "themeSubscribe")?,
+            lookup_preimage: get_optional_function(callbacks, "lookupPreimage")?,
+            subscribe_theme: get_optional_function(callbacks, "subscribeTheme")?,
             auth_state_changed: get_optional_function(callbacks, "authStateChanged")?,
             read_session: get_optional_function(callbacks, "readSession")?,
             write_session: get_optional_function(callbacks, "writeSession")?,
@@ -160,10 +160,11 @@ impl Notifications for WasmPlatform {
         &self,
         notification: v01::HostPushNotificationRequest,
     ) -> Result<v01::HostPushNotificationResponse, v01::GenericError> {
-        let id = invoke_u32(&self.bridge.push_notification, notification.encode())
+        let bytes = invoke_bytes_return(&self.bridge.push_notification, notification.encode())
             .await
             .map_err(generic)?;
-        Ok(v01::HostPushNotificationResponse { id })
+        v01::HostPushNotificationResponse::decode(&mut bytes.as_slice())
+            .map_err(|_| generic("pushNotification response did not decode".to_string()))
     }
 
     async fn cancel_notification(&self, id: v01::NotificationId) -> Result<(), v01::GenericError> {
@@ -179,20 +180,22 @@ impl Permissions for WasmPlatform {
         &self,
         request: v01::HostDevicePermissionRequest,
     ) -> Result<v01::HostDevicePermissionResponse, v01::GenericError> {
-        let granted = invoke_bool(&self.bridge.device_permission, request.encode())
+        let bytes = invoke_bytes_return(&self.bridge.device_permission, request.encode())
             .await
             .map_err(generic)?;
-        Ok(v01::HostDevicePermissionResponse { granted })
+        v01::HostDevicePermissionResponse::decode(&mut bytes.as_slice())
+            .map_err(|_| generic("devicePermission response did not decode".to_string()))
     }
 
     async fn remote_permission(
         &self,
         request: v01::RemotePermissionRequest,
     ) -> Result<v01::RemotePermissionResponse, v01::GenericError> {
-        let granted = invoke_bool(&self.bridge.remote_permission, request.encode())
+        let bytes = invoke_bytes_return(&self.bridge.remote_permission, request.encode())
             .await
             .map_err(generic)?;
-        Ok(v01::RemotePermissionResponse { granted })
+        v01::RemotePermissionResponse::decode(&mut bytes.as_slice())
+            .map_err(|_| generic("remotePermission response did not decode".to_string()))
     }
 }
 
@@ -201,12 +204,15 @@ impl Features for WasmPlatform {
         &self,
         request: HostFeatureSupportedRequest,
     ) -> Result<HostFeatureSupportedResponse, v01::GenericError> {
-        let supported = invoke_bool(&self.bridge.feature_supported, request.encode())
+        // The host callback surface speaks the unversioned `v01` shape, so
+        // unwrap the request and re-wrap the response around this boundary.
+        let HostFeatureSupportedRequest::V1(inner) = request;
+        let bytes = invoke_bytes_return(&self.bridge.feature_supported, inner.encode())
             .await
             .map_err(generic)?;
-        Ok(HostFeatureSupportedResponse::V1(
-            v01::HostFeatureSupportedResponse { supported },
-        ))
+        let response = v01::HostFeatureSupportedResponse::decode(&mut bytes.as_slice())
+            .map_err(|_| generic("featureSupported response did not decode".to_string()))?;
+        Ok(HostFeatureSupportedResponse::V1(response))
     }
 }
 
@@ -582,26 +588,6 @@ fn invoke_bool(
     })
 }
 
-fn invoke_u32(
-    fn_: &Function,
-    payload: Vec<u8>,
-) -> impl std::future::Future<Output = Result<u32, String>> + Send {
-    let fn_ = fn_.clone();
-    SendWrapper::new(async move {
-        let arg = Uint8Array::from(payload.as_slice());
-        let returned = fn_.call1(&JsValue::NULL, &arg).map_err(js_to_string)?;
-        let resolved = await_optional_promise(returned).await?;
-        let n = resolved
-            .as_f64()
-            .ok_or_else(|| "callback must resolve to a u32 notification id".to_string())?;
-        if n.is_finite() && n >= 0.0 && n <= f64::from(u32::MAX) && n.fract() == 0.0 {
-            Ok(n as u32)
-        } else {
-            Err("callback must resolve to a u32 notification id".to_string())
-        }
-    })
-}
-
 fn invoke_u32_unit(
     fn_: &Function,
     value: u32,
@@ -801,9 +787,9 @@ fn invoke_local_storage_read(
         if resolved.is_null() || resolved.is_undefined() {
             return Ok(None);
         }
-        let array = resolved.dyn_into::<Uint8Array>().map_err(|_| {
-            "localStorageRead must resolve to Uint8Array, null or undefined".to_string()
-        })?;
+        let array = resolved
+            .dyn_into::<Uint8Array>()
+            .map_err(|_| "read must resolve to Uint8Array, null or undefined".to_string())?;
         Ok(Some(array.to_vec()))
     })
 }

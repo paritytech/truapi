@@ -3,15 +3,26 @@ import test from "node:test";
 
 import {
   HostDevicePermissionRequest,
+  HostDevicePermissionResponse,
   HostFeatureSupportedRequest,
+  HostFeatureSupportedResponse,
   HostPushNotificationRequest,
+  HostPushNotificationResponse,
   RemotePermissionRequest,
+  RemotePermissionResponse,
+  ThemeVariant,
 } from "@parity/truapi";
 
 import {
   createUnavailableCallbacks,
   createWasmRawCallbacks,
 } from "../dist/index.js";
+
+// The generated `createWasmRawCallbacks` adapter speaks the symmetric SCALE
+// byte boundary: codec-typed requests arrive as `Uint8Array` and are decoded
+// for the typed host callback; codec-typed responses are SCALE-encoded back to
+// `Uint8Array`. Primitives, strings, byte blobs and the local `AuthState` pass
+// through unchanged.
 
 const GENESIS = `0x${"11".repeat(32)}`;
 
@@ -23,17 +34,14 @@ test("createUnavailableCallbacks rejects storage write paths", async () => {
   const callbacks = createUnavailableCallbacks();
 
   await assert.rejects(
-    () => callbacks.localStorageWrite("key", new Uint8Array([1])),
-    /localStorageWrite unavailable/,
+    () => callbacks.write("key", new Uint8Array([1])),
+    /write unavailable/,
   );
-  await assert.rejects(
-    () => callbacks.localStorageClear("key"),
-    /localStorageClear unavailable/,
-  );
-  assert.equal(await callbacks.localStorageRead("key"), undefined);
+  await assert.rejects(() => callbacks.clear("key"), /clear unavailable/);
+  assert.equal(await callbacks.read("key"), undefined);
 });
 
-test("createWasmRawCallbacks decodes SCALE request callbacks into typed host calls", async () => {
+test("createWasmRawCallbacks decodes requests and encodes typed responses", async () => {
   const writes = [];
   const clears = [];
   const cancelled = [];
@@ -62,41 +70,49 @@ test("createWasmRawCallbacks decodes SCALE request callbacks into typed host cal
   });
 
   assert.equal(
-    await raw.pushNotification(
-      HostPushNotificationRequest.enc({
-        text: "hello",
-        deeplink: undefined,
-        scheduledAt: undefined,
-      }),
-    ),
+    HostPushNotificationResponse.dec(
+      await raw.pushNotification(
+        HostPushNotificationRequest.enc({
+          text: "hello",
+          deeplink: undefined,
+          scheduledAt: undefined,
+        }),
+      ),
+    ).id,
     5,
   );
   assert.equal(
-    await raw.devicePermission(HostDevicePermissionRequest.enc("Camera")),
+    HostDevicePermissionResponse.dec(
+      await raw.devicePermission(HostDevicePermissionRequest.enc("Camera")),
+    ).granted,
     true,
   );
   assert.equal(
-    await raw.remotePermission(
-      RemotePermissionRequest.enc({ permission: { tag: "ChainSubmit" } }),
-    ),
+    RemotePermissionResponse.dec(
+      await raw.remotePermission(
+        RemotePermissionRequest.enc({ permission: { tag: "ChainSubmit" } }),
+      ),
+    ).granted,
     true,
   );
   assert.equal(
-    await raw.featureSupported(
-      HostFeatureSupportedRequest.enc({
-        tag: "Chain",
-        value: { genesisHash: GENESIS },
-      }),
-    ),
+    HostFeatureSupportedResponse.dec(
+      await raw.featureSupported(
+        HostFeatureSupportedRequest.enc({
+          tag: "Chain",
+          value: { genesisHash: GENESIS },
+        }),
+      ),
+    ).supported,
     true,
   );
   assert.deepEqual(
-    await raw.localStorageRead("session"),
+    await raw.read("session"),
     new TextEncoder().encode("read:session"),
   );
 
-  await raw.localStorageWrite("session", new Uint8Array([1, 2, 3]));
-  await raw.localStorageClear("session");
+  await raw.write("session", new Uint8Array([1, 2, 3]));
+  await raw.clear("session");
   await raw.cancelNotification?.(9);
 
   assert.deepEqual(writes, [["session", [1, 2, 3]]]);
@@ -150,9 +166,8 @@ test("createWasmRawCallbacks bridges lifecycle, confirmations, and preimage call
     sessionEvents.push("tick"),
   );
   const preimageEvents = [];
-  const disposePreimages = raw.preimageLookupSubscribe(
-    new Uint8Array([9]),
-    (value) => preimageEvents.push(value ? [...value] : null),
+  const disposePreimages = raw.lookupPreimage(new Uint8Array([9]), (value) =>
+    preimageEvents.push(value ? [...value] : null),
   );
 
   raw.authStateChanged?.({
@@ -207,13 +222,11 @@ test("createWasmRawCallbacks default session-store subscription emits current ti
 test("createWasmRawCallbacks default theme and preimage subscriptions emit current values", () => {
   const raw = createWasmRawCallbacks({});
   const themes = [];
-  raw.themeSubscribe?.((theme) => themes.push(theme));
+  raw.subscribeTheme?.((theme) => themes.push(ThemeVariant.dec(theme)));
   assert.deepEqual(themes, ["Dark"]);
 
   const preimages = [];
-  raw.preimageLookupSubscribe(new Uint8Array([1]), (value) =>
-    preimages.push(value),
-  );
+  raw.lookupPreimage(new Uint8Array([1]), (value) => preimages.push(value));
   assert.deepEqual(preimages, [undefined]);
 });
 
@@ -227,7 +240,9 @@ test("createWasmRawCallbacks adapts typed result subscriptions", async () => {
     subscribeTheme: () => themes(),
   });
   const seen = [];
-  const dispose = raw.themeSubscribe?.((theme) => seen.push(theme));
+  const dispose = raw.subscribeTheme?.((theme) =>
+    seen.push(ThemeVariant.dec(theme)),
+  );
 
   await settle();
   await settle();

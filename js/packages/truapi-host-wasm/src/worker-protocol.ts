@@ -23,9 +23,9 @@ export const CALLBACK_NAMES = [
   "devicePermission",
   "remotePermission",
   "featureSupported",
-  "localStorageRead",
-  "localStorageWrite",
-  "localStorageClear",
+  "read",
+  "write",
+  "clear",
   "authStateChanged",
   "readSession",
   "writeSession",
@@ -63,9 +63,9 @@ export type OptionalCallbackName = (typeof OPTIONAL_CALLBACK_NAMES)[number];
  * `(payload?, sendItem) => dispose | void`.
  */
 export type SubscriptionName =
-  | "sessionStoreSubscribe"
-  | "preimageLookupSubscribe"
-  | "themeSubscribe";
+  | "subscribeSessionStore"
+  | "lookupPreimage"
+  | "subscribeTheme";
 
 /**
  * Positional arguments for a callback. The wasm core calls each callback

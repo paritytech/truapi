@@ -22,7 +22,9 @@ export type {
   HostStorage,
   ThemeHost,
 } from "./generated/host-callbacks.js";
-import type { AuthState } from "./generated/host-callbacks.js";
+import type { HostCallbacks } from "./generated/host-callbacks.js";
+import type { RawCallbacks } from "./generated/host-callbacks-adapter.js";
+import { createWasmRawCallbacks } from "./generated/host-callbacks-adapter.js";
 
 /**
  * Async-or-sync return. Synchronous hosts (e.g. the dotli main-thread
@@ -90,86 +92,10 @@ export interface WasmRuntimeConfig {
  * `truapi-platform`; account, signing, and statement-store methods are owned
  * by the Rust core and do not cross this callback boundary.
  */
-export interface WasmRawCallbacks {
-  navigateTo(url: string): Promise<void>;
-  pushNotification(payload: Uint8Array): Promise<number>;
-  cancelNotification?(id: number): Promise<void>;
-  devicePermission(payload: Uint8Array): Promise<boolean>;
-  remotePermission(payload: Uint8Array): Promise<boolean>;
-  featureSupported(payload: Uint8Array): Promise<boolean>;
-  localStorageRead(key: string): Promise<Uint8Array | null | undefined>;
-  localStorageWrite(key: string, value: Uint8Array): Promise<void>;
-  localStorageClear(key: string): Promise<void>;
-  authStateChanged?(state: AuthState): void;
-  readSession?(): Promise<Uint8Array | null | undefined>;
-  writeSession?(value: Uint8Array): Promise<void>;
-  clearSession?(): Promise<void>;
-  subscribeSessionStore?(sendItem: () => void): (() => void) | void;
-  confirmSignPayload?(payload: Uint8Array): Promise<boolean>;
-  confirmSignRaw?(payload: Uint8Array): Promise<boolean>;
-  confirmCreateTransaction?(payload: Uint8Array): Promise<boolean>;
-  confirmAccountAlias?(payload: Uint8Array): Promise<boolean>;
-  confirmResourceAllocation?(payload: Uint8Array): Promise<boolean>;
-  confirmPreimageSubmit?(size: number): Promise<void>;
-  submitPreimage?(value: Uint8Array): Promise<Uint8Array>;
-  themeSubscribe?(
-    sendItem: (theme: "Light" | "Dark" | 0 | 1 | Uint8Array) => void,
-  ): (() => void) | void;
-  preimageLookupSubscribe(
-    key: Uint8Array,
-    sendItem: (value: Uint8Array | null | undefined) => void,
-  ): (() => void) | void;
-  /** Optional. When omitted, the WASM bridge reports chain calls as
-   * "unavailable". Hosts that own chain access (e.g. dotli's
-   * smoldot/RPC toggle) supply it. */
-  chainConnect?: ChainConnect;
+export type WasmRawCallbacks = RawCallbacks & {
   emitFrame(frame: Uint8Array): void;
   dispose?(): void;
-}
-
-/**
- * Stubs every required callback so a host can spread them over its own
- * implementation and override only what it supports. Unavailable methods
- * reject with a descriptive error; unavailable subscriptions emit a current
- * default item where the platform contract requires one.
- */
-export function createUnavailableCallbacks(): Omit<
-  WasmRawCallbacks,
-  "emitFrame" | "dispose" | "chainConnect"
-> {
-  const unavailable = (method: string) => async (): Promise<never> => {
-    throw new Error(`${method} unavailable on this host`);
-  };
-  const emitCurrentTick = (sendItem: () => void): void => {
-    sendItem();
-  };
-  const emitCurrentTheme = (
-    sendItem: (theme: "Light" | "Dark" | 0 | 1 | Uint8Array) => void,
-  ): void => {
-    sendItem("Dark");
-  };
-  const emitCurrentPreimageMiss = (
-    _key: Uint8Array,
-    sendItem: (value: Uint8Array | null | undefined) => void,
-  ): void => {
-    sendItem(undefined);
-  };
-  return {
-    navigateTo: unavailable("navigateTo"),
-    pushNotification: async () => 0,
-    devicePermission: async () => false,
-    remotePermission: async () => false,
-    featureSupported: unavailable("featureSupported"),
-    localStorageRead: async () => undefined,
-    localStorageWrite: unavailable("localStorageWrite"),
-    localStorageClear: unavailable("localStorageClear"),
-    confirmPreimageSubmit: unavailable("confirmPreimageSubmit"),
-    submitPreimage: unavailable("submitPreimage"),
-    subscribeSessionStore: emitCurrentTick,
-    themeSubscribe: emitCurrentTheme,
-    preimageLookupSubscribe: emitCurrentPreimageMiss,
-  };
-}
+};
 
 /**
  * Shape exposed by the wasm-pack output's `WasmTrUApiCore`. Kept local
@@ -216,8 +142,9 @@ export interface TrUApiHostWasmProvider extends Provider {
  */
 export function createWasmProvider(
   createCore: (rawCallbacks: WasmRawCallbacks) => WasmCoreLike,
-  partial: Omit<WasmRawCallbacks, "emitFrame">,
+  host: Partial<HostCallbacks>,
 ): TrUApiHostWasmProvider {
+  const partial = createWasmRawCallbacks(host);
   const listeners = new Set<(message: Uint8Array) => void>();
   const closeListeners = new Set<(error: Error) => void>();
   let disposed = false;
@@ -297,7 +224,6 @@ export function createWasmProvider(
         // already freed
       }
       close(new Error("wasm provider disposed"));
-      partial.dispose?.();
     },
   };
 }

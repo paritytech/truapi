@@ -24,7 +24,7 @@ function makeCallbacks(overrides = {}) {
     pushNotification: async () => 0,
     devicePermission: async () => false,
     remotePermission: async () => false,
-    featureSupported: async () => false,
+    featureSupported: async () => ({ supported: false }),
     localStorageRead: async () => undefined,
     localStorageWrite: async () => {},
     localStorageClear: async () => {},
@@ -152,7 +152,7 @@ test("createNodeWasmProvider dispose is idempotent", async () => {
 
 test("createNodeWasmProvider round-trips a featureSupported request through the WASM core", async () => {
   const callbacks = makeCallbacks();
-  callbacks.featureSupported = async () => true;
+  callbacks.featureSupported = async () => ({ supported: true });
   const provider = await createNodeWasmProvider(callbacks, {
     runtimeConfig: runtimeConfig(),
   });

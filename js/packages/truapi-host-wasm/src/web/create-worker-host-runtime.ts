@@ -1,5 +1,6 @@
 import type {
   ChainConnection,
+  HostCallbacks,
   LogLevel,
   MainToWorker,
   SubscriptionName,
@@ -8,6 +9,7 @@ import type {
   WasmRawCallbacks,
   WorkerToMain,
 } from "../index.js";
+import { createWasmRawCallbacks } from "../generated/host-callbacks-adapter.js";
 import {
   OPTIONAL_CALLBACK_NAMES,
   type CallbackName,
@@ -431,12 +433,13 @@ export interface CreateWebWorkerProviderOptions {
  */
 export function createWebWorkerProvider(
   worker: Worker,
-  callbacks: Omit<WasmRawCallbacks, "emitFrame">,
+  host: Partial<HostCallbacks>,
   options: CreateWebWorkerProviderOptions,
 ): Promise<TrUApiHostWasmProvider> {
   if (!options?.runtimeConfig) {
     return Promise.reject(new Error("runtimeConfig is required"));
   }
+  const callbacks = createWasmRawCallbacks(host);
 
   return new Promise((resolve, reject) => {
     const state: WorkerProviderState = {

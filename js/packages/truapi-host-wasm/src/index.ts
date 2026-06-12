@@ -27,8 +27,10 @@ export type {
   WasmRawCallbacks,
   WasmRuntimeConfig,
 } from "./runtime.js";
-export { createUnavailableCallbacks, createWasmProvider } from "./runtime.js";
-export { createWasmRawCallbacks } from "./typed-callbacks.js";
+export { createWasmProvider } from "./runtime.js";
+export { createUnavailableCallbacks } from "./adapter-support.js";
+export type { RawCallbacks } from "./generated/host-callbacks-adapter.js";
+export { createWasmRawCallbacks } from "./generated/host-callbacks-adapter.js";
 
 export type { CreateNodeWasmProviderOptions } from "./node-runtime.js";
 export { createNodeWasmProvider } from "./node-runtime.js";

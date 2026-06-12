@@ -1,9 +1,9 @@
 import {
   createWasmProvider,
+  type HostCallbacks,
   type LogLevel,
   type TrUApiHostWasmProvider,
   type WasmCoreLike,
-  type WasmRawCallbacks,
   type WasmRuntimeConfig,
 } from "./runtime.js";
 
@@ -30,7 +30,7 @@ export interface CreateNodeWasmProviderOptions {
  * a ready-to-use provider once the dynamic import resolves.
  */
 export async function createNodeWasmProvider(
-  partial: Omit<WasmRawCallbacks, "emitFrame">,
+  host: Partial<HostCallbacks>,
   options: CreateNodeWasmProviderOptions,
 ): Promise<TrUApiHostWasmProvider> {
   if (!options?.runtimeConfig) {
@@ -58,6 +58,6 @@ export async function createNodeWasmProvider(
 
   return createWasmProvider(
     (raw) => new wasm.WasmTrUApiCore(raw, options.runtimeConfig),
-    partial,
+    host,
   );
 }

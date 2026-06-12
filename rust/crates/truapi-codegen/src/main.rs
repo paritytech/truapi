@@ -158,7 +158,15 @@ fn main() -> Result<()> {
             rustdoc::parse(&json).with_context(|| format!("parsing platform rustdoc {input}"))?;
         let definition = platform::extract(&krate)
             .with_context(|| format!("extracting platform definition from {input}"))?;
-        ts::generate_host_callbacks(&definition, output)
+        // Types that carry a SCALE codec on the TS client (structs and enums);
+        // primitive aliases like `NotificationId` do not and pass through.
+        let codec_types = api
+            .types
+            .iter()
+            .filter(|t| !matches!(t.kind, rustdoc::TypeDefKind::Alias(_)))
+            .map(|t| t.name.clone())
+            .collect();
+        ts::generate_host_callbacks(&definition, &codec_types, output)
             .with_context(|| format!("writing host callbacks TS to {output}"))?;
         println!("Generated typed HostCallbacks TS surface in {output}");
     } else if cli.platform_input.is_some() != cli.platform_ts_output.is_some() {
