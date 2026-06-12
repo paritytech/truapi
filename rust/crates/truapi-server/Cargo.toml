@@ -9,10 +9,11 @@ description = "TrUAPI server runtime: dispatcher, frames, SCALE, streams"
 license = "MIT AND Apache-2.0"
 
 [lib]
-crate-type = ["rlib", "cdylib"]
+crate-type = ["rlib", "cdylib", "staticlib"]
 
 [features]
 default = []
+ws-bridge = ["dep:tokio", "dep:tokio-tungstenite", "dep:rand"]
 smoldot = ["dep:smoldot-light", "dep:smoldot"]
 
 [dependencies]
@@ -27,6 +28,7 @@ serde_json = "1"
 thiserror = "1"
 unicode-normalization = "0.1"
 url = "2"
+uniffi = "0.29.4"
 hex = "0.4"
 blake2-rfc = { version = "0.2", default-features = false }
 sp-crypto-hashing = { version = "0.1", default-features = false }
@@ -45,6 +47,10 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["r
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 smoldot-light = { version = "1.1.0", optional = true }
 smoldot = { version = "1.1.0", optional = true }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "macros", "io-util"], optional = true }
+tokio-tungstenite = { version = "0.21", default-features = false, features = ["handshake"], optional = true }
+rand = { version = "0.8", optional = true }
+futures = { version = "0.3", features = ["thread-pool"] }
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 js-sys = "0.3"
@@ -65,6 +71,10 @@ web-sys = { version = "0.3", features = [
     "MessageEvent",
     "WebSocket",
 ] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "macros", "io-util", "time"] }
+tokio-tungstenite = { version = "0.21", default-features = false, features = ["connect"] }
 
 [target.'cfg(target_arch = "wasm32")'.dev-dependencies]
 wasm-bindgen-test = "0.3"
