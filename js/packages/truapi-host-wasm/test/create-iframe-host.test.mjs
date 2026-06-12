@@ -81,14 +81,8 @@ function teardownFakeDom() {
 }
 
 test("createIframeHost hands back a MessagePort and configures the iframe", () => {
-  const {
-    iframe,
-    container,
-    iframeListeners,
-    windowRemove,
-    port1,
-    port2,
-  } = setupFakeDom();
+  const { iframe, container, iframeListeners, windowRemove, port1, port2 } =
+    setupFakeDom();
 
   try {
     let receivedPort = null;

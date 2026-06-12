@@ -98,7 +98,7 @@ function waitForIframePort(
       timeoutMs,
     );
 
-    window.parent.postMessage({ type: "truapi-playground-ready" }, hostOrigin);
+    window.parent.postMessage({ type: "truapi-ready" }, hostOrigin);
   });
 }
 
