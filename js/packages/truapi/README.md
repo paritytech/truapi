@@ -77,7 +77,7 @@ Frames are SCALE encoded:
 [requestId: SCALE str][discriminant: u8][payload bytes...]
 ```
 
-The discriminant table is generated from Rust `#[wire(request_id = N)]` and `#[wire(start_id = N)]` annotations and is written to `src/generated/wire-table.ts`. The package also exports a reverse lookup for debug labels: `WIRE_TAG_BY_ID` (discriminant → `<method>_<kind>` tag) and `describeWireId(id)` (falls back to `wire_<id>` for unknown discriminants).
+The discriminant table is generated from Rust `#[wire(request_id = N)]` and `#[wire(start_id = N)]` annotations and is written to `src/generated/wire-table.ts`.
 
 ## Generated files
 

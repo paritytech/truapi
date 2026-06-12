@@ -20,10 +20,6 @@
       "types": "./dist/web/index.d.ts",
       "import": "./dist/web/index.js"
     },
-    "./node-runtime": {
-      "types": "./dist/node-runtime.d.ts",
-      "import": "./dist/node-runtime.js"
-    },
     "./worker-runtime": {
       "types": "./dist/worker-runtime.d.ts",
       "import": "./dist/worker-runtime.js"
@@ -31,10 +27,6 @@
     "./wasm/web": {
       "types": "./dist/wasm/web/truapi_server.d.ts",
       "import": "./dist/wasm/web/truapi_server.js"
-    },
-    "./wasm/node": {
-      "types": "./dist/wasm/node/truapi_server.d.ts",
-      "import": "./dist/wasm/node/truapi_server.js"
     }
   },
   "files": [

@@ -13,14 +13,14 @@ The package exposes tree-shakeable subpath exports — import only what your env
 
 | Import                                     | Provides                                                                                                                |
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| `@parity/truapi-host-wasm`                 | Core: `createWasmProvider`, `createNodeWasmProvider`, `createHostServer`, the dispatcher adapter, and the shared types. |
+| `@parity/truapi-host-wasm`                 | Core: `createWasmProvider`, `createHostServer`, the dispatcher adapter, and the shared types.                           |
 | `@parity/truapi-host-wasm/web`             | Browser host: `createIframeHost` (iframe MessageChannel handshake) and `createWebWorkerProvider`.                       |
 | `@parity/truapi-host-wasm/worker-runtime`  | Web Worker entrypoint (import with your bundler's `?worker` suffix) so the WASM core runs off the page main thread.     |
-| `@parity/truapi-host-wasm/wasm/{web,node}` | The raw `wasm-bindgen` glue, if you need to instantiate the core yourself.                                              |
+| `@parity/truapi-host-wasm/wasm/web`        | The raw browser `wasm-bindgen` glue, if you need to instantiate the core yourself.                                      |
 
 ## Generated WASM artefacts
 
-The ignored bundles under `dist/wasm/web/` and `dist/wasm/node/` are built without smoldot
+The ignored bundle under `dist/wasm/web/` is built without smoldot
 (`wasm-pack build --no-default-features`). Hosts that already manage chain access through their own
 JSON-RPC provider wire `chainConnect` into the callbacks and never touch smoldot. The bundled WASM
 is about 1 MB (release build with `wasm-opt`).
@@ -30,50 +30,6 @@ tests that load the raw WASM bundle (requires `wasm-pack` on PATH):
 
 ```bash
 npm run build:wasm   # or `make wasm` from the repo root
-```
-
-## Example — Node
-
-```ts
-import {
-  createNodeWasmProvider,
-  createHostServer,
-} from "@parity/truapi-host-wasm";
-
-const provider = await createNodeWasmProvider(
-  {
-    navigateTo: async (url) => {
-      /* shell.openExternal(url) */
-    },
-    pushNotification: async () => {},
-    devicePermission: async () => true,
-    remotePermission: async () => true,
-    featureSupported: async (payload) => payload,
-    localStorageRead: async () => undefined,
-    localStorageWrite: async () => {},
-    localStorageClear: async () => {},
-    // Optional: authStateChanged (core-owned auth UI state stream),
-    // readSession/writeSession/clearSession, subscribeSessionStore,
-    // confirmation, preimage, theme, and chain callbacks.
-  },
-  {
-    runtimeConfig: {
-      productId: "example.dot",
-      hostName: "Polkadot Web",
-      hostIcon: "https://dot.li/dotli.png",
-      hostVersion: "0.5.0",
-      platformType: "browser",
-      platformVersion: "unknown",
-      peopleChainGenesisHash:
-        "0xa22a2424d2cbf561eaecf7da8b1b548fa9d1939f60265e942b1049616a012f71",
-      pairingDeeplinkScheme: "polkadotapp",
-    },
-  },
-);
-
-const server = createHostServer(provider, [
-  /* dispatch entries */
-]);
 ```
 
 ## Example — browser (Web Worker)

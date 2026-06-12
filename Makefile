@@ -13,7 +13,6 @@ DOTLI := hosts/dotli
 HOST_WASM_PKG := $(JS_PACKAGES)/truapi-host-wasm
 HOST_WASM_GENERATED := $(HOST_WASM_PKG)/src/generated/host-callbacks.ts
 HOST_WASM_WEB := $(HOST_WASM_PKG)/dist/wasm/web/truapi_server.js
-HOST_WASM_NODE := $(HOST_WASM_PKG)/dist/wasm/node/truapi_server.js
 DOTLI_UI := $(DOTLI)/packages/ui
 DOTLI_HOST_WASM_LINK := $(DOTLI_UI)/node_modules/@parity/truapi-host-wasm
 SIGNER_BOT_BASE_URL ?= https://signing-bot-dev.novasama-tech.org/

@@ -22,7 +22,6 @@ export {
   encodeWireMessage,
 } from "./transport.js";
 export { createTransport } from "./client.js";
-export { WIRE_TAG_BY_ID, describeWireId } from "./wire-tags.js";
 export * as scale from "./scale.js";
 export type { Codec, HexString } from "./scale.js";
 export * from "./generated/index.js";

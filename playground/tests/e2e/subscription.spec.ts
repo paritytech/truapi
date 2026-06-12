@@ -19,7 +19,10 @@ test.describe("subscription", () => {
     await expect(entries.first()).toBeVisible({ timeout: 6_000 });
     await expect(frame.locator('[data-testid="error-display"]')).toHaveCount(0);
 
-    const text = await entries.first().innerText();
-    expect(text).toContain("connection status:");
+    // Once the first event is delivered the run completes and the Run button
+    // returns (no long-lived stream to Stop).
+    await expect(
+      frame.locator('[data-testid="subscribe-button"]'),
+    ).toBeVisible();
   });
 });

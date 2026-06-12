@@ -82,7 +82,7 @@ a single package with tree-shakeable subpath entries (the separate
 `@parity/truapi-host`, with no shared core, is for hosts that bring their own runtime):
 
 - `@parity/truapi-host-wasm` (the `.` entry) ships the `truapi-server` WASM bundle, the
-  `Provider` factories that drive it, the dispatcher adapter, and `createNodeWasmProvider`.
+  `Provider` factories that drive it and the dispatcher adapter.
 - `@parity/truapi-host-wasm/web` wires the WASM provider into a browser host: the iframe
   MessageChannel handshake (`createIframeHost`) plus `createWebWorkerProvider`.
 - `@parity/truapi-host-wasm/electron` wraps an Electron `MessagePortMain` as a `Provider`.

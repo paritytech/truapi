@@ -53,9 +53,6 @@ pub enum RemotePermission {
     /// Submitting statements on behalf of the user via `remote_statement_store_submit`.
     #[display("submit statements")]
     StatementSubmit,
-    /// Disclosing the user's primary DotNS username.
-    #[display("disclose identity")]
-    UserId,
 }
 
 /// remote-permission request (RFC 0002).

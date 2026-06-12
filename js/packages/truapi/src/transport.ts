@@ -9,12 +9,6 @@ function toError(error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error));
 }
 
-function toWebSocketPayload(message: Uint8Array): Uint8Array<ArrayBuffer> {
-  const copy: Uint8Array<ArrayBuffer> = new Uint8Array(message.byteLength);
-  copy.set(message);
-  return copy;
-}
-
 /**
  * Handle returned by TrUAPI subscription APIs.
  **/
@@ -602,6 +596,13 @@ export interface WebSocketProviderOptions {
   WebSocket?: typeof WebSocket;
 }
 
+function sendWebSocketBytes(socket: WebSocket, message: Uint8Array) {
+  if (!(message.buffer instanceof ArrayBuffer)) {
+    throw new Error("websocket payload must be backed by ArrayBuffer");
+  }
+  socket.send(message as Uint8Array<ArrayBuffer>);
+}
+
 /**
  * Create a provider backed by a binary WebSocket. Used by products that
  * connect through the native host's localhost WS bridge, the host exposes
@@ -629,7 +630,7 @@ export function createWebSocketProvider(
   socket.onopen = () => {
     for (const msg of pending) {
       try {
-        socket.send(toWebSocketPayload(msg));
+        sendWebSocketBytes(socket, msg);
       } catch (error) {
         base.close(error);
         return;
@@ -666,7 +667,7 @@ export function createWebSocketProvider(
       }
       if (socket.readyState === WebSocketCtor.OPEN) {
         try {
-          socket.send(toWebSocketPayload(message));
+          sendWebSocketBytes(socket, message);
         } catch (error) {
           base.close(error);
           throw toError(error);

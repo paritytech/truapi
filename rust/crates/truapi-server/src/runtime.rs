@@ -799,21 +799,9 @@ where
                 }))
             })?;
 
-        let service = PermissionsService::new(self.platform.as_ref(), self.platform.as_ref());
-        let permission = v01::RemotePermissionRequest {
-            permission: v01::RemotePermission::UserId,
-        };
-        match service.check_or_prompt_remote(permission).await {
-            Ok(Decision::Granted) => Ok(HostGetUserIdResponse::V1(v01::HostGetUserIdResponse {
-                primary_username,
-            })),
-            Ok(Decision::Denied) => Err(CallError::Domain(HostGetUserIdError::V1(
-                v01::HostGetUserIdError::PermissionDenied,
-            ))),
-            Err(err) => Err(CallError::HostFailure {
-                reason: format!("permission storage failed: {err:?}"),
-            }),
-        }
+        Ok(HostGetUserIdResponse::V1(v01::HostGetUserIdResponse {
+            primary_username,
+        }))
     }
 
     #[instrument(skip_all, fields(runtime.method = "account.connection_status_subscribe"))]
@@ -2234,7 +2222,7 @@ mod tests {
     }
 
     #[test]
-    fn get_user_id_returns_primary_username_after_permission() {
+    fn get_user_id_returns_primary_username() {
         let host = PlatformRuntimeHost::new_compat(stub_platform(), test_spawner());
         host.session_state().set_session(session_info());
         let cx = CallContext::new();
@@ -2242,27 +2230,6 @@ mod tests {
             futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1)).unwrap();
         let HostGetUserIdResponse::V1(inner) = response;
         assert_eq!(inner.primary_username, "Alice Smith");
-    }
-
-    #[test]
-    fn get_user_id_denies_when_permission_denied() {
-        let host = PlatformRuntimeHost::new_compat(
-            Arc::new(StubPlatform {
-                remote_permission_granted: false,
-                ..Default::default()
-            }),
-            test_spawner(),
-        );
-        host.session_state().set_session(session_info());
-        let cx = CallContext::new();
-        let err = futures::executor::block_on(host.get_user_id(&cx, HostGetUserIdRequest::V1))
-            .unwrap_err();
-        assert!(matches!(
-            err,
-            CallError::Domain(HostGetUserIdError::V1(
-                v01::HostGetUserIdError::PermissionDenied
-            ))
-        ));
     }
 
     #[test]

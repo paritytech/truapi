@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// Rebuild the truapi-server WASM artefacts generated under
-// `dist/wasm/{web,node}/`. wasm-pack is required.
+// Rebuild the browser truapi-server WASM artefacts generated under
+// `dist/wasm/web/`. wasm-pack is required.
 
 import { execFile } from "node:child_process";
 import { rm } from "node:fs/promises";
@@ -61,4 +61,3 @@ async function build(target, subdir) {
 }
 
 await build("web", "web");
-await build("nodejs", "node");
