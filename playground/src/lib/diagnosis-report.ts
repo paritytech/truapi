@@ -66,10 +66,9 @@ export function renderReportMarkdown(
   return lines.join("\n");
 }
 
-// The failure reason for a method, flattened to a single escaped table cell.
-// Only failures carry details; other statuses leave the cell empty.
+// Method output flattened to a single escaped table cell.
 function detailCell(entry: TestEntry | undefined): string {
-  if (entry?.status !== "fail" || entry.output == null) return "";
+  if (entry?.output == null) return "";
   return entry.output.replace(/\s+/g, " ").replace(/\|/g, "\\|").trim();
 }
 

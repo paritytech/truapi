@@ -76,11 +76,10 @@ export async function runExample(opts: {
   client: TrUApiClient;
   onLog: (entry: LogEntry) => void;
 }): Promise<RunResult> {
-  const { source, client, onLog } = opts;
-
+  const { client, onLog } = opts;
   let js: string;
   try {
-    js = transform(source, { transforms: ["typescript"] }).code;
+    js = transform(opts.source, { transforms: ["typescript"] }).code;
   } catch (err) {
     throw new ExampleSyntaxError(
       err instanceof Error ? err.message : String(err),

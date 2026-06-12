@@ -30,6 +30,7 @@ export function ServiceTable({
       <button
         type="button"
         className="method method--autotest"
+        data-testid="diagnosis-entry"
         data-active={isDiagnosisActive}
         data-supported="true"
         onClick={() => onSelect(DIAGNOSIS_ID, "")}
