@@ -374,6 +374,34 @@ pub(crate) fn sso_peer_disconnect_responses(
     ]
 }
 
+pub(crate) fn sso_peer_disconnect_monitor_responses(
+    session: &crate::host_logic::session::SessionInfo,
+) -> Vec<String> {
+    let subscription_id = "peer-disconnect-monitor-sub";
+    vec![
+        subscribe_ack_frame("truapi:sso-peer-disconnect-monitor", subscription_id),
+        new_statements_frame(
+            subscription_id,
+            vec![sso_statement(
+                session,
+                crate::host_logic::sso_pairing::SsoStatementData::Request {
+                    request_id: "wallet-disconnect-monitor".to_string(),
+                    data: vec![
+                        crate::host_logic::sso_messages::RemoteMessage {
+                            message_id: "wallet-disconnect-monitor".to_string(),
+                            data: crate::host_logic::sso_messages::RemoteMessageData::V1(
+                                crate::host_logic::sso_messages::RemoteMessageV1::Disconnected,
+                            ),
+                        }
+                        .encode(),
+                    ],
+                },
+                1,
+            )],
+        ),
+    ]
+}
+
 pub(crate) fn subscribe_ack_frame(request_id: &str, subscription_id: &str) -> String {
     serde_json::json!({
         "jsonrpc": "2.0",
@@ -617,6 +645,11 @@ impl PlatformStorage for StubPlatform {
         key: String,
         value: Vec<u8>,
     ) -> Result<(), v01::HostLocalStorageReadError> {
+        if let Some(reason) = self.local_storage_error {
+            return Err(v01::HostLocalStorageReadError::Unknown {
+                reason: reason.to_string(),
+            });
+        }
         self.local_storage
             .lock()
             .expect("local storage mutex poisoned")
@@ -624,6 +657,11 @@ impl PlatformStorage for StubPlatform {
         Ok(())
     }
     async fn clear(&self, key: String) -> Result<(), v01::HostLocalStorageReadError> {
+        if let Some(reason) = self.local_storage_error {
+            return Err(v01::HostLocalStorageReadError::Unknown {
+                reason: reason.to_string(),
+            });
+        }
         self.local_storage
             .lock()
             .expect("local storage mutex poisoned")

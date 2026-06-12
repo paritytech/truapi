@@ -13,7 +13,7 @@ pub(crate) mod sso_pairing;
 pub(crate) mod sso_remote;
 pub(crate) mod statement_store;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use crate::chain_runtime::{
     ChainRuntime, RuntimeChainProvider, RuntimeFailure, RuntimeFailureKind,
@@ -29,18 +29,25 @@ use crate::host_logic::product_account::{
 use crate::host_logic::session::{
     SessionInfo, SessionState, decode_persisted_session, encode_persisted_session,
 };
+use crate::host_logic::sso_messages::SsoSessionStatement;
 use crate::host_logic::sso_messages::{
     OnExistingAllowancePolicy, SsoAllocationOutcome, SsoRemoteResponse, alias_request_message,
-    create_transaction_message, resource_allocation_message, sign_payload_message,
-    sign_raw_message,
+    create_transaction_message, decode_sso_session_statement, resource_allocation_message,
+    sign_payload_message, sign_raw_message,
+};
+use crate::host_logic::statement_store::{
+    parse_new_statements, parse_subscribe_ack, subscribe_match_all_request, unsubscribe_request,
 };
 use crate::subscription::Spawner;
 use auth_state::AuthStateMachine;
 use identity::resolve_session_identity_with_chain;
 use sso_pairing::PAIRING_DEVICE_IDENTITY_STORAGE_KEY;
-use sso_remote::{SSO_LOCAL_DISCONNECT_REASON, SessionDisconnects, sso_message_id};
+use sso_remote::{
+    SSO_LOCAL_DISCONNECT_REASON, SSO_PEER_DISCONNECT_REASON, SessionDisconnects, sso_message_id,
+};
 
-use futures::StreamExt;
+use futures::future::{AbortHandle, Abortable};
+use futures::{FutureExt, StreamExt};
 use parity_scale_codec::Encode;
 use tracing::{debug, info, instrument};
 use truapi::api::{
@@ -142,8 +149,22 @@ pub struct PlatformRuntimeHost<P> {
     /// a callback on every connection-status query.
     session_state: Arc<SessionState>,
     session_disconnects: Arc<SessionDisconnects>,
+    sso_disconnect_monitor: Arc<Mutex<Option<SsoDisconnectMonitor>>>,
+    spawner: Spawner,
     /// Auth UI state machine; the single funnel for `auth_state_changed`.
     auth_state: AuthStateMachine<P>,
+}
+
+struct SsoDisconnectMonitor {
+    session_id_own: [u8; 32],
+    session_id_peer: [u8; 32],
+    abort: AbortHandle,
+}
+
+impl Drop for SsoDisconnectMonitor {
+    fn drop(&mut self) {
+        self.abort.abort();
+    }
 }
 
 impl<P> PlatformRuntimeHost<P> {
@@ -159,9 +180,11 @@ impl<P> PlatformRuntimeHost<P> {
             auth_state: AuthStateMachine::new(platform.clone()),
             platform,
             runtime_config,
-            chain: ChainRuntime::new(chain_provider, spawner),
+            chain: ChainRuntime::new(chain_provider, spawner.clone()),
             session_state: SessionState::new(),
             session_disconnects: Arc::new(SessionDisconnects::default()),
+            sso_disconnect_monitor: Arc::new(Mutex::new(None)),
+            spawner,
         }
     }
 
@@ -219,6 +242,22 @@ impl<P> PlatformRuntimeHost<P> {
         self.session_state.clone()
     }
 
+    fn start_sso_disconnect_monitor(&self, session: &SessionInfo)
+    where
+        P: Platform + 'static,
+    {
+        start_sso_disconnect_monitor(
+            self.platform.clone(),
+            self.runtime_config.clone(),
+            self.session_state.clone(),
+            self.session_disconnects.clone(),
+            self.auth_state.clone(),
+            self.sso_disconnect_monitor.clone(),
+            self.spawner.clone(),
+            session,
+        );
+    }
+
     /// Start syncing the in-memory session from the host-global session store.
     /// The store emits coarse ticks; each tick triggers a fresh read so same-
     /// runtime writes and cross-runtime logout/re-pair take the same path.
@@ -232,6 +271,9 @@ impl<P> PlatformRuntimeHost<P> {
         let runtime_config = self.runtime_config.clone();
         let session_state = self.session_state.clone();
         let auth_state = self.auth_state.clone();
+        let session_disconnects = self.session_disconnects.clone();
+        let sso_disconnect_monitor = self.sso_disconnect_monitor.clone();
+        let spawner_for_monitor = self.spawner.clone();
         spawner(Box::pin(async move {
             let mut ticks = PlatformSessionStore::subscribe_session_store(platform.as_ref());
             // Clearing the store can itself notify this subscription; clear at
@@ -262,9 +304,22 @@ impl<P> PlatformRuntimeHost<P> {
                                 }
                                 auth_state.connected(&connected_session_ui_info(&resolved));
                                 session_state.set_session(resolved);
+                                if let Some(session) = session_state.current() {
+                                    start_sso_disconnect_monitor(
+                                        platform.clone(),
+                                        runtime_config.clone(),
+                                        session_state.clone(),
+                                        session_disconnects.clone(),
+                                        auth_state.clone(),
+                                        sso_disconnect_monitor.clone(),
+                                        spawner_for_monitor.clone(),
+                                        &session,
+                                    );
+                                }
                             }
                             Err(_) => {
                                 session_state.clear_session();
+                                stop_sso_disconnect_monitor(&sso_disconnect_monitor);
                                 let _ =
                                     PlatformSessionStore::clear_session(platform.as_ref()).await;
                                 auth_state.store_disconnected();
@@ -274,10 +329,12 @@ impl<P> PlatformRuntimeHost<P> {
                     Ok(None) => {
                         cleared_after_read_error = false;
                         session_state.clear_session();
+                        stop_sso_disconnect_monitor(&sso_disconnect_monitor);
                         auth_state.store_disconnected();
                     }
                     Err(_) => {
                         session_state.clear_session();
+                        stop_sso_disconnect_monitor(&sso_disconnect_monitor);
                         auth_state.store_disconnected();
                         if !cleared_after_read_error {
                             cleared_after_read_error = true;
@@ -356,6 +413,7 @@ impl<P> PlatformRuntimeHost<P> {
         P: Platform + 'static,
     {
         debug!("clearing disconnected SSO session state");
+        stop_sso_disconnect_monitor(&self.sso_disconnect_monitor);
         self.session_state.clear_session();
         let _ = PlatformSessionStore::clear_session(self.platform.as_ref()).await;
         self.auth_state.store_disconnected();
@@ -365,6 +423,147 @@ impl<P> PlatformRuntimeHost<P> {
         )
         .await;
     }
+}
+
+fn stop_sso_disconnect_monitor(monitor: &Arc<Mutex<Option<SsoDisconnectMonitor>>>) {
+    monitor
+        .lock()
+        .expect("SSO disconnect monitor mutex poisoned")
+        .take();
+}
+
+fn start_sso_disconnect_monitor<P>(
+    platform: Arc<P>,
+    runtime_config: RuntimeConfig,
+    session_state: Arc<SessionState>,
+    session_disconnects: Arc<SessionDisconnects>,
+    auth_state: AuthStateMachine<P>,
+    monitor: Arc<Mutex<Option<SsoDisconnectMonitor>>>,
+    spawner: Spawner,
+    session: &SessionInfo,
+) where
+    P: Platform + 'static,
+{
+    let Some(sso) = session.sso.clone() else {
+        stop_sso_disconnect_monitor(&monitor);
+        return;
+    };
+
+    {
+        let mut current = monitor
+            .lock()
+            .expect("SSO disconnect monitor mutex poisoned");
+        if current.as_ref().is_some_and(|active| {
+            active.session_id_own == sso.session_id_own
+                && active.session_id_peer == sso.session_id_peer
+        }) {
+            return;
+        }
+        let (abort, registration) = AbortHandle::new_pair();
+        *current = Some(SsoDisconnectMonitor {
+            session_id_own: sso.session_id_own,
+            session_id_peer: sso.session_id_peer,
+            abort,
+        });
+
+        let monitor_slot = monitor.clone();
+        let future = async move {
+            let result = wait_for_sso_peer_disconnect(
+                platform.clone(),
+                runtime_config.people_chain_genesis_hash,
+                sso.clone(),
+            )
+            .await;
+            let peer_disconnected = result.is_ok();
+            let should_clear = peer_disconnected
+                && session_state.current().as_ref().is_some_and(|current| {
+                    current.sso.as_ref().is_some_and(|current_sso| {
+                        current_sso.session_id_own == sso.session_id_own
+                            && current_sso.session_id_peer == sso.session_id_peer
+                    })
+                });
+            {
+                let mut active = monitor_slot
+                    .lock()
+                    .expect("SSO disconnect monitor mutex poisoned");
+                if active.as_ref().is_some_and(|active| {
+                    active.session_id_own == sso.session_id_own
+                        && active.session_id_peer == sso.session_id_peer
+                }) {
+                    *active = None;
+                }
+            }
+            if should_clear {
+                session_disconnects.notify(SSO_PEER_DISCONNECT_REASON);
+                session_state.clear_session();
+                let _ = PlatformSessionStore::clear_session(platform.as_ref()).await;
+                auth_state.store_disconnected();
+                let _ = PlatformStorage::clear(
+                    platform.as_ref(),
+                    PAIRING_DEVICE_IDENTITY_STORAGE_KEY.to_string(),
+                )
+                .await;
+            }
+        };
+        spawner(Box::pin(Abortable::new(future, registration).map(|_| ())));
+    }
+}
+
+#[instrument(skip_all, fields(runtime.method = "sso.peer_disconnect.monitor"))]
+async fn wait_for_sso_peer_disconnect<P>(
+    platform: Arc<P>,
+    people_chain_genesis_hash: [u8; 32],
+    session: crate::host_logic::session::SsoSessionInfo,
+) -> Result<(), String>
+where
+    P: Platform + 'static,
+{
+    let connection =
+        PlatformChainProvider::connect(platform.as_ref(), people_chain_genesis_hash.to_vec())
+            .await
+            .map_err(|err| format!("SSO disconnect monitor connect failed: {err:?}"))?;
+    let subscribe_id = "truapi:sso-peer-disconnect-monitor";
+    connection.send(subscribe_match_all_request(
+        subscribe_id,
+        &[session.session_id_peer],
+    ));
+    let mut responses = connection.responses();
+    let mut remote_subscription_id: Option<String> = None;
+    while let Some(frame) = responses.next().await {
+        if remote_subscription_id.is_none()
+            && let Some(id) =
+                parse_subscribe_ack(&frame, subscribe_id).map_err(|err| err.to_string())?
+        {
+            remote_subscription_id = Some(id);
+            continue;
+        }
+        let Some(page) = parse_new_statements(&frame).map_err(|err| err.to_string())? else {
+            continue;
+        };
+        if remote_subscription_id.as_deref() != Some(page.remote_subscription_id.as_str()) {
+            continue;
+        }
+        for statement in page.statements {
+            if matches!(
+                decode_sso_session_statement(
+                    &session,
+                    &statement,
+                    "truapi:sso-peer-disconnect-monitor",
+                    "truapi:sso-peer-disconnect-monitor",
+                )?,
+                Some(SsoSessionStatement::Disconnected)
+            ) {
+                if let Some(id) = remote_subscription_id.as_ref() {
+                    connection.send(unsubscribe_request(
+                        "truapi:sso-peer-disconnect-monitor:unsubscribe",
+                        id,
+                    ));
+                }
+                return Ok(());
+            }
+        }
+    }
+    Err("SSO disconnect monitor response stream ended".to_string())
 }
 
 impl<P> PlatformRuntimeHost<P>
@@ -2531,6 +2730,57 @@ mod tests {
         );
         assert_eq!(
             futures::executor::block_on(statuses.next()).unwrap(),
+            HostAccountConnectionStatusSubscribeItem::V1(
+                v01::HostAccountConnectionStatusSubscribeItem::Disconnected
+            )
+        );
+    }
+
+    #[test]
+    fn idle_peer_disconnect_monitor_clears_session_store_and_broadcasts() {
+        let session = sso_session_info();
+        let platform = Arc::new(StubPlatform {
+            rpc_responses: sso_peer_disconnect_monitor_responses(&session),
+            ..Default::default()
+        });
+        let host = PlatformRuntimeHost::new(
+            platform.clone(),
+            runtime_config("myapp.dot"),
+            test_spawner(),
+        );
+        host.session_state().set_session(session.clone());
+        let mut statuses = host.session_state().subscribe();
+        assert_eq!(
+            futures::executor::block_on(statuses.next()).unwrap(),
+            HostAccountConnectionStatusSubscribeItem::V1(
+                v01::HostAccountConnectionStatusSubscribeItem::Connected
+            )
+        );
+
+        host.start_sso_disconnect_monitor(&session);
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        let disconnected = loop {
+            if let Some(item) = statuses.next().now_or_never() {
+                break item.expect("status stream ended");
+            }
+            assert!(
+                std::time::Instant::now() < deadline,
+                "peer disconnect monitor did not emit Disconnected"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        };
+
+        assert!(host.session_state().current().is_none());
+        assert_eq!(
+            *platform
+                .session_clears
+                .lock()
+                .expect("session clear counter mutex poisoned"),
+            1
+        );
+        assert_eq!(
+            disconnected,
             HostAccountConnectionStatusSubscribeItem::V1(
                 v01::HostAccountConnectionStatusSubscribeItem::Disconnected
             )

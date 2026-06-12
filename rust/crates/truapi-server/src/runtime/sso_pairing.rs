@@ -26,8 +26,8 @@ use crate::host_logic::statement_store::{
 use futures::channel::oneshot;
 use futures::stream::BoxStream;
 use futures::{FutureExt, StreamExt, pin_mut};
-use parity_scale_codec::{Decode, Encode};
-use tracing::{debug, info, instrument, warn};
+use parity_scale_codec::Encode;
+use tracing::{debug, info, instrument};
 use truapi::CallError;
 use truapi::v01;
 use truapi::versioned::account::{HostRequestLoginError, HostRequestLoginResponse};
@@ -128,7 +128,7 @@ where
             ));
         }
 
-        let pairing_identity = load_or_create_pairing_device_identity(self.platform.as_ref())
+        let pairing_identity = create_fresh_pairing_device_identity(self.platform.as_ref())
             .await
             .map_err(|reason| self.fail_before_pairing(reason))?;
         let bootstrap =
@@ -169,9 +169,11 @@ where
                 }
             }
             Ok(PairingFlowOutcome::Success(session)) => {
+                let session = *session;
                 self.auth_state
                     .connected(&connected_session_ui_info(&session));
-                self.session_state.set_session(*session);
+                self.session_state.set_session(session.clone());
+                self.start_sso_disconnect_monitor(&session);
                 info!("login succeeded, SSO session established");
                 Ok(HostRequestLoginResponse::V1(
                     v01::HostRequestLoginResponse::Success,
@@ -260,28 +262,10 @@ where
     }
 }
 
-#[instrument(skip_all, fields(runtime.method = "sso.pairing_device.load_or_create"))]
-async fn load_or_create_pairing_device_identity(
+#[instrument(skip_all, fields(runtime.method = "sso.pairing_device.create_fresh"))]
+async fn create_fresh_pairing_device_identity(
     storage: &(impl PlatformStorage + ?Sized),
 ) -> Result<PairingDeviceIdentity, String> {
-    if let Some(raw) =
-        PlatformStorage::read(storage, PAIRING_DEVICE_IDENTITY_STORAGE_KEY.to_string())
-            .await
-            .map_err(|err| format!("pairing device identity read failed: {err:?}"))?
-    {
-        match PairingDeviceIdentity::decode(&mut raw.as_slice()) {
-            Ok(identity) => return Ok(identity),
-            Err(err) => {
-                warn!("stored pairing device identity is invalid, regenerating: {err}");
-                let _ = PlatformStorage::clear(
-                    storage,
-                    PAIRING_DEVICE_IDENTITY_STORAGE_KEY.to_string(),
-                )
-                .await;
-            }
-        }
-    }
-
     let identity = generate_pairing_device_identity()
         .map_err(|err| format!("pairing identity failed: {err}"))?;
     PlatformStorage::write(
@@ -624,7 +608,7 @@ mod tests {
     }
 
     #[test]
-    fn request_login_reuses_persisted_pairing_device_identity() {
+    fn request_login_rotates_pairing_device_identity_between_attempts() {
         let platform = stub_platform();
         let host = Arc::new(PlatformRuntimeHost::new_compat(
             platform.clone(),
@@ -656,7 +640,7 @@ mod tests {
             })
             .collect();
         assert_eq!(deeplinks.len(), 2);
-        assert_eq!(
+        assert_ne!(
             pairing_device_from_deeplink(&deeplinks[0]),
             pairing_device_from_deeplink(&deeplinks[1])
         );
