@@ -95,7 +95,7 @@ enum PairingFlowOutcome {
 }
 
 /// Resets a `Pairing` state left behind by a dropped login future (e.g. the
-/// ws-bridge dropping in-flight calls on connection close). A no-op once the
+/// transport dropping in-flight calls on connection close). A no-op once the
 /// flow reached any terminal transition or a newer pairing took over.
 struct AbandonedPairingGuard<P: Platform> {
     auth_state: AuthStateMachine<P>,

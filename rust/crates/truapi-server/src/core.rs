@@ -9,8 +9,8 @@
 //! Platform path: [`TrUApiCore::from_platform_with_config`] takes a
 //! [`truapi_platform::Platform`] and wires it through
 //! [`crate::runtime::PlatformRuntimeHost`] before registering with the
-//! generated dispatcher. This is the path real platform shims (UniFFI,
-//! wasm-bindgen, ws-bridge, ...) take.
+//! generated dispatcher. This is the path real platform shims such as
+//! wasm-bindgen take.
 
 use std::sync::{Arc, Mutex};
 
@@ -146,8 +146,8 @@ impl TrUApiCore {
     }
 
     /// Synchronous wrapper that blocks the current thread until the inner
-    /// future resolves. Convenient for embedding contexts (e.g. UniFFI) that
-    /// don't already drive an async runtime.
+    /// future resolves. Convenient for embedding contexts that don't already
+    /// drive an async runtime.
     #[instrument(skip_all, fields(runtime.method = "core.receive_from_product_blocking"))]
     pub fn receive_from_product(&self, frame: &[u8]) -> Option<Vec<u8>> {
         futures::executor::block_on(self.receive_from_product_async(frame))
