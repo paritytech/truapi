@@ -14,7 +14,11 @@ import {
 } from "@parity/truapi";
 import { hexToBytes } from "@parity/truapi/scale";
 
-import type { ChainConnect, ChainConnection, HostCallbacks } from "./runtime.js";
+import type {
+  ChainConnect,
+  ChainConnection,
+  HostCallbacks,
+} from "./runtime.js";
 import type { RawCallbacks } from "./generated/host-callbacks-adapter.js";
 
 type WireResult<T, E> =
@@ -130,7 +134,10 @@ export function chainConnectAdapter(
  * emit a single current default. Codec-typed results are SCALE-encoded to
  * match the symmetric callback boundary.
  */
-export function createUnavailableCallbacks(): Omit<RawCallbacks, "chainConnect"> {
+export function createUnavailableCallbacks(): Omit<
+  RawCallbacks,
+  "chainConnect"
+> {
   const unavailable = (method: string) => async (): Promise<never> => {
     throw new Error(`${method} unavailable on this host`);
   };
@@ -147,10 +154,10 @@ export function createUnavailableCallbacks(): Omit<RawCallbacks, "chainConnect">
     write: unavailable("write"),
     clear: unavailable("clear"),
     authStateChanged: () => {},
-    readSession: async () => undefined,
-    writeSession: async () => {},
-    clearSession: async () => {},
-    subscribeSessionStore: (sendItem) => {
+    readStoredSession: async () => undefined,
+    writeStoredSession: async () => {},
+    clearStoredSession: async () => {},
+    subscribeStoredSession: (sendItem) => {
       sendItem();
     },
     confirmSignPayload: async () => false,

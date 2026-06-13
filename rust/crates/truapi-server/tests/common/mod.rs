@@ -118,16 +118,16 @@ impl ChainProvider for WireShapePlatform {
 impl AuthPresenter for WireShapePlatform {}
 
 impl SessionStore for WireShapePlatform {
-    async fn read_session(&self) -> Result<Option<Vec<u8>>, v01::GenericError> {
+    async fn read_stored_session(&self) -> Result<Option<Vec<u8>>, v01::GenericError> {
         Ok(None)
     }
-    async fn write_session(&self, _value: Vec<u8>) -> Result<(), v01::GenericError> {
+    async fn write_stored_session(&self, _value: Vec<u8>) -> Result<(), v01::GenericError> {
         Ok(())
     }
-    async fn clear_session(&self) -> Result<(), v01::GenericError> {
+    async fn clear_stored_session(&self) -> Result<(), v01::GenericError> {
         Ok(())
     }
-    fn subscribe_session_store(&self) -> BoxStream<'static, Result<(), v01::GenericError>> {
+    fn subscribe_stored_session(&self) -> BoxStream<'static, Result<(), v01::GenericError>> {
         Box::pin(stream::once(async { Ok(()) }))
     }
 }

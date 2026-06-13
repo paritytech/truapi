@@ -17,12 +17,12 @@ export type {
   SessionUiInfo,
   HostStorage,
   ThemeHost,
-  TrUApiHostWasmProvider,
-  WasmCoreLike,
+  TrUApiHostCoreProvider,
+  HostCoreLike,
   WasmRawCallbacks,
-  WasmRuntimeConfig,
+  HostCoreRuntimeConfig,
 } from "./runtime.js";
-export { createWasmProvider } from "./runtime.js";
+export { createHostCoreProvider } from "./runtime.js";
 export { createUnavailableCallbacks } from "./adapter-support.js";
 export type { RawCallbacks } from "./generated/host-callbacks-adapter.js";
 export { createWasmRawCallbacks } from "./generated/host-callbacks-adapter.js";

@@ -1,16 +1,7 @@
-//! `TrUApiCore`: the entrypoint a host wraps around a `truapi::api::TrUApi`
-//! implementation (direct path) or a `truapi_platform::Platform`
-//! implementation (platform path).
+//! Internal dispatcher/runtime core.
 //!
-//! Direct path: `TrUApiCore::new(host)` accepts anything implementing
-//! the unified [`truapi::api::TrUApi`] super-trait. Useful for unit tests
-//! and bespoke hosts.
-//!
-//! Platform path: [`TrUApiCore::from_platform_with_config`] takes a
-//! [`truapi_platform::Platform`] and wires it through
-//! [`crate::runtime::PlatformRuntimeHost`] before registering with the
-//! generated dispatcher. This is the path real platform shims such as
-//! wasm-bindgen take.
+//! Public host adapters should wrap this through [`crate::HostCore`], which
+//! owns the stable byte-frame ingress/egress and lifecycle API.
 
 use std::sync::{Arc, Mutex};
 
@@ -20,11 +11,13 @@ use tracing::instrument;
 use truapi::api::TrUApi;
 use truapi_platform::{Platform, RuntimeConfig};
 
+use crate::dispatcher::Dispatcher;
+use crate::frame::ProtocolMessage;
 use crate::generated::dispatcher;
 use crate::host_logic::session::SessionState;
 use crate::runtime::PlatformRuntimeHost;
 use crate::subscription::Spawner;
-use crate::{Dispatcher, ProtocolMessage, Transport};
+use crate::transport::Transport;
 
 type DisconnectFn = Arc<dyn Fn() -> BoxFuture<'static, ()> + Send + Sync>;
 type CancelLoginFn = Arc<dyn Fn() + Send + Sync>;

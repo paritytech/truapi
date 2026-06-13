@@ -2,8 +2,8 @@ import type {
   ChainConnection,
   HostCallbacks,
   LogLevel,
-  TrUApiHostWasmProvider,
-  WasmRuntimeConfig,
+  TrUApiHostCoreProvider,
+  HostCoreRuntimeConfig,
   WasmRawCallbacks,
 } from "../index.js";
 import { createWasmRawCallbacks } from "../generated/host-callbacks-adapter.js";
@@ -66,13 +66,13 @@ function persistLogLevel(level: LogLevel): void {
 }
 
 let devLogLevelOverride: LogLevel | null = readPersistedLogLevel();
-const devGlobalProviders = new Set<TrUApiHostWasmProvider>();
+const devGlobalProviders = new Set<TrUApiHostCoreProvider>();
 const OPTIONAL_CALLBACK_NAMES: readonly OptionalCallbackName[] = [
   "cancelNotification",
   "authStateChanged",
-  "readSession",
-  "writeSession",
-  "clearSession",
+  "readStoredSession",
+  "writeStoredSession",
+  "clearStoredSession",
   "confirmSignPayload",
   "confirmSignRaw",
   "confirmCreateTransaction",
@@ -99,8 +99,8 @@ function optionalSubscriptions(
   callbacks: Omit<WasmRawCallbacks, "emitFrame">,
 ): SubscriptionName[] {
   const names: SubscriptionName[] = [];
-  if (typeof callbacks.subscribeSessionStore === "function") {
-    names.push("subscribeSessionStore");
+  if (typeof callbacks.subscribeStoredSession === "function") {
+    names.push("subscribeStoredSession");
   }
   if (typeof callbacks.subscribeTheme === "function") {
     names.push("subscribeTheme");
@@ -183,8 +183,8 @@ function handleSubscriptionStart(
   let dispose: (() => void) | void = undefined;
   try {
     switch (msg.name) {
-      case "subscribeSessionStore":
-        dispose = state.rawCallbacks.subscribeSessionStore?.(sendItem);
+      case "subscribeStoredSession":
+        dispose = state.rawCallbacks.subscribeStoredSession?.(sendItem);
         break;
       case "subscribeTheme":
         dispose = state.rawCallbacks.subscribeTheme?.(sendItem);
@@ -381,7 +381,7 @@ export interface CreateWebWorkerProviderOptions {
   /** Wasm core log level. Default: `"off"`. */
   logLevel?: LogLevel;
   /** Static product/pairing config passed to the Rust core. */
-  runtimeConfig: WasmRuntimeConfig;
+  runtimeConfig: HostCoreRuntimeConfig;
   /**
    * Milliseconds to wait for the worker to report `ready` before rejecting
    * and terminating it. Default: 30000.
@@ -412,7 +412,7 @@ export function createWebWorkerProvider(
   worker: Worker,
   host: Partial<HostCallbacks>,
   options: CreateWebWorkerProviderOptions,
-): Promise<TrUApiHostWasmProvider> {
+): Promise<TrUApiHostCoreProvider> {
   const callbacks = createWasmRawCallbacks(host);
 
   return new Promise((resolve, reject) => {
@@ -458,7 +458,7 @@ export function createWebWorkerProvider(
           }
           for (const listener of [...state.listeners]) listener(msg.bytes);
           break;
-        case "disconnectResponse":
+        case "disconnectSessionResponse":
           handleDisconnectResponse(state, msg);
           break;
         case "callbackRequest":
@@ -568,8 +568,8 @@ export function createWebWorkerProvider(
   });
 }
 
-function buildProvider(state: WorkerProviderState): TrUApiHostWasmProvider {
-  const provider: TrUApiHostWasmProvider = {
+function buildProvider(state: WorkerProviderState): TrUApiHostCoreProvider {
+  const provider: TrUApiHostCoreProvider = {
     postMessage(bytes: Uint8Array): void {
       if (state.disposed) return;
       const post: MainToWorker = { kind: "frame", bytes };
@@ -594,13 +594,13 @@ function buildProvider(state: WorkerProviderState): TrUApiHostWasmProvider {
         state.closeListeners.delete(callback);
       };
     },
-    disconnect(): Promise<void> {
+    disconnectSession(): Promise<void> {
       if (state.disposed) return Promise.resolve();
       return new Promise((resolve, reject) => {
         const requestId = ++nextDisconnectRequestId;
         state.pendingDisconnects.set(requestId, { resolve, reject });
         try {
-          const post: MainToWorker = { kind: "disconnect", requestId };
+          const post: MainToWorker = { kind: "disconnectSession", requestId };
           state.worker.postMessage(post);
         } catch (err) {
           state.pendingDisconnects.delete(requestId);
@@ -608,9 +608,9 @@ function buildProvider(state: WorkerProviderState): TrUApiHostWasmProvider {
         }
       });
     },
-    cancelLogin(): void {
+    cancelPairing(): void {
       if (state.disposed) return;
-      const post: MainToWorker = { kind: "cancelLogin" };
+      const post: MainToWorker = { kind: "cancelPairing" };
       state.worker.postMessage(post);
     },
     setLogLevel(level: LogLevel): void {
@@ -634,7 +634,7 @@ function buildProvider(state: WorkerProviderState): TrUApiHostWasmProvider {
  * next load, so it survives refreshes. Pair with the DevTools console "Verbose"
  * level to surface debug/trace.
  */
-function exposeDevGlobal(provider: TrUApiHostWasmProvider): void {
+function exposeDevGlobal(provider: TrUApiHostCoreProvider): void {
   devGlobalProviders.add(provider);
   if (devLogLevelOverride !== null) {
     provider.setLogLevel?.(devLogLevelOverride);

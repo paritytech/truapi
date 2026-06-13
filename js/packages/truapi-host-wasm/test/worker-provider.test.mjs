@@ -129,9 +129,9 @@ test("createWebWorkerProvider advertises the full optional callback surface", as
     optionalCallbacks: [
       "cancelNotification",
       "authStateChanged",
-      "readSession",
-      "writeSession",
-      "clearSession",
+      "readStoredSession",
+      "writeStoredSession",
+      "clearStoredSession",
       "confirmSignPayload",
       "confirmSignRaw",
       "confirmCreateTransaction",
@@ -141,7 +141,7 @@ test("createWebWorkerProvider advertises the full optional callback surface", as
       "submitPreimage",
     ],
     optionalSubscriptions: [
-      "subscribeSessionStore",
+      "subscribeStoredSession",
       "subscribeTheme",
       "lookupPreimage",
     ],
@@ -150,8 +150,8 @@ test("createWebWorkerProvider advertises the full optional callback surface", as
 
   worker.emit({ kind: "ready" });
   const provider = await providerPromise;
-  assert.equal(typeof provider.disconnect, "function");
-  assert.equal(typeof provider.cancelLogin, "function");
+  assert.equal(typeof provider.disconnectSession, "function");
+  assert.equal(typeof provider.cancelPairing, "function");
 
   provider.dispose();
 });
@@ -260,13 +260,13 @@ test("worker provider resolves disconnect responses", async () => {
   worker.emit({ kind: "ready" });
   const provider = await providerPromise;
 
-  const disconnect = provider.disconnect();
+  const disconnect = provider.disconnectSession();
   const msg = worker.messages.at(-1);
-  assert.equal(msg.kind, "disconnect");
+  assert.equal(msg.kind, "disconnectSession");
   assert.equal(typeof msg.requestId, "number");
 
   worker.emit({
-    kind: "disconnectResponse",
+    kind: "disconnectSessionResponse",
     requestId: msg.requestId,
     ok: true,
   });
@@ -281,7 +281,7 @@ test("worker provider dispatches optional callback requests to host hooks", asyn
   const providerPromise = createWebWorkerProvider(
     worker,
     makeCallbacks({
-      clearSession: async () => {
+      clearStoredSession: async () => {
         clears += 1;
       },
     }),
@@ -296,7 +296,7 @@ test("worker provider dispatches optional callback requests to host hooks", asyn
   worker.emit({
     kind: "callbackRequest",
     requestId: 7,
-    name: "clearSession",
+    name: "clearStoredSession",
     args: [],
   });
   await settle();
@@ -365,13 +365,13 @@ test("worker provider forwards authStateChanged callback requests", async () => 
   provider.dispose();
 });
 
-test("worker provider posts cancelLogin to the worker", async () => {
+test("worker provider posts cancelPairing to the worker", async () => {
   const worker = new FakeWorker();
   const provider = await readyProvider(worker);
 
-  provider.cancelLogin();
+  provider.cancelPairing();
 
-  assert.deepEqual(worker.messages.at(-1), { kind: "cancelLogin" });
+  assert.deepEqual(worker.messages.at(-1), { kind: "cancelPairing" });
   provider.dispose();
 });
 
@@ -384,7 +384,7 @@ test("worker fault terminates the worker and runs the full teardown", async () =
     makeCallbacks({
       // Manual async iterables whose `return()` records disposal; the provider
       // disposes subscriptions and closes chain connections on a worker fault.
-      subscribeSessionStore: () => ({
+      subscribeStoredSession: () => ({
         [Symbol.asyncIterator]() {
           return this;
         },
@@ -417,7 +417,7 @@ test("worker fault terminates the worker and runs the full teardown", async () =
   worker.emit({
     kind: "subscriptionStart",
     subId: 1,
-    name: "subscribeSessionStore",
+    name: "subscribeStoredSession",
     payload: null,
   });
   worker.emit({ kind: "chainConnectStart", connId: 1, genesisHash: "0xab" });

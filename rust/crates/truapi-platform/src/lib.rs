@@ -301,19 +301,21 @@ pub trait AuthPresenter: Send + Sync {
 /// Host-global opaque session persistence for core-owned SSO state.
 pub trait SessionStore: Send + Sync {
     /// Read the currently persisted core session blob.
-    fn read_session(&self) -> impl Future<Output = Result<Option<Vec<u8>>, GenericError>> + Send;
+    fn read_stored_session(
+        &self,
+    ) -> impl Future<Output = Result<Option<Vec<u8>>, GenericError>> + Send;
 
     /// Persist the core session blob.
-    fn write_session(
+    fn write_stored_session(
         &self,
         value: Vec<u8>,
     ) -> impl Future<Output = Result<(), GenericError>> + Send;
 
     /// Clear the persisted core session blob.
-    fn clear_session(&self) -> impl Future<Output = Result<(), GenericError>> + Send;
+    fn clear_stored_session(&self) -> impl Future<Output = Result<(), GenericError>> + Send;
 
     /// Emit once immediately, then on future local/cross-runtime changes.
-    fn subscribe_session_store(&self) -> BoxStream<'static, Result<(), GenericError>>;
+    fn subscribe_stored_session(&self) -> BoxStream<'static, Result<(), GenericError>>;
 }
 
 /// Local user confirmation UI for session-channel operations.

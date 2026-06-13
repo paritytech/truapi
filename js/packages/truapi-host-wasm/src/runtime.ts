@@ -7,7 +7,7 @@ import type { Provider } from "@parity/truapi";
 // SCALE bytes. The `WasmRawCallbacks` interface declared further down
 // is the byte-oriented wire surface the WASM core invokes; use
 // `createWasmRawCallbacks` to adapt this typed surface into the raw
-// callback surface consumed by `createWasmProvider`.
+// callback surface consumed by `createHostCoreProvider`.
 export type {
   AuthState,
   ChainProvider,
@@ -60,21 +60,29 @@ export interface ChainConnection {
  */
 export type LogLevel = "off" | "error" | "warn" | "info" | "debug" | "trace";
 
-export interface WasmRuntimeConfig {
+export interface HostCoreRuntimeConfig {
   productId: string;
-  hostName: string;
-  hostIcon?: string;
-  hostVersion?: string;
-  platformType?: string;
-  platformVersion?: string;
-  peopleChainGenesisHash: string | Uint8Array;
-  pairingDeeplinkScheme:
-    | "polkadotapp"
-    | "polkadotApp"
-    | "PolkadotApp"
-    | "polkadotappdev"
-    | "polkadotAppDev"
-    | "PolkadotAppDev";
+  host: {
+    name: string;
+    icon?: string;
+    version?: string;
+  };
+  platform?: {
+    type?: string;
+    version?: string;
+  };
+  people: {
+    genesisHash: string | Uint8Array;
+  };
+  pairing: {
+    deeplinkScheme:
+      | "polkadotapp"
+      | "polkadotApp"
+      | "PolkadotApp"
+      | "polkadotappdev"
+      | "polkadotAppDev"
+      | "PolkadotAppDev";
+  };
 }
 
 /**
@@ -96,32 +104,32 @@ export type WasmRawCallbacks = RawCallbacks & {
 };
 
 /**
- * Shape exposed by the wasm-pack output's `WasmTrUApiCore`. Kept local
+ * Shape exposed by the wasm-pack output's `WasmHostCore`. Kept local
  * so the package does not have a hard dependency on the generated `.d.ts`
  * file path.
  */
-export interface WasmCoreLike {
-  receiveFromProduct(frame: Uint8Array): Promise<void>;
-  disconnect?(): Promise<void>;
-  cancelLogin?(): void;
+export interface HostCoreLike {
+  receiveFrame(frame: Uint8Array): Promise<void>;
+  disconnectSession?(): Promise<void>;
+  cancelPairing?(): void;
   dispose(): void;
   free(): void;
 }
 
-export interface TrUApiHostWasmProvider extends Provider {
+export interface TrUApiHostCoreProvider extends Provider {
   /**
    * Core-owned logout/disconnect. This best-effort notifies the SSO peer,
    * clears the in-memory session, clears SessionStore, and broadcasts
    * Disconnected from the Rust core.
    */
-  disconnect(): Promise<void>;
+  disconnectSession(): Promise<void>;
 
   /**
    * Cancel any in-flight `requestLogin` pairing (e.g. the user closed the
    * pairing UI). The core emits a `Disconnected` auth state and resolves
    * the pending login as `Rejected`. A no-op when no login is in progress.
    */
-  cancelLogin(): void;
+  cancelPairing(): void;
 
   /**
    * Re-tune the wasm core's log level at runtime. Present on runtimes that
@@ -138,10 +146,10 @@ export interface TrUApiHostWasmProvider extends Provider {
  * inbound frames into the WASM core and forwards core-emitted frames back
  * to the listener registered through `provider.subscribe`.
  */
-export function createWasmProvider(
-  createCore: (rawCallbacks: WasmRawCallbacks) => WasmCoreLike,
+export function createHostCoreProvider(
+  createCore: (rawCallbacks: WasmRawCallbacks) => HostCoreLike,
   host: Partial<HostCallbacks>,
-): TrUApiHostWasmProvider {
+): TrUApiHostCoreProvider {
   const partial = createWasmRawCallbacks(host);
   const listeners = new Set<(message: Uint8Array) => void>();
   const closeListeners = new Set<(error: Error) => void>();
@@ -176,7 +184,7 @@ export function createWasmProvider(
   return {
     postMessage(bytes: Uint8Array): void {
       if (disposed || closedError) return;
-      void core.receiveFromProduct(bytes).catch((err: unknown) => {
+      void core.receiveFrame(bytes).catch((err: unknown) => {
         close(err instanceof Error ? err : new Error(String(err)));
       });
     },
@@ -197,16 +205,16 @@ export function createWasmProvider(
         closeListeners.delete(callback);
       };
     },
-    async disconnect() {
+    async disconnectSession() {
       if (disposed || closedError) return;
-      if (!core.disconnect) {
-        throw new Error("disconnect unavailable on this WASM core");
+      if (!core.disconnectSession) {
+        throw new Error("disconnectSession unavailable on this WASM core");
       }
-      await core.disconnect();
+      await core.disconnectSession();
     },
-    cancelLogin() {
+    cancelPairing() {
       if (disposed || closedError) return;
-      core.cancelLogin?.();
+      core.cancelPairing?.();
     },
     dispose() {
       if (disposed) return;

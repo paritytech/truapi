@@ -25,8 +25,9 @@ use truapi::v01;
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use truapi::versioned::{account, payment, statement_store};
 
-use truapi_server::{
-    Payload, ProtocolMessage, TrUApiCore, encode_call_error_payload, request_ids, subscription_ids,
+use truapi_server::core::TrUApiCore;
+use truapi_server::frame::{
+    Payload, ProtocolMessage, encode_call_error_payload, request_ids, subscription_ids,
 };
 
 mod common;
@@ -161,7 +162,7 @@ fn assert_subscription_start_interrupts_error<E: Encode>(
     error: truapi::CallError<E>,
 ) {
     use std::sync::Mutex;
-    use truapi_server::Transport;
+    use truapi_server::transport::Transport;
 
     #[derive(Default)]
     struct RecordingTransport {
@@ -362,7 +363,7 @@ fn malformed_frames_are_dropped_without_panic() {
 fn subscription_start_receive_stop_through_wire_boundary() {
     use std::sync::Mutex;
     use std::time::{Duration, Instant};
-    use truapi_server::Transport;
+    use truapi_server::transport::Transport;
 
     #[derive(Default)]
     struct RecordingTransport {

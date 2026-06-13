@@ -14,16 +14,16 @@ import type {
 import { errorMessage } from "./error-message.js";
 
 interface WasmCore {
-  receiveFromProduct(frame: Uint8Array): Promise<void>;
-  disconnect(): Promise<void>;
-  cancelLogin(): void;
+  receiveFrame(frame: Uint8Array): Promise<void>;
+  disconnectSession(): Promise<void>;
+  cancelPairing(): void;
   dispose(): void;
   free(): void;
 }
 
 interface WasmModuleShape {
   default: (input?: unknown) => Promise<unknown>;
-  WasmTrUApiCore: new (callbacks: unknown, runtimeConfig: unknown) => WasmCore;
+  WasmHostCore: new (callbacks: unknown, runtimeConfig: unknown) => WasmCore;
   setLogLevel?: (level: string) => void;
 }
 
@@ -141,12 +141,13 @@ const optionalRawCallbacks: Record<OptionalCallbackName, RawCallbackFn> = {
   // Fire-and-forget notification: the wasm core ignores the returned promise.
   authStateChanged: (state: unknown) =>
     void callbackRequest("authStateChanged", [state]).catch(() => {}),
-  readSession: () =>
-    callbackRequest("readSession", []) as Promise<
+  readStoredSession: () =>
+    callbackRequest("readStoredSession", []) as Promise<
       Uint8Array | null | undefined
     >,
-  writeSession: (value: Uint8Array) => callbackRequest("writeSession", [value]),
-  clearSession: () => callbackRequest("clearSession", []),
+  writeStoredSession: (value: Uint8Array) =>
+    callbackRequest("writeStoredSession", [value]),
+  clearStoredSession: () => callbackRequest("clearStoredSession", []),
   confirmSignPayload: (payload: Uint8Array) =>
     callbackRequest("confirmSignPayload", [payload]) as Promise<boolean>,
   confirmSignRaw: (payload: Uint8Array) =>
@@ -169,9 +170,9 @@ function buildRawCallbacks(msg: Extract<MainToWorker, { kind: "init" }>) {
     callbacks[name] = optionalRawCallbacks[name];
   }
   const optionalSubscriptions = new Set(msg.optionalSubscriptions ?? []);
-  if (optionalSubscriptions.has("subscribeSessionStore")) {
-    callbacks.subscribeSessionStore = (sendItem: (value: unknown) => void) =>
-      startSubscription("subscribeSessionStore", null, sendItem);
+  if (optionalSubscriptions.has("subscribeStoredSession")) {
+    callbacks.subscribeStoredSession = (sendItem: (value: unknown) => void) =>
+      startSubscription("subscribeStoredSession", null, sendItem);
   }
   if (optionalSubscriptions.has("subscribeTheme")) {
     callbacks.subscribeTheme = (sendItem: (value: unknown) => void) =>
@@ -228,10 +229,7 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
       }
       wasm.setLogLevel?.(msg.logLevel);
       try {
-        core = new wasm.WasmTrUApiCore(
-          buildRawCallbacks(msg),
-          msg.runtimeConfig,
-        );
+        core = new wasm.WasmHostCore(buildRawCallbacks(msg), msg.runtimeConfig);
         postToMain({ kind: "ready" });
       } catch (err) {
         postToMain({ kind: "fatalError", error: `init: ${errorMessage(err)}` });
@@ -243,11 +241,11 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
     case "frame":
       void handleFrame(msg.bytes);
       break;
-    case "disconnect":
-      void handleDisconnect(msg.requestId);
+    case "disconnectSession":
+      void handleDisconnectSession(msg.requestId);
       break;
-    case "cancelLogin":
-      core?.cancelLogin();
+    case "cancelPairing":
+      core?.cancelPairing();
       break;
     case "callbackResponse": {
       const cb = pendingCallbacks.get(msg.requestId);
@@ -297,22 +295,22 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
   }
 });
 
-async function handleDisconnect(requestId: number): Promise<void> {
+async function handleDisconnectSession(requestId: number): Promise<void> {
   if (!core) {
     postToMain({
-      kind: "disconnectResponse",
+      kind: "disconnectSessionResponse",
       requestId,
       ok: false,
-      error: "disconnect received before core is ready",
+      error: "disconnectSession received before core is ready",
     });
     return;
   }
   try {
-    await core.disconnect();
-    postToMain({ kind: "disconnectResponse", requestId, ok: true });
+    await core.disconnectSession();
+    postToMain({ kind: "disconnectSessionResponse", requestId, ok: true });
   } catch (err) {
     postToMain({
-      kind: "disconnectResponse",
+      kind: "disconnectSessionResponse",
       requestId,
       ok: false,
       error: errorMessage(err),
@@ -329,7 +327,7 @@ async function handleFrame(bytes: Uint8Array): Promise<void> {
     return;
   }
   try {
-    await core.receiveFromProduct(bytes);
+    await core.receiveFrame(bytes);
   } catch (err) {
     postToMain({
       kind: "frameError",

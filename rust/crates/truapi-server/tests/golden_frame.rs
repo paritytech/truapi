@@ -20,8 +20,8 @@
 //! deliberately and re-check the change against the wire table.
 
 use parity_scale_codec::{Decode, Encode};
+use truapi_server::frame::{Payload, ProtocolMessage};
 use truapi_server::generated::wire_table;
-use truapi_server::{Payload, ProtocolMessage};
 
 const GOLDEN: &[u8] = include_bytes!("snapshots/golden-account-get.bin");
 

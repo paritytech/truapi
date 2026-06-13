@@ -252,7 +252,7 @@ where
             full_username: None,
         };
         let session = self.resolve_session_identity(session).await;
-        PlatformSessionStore::write_session(
+        PlatformSessionStore::write_stored_session(
             self.platform.as_ref(),
             encode_persisted_session(&session),
         )

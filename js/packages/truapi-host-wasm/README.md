@@ -11,12 +11,12 @@ It is the counterpart to the native Android/iOS host shells.
 
 The package exposes tree-shakeable subpath exports — import only what your environment needs:
 
-| Import                                     | Provides                                                                                                                |
-| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
-| `@parity/truapi-host-wasm`                 | Core: `createWasmProvider`, `createHostServer`, the dispatcher adapter, and the shared types.                           |
-| `@parity/truapi-host-wasm/web`             | Browser host: `createIframeHost` (iframe MessageChannel handshake) and `createWebWorkerProvider`.                       |
-| `@parity/truapi-host-wasm/worker-runtime`  | Web Worker entrypoint (import with your bundler's `?worker` suffix) so the WASM core runs off the page main thread.     |
-| `@parity/truapi-host-wasm/wasm/web`        | The raw browser `wasm-bindgen` glue, if you need to instantiate the core yourself.                                      |
+| Import                                    | Provides                                                                                                            |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `@parity/truapi-host-wasm`                | Core: `createHostCoreProvider`, `createHostServer`, the dispatcher adapter, and the shared types.                   |
+| `@parity/truapi-host-wasm/web`            | Browser host: `createIframeHost` (iframe MessageChannel handshake) and `createWebWorkerProvider`.                   |
+| `@parity/truapi-host-wasm/worker-runtime` | Web Worker entrypoint (import with your bundler's `?worker` suffix) so the WASM core runs off the page main thread. |
+| `@parity/truapi-host-wasm/wasm/web`       | The raw browser `wasm-bindgen` glue, if you need to instantiate the core yourself.                                  |
 
 ## Generated WASM artefacts
 
@@ -62,7 +62,7 @@ JS host code
 createHostServer (re-exported from @parity/truapi-host) <-- bytes --> Provider
                                                                         |
                                                                         v
-                                                      createWasmProvider / Worker
+                                                   createHostCoreProvider / Worker
                                                                         |
                                                                         v
                                                             truapi-server WASM core

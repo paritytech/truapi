@@ -222,7 +222,7 @@ fn emit_wasm_adapter(
         out,
         r#"
         /** Adapt typed host callbacks into the raw SCALE callback surface the
-         *  WASM core invokes. Applied internally by `createWasmProvider`. */
+         *  WASM core invokes. Applied internally by `createHostCoreProvider`. */
         export function createWasmRawCallbacks(
           host: Partial<HostCallbacks>,
         ): RawCallbacks {{

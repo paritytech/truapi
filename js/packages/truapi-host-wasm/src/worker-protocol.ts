@@ -23,9 +23,9 @@ export type CallbackName =
   | "write"
   | "clear"
   | "authStateChanged"
-  | "readSession"
-  | "writeSession"
-  | "clearSession"
+  | "readStoredSession"
+  | "writeStoredSession"
+  | "clearStoredSession"
   | "confirmSignPayload"
   | "confirmSignRaw"
   | "confirmCreateTransaction"
@@ -37,9 +37,9 @@ export type CallbackName =
 export type OptionalCallbackName =
   | "cancelNotification"
   | "authStateChanged"
-  | "readSession"
-  | "writeSession"
-  | "clearSession"
+  | "readStoredSession"
+  | "writeStoredSession"
+  | "clearStoredSession"
   | "confirmSignPayload"
   | "confirmSignRaw"
   | "confirmCreateTransaction"
@@ -53,7 +53,7 @@ export type OptionalCallbackName =
  * `(payload?, sendItem) => dispose | void`.
  */
 export type SubscriptionName =
-  | "subscribeSessionStore"
+  | "subscribeStoredSession"
   | "lookupPreimage"
   | "subscribeTheme";
 
@@ -74,8 +74,8 @@ export type MainToWorker =
     }
   | { kind: "setLogLevel"; level: LogLevel }
   | { kind: "frame"; bytes: Uint8Array }
-  | { kind: "disconnect"; requestId: number }
-  | { kind: "cancelLogin" }
+  | { kind: "disconnectSession"; requestId: number }
+  | { kind: "cancelPairing" }
   | { kind: "callbackResponse"; requestId: number; ok: true; value: unknown }
   | { kind: "callbackResponse"; requestId: number; ok: false; error: string }
   | { kind: "subscriptionItem"; subId: number; value: unknown }
@@ -91,8 +91,13 @@ export type WorkerToMain =
   | { kind: "frameError"; error: string }
   | { kind: "disposeError"; error: string }
   | { kind: "frame"; bytes: Uint8Array }
-  | { kind: "disconnectResponse"; requestId: number; ok: true }
-  | { kind: "disconnectResponse"; requestId: number; ok: false; error: string }
+  | { kind: "disconnectSessionResponse"; requestId: number; ok: true }
+  | {
+      kind: "disconnectSessionResponse";
+      requestId: number;
+      ok: false;
+      error: string;
+    }
   | {
       kind: "callbackRequest";
       requestId: number;

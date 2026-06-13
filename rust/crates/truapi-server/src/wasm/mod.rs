@@ -1,4 +1,4 @@
-//! wasm-bindgen surface. Exposes [`WasmTrUApiCore`] to JavaScript hosts so
+//! wasm-bindgen surface. Exposes [`WasmHostCore`] to JavaScript hosts so
 //! they can wire the TrUAPI core into a browser or worker shell.
 //!
 //! The browser side hands a `callbacks` object (a `JsBridge`) to the
@@ -8,16 +8,13 @@
 //! platform trait set imposes; sound on wasm32 because the runtime is
 //! single-threaded.
 
-use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
+use std::cell::Cell;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::task::{Context, Poll};
 
 use futures::channel::mpsc;
-use futures::future::{AbortHandle, Abortable};
 use futures::stream::{self, BoxStream, Stream, StreamExt};
 use js_sys::{Function, Reflect, Uint8Array};
 use parity_scale_codec::{Decode, Encode};
@@ -33,10 +30,8 @@ use truapi_platform::{
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
-use crate::TrUApiCore;
-use crate::frame::ProtocolMessage;
 use crate::subscription::Spawner;
-use crate::transport::Transport;
+use crate::{FrameSink, HostCore};
 
 /// Bundle of JS-side callbacks the bridge invokes. Names map to camelCase
 /// keys on the JS object passed to the constructor.
@@ -60,10 +55,10 @@ struct JsBridge {
     lookup_preimage: Option<Function>,
     subscribe_theme: Option<Function>,
     auth_state_changed: Option<Function>,
-    read_session: Option<Function>,
-    write_session: Option<Function>,
-    clear_session: Option<Function>,
-    subscribe_session_store: Option<Function>,
+    read_stored_session: Option<Function>,
+    write_stored_session: Option<Function>,
+    clear_stored_session: Option<Function>,
+    subscribe_stored_session: Option<Function>,
     /// Optional. Hosts that own JSON-RPC connections (e.g. dotli with its
     /// "smoldot vs RPC node" toggle) provide this; otherwise chain calls
     /// fail with an "unavailable" reason.
@@ -100,10 +95,10 @@ impl JsBridge {
             lookup_preimage: get_optional_function(callbacks, "lookupPreimage")?,
             subscribe_theme: get_optional_function(callbacks, "subscribeTheme")?,
             auth_state_changed: get_optional_function(callbacks, "authStateChanged")?,
-            read_session: get_optional_function(callbacks, "readSession")?,
-            write_session: get_optional_function(callbacks, "writeSession")?,
-            clear_session: get_optional_function(callbacks, "clearSession")?,
-            subscribe_session_store: get_optional_function(callbacks, "subscribeSessionStore")?,
+            read_stored_session: get_optional_function(callbacks, "readStoredSession")?,
+            write_stored_session: get_optional_function(callbacks, "writeStoredSession")?,
+            clear_stored_session: get_optional_function(callbacks, "clearStoredSession")?,
+            subscribe_stored_session: get_optional_function(callbacks, "subscribeStoredSession")?,
             chain_connect: get_optional_function(callbacks, "chainConnect")?,
             emit_frame: get_function(callbacks, "emitFrame")?,
             dispose: get_optional_function(callbacks, "dispose")?.unwrap_or_else(noop_function),
@@ -111,27 +106,16 @@ impl JsBridge {
     }
 }
 
-struct WasmCallbackTransport {
+struct WasmFrameSink {
     bridge: SendWrapper<Arc<JsBridge>>,
-    disposed: Arc<AtomicBool>,
 }
 
-impl Transport for WasmCallbackTransport {
-    fn send(&self, message: ProtocolMessage) {
-        if self.disposed.load(Ordering::Relaxed) {
-            return;
-        }
-        let frame = Uint8Array::from(message.encode().as_slice());
+impl FrameSink for WasmFrameSink {
+    fn emit_frame(&self, frame: Vec<u8>) {
+        let frame = Uint8Array::from(frame.as_slice());
         if let Err(err) = self.bridge.emit_frame.call1(&JsValue::NULL, &frame) {
             web_sys::console::error_1(&err);
         }
-    }
-
-    fn on_message(
-        &self,
-        _handler: Box<dyn Fn(ProtocolMessage) + Send + Sync>,
-    ) -> Box<dyn FnOnce()> {
-        Box::new(|| {})
     }
 }
 
@@ -314,29 +298,29 @@ impl AuthPresenter for WasmPlatform {
 }
 
 impl SessionStore for WasmPlatform {
-    async fn read_session(&self) -> Result<Option<Vec<u8>>, v01::GenericError> {
-        let Some(fn_) = self.bridge.read_session.as_ref() else {
+    async fn read_stored_session(&self) -> Result<Option<Vec<u8>>, v01::GenericError> {
+        let Some(fn_) = self.bridge.read_stored_session.as_ref() else {
             return Ok(None);
         };
         invoke_optional_bytes(fn_).await.map_err(generic)
     }
 
-    async fn write_session(&self, value: Vec<u8>) -> Result<(), v01::GenericError> {
-        let Some(fn_) = self.bridge.write_session.as_ref() else {
+    async fn write_stored_session(&self, value: Vec<u8>) -> Result<(), v01::GenericError> {
+        let Some(fn_) = self.bridge.write_stored_session.as_ref() else {
             return Ok(());
         };
         invoke_bytes_unit(fn_, value).await.map_err(generic)
     }
 
-    async fn clear_session(&self) -> Result<(), v01::GenericError> {
-        let Some(fn_) = self.bridge.clear_session.as_ref() else {
+    async fn clear_stored_session(&self) -> Result<(), v01::GenericError> {
+        let Some(fn_) = self.bridge.clear_stored_session.as_ref() else {
             return Ok(());
         };
         invoke_no_args_unit(fn_).await.map_err(generic)
     }
 
-    fn subscribe_session_store(&self) -> BoxStream<'static, Result<(), v01::GenericError>> {
-        let Some(fn_) = self.bridge.subscribe_session_store.as_ref() else {
+    fn subscribe_stored_session(&self) -> BoxStream<'static, Result<(), v01::GenericError>> {
+        let Some(fn_) = self.bridge.subscribe_stored_session.as_ref() else {
             return stream::once(async { Ok(()) }).boxed();
         };
         invoke_js_subscription(fn_, None, parse_session_store_tick).boxed()
@@ -859,16 +843,35 @@ fn runtime_config_from_js(value: &JsValue) -> Result<RuntimeConfig, JsValue> {
         return Err(JsValue::from_str("runtimeConfig is required"));
     }
 
+    let host = get_required_object(value, "host", "runtimeConfig.host")?;
+    let platform = get_optional_object(value, "platform", "runtimeConfig.platform")?;
+    let people = get_required_object(value, "people", "runtimeConfig.people")?;
+    let pairing = get_required_object(value, "pairing", "runtimeConfig.pairing")?;
+
     RuntimeConfig::new(
-        get_required_string(value, "productId")?,
-        get_required_string(value, "hostName")?,
-        get_optional_string(value, "hostIcon")?,
-        get_optional_string(value, "hostVersion")?,
-        get_optional_string(value, "platformType")?,
-        get_optional_string(value, "platformVersion")?,
-        get_required_bytes32(value, "peopleChainGenesisHash")?,
+        get_required_string_at(value, "productId", "runtimeConfig.productId")?,
+        get_required_string_at(&host, "name", "runtimeConfig.host.name")?,
+        get_optional_string_at(&host, "icon", "runtimeConfig.host.icon")?,
+        get_optional_string_at(&host, "version", "runtimeConfig.host.version")?,
+        match platform.as_ref() {
+            Some(platform) => {
+                get_optional_string_at(platform, "type", "runtimeConfig.platform.type")?
+            }
+            None => None,
+        },
+        match platform.as_ref() {
+            Some(platform) => {
+                get_optional_string_at(platform, "version", "runtimeConfig.platform.version")?
+            }
+            None => None,
+        },
+        get_required_bytes32_at(&people, "genesisHash", "runtimeConfig.people.genesisHash")?,
         {
-            let scheme = get_required_string(value, "pairingDeeplinkScheme")?;
+            let scheme = get_required_string_at(
+                &pairing,
+                "deeplinkScheme",
+                "runtimeConfig.pairing.deeplinkScheme",
+            )?;
             match scheme.as_str() {
                 "polkadotapp" | "polkadotApp" | "PolkadotApp" => PairingDeeplinkScheme::PolkadotApp,
                 "polkadotappdev" | "polkadotAppDev" | "PolkadotAppDev" => {
@@ -876,7 +879,7 @@ fn runtime_config_from_js(value: &JsValue) -> Result<RuntimeConfig, JsValue> {
                 }
                 other => {
                     return Err(JsValue::from_str(&format!(
-                        "runtimeConfig.pairingDeeplinkScheme has unsupported value {other:?}"
+                        "runtimeConfig.pairing.deeplinkScheme has unsupported value {other:?}"
                     )));
                 }
             }
@@ -892,10 +895,10 @@ fn runtime_config_validation_to_js(err: RuntimeConfigValidationError) -> JsValue
             runtime_config_field_to_js(field)
         )),
         RuntimeConfigValidationError::InvalidHostIcon { reason } => JsValue::from_str(&format!(
-            "runtimeConfig.hostIcon must be an absolute HTTPS URL: {reason}"
+            "runtimeConfig.host.icon must be an absolute HTTPS URL: {reason}"
         )),
         RuntimeConfigValidationError::InsecureHostIcon { scheme } => JsValue::from_str(&format!(
-            "runtimeConfig.hostIcon must use https scheme, got {scheme:?}"
+            "runtimeConfig.host.icon must use https scheme, got {scheme:?}"
         )),
     }
 }
@@ -903,13 +906,43 @@ fn runtime_config_validation_to_js(err: RuntimeConfigValidationError) -> JsValue
 fn runtime_config_field_to_js(field: &str) -> &str {
     match field {
         "product_id" => "productId",
-        "host_name" => "hostName",
-        "people_chain_genesis_hash" => "peopleChainGenesisHash",
+        "host_name" => "host.name",
+        "people_chain_genesis_hash" => "people.genesisHash",
         other => other,
     }
 }
 
-fn get_optional_string(value: &JsValue, name: &str) -> Result<Option<String>, JsValue> {
+fn get_required_object(value: &JsValue, name: &str, path: &str) -> Result<JsValue, JsValue> {
+    let property = Reflect::get(value, &JsValue::from_str(name))?;
+    if property.is_null() || property.is_undefined() {
+        return Err(JsValue::from_str(&format!("{path} is required")));
+    }
+    if !property.is_object() {
+        return Err(JsValue::from_str(&format!("{path} must be an object")));
+    }
+    Ok(property)
+}
+
+fn get_optional_object(
+    value: &JsValue,
+    name: &str,
+    path: &str,
+) -> Result<Option<JsValue>, JsValue> {
+    let property = Reflect::get(value, &JsValue::from_str(name))?;
+    if property.is_null() || property.is_undefined() {
+        return Ok(None);
+    }
+    if !property.is_object() {
+        return Err(JsValue::from_str(&format!("{path} must be an object")));
+    }
+    Ok(Some(property))
+}
+
+fn get_optional_string_at(
+    value: &JsValue,
+    name: &str,
+    path: &str,
+) -> Result<Option<String>, JsValue> {
     let property = Reflect::get(value, &JsValue::from_str(name))?;
     if property.is_null() || property.is_undefined() {
         return Ok(None);
@@ -917,15 +950,19 @@ fn get_optional_string(value: &JsValue, name: &str) -> Result<Option<String>, Js
     property
         .as_string()
         .map(Some)
-        .ok_or_else(|| JsValue::from_str(&format!("runtimeConfig.{name} must be a string")))
+        .ok_or_else(|| JsValue::from_str(&format!("{path} must be a string")))
 }
 
-fn get_required_string(value: &JsValue, name: &str) -> Result<String, JsValue> {
-    get_optional_string(value, name)?
-        .ok_or_else(|| JsValue::from_str(&format!("runtimeConfig.{name} is required")))
+fn get_required_string_at(value: &JsValue, name: &str, path: &str) -> Result<String, JsValue> {
+    get_optional_string_at(value, name, path)?
+        .ok_or_else(|| JsValue::from_str(&format!("{path} is required")))
 }
 
-fn get_optional_bytes32(value: &JsValue, name: &str) -> Result<Option<[u8; 32]>, JsValue> {
+fn get_optional_bytes32_at(
+    value: &JsValue,
+    name: &str,
+    path: &str,
+) -> Result<Option<[u8; 32]>, JsValue> {
     let property = Reflect::get(value, &JsValue::from_str(name))?;
     if property.is_null() || property.is_undefined() {
         return Ok(None);
@@ -933,23 +970,23 @@ fn get_optional_bytes32(value: &JsValue, name: &str) -> Result<Option<[u8; 32]>,
     if let Some(hex) = property.as_string() {
         return parse_hex32(&hex)
             .map(Some)
-            .map_err(|reason| JsValue::from_str(&format!("runtimeConfig.{name}: {reason}")));
+            .map_err(|reason| JsValue::from_str(&format!("{path}: {reason}")));
     }
-    let array = property.dyn_into::<Uint8Array>().map_err(|_| {
-        JsValue::from_str(&format!("runtimeConfig.{name} must be hex or Uint8Array"))
-    })?;
+    let array = property
+        .dyn_into::<Uint8Array>()
+        .map_err(|_| JsValue::from_str(&format!("{path} must be hex or Uint8Array")))?;
     let bytes = array.to_vec();
     bytes.try_into().map(Some).map_err(|bytes: Vec<u8>| {
         JsValue::from_str(&format!(
-            "runtimeConfig.{name} must be exactly 32 bytes, got {}",
+            "{path} must be exactly 32 bytes, got {}",
             bytes.len()
         ))
     })
 }
 
-fn get_required_bytes32(value: &JsValue, name: &str) -> Result<[u8; 32], JsValue> {
-    get_optional_bytes32(value, name)?
-        .ok_or_else(|| JsValue::from_str(&format!("runtimeConfig.{name} is required")))
+fn get_required_bytes32_at(value: &JsValue, name: &str, path: &str) -> Result<[u8; 32], JsValue> {
+    get_optional_bytes32_at(value, name, path)?
+        .ok_or_else(|| JsValue::from_str(&format!("{path} is required")))
 }
 
 fn parse_hex32(value: &str) -> Result<[u8; 32], String> {
@@ -967,16 +1004,10 @@ fn parse_hex32(value: &str) -> Result<[u8; 32], String> {
 }
 
 struct WasmCoreInner {
-    core: TrUApiCore,
-    transport: Arc<WasmCallbackTransport>,
+    core: HostCore,
     dispose_fn: SendWrapper<Function>,
     disposed: Cell<bool>,
     disposing: Cell<bool>,
-    /// Abort handles for in-flight `receive_from_product` dispatches, keyed
-    /// by a local counter. `dispose` aborts them all so long-pending handlers
-    /// unwind instead of outliving the core.
-    in_flight: RefCell<HashMap<u64, AbortHandle>>,
-    next_dispatch_id: Cell<u64>,
 }
 
 /// Set the live log level (`off`/`error`/`warn`/`info`/`debug`/`trace`).
@@ -989,29 +1020,27 @@ pub fn set_log_level(level: &str) {
 
 /// JS-callable handle to the TrUAPI core. Constructed once per shell boot.
 #[wasm_bindgen]
-pub struct WasmTrUApiCore {
+pub struct WasmHostCore {
     inner: Rc<WasmCoreInner>,
 }
 
 #[wasm_bindgen]
-impl WasmTrUApiCore {
+impl WasmHostCore {
     /// Build the core from a JS callbacks object. The object must define
     /// every host capability the [`truapi_platform::Platform`] trait set
     /// requires (camelCase property names; see the source for the full
     /// list).
     #[wasm_bindgen(constructor)]
-    pub fn new(callbacks: JsValue, runtime_config: JsValue) -> Result<WasmTrUApiCore, JsValue> {
+    pub fn new(callbacks: JsValue, runtime_config: JsValue) -> Result<WasmHostCore, JsValue> {
         // Surface Rust panics to the browser console. A panic mid-dispatch
         // aborts the call as a wasm trap; the host should treat a thrown error
-        // from `receiveFromProduct` as a fatal-instance signal and rebuild the
+        // from `receiveFrame` as a fatal-instance signal and rebuild the
         // core rather than continue using it.
         console_error_panic_hook::set_once();
         crate::logging::init();
         let bridge = Arc::new(JsBridge::from_js(&callbacks)?);
-        let disposed = Arc::new(AtomicBool::new(false));
-        let transport = Arc::new(WasmCallbackTransport {
+        let frame_sink = Arc::new(WasmFrameSink {
             bridge: SendWrapper::new(bridge.clone()),
-            disposed: disposed.clone(),
         });
         let dispose_fn = SendWrapper::new(bridge.dispose.clone());
         let platform = Arc::new(WasmPlatform::new(bridge));
@@ -1019,16 +1048,14 @@ impl WasmTrUApiCore {
             wasm_bindgen_futures::spawn_local(fut);
         });
         let runtime_config = runtime_config_from_js(&runtime_config)?;
-        let core = TrUApiCore::from_platform_with_config(platform, runtime_config, spawner);
+        let core =
+            HostCore::from_platform_with_config(platform, runtime_config, spawner, frame_sink);
         Ok(Self {
             inner: Rc::new(WasmCoreInner {
                 core,
-                transport,
                 dispose_fn,
                 disposed: Cell::new(false),
                 disposing: Cell::new(false),
-                in_flight: RefCell::new(HashMap::new()),
-                next_dispatch_id: Cell::new(0),
             }),
         })
     }
@@ -1036,32 +1063,13 @@ impl WasmTrUApiCore {
     /// Push a SCALE-encoded protocol frame into the dispatcher. Responses
     /// (and subscription items) flow back through the `emitFrame`
     /// callback.
-    #[wasm_bindgen(js_name = receiveFromProduct)]
-    pub async fn receive_from_product(&self, frame: Vec<u8>) -> Result<(), JsValue> {
-        if self.inner.disposed.get() {
-            return Ok(());
-        }
-
-        let message = ProtocolMessage::decode(&mut &*frame)
-            .map_err(|err| JsValue::from_str(&format!("invalid frame: {err}")))?;
-
-        let transport: Arc<dyn Transport> = self.inner.transport.clone();
-        // Register the dispatch so `dispose` can abort it; a long-pending
-        // handler then unwinds instead of outliving the core.
-        let dispatch_id = self.inner.next_dispatch_id.get();
-        self.inner.next_dispatch_id.set(dispatch_id.wrapping_add(1));
-        let (abort_handle, abort_registration) = AbortHandle::new_pair();
+    #[wasm_bindgen(js_name = receiveFrame)]
+    pub async fn receive_frame(&self, frame: Vec<u8>) -> Result<(), JsValue> {
         self.inner
-            .in_flight
-            .borrow_mut()
-            .insert(dispatch_id, abort_handle);
-        let _ = Abortable::new(
-            self.inner.core.dispatch(message, transport),
-            abort_registration,
-        )
-        .await;
-        self.inner.in_flight.borrow_mut().remove(&dispatch_id);
-        Ok(())
+            .core
+            .receive_frame(frame)
+            .await
+            .map_err(|err| JsValue::from_str(&err.to_string()))
     }
 
     /// Tear down the bridge. Invokes the JS-side `dispose` callback so the
@@ -1074,10 +1082,7 @@ impl WasmTrUApiCore {
             return Ok(());
         }
 
-        self.inner.transport.disposed.store(true, Ordering::Relaxed);
-        for (_, handle) in self.inner.in_flight.borrow_mut().drain() {
-            handle.abort();
-        }
+        self.inner.core.dispose();
 
         let result = self.inner.dispose_fn.call0(&JsValue::NULL).map(|_| ());
 
@@ -1089,17 +1094,17 @@ impl WasmTrUApiCore {
     /// Core-owned logout/disconnect. Best-effort notifies the SSO peer when
     /// the session has channel material, then clears in-memory and persisted
     /// session state.
-    #[wasm_bindgen(js_name = disconnect)]
-    pub async fn disconnect(&self) -> Result<(), JsValue> {
-        self.inner.core.disconnect_async().await;
+    #[wasm_bindgen(js_name = disconnectSession)]
+    pub async fn disconnect_session(&self) -> Result<(), JsValue> {
+        self.inner.core.disconnect_session().await;
         Ok(())
     }
 
     /// Cancel any in-flight `request_login` pairing. The host receives a
     /// `Disconnected` auth state immediately and the pending login resolves
     /// to `Rejected`. A no-op when no login is in progress.
-    #[wasm_bindgen(js_name = cancelLogin)]
-    pub fn cancel_login(&self) {
-        self.inner.core.cancel_login();
+    #[wasm_bindgen(js_name = cancelPairing)]
+    pub fn cancel_pairing(&self) {
+        self.inner.core.cancel_pairing();
     }
 }

@@ -101,11 +101,11 @@ pub(crate) struct StubPlatform {
     pub(crate) local_storage: Arc<Mutex<std::collections::HashMap<String, Vec<u8>>>>,
     /// When set, `Storage::read` fails with this reason.
     pub(crate) local_storage_error: Option<&'static str>,
-    /// When set, `clear_session` notifies the session-store subscription
+    /// When set, `clear_stored_session` notifies the session-store subscription
     /// through this sender, mimicking native hosts.
     pub(crate) session_store_tick_tx:
         Option<futures::channel::mpsc::UnboundedSender<SessionStoreTick>>,
-    /// When set, `subscribe_session_store` yields this channel instead of
+    /// When set, `subscribe_stored_session` yields this channel instead of
     /// the default single tick.
     pub(crate) session_store_ticks:
         Arc<Mutex<Option<futures::channel::mpsc::UnboundedReceiver<SessionStoreTick>>>>,
@@ -876,7 +876,7 @@ impl AuthPresenter for StubPlatform {
 }
 
 impl SessionStore for StubPlatform {
-    async fn read_session(&self) -> Result<Option<Vec<u8>>, v01::GenericError> {
+    async fn read_stored_session(&self) -> Result<Option<Vec<u8>>, v01::GenericError> {
         if let Some(reason) = self.session_error {
             Err(v01::GenericError {
                 reason: reason.to_string(),
@@ -885,14 +885,14 @@ impl SessionStore for StubPlatform {
             Ok(self.session_blob.clone())
         }
     }
-    async fn write_session(&self, value: Vec<u8>) -> Result<(), v01::GenericError> {
+    async fn write_stored_session(&self, value: Vec<u8>) -> Result<(), v01::GenericError> {
         self.session_writes
             .lock()
             .expect("session write list mutex poisoned")
             .push(value);
         Ok(())
     }
-    async fn clear_session(&self) -> Result<(), v01::GenericError> {
+    async fn clear_stored_session(&self) -> Result<(), v01::GenericError> {
         *self
             .session_clears
             .lock()
@@ -902,7 +902,7 @@ impl SessionStore for StubPlatform {
         }
         Ok(())
     }
-    fn subscribe_session_store(&self) -> BoxStream<'static, Result<(), v01::GenericError>> {
+    fn subscribe_stored_session(&self) -> BoxStream<'static, Result<(), v01::GenericError>> {
         if let Some(ticks) = self
             .session_store_ticks
             .lock()

@@ -206,22 +206,22 @@ export interface SessionStore {
   /**
    * Read the currently persisted core session blob.
    */
-  readSession(): Promise<Uint8Array | undefined>;
+  readStoredSession(): Promise<Uint8Array | undefined>;
 
   /**
    * Persist the core session blob.
    */
-  writeSession(value: Uint8Array): Promise<void>;
+  writeStoredSession(value: Uint8Array): Promise<void>;
 
   /**
    * Clear the persisted core session blob.
    */
-  clearSession(): Promise<void>;
+  clearStoredSession(): Promise<void>;
 
   /**
    * Emit once immediately, then on future local/cross-runtime changes.
    */
-  subscribeSessionStore(): AsyncIterable<Result<void, GenericError>>;
+  subscribeStoredSession(): AsyncIterable<Result<void, GenericError>>;
 }
 
 /**

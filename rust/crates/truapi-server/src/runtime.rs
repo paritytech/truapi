@@ -275,7 +275,7 @@ impl<P> PlatformRuntimeHost<P> {
         let sso_disconnect_monitor = self.sso_disconnect_monitor.clone();
         let spawner_for_monitor = self.spawner.clone();
         spawner(Box::pin(async move {
-            let mut ticks = PlatformSessionStore::subscribe_session_store(platform.as_ref());
+            let mut ticks = PlatformSessionStore::subscribe_stored_session(platform.as_ref());
             // Clearing the store can itself notify this subscription; clear at
             // most once per read-error streak so a persistently failing read
             // cannot spin the loop through its own clear notifications.
@@ -284,7 +284,7 @@ impl<P> PlatformRuntimeHost<P> {
                 if tick.is_err() {
                     continue;
                 }
-                match PlatformSessionStore::read_session(platform.as_ref()).await {
+                match PlatformSessionStore::read_stored_session(platform.as_ref()).await {
                     Ok(Some(blob)) => {
                         cleared_after_read_error = false;
                         match decode_persisted_session(&blob) {
@@ -296,7 +296,7 @@ impl<P> PlatformRuntimeHost<P> {
                                 )
                                 .await;
                                 if encode_persisted_session(&resolved) != blob {
-                                    let _ = PlatformSessionStore::write_session(
+                                    let _ = PlatformSessionStore::write_stored_session(
                                         platform.as_ref(),
                                         encode_persisted_session(&resolved),
                                     )
@@ -321,7 +321,8 @@ impl<P> PlatformRuntimeHost<P> {
                                 session_state.clear_session();
                                 stop_sso_disconnect_monitor(&sso_disconnect_monitor);
                                 let _ =
-                                    PlatformSessionStore::clear_session(platform.as_ref()).await;
+                                    PlatformSessionStore::clear_stored_session(platform.as_ref())
+                                        .await;
                                 auth_state.store_disconnected();
                             }
                         }
@@ -338,7 +339,8 @@ impl<P> PlatformRuntimeHost<P> {
                         auth_state.store_disconnected();
                         if !cleared_after_read_error {
                             cleared_after_read_error = true;
-                            let _ = PlatformSessionStore::clear_session(platform.as_ref()).await;
+                            let _ =
+                                PlatformSessionStore::clear_stored_session(platform.as_ref()).await;
                         }
                     }
                 }
@@ -415,7 +417,7 @@ impl<P> PlatformRuntimeHost<P> {
         debug!("clearing disconnected SSO session state");
         stop_sso_disconnect_monitor(&self.sso_disconnect_monitor);
         self.session_state.clear_session();
-        let _ = PlatformSessionStore::clear_session(self.platform.as_ref()).await;
+        let _ = PlatformSessionStore::clear_stored_session(self.platform.as_ref()).await;
         self.auth_state.store_disconnected();
         let _ = PlatformStorage::clear(
             self.platform.as_ref(),
@@ -496,7 +498,7 @@ fn start_sso_disconnect_monitor<P>(
             if should_clear {
                 session_disconnects.notify(SSO_PEER_DISCONNECT_REASON);
                 session_state.clear_session();
-                let _ = PlatformSessionStore::clear_session(platform.as_ref()).await;
+                let _ = PlatformSessionStore::clear_stored_session(platform.as_ref()).await;
                 auth_state.store_disconnected();
                 let _ = PlatformStorage::clear(
                     platform.as_ref(),
@@ -3282,7 +3284,7 @@ mod tests {
         while *session_clears.lock().unwrap() == 0 {
             assert!(
                 std::time::Instant::now() < deadline,
-                "clear_session was never called"
+                "clear_stored_session was never called"
             );
             std::thread::sleep(std::time::Duration::from_millis(5));
         }

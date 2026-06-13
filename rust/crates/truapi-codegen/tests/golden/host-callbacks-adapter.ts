@@ -38,10 +38,10 @@ export interface RawCallbacks {
   confirmPreimageSubmit(size: number): Promise<void>;
   submitPreimage(value: Uint8Array): Promise<Uint8Array>;
   lookupPreimage(key: Uint8Array, sendItem: (item?: Uint8Array) => void): (() => void) | void;
-  readSession(): Promise<Uint8Array | null | undefined>;
-  writeSession(value: Uint8Array): Promise<void>;
-  clearSession(): Promise<void>;
-  subscribeSessionStore(sendItem: (item?: Uint8Array) => void): (() => void) | void;
+  readStoredSession(): Promise<Uint8Array | null | undefined>;
+  writeStoredSession(value: Uint8Array): Promise<void>;
+  clearStoredSession(): Promise<void>;
+  subscribeStoredSession(sendItem: (item?: Uint8Array) => void): (() => void) | void;
   read(key: string): Promise<Uint8Array | null | undefined>;
   write(key: string, value: Uint8Array): Promise<void>;
   clear(key: string): Promise<void>;
@@ -54,7 +54,7 @@ export interface RawCallbacks {
   chainConnect?: ChainConnect;
 }
 /** Adapt typed host callbacks into the raw SCALE callback surface the
- *  WASM core invokes. Applied internally by `createWasmProvider`. */
+ *  WASM core invokes. Applied internally by `createHostCoreProvider`. */
 export function createWasmRawCallbacks(
   host: Partial<HostCallbacks>,
 ): RawCallbacks {
@@ -72,10 +72,10 @@ export function createWasmRawCallbacks(
     confirmPreimageSubmit: host.confirmPreimageSubmit ? async (size) => await host.confirmPreimageSubmit!(BigInt(size)) : unavailable.confirmPreimageSubmit,
     submitPreimage: host.submitPreimage ? async (value) => await host.submitPreimage!(value) : unavailable.submitPreimage,
     lookupPreimage: host.lookupPreimage ? (key, sendItem) => driveResultStream(host.lookupPreimage!(key), sendItem) : unavailable.lookupPreimage,
-    readSession: host.readSession ? async () => await host.readSession!() : unavailable.readSession,
-    writeSession: host.writeSession ? async (value) => await host.writeSession!(value) : unavailable.writeSession,
-    clearSession: host.clearSession ? async () => await host.clearSession!() : unavailable.clearSession,
-    subscribeSessionStore: host.subscribeSessionStore ? (sendItem) => driveResultStream(host.subscribeSessionStore!(), () => sendItem()) : unavailable.subscribeSessionStore,
+    readStoredSession: host.readStoredSession ? async () => await host.readStoredSession!() : unavailable.readStoredSession,
+    writeStoredSession: host.writeStoredSession ? async (value) => await host.writeStoredSession!(value) : unavailable.writeStoredSession,
+    clearStoredSession: host.clearStoredSession ? async () => await host.clearStoredSession!() : unavailable.clearStoredSession,
+    subscribeStoredSession: host.subscribeStoredSession ? (sendItem) => driveResultStream(host.subscribeStoredSession!(), () => sendItem()) : unavailable.subscribeStoredSession,
     read: host.read ? async (key) => await host.read!(key) : unavailable.read,
     write: host.write ? async (key, value) => await host.write!(key, value) : unavailable.write,
     clear: host.clear ? async (key) => await host.clear!(key) : unavailable.clear,

@@ -135,14 +135,14 @@ test("createWasmRawCallbacks bridges lifecycle, confirmations, and preimage call
     authStateChanged: (state) => {
       calls.push(["authStateChanged", state]);
     },
-    readSession: async () => new Uint8Array([1, 2, 3]),
-    writeSession: async (value) => {
-      calls.push(["writeSession", [...value]]);
+    readStoredSession: async () => new Uint8Array([1, 2, 3]),
+    writeStoredSession: async (value) => {
+      calls.push(["writeStoredSession", [...value]]);
     },
-    clearSession: async () => {
-      calls.push(["clearSession"]);
+    clearStoredSession: async () => {
+      calls.push(["clearStoredSession"]);
     },
-    subscribeSessionStore: () => sessionTicks(),
+    subscribeStoredSession: () => sessionTicks(),
     confirmSignPayload: async (payload) => payload[0] === 1,
     confirmSignRaw: async (payload) => payload[0] === 2,
     confirmCreateTransaction: async (payload) => payload[0] === 3,
@@ -162,7 +162,7 @@ test("createWasmRawCallbacks bridges lifecycle, confirmations, and preimage call
   });
 
   const sessionEvents = [];
-  const disposeSession = raw.subscribeSessionStore?.(() =>
+  const disposeSession = raw.subscribeStoredSession?.(() =>
     sessionEvents.push("tick"),
   );
   const preimageEvents = [];
@@ -174,9 +174,9 @@ test("createWasmRawCallbacks bridges lifecycle, confirmations, and preimage call
     tag: "Pairing",
     value: { deeplink: "polkadotapp://example" },
   });
-  assert.deepEqual(await raw.readSession?.(), new Uint8Array([1, 2, 3]));
-  await raw.writeSession?.(new Uint8Array([3, 2, 1]));
-  await raw.clearSession?.();
+  assert.deepEqual(await raw.readStoredSession?.(), new Uint8Array([1, 2, 3]));
+  await raw.writeStoredSession?.(new Uint8Array([3, 2, 1]));
+  await raw.clearStoredSession?.();
   assert.equal(await raw.confirmSignPayload?.(new Uint8Array([1])), true);
   assert.equal(await raw.confirmSignRaw?.(new Uint8Array([2])), true);
   assert.equal(await raw.confirmCreateTransaction?.(new Uint8Array([3])), true);
@@ -202,8 +202,8 @@ test("createWasmRawCallbacks bridges lifecycle, confirmations, and preimage call
       "authStateChanged",
       { tag: "Pairing", value: { deeplink: "polkadotapp://example" } },
     ],
-    ["writeSession", [3, 2, 1]],
-    ["clearSession"],
+    ["writeStoredSession", [3, 2, 1]],
+    ["clearStoredSession"],
     ["confirmPreimageSubmit", 42n],
     ["submitPreimage", [6]],
   ]);
@@ -215,7 +215,7 @@ test("createWasmRawCallbacks bridges lifecycle, confirmations, and preimage call
 test("createWasmRawCallbacks default session-store subscription emits current tick", () => {
   const raw = createWasmRawCallbacks({});
   const ticks = [];
-  raw.subscribeSessionStore?.(() => ticks.push("tick"));
+  raw.subscribeStoredSession?.(() => ticks.push("tick"));
   assert.deepEqual(ticks, ["tick"]);
 });
 
