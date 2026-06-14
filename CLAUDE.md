@@ -8,16 +8,38 @@ This repo is the single source of truth for the TrUAPI protocol. It vendors `dot
 
 ```
 rust/crates/
-  truapi/                Rust trait + type definitions for protocol versions v0.1 and v0.2
+  truapi/                Rust trait + type definitions for protocol versions v0.1 and v0.2 (canonical)
   truapi-codegen/        rustdoc JSON → TypeScript client + Rust dispatcher
   truapi-macros/         #[wire(id = N)] proc-macro
+  truapi-platform/       Host syscall traits (storage, navigation, consent, ...)
+  truapi-server/         Rust runtime hosts implement; ships as WASM (browser/node)
 js/packages/
-  truapi/         @parity/truapi TS package; generated TS lives under ignored paths
-playground/              Next.js interactive playground; deploys to truapi-playground.dot
-hosts/dotli/             dotli submodule
-docs/                    design docs, RFCs, feature proposals
-scripts/codegen.sh       regenerate the TS client from the Rust crate
+  truapi/                  @parity/truapi TS package; generated TS lives under ignored paths
+  truapi-host/             @parity/truapi-host host-side codegen + dispatcher (no shared core)
+  truapi-host-wasm/        @parity/truapi-host-wasm: WASM-backed host runtime. Subpath entries:
+	                           `.` (core Provider + dispatcher), `/web` (iframe + Web
+	                           Worker), `/electron` (MessagePortMain), `/worker-runtime` (Worker entry).
+	                           WASM bundle (gitignored) under dist/wasm/web/, built via `make wasm`
+playground/                Next.js interactive playground; deploys to truapi-playground.dot
+hosts/dotli/               dotli submodule
+docs/                      design docs, RFCs, feature proposals
+scripts/codegen.sh         regenerate the TS client from the Rust crate
 ```
+
+### Crate + binding invariants
+
+- `truapi` is canonical; runtime crates re-export rather than redefine. New
+  syscall traits and host-side runtime types live in `truapi-platform` and
+  `truapi-server`, not in `truapi`. Any additions to `truapi` itself are limited
+  to additive `Display` impls.
+- All types exposed by `truapi-platform` and `truapi-server` come from
+  `truapi::versioned::*` and `truapi::v01::*`. The runtime crates re-export
+  rather than redefine.
+- `truapi-server` WASM artifacts live under
+  `js/packages/truapi-host-wasm/dist/wasm/web/` and are gitignored.
+  Build them locally with `make wasm` (rerun whenever
+  `rust/crates/truapi-server/` changes); CI builds the bundle fresh from the
+  Rust source on every run.
 
 ## Code style
 
@@ -115,6 +137,87 @@ skill to bring both servers up in tmux (it handles the `hosts/dotli/`
 submodule init + `bun install` and the per-pane `cd` discipline).
 Alternatively, with a deployed Polkadot Desktop Host installed, navigate to
 `https://dot.li/localhost:3000` from within it.
+
+#### Local dotli + playground E2E notes
+
+Use `make dev DEBUG=1` from the repo root for the local host stack. It prepares
+the ignored WASM/build artifacts, verifies dotli can resolve
+`@parity/truapi-host-wasm`, then starts dotli on `:5173` and the playground on
+`:3000`. Open `http://localhost:5173/localhost:3000`.
+
+When automating with Playwright, block service workers for smoke tests unless
+the test is explicitly about SW behavior. Stale host/product bundles can mask
+runtime fixes. Use a fresh cache-busting query string on
+`http://localhost:5173/localhost:3000?...`, collect `pageerror` and
+`console` messages, and fail on unexpected page errors.
+
+For interactive SSO checks, prefer a persistent headed Chrome profile and reuse
+the same browser context across checks. SSO pairing needs a real phone QR scan,
+and signing/resource-allocation flows may need web or mobile confirmation; if
+the human or companion app is unavailable, skip those methods and record the
+skip instead of treating it as a protocol failure. Non-interactive checks should
+still verify that the playground renders, the TrUAPI debug panel receives
+host/product events, generated examples can call non-confirmation methods, and
+logout/relogin does not restore a stale session.
+
+The dotli Playwright e2e suite under `hosts/dotli/apps/host/tests/e2e/`
+pairs through the signer-bot service. It requires `SIGNER_BOT_SVC_TOKEN`;
+`SIGNER_BOT_BASE_URL` and `SIGNER_BOT_NETWORK` default to dotli CI's
+`https://signing-bot-dev.novasama-tech.org/` and `paseo-next-v2`. Without the
+token, do not treat the full suite as locally runnable. Use
+`E2E_DOTLI_SMOKE=1 make e2e-dotli` for the no-phone QR smoke path.
+
+For a fully automated local playground diagnosis run, use:
+
+```bash
+SIGNER_BOT_SVC_TOKEN=... \
+make e2e-dotli
+```
+
+`make e2e-dotli` starts dotli preview and the playground, signs out any
+restored host session, signs in through signer-bot by extracting the QR payload,
+runs the playground Diagnosis screen, auto-accepts host-side Allow/Sign modals,
+and writes `hosts/dotli/test-results/e2e-dotli/diagnosis-report.md`.
+
+Root CI runs the same target when it can read the private dotli submodule. It
+needs `DOTLI_CHECKOUT_TOKEN` for submodule checkout; without that token, the
+job warns and skips dotli e2e rather than failing unrelated PR checks. With
+dotli access but without `SIGNER_BOT_SVC_TOKEN`, CI runs the no-phone smoke
+path only.
+
+A useful no-phone smoke assertion is:
+
+```bash
+E2E_DOTLI_SMOKE=1 make e2e-dotli
+```
+
+For manual debugging of that smoke path:
+
+1. Start `make dev DEBUG=1`.
+2. Open `http://localhost:5173/localhost:3000?debug=truapi&cachebust=<ts>` with
+   service workers blocked.
+3. Wait for `globalThis.__truapi?.setLogLevel`, call
+   `__truapi.setLogLevel("debug")`, and confirm the console logs
+   `[truapi worker] logLevel=debug providers=0`.
+4. Click `#auth-button`, wait for `#auth-modal-backdrop.open`, and confirm:
+   the modal shows `Login with Polkadot Mobile`, `__truapi.getProviderCount()`
+   is greater than zero, worker frame/callback logs appear, and there are no
+   page errors.
+
+If `make dev` reports `EADDRINUSE` on `:5173` or the playground moves from
+`:3000` to `:3001`, kill stale `preview-server.ts` / `next dev` processes and
+restart the tmux session. Port drift causes false-negative local e2e results.
+
+Useful debug signals:
+
+```bash
+localStorage.setItem("truapi:logLevel", "debug")
+sessionStorage.setItem("dotli:truapi-debug", "1")
+```
+
+Reload after setting them. Watch for `Unknown wire discriminant`, missing
+`@parity/truapi-host-wasm` imports, worker WASM instantiation failures, and
+debug-panel traffic disappearing when the login popup opens.
 
 ## Deployment
 

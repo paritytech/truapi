@@ -29,7 +29,7 @@
   },
   "scripts": {
     "ensure-generated": "./scripts/ensure-generated.sh",
-    "build": "tsc",
+    "build": "tsc -b",
     "prebuild": "npm run ensure-generated",
     "codegen": "cargo run -p truapi-codegen -- --input ../../../target/doc/truapi.json --output ../truapi/src/generated --host-output src/generated",
     "typecheck": "npm run build",

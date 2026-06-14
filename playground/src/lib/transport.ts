@@ -1,6 +1,5 @@
 import {
   createClient,
-  createIframeProvider,
   createMessagePortProvider,
   createTransport,
   type Provider,
@@ -14,6 +13,7 @@ declare global {
   interface Window {
     __HOST_WEBVIEW_MARK__?: boolean;
     __HOST_API_PORT__?: MessagePort;
+    truapi?: TrUApiClient;
   }
 }
 
@@ -48,6 +48,61 @@ async function waitForWebviewPort(
   );
 }
 
+function waitForIframePort(
+  hostOrigin: string,
+  signal?: AbortSignal,
+  timeoutMs = 20_000,
+): Promise<MessagePort> {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const cleanup = () => {
+      window.removeEventListener("message", onMessage);
+      signal?.removeEventListener("abort", onAbort);
+      if (timer !== null) clearTimeout(timer);
+    };
+    const finish = (port: MessagePort) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(port);
+    };
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const onAbort = () => fail(new Error("waitForIframePort aborted"));
+    const onMessage = (event: MessageEvent) => {
+      if (event.source !== window.parent) return;
+      if (event.origin !== hostOrigin) return;
+      if (event.data?.type !== "truapi-init") return;
+      const port = event.ports[0];
+      if (!port) {
+        fail(new Error("truapi-init did not include a MessagePort"));
+        return;
+      }
+      finish(port);
+    };
+
+    window.addEventListener("message", onMessage);
+    signal?.addEventListener("abort", onAbort, { once: true });
+    timer = setTimeout(
+      () =>
+        fail(
+          new Error(
+            `Timed out waiting for iframe MessagePort (${timeoutMs}ms)`,
+          ),
+        ),
+      timeoutMs,
+    );
+
+    window.parent.postMessage({ type: "truapi-ready" }, hostOrigin);
+  });
+}
+
 /** Origin used as the `targetOrigin` argument for outbound `postMessage`
  * frames. `document.referrer` is the URL of the parent document that loaded
  * the iframe, so its origin is the host that's expected to receive our
@@ -76,7 +131,16 @@ function createSandboxProvider(): Provider {
           "the playground must be embedded by a host that sends a Referer header.",
       );
     }
-    return createIframeProvider({ target: window.parent, hostOrigin });
+    const portController = new AbortController();
+    const provider = createMessagePortProvider(
+      waitForIframePort(hostOrigin, portController.signal),
+    );
+    const baseDispose = provider.dispose;
+    provider.dispose = () => {
+      portController.abort();
+      baseDispose?.();
+    };
+    return provider;
   }
   if (isWebview()) {
     const portController = new AbortController();
@@ -116,6 +180,7 @@ function ensureClient(): TrUApiClient {
   _provider.subscribeClose?.(() => setStatus("disconnected"));
   _transport = createTransport(_provider);
   _client = createClient(_transport);
+  window.truapi = _client;
   return _client;
 }
 

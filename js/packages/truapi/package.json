@@ -62,7 +62,7 @@
   },
   "scripts": {
     "ensure-generated": "./scripts/ensure-generated.sh",
-    "build": "tsc",
+    "build": "tsc -b",
     "prebuild": "npm run ensure-generated",
     "codegen": "cargo run -p truapi-codegen -- --input ../../../target/doc/truapi.json --output src/generated --playground-output src/playground --explorer-output src/explorer",
     "typecheck": "npm run build",
@@ -73,6 +73,7 @@
     "typescript": "^6.0"
   },
   "dependencies": {
+    "@noble/hashes": "^2.2.0",
     "neverthrow": "^8.2.0",
     "scale-ts": "^1.6.1"
   }

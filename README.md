@@ -57,13 +57,32 @@ rust/crates/
   truapi/                Rust trait and type definitions (v01, v02)
   truapi-codegen/        rustdoc JSON to TypeScript client + Rust dispatcher
   truapi-macros/         #[wire(id = N)] proc-macro
+  truapi-platform/       Host syscall traits used by truapi-server (storage, navigation, consent, ...)
+  truapi-server/         Rust runtime that hosts implement: dispatcher, frames, SCALE, WASM surface
 js/packages/
-  truapi/                @parity/truapi TypeScript client
-playground/              Interactive Next.js playground (truapi-playground.dot)
-hosts/dotli/             dotli host, vendored as a submodule
-docs/                    Design docs, RFCs, feature proposals
-scripts/codegen.sh       Regenerate the TS client from the Rust source
+  truapi/                  @parity/truapi TypeScript client
+  truapi-host/             @parity/truapi-host host-side codegen and dispatcher (no shared core)
+  truapi-host-wasm/        @parity/truapi-host-wasm: WASM-backed host runtime; entries `.` (core),
+                           `/web` (iframe + Web Worker), `/electron` (MessagePortMain), `/worker-runtime`
+playground/                Interactive Next.js playground (truapi-playground.dot)
+hosts/dotli/               dotli host, vendored as a submodule
+docs/                      Design docs, RFCs, feature proposals
+scripts/codegen.sh         Regenerate the TS client from the Rust source
 ```
+
+### JS Host SDKs
+
+JS hosts integrate the Rust core through [`@parity/truapi-host-wasm`](js/packages/truapi-host-wasm),
+a single package with tree-shakeable subpath entries (the separate
+`@parity/truapi-host`, with no shared core, is for hosts that bring their own runtime):
+
+- `@parity/truapi-host-wasm` (the `.` entry) ships the `truapi-server` WASM bundle, the
+  `Provider` factories that drive it and the dispatcher adapter.
+- `@parity/truapi-host-wasm/web` wires the WASM provider into a browser host: the iframe
+  MessageChannel handshake (`createIframeHost`) plus `createWebWorkerProvider`.
+- `@parity/truapi-host-wasm/electron` wraps an Electron `MessagePortMain` as a `Provider`.
+- `@parity/truapi-host-wasm/worker-runtime` is the Web Worker entrypoint so the WASM core can
+  run off the page main thread.
 
 ## How it works
 
@@ -80,9 +99,10 @@ Common tasks are wrapped in the top-level `Makefile`. Run `make help` for the fu
 
 ```bash
 make setup    # submodules + JS dependencies
-make build    # Rust workspace + TypeScript client
-make test     # Rust + TypeScript client tests
+make build    # Rust workspace + TypeScript client + @parity/truapi-host-* packages
+make test     # Rust + TypeScript client + @parity/truapi-host-* tests
 make check    # full suite: build, fmt, clippy, test, TS tests, playground build + lint
+make wasm     # rebuild truapi-server WASM artifacts under js/packages/truapi-host-wasm/dist/wasm/
 ```
 
 To run the playground locally:
@@ -129,4 +149,3 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for issue reports, feature proposals, a
 ## License
 
 [MIT](./LICENSE)
-
