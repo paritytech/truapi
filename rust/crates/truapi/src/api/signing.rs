@@ -51,6 +51,7 @@ pub trait Signing: Send + Sync {
     ///
     /// const signerResult = await accountIdForDotNsUsername();
     /// assert(signerResult.isOk(), "accountIdForDotNsUsername failed:", signerResult);
+    /// console.log("fetched user account:", signerResult.value);
     ///
     /// const result = await truapi.signing.createTransactionWithLegacyAccount({
     ///   signer: signerResult.value,
