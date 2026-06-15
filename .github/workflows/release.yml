@@ -1,7 +1,8 @@
 name: Release
 
 # workflow_run is the intended gate for "release only after green CI". It is
-# safe here: it fires only for CI runs on main (post-merge, trusted code), is
+# safe here: it fires only for CI runs on main or release branches (post-merge,
+# trusted code), is
 # guarded by conclusion == success and a release: commit subject, and checks
 # out the pinned head_sha with persist-credentials: false. No untrusted PR code
 # ever runs in this privileged context.
@@ -9,7 +10,7 @@ on:  # zizmor: ignore[dangerous-triggers]
   workflow_run:
     workflows: ["CI"]
     types: [completed]
-    branches: [main]
+    branches: [main, release/v0.3.0]
 
 permissions:
   contents: read
