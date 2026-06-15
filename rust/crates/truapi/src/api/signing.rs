@@ -49,7 +49,7 @@ pub trait Signing: Send + Sync {
     /// ```ts
     /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
-    /// const signer = await accountIdForDotNsUsername("pgherveou.05");
+    /// const signer = await accountIdForDotNsUsername();
     ///
     /// const result = await truapi.signing.createTransactionWithLegacyAccount({
     ///   signer,

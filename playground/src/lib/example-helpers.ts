@@ -18,7 +18,11 @@ export type WithChainHeadFollow = (opts: {
   withRuntime?: boolean;
 }) => Observable<ChainHeadCtx>;
 
-export type AccountIdForDotNsUsername = (username: string) => Promise<HexString>;
+const DEFAULT_DOTNS_USERNAME = "pgherveou.05";
+
+export type AccountIdForDotNsUsername = (
+  username?: string,
+) => Promise<HexString>;
 
 const usernameOwnerOfStorage = Storage("Resources")("UsernameOwnerOf", [
   Bytes(),
@@ -67,7 +71,9 @@ export function createWithChainHeadFollow(truapi: Client): WithChainHeadFollow {
 export function createAccountIdForDotNsUsername(
   truapi: Client,
 ): AccountIdForDotNsUsername {
-  return function accountIdForDotNsUsername(username: string): Promise<HexString> {
+  return function accountIdForDotNsUsername(
+    username = DEFAULT_DOTNS_USERNAME,
+  ): Promise<HexString> {
     const key = usernameOwnerOfStorage.enc(
       new TextEncoder().encode(username),
     ) as HexString;
@@ -122,7 +128,9 @@ export function createAccountIdForDotNsUsername(
                   return;
                 case "OperationError":
                   if (item.value.operationId === operationId) {
-                    throw new Error(`getHeadStorage failed: ${item.value.error}`);
+                    throw new Error(
+                      `getHeadStorage failed: ${item.value.error}`,
+                    );
                   }
                   return;
                 case "OperationInaccessible":

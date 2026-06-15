@@ -96,7 +96,7 @@ export function setupMonaco(m: Monaco): void {
       `    withRuntime?: boolean;`,
       `  }): import("rxjs").Observable<ChainHeadCtx>;`,
       `  /** Resolve a DotNS username to the owning raw AccountId32 hex string. */`,
-      `  function accountIdForDotNsUsername(username: string): Promise<\`0x\${string}\`>;`,
+      `  function accountIdForDotNsUsername(username?: string): Promise<\`0x\${string}\`>;`,
       `  /**`,
       `   * Assert a condition, throwing when it does not hold. Examples signal`,
       `   * failure explicitly with \`assert(...)\`; the diagnosis marks an example`,
