@@ -84,8 +84,8 @@ jobs:
         with:
           bun-version: latest
 
-      - name: Install
-        run: npm ci --ignore-scripts
+      - name: Install + codegen
+        run: npm ci --ignore-scripts && ./scripts/codegen.sh
 
       - name: Build
         run: npm run build --prefix js/packages/truapi
