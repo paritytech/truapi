@@ -31,7 +31,6 @@
     "ensure-generated": "./scripts/ensure-generated.sh",
     "build": "tsc",
     "prebuild": "npm run ensure-generated",
-    "prepare": "npm run build",
     "codegen": "cargo run -p truapi-codegen -- --input ../../../target/doc/truapi.json --output ../truapi/src/generated --host-output src/generated",
     "typecheck": "npm run build",
     "pretest": "npm run ensure-generated",
