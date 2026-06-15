@@ -43,7 +43,7 @@ declare global {
     genesisHash: `0x${string}`;
     withRuntime?: boolean;
   }): Observable<ChainHeadCtx>;
-  /** Resolve a DotNS username to the owning raw AccountId32 hex string. */
+  /** Resolve a DotNS username to the owning raw AccountId32 hex string. Defaults to truapi.account.getUserId(). */
   function accountIdForDotNsUsername(username?: string): Promise<import("neverthrow").Result<`0x${string}`, Error>>;
   /**
    * Assert a condition, throwing when it does not hold. Examples signal

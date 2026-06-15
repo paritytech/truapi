@@ -19,8 +19,6 @@ export type WithChainHeadFollow = (opts: {
   withRuntime?: boolean;
 }) => Observable<ChainHeadCtx>;
 
-const DEFAULT_DOTNS_USERNAME = "pgherveou.05";
-
 export type AccountIdForDotNsUsername = (
   username?: string,
 ) => Promise<Result<HexString, Error>>;
@@ -72,11 +70,23 @@ export function createWithChainHeadFollow(truapi: Client): WithChainHeadFollow {
 export function createAccountIdForDotNsUsername(
   truapi: Client,
 ): AccountIdForDotNsUsername {
-  return function accountIdForDotNsUsername(
-    username = DEFAULT_DOTNS_USERNAME,
+  return async function accountIdForDotNsUsername(
+    username,
   ): Promise<Result<HexString, Error>> {
+    let dotNsUsername = username;
+    if (dotNsUsername === undefined) {
+      const userIdResult = await truapi.account.getUserId();
+      if (userIdResult.isErr()) {
+        return err(toError(userIdResult.error));
+      }
+      dotNsUsername = userIdResult.value.primaryUsername;
+    }
+    if (dotNsUsername.length === 0) {
+      return err(new Error("DotNS username is empty"));
+    }
+
     const key = usernameOwnerOfStorage.enc(
-      new TextEncoder().encode(username),
+      new TextEncoder().encode(dotNsUsername),
     ) as HexString;
 
     return new Promise<Result<HexString, Error>>((resolve) => {
@@ -119,7 +129,7 @@ export function createAccountIdForDotNsUsername(
                   if (item.value.operationId === operationId) {
                     const account = findStorageValue(item.value.items, key);
                     if (!account) {
-                      fail(`No account owns DotNS username "${username}"`);
+                      fail(`No account owns DotNS username "${dotNsUsername}"`);
                       return;
                     }
                     sub.unsubscribe();
@@ -128,7 +138,7 @@ export function createAccountIdForDotNsUsername(
                   return;
                 case "OperationStorageDone":
                   if (item.value.operationId === operationId) {
-                    fail(`No account owns DotNS username "${username}"`);
+                    fail(`No account owns DotNS username "${dotNsUsername}"`);
                   }
                   return;
                 case "OperationError":
@@ -177,5 +187,11 @@ function findStorageValue(
 }
 
 function toError(value: unknown): Error {
-  return value instanceof Error ? value : new Error(String(value));
+  if (value instanceof Error) return value;
+  if (typeof value === "string") return new Error(value);
+  try {
+    return new Error(JSON.stringify(value));
+  } catch {
+    return new Error(String(value));
+  }
 }
