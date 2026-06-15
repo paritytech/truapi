@@ -1,4 +1,5 @@
 import { Observable } from "rxjs";
+import { err, ok, type Result } from "neverthrow";
 import { PASEO_NEXT_V2_INDIVIDUALITY } from "@parity/truapi";
 import {
   Blake2128Concat,
@@ -22,7 +23,7 @@ const DEFAULT_DOTNS_USERNAME = "pgherveou.05";
 
 export type AccountIdForDotNsUsername = (
   username?: string,
-) => Promise<HexString>;
+) => Promise<Result<HexString, Error>>;
 
 const usernameOwnerOfStorage = Storage("Resources")("UsernameOwnerOf", [
   Bytes(),
@@ -73,12 +74,12 @@ export function createAccountIdForDotNsUsername(
 ): AccountIdForDotNsUsername {
   return function accountIdForDotNsUsername(
     username = DEFAULT_DOTNS_USERNAME,
-  ): Promise<HexString> {
+  ): Promise<Result<HexString, Error>> {
     const key = usernameOwnerOfStorage.enc(
       new TextEncoder().encode(username),
     ) as HexString;
 
-    return new Promise<HexString>((resolve, reject) => {
+    return new Promise<Result<HexString, Error>>((resolve) => {
       let operationId: string | null = null;
       const sub = truapi.chain
         .followHeadSubscribe({
@@ -89,6 +90,11 @@ export function createAccountIdForDotNsUsername(
         })
         .subscribe({
           next: async (item) => {
+            const fail = (reason: unknown) => {
+              sub.unsubscribe();
+              resolve(err(toError(reason)));
+            };
+
             try {
               switch (item.tag) {
                 case "Initialized": {
@@ -99,10 +105,12 @@ export function createAccountIdForDotNsUsername(
                     items: [{ key, queryType: "Value" }],
                   });
                   if (result.isErr()) {
-                    throw result.error;
+                    fail(result.error);
+                    return;
                   }
                   if (result.value.operation.tag !== "Started") {
-                    throw new Error("getHeadStorage operation limit reached");
+                    fail(new Error("getHeadStorage operation limit reached"));
+                    return;
                   }
                   operationId = result.value.operation.value.operationId;
                   return;
@@ -111,48 +119,46 @@ export function createAccountIdForDotNsUsername(
                   if (item.value.operationId === operationId) {
                     const account = findStorageValue(item.value.items, key);
                     if (!account) {
-                      throw new Error(
-                        `No account owns DotNS username "${username}"`,
-                      );
+                      fail(`No account owns DotNS username "${username}"`);
+                      return;
                     }
                     sub.unsubscribe();
-                    resolve(account);
+                    resolve(ok(account));
                   }
                   return;
                 case "OperationStorageDone":
                   if (item.value.operationId === operationId) {
-                    throw new Error(
-                      `No account owns DotNS username "${username}"`,
-                    );
+                    fail(`No account owns DotNS username "${username}"`);
                   }
                   return;
                 case "OperationError":
                   if (item.value.operationId === operationId) {
-                    throw new Error(
-                      `getHeadStorage failed: ${item.value.error}`,
-                    );
+                    fail(`getHeadStorage failed: ${item.value.error}`);
                   }
                   return;
                 case "OperationInaccessible":
                   if (item.value.operationId === operationId) {
-                    throw new Error("getHeadStorage operation inaccessible");
+                    fail("getHeadStorage operation inaccessible");
                   }
                   return;
                 case "Stop":
-                  throw new Error(
+                  fail(
                     "chain head subscription stopped before username lookup finished",
                   );
+                  return;
               }
-            } catch (err) {
+            } catch (error) {
               sub.unsubscribe();
-              reject(err);
+              resolve(err(toError(error)));
             }
           },
-          error: reject,
+          error: (error) => resolve(err(toError(error))),
           complete: () =>
-            reject(
-              new Error(
-                "chain head subscription completed before username lookup finished",
+            resolve(
+              err(
+                new Error(
+                  "chain head subscription completed before username lookup finished",
+                ),
               ),
             ),
         });
@@ -168,4 +174,8 @@ function findStorageValue(
     (candidate) => candidate.key.toLowerCase() === key.toLowerCase(),
   );
   return item?.value ?? null;
+}
+
+function toError(value: unknown): Error {
+  return value instanceof Error ? value : new Error(String(value));
 }

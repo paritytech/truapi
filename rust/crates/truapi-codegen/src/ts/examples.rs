@@ -44,7 +44,7 @@ declare global {
     withRuntime?: boolean;
   }): Observable<ChainHeadCtx>;
   /** Resolve a DotNS username to the owning raw AccountId32 hex string. */
-  function accountIdForDotNsUsername(username?: string): Promise<`0x${string}`>;
+  function accountIdForDotNsUsername(username?: string): Promise<import("neverthrow").Result<`0x${string}`, Error>>;
   /**
    * Assert a condition, throwing when it does not hold. Examples signal
    * failure explicitly with `assert(...)`; the playground's diagnosis marks
