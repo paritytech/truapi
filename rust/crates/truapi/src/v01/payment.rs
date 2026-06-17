@@ -132,13 +132,13 @@ pub enum HostPaymentTopUpError {
     InsufficientFunds,
     /// The source account was not found or is invalid.
     InvalidSource,
-    /// Catch-all.
-    Unknown { reason: String },
     /// Some coins were claimed but the total fell short of the requested amount.
     PartialPayment {
         /// Amount that was successfully credited.
         credited: Balance,
     },
+    /// Catch-all.
+    Unknown { reason: String },
 }
 
 /// Error from [`crate::api::Payment::request`].
