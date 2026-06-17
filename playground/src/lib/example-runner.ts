@@ -1,6 +1,11 @@
 import { transform } from "sucrase";
 import type { Subscription, TrUApiClient } from "@parity/truapi";
-import { createWithChainHeadFollow, type WithChainHeadFollow } from "./example-helpers";
+import {
+  createAccountIdForDotNsUsername,
+  createWithChainHeadFollow,
+  type AccountIdForDotNsUsername,
+  type WithChainHeadFollow,
+} from "./example-helpers";
 
 export type LogEntry = {
   level: "log" | "error" | "warn";
@@ -60,6 +65,7 @@ const AsyncFunction = Object.getPrototypeOf(
   __console: ConsoleShim,
   __rxjs: unknown,
   withChainHeadFollow: WithChainHeadFollow,
+  accountIdForDotNsUsername: AccountIdForDotNsUsername,
   __truapi: unknown,
   assert: typeof exampleAssert,
 ) => Promise<unknown>;
@@ -99,6 +105,7 @@ export async function runExample(opts: {
     c: ConsoleShim,
     rxjs: unknown,
     withChainHeadFollow: WithChainHeadFollow,
+    accountIdForDotNsUsername: AccountIdForDotNsUsername,
     truapiPkg: unknown,
     assert: typeof exampleAssert,
   ) => Promise<unknown>;
@@ -108,6 +115,7 @@ export async function runExample(opts: {
       "__console",
       "__rxjs",
       "withChainHeadFollow",
+      "accountIdForDotNsUsername",
       "__truapi",
       "assert",
       body,
@@ -141,11 +149,15 @@ export async function runExample(opts: {
 
   const [rxjs, truapiPkg] = await Promise.all([getRxjs(), getTruapiPkg()]);
   const withChainHeadFollow = createWithChainHeadFollow(trackingClient as TrUApiClient);
+  const accountIdForDotNsUsername = createAccountIdForDotNsUsername(
+    trackingClient as TrUApiClient,
+  );
   const promise = run(
     trackingClient,
     consoleShim,
     rxjs,
     withChainHeadFollow,
+    accountIdForDotNsUsername,
     truapiPkg,
     exampleAssert,
   );
