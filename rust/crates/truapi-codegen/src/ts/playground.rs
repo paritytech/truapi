@@ -316,7 +316,12 @@ fn emit_permissions(out: &mut String, perms: &MethodPermissions) {
         writeln!(out, "          prompt: {},", ts_string_literal(prompt)).unwrap();
     }
     if let Some(ptype) = &perms.permission_type {
-        writeln!(out, "          permissionType: {},", ts_string_literal(ptype)).unwrap();
+        writeln!(
+            out,
+            "          permissionType: {},",
+            ts_string_literal(ptype)
+        )
+        .unwrap();
     }
     if let Some(denial) = &perms.denial_error {
         writeln!(out, "          denialError: {},", ts_string_literal(denial)).unwrap();
