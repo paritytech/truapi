@@ -34,6 +34,10 @@ pub trait Preimage: Send + Sync {
 
     /// Submit a preimage. Returns the preimage key (hash) on success.
     ///
+    /// # Permissions
+    ///
+    /// - **permission**: RemotePermission::PreimageSubmit
+    ///
     /// ```ts
     /// const result = await truapi.preimage.submit("0xdeadbeef");
     /// assert(result.isOk(), "submit failed:", result);

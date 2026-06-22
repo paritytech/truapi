@@ -11,6 +11,11 @@ use crate::{CallContext, CallError};
 pub trait ResourceAllocation: Send + Sync {
     /// Request the host to pre-allocate one or more resources.
     ///
+    /// # Permissions
+    ///
+    /// - **auth**: required
+    /// - **prompt**: per-resource allocation confirmation
+    ///
     /// ```ts
     /// const result = await truapi.resourceAllocation.request({
     ///   resources: [

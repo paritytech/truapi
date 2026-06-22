@@ -11,6 +11,10 @@ use crate::{CallContext, CallError};
 pub trait Permissions: Send + Sync {
     /// Request a device-capability permission from the user.
     ///
+    /// # Permissions
+    ///
+    /// - **prompt**: device permission grant dialog
+    ///
     /// ```ts
     /// const result = await truapi.permissions.requestDevicePermission("Camera");
     /// assert(result.isOk(), "requestDevicePermission failed:", result);
@@ -24,6 +28,10 @@ pub trait Permissions: Send + Sync {
     ) -> Result<HostDevicePermissionResponse, CallError<HostDevicePermissionError>>;
 
     /// Request a remote-operation permission.
+    ///
+    /// # Permissions
+    ///
+    /// - **prompt**: remote permission grant dialog
     ///
     /// ```ts
     /// const result = await truapi.permissions.requestRemotePermission({

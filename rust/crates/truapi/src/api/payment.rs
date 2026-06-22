@@ -14,6 +14,12 @@ use crate::{CallContext, CallError, Subscription};
 pub trait Payment: Send + Sync {
     /// Subscribe to payment balance updates.
     ///
+    /// # Permissions
+    ///
+    /// - **auth**: required
+    /// - **prompt**: balance disclosure (first call)
+    /// - **denial_error**: PermissionDenied
+    ///
     /// ```ts
     /// import { firstValueFrom, from } from "rxjs";
     ///
@@ -35,6 +41,12 @@ pub trait Payment: Send + Sync {
     }
 
     /// Request a payment from the user.
+    ///
+    /// # Permissions
+    ///
+    /// - **auth**: required
+    /// - **prompt**: payment confirmation
+    /// - **denial_error**: Rejected
     ///
     /// ```ts
     /// // Fund the balance first so the request is not rejected for lack of funds.
@@ -62,6 +74,10 @@ pub trait Payment: Send + Sync {
     }
 
     /// Subscribe to payment lifecycle updates for a specific payment.
+    ///
+    /// # Permissions
+    ///
+    /// - **auth**: required
     ///
     /// ```ts
     /// import { firstValueFrom, from } from "rxjs";
@@ -102,6 +118,11 @@ pub trait Payment: Send + Sync {
     }
 
     /// Top up the user's payment balance.
+    ///
+    /// # Permissions
+    ///
+    /// - **auth**: required
+    /// - **prompt**: conditional (source-dependent)
     ///
     /// ```ts
     /// const result = await truapi.payment.topUp({

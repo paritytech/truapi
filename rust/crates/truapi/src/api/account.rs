@@ -34,6 +34,10 @@ pub trait Account: Send + Sync {
 
     /// Retrieve a product-scoped account.
     ///
+    /// # Permissions
+    ///
+    /// - **auth**: required
+    ///
     /// ```ts
     /// const result = await truapi.account.getAccount({
     ///   productAccountId: {
@@ -55,6 +59,10 @@ pub trait Account: Send + Sync {
 
     /// Retrieve a contextual alias for a product account.
     ///
+    /// # Permissions
+    ///
+    /// - **auth**: required
+    ///
     /// ```ts
     /// const result = await truapi.account.getAccountAlias({
     ///   productAccountId: {
@@ -75,6 +83,10 @@ pub trait Account: Send + Sync {
     }
 
     /// Generate a ring VRF proof for a product account.
+    ///
+    /// # Permissions
+    ///
+    /// - **auth**: required
     ///
     /// ```ts
     /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
@@ -105,6 +117,10 @@ pub trait Account: Send + Sync {
 
     /// List non-product accounts the user owns.
     ///
+    /// # Permissions
+    ///
+    /// - **auth**: required
+    ///
     /// ```ts
     /// const result = await truapi.account.getLegacyAccounts();
     /// assert(result.isOk(), "getLegacyAccounts failed:", result);
@@ -120,6 +136,12 @@ pub trait Account: Send + Sync {
     }
 
     /// Fetch the user's primary identity.
+    ///
+    /// # Permissions
+    ///
+    /// - **auth**: required
+    /// - **prompt**: identity disclosure confirmation
+    /// - **denial_error**: PermissionDenied
     ///
     /// ```ts
     /// const result = await truapi.account.getUserId();

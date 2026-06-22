@@ -19,6 +19,12 @@ use crate::{CallContext, CallError};
 pub trait Signing: Send + Sync {
     /// Construct a signed transaction for a product account.
     ///
+    /// # Permissions
+    ///
+    /// - **auth**: required
+    /// - **prompt**: signing confirmation
+    /// - **denial_error**: Rejected
+    ///
     /// ```ts
     /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
@@ -45,6 +51,12 @@ pub trait Signing: Send + Sync {
     }
 
     /// Construct a signed transaction for a non-product (legacy) account.
+    ///
+    /// # Permissions
+    ///
+    /// - **auth**: required
+    /// - **prompt**: signing confirmation
+    /// - **denial_error**: Rejected
     ///
     /// ```ts
     /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
@@ -77,6 +89,12 @@ pub trait Signing: Send + Sync {
 
     /// Sign raw bytes with a non-product account.
     ///
+    /// # Permissions
+    ///
+    /// - **auth**: required
+    /// - **prompt**: signing confirmation
+    /// - **denial_error**: Rejected
+    ///
     /// ```ts
     /// const result = await truapi.signing.signRawWithLegacyAccount({
     ///   signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
@@ -99,6 +117,12 @@ pub trait Signing: Send + Sync {
     }
 
     /// Sign an extrinsic payload with a non-product account.
+    ///
+    /// # Permissions
+    ///
+    /// - **auth**: required
+    /// - **prompt**: signing confirmation
+    /// - **denial_error**: Rejected
     ///
     /// ```ts
     /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
@@ -136,6 +160,12 @@ pub trait Signing: Send + Sync {
 
     /// Sign raw bytes or a message.
     ///
+    /// # Permissions
+    ///
+    /// - **auth**: required
+    /// - **prompt**: signing confirmation
+    /// - **denial_error**: Rejected
+    ///
     /// ```ts
     /// const result = await truapi.signing.signRaw({
     ///   account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },
@@ -159,6 +189,12 @@ pub trait Signing: Send + Sync {
     }
 
     /// Sign an extrinsic payload.
+    ///
+    /// # Permissions
+    ///
+    /// - **auth**: required
+    /// - **prompt**: signing confirmation
+    /// - **denial_error**: Rejected
     ///
     /// ```ts
     /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";

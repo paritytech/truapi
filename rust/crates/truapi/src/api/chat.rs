@@ -14,6 +14,11 @@ use crate::{CallContext, CallError, Subscription};
 pub trait Chat: Send + Sync {
     /// Create a chat room.
     ///
+    /// # Permissions
+    ///
+    /// - **auth**: required
+    /// - **prompt**: chat room creation confirmation
+    ///
     /// ```ts
     /// const result = await truapi.chat.createRoom({
     ///   roomId: "test-room",
@@ -33,6 +38,11 @@ pub trait Chat: Send + Sync {
     }
 
     /// Register a chat bot.
+    ///
+    /// # Permissions
+    ///
+    /// - **auth**: required
+    /// - **prompt**: bot registration confirmation
     ///
     /// ```ts
     /// const result = await truapi.chat.registerBot({
@@ -54,6 +64,10 @@ pub trait Chat: Send + Sync {
 
     /// Subscribe to the list of chat rooms.
     ///
+    /// # Permissions
+    ///
+    /// - **auth**: required
+    ///
     /// ```ts
     /// import { firstValueFrom, from } from "rxjs";
     ///
@@ -68,6 +82,10 @@ pub trait Chat: Send + Sync {
     }
 
     /// Post a message to a chat room.
+    ///
+    /// # Permissions
+    ///
+    /// - **auth**: required
     ///
     /// ```ts
     /// const result = await truapi.chat.postMessage({
@@ -88,6 +106,10 @@ pub trait Chat: Send + Sync {
 
     /// Subscribe to received chat actions.
     ///
+    /// # Permissions
+    ///
+    /// - **auth**: required
+    ///
     /// ```ts
     /// import { firstValueFrom, from } from "rxjs";
     ///
@@ -107,6 +129,10 @@ pub trait Chat: Send + Sync {
     /// Subscribe to custom message render requests from the host. Each
     /// emitted item is a [`CustomRendererNode`](crate::v01::CustomRendererNode)
     /// tree describing the rendered UI.
+    ///
+    /// # Permissions
+    ///
+    /// - **auth**: required
     ///
     /// ```ts
     /// import { firstValueFrom, from } from "rxjs";
