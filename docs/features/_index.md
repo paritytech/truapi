@@ -8,5 +8,5 @@ created: 2026-03-13
 
 # Feature Proposals
 
-| Title | Status | Author | PR |
-|-------|--------|--------|----|
+| Title | Status | Author | PR  |
+| ----- | ------ | ------ | --- |

@@ -1,0 +1,4 @@
+[submodule "hosts/dotli"]
+	path = hosts/dotli
+	url = https://github.com/paritytech/dotli-community
+	branch = main
