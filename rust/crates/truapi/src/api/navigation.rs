@@ -16,8 +16,6 @@ pub trait Navigation: Send + Sync {
     /// its home.
     ///
     /// ```ts
-    /// import { type Client } from "@parity/truapi";
-    ///
     /// export async function bootstrapRoute(truapi: Client): Promise<string | null> {
     ///   const result = await truapi.navigation.routeGet();
     ///
@@ -38,8 +36,6 @@ pub trait Navigation: Send + Sync {
     /// copied, shared, and reloaded. The host treats the route as opaque.
     ///
     /// ```ts
-    /// import { type Client } from "@parity/truapi";
-    ///
     /// export async function pushRoute(truapi: Client): Promise<void> {
     ///   const result = await truapi.navigation.routeSet({
     ///     route: "Permissions/host_device_permission",
@@ -65,7 +61,6 @@ pub trait Navigation: Send + Sync {
     ///
     /// ```ts
     /// import {
-    ///   type Client,
     ///   type Subscription,
     ///   type HostRouteChangedItem,
     /// } from "@parity/truapi";
