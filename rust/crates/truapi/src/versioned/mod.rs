@@ -97,9 +97,8 @@ mod tests {
     #[test]
     fn unit_response_roundtrip() {
         let original = super::system::HostNavigateToResponse::V1;
-        let decoded =
-            super::system::HostNavigateToResponse::decode(&mut &original.encode()[..])
-                .expect("decode");
+        let decoded = super::system::HostNavigateToResponse::decode(&mut &original.encode()[..])
+            .expect("decode");
         assert_eq!(original, decoded);
     }
 

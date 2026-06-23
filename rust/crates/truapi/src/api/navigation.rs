@@ -4,34 +4,11 @@ use crate::versioned::navigation::{
     HostRouteChangedItem, HostRouteGetError, HostRouteGetRequest, HostRouteGetResponse,
     HostRouteSetError, HostRouteSetRequest, HostRouteSetResponse,
 };
-use crate::versioned::system::{
-    HostNavigateToError, HostNavigateToRequest, HostNavigateToResponse,
-};
 use crate::wire;
 use crate::{CallContext, CallError, Subscription};
 
-/// Host navigation surface: external URL opens and the app's own route.
+/// Host route relay: read, write, and subscribe to the app's in-host route.
 pub trait Navigation: Send + Sync {
-    /// Request the host to open a URL.
-    ///
-    /// ```ts
-    /// import { type Client } from "@parity/truapi";
-    ///
-    /// export async function navigateToDocs(truapi: Client): Promise<void> {
-    ///   const result = await truapi.navigation.navigateTo({
-    ///     url: "https://example.com",
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    /// }
-    /// ```
-    #[wire(request_id = 6)]
-    async fn navigate_to(
-        &self,
-        cx: &CallContext,
-        request: HostNavigateToRequest,
-    ) -> Result<HostNavigateToResponse, CallError<HostNavigateToError>>;
-
     /// Read the route the host currently holds for this app.
     ///
     /// At bootstrap this returns the route the host was launched with, so the
