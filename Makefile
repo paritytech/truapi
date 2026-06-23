@@ -3,11 +3,12 @@
 # Run `make help` for the list of targets.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup build codegen test check playground dev matrix explorer
+.PHONY: help setup build codegen test check playground dev matrix explorer dart
 
 TRUAPI_PKG := js/packages/truapi
 PLAYGROUND := playground
 EXPLORER := explorer
+DART := dart/truapi
 DOTLI := hosts/dotli
 
 # `make dev DEBUG=1` runs dotli with VITE_APP_DEBUG=true to log every wire frame.
@@ -61,3 +62,8 @@ matrix: ## Regenerate the host compatibility matrix from explorer/diagnosis-repo
 
 explorer: ## Run the explorer dev server standalone at http://localhost:5181.
 	cd $(EXPLORER) && npx vite --base / --port 5181
+
+dart: ## Regenerate + analyze + test the Dart client (regen golden vectors too).
+	./scripts/codegen.sh
+	cargo run -p truapi --example wire_vectors -- $(DART)/test/wire_vectors.json
+	cd $(DART) && dart pub get && dart analyze && dart test

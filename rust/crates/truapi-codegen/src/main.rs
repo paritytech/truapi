@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use std::str::FromStr;
 
+mod dart;
 mod rustdoc;
 mod ts;
 
@@ -37,6 +38,12 @@ struct Cli {
     /// Wire codec version for generated handshake calls.
     #[arg(long, default_value_t = 1)]
     codec_version: u8,
+
+    /// Output directory for the generated Dart client (optional). When set,
+    /// writes `types.dart`, `wire_table.dart`, `client.dart`, and `index.dart`
+    /// (the `dart/truapi` package's generated surface).
+    #[arg(long)]
+    dart_output: Option<String>,
 
     /// Output directory for generated playground metadata (optional).
     #[arg(long)]
@@ -108,6 +115,11 @@ fn main() -> Result<()> {
     println!(
         "Generated TypeScript client for TrUAPI V{client_version} codec {codec_version} in {output}",
     );
+    if let Some(path) = &cli.dart_output {
+        dart::generate(&api, path, client_version, cli.codec_version)
+            .with_context(|| format!("writing Dart client to {path}"))?;
+        println!("Generated Dart client in {path}");
+    }
     if let Some(path) = &cli.playground_output {
         ts::generate_playground_services(&api, path, client_version, cli.strip_examples)
             .with_context(|| format!("writing playground metadata to {path}"))?;

@@ -1,0 +1,17 @@
+include: package:lints/recommended.yaml
+
+analyzer:
+  language:
+    strict-casts: true
+    strict-raw-types: true
+  errors:
+    # Generated code is held to the same bar; real issues still surface.
+    todo: ignore
+  exclude:
+    - lib/src/generated/**
+
+linter:
+  rules:
+    - prefer_final_locals
+    - prefer_const_constructors
+    - avoid_print

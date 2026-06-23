@@ -29,6 +29,7 @@ cargo run -p truapi-codegen -- \
   --client-examples-output playground/test/generated/examples \
   --host-output js/packages/truapi-host/src/generated \
   --explorer-output js/packages/truapi/src/explorer \
+  --dart-output dart/truapi/lib/src/generated \
   --codec-version 1
 
 node scripts/regen-explorer-versions.mjs
@@ -39,6 +40,11 @@ npm exec --yes -- prettier --write \
   "js/packages/truapi/src/explorer/**/*.ts" \
   "playground/test/generated/examples/**/*.ts" \
   "js/packages/truapi-host/src/generated/**/*.ts"
+
+# Format the generated Dart client when a Dart SDK is available (optional).
+if command -v dart >/dev/null 2>&1; then
+  dart format dart/truapi/lib/src/generated >/dev/null
+fi
 
 # Rebuild dist/ so downstream consumers (in particular the playground,
 # which picks up @parity/truapi via yarn 1.x file: snapshot) see the
@@ -60,6 +66,7 @@ if [ "${TRUAPI_SKIP_PACKAGE_BUILD:-0}" != "1" ]; then
   npm run build --prefix js/packages/truapi-host
 fi
 
+echo "Generated Dart client at dart/truapi/lib/src/generated/"
 echo "Generated client at js/packages/truapi/src/generated/"
 echo "Generated playground metadata at js/packages/truapi/src/playground/codegen/"
 echo "Generated client examples at playground/test/generated/examples/"

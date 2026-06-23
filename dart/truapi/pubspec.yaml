@@ -1,0 +1,19 @@
+name: truapi
+description: >-
+  TrUAPI Dart client — the typed, SCALE-encoded protocol client that lets
+  Flutter/Dart products talk to their Polkadot host. Generated from the Rust
+  trait definitions in paritytech/truapi.
+version: 0.3.1
+repository: https://github.com/paritytech/truapi
+publish_to: none
+
+environment:
+  sdk: ^3.0.0
+
+# The core package is pure Dart (dart:typed_data + dart:async only) so it runs
+# on Flutter (all platforms), Dart CLI, and server. Transport providers that
+# need the Flutter SDK live behind an optional import, never in the core.
+
+dev_dependencies:
+  lints: ^4.0.0
+  test: ^1.25.0

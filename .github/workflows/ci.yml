@@ -218,6 +218,46 @@ jobs:
         working-directory: explorer
         run: npm run build
 
+  dart:
+    name: Dart client (analyze + test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@5b842231ba77f5c045dba54ac5560fed2db780e2 # stable
+        with:
+          toolchain: stable
+
+      - uses: dtolnay/rust-toolchain@5b842231ba77f5c045dba54ac5560fed2db780e2 # nightly
+        with:
+          toolchain: nightly
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+
+      # TODO: pin to a commit SHA to match the repo's action-pinning convention.
+      - uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Generate the Dart client from the Rust trait surface
+        run: |
+          cargo +nightly rustdoc -p truapi -- -Z unstable-options --output-format json
+          cargo run -p truapi-codegen -- \
+            --input target/doc/truapi.json \
+            --output "$RUNNER_TEMP/truapi-ts-throwaway" \
+            --dart-output dart/truapi/lib/src/generated
+          cargo run -p truapi --example wire_vectors -- dart/truapi/test/wire_vectors.json
+
+      - name: Analyze + test
+        working-directory: dart/truapi
+        run: |
+          dart pub get
+          dart format --output=none --set-exit-if-changed lib test
+          dart analyze --fatal-infos
+          dart test
+
   e2e:
     name: E2E (playground inside dotli)
     # Temporarily disabled while the dotli playground smoke test is stabilized.
@@ -279,7 +319,7 @@ jobs:
     name: CI Status
     if: always()
     runs-on: ubuntu-latest
-    needs: [rust, licenses, codegen, ts-client, playground, explorer, e2e]
+    needs: [rust, licenses, codegen, ts-client, playground, explorer, dart, e2e]
     steps:
       - name: Check all jobs
         run: |
@@ -290,6 +330,7 @@ jobs:
             "${{ needs.ts-client.result }}"
             "${{ needs.playground.result }}"
             "${{ needs.explorer.result }}"
+            "${{ needs.dart.result }}"
             "${{ needs.e2e.result }}"
           )
           for r in "${results[@]}"; do
