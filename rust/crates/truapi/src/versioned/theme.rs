@@ -2,6 +2,6 @@
 
 use crate::v01;
 
-versioned_type! {
+truapi_macros::versioned_type! {
     pub enum HostThemeSubscribeItem { V1 => v01::HostThemeSubscribeItem }
 }

@@ -1,22 +1,36 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   subscribeConnectionStatus,
   type ConnectionStatus,
 } from "@/src/lib/transport";
 import { ServiceTable } from "@/src/components/ServiceTable";
 import { MethodView } from "@/src/components/MethodView";
-import { AutoTestView } from "@/src/components/AutoTestView";
+import { DiagnosisView } from "@/src/components/DiagnosisView";
 import { CommandPalette } from "@/src/components/CommandPalette";
 import { services } from "@/src/lib/services";
+import { methodTestId, revealInRail } from "@/src/lib/rail";
 import {
   type TestEntry,
-  AUTO_TEST_ID,
-  EXCLUDED_METHODS,
-  runAutoTests,
+  DIAGNOSIS_ID,
+  runDiagnosis,
   runSingleTest,
 } from "@/src/lib/auto-test";
+import packageJson from "../../package.json";
+
+const VERSION_LABEL = `v${packageJson.version}`;
+
+// Run the scroll-restore synchronously after the index re-mounts so the
+// previously-open row is centered before paint (no flash of scroll-top).
+const useIsoLayoutEffect =
+  typeof window !== "undefined" ? useLayoutEffect : useEffect;
 
 const STATUS_LABEL: Record<string, string> = {
   connected: "Host Linked",
@@ -47,7 +61,22 @@ function SearchTrigger({ onOpen }: { onOpen: () => void }) {
       onClick={onOpen}
       aria-label="Search methods"
     >
-      <span aria-hidden>⌕</span>
+      <svg
+        className="search-btn__icon"
+        xmlns="http://www.w3.org/2000/svg"
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <circle cx="11" cy="11" r="7" />
+        <path d="m20 20-3.5-3.5" />
+      </svg>
       <span className="search-btn__label">Search</span>
       <span className="search-btn__kbd">{isMac ? "⌘" : "Ctrl"}K</span>
     </button>
@@ -67,9 +96,20 @@ function Masthead({
         <div className="wordmark">
           <span className="wordmark__dot" aria-hidden />
           <span className="wordmark__name">TrUAPI Playground</span>
-          <span className="wordmark__tag">v0.2</span>
+          <span className="wordmark__tag">{VERSION_LABEL}</span>
         </div>
         <div className="masthead__right">
+          {status !== "connected" && (
+            <a
+              className="open-in-dotli"
+              href="https://truapi-playground.dot.li"
+              target="_blank"
+              rel="noreferrer"
+              title="Open this playground inside the Polkadot Desktop Host"
+            >
+              Open in dotli ↗
+            </a>
+          )}
           <SearchTrigger onOpen={onSearch} />
           <StatusChip status={status} />
         </div>
@@ -78,41 +118,73 @@ function Masthead({
   );
 }
 
-function Splash({ status }: { status: ConnectionStatus | null }) {
-  const connecting = status === null || status === "connecting";
-  return (
-    <div className="splash">
-      <div className="splash__card">
-        <div className="splash__eyebrow">
-          <span className="wordmark__dot" aria-hidden />
-          <span>TrUAPI Playground · v0.2</span>
-        </div>
-        <h1 className="splash__title">
-          {connecting ? "Linking to host…" : "Host is offline."}
-        </h1>
-        <p className="splash__body">
-          {connecting
-            ? "Completing the postMessage handshake with the Polkadot Desktop Host. One moment."
-            : "This playground must be opened from inside the Polkadot Desktop Host. While developing locally, launch it through:"}
-        </p>
-        {!connecting && (
-          <code className="splash__code">https://dot.li/localhost:3000</code>
-        )}
-      </div>
-    </div>
-  );
+type Selection = { service: string; method: string } | null;
+
+// The Diagnosis screen is deep-linked with a clean `?view=` param rather than
+// its internal service id.
+const VIEW_PARAM: Record<string, string> = {
+  [DIAGNOSIS_ID]: "diagnosis",
+};
+const SERVICE_FOR_VIEW: Record<string, string> = {
+  diagnosis: DIAGNOSIS_ID,
+};
+
+function selectionFromUrl(): Selection {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  const view = params.get("view");
+  if (view && SERVICE_FOR_VIEW[view]) {
+    return { service: SERVICE_FOR_VIEW[view], method: "" };
+  }
+  const service = params.get("service");
+  const method = params.get("method");
+  if (!service) return null;
+  return { service, method: method ?? "" };
+}
+
+function urlForSelection(selection: Selection): string {
+  if (!selection) return window.location.pathname;
+  const params = new URLSearchParams();
+  const view = VIEW_PARAM[selection.service];
+  if (view) {
+    params.set("view", view);
+  } else {
+    params.set("service", selection.service);
+    if (selection.method) params.set("method", selection.method);
+  }
+  return `${window.location.pathname}?${params.toString()}`;
 }
 
 export default function PlaygroundPage() {
   const [status, setStatus] = useState<ConnectionStatus | null>(null);
-  const [selection, setSelection] = useState<{
-    service: string;
-    method: string;
-  } | null>(null);
+  const [selection, setSelection] = useState<Selection>(null);
+  // The last method viewed, kept highlighted in the index after "← INDEX".
+  const [lastViewed, setLastViewed] = useState<Selection>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [testResults, setTestResults] = useState<Record<string, TestEntry>>({});
   const [isTestRunning, setIsTestRunning] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  // The method open when "← INDEX" was clicked, so the index can re-center on
+  // it instead of jumping to the top.
+  const pendingScrollRef = useRef<Selection>(null);
+
+  // Hydrate selection from the URL on mount and respond to back/forward.
+  useEffect(() => {
+    setSelection(selectionFromUrl());
+    const onPop = () => setSelection(selectionFromUrl());
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  // Reflect selection changes into the URL via pushState (skip if already
+  // matching, otherwise back/forward navigation loops).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const next = urlForSelection(selection);
+    if (next !== window.location.pathname + window.location.search) {
+      window.history.pushState({}, "", next);
+    }
+  }, [selection]);
 
   useEffect(() => {
     try {
@@ -140,74 +212,73 @@ export default function PlaygroundPage() {
     setPaletteOpen(false);
   }, []);
 
-  const handleRunTests = useCallback(
-    async (mode: "all" | "safe") => {
-      if (isTestRunning) return;
-      const excludeSet = mode === "safe" ? EXCLUDED_METHODS : new Set<string>();
-      const controller = new AbortController();
-      abortRef.current = controller;
-      setIsTestRunning(true);
-      const initial: Record<string, TestEntry> = {};
-      for (const svc of services) {
-        for (const m of svc.methods) {
-          const id = `${svc.name}/${m.name}`;
-          initial[id] = { status: excludeSet.has(id) ? "skipped" : "idle" };
+  // Going back to the index: remember the open method so the index can scroll
+  // it into the center of view rather than resetting to the top.
+  const handleBack = useCallback(() => {
+    pendingScrollRef.current = selection;
+    setLastViewed(selection);
+    setSelection(null);
+  }, [selection]);
+
+  useIsoLayoutEffect(() => {
+    if (selection !== null) return;
+    const target = pendingScrollRef.current;
+    pendingScrollRef.current = null;
+    if (!target?.method) return;
+    revealInRail(methodTestId(target.service, target.method), {
+      block: "center",
+      focus: true,
+    });
+  }, [selection]);
+
+  const handleRunDiagnosis = useCallback(async () => {
+    if (isTestRunning) return;
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setIsTestRunning(true);
+    const initial: Record<string, TestEntry> = {};
+    for (const svc of services) {
+      for (const m of svc.methods) {
+        initial[`${svc.name}/${m.name}`] = { status: "idle" };
+      }
+    }
+    setTestResults(initial);
+    try {
+      await runDiagnosis(
+        services,
+        (id, entry) => {
+          setTestResults((prev) => ({ ...prev, [id]: entry }));
+        },
+        controller.signal,
+      );
+    } finally {
+      setTestResults((prev) => {
+        const updated = { ...prev };
+        for (const [id, entry] of Object.entries(updated)) {
+          if (entry.status === "running") updated[id] = { status: "idle" };
         }
-      }
-      setTestResults(initial);
-      try {
-        await runAutoTests(
-          services,
-          (id, entry) => {
-            setTestResults((prev) => ({ ...prev, [id]: entry }));
-          },
-          controller.signal,
-          excludeSet,
-        );
-      } finally {
-        setTestResults((prev) => {
-          const updated = { ...prev };
-          for (const [id, entry] of Object.entries(updated)) {
-            if (entry.status === "running") updated[id] = { status: "idle" };
-          }
-          return updated;
-        });
-        setIsTestRunning(false);
-      }
-    },
-    [isTestRunning],
-  );
+        return updated;
+      });
+      setIsTestRunning(false);
+    }
+  }, [isTestRunning]);
 
   const handleStopTests = useCallback(() => {
     abortRef.current?.abort();
   }, []);
 
-  const handleRetryTest = useCallback(
-    async (
-      serviceName: string,
-      methodName: string,
-      requestOverride?: string,
-    ) => {
+  const handleRetryDiagnosis = useCallback(
+    async (serviceName: string, methodName: string) => {
       if (isTestRunning) return;
-      await runSingleTest(
-        services,
-        serviceName,
-        methodName,
-        (id, entry) => {
-          setTestResults((prev) => ({ ...prev, [id]: entry }));
-        },
-        requestOverride,
-      );
+      await runSingleTest(services, serviceName, methodName, (id, entry) => {
+        setTestResults((prev) => ({ ...prev, [id]: entry }));
+      });
     },
     [isTestRunning],
   );
 
-  if (status === null || status === "connecting") {
-    return <Splash status={status} />;
-  }
-
   const hasView = selection !== null;
-  const isAutoTest = selection?.service === AUTO_TEST_ID;
+  const isDiagnosis = selection?.service === DIAGNOSIS_ID;
 
   return (
     <div className="shell">
@@ -220,27 +291,27 @@ export default function PlaygroundPage() {
           </p>
           <ServiceTable
             services={services}
-            activeMethod={selection}
+            activeMethod={selection ?? lastViewed}
             testResults={testResults}
             onSelect={(s, m) => setSelection({ service: s, method: m })}
           />
         </aside>
         <section className="view">
-          {isAutoTest ? (
-            <AutoTestView
+          {isDiagnosis ? (
+            <DiagnosisView
               services={services}
               testResults={testResults}
               isRunning={isTestRunning}
-              onRun={handleRunTests}
+              onRun={handleRunDiagnosis}
               onStop={handleStopTests}
-              onRetry={handleRetryTest}
-              onBack={() => setSelection(null)}
+              onRetry={handleRetryDiagnosis}
+              onBack={handleBack}
             />
           ) : selection ? (
             <MethodView
               service={selection.service}
               method={selection.method}
-              onBack={() => setSelection(null)}
+              onBack={handleBack}
             />
           ) : (
             <div className="empty-state">

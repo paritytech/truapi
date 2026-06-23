@@ -1,7 +1,11 @@
 import type { MethodInfo, ServiceInfo } from "@/src/lib/services";
-import { isMethodSupported } from "@/src/lib/host-api-bridge";
 import type { TestEntry } from "@/src/lib/auto-test";
-import { AUTO_TEST_ID } from "@/src/lib/auto-test";
+import { DIAGNOSIS_ID } from "@/src/lib/auto-test";
+import { methodTestId, serviceTestId } from "@/src/lib/rail";
+
+function hasExample(method: MethodInfo): boolean {
+  return !!method.exampleSource;
+}
 
 const KIND_LABEL: Record<string, string> = {
   unary: "Req / Res",
@@ -19,51 +23,21 @@ export function ServiceTable({
   testResults?: Record<string, TestEntry>;
   onSelect: (service: string, method: string) => void;
 }) {
-  const isAutoTestActive = activeMethod?.service === AUTO_TEST_ID;
-
-  let autoTestMark: string | null = null;
-  if (testResults && Object.keys(testResults).length > 0) {
-    const isRunning = Object.values(testResults).some(
-      (e) => e.status === "running",
-    );
-    if (isRunning) {
-      autoTestMark = "…";
-    } else {
-      const pass = Object.values(testResults).filter(
-        (e) => e.status === "pass",
-      ).length;
-      const fail = Object.values(testResults).filter(
-        (e) => e.status === "fail",
-      ).length;
-      autoTestMark = `${pass}p · ${fail}f`;
-    }
-  }
-
-  const autoTestMarkRunning =
-    testResults != null &&
-    Object.values(testResults).some((e) => e.status === "running");
+  const isDiagnosisActive = activeMethod?.service === DIAGNOSIS_ID;
 
   return (
     <>
       <button
         type="button"
         className="method method--autotest"
-        data-active={isAutoTestActive}
+        data-active={isDiagnosisActive}
         data-supported="true"
-        onClick={() => onSelect(AUTO_TEST_ID, "")}
+        onClick={() => onSelect(DIAGNOSIS_ID, "")}
       >
         <div className="method__body">
-          <div className="method__name">Auto-Test</div>
+          <div className="method__name">Diagnosis</div>
           <div className="method__meta">
-            <span className="method__desc">Run all methods</span>
-            {autoTestMark && (
-              <span
-                className="method__mark autotest__mark"
-                data-running={autoTestMarkRunning}
-              >
-                {autoTestMark}
-              </span>
-            )}
+            <span className="method__desc">Full host coverage report</span>
           </div>
         </div>
       </button>
@@ -74,7 +48,7 @@ export function ServiceTable({
             <section
               key={svc.name}
               className="service"
-              data-testid={`service-${svc.name}`}
+              data-testid={serviceTestId(svc.name)}
             >
               <div className="service__head">
                 <span className="service__index">{index}</span>
@@ -83,7 +57,7 @@ export function ServiceTable({
               </div>
               <div>
                 {svc.methods.map((m: MethodInfo) => {
-                  const supported = isMethodSupported(svc.name, m.name);
+                  const supported = hasExample(m);
                   const isActive =
                     activeMethod?.service === svc.name &&
                     activeMethod?.method === m.name;
@@ -96,7 +70,7 @@ export function ServiceTable({
                       key={m.name}
                       type="button"
                       className="method"
-                      data-testid={`method-${svc.name}-${m.name}`}
+                      data-testid={methodTestId(svc.name, m.name)}
                       data-active={isActive}
                       data-supported={supported}
                       data-test-status={showStatus ? testStatus : undefined}

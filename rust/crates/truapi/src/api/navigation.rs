@@ -1,9 +1,11 @@
 //! Unified [`Navigation`] trait.
 
 use crate::versioned::navigation::{
-    HostNavigateToError, HostNavigateToRequest, HostNavigateToResponse, HostRouteChangedItem,
-    HostRouteGetError, HostRouteGetRequest, HostRouteGetResponse, HostRouteSetError,
-    HostRouteSetRequest, HostRouteSetResponse,
+    HostRouteChangedItem, HostRouteGetError, HostRouteGetRequest, HostRouteGetResponse,
+    HostRouteSetError, HostRouteSetRequest, HostRouteSetResponse,
+};
+use crate::versioned::system::{
+    HostNavigateToError, HostNavigateToRequest, HostNavigateToResponse,
 };
 use crate::wire;
 use crate::{CallContext, CallError, Subscription};

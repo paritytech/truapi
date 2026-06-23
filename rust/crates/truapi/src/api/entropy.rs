@@ -11,21 +11,11 @@ pub trait Entropy: Send + Sync {
     /// Derive deterministic entropy.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type HostDeriveEntropyResponse,
-    /// } from "@parity/truapi";
-    ///
-    /// export async function deriveEntropy(
-    ///   truapi: Client,
-    /// ): Promise<HostDeriveEntropyResponse> {
-    ///   const result = await truapi.entropy.derive({
-    ///     context: "0x70726f647563742d6b6579",
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await truapi.entropy.derive({
+    ///   context: "0x70726f647563742d6b6579",
+    /// });
+    /// assert(result.isOk(), "derive failed:", result);
+    /// console.log("entropy derived:", result.value);
     /// ```
     #[wire(request_id = 108)]
     async fn derive(

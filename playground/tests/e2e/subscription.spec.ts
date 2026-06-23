@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 import { openPlaygroundInDotli, selectMethod, waitForOnline } from "./helpers";
 
 test.describe("subscription", () => {
-  test("connection_status pushes events and stops cleanly", async ({
+  test("connection_status delivers an event and completes", async ({
     page,
   }) => {
     const frame = await openPlaygroundInDotli(page);
@@ -12,33 +12,17 @@ test.describe("subscription", () => {
 
     await frame.locator('[data-testid="subscribe-button"]').click();
 
-    // Connection status emits at least once on subscribe; assert at
-    // least one stream entry within the SUBSCRIPTION_TIMEOUT_MS budget
-    // used by the playground's auto-test runner (6s).
-    const streamEntries = frame.locator('[data-testid="stream-entry"]');
-    await expect(streamEntries.first()).toBeVisible({ timeout: 6_000 });
+    // The example awaits the first event via `firstValueFrom`, logs it, and
+    // completes. Connection status emits at least once on subscribe, so a
+    // stream entry appears and the run finishes without an error.
+    const entries = frame.locator('[data-testid="stream-entry"]');
+    await expect(entries.first()).toBeVisible({ timeout: 6_000 });
+    await expect(frame.locator('[data-testid="error-display"]')).toHaveCount(0);
 
-    // The subscribe button has been replaced by the stop button.
-    const stopButton = frame.locator('[data-testid="stop-button"]');
-    await expect(stopButton).toBeVisible();
-    await stopButton.click();
-
-    await expect(
-      frame
-        .locator('[data-testid="stream-entry"]')
-        .filter({ hasText: "--- stopped ---" }),
-    ).toHaveCount(1);
-    await expect(
-      frame
-        .locator('[data-testid="stream-entry"]')
-        .filter({ hasText: "--- stream ended ---" }),
-    ).toHaveCount(0);
-
-    // After stopping, the subscribe button comes back and the UI records a
-    // local stop instead of synthesizing a normal stream completion.
+    // Once the first event is delivered the run completes and the Run button
+    // returns (no long-lived stream to Stop).
     await expect(
       frame.locator('[data-testid="subscribe-button"]'),
     ).toBeVisible();
-    await expect(frame.locator('[data-testid="error-display"]')).toHaveCount(0);
   });
 });

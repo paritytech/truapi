@@ -12,19 +12,9 @@ pub trait Permissions: Send + Sync {
     /// Request a device-capability permission from the user.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type HostDevicePermissionResponse,
-    /// } from "@parity/truapi";
-    ///
-    /// export async function requestCameraPermission(
-    ///   truapi: Client,
-    /// ): Promise<HostDevicePermissionResponse> {
-    ///   const result = await truapi.permissions.requestDevicePermission("Camera");
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await truapi.permissions.requestDevicePermission("Camera");
+    /// assert(result.isOk(), "requestDevicePermission failed:", result);
+    /// console.log("device permission result:", result.value);
     /// ```
     #[wire(request_id = 8)]
     async fn request_device_permission(
@@ -33,24 +23,14 @@ pub trait Permissions: Send + Sync {
         request: HostDevicePermissionRequest,
     ) -> Result<HostDevicePermissionResponse, CallError<HostDevicePermissionError>>;
 
-    /// Request one or more remote-operation permissions.
+    /// Request a remote-operation permission.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type RemotePermissionResponse,
-    /// } from "@parity/truapi";
-    ///
-    /// export async function requestRemotePermission(
-    ///   truapi: Client,
-    /// ): Promise<RemotePermissionResponse> {
-    ///   const result = await truapi.permissions.requestRemotePermission({
-    ///     permissions: [{ tag: "Remote", value: { domains: ["api.example.com"] } }],
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await truapi.permissions.requestRemotePermission({
+    ///   permission: { tag: "Remote", value: { domains: ["api.example.com"] } },
+    /// });
+    /// assert(result.isOk(), "requestRemotePermission failed:", result);
+    /// console.log("remote permission result:", result.value);
     /// ```
     #[wire(request_id = 10)]
     async fn request_remote_permission(

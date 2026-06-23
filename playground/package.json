@@ -1,13 +1,19 @@
 {
   "name": "truapi-playground",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "scripts": {
+    "predev": "node ./scripts/bundle-rxjs-dts.mjs && node ./scripts/write-dev-env.mjs",
     "dev": "next dev",
     "start": "npx serve out",
+    "prebuild": "node ./scripts/bundle-rxjs-dts.mjs",
     "build": "next build",
-    "lint": "next lint",
+    "prelint": "node ./scripts/bundle-rxjs-dts.mjs",
+    "lint": "next lint --dir src --dir test/generated/examples && tsc --noEmit && tsc -p tsconfig.examples.json",
+    "pretypecheck": "node ./scripts/bundle-rxjs-dts.mjs",
+    "typecheck": "tsc --noEmit",
+    "typecheck:examples": "tsc -p tsconfig.examples.json",
     "deploy:test": "yarn build && bulletin-deploy ./out truapi-playground.dot && rm out.car",
     "lint:fix": "next lint --fix",
     "e2e": "playwright test",
@@ -15,10 +21,16 @@
     "e2e:ui": "playwright test --ui"
   },
   "dependencies": {
-    "@parity/truapi": "file:../js/packages/truapi",
+    "@monaco-editor/react": "^4",
+    "@parity/truapi": "link:../js/packages/truapi",
+    "@polkadot-api/substrate-bindings": "^0.12.0",
+    "monaco-editor": "^0.52",
+    "neverthrow": "^8.2.0",
     "next": "15.5.18",
     "react": "^19.2.1",
-    "react-dom": "^19.2.1"
+    "react-dom": "^19.2.1",
+    "rxjs": "^7.8.2",
+    "sucrase": "^3.35.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.49.1",
@@ -27,7 +39,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "^15.5.4",
-    "typescript": "^5"
+    "typescript": "^6.0"
   },
   "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e"
 }

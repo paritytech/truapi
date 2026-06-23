@@ -12,8 +12,15 @@ export type {
   TrUApiTransport,
 } from "./transport.js";
 export type { CreateTransportOptions } from "./client.js";
-export { SubscriptionError, createMessagePortProvider } from "./transport.js";
+export {
+  SubscriptionError,
+  createIframeProvider,
+  createMessagePortProvider,
+  decodeWireMessage,
+  encodeWireMessage,
+} from "./transport.js";
 export { createTransport } from "./client.js";
 export * as scale from "./scale.js";
 export type { Codec, HexString } from "./scale.js";
 export * from "./generated/index.js";
+export * from "./well-known-chains.js";

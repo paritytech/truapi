@@ -2,28 +2,35 @@ use super::*;
 use indoc::writedoc;
 
 /// Generates playground-only service metadata from the same Rustdoc API input
-/// used by the client generator.
+/// used by the client generator. When `strip_examples` is true, suppresses
+/// `exampleSource` (used by version snapshots to keep historical archives small).
 pub fn generate_playground_services(
     api: &ApiDefinition,
     output_dir: &str,
     target_version: u32,
+    strip_examples: bool,
 ) -> Result<()> {
     let codegen_dir = Path::new(output_dir).join("codegen");
     fs::create_dir_all(&codegen_dir)?;
     validate_versioned_wrapper_shapes(api)?;
 
-    let code = generate_playground_services_code(api, target_version)?;
+    let code = generate_playground_services_code(api, target_version, strip_examples)?;
     fs::write(codegen_dir.join("services.ts"), code)?;
 
     Ok(())
 }
 
-fn generate_playground_services_code(api: &ApiDefinition, target_version: u32) -> Result<String> {
+fn generate_playground_services_code(
+    api: &ApiDefinition,
+    target_version: u32,
+    strip_examples: bool,
+) -> Result<String> {
     let wrappers = collect_versioned_wrappers(api);
     let emit_versions = versioned_wrapper_emit_versions(api, &wrappers, target_version)?;
     let aliases = selected_public_aliases(api, &wrappers, &emit_versions, target_version);
     let ctx = CodecContext::default();
     let services = public_services(api)?;
+    let explorer_type_ids = explorer_type_id_set(api, &aliases);
 
     let mut out = String::new();
     writedoc!(
@@ -59,11 +66,14 @@ fn generate_playground_services_code(api: &ApiDefinition, target_version: u32) -
         for method in methods {
             let wire_version = method_wire_version(method, &wrappers, target_version)?;
             let payload = emit_payload(&method.params, &wrappers, &ctx, wire_version)?;
-            let docs = split_playground_docs(method.docs.as_deref(), &method.name)?;
+            let docs = split_playground_docs(method.docs.as_deref())?;
             let method_type = match method.kind {
                 MethodKind::Request => "unary",
                 MethodKind::Subscription | MethodKind::ResultSubscription => "subscription",
             };
+            let signature =
+                build_method_signature(method, &payload, &wrappers, &ctx, wire_version)?;
+            let doc_url = build_doc_url(trait_def, method);
 
             writedoc!(
                 out,
@@ -71,9 +81,13 @@ fn generate_playground_services_code(api: &ApiDefinition, target_version: u32) -
                       {{
                         name: {name},
                         type: {ty},
+                        signature: {signature},
+                        docUrl: {doc_url},
                 ",
                 name = ts_string_literal(&method.name),
                 ty = ts_string_literal(method_type),
+                signature = ts_string_literal(&signature),
+                doc_url = ts_string_literal(&doc_url),
             )
             .unwrap();
             if let Some(description) = docs.description {
@@ -95,15 +109,32 @@ fn generate_playground_services_code(api: &ApiDefinition, target_version: u32) -
                 )
                 .unwrap();
             }
-            if no_params {
-                writeln!(out, "        noParams: true,").unwrap();
-            } else if let Some(default_request) = docs.default_request {
+            if let Some(client_example) = docs.client_example.as_deref()
+                && !strip_examples
+            {
                 writeln!(
                     out,
-                    "        defaultRequest: {},",
-                    ts_string_literal(&default_request)
+                    "        exampleSource: {},",
+                    ts_string_literal(client_example)
                 )
                 .unwrap();
+            }
+            if let Some(id) = data_type_id_from_ts(&payload.inner_type_ts)
+                && explorer_type_ids.contains(&id)
+            {
+                writeln!(out, "        requestType: {},", ts_string_literal(&id)).unwrap();
+            }
+            let (response_inner, error_inner) =
+                method_response_inner_ts(method, &wrappers, &ctx, wire_version)?;
+            if let Some(id) = response_inner.as_deref().and_then(data_type_id_from_ts)
+                && explorer_type_ids.contains(&id)
+            {
+                writeln!(out, "        responseType: {},", ts_string_literal(&id)).unwrap();
+            }
+            if let Some(id) = error_inner.as_deref().and_then(data_type_id_from_ts)
+                && explorer_type_ids.contains(&id)
+            {
+                writeln!(out, "        errorType: {},", ts_string_literal(&id)).unwrap();
             }
             writeln!(out, "      }},").unwrap();
         }
@@ -126,18 +157,13 @@ fn generate_playground_services_code(api: &ApiDefinition, target_version: u32) -
 #[derive(Debug)]
 pub(super) struct PlaygroundDocs {
     pub(super) description: Option<String>,
-    pub(super) default_request: Option<String>,
     pub(super) client_example: Option<String>,
 }
 
-pub(super) fn split_playground_docs(
-    docs: Option<&str>,
-    method_name: &str,
-) -> Result<PlaygroundDocs> {
+pub(super) fn split_playground_docs(docs: Option<&str>) -> Result<PlaygroundDocs> {
     let Some(docs) = docs else {
         return Ok(PlaygroundDocs {
             description: None,
-            default_request: None,
             client_example: None,
         });
     };
@@ -164,459 +190,201 @@ pub(super) fn split_playground_docs(
 
     let description = trim_doc_lines(&description);
     let client_example = trim_doc_lines(&client_example);
-    let default_request = if let Some(client_example) = &client_example {
-        extract_default_request_from_client_example(method_name, client_example)?
-    } else {
-        None
-    };
 
     Ok(PlaygroundDocs {
         description,
-        default_request,
         client_example,
     })
 }
 
-fn validate_default_request(method_name: &str, source: &str, value: &str) -> Result<()> {
-    serde_json::from_str::<serde_json::Value>(value)
-        .map_err(|err| anyhow::anyhow!("invalid {source} JSON for `{method_name}`: {err}"))?;
+/// Fails if any public trait method lacks a valid ` ```ts ` example in its
+/// doc comment. Every method renders an EXAMPLE tab in the playground from
+/// the extracted `exampleSource`; a missing or mis-fenced example would
+/// silently leave that tab empty and dump the snippet into the description.
+pub(super) fn validate_method_examples(
+    api: &ApiDefinition,
+    wrappers: &HashMap<String, VersionedWrapper>,
+    target_version: u32,
+) -> Result<()> {
+    for service in public_services(api)? {
+        let trait_def = service.trait_def;
+        for method in included_methods(trait_def, wrappers, target_version)? {
+            validate_example_docs(&trait_def.name, &method.name, method.docs.as_deref())?;
+        }
+    }
     Ok(())
 }
 
-fn extract_default_request_from_client_example(
-    method_name: &str,
-    example: &str,
-) -> Result<Option<String>> {
-    let Some(call_start) = example.find("truapi.") else {
-        return Ok(None);
-    };
-    let Some(open_offset) = example[call_start..].find('(') else {
-        return Ok(None);
-    };
-    let open = call_start + open_offset;
-    let Some(close) = find_matching_delimiter(example, open, '(', ')') else {
-        return Ok(None);
-    };
-    let argument = example[open + 1..close].trim();
-    if argument.is_empty() {
-        return Ok(None);
+/// Checks a single method's doc comment carries exactly one ` ```ts ` example
+/// that `split_playground_docs` can extract. Rejects a missing example, an
+/// example fenced with an unrecognized label, and any code fence left behind
+/// in the description (which means the example was not extracted).
+fn validate_example_docs(trait_name: &str, method_name: &str, docs: Option<&str>) -> Result<()> {
+    let parsed = split_playground_docs(docs)?;
+    if let Some(description) = &parsed.description
+        && description.contains("```")
+    {
+        bail!(
+            "{trait_name}::{method_name} has a code fence left in its description; \
+             examples must be fenced with ```ts so they are extracted into exampleSource"
+        );
     }
-
-    let request = if argument.starts_with('{') {
-        if let Some(request) = extract_request_property(argument) {
-            request
-        } else if argument.contains("next")
-            || argument.contains("error")
-            || argument.contains("complete")
-        {
-            return Ok(None);
-        } else {
-            argument
-        }
-    } else if matches!(
-        argument.as_bytes().first(),
-        Some(b'"' | b'\'' | b'`' | b'[')
-    ) {
-        argument
-    } else {
-        return Ok(None);
-    };
-    let json = ts_request_to_playground_json(request);
-    validate_default_request(method_name, "ts rustdoc example", &json)?;
-    let value = serde_json::from_str::<serde_json::Value>(&json)?;
-    Ok(Some(serde_json::to_string_pretty(&value)?))
-}
-
-fn extract_request_property(argument: &str) -> Option<&str> {
-    let open = argument.find('{')?;
-    let close = find_matching_delimiter(argument, open, '{', '}')?;
-    let bytes = argument.as_bytes();
-    let mut i = open + 1;
-    let mut depth = 1usize;
-    let mut quote: Option<u8> = None;
-    while i < close {
-        let b = bytes[i];
-        if let Some(q) = quote {
-            if b == q && bytes.get(i.wrapping_sub(1)) != Some(&b'\\') {
-                quote = None;
-            }
-            i += 1;
-            continue;
-        }
-        if matches!(b, b'\'' | b'"' | b'`') {
-            quote = Some(b);
-            i += 1;
-            continue;
-        }
-        match b {
-            b'{' | b'[' | b'(' => {
-                depth += 1;
-                i += 1;
-            }
-            b'}' | b']' | b')' => {
-                depth = depth.saturating_sub(1);
-                i += 1;
-            }
-            _ if depth == 1 && argument[i..].starts_with("request") => {
-                let after_key = i + "request".len();
-                let mut colon = after_key;
-                while bytes.get(colon).is_some_and(u8::is_ascii_whitespace) {
-                    colon += 1;
-                }
-                if bytes.get(colon) != Some(&b':') {
-                    i += 1;
-                    continue;
-                }
-                let mut value_start = colon + 1;
-                while bytes.get(value_start).is_some_and(u8::is_ascii_whitespace) {
-                    value_start += 1;
-                }
-                let value_end = find_ts_value_end(argument, value_start);
-                return Some(argument[value_start..value_end].trim());
-            }
-            _ => i += 1,
-        }
+    if parsed.client_example.is_none() {
+        bail!(
+            "{trait_name}::{method_name} has no ```ts example in its doc comment; \
+             every TrUAPI method must carry one so the playground renders an EXAMPLE tab"
+        );
     }
-    None
-}
-
-fn find_ts_value_end(input: &str, start: usize) -> usize {
-    let bytes = input.as_bytes();
-    let mut i = start;
-    let mut depth = 0usize;
-    let mut quote: Option<u8> = None;
-    while i < input.len() {
-        let b = bytes[i];
-        if let Some(q) = quote {
-            if b == q && bytes.get(i.wrapping_sub(1)) != Some(&b'\\') {
-                quote = None;
-            }
-            i += 1;
-            continue;
-        }
-        if matches!(b, b'\'' | b'"' | b'`') {
-            quote = Some(b);
-            i += 1;
-            continue;
-        }
-        match b {
-            b'{' | b'[' | b'(' => {
-                depth += 1;
-                i += 1;
-            }
-            b'}' | b']' | b')' => {
-                if depth == 0 {
-                    return i;
-                }
-                depth -= 1;
-                i += 1;
-            }
-            b',' if depth == 0 => return i,
-            _ => i += 1,
-        }
-    }
-    input.len()
-}
-
-fn find_matching_delimiter(
-    input: &str,
-    open: usize,
-    open_ch: char,
-    close_ch: char,
-) -> Option<usize> {
-    let mut depth = 0usize;
-    let mut quote: Option<char> = None;
-    let mut prev = '\0';
-    for (i, ch) in input.char_indices().skip_while(|(i, _)| *i < open) {
-        if let Some(q) = quote {
-            if ch == q && prev != '\\' {
-                quote = None;
-            }
-            prev = ch;
-            continue;
-        }
-        if matches!(ch, '\'' | '"' | '`') {
-            quote = Some(ch);
-            prev = ch;
-            continue;
-        }
-        if ch == open_ch {
-            depth += 1;
-        } else if ch == close_ch {
-            depth = depth.checked_sub(1)?;
-            if depth == 0 {
-                return Some(i);
-            }
-        }
-        prev = ch;
-    }
-    None
-}
-
-fn ts_request_to_playground_json(input: &str) -> String {
-    let input = normalize_single_quoted_strings(input);
-    let input = quote_unquoted_object_keys(&input);
-    let input = quote_bigint_literals(&input);
-    let input = remove_undefined_object_properties(&input);
-    remove_trailing_commas(&input)
-}
-
-/// Rewrite single-quoted TypeScript string literals as double-quoted JSON strings,
-/// escaping any inner `"` so that examples like `message: '{"jsonrpc":"2.0"}'`
-/// survive the JSON validation downstream.
-fn normalize_single_quoted_strings(input: &str) -> String {
-    let bytes = input.as_bytes();
-    let mut out = String::with_capacity(input.len());
-    let mut i = 0usize;
-    while i < bytes.len() {
-        let b = bytes[i];
-        match b {
-            b'"' | b'`' => {
-                out.push(b as char);
-                i += 1;
-                while i < bytes.len() {
-                    let c = bytes[i];
-                    out.push(c as char);
-                    i += 1;
-                    if c == b && bytes.get(i.wrapping_sub(2)) != Some(&b'\\') {
-                        break;
-                    }
-                }
-            }
-            b'\'' => {
-                out.push('"');
-                i += 1;
-                while i < bytes.len() {
-                    let c = bytes[i];
-                    if c == b'\'' && bytes.get(i.wrapping_sub(1)) != Some(&b'\\') {
-                        out.push('"');
-                        i += 1;
-                        break;
-                    }
-                    if c == b'"' {
-                        out.push('\\');
-                        out.push('"');
-                    } else if c == b'\\' && bytes.get(i + 1) == Some(&b'\'') {
-                        out.push('\'');
-                        i += 2;
-                        continue;
-                    } else {
-                        out.push(c as char);
-                    }
-                    i += 1;
-                }
-            }
-            _ => {
-                out.push(b as char);
-                i += 1;
-            }
-        }
-    }
-    out
-}
-
-fn remove_undefined_object_properties(input: &str) -> String {
-    let bytes = input.as_bytes();
-    let mut out = String::new();
-    let mut i = 0usize;
-    let mut quote: Option<u8> = None;
-    while i < input.len() {
-        let b = bytes[i];
-        if let Some(q) = quote {
-            out.push(b as char);
-            if b == q && bytes.get(i.wrapping_sub(1)) != Some(&b'\\') {
-                quote = None;
-            }
-            i += 1;
-            continue;
-        }
-        if b == b'"' && input[i..].starts_with("\"value\"") {
-            let mut colon = i + "\"value\"".len();
-            while bytes.get(colon).is_some_and(u8::is_ascii_whitespace) {
-                colon += 1;
-            }
-            if bytes.get(colon) == Some(&b':') {
-                let mut value = colon + 1;
-                while bytes.get(value).is_some_and(u8::is_ascii_whitespace) {
-                    value += 1;
-                }
-                if input[value..].starts_with("undefined") {
-                    let mut end = value + "undefined".len();
-                    while bytes.get(end).is_some_and(u8::is_ascii_whitespace) {
-                        end += 1;
-                    }
-                    if bytes.get(end) == Some(&b',') {
-                        end += 1;
-                    } else if out.ends_with(',') {
-                        out.pop();
-                    } else {
-                        while out.chars().last().is_some_and(char::is_whitespace) {
-                            out.pop();
-                        }
-                        if out.ends_with(',') {
-                            out.pop();
-                        }
-                    }
-                    i = end;
-                    continue;
-                }
-            }
-        }
-        if matches!(b, b'\'' | b'"' | b'`') {
-            quote = Some(b);
-            out.push(b as char);
-            i += 1;
-            continue;
-        }
-        out.push(b as char);
-        i += 1;
-    }
-    out
-}
-
-fn quote_unquoted_object_keys(input: &str) -> String {
-    let bytes = input.as_bytes();
-    let mut out = String::new();
-    let mut i = 0usize;
-    let mut quote: Option<u8> = None;
-    while i < input.len() {
-        let b = bytes[i];
-        if let Some(q) = quote {
-            out.push(b as char);
-            if b == q && bytes.get(i.wrapping_sub(1)) != Some(&b'\\') {
-                quote = None;
-            }
-            i += 1;
-            continue;
-        }
-        if matches!(b, b'\'' | b'"' | b'`') {
-            quote = Some(b);
-            out.push(b as char);
-            i += 1;
-            continue;
-        }
-        if b == b'{' || b == b',' {
-            out.push(b as char);
-            i += 1;
-            while bytes.get(i).is_some_and(u8::is_ascii_whitespace) {
-                out.push(bytes[i] as char);
-                i += 1;
-            }
-            let ident_start = i;
-            if bytes
-                .get(i)
-                .is_some_and(|b| b.is_ascii_alphabetic() || *b == b'_')
-            {
-                i += 1;
-                while bytes
-                    .get(i)
-                    .is_some_and(|b| b.is_ascii_alphanumeric() || *b == b'_')
-                {
-                    i += 1;
-                }
-                let mut colon = i;
-                while bytes.get(colon).is_some_and(u8::is_ascii_whitespace) {
-                    colon += 1;
-                }
-                if bytes.get(colon) == Some(&b':') {
-                    out.push('"');
-                    out.push_str(&input[ident_start..i]);
-                    out.push('"');
-                    continue;
-                }
-                out.push_str(&input[ident_start..i]);
-                continue;
-            }
-            continue;
-        }
-        out.push(b as char);
-        i += 1;
-    }
-    out
-}
-
-fn quote_bigint_literals(input: &str) -> String {
-    let bytes = input.as_bytes();
-    let mut out = String::new();
-    let mut i = 0usize;
-    let mut quote: Option<u8> = None;
-    while i < input.len() {
-        let b = bytes[i];
-        if let Some(q) = quote {
-            out.push(b as char);
-            if b == q && bytes.get(i.wrapping_sub(1)) != Some(&b'\\') {
-                quote = None;
-            }
-            i += 1;
-            continue;
-        }
-        if matches!(b, b'\'' | b'"' | b'`') {
-            quote = Some(b);
-            out.push(b as char);
-            i += 1;
-            continue;
-        }
-        if b.is_ascii_digit() {
-            let start = i;
-            i += 1;
-            while bytes.get(i).is_some_and(u8::is_ascii_digit) {
-                i += 1;
-            }
-            if bytes.get(i) == Some(&b'n') {
-                out.push('"');
-                out.push_str(&input[start..=i]);
-                out.push('"');
-                i += 1;
-            } else {
-                out.push_str(&input[start..i]);
-            }
-            continue;
-        }
-        out.push(b as char);
-        i += 1;
-    }
-    out
-}
-
-fn remove_trailing_commas(input: &str) -> String {
-    let bytes = input.as_bytes();
-    let mut out = String::new();
-    let mut i = 0usize;
-    let mut quote: Option<u8> = None;
-    while i < input.len() {
-        let b = bytes[i];
-        if let Some(q) = quote {
-            out.push(b as char);
-            if b == q && bytes.get(i.wrapping_sub(1)) != Some(&b'\\') {
-                quote = None;
-            }
-            i += 1;
-            continue;
-        }
-        if matches!(b, b'\'' | b'"' | b'`') {
-            quote = Some(b);
-            out.push(b as char);
-            i += 1;
-            continue;
-        }
-        if b == b',' {
-            let mut next = i + 1;
-            while bytes.get(next).is_some_and(u8::is_ascii_whitespace) {
-                next += 1;
-            }
-            if matches!(bytes.get(next), Some(b'}' | b']')) {
-                i += 1;
-                continue;
-            }
-        }
-        out.push(b as char);
-        i += 1;
-    }
-    out
+    Ok(())
 }
 
 pub(super) fn playground_type_name(value: &str) -> String {
     value.replace("T.", "")
+}
+
+/// Returns the kebab-case explorer DataType id for a TS type expression
+/// produced by `emit_payload`/`emit_response` (e.g. `T.HostAccountGetRequest`).
+/// Returns `None` for `undefined`, primitives, arrays, generic instantiations,
+/// or anything else that doesn't correspond to a single named DataType.
+pub fn data_type_id_from_ts(value: &str) -> Option<String> {
+    let stripped = playground_type_name(value);
+    let trimmed = stripped.trim();
+    if trimmed.is_empty()
+        || trimmed == "undefined"
+        || trimmed == "void"
+        || trimmed.contains(['[', '<', '|', '&', '(', '{', ' '])
+    {
+        return None;
+    }
+    if !trimmed
+        .chars()
+        .next()
+        .map(|c| c.is_ascii_uppercase())
+        .unwrap_or(false)
+    {
+        return None;
+    }
+    Some(name_to_kebab_id(trimmed))
+}
+
+/// Converts a TS type name (`HostAccountGetRequest`, `JsonRpcSubscription`)
+/// to a kebab-case identifier (`host-account-get-request`,
+/// `json-rpc-subscription`).
+pub fn name_to_kebab_id(name: &str) -> String {
+    name.to_case(Case::Kebab)
+}
+
+/// Set of explorer DataType ids (kebab-case names) emitted by
+/// [`crate::ts::generate_explorer`] for `api`. Used by the playground
+/// emitter to gate `requestType`/`responseType`/`errorType` so they only
+/// reference types the explorer actually surfaces.
+pub fn explorer_type_id_set(
+    api: &ApiDefinition,
+    aliases: &BTreeMap<String, String>,
+) -> BTreeSet<String> {
+    let mut out = BTreeSet::new();
+    for ty in &api.types {
+        if detect_versioned_wrapper(ty).is_some() {
+            continue;
+        }
+        let public = aliases
+            .get(&ty.name)
+            .cloned()
+            .unwrap_or_else(|| ty.name.clone());
+        out.insert(name_to_kebab_id(&public));
+    }
+    out
+}
+
+/// Returns `(response_inner_ts, error_inner_ts)` for a method's return type,
+/// stripping versioned wrappers. Either component is `None` when the return
+/// shape has no corresponding inner type (e.g. a plain `Subscription` has no
+/// error arm).
+pub(super) fn method_response_inner_ts(
+    method: &MethodDef,
+    wrappers: &HashMap<String, VersionedWrapper>,
+    ctx: &CodecContext,
+    wire_version: Option<u32>,
+) -> Result<(Option<String>, Option<String>)> {
+    match &method.return_type {
+        ReturnType::Result { ok, err } => {
+            let ok_resp = emit_response(ok, wrappers, ctx, wire_version)?;
+            let err_resp = emit_error_response(err, wrappers, ctx, wire_version)?;
+            Ok((Some(ok_resp.inner_type_ts), Some(err_resp.inner_type_ts)))
+        }
+        ReturnType::Subscription(item) => {
+            let resp = emit_response(item, wrappers, ctx, wire_version)?;
+            Ok((Some(resp.inner_type_ts), None))
+        }
+        ReturnType::ResultSubscription { item, err } => {
+            let resp = emit_response(item, wrappers, ctx, wire_version)?;
+            let err_resp = emit_error_response(err, wrappers, ctx, wire_version)?;
+            Ok((Some(resp.inner_type_ts), Some(err_resp.inner_type_ts)))
+        }
+    }
+}
+
+/// Rustdoc URL fragment for the trait method, relative to the cargo doc root
+/// of the truapi crate (e.g. `api/account/trait.Account.html#method.get_account`).
+/// `module_path` is the rustdoc path leading to the trait (e.g.
+/// `["truapi", "api", "account"]`); the crate name is dropped because cargo doc
+/// is published with the crate folder as the root.
+fn build_doc_url(trait_def: &TraitDef, method: &MethodDef) -> String {
+    let module = trait_def
+        .module_path
+        .iter()
+        .skip(1)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join("/");
+    format!(
+        "{module}/trait.{trait_name}.html#method.{method}",
+        trait_name = trait_def.name,
+        method = method.name,
+    )
+}
+
+fn build_method_signature(
+    method: &MethodDef,
+    payload: &PayloadEmission,
+    wrappers: &HashMap<String, VersionedWrapper>,
+    ctx: &CodecContext,
+    wire_version: Option<u32>,
+) -> Result<String> {
+    let ts_method_name = to_camel_case(&strip_prefix(&method.name));
+    let arg = if payload.param_list.is_empty() {
+        String::new()
+    } else {
+        format!("request: {}", playground_type_name(&payload.inner_type_ts))
+    };
+    let return_ts = match &method.return_type {
+        ReturnType::Result { ok, err } => {
+            let ok_resp = emit_response(ok, wrappers, ctx, wire_version)?;
+            let err_resp = emit_error_response(err, wrappers, ctx, wire_version)?;
+            format!(
+                "Promise<Result<{}, {}>>",
+                playground_type_name(&ok_resp.inner_type_ts),
+                playground_type_name(&err_resp.inner_type_ts),
+            )
+        }
+        ReturnType::Subscription(item) => {
+            let response = emit_response(item, wrappers, ctx, wire_version)?;
+            format!(
+                "ObservableLike<{}>",
+                playground_type_name(&response.inner_type_ts),
+            )
+        }
+        ReturnType::ResultSubscription { item, err } => {
+            let response = emit_response(item, wrappers, ctx, wire_version)?;
+            let err_resp = emit_error_response(err, wrappers, ctx, wire_version)?;
+            format!(
+                "ObservableLike<{}, {}>",
+                playground_type_name(&response.inner_type_ts),
+                playground_type_name(&err_resp.inner_type_ts),
+            )
+        }
+    };
+    Ok(format!("{ts_method_name}({arg}): {return_ts}"))
 }
 
 fn playground_request_description(
@@ -645,37 +413,73 @@ fn playground_request_description(
 
 #[cfg(test)]
 mod tests {
-    use super::ts_request_to_playground_json;
-    use serde_json::json;
+    use super::*;
 
     #[test]
-    fn ts_request_to_playground_json_normalizes_ts_style_literals() {
-        let input = r#"{
-            roomId: 'room-1',
-            message: '{"jsonrpc":"2.0","id":1}',
-            amount: 42n,
-            bytes: "0x",
-            optional: {
-                value: undefined,
-                keep: 'ok',
-            },
-        }"#;
-
-        let actual = ts_request_to_playground_json(input);
-        let parsed: serde_json::Value =
-            serde_json::from_str(&actual).expect("normalized request should be valid JSON");
-
+    fn name_to_kebab_id_handles_simple() {
         assert_eq!(
-            parsed,
-            json!({
-                "roomId": "room-1",
-                "message": r#"{"jsonrpc":"2.0","id":1}"#,
-                "amount": "42n",
-                "bytes": "0x",
-                "optional": {
-                    "keep": "ok"
-                }
-            })
+            name_to_kebab_id("HostAccountGetRequest"),
+            "host-account-get-request"
+        );
+        assert_eq!(
+            name_to_kebab_id("JsonRpcSubscription"),
+            "json-rpc-subscription"
+        );
+    }
+
+    #[test]
+    fn name_to_kebab_id_acronym_boundary() {
+        assert_eq!(name_to_kebab_id("URLPath"), "url-path");
+        assert_eq!(name_to_kebab_id("IOError"), "io-error");
+    }
+
+    #[test]
+    fn data_type_id_returns_none_for_non_named() {
+        assert_eq!(data_type_id_from_ts("undefined"), None);
+        assert_eq!(data_type_id_from_ts("void"), None);
+        assert_eq!(data_type_id_from_ts("T.Foo[]"), None);
+        assert_eq!(data_type_id_from_ts("string"), None);
+        assert_eq!(data_type_id_from_ts(""), None);
+    }
+
+    #[test]
+    fn validate_example_docs_accepts_ts_fence() {
+        let docs = "Summary line.\n\n```ts\nconst x = 1;\n```";
+        assert!(validate_example_docs("CoinPayment", "create_purse", Some(docs)).is_ok());
+    }
+
+    #[test]
+    fn validate_example_docs_rejects_missing_example() {
+        let docs = "Summary line with no example.";
+        let err = validate_example_docs("CoinPayment", "create_purse", Some(docs)).unwrap_err();
+        assert!(err.to_string().contains("no ```ts example"));
+    }
+
+    #[test]
+    fn validate_example_docs_rejects_missing_docs() {
+        let err = validate_example_docs("CoinPayment", "create_purse", None).unwrap_err();
+        assert!(err.to_string().contains("no ```ts example"));
+    }
+
+    #[test]
+    fn validate_example_docs_rejects_unrecognized_label() {
+        let docs = "Summary.\n\n```truapi-client-example\nconst x = 1;\n```";
+        let err = validate_example_docs("CoinPayment", "create_purse", Some(docs)).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("code fence left in its description")
+        );
+    }
+
+    #[test]
+    fn data_type_id_kebabs_named_types() {
+        assert_eq!(
+            data_type_id_from_ts("T.HostAccountGetRequest"),
+            Some("host-account-get-request".to_string())
+        );
+        assert_eq!(
+            data_type_id_from_ts("HostAccountGetResponse"),
+            Some("host-account-get-response".to_string())
         );
     }
 }

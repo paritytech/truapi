@@ -4,17 +4,20 @@ on:
   pull_request:
     paths:
       - 'docs/rfcs/**'
+      - '!docs/rfcs/_index.md'
 
 permissions:
   contents: read
 
 jobs:
   validate-rfc:
+    if: github.event.pull_request.user.login != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       # ── Check that the RFC document exists ──
       - name: Require RFC document

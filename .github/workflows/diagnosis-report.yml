@@ -1,0 +1,81 @@
+name: Diagnosis report
+
+# A diagnosis run in the playground files a pre-filled issue (labeled
+# `diagnosis-report`) carrying the markdown report in its body. This workflow
+# turns that issue into a PR that adds/updates the host's report under
+# explorer/diagnosis-reports/. The compatibility matrix is a build artifact
+# regenerated from those reports, so the PR only touches the report file.
+
+on:
+  issues:
+    types: [labeled]
+
+# Serialize so concurrent submissions never race on a branch push.
+concurrency:
+  group: diagnosis-report
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  ingest:
+    if: github.event.label.name == 'diagnosis-report'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - name: Build the report PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BODY: ${{ github.event.issue.body }}
+          ISSUE: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          # Host mode from the report title (`## Truapi <mode> Diagnosis`).
+          mode=$(printf '%s' "$BODY" \
+            | grep -ioP '##\s+Truapi\s+\K(Web|Desktop|Android|iOS)(?=\s+Diagnosis)' \
+            | head -1 || true)
+          if [ -z "$mode" ]; then
+            gh issue comment "$ISSUE" --body \
+              "Could not read a host from this report (expected a \`## Truapi <Web|Desktop|Android|iOS> Diagnosis\` heading). Not filing a PR."
+            exit 1
+          fi
+          host=$(printf '%s' "$mode" | tr '[:upper:]' '[:lower:]')
+          branch="diagnosis-report/$host"
+          file="explorer/diagnosis-reports/$host.md"
+
+          git fetch origin main
+          git switch -C "$branch" origin/main
+          printf '%s\n' "$BODY" > "$file"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet -- "$file"; then
+            gh issue comment "$ISSUE" --body \
+              "This $mode report matches the current \`$file\`; nothing to update."
+            gh issue close "$ISSUE"
+            exit 0
+          fi
+          git add "$file"
+          git commit -m "diagnosis: update $host report (from #$ISSUE)"
+          git push -f "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" "$branch"
+
+          # One open PR per host branch: reuse it while it is open, open a new
+          # one once the previous report has merged (a merged/closed PR for the
+          # branch must not suppress the next submission).
+          url=$(gh pr list --head "$branch" --state open --json url --jq '.[0].url // empty')
+          if [ -z "$url" ]; then
+            url=$(gh pr create --base main --head "$branch" \
+              --title "diagnosis: $mode host report" \
+              --body "Updates \`$file\` from the diagnosis in #$ISSUE. The compatibility matrix is regenerated from the reports at build time.")
+          fi
+
+          gh issue comment "$ISSUE" --body "Filed in $url"
+          gh issue close "$ISSUE"

@@ -2,6 +2,8 @@
 
 # TrUAPI
 
+> The following is a prototype, reference implementation, and proof-of-concept. This open source code is provided for research, experimentation, and developer education only. This code has not been audited, is actively experimental, and may contain bugs, vulnerabilities, or incomplete features. Use at your own risk.
+
 *The protocol that lets product webviews talk to their Polkadot host.*
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square)](./LICENSE)
@@ -19,7 +21,7 @@ TrUAPI (Triangle User-Agent Programming Interface) is the API surface that hosts
 
 Browse the published Rust API docs at [paritytech.github.io/truapi](https://paritytech.github.io/truapi).
 
-The interactive playground lets you browse every method, edit request payloads, and call or subscribe to them live against a connected host.
+The interactive playground lets you browse every method, edit request payloads, and call or subscribe to them live against a connected host. It also drives an end-to-end **Diagnosis** that produces a per-host pass/fail report ([playground/README.md → Diagnosis](playground/README.md#diagnosis)). The explorer aggregates those reports into a cross-host **Compatibility** matrix ([explorer/README.md → Host compatibility matrix](explorer/README.md#host-compatibility-matrix)).
 
 **Live:** [truapi-playground.dot.li](https://truapi-playground.dot.li/) (open from inside the Polkadot Desktop Browser)
 
@@ -65,7 +67,7 @@ scripts/codegen.sh       Regenerate the TS client from the Rust source
 
 ## How it works
 
-1. The protocol is defined as Rust traits in [`rust/crates/truapi/`](rust/crates/truapi/), with each method tagged `#[wire(id = N)]` for a stable byte-level dispatch table.
+1. The protocol is defined as Rust traits in [`rust/crates/truapi/`](rust/crates/truapi/), with each method tagged `#[wire(id = N)]` for a stable byte-level dispatch table. Every method's doc comment must carry a ` ```ts ` example, which codegen extracts into the playground's EXAMPLE tab; the build fails if any method is missing one.
 2. `truapi-codegen` reads rustdoc JSON for that crate and generates the TypeScript client under git-ignored paths in `js/packages/truapi/`.
 3. Higher-level SDKs wrap the typed client; the transport encodes SCALE frames and ships them over `MessagePort` (or `postMessage` in iframe mode) to the host.
 4. The host decodes the frame, dispatches to the matching trait method, encodes the response, and ships it back.
@@ -74,32 +76,16 @@ Wire ids are append-only: existing ids never change, so deployed products stay c
 
 ## Develop
 
-### First-time setup
+Common tasks are wrapped in the top-level `Makefile`. Run `make help` for the full list.
 
 ```bash
-git submodule update --init --recursive
-( cd js/packages/truapi && npm install )
-( cd playground && yarn install --frozen-lockfile )
+make setup    # submodules + JS dependencies
+make build    # Rust workspace + TypeScript client
+make test     # Rust + TypeScript client tests
+make check    # full suite: build, fmt, clippy, test, TS tests, playground build + lint
 ```
 
-### Rust workspace
-
-```bash
-cargo build --workspace
-cargo +nightly fmt --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace
-```
-
-### TypeScript client
-
-```bash
-cd js/packages/truapi
-npm run build
-npm test
-```
-
-### Playground
+To run the playground locally:
 
 ```bash
 cd playground
@@ -113,22 +99,17 @@ Open `https://dot.li/localhost:3000` inside the Polkadot Desktop Host. See [`pla
 When the Rust trait surface changes:
 
 ```bash
-./scripts/codegen.sh
+make codegen      # regenerate the TS client and refresh the playground snapshot
+make playground   # rebuild the playground against the refreshed snapshot
 ```
 
 This repopulates the ignored generated TS under `js/packages/truapi/`, including the playground metadata.
 
-After regenerating, refresh the playground's frozen snapshot:
-
-```bash
-( cd js/packages/truapi && npm run build )
-( cd playground && rm -rf node_modules/@parity && yarn install )
-```
-
 ## Protocol versions
 
 - **v0.1**: initial protocol version.
-- **v0.2**: current protocol version. See [`docs/design/v02-changes.md`](docs/design/v02-changes.md) for the rationale behind each change.
+- **v0.2**: See [`docs/design/releases/v0.2.md`](docs/design/releases/v0.2.md) for the rationale behind each change.
+- **v0.3**: current protocol version.
 
 ## Deploy
 
@@ -148,3 +129,4 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) for issue reports, feature proposals, a
 ## License
 
 [MIT](./LICENSE)
+

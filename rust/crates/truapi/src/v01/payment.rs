@@ -1,8 +1,17 @@
 use parity_scale_codec::{Decode, Encode};
 
+use super::coin_payment::CoinPaymentPurseId;
+
 /// Balance amount for payment operations. Interpreted according to the host's
 /// single fixed payment asset (e.g. pUSD).
 pub type Balance = u128;
+
+/// Request to subscribe to payment balance updates.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct HostPaymentBalanceSubscribeRequest {
+    /// Optional purse selector. `None` means MAIN_PURSE.
+    pub purse: Option<CoinPaymentPurseId>,
+}
 
 /// Current payment balance state pushed to subscribers.
 ///
@@ -30,14 +39,22 @@ pub enum PaymentTopUpSource {
     /// Fund from a one-time account represented by its private key. This is a
     /// standard account holding public funds, not a coin key.
     PrivateKey {
-        /// Ed25519 private key bytes.
-        ed25519_private_key: [u8; 32],
+        /// Sr25519 secret key bytes.
+        sr25519_secret_key: [u8; 64],
+    },
+    /// Fund directly from coin secret keys. Each key is an sr25519 secret
+    /// controlling a single coin.
+    Coins {
+        /// Sr25519 secret keys, one per coin.
+        sr25519_secret_keys: Vec<[u8; 64]>,
     },
 }
 
 /// Request to top up the product payment balance.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostPaymentTopUpRequest {
+    /// Optional purse selector. `None` means MAIN_PURSE.
+    pub into: Option<CoinPaymentPurseId>,
     /// Amount to top up.
     pub amount: Balance,
     /// Funding source for the top-up.
@@ -46,7 +63,9 @@ pub struct HostPaymentTopUpRequest {
 
 /// Request to initiate a payment to another account.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct HostPaymentRequestRequest {
+pub struct HostPaymentRequest {
+    /// Optional purse selector. `None` means MAIN_PURSE.
+    pub from: Option<CoinPaymentPurseId>,
     /// Amount to pay.
     pub amount: Balance,
     /// Destination account.
@@ -59,7 +78,7 @@ pub struct HostPaymentRequestRequest {
 ///
 /// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct HostPaymentRequestResponse {
+pub struct HostPaymentResponse {
     /// The assigned payment identifier.
     pub id: String,
 }
@@ -109,6 +128,11 @@ pub enum HostPaymentTopUpError {
     InsufficientFunds,
     /// The source account was not found or is invalid.
     InvalidSource,
+    /// Some coins were claimed but the total fell short of the requested amount.
+    PartialPayment {
+        /// Amount that was successfully credited.
+        credited: Balance,
+    },
     /// Catch-all.
     Unknown { reason: String },
 }
@@ -119,7 +143,7 @@ pub enum HostPaymentTopUpError {
 ///
 /// [RFC 0006]: https://github.com/paritytech/triangle-js-sdks/pull/94
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub enum HostPaymentRequestError {
+pub enum HostPaymentError {
     /// User rejected the payment request.
     Rejected,
     /// User's available balance is not sufficient for the requested amount.

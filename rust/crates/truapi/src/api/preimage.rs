@@ -12,26 +12,16 @@ pub trait Preimage: Send + Sync {
     /// Subscribe to preimage lookups for a given key.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type Subscription,
-    ///   type RemotePreimageLookupSubscribeItem,
-    /// } from "@parity/truapi";
+    /// import { firstValueFrom, from } from "rxjs";
     ///
-    /// export function lookupPreimage(truapi: Client): Subscription {
-    ///   return truapi.preimage
-    ///     .lookupSubscribe({
-    ///       request: {
-    ///         key: "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///       },
-    ///     })
-    ///     .subscribe({
-    ///       next: (item: RemotePreimageLookupSubscribeItem) =>
-    ///         console.log(item),
-    ///       error: (error: Error) => console.error(error),
-    ///       complete: () => console.log("completed"),
-    ///     });
-    /// }
+    /// // Submit a preimage first so the lookup resolves to a value.
+    /// const submitted = await truapi.preimage.submit("0xdeadbeef");
+    /// assert(submitted.isOk(), "submit failed:", submitted);
+    ///
+    /// const item = await firstValueFrom(
+    ///   from(truapi.preimage.lookupSubscribe({ request: { key: submitted.value } })),
+    /// );
+    /// console.log("preimage lookup received:", item);
     /// ```
     #[wire(start_id = 64)]
     async fn lookup_subscribe(
@@ -45,19 +35,9 @@ pub trait Preimage: Send + Sync {
     /// Submit a preimage. Returns the preimage key (hash) on success.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type HexString,
-    /// } from "@parity/truapi";
-    ///
-    /// export async function submitPreimage(
-    ///   truapi: Client,
-    /// ): Promise<HexString> {
-    ///   const result = await truapi.preimage.submit("0xdeadbeef");
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await truapi.preimage.submit("0xdeadbeef");
+    /// assert(result.isOk(), "submit failed:", result);
+    /// console.log("preimage submitted:", result.value);
     /// ```
     #[wire(request_id = 68)]
     async fn submit(

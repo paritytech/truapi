@@ -1,21 +1,5 @@
 use parity_scale_codec::{Decode, Encode};
 
-/// Error returned when the host refuses to open a URL.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub enum HostNavigateToError {
-    /// The user or host denied the navigation request.
-    PermissionDenied,
-    /// Catch-all.
-    Unknown { reason: String },
-}
-
-/// Request to open a URL in the host's browser or external handler.
-#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
-pub struct HostNavigateToRequest {
-    /// URL to open.
-    pub url: String,
-}
-
 /// Response containing the app's current route as held by the host.
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub struct HostRouteGetResponse {

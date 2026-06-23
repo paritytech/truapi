@@ -3,4 +3,5 @@ dist/
 *.tsbuildinfo
 src/generated/
 src/playground/codegen/
-test/generated/examples/
+src/explorer/codegen/*.ts
+src/explorer/versions.ts

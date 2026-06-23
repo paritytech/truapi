@@ -26,26 +26,21 @@ pub trait Chain: Send + Sync {
     /// Follow the chain head and receive block events.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type Subscription,
-    ///   type RemoteChainHeadFollowItem,
-    /// } from "@parity/truapi";
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
-    /// export function followChainHead(truapi: Client): Subscription {
-    ///   return truapi.chain
-    ///     .followHeadSubscribe({
+    /// import { firstValueFrom, from } from "rxjs";
+    ///
+    /// const item = await firstValueFrom(
+    ///   from(
+    ///     truapi.chain.followHeadSubscribe({
     ///       request: {
-    ///         genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///         genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///         withRuntime: false,
     ///       },
-    ///     })
-    ///     .subscribe({
-    ///       next: (item: RemoteChainHeadFollowItem) => console.log(item),
-    ///       error: (error: Error) => console.error(error),
-    ///       complete: () => console.log("completed"),
-    ///     });
-    /// }
+    ///     }),
+    ///   ),
+    /// );
+    /// console.log("head follow event:", item);
     /// ```
     #[wire(start_id = 76)]
     async fn follow_head_subscribe(
@@ -59,23 +54,21 @@ pub trait Chain: Send + Sync {
     /// Fetch a block header.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type RemoteChainHeadHeaderResponse,
-    /// } from "@parity/truapi";
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
-    /// export async function getChainHeadHeader(
-    ///   truapi: Client,
-    /// ): Promise<RemoteChainHeadHeaderResponse> {
-    ///   const result = await truapi.chain.getHeadHeader({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     followSubscriptionId: "",
-    ///     hash: "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///   });
+    /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await firstValueFrom(
+    ///   withChainHeadFollow({
+    ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
+    ///   }).pipe(
+    ///     mergeMap(({ genesisHash, followSubscriptionId, hash }) =>
+    ///       truapi.chain.getHeadHeader({ genesisHash, followSubscriptionId, hash }),
+    ///     ),
+    ///   ),
+    /// );
+    /// assert(result.isOk(), "getHeadHeader failed:", result);
+    /// console.log("block header:", result.value);
     /// ```
     #[wire(request_id = 80)]
     async fn get_head_header(
@@ -89,23 +82,21 @@ pub trait Chain: Send + Sync {
     /// Fetch a block body.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type RemoteChainHeadBodyResponse,
-    /// } from "@parity/truapi";
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
-    /// export async function getChainHeadBody(
-    ///   truapi: Client,
-    /// ): Promise<RemoteChainHeadBodyResponse> {
-    ///   const result = await truapi.chain.getHeadBody({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     followSubscriptionId: "",
-    ///     hash: "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///   });
+    /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await firstValueFrom(
+    ///   withChainHeadFollow({
+    ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
+    ///   }).pipe(
+    ///     mergeMap(({ genesisHash, followSubscriptionId, hash }) =>
+    ///       truapi.chain.getHeadBody({ genesisHash, followSubscriptionId, hash }),
+    ///     ),
+    ///   ),
+    /// );
+    /// assert(result.isOk(), "getHeadBody failed:", result);
+    /// console.log("block body:", result.value);
     /// ```
     #[wire(request_id = 82)]
     async fn get_head_body(
@@ -119,29 +110,26 @@ pub trait Chain: Send + Sync {
     /// Query runtime storage at a specific block.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type RemoteChainHeadStorageResponse,
-    /// } from "@parity/truapi";
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
-    /// export async function getChainHeadStorage(
-    ///   truapi: Client,
-    /// ): Promise<RemoteChainHeadStorageResponse> {
-    ///   const result = await truapi.chain.getHeadStorage({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     followSubscriptionId: "",
-    ///     hash: "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///     items: [
-    ///       {
-    ///         key: "0x26aa394eea5630e07c48ae0c9558cef7",
-    ///         queryType: "Value",
-    ///       },
-    ///     ],
-    ///   });
+    /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await firstValueFrom(
+    ///   withChainHeadFollow({
+    ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
+    ///   }).pipe(
+    ///     mergeMap(({ genesisHash, followSubscriptionId, hash }) =>
+    ///       truapi.chain.getHeadStorage({
+    ///         genesisHash,
+    ///         followSubscriptionId,
+    ///         hash,
+    ///         items: [{ key: "0x26aa394eea5630e07c48ae0c9558cef7", queryType: "Value" }],
+    ///       }),
+    ///     ),
+    ///   ),
+    /// );
+    /// assert(result.isOk(), "getHeadStorage failed:", result);
+    /// console.log("storage value:", result.value);
     /// ```
     #[wire(request_id = 84)]
     async fn get_head_storage(
@@ -155,25 +143,28 @@ pub trait Chain: Send + Sync {
     /// Invoke a runtime call at a specific block.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type RemoteChainHeadCallResponse,
-    /// } from "@parity/truapi";
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
-    /// export async function callChainHeadRuntime(
-    ///   truapi: Client,
-    /// ): Promise<RemoteChainHeadCallResponse> {
-    ///   const result = await truapi.chain.callHead({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     followSubscriptionId: "",
-    ///     hash: "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///     function: "Core_version",
-    ///     callParameters: "0x",
-    ///   });
+    /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await firstValueFrom(
+    ///   withChainHeadFollow({
+    ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
+    ///     withRuntime: true,
+    ///   }).pipe(
+    ///     mergeMap(({ genesisHash, followSubscriptionId, hash }) =>
+    ///       truapi.chain.callHead({
+    ///         genesisHash,
+    ///         followSubscriptionId,
+    ///         hash,
+    ///         function: "Core_version",
+    ///         callParameters: "0x",
+    ///       }),
+    ///     ),
+    ///   ),
+    /// );
+    /// assert(result.isOk(), "callHead failed:", result);
+    /// console.log("runtime call result:", result.value);
     /// ```
     #[wire(request_id = 86)]
     async fn call_head(
@@ -187,19 +178,25 @@ pub trait Chain: Send + Sync {
     /// Release pinned blocks.
     ///
     /// ```ts
-    /// import { type Client } from "@parity/truapi";
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
-    /// export async function unpinChainHead(truapi: Client): Promise<void> {
-    ///   const result = await truapi.chain.unpinHead({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     followSubscriptionId: "",
-    ///     hashes: [
-    ///       "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///     ],
-    ///   });
+    /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
-    ///   if (result.isErr()) throw result.error;
-    /// }
+    /// const result = await firstValueFrom(
+    ///   withChainHeadFollow({
+    ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
+    ///   }).pipe(
+    ///     mergeMap(({ genesisHash, followSubscriptionId, hash }) =>
+    ///       truapi.chain.unpinHead({
+    ///         genesisHash,
+    ///         followSubscriptionId,
+    ///         hashes: [hash],
+    ///       }),
+    ///     ),
+    ///   ),
+    /// );
+    /// assert(result.isOk(), "unpinHead failed:", result);
+    /// console.log("blocks unpinned");
     /// ```
     #[wire(request_id = 88)]
     async fn unpin_head(
@@ -213,19 +210,25 @@ pub trait Chain: Send + Sync {
     /// Continue a paused chain-head operation.
     ///
     /// ```ts
-    /// import { type Client } from "@parity/truapi";
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
-    /// export async function continueChainHeadOperation(
-    ///   truapi: Client,
-    /// ): Promise<void> {
-    ///   const result = await truapi.chain.continueHead({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     followSubscriptionId: "",
-    ///     operationId: "op-id",
-    ///   });
+    /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
-    ///   if (result.isErr()) throw result.error;
-    /// }
+    /// const result = await firstValueFrom(
+    ///   withChainHeadFollow({
+    ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
+    ///   }).pipe(
+    ///     mergeMap(({ genesisHash, followSubscriptionId }) =>
+    ///       truapi.chain.continueHead({
+    ///         genesisHash,
+    ///         followSubscriptionId,
+    ///         operationId: "op-id",
+    ///       }),
+    ///     ),
+    ///   ),
+    /// );
+    /// assert(result.isOk(), "continueHead failed:", result);
+    /// console.log("operation continued");
     /// ```
     #[wire(request_id = 90)]
     async fn continue_head(
@@ -239,19 +242,25 @@ pub trait Chain: Send + Sync {
     /// Stop a chain-head operation.
     ///
     /// ```ts
-    /// import { type Client } from "@parity/truapi";
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
-    /// export async function stopChainHeadOperation(
-    ///   truapi: Client,
-    /// ): Promise<void> {
-    ///   const result = await truapi.chain.stopHeadOperation({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     followSubscriptionId: "",
-    ///     operationId: "op-id",
-    ///   });
+    /// import { firstValueFrom, mergeMap } from "rxjs";
     ///
-    ///   if (result.isErr()) throw result.error;
-    /// }
+    /// const result = await firstValueFrom(
+    ///   withChainHeadFollow({
+    ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
+    ///   }).pipe(
+    ///     mergeMap(({ genesisHash, followSubscriptionId }) =>
+    ///       truapi.chain.stopHeadOperation({
+    ///         genesisHash,
+    ///         followSubscriptionId,
+    ///         operationId: "op-id",
+    ///       }),
+    ///     ),
+    ///   ),
+    /// );
+    /// assert(result.isOk(), "stopHeadOperation failed:", result);
+    /// console.log("operation stopped");
     /// ```
     #[wire(request_id = 92)]
     async fn stop_head_operation(
@@ -266,21 +275,13 @@ pub trait Chain: Send + Sync {
     /// Fetch the canonical genesis hash for a chain.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type RemoteChainSpecGenesisHashResponse,
-    /// } from "@parity/truapi";
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
-    /// export async function getChainGenesisHash(
-    ///   truapi: Client,
-    /// ): Promise<RemoteChainSpecGenesisHashResponse> {
-    ///   const result = await truapi.chain.getSpecGenesisHash({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await truapi.chain.getSpecGenesisHash({
+    ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
+    /// });
+    /// assert(result.isOk(), "getSpecGenesisHash failed:", result);
+    /// console.log("genesis hash:", result.value);
     /// ```
     #[wire(request_id = 94)]
     async fn get_spec_genesis_hash(
@@ -295,21 +296,13 @@ pub trait Chain: Send + Sync {
     /// Fetch the display name of a chain.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type RemoteChainSpecChainNameResponse,
-    /// } from "@parity/truapi";
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
-    /// export async function getChainName(
-    ///   truapi: Client,
-    /// ): Promise<RemoteChainSpecChainNameResponse> {
-    ///   const result = await truapi.chain.getSpecChainName({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await truapi.chain.getSpecChainName({
+    ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
+    /// });
+    /// assert(result.isOk(), "getSpecChainName failed:", result);
+    /// console.log("chain name:", result.value);
     /// ```
     #[wire(request_id = 96)]
     async fn get_spec_chain_name(
@@ -323,21 +316,13 @@ pub trait Chain: Send + Sync {
     /// Fetch the JSON-encoded properties of a chain.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type RemoteChainSpecPropertiesResponse,
-    /// } from "@parity/truapi";
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
-    /// export async function getChainProperties(
-    ///   truapi: Client,
-    /// ): Promise<RemoteChainSpecPropertiesResponse> {
-    ///   const result = await truapi.chain.getSpecProperties({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await truapi.chain.getSpecProperties({
+    ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
+    /// });
+    /// assert(result.isOk(), "getSpecProperties failed:", result);
+    /// console.log("chain properties:", result.value);
     /// ```
     #[wire(request_id = 98)]
     async fn get_spec_properties(
@@ -351,22 +336,14 @@ pub trait Chain: Send + Sync {
     /// Broadcast a signed transaction.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type RemoteChainTransactionBroadcastResponse,
-    /// } from "@parity/truapi";
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
-    /// export async function broadcastTransaction(
-    ///   truapi: Client,
-    /// ): Promise<RemoteChainTransactionBroadcastResponse> {
-    ///   const result = await truapi.chain.broadcastTransaction({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     transaction: "0x",
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await truapi.chain.broadcastTransaction({
+    ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
+    ///   transaction: "0x",
+    /// });
+    /// assert(result.isOk(), "broadcastTransaction failed:", result);
+    /// console.log("transaction broadcast:", result.value);
     /// ```
     #[wire(request_id = 100)]
     async fn broadcast_transaction(
@@ -383,18 +360,14 @@ pub trait Chain: Send + Sync {
     /// Stop a transaction broadcast.
     ///
     /// ```ts
-    /// import { type Client } from "@parity/truapi";
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
-    /// export async function stopTransactionBroadcast(
-    ///   truapi: Client,
-    /// ): Promise<void> {
-    ///   const result = await truapi.chain.stopTransaction({
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///     operationId: "op-id",
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    /// }
+    /// const result = await truapi.chain.stopTransaction({
+    ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
+    ///   operationId: "op-id",
+    /// });
+    /// assert(result.isOk(), "stopTransaction failed:", result);
+    /// console.log("transaction broadcast stopped");
     /// ```
     #[wire(request_id = 102)]
     async fn stop_transaction(

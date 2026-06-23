@@ -16,24 +16,40 @@ pub trait StatementStore: Send + Sync {
     /// Subscribe to statements matching a topic filter.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type Subscription,
-    ///   type RemoteStatementStoreSubscribeItem,
-    /// } from "@parity/truapi";
+    /// import { firstValueFrom, from } from "rxjs";
+    /// import type { Statement } from "@parity/truapi";
     ///
-    /// export function subscribeStatements(truapi: Client): Subscription {
-    ///   return truapi.statementStore
-    ///     .subscribe({
-    ///       request: { tag: "MatchAll", value: [] },
-    ///     })
-    ///     .subscribe({
-    ///       next: (statements: RemoteStatementStoreSubscribeItem) =>
-    ///         console.log(statements),
-    ///       error: (error: Error) => console.error(error),
-    ///       complete: () => console.log("completed"),
-    ///     });
-    /// }
+    /// const bytes = crypto.getRandomValues(new Uint8Array(32));
+    /// const topic: `0x${string}` = `0x${bytes.toHex()}`;
+    /// const expiry = BigInt(Math.floor(Date.now() / 1000) + 86400) << 32n;
+    /// const statement: Statement = { expiry, topics: [topic] };
+    ///
+    /// const proofResult = await truapi.statementStore.createProof({
+    ///   productAccountId: {
+    ///     dotNsIdentifier: "truapi-playground.dot",
+    ///     derivationIndex: 0,
+    ///   },
+    ///   statement,
+    /// });
+    /// assert(proofResult.isOk(), "createProof failed:", proofResult);
+    ///
+    /// statement.proof = proofResult.value.proof;
+    /// console.log("submitting statement:", statement);
+    /// const submitted = await truapi.statementStore.submit({
+    ///   ...statement,
+    ///   proof: proofResult.value.proof,
+    /// });
+    /// assert(submitted.isOk(), "failed to submit statement:", submitted);
+    /// console.log("statement submitted");
+    ///
+    /// const statements = await firstValueFrom(
+    ///   from(
+    ///     truapi.statementStore.subscribe({
+    ///       request: { tag: "MatchAll", value: [topic] },
+    ///     }),
+    ///   ),
+    /// );
+    /// console.log("subscribe received", statements);
     /// ```
     #[wire(start_id = 56)]
     async fn subscribe(
@@ -46,29 +62,26 @@ pub trait StatementStore: Send + Sync {
 
     /// Create a proof for a statement.
     ///
+    /// **Deprecated:** use [`create_proof_authorized`](Self::create_proof_authorized)
+    /// instead, which uses a pre-allocated allowance account and does not
+    /// require a per-call signing prompt.
+    ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type RemoteStatementStoreCreateProofResponse,
-    /// } from "@parity/truapi";
-    ///
-    /// export async function createStatementProof(
-    ///   truapi: Client,
-    /// ): Promise<RemoteStatementStoreCreateProofResponse> {
-    ///   const result = await truapi.statementStore.createProof({
-    ///     productAccountId: {
-    ///       dotNsIdentifier: "truapi-playground.dot",
-    ///       derivationIndex: 0,
-    ///     },
-    ///     statement: {
-    ///       expiry: 9999999999999n,
-    ///       topics: [],
-    ///     },
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// // Expiry packs a Unix-seconds timestamp in the high 32 bits; a day out
+    /// // keeps the statement unexpired when it is submitted.
+    /// const expiry = BigInt(Math.floor(Date.now() / 1000) + 86400) << 32n;
+    /// const bytes = crypto.getRandomValues(new Uint8Array(32));
+    /// const topic: `0x${string}` = `0x${bytes.toHex()}`;
+    /// const statement = { expiry, topics: [topic] };
+    /// const result = await truapi.statementStore.createProof({
+    ///   productAccountId: {
+    ///     dotNsIdentifier: "truapi-playground.dot",
+    ///     derivationIndex: 0,
+    ///   },
+    ///   statement,
+    /// });
+    /// assert(result.isOk(), "createProof failed:", result);
+    /// console.log("proof created:", result.value);
     /// ```
     #[wire(request_id = 60)]
     async fn create_proof(
@@ -86,23 +99,16 @@ pub trait StatementStore: Send + Sync {
     /// bypassing the per-call signing prompt.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type RemoteStatementStoreCreateProofResponse,
-    /// } from "@parity/truapi";
+    /// // Expiry packs a Unix-seconds timestamp in the high 32 bits; a day out
+    /// // keeps the statement unexpired when it is submitted.
+    /// const expiry = BigInt(Math.floor(Date.now() / 1000) + 86400) << 32n;
+    /// const bytes = crypto.getRandomValues(new Uint8Array(32));
+    /// const topic: `0x${string}` = `0x${bytes.toHex()}`;
+    /// const statement = { expiry, topics: [topic] };
     ///
-    /// export async function createAuthorizedStatementProof(
-    ///   truapi: Client,
-    /// ): Promise<RemoteStatementStoreCreateProofResponse> {
-    ///   const result =
-    ///     await truapi.statementStore.createProofAuthorized({
-    ///       expiry: 9999999999999n,
-    ///       topics: [],
-    ///     });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await truapi.statementStore.createProofAuthorized(statement);
+    /// assert(result.isOk(), "createProof failed:", result);
+    /// console.log("proof created:", result.value);
     /// ```
     #[wire(request_id = 132)]
     async fn create_proof_authorized(
@@ -121,22 +127,26 @@ pub trait StatementStore: Send + Sync {
     /// struct), matching upstream `triangle-js-sdks`.
     ///
     /// ```ts
-    /// import { type Client } from "@parity/truapi";
+    /// const bytes = crypto.getRandomValues(new Uint8Array(32));
+    /// const topic: `0x${string}` = `0x${bytes.toHex()}`;
+    /// const expiry = BigInt(Math.floor(Date.now() / 1000) + 86400) << 32n;
+    /// const statement = { expiry, topics: [topic] };
     ///
-    /// export async function submitStatement(truapi: Client): Promise<void> {
-    ///   const result = await truapi.statementStore.submit({
-    ///     proof: {
-    ///       tag: "Sr25519",
-    ///       value: {
-    ///         signature: "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-    ///         signer: "0x0000000000000000000000000000000000000000000000000000000000000000",
-    ///       },
-    ///     },
-    ///     topics: [],
-    ///   });
+    /// const proofResult = await truapi.statementStore.createProof({
+    ///   productAccountId: {
+    ///     dotNsIdentifier: "truapi-playground.dot",
+    ///     derivationIndex: 0,
+    ///   },
+    ///   statement,
+    /// });
+    /// assert(proofResult.isOk(), "createProof failed:", proofResult);
     ///
-    ///   if (result.isErr()) throw result.error;
-    /// }
+    /// const result = await truapi.statementStore.submit({
+    ///   proof: proofResult.value.proof,
+    ///   ...statement,
+    /// });
+    /// assert(result.isOk(), "submit failed:", result);
+    /// console.log("statement submitted");
     /// ```
     #[wire(request_id = 62)]
     async fn submit(

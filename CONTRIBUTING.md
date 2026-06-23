@@ -19,17 +19,19 @@ Feature proposals live as markdown files in `docs/features/`. To propose a new f
 
 For larger changes that need cross-team discussion, use the RFC process:
 
-1. Create a branch and add a new file to `docs/rfcs/` using the next available number (e.g., `docs/rfcs/0002-my-proposal.md`)
+1. Create a branch and add a new file to `docs/rfcs/<slug>.md` (e.g., `docs/rfcs/my-proposal.md`) — do **not** assign a number
 2. Use `docs/rfcs/0001-template.md` as a reference for the expected structure and frontmatter
-3. Update `docs/rfcs/_index.md` with a link to your RFC
-4. Open a PR using the **rfc** template (`?template=rfc.md`) and add the `rfc` and `proposal` labels
-5. The PR will be auto-added to the project board for tracking and review
+3. Open a PR using the **rfc** template (`?template=rfc.md`) and add the `rfc` label
+4. The PR will be auto-added to the project board for tracking and review
+5. When the PR is approved and merged, CI automatically assigns the next sequential number, renames the file, and appends it to `docs/rfcs/_index.md`
 
 **Important:** RFC PRs must include corresponding changes to the TrUAPI Rust
 interfaces in `rust/crates/truapi/`. A CI check (`check-rfc.yml`) enforces
 this — PRs that touch `docs/rfcs/` without also modifying `rust/crates/truapi/`
 will fail. This ensures every RFC ships with a concrete API change, not just
 prose.
+
+If you use Claude Code, the [`rfc`](.claude/skills/rfc/SKILL.md) skill is highly recommended for drafting RFCs — invoke it with `/rfc` to turn your notes into a well-structured document that follows the template above.
 
 ## Design Documents
 
@@ -61,20 +63,14 @@ hosts/dotli/           dotli host (git submodule)
 scripts/codegen.sh     regenerate the TS client from the Rust crate
 ```
 
+Common tasks are wrapped in the top-level `Makefile`. Run `make help` to see
+the full list of targets.
+
 ### Getting started
 
 ```bash
-# Check out submodules
-git submodule update --init --recursive
-
-# Build the Rust workspace
-cargo build --workspace
-
-# Build the TypeScript client
-( cd js/packages/truapi && npm install && npm run build )
-
-# Install playground dependencies
-( cd playground && yarn install --frozen-lockfile )
+make setup    # submodules + JS dependencies
+make build    # Rust workspace + TypeScript client
 ```
 
 ### Making changes to the API
@@ -82,40 +78,16 @@ cargo build --workspace
 The Rust crate in `rust/crates/truapi/` is the single source of truth for the
 TrUAPI protocol. When you modify traits or types there:
 
-1. Run the codegen script to regenerate the TypeScript client:
-
-   ```bash
-   ./scripts/codegen.sh
-   ```
-
-2. Rebuild the TypeScript package:
-
-   ```bash
-   ( cd js/packages/truapi && npm run build )
-   ```
-
-3. Refresh the playground snapshot (yarn 1.x copies `file:` deps at install time):
-
-   ```bash
-   ( cd playground && rm -rf node_modules && yarn install )
-   ```
-
-4. Rebuild or test the TS package so the ignored generated outputs are exercised.
+```bash
+make codegen      # regenerate the TS client and refresh the playground snapshot
+make playground   # rebuild the playground against the refreshed snapshot
+```
 
 ### Verification
 
 ```bash
-# Rust
-cargo build --workspace
-cargo +nightly fmt --check
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo test --workspace
-
-# TypeScript client
-( cd js/packages/truapi && npm test )
-
-# Playground
-( cd playground && yarn build && yarn lint )
+make test     # Rust + TypeScript client tests
+make check    # full suite: build, fmt, clippy, test, TS tests, playground build + lint
 ```
 
 ## Pull requests

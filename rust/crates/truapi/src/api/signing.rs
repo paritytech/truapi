@@ -20,38 +20,20 @@ pub trait Signing: Send + Sync {
     /// Construct a signed transaction for a product account.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type HostCreateTransactionResponse,
-    /// } from "@parity/truapi";
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
-    /// export async function createTransaction(
-    ///   truapi: Client,
-    /// ): Promise<HostCreateTransactionResponse> {
-    ///   const result = await truapi.signing.createTransaction({
-    ///     productAccountId: {
-    ///       dotNsIdentifier: "truapi-playground.dot",
-    ///       derivationIndex: 0,
-    ///     },
-    ///     payload: {
-    ///       tag: "V1",
-    ///       value: {
-    ///         callData: "0x0000",
-    ///         extensions: [],
-    ///         txExtVersion: 0,
-    ///         context: {
-    ///           metadata: "0x",
-    ///           tokenSymbol: "DOT",
-    ///           tokenDecimals: 10,
-    ///           bestBlockHeight: 0,
-    ///         },
-    ///       },
-    ///     },
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await truapi.signing.createTransaction({
+    ///   signer: {
+    ///     dotNsIdentifier: "truapi-playground.dot",
+    ///     derivationIndex: 0,
+    ///   },
+    ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
+    ///   callData: "0x0000",
+    ///   extensions: [],
+    ///   txExtVersion: 0,
+    /// });
+    /// assert(result.isOk(), "createTransaction failed:", result);
+    /// console.log("transaction created:", result.value);
     /// ```
     #[wire(request_id = 30)]
     async fn create_transaction(
@@ -62,37 +44,24 @@ pub trait Signing: Send + Sync {
         Err(CallError::unavailable())
     }
 
-    /// Construct a signed transaction for a non-product account.
+    /// Construct a signed transaction for a non-product (legacy) account.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type HostCreateTransactionWithLegacyAccountResponse,
-    /// } from "@parity/truapi";
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
-    /// export async function createTransactionWithLegacyAccount(
-    ///   truapi: Client,
-    /// ): Promise<HostCreateTransactionWithLegacyAccountResponse> {
-    ///   const result = await truapi.signing.createTransactionWithLegacyAccount({
-    ///     payload: {
-    ///       tag: "V1",
-    ///       value: {
-    ///         callData: "0x0000",
-    ///         extensions: [],
-    ///         txExtVersion: 0,
-    ///         context: {
-    ///           metadata: "0x",
-    ///           tokenSymbol: "DOT",
-    ///           tokenDecimals: 10,
-    ///           bestBlockHeight: 0,
-    ///         },
-    ///       },
-    ///     },
-    ///   });
+    /// const signerResult = await accountIdForDotNsUsername();
+    /// assert(signerResult.isOk(), "accountIdForDotNsUsername failed:", signerResult);
+    /// console.log("fetched user account:", signerResult.value);
     ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await truapi.signing.createTransactionWithLegacyAccount({
+    ///   signer: signerResult.value,
+    ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
+    ///   callData: "0x0000",
+    ///   extensions: [],
+    ///   txExtVersion: 0,
+    /// });
+    /// assert(result.isOk(), "createTransactionWithLegacyAccount failed:", result);
+    /// console.log("transaction created:", result.value);
     /// ```
     #[wire(request_id = 32)]
     async fn create_transaction_with_legacy_account(
@@ -109,25 +78,15 @@ pub trait Signing: Send + Sync {
     /// Sign raw bytes with a non-product account.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type HostSignPayloadResponse,
-    /// } from "@parity/truapi";
-    ///
-    /// export async function signRawWithLegacyAccount(
-    ///   truapi: Client,
-    /// ): Promise<HostSignPayloadResponse> {
-    ///   const result = await truapi.signing.signRawWithLegacyAccount({
-    ///     signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
-    ///     payload: {
-    ///       tag: "Bytes",
-    ///       value: { bytes: "0x48656c6c6f" },
-    ///     },
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await truapi.signing.signRawWithLegacyAccount({
+    ///   signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
+    ///   payload: {
+    ///     tag: "Bytes",
+    ///     value: { bytes: "0x48656c6c6f" },
+    ///   },
+    /// });
+    /// assert(result.isOk(), "signRawWithLegacyAccount failed:", result);
+    /// console.log("raw bytes signed:", result.value);
     /// ```
     #[wire(request_id = 34)]
     async fn sign_raw_with_legacy_account(
@@ -142,35 +101,26 @@ pub trait Signing: Send + Sync {
     /// Sign an extrinsic payload with a non-product account.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type HostSignPayloadResponse,
-    /// } from "@parity/truapi";
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
-    /// export async function signPayloadWithLegacyAccount(
-    ///   truapi: Client,
-    /// ): Promise<HostSignPayloadResponse> {
-    ///   const result = await truapi.signing.signPayloadWithLegacyAccount({
-    ///     signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
-    ///     payload: {
-    ///       account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },
-    ///       blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///       blockNumber: "0x00000000",
-    ///       era: "0x00",
-    ///       genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
-    ///       method: "0x0000",
-    ///       nonce: "0x00000000",
-    ///       signedExtensions: [],
-    ///       specVersion: "0x00000000",
-    ///       tip: "0x00000000000000000000000000000000",
-    ///       transactionVersion: "0x00000000",
-    ///       version: 4,
-    ///     },
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    /// const result = await truapi.signing.signPayloadWithLegacyAccount({
+    ///   signer: "5GrwvaEF5zXb26Fz9rcQpDWS57CtERHpNehXCPcNoHGKutQY",
+    ///   payload: {
+    ///     blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///     blockNumber: "0x00000000",
+    ///     era: "0x00",
+    ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
+    ///     method: "0x0000",
+    ///     nonce: "0x00000000",
+    ///     signedExtensions: [],
+    ///     specVersion: "0x00000000",
+    ///     tip: "0x00000000000000000000000000000000",
+    ///     transactionVersion: "0x00000000",
+    ///     version: 4,
+    ///   },
+    /// });
+    /// assert(result.isOk(), "signPayloadWithLegacyAccount failed:", result);
+    /// console.log("payload signed:", result.value);
     /// ```
     #[wire(request_id = 36)]
     async fn sign_payload_with_legacy_account(
@@ -187,27 +137,17 @@ pub trait Signing: Send + Sync {
     /// Sign raw bytes or a message.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type HostSignPayloadResponse,
-    /// } from "@parity/truapi";
-    ///
-    /// export async function signRawBytes(
-    ///   truapi: Client,
-    /// ): Promise<HostSignPayloadResponse> {
-    ///   const result = await truapi.signing.signRaw({
-    ///     account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },
-    ///     payload: {
-    ///       tag: "Bytes",
-    ///       value: {
-    ///         bytes: "0x48656c6c6f2c20776f726c6421",
-    ///       },
+    /// const result = await truapi.signing.signRaw({
+    ///   account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },
+    ///   payload: {
+    ///     tag: "Bytes",
+    ///     value: {
+    ///       bytes: "0x48656c6c6f2c20776f726c6421",
     ///     },
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    ///   },
+    /// });
+    /// assert(result.isOk(), "signRaw failed:", result);
+    /// console.log("raw bytes signed:", result.value);
     /// ```
     #[wire(request_id = 114)]
     async fn sign_raw(
@@ -221,20 +161,15 @@ pub trait Signing: Send + Sync {
     /// Sign an extrinsic payload.
     ///
     /// ```ts
-    /// import {
-    ///   type Client,
-    ///   type HostSignPayloadResponse,
-    /// } from "@parity/truapi";
+    /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
-    /// export async function signPayload(
-    ///   truapi: Client,
-    /// ): Promise<HostSignPayloadResponse> {
-    ///   const result = await truapi.signing.signPayload({
-    ///     account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },
+    /// const result = await truapi.signing.signPayload({
+    ///   account: { dotNsIdentifier: "truapi-playground.dot", derivationIndex: 0 },
+    ///   payload: {
     ///     blockHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
     ///     blockNumber: "0x00000000",
     ///     era: "0x00",
-    ///     genesisHash: "0xd6eec26135305a8ad257a20d003357284c8aa03d0bdb2b357ab0a22371e11ef2",
+    ///     genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///     method: "0x00003448656c6c6f2c20776f726c6421",
     ///     nonce: "0x00000000",
     ///     signedExtensions: [],
@@ -242,11 +177,10 @@ pub trait Signing: Send + Sync {
     ///     tip: "0x00000000000000000000000000000000",
     ///     transactionVersion: "0x00000000",
     ///     version: 4,
-    ///   });
-    ///
-    ///   if (result.isErr()) throw result.error;
-    ///   return result.value;
-    /// }
+    ///   },
+    /// });
+    /// assert(result.isOk(), "signPayload failed:", result);
+    /// console.log("payload signed:", result.value);
     /// ```
     #[wire(request_id = 116)]
     async fn sign_payload(
