@@ -3,7 +3,7 @@
 # Run `make help` for the list of targets.
 
 .DEFAULT_GOAL := help
-.PHONY: help setup build codegen test check playground dev matrix explorer dart
+.PHONY: help setup build codegen test check playground dev matrix explorer dart dart-scaffold
 
 TRUAPI_PKG := js/packages/truapi
 PLAYGROUND := playground
@@ -63,7 +63,14 @@ matrix: ## Regenerate the host compatibility matrix from explorer/diagnosis-repo
 explorer: ## Run the explorer dev server standalone at http://localhost:5181.
 	cd $(EXPLORER) && npx vite --base / --port 5181
 
-dart: ## Regenerate + analyze + test the Dart client (regen golden vectors too).
+dart: ## Regenerate + analyze + test the Dart client/host (regen golden vectors too).
 	./scripts/codegen.sh
 	cargo run -p truapi --example wire_vectors -- $(DART)/test/wire_vectors.json
 	cd $(DART) && dart pub get && dart analyze && dart test
+
+dart-scaffold: ## (Re)generate the one-shot host scaffold (overwrites example/host_scaffold.dart).
+	cargo +nightly rustdoc -p truapi -- -Z unstable-options --output-format json
+	cargo run -p truapi-codegen -- --input target/doc/truapi.json \
+	  --output /tmp/truapi-ts-throwaway \
+	  --dart-host-scaffold-output $(DART)/example/host_scaffold.dart
+	cd $(DART) && dart format example/host_scaffold.dart

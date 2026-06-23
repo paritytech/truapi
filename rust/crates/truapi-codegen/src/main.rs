@@ -51,6 +51,13 @@ struct Cli {
     #[arg(long)]
     dart_host_output: Option<String>,
 
+    /// Output FILE for a one-shot, editable Dart host scaffold (optional).
+    /// Writes a `ScaffoldHostHandlers` implementing every service with
+    /// `throw UnimplementedError(...)`. Not part of the regular pipeline; run
+    /// it once to bootstrap a host, then edit the file.
+    #[arg(long)]
+    dart_host_scaffold_output: Option<String>,
+
     /// Output directory for generated playground metadata (optional).
     #[arg(long)]
     playground_output: Option<String>,
@@ -130,6 +137,11 @@ fn main() -> Result<()> {
         dart::generate_host(&api, path, client_version, cli.codec_version)
             .with_context(|| format!("writing Dart host to {path}"))?;
         println!("Generated Dart host in {path}");
+    }
+    if let Some(path) = &cli.dart_host_scaffold_output {
+        dart::generate_host_scaffold(&api, path, client_version, cli.codec_version)
+            .with_context(|| format!("writing Dart host scaffold to {path}"))?;
+        println!("Generated Dart host scaffold at {path}");
     }
     if let Some(path) = &cli.playground_output {
         ts::generate_playground_services(&api, path, client_version, cli.strip_examples)

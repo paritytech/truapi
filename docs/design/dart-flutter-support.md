@@ -452,6 +452,7 @@ What exists now:
 - [x] Hand-written dispatcher runtime `lib/src/host/host_server.dart` (`createHostServer`, `CallContext`, `SubscriptionFramePort`, request/subscription entries, pending/active subscription state machine — port of `truapi-host/src/index.ts`)
 - [x] Generated `host.dart`: per-service typed handler interfaces, public `build<Service>Entries`, `TruapiHostHandlers` + `createTruapiServer`
 - [x] Host dispatcher tests: generated client ↔ generated host over `LoopbackChannel` (request round-trip + subscription) — `host_server_test.dart`
+- [x] One-shot host scaffold: `--dart-host-scaffold-output` (+ `make dart-scaffold`) emits `example/host_scaffold.dart` — a `ScaffoldHostHandlers` implementing every service method with `throw UnimplementedError(...)`, with heuristic backing notes (smoldart light-client vs host-local vs wallet)
 
 ---
 

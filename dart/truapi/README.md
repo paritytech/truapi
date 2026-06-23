@@ -121,6 +121,19 @@ completion ends the subscription. To compose a server from a subset of services
 (or add custom entries), use the public per-service `build<Service>Entries(...)`
 builders with `createHostServer(provider, [...entries])`.
 
+### Scaffold
+
+[`example/host_scaffold.dart`](example/host_scaffold.dart) is a ready-to-edit
+`ScaffoldHostHandlers` implementing **every** service method with
+`throw UnimplementedError(...)`, plus heuristic notes on which services are
+likely backed by a light client (smoldart), the wallet, or host-local state.
+Copy it into your host app and fill in each method. Regenerate it any time the
+trait surface changes:
+
+```bash
+make dart-scaffold     # overwrites example/host_scaffold.dart
+```
+
 ## Type mapping
 
 | Rust | Dart |
