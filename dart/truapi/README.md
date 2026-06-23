@@ -12,25 +12,36 @@ transport, providers) and the generated surface under `lib/src/generated/`.
 
 ## Layout
 
+This package ships **both sides** of the protocol:
+
+- `package:truapi/truapi.dart` — the **client** (product-side): call host methods.
+- `package:truapi/host.dart` — the **host** dispatcher: implement the methods a
+  host (e.g. a Flutter desktop host) exposes to the products inside it.
+
 ```
 lib/
-  truapi.dart                 # barrel: runtime + generated client
+  truapi.dart                 # client barrel: runtime + generated client
+  host.dart                   # host barrel: runtime + generated dispatcher
   src/
     scale.dart                # SCALE codec primitives & combinators
     result.dart               # sealed Result<Ok, Err>
     transport.dart            # Provider, frame codec, createTransport, subscribeStream
     providers/
       loopback_provider.dart  # in-memory channel for tests/local harnesses
-    generated/                # git-ignored — produced by truapi-codegen --dart-output
+    host/
+      host_server.dart        # host dispatcher runtime (createHostServer, CallContext, …)
+    generated/                # git-ignored — produced by truapi-codegen
       types.dart              #   data classes, enums, sealed unions + codecs
       wire_table.dart         #   per-method frame-id constants
       client.dart             #   service clients, TruapiClient facade, createClient
+      host.dart               #   per-service handler interfaces, build*Entries, createTruapiServer
       index.dart
 test/
   scale_test.dart             # SCALE vectors + round-trips
   transport_test.dart         # request/response, subscriptions, handshake
   wire_vectors_test.dart      # cross-language parity vs Rust golden vectors
   generated_client_test.dart  # end-to-end generated client over loopback
+  host_server_test.dart       # generated client <-> generated host over loopback
 ```
 
 ## Usage
@@ -69,6 +80,46 @@ final sub = client.theme.subscribe().listen((item) {
 `result.isOk` / `result.okOrNull` / `result.match(...)`. A subscription's typed
 interrupt surfaces as a `SubscriptionInterrupted<Reason>` stream error; an
 untyped interrupt completes the stream normally.
+
+## Host
+
+A host implements one typed handler group per service and wires them to a
+`Provider`. Handlers receive and return the same inner protocol types the client
+uses; the generated dispatch entries handle versioned wire wrapping, SCALE
+encode/decode, and the request/subscription frame lifecycle.
+
+```dart
+import 'package:truapi/host.dart';
+
+class MyAccountHandlers implements AccountHostHandlers {
+  @override
+  Future<Result<HostAccountGetResponse, HostAccountGetError>> getAccount(
+    CallContext ctx,
+    HostAccountGetRequest request,
+  ) async {
+    final account = myStore.lookup(request.productAccountId);
+    return Ok(HostAccountGetResponse(account: account));
+  }
+
+  @override
+  Stream<HostAccountConnectionStatusSubscribeItem> connectionStatusSubscribe(
+    CallContext ctx,
+  ) =>
+      myConnectionStatusStream; // each event is forwarded as a receive frame
+  // … the remaining AccountHostHandlers methods
+}
+
+// Implement TruapiHostHandlers (one getter per service) and start the server:
+final server = createTruapiServer(provider, MyHostHandlers());
+// … later: server.dispose();
+```
+
+A subscription handler returns a `Stream<Item>`. For a fallible
+(`Result<Subscription>`) method, end the stream with a typed interrupt by adding
+a `SubscriptionInterrupted<Reason>(reason)` error; otherwise the stream's normal
+completion ends the subscription. To compose a server from a subset of services
+(or add custom entries), use the public per-service `build<Service>Entries(...)`
+builders with `createHostServer(provider, [...entries])`.
 
 ## Type mapping
 

@@ -45,6 +45,12 @@ struct Cli {
     #[arg(long)]
     dart_output: Option<String>,
 
+    /// Output directory for the generated Dart host dispatcher (optional).
+    /// Writes `host.dart` (typed handler interfaces + `createTruapiServer`).
+    /// Reuses the client's `types.dart`, so point it at the same generated dir.
+    #[arg(long)]
+    dart_host_output: Option<String>,
+
     /// Output directory for generated playground metadata (optional).
     #[arg(long)]
     playground_output: Option<String>,
@@ -119,6 +125,11 @@ fn main() -> Result<()> {
         dart::generate(&api, path, client_version, cli.codec_version)
             .with_context(|| format!("writing Dart client to {path}"))?;
         println!("Generated Dart client in {path}");
+    }
+    if let Some(path) = &cli.dart_host_output {
+        dart::generate_host(&api, path, client_version, cli.codec_version)
+            .with_context(|| format!("writing Dart host to {path}"))?;
+        println!("Generated Dart host in {path}");
     }
     if let Some(path) = &cli.playground_output {
         ts::generate_playground_services(&api, path, client_version, cli.strip_examples)

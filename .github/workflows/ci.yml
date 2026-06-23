@@ -247,7 +247,8 @@ jobs:
           cargo run -p truapi-codegen -- \
             --input target/doc/truapi.json \
             --output "$RUNNER_TEMP/truapi-ts-throwaway" \
-            --dart-output dart/truapi/lib/src/generated
+            --dart-output dart/truapi/lib/src/generated \
+            --dart-host-output dart/truapi/lib/src/generated
           cargo run -p truapi --example wire_vectors -- dart/truapi/test/wire_vectors.json
 
       - name: Analyze + test

@@ -48,6 +48,26 @@ pub fn generate(
     Ok(())
 }
 
+/// Generate the Dart host dispatcher (`host.dart`) into `output_dir`.
+///
+/// The host reuses the client's generated `types.dart` (inner types + codecs):
+/// it emits one typed handler interface per service, the dispatch-entry
+/// builders, and `createTruapiServer`, all bound to the hand-written
+/// `src/host/host_server.dart` runtime. Handlers receive and return the inner
+/// (selected-version) types; the generated entries handle versioned wire
+/// wrapping.
+pub fn generate_host(
+    api: &ApiDefinition,
+    output_dir: &str,
+    target_version: u32,
+    codec_version: u8,
+) -> Result<()> {
+    fs::create_dir_all(output_dir)?;
+    let g = Gen::new(api, target_version, codec_version);
+    fs::write(Path::new(output_dir).join("host.dart"), g.host()?)?;
+    Ok(())
+}
+
 /// Selected inner shape of a versioned wrapper variant.
 enum WrapKind {
     Unit,
@@ -775,6 +795,216 @@ impl<'a> Gen<'a> {
             });
         }
         Ok((self.dart_type(ty)?, self.codec_expr(ty)?))
+    }
+
+    // --- host.dart --------------------------------------------------------
+
+    fn host(&self) -> Result<String> {
+        let mut out = String::new();
+        writeln!(
+            out,
+            "{HEADER}\nimport 'dart:async';\nimport 'dart:typed_data';\n\nimport '../result.dart';\nimport '../scale.dart' as S;\nimport '../transport.dart';\nimport '../host/host_server.dart';\nimport 'types.dart';\nimport 'wire_table.dart' as W;\n"
+        )
+        .unwrap();
+
+        let services = self.services()?;
+
+        for (trait_def, methods) in &services {
+            // Typed handler interface.
+            write_doc(&mut out, "", trait_def.docs.as_deref());
+            writeln!(
+                out,
+                "abstract interface class {}HostHandlers {{",
+                trait_def.name
+            )
+            .unwrap();
+            for method in methods {
+                self.emit_host_signature(&mut out, method)?;
+            }
+            writeln!(out, "}}\n").unwrap();
+
+            // Dispatch-entry builder. Public so hosts can compose a server
+            // from a subset of services (or add custom entries).
+            writeln!(
+                out,
+                "/// Build the dispatch entries for the [{name}HostHandlers] service.",
+                name = trait_def.name
+            )
+            .unwrap();
+            writeln!(
+                out,
+                "List<HostDispatchEntry> build{name}Entries({name}HostHandlers h) => [",
+                name = trait_def.name
+            )
+            .unwrap();
+            for method in methods {
+                self.emit_host_entry(&mut out, trait_def, method)?;
+            }
+            writeln!(out, "];\n").unwrap();
+        }
+
+        // Combined handlers interface.
+        writeln!(out, "/// All host handler groups, one getter per service.").unwrap();
+        writeln!(out, "abstract interface class TruapiHostHandlers {{").unwrap();
+        for (trait_def, _) in &services {
+            writeln!(
+                out,
+                "  {name}HostHandlers get {field};",
+                name = trait_def.name,
+                field = service_field(&trait_def.name)
+            )
+            .unwrap();
+        }
+        writeln!(out, "}}\n").unwrap();
+
+        // Factory.
+        writeln!(
+            out,
+            "/// Attach a host server to [provider], routing inbound request and"
+        )
+        .unwrap();
+        writeln!(
+            out,
+            "/// subscription frames to the supplied typed [handlers]."
+        )
+        .unwrap();
+        writeln!(
+            out,
+            "TruapiHostServer createTruapiServer(\n  Provider provider,\n  TruapiHostHandlers handlers, [\n  HostServerHooks hooks = const HostServerHooks(),\n]) {{\n  final entries = <HostDispatchEntry>[",
+        )
+        .unwrap();
+        for (trait_def, _) in &services {
+            writeln!(
+                out,
+                "    ...build{name}Entries(handlers.{field}),",
+                name = trait_def.name,
+                field = service_field(&trait_def.name)
+            )
+            .unwrap();
+        }
+        writeln!(
+            out,
+            "  ];\n  return createHostServer(provider, entries, hooks);\n}}"
+        )
+        .unwrap();
+
+        Ok(out)
+    }
+
+    /// Emit one handler-interface method signature.
+    fn emit_host_signature(&self, out: &mut String, method: &MethodDef) -> Result<()> {
+        let name = method_name(&method.name);
+        let wire_version = self.method_wire_version(method)?;
+        let payload = self.emit_payload(method, wire_version)?;
+        let ctx_param = if payload.arg_decl.is_empty() {
+            "CallContext ctx".to_string()
+        } else {
+            format!("CallContext ctx, {}", payload.arg_decl)
+        };
+        write_doc(out, "  ", method.docs.as_deref());
+        match (&method.kind, &method.return_type) {
+            (MethodKind::Request, ReturnType::Result { ok, err }) => {
+                let (ok_type, _) = self.resolve_inner(ok)?;
+                let (err_type, _) = self.resolve_inner(call_error_inner(err).unwrap_or(err))?;
+                writeln!(
+                    out,
+                    "  Future<Result<{ok_type}, {err_type}>> {name}({ctx_param});"
+                )
+                .unwrap();
+            }
+            (MethodKind::Subscription, ReturnType::Subscription(item)) => {
+                let (item_type, _) = self.resolve_inner(item)?;
+                writeln!(out, "  Stream<{item_type}> {name}({ctx_param});").unwrap();
+            }
+            (MethodKind::ResultSubscription, ReturnType::ResultSubscription { item, .. }) => {
+                let (item_type, _) = self.resolve_inner(item)?;
+                writeln!(out, "  Stream<{item_type}> {name}({ctx_param});").unwrap();
+            }
+            (kind, ret) => bail!(
+                "host signature mismatch for `{}`: {:?} vs {:?}",
+                method.name,
+                kind,
+                ret
+            ),
+        }
+        Ok(())
+    }
+
+    /// Emit one dispatch entry (request or subscription).
+    fn emit_host_entry(
+        &self,
+        out: &mut String,
+        trait_def: &TraitDef,
+        method: &MethodDef,
+    ) -> Result<()> {
+        let name = method_name(&method.name);
+        let wc = wire_const(&trait_def.name, &method.name);
+        let wire_version = self.method_wire_version(method)?;
+        let payload = self.emit_payload(method, wire_version)?;
+        let has_param = !payload.arg_decl.is_empty();
+        let call_args = if has_param { "ctx, request" } else { "ctx" };
+        let decode_line = if has_param {
+            format!("      final request = {}.dec(payload);\n", payload.codec)
+        } else {
+            String::new()
+        };
+
+        match (&method.kind, &method.return_type) {
+            (MethodKind::Request, ReturnType::Result { ok, err }) => {
+                let (_, ok_codec) = self.resolve_inner(ok)?;
+                let (_, err_codec) = self.resolve_inner(call_error_inner(err).unwrap_or(err))?;
+                let response_codec = match wire_version {
+                    Some(v) => format!("S.versioned({}, S.result({ok_codec}, {err_codec}))", v - 1),
+                    None => format!("S.result({ok_codec}, {err_codec})"),
+                };
+                writeln!(
+                    out,
+                    "  RequestEntry(\n    ids: W.{wc},\n    handle: (ctx, payload) async {{\n{decode_line}      final result = await h.{name}({call_args});\n      return {response_codec}.enc(result);\n    }},\n  ),"
+                )
+                .unwrap();
+            }
+            (MethodKind::Subscription, ReturnType::Subscription(item)) => {
+                let (_, item_codec) = self.resolve_inner(item)?;
+                let item_enc = match wire_version {
+                    Some(v) => format!("S.versioned({}, {item_codec})", v - 1),
+                    None => item_codec,
+                };
+                let void_interrupt = match wire_version {
+                    Some(v) => format!("S.versioned({}, S.unit).enc(S.unitValue)", v - 1),
+                    None => "S.unit.enc(S.unitValue)".to_string(),
+                };
+                writeln!(
+                    out,
+                    "  SubscriptionEntry(\n    ids: W.{wc},\n    start: (ctx, payload, port) {{\n{decode_line}      final sub = h.{name}({call_args}).listen(\n        (item) => port.sendReceive({item_enc}.enc(item)),\n        onError: (Object _) => port.sendInterrupt({void_interrupt}),\n        onDone: () => port.sendInterrupt({void_interrupt}),\n        cancelOnError: true,\n      );\n      return () => sub.cancel();\n    }},\n  ),"
+                )
+                .unwrap();
+            }
+            (MethodKind::ResultSubscription, ReturnType::ResultSubscription { item, err }) => {
+                let (_, item_codec) = self.resolve_inner(item)?;
+                let err_inner = call_error_inner(err).unwrap_or(err);
+                let (err_type, err_codec) = self.resolve_inner(err_inner)?;
+                let item_enc = match wire_version {
+                    Some(v) => format!("S.versioned({}, {item_codec})", v - 1),
+                    None => item_codec,
+                };
+                let reason_enc = match wire_version {
+                    Some(v) => format!("S.versioned({}, {err_codec})", v - 1),
+                    None => err_codec,
+                };
+                writeln!(
+                    out,
+                    "  SubscriptionEntry(\n    ids: W.{wc},\n    start: (ctx, payload, port) {{\n{decode_line}      final sub = h.{name}({call_args}).listen(\n        (item) => port.sendReceive({item_enc}.enc(item)),\n        onError: (Object e) {{\n          if (e is SubscriptionInterrupted) {{\n            port.sendInterrupt({reason_enc}.enc(e.reason as {err_type}));\n          }}\n        }},\n        cancelOnError: true,\n      );\n      return () => sub.cancel();\n    }},\n  ),"
+                )
+                .unwrap();
+            }
+            (kind, ret) => bail!(
+                "host entry mismatch for `{}`: {:?} vs {:?}",
+                method.name,
+                kind,
+                ret
+            ),
+        }
+        Ok(())
     }
 
     // --- shared helpers ---------------------------------------------------

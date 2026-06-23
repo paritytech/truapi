@@ -30,6 +30,7 @@ cargo run -p truapi-codegen -- \
   --host-output js/packages/truapi-host/src/generated \
   --explorer-output js/packages/truapi/src/explorer \
   --dart-output dart/truapi/lib/src/generated \
+  --dart-host-output dart/truapi/lib/src/generated \
   --codec-version 1
 
 node scripts/regen-explorer-versions.mjs
