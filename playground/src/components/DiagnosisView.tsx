@@ -6,7 +6,7 @@ import {
   renderReportMarkdown,
   reportIssueUrl,
 } from "@/src/lib/diagnosis-report";
-import { getClient } from "@/src/lib/transport";
+import { getClientOrThrow } from "@parity/truapi/sandbox";
 
 const STATUS_LABEL: Record<TestStatus, string> = {
   idle: "queued",
@@ -96,7 +96,7 @@ export function DiagnosisView({
     void navigator.clipboard?.writeText(report).catch(() => {});
     const url = reportIssueUrl(report, detectHostMode());
     try {
-      void getClient().system.navigateTo({ url });
+      void getClientOrThrow().system.navigateTo({ url });
     } catch {
       /* no host connection */
     }

@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { stringify } from "@/src/lib/host-api-bridge";
 import { ExampleEditor } from "@/src/components/ExampleEditor";
 import { runExample, type LogEntry } from "@/src/lib/example-runner";
-import { getClient } from "@/src/lib/transport";
+import { getClientOrThrow } from "@parity/truapi/sandbox";
 import { methodTestId, revealInRail, serviceTestId } from "@/src/lib/rail";
 import { services } from "@/src/lib/services";
 import type { MethodInfo, ServiceInfo } from "@/src/lib/services";
@@ -121,7 +121,11 @@ export function MethodView({
     setLogs([]);
     setTab("output");
     try {
-      const run = await runExample({ source, client: getClient(), onLog });
+      const run = await runExample({
+        source,
+        client: getClientOrThrow(),
+        onLog,
+      });
       cancelRunRef.current = run.cancel;
       let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
       const abortPromise = new Promise<never>((_, reject) => {

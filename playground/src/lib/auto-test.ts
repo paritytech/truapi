@@ -3,7 +3,7 @@ import {
   type LogEntry,
   type RunResult,
 } from "./example-runner";
-import { getClient } from "./transport";
+import { getClientOrThrow } from "@parity/truapi/sandbox";
 import type { MethodInfo, ServiceInfo } from "./services";
 
 export const DIAGNOSIS_ID = "__diagnosis__";
@@ -72,7 +72,7 @@ async function runOne({
   // output, captured into `logs` for the report but with no bearing on status.
   let run: RunResult | undefined;
   try {
-    run = await runExample({ source, client: getClient(), onLog });
+    run = await runExample({ source, client: getClientOrThrow(), onLog });
     await Promise.race([
       run.promise,
       new Promise<never>((_, reject) =>

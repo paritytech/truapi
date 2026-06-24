@@ -68,6 +68,41 @@ sub.unsubscribe();
 - **TrUAPI transport** that handles request, response, subscription, and handshake framing.
 - **Generated domain clients and types** produced from the Rust API contract.
 - **SCALE codec helpers** used by the generated code, also re-exported for direct use.
+- **Sandbox bootstrap** (`@parity/truapi/sandbox`) that detects the host environment, builds the
+  matching provider, and exposes a cached client — see below.
+
+## Sandbox bootstrap
+
+`@parity/truapi/sandbox` wires up a client for browser-embedded hosts: it detects whether the app
+runs inside a TrUAPI host (iframe or webview), builds the matching provider, and caches the
+resulting client. Use it instead of assembling `createTransport` / `createClient` by hand.
+
+```ts
+import {
+  getClient,
+  isCorrectEnvironment,
+  subscribeConnectionStatus,
+} from "@parity/truapi/sandbox";
+
+if (isCorrectEnvironment()) {
+  const client = await getClient(); // runs the handshake once; null outside a host
+}
+
+// Or drive UI off connection status:
+const unsubscribe = subscribeConnectionStatus((status) => {
+  // "disconnected" | "connecting" | "connected"
+});
+```
+
+| Export                                       | Purpose                                             |
+| -------------------------------------------- | --------------------------------------------------- |
+| `isCorrectEnvironment(): boolean`            | Synchronous host-environment detection.             |
+| `getClientSync(): TrUApiClient \| null`      | Cached client, no handshake; `null` outside a host. |
+| `getClientOrThrow(): TrUApiClient`           | Cached client, no handshake; throws outside a host. |
+| `getClient(): Promise<TrUApiClient \| null>` | Cached client; runs `system.handshake` once.        |
+| `isReady(): Promise<boolean>`                | Whether the handshake has succeeded.                |
+| `subscribeConnectionStatus(cb): () => void`  | Status-listener lifecycle; kicks off the handshake. |
+| `disposeClient(): void`                      | Tear down the cached provider / transport / client. |
 
 ## Wire format
 
