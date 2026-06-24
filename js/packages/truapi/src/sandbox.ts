@@ -3,10 +3,9 @@
  *
  * Detects whether the app runs inside a TrUAPI host (iframe or webview), builds
  * the matching {@link Provider}, and exposes a lazily-created, cached
- * {@link TrUApiClient} so embedders don't re-implement the wiring. Both a
- * promise-based lifecycle ({@link getClient} / {@link isReady}) and a
- * status-listener lifecycle ({@link subscribeConnectionStatus}) are provided
- * over the same cached client.
+ * {@link TrUApiClient} via {@link getClientSync} so embedders don't
+ * re-implement the wiring. {@link subscribeConnectionStatus} surfaces a
+ * connected / disconnected signal over the same cached client.
  *
  * @module
  */
@@ -19,7 +18,11 @@ import {
 import { createTransport } from "./client.js";
 import { createClient, type TrUApiClient } from "./generated/index.js";
 
-/** Connection lifecycle state surfaced by {@link subscribeConnectionStatus}. */
+/**
+ * Connection lifecycle state. {@link subscribeConnectionStatus} emits
+ * `"connected"` / `"disconnected"`; `"connecting"` is reserved for consumers
+ * that want to render an indeterminate state before the first status is known.
+ */
 export type ConnectionStatus = "disconnected" | "connecting" | "connected";
 
 declare global {
@@ -123,11 +126,8 @@ function createSandboxProvider(): Provider {
 }
 
 let cachedClient: TrUApiClient | null = null;
-let handshake: Promise<boolean> | null = null;
 let status: ConnectionStatus = "disconnected";
 const statusListeners = new Set<(status: ConnectionStatus) => void>();
-
-const HANDSHAKE_TIMEOUT_MS = 5_000;
 
 function setStatus(next: ConnectionStatus): void {
   if (status === next) return;
@@ -136,9 +136,8 @@ function setStatus(next: ConnectionStatus): void {
 }
 
 /**
- * Build (or return the cached) {@link TrUApiClient} without running the
- * handshake. Returns `null` outside a host container or if the provider can't
- * be built. Use {@link getClient} for the handshake-completed client.
+ * Build (or return the cached) {@link TrUApiClient}. Returns `null` outside a
+ * host container or if the provider can't be built.
  */
 export function getClientSync(): TrUApiClient | null {
   if (cachedClient) return cachedClient;
@@ -154,40 +153,10 @@ export function getClientSync(): TrUApiClient | null {
 }
 
 /**
- * Get the {@link TrUApiClient}, running `system.handshake` once and caching the
- * result. The handshake is best-effort (5s timeout): the client is returned
- * regardless of whether the handshake reports success. Returns `null` outside a
- * host container.
- */
-export async function getClient(): Promise<TrUApiClient | null> {
-  const client = getClientSync();
-  if (!client) return null;
-  if (!handshake) {
-    handshake = Promise.race([
-      client.system.handshake().match(
-        () => true,
-        () => false,
-      ),
-      new Promise<boolean>((resolve) =>
-        setTimeout(() => resolve(false), HANDSHAKE_TIMEOUT_MS),
-      ),
-    ]);
-  }
-  await handshake;
-  return client;
-}
-
-/** Whether the host connection is up and the handshake has succeeded. */
-export async function isReady(): Promise<boolean> {
-  if (!getClientSync()) return false;
-  await getClient();
-  return (await handshake) ?? false;
-}
-
-/**
  * Subscribe to connection-status changes. The callback fires immediately with
- * the current status and on every transition. The first subscription while
- * disconnected kicks off the handshake. Returns an unsubscribe function.
+ * the current status and on every transition. Status is `"connected"` once the
+ * client is built inside a host container, and `"disconnected"` otherwise (or
+ * when the provider reports the pipe closed). Returns an unsubscribe function.
  */
 export function subscribeConnectionStatus(
   callback: (status: ConnectionStatus) => void,
@@ -195,11 +164,8 @@ export function subscribeConnectionStatus(
   statusListeners.add(callback);
   callback(status);
 
-  if (status === "disconnected" && isCorrectEnvironment()) {
-    setStatus("connecting");
-    getClient()
-      .then((client) => setStatus(client ? "connected" : "disconnected"))
-      .catch(() => setStatus("disconnected"));
+  if (status === "disconnected") {
+    setStatus(getClientSync() ? "connected" : "disconnected");
   }
 
   return () => {

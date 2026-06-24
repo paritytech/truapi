@@ -79,28 +79,27 @@ resulting client. Use it instead of assembling `createTransport` / `createClient
 
 ```ts
 import {
-  getClient,
+  getClientSync,
   isCorrectEnvironment,
   subscribeConnectionStatus,
 } from "@parity/truapi/sandbox";
 
-if (isCorrectEnvironment()) {
-  const client = await getClient(); // runs the handshake once; null outside a host
+const client = getClientSync(); // null outside a host container
+if (client) {
+  // …make host calls
 }
 
 // Or drive UI off connection status:
 const unsubscribe = subscribeConnectionStatus((status) => {
-  // "disconnected" | "connecting" | "connected"
+  // "disconnected" | "connected"
 });
 ```
 
-| Export                                       | Purpose                                             |
-| -------------------------------------------- | --------------------------------------------------- |
-| `isCorrectEnvironment(): boolean`            | Synchronous host-environment detection.             |
-| `getClientSync(): TrUApiClient \| null`      | Cached client, no handshake; `null` outside a host. |
-| `getClient(): Promise<TrUApiClient \| null>` | Cached client; runs `system.handshake` once.        |
-| `isReady(): Promise<boolean>`                | Whether the handshake has succeeded.                |
-| `subscribeConnectionStatus(cb): () => void`  | Status-listener lifecycle; kicks off the handshake. |
+| Export                                      | Purpose                                         |
+| ------------------------------------------- | ----------------------------------------------- |
+| `isCorrectEnvironment(): boolean`           | Synchronous host-environment detection.         |
+| `getClientSync(): TrUApiClient \| null`     | Cached client; `null` outside a host container. |
+| `subscribeConnectionStatus(cb): () => void` | Connected / disconnected status listener.       |
 
 ## Wire format
 
