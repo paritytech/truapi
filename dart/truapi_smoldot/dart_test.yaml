@@ -1,0 +1,8 @@
+# Network + native-smoldot integration tests are opt-in. The default `dart test`
+# run stays fast and offline. To run the live tests (needs the smoldot native
+# library on LD_LIBRARY_PATH and internet access):
+#
+#   dart test --run-skipped -t network
+tags:
+  network:
+    skip: "live test: run with `dart test --run-skipped -t network` (needs network + libsmoldot)"

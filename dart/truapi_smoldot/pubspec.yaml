@@ -1,0 +1,31 @@
+name: truapi_smoldot
+description: >-
+  Backs the TrUAPI Dart host's Chain (and StatementStore) services with a smoldot
+  light client. Maps the typed TrUAPI Chain SCALE protocol onto Polkadot
+  JSON-RPC (chainHead_v1_* / chainSpec_v1_* / transaction_v1_* / statement_*) over
+  a smoldot_provider JsonRpcProvider, implementing the generated host handler
+  interfaces.
+version: 0.1.0
+repository: https://github.com/paritytech/truapi
+publish_to: none
+
+environment:
+  sdk: ^3.5.0
+
+# Cross-repo local-dev wiring: `truapi` is this repo's host package; the smoldot
+# light-client provider lives in snowpinelabs/polkadart. None are published, so
+# these are path/override deps for local development. For a real release, pin
+# them to published or git refs.
+dependencies:
+  truapi:
+    path: ../truapi
+  smoldot_provider:
+    path: ../../../polkadart-snowpinelabs/packages/smoldot_provider
+
+dependency_overrides:
+  smoldot:
+    path: ../../../polkadart-snowpinelabs/packages/smoldot
+
+dev_dependencies:
+  lints: ^4.0.0
+  test: ^1.25.0
