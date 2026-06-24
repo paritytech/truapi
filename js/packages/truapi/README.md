@@ -102,7 +102,6 @@ const unsubscribe = subscribeConnectionStatus((status) => {
 | `getClient(): Promise<TrUApiClient \| null>` | Cached client; runs `system.handshake` once.        |
 | `isReady(): Promise<boolean>`                | Whether the handshake has succeeded.                |
 | `subscribeConnectionStatus(cb): () => void`  | Status-listener lifecycle; kicks off the handshake. |
-| `disposeClient(): void`                      | Tear down the cached provider / transport / client. |
 
 ## Wire format
 

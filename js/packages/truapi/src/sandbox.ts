@@ -15,7 +15,6 @@ import {
   createIframeProvider,
   createMessagePortProvider,
   type Provider,
-  type TrUApiTransport,
 } from "./transport.js";
 import { createTransport } from "./client.js";
 import { createClient, type TrUApiClient } from "./generated/index.js";
@@ -123,8 +122,6 @@ function createSandboxProvider(): Provider {
   return provider;
 }
 
-let cachedProvider: Provider | null = null;
-let cachedTransport: TrUApiTransport | null = null;
 let cachedClient: TrUApiClient | null = null;
 let handshake: Promise<boolean> | null = null;
 let status: ConnectionStatus = "disconnected";
@@ -148,13 +145,9 @@ export function getClientSync(): TrUApiClient | null {
   if (!isCorrectEnvironment()) return null;
   try {
     const provider = createSandboxProvider();
-    const transport = createTransport(provider);
-    const client = createClient(transport);
-    cachedProvider = provider;
-    cachedTransport = transport;
-    cachedClient = client;
+    cachedClient = createClient(createTransport(provider));
     provider.subscribeClose?.(() => setStatus("disconnected"));
-    return client;
+    return cachedClient;
   } catch {
     return null;
   }
@@ -227,23 +220,4 @@ export function subscribeConnectionStatus(
   return () => {
     statusListeners.delete(callback);
   };
-}
-
-/** Tear down the cached provider / transport / client and reset status. */
-export function disposeClient(): void {
-  try {
-    cachedTransport?.dispose();
-  } catch {
-    // Best effort.
-  }
-  try {
-    cachedProvider?.dispose();
-  } catch {
-    // Best effort.
-  }
-  cachedProvider = null;
-  cachedTransport = null;
-  cachedClient = null;
-  handshake = null;
-  setStatus("disconnected");
 }
