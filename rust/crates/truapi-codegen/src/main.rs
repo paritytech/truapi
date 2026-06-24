@@ -39,9 +39,9 @@ struct Cli {
     #[arg(long, default_value_t = 1)]
     codec_version: u8,
 
-    /// Output directory for the generated Dart client (optional). When set,
-    /// writes `types.dart`, `wire_table.dart`, `client.dart`, and `index.dart`
-    /// (the `dart/truapi` package's generated surface).
+    /// Output directory for the shared Dart types + wire table (optional). When
+    /// set, writes `types.dart`, `wire_table.dart`, and `index.dart`. The Dart
+    /// package is host-only (no client facade); pair with `--dart-host-output`.
     #[arg(long)]
     dart_output: Option<String>,
 
@@ -129,17 +129,17 @@ fn main() -> Result<()> {
         "Generated TypeScript client for TrUAPI V{client_version} codec {codec_version} in {output}",
     );
     if let Some(path) = &cli.dart_output {
-        dart::generate(&api, path, client_version, cli.codec_version)
-            .with_context(|| format!("writing Dart client to {path}"))?;
-        println!("Generated Dart client in {path}");
+        dart::generate(&api, path, client_version)
+            .with_context(|| format!("writing Dart types to {path}"))?;
+        println!("Generated Dart types + wire table in {path}");
     }
     if let Some(path) = &cli.dart_host_output {
-        dart::generate_host(&api, path, client_version, cli.codec_version)
+        dart::generate_host(&api, path, client_version)
             .with_context(|| format!("writing Dart host to {path}"))?;
         println!("Generated Dart host in {path}");
     }
     if let Some(path) = &cli.dart_host_scaffold_output {
-        dart::generate_host_scaffold(&api, path, client_version, cli.codec_version)
+        dart::generate_host_scaffold(&api, path, client_version)
             .with_context(|| format!("writing Dart host scaffold to {path}"))?;
         println!("Generated Dart host scaffold at {path}");
     }

@@ -19,7 +19,7 @@
 
 import 'dart:typed_data';
 
-import 'package:truapi/host.dart';
+import 'package:truapi/truapi.dart';
 
 /// Account lookup, aliasing, and proof generation.
 class AccountHandlers implements AccountHostHandlers {

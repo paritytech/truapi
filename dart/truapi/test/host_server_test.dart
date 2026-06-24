@@ -1,7 +1,8 @@
+import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:truapi/host.dart';
-import 'package:truapi/truapi.dart' as c;
+import 'package:truapi/truapi.dart';
+import 'package:truapi/src/scale.dart' as s;
 import 'package:test/test.dart';
 
 /// A minimal host implementation of the Account service. Only the two methods
@@ -64,36 +65,83 @@ class _AccountHandlers implements AccountHostHandlers {
 }
 
 void main() {
-  test('generated client request is dispatched by the generated host',
-      () async {
-    final channel = c.LoopbackChannel();
-    final server =
-        createHostServer(channel.host, buildAccountEntries(_AccountHandlers()));
-    final client = c.createClient(channel.client);
+  test('host dispatches a request frame to the handler and replies', () async {
+    final channel = LoopbackChannel();
+    final server = createHostServer(
+      channel.host,
+      buildAccountEntries(_AccountHandlers()),
+    );
 
-    final res = await client.account.getAccount(
-      const HostAccountGetRequest(
-        productAccountId:
-            ProductAccountId(dotNsIdentifier: 'a.dot', derivationIndex: 5),
+    // Product side: listen for the response frame.
+    final response = Completer<HostAccountGetResponse>();
+    channel.client.subscribe((frame) {
+      final message = decodeWireMessage(frame);
+      if (message.id != accountGetAccount.response) return;
+      final result = s
+          .versioned(0,
+              s.result(hostAccountGetResponseCodec, hostAccountGetErrorCodec))
+          .dec(message.value);
+      switch (result) {
+        case Ok(value: final value):
+          response.complete(value);
+        case Err():
+          response.completeError(StateError('unexpected Err'));
+      }
+    });
+
+    // Product side: send a raw accountGetAccount request frame.
+    final payload = s.versioned(0, hostAccountGetRequestCodec).enc(
+          const HostAccountGetRequest(
+            productAccountId:
+                ProductAccountId(dotNsIdentifier: 'a.dot', derivationIndex: 5),
+          ),
+        );
+    channel.client.postMessage(
+      encodeWireMessage(
+        ProtocolMessage('p:1', accountGetAccount.request, payload),
       ),
     );
 
-    expect(res.isOk, isTrue);
-    final response = (res as Ok).value as HostAccountGetResponse;
-    expect(response.account.publicKey, Uint8List.fromList([5]));
+    final result = await response.future.timeout(const Duration(seconds: 2));
+    expect(result.account.publicKey, Uint8List.fromList([5]));
     server.dispose();
   });
 
-  test('generated client subscription is streamed by the generated host',
+  test('host streams a subscription back as receive + interrupt frames',
       () async {
-    final channel = c.LoopbackChannel();
-    final server =
-        createHostServer(channel.host, buildAccountEntries(_AccountHandlers()));
-    final client = c.createClient(channel.client);
+    final channel = LoopbackChannel();
+    final server = createHostServer(
+      channel.host,
+      buildAccountEntries(_AccountHandlers()),
+    );
 
-    final items =
-        await client.account.connectionStatusSubscribe().take(2).toList();
+    final items = <HostAccountConnectionStatusSubscribeItem>[];
+    final done = Completer<void>();
+    channel.client.subscribe((frame) {
+      final message = decodeWireMessage(frame);
+      if (message.id == accountConnectionStatusSubscribe.receive) {
+        items.add(
+          s
+              .versioned(0, hostAccountConnectionStatusSubscribeItemCodec)
+              .dec(message.value),
+        );
+      } else if (message.id == accountConnectionStatusSubscribe.interrupt) {
+        if (!done.isCompleted) done.complete();
+      }
+    });
 
+    // Start the subscription (no payload → versioned unit).
+    channel.client.postMessage(
+      encodeWireMessage(
+        ProtocolMessage(
+          'p:2',
+          accountConnectionStatusSubscribe.start,
+          s.versioned(0, s.unit).enc(s.unitValue),
+        ),
+      ),
+    );
+
+    await done.future.timeout(const Duration(seconds: 2));
     expect(items, [
       HostAccountConnectionStatusSubscribeItem.connected,
       HostAccountConnectionStatusSubscribeItem.disconnected,

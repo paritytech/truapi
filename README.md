@@ -55,19 +55,19 @@ See [`js/packages/truapi/README.md`](js/packages/truapi/README.md) for the full 
 ```
 rust/crates/
   truapi/                Rust trait and type definitions (v01, v02)
-  truapi-codegen/        rustdoc JSON to TypeScript + Dart clients + Rust dispatcher
+  truapi-codegen/        rustdoc JSON to TypeScript client + Dart host + Rust dispatcher
   truapi-macros/         #[wire(id = N)] proc-macro
 js/packages/
   truapi/                @parity/truapi TypeScript client
 dart/
-  truapi/                Dart/Flutter client (generated surface under lib/src/generated)
+  truapi/                Dart/Flutter host (generated surface under lib/src/generated)
 playground/              Interactive Next.js playground (truapi-playground.dot)
 hosts/dotli/             dotli host, vendored as a submodule
 docs/                    Design docs, RFCs, feature proposals
-scripts/codegen.sh       Regenerate the TS + Dart clients from the Rust source
+scripts/codegen.sh       Regenerate the TS client + Dart host from the Rust source
 ```
 
-A Dart/Flutter client is generated from the same Rust trait surface; see
+A Dart/Flutter host is generated from the same Rust trait surface; see
 [`dart/truapi/README.md`](dart/truapi/README.md) and the design doc
 [`docs/design/dart-flutter-support.md`](docs/design/dart-flutter-support.md).
 
