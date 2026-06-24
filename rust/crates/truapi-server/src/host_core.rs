@@ -129,6 +129,17 @@ impl HostCore {
         self.core.cancel_login();
     }
 
+    /// Notify the core that the host-global session store may have changed.
+    /// The core re-reads the persisted blob and emits any resulting
+    /// session/auth state changes.
+    #[instrument(skip_all, fields(runtime.method = "host_core.notify_session_store_changed"))]
+    pub fn notify_session_store_changed(&self) {
+        if self.disposed.load(Ordering::Acquire) {
+            return;
+        }
+        self.core.notify_session_store_changed();
+    }
+
     /// Dispose this host core. Idempotent.
     ///
     /// Disposal suppresses future outgoing frames and aborts in-flight dispatch

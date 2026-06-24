@@ -26,12 +26,7 @@ export type CallbackName =
   | "readStoredSession"
   | "writeStoredSession"
   | "clearStoredSession"
-  | "confirmSignPayload"
-  | "confirmSignRaw"
-  | "confirmCreateTransaction"
-  | "confirmAccountAlias"
-  | "confirmResourceAllocation"
-  | "confirmPreimageSubmit"
+  | "confirmUserAction"
   | "submitPreimage";
 
 export type OptionalCallbackName =
@@ -40,12 +35,7 @@ export type OptionalCallbackName =
   | "readStoredSession"
   | "writeStoredSession"
   | "clearStoredSession"
-  | "confirmSignPayload"
-  | "confirmSignRaw"
-  | "confirmCreateTransaction"
-  | "confirmAccountAlias"
-  | "confirmResourceAllocation"
-  | "confirmPreimageSubmit"
+  | "confirmUserAction"
   | "submitPreimage";
 
 /**
@@ -53,7 +43,6 @@ export type OptionalCallbackName =
  * `(payload?, sendItem) => dispose | void`.
  */
 export type SubscriptionName =
-  | "subscribeStoredSession"
   | "lookupPreimage"
   | "subscribeTheme";
 
@@ -76,6 +65,7 @@ export type MainToWorker =
   | { kind: "frame"; bytes: Uint8Array }
   | { kind: "disconnectSession"; requestId: number }
   | { kind: "cancelPairing" }
+  | { kind: "notifySessionStoreChanged" }
   | { kind: "callbackResponse"; requestId: number; ok: true; value: unknown }
   | { kind: "callbackResponse"; requestId: number; ok: false; error: string }
   | { kind: "subscriptionItem"; subId: number; value: unknown }

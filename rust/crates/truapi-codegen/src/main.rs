@@ -74,6 +74,13 @@ struct Cli {
     #[arg(long)]
     platform_ts_output: Option<String>,
 
+    /// Output directory for the generated WASM host-callback adapter
+    /// (optional). Only honored when `--platform-input` and
+    /// `--platform-ts-output` are also set. Defaults to `--platform-ts-output`
+    /// for backward-compatible one-directory generation.
+    #[arg(long)]
+    platform_wasm_adapter_output: Option<String>,
+
     /// Output directory for generated explorer metadata (optional). When set,
     /// writes `codegen/types.ts` with the DataType list consumed by the
     /// explorer site.
@@ -166,11 +173,21 @@ fn main() -> Result<()> {
             .filter(|t| !matches!(t.kind, rustdoc::TypeDefKind::Alias(_)))
             .map(|t| t.name.clone())
             .collect();
-        ts::generate_host_callbacks(&definition, &codec_types, output)
+        let adapter_output = cli
+            .platform_wasm_adapter_output
+            .as_deref()
+            .unwrap_or(output.as_str());
+        ts::generate_host_callbacks(&definition, &codec_types, output, adapter_output)
             .with_context(|| format!("writing host callbacks TS to {output}"))?;
         println!("Generated typed HostCallbacks TS surface in {output}");
-    } else if cli.platform_input.is_some() != cli.platform_ts_output.is_some() {
-        anyhow::bail!("--platform-input and --platform-ts-output must be provided together");
+        println!("Generated WASM HostCallbacks adapter in {adapter_output}");
+    } else if cli.platform_input.is_some() != cli.platform_ts_output.is_some()
+        || cli.platform_wasm_adapter_output.is_some()
+    {
+        anyhow::bail!(
+            "--platform-input and --platform-ts-output must be provided together; \
+             --platform-wasm-adapter-output additionally requires both"
+        );
     }
     if let Some(path) = &cli.explorer_output {
         ts::generate_explorer(&api, path, client_version)

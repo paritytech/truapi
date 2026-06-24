@@ -26,6 +26,7 @@ export type { Codec };
 export type { ResultPayload } from "scale-ts";
 
 export {
+  Bytes,
   Enum,
   Option,
   Result,

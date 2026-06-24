@@ -11,6 +11,7 @@ pub mod identity;
 pub mod permissions;
 pub mod product_account;
 pub mod session;
+pub mod session_store;
 pub mod sso_messages;
 pub mod sso_pairing;
 pub mod statement_store;

@@ -13,6 +13,7 @@
 #![forbid(unsafe_code)]
 
 use futures::stream::BoxStream;
+use parity_scale_codec::{Decode, Encode};
 
 use truapi::v01::{
     GenericError, HostDevicePermissionRequest, HostDevicePermissionResponse,
@@ -313,42 +314,74 @@ pub trait SessionStore: Send + Sync {
 
     /// Clear the persisted core session blob.
     fn clear_stored_session(&self) -> impl Future<Output = Result<(), GenericError>> + Send;
+}
 
-    /// Emit once immediately, then on future local/cross-runtime changes.
-    fn subscribe_stored_session(&self) -> BoxStream<'static, Result<(), GenericError>>;
+/// Review shown before a sign-payload request is sent to the paired wallet.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum SignPayloadReview {
+    /// Product-account signing request.
+    Product(v01::HostSignPayloadRequest),
+    /// Legacy-account signing request.
+    LegacyAccount(v01::HostSignPayloadWithLegacyAccountRequest),
+}
+
+/// Review shown before a sign-raw request is sent to the paired wallet.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum SignRawReview {
+    /// Product-account raw signing request.
+    Product(v01::HostSignRawRequest),
+    /// Legacy-account raw signing request.
+    LegacyAccount(v01::HostSignRawWithLegacyAccountRequest),
+}
+
+/// Review shown before a transaction-creation request is sent to the paired wallet.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum CreateTransactionReview {
+    /// Product-account transaction request.
+    Product(v01::ProductAccountTxPayload),
+    /// Legacy-account transaction request.
+    LegacyAccount(v01::LegacyAccountTxPayload),
+}
+
+/// Review shown before a product asks to alias another product account.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct AccountAliasReview {
+    /// Product currently handling the request.
+    pub requesting_product_id: String,
+    /// Product whose account is being requested.
+    pub target_product_id: String,
+}
+
+/// Review shown before a preimage is submitted.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub struct PreimageSubmitReview {
+    /// Size of the preimage in bytes.
+    pub size: u64,
+}
+
+/// Review shown before a user-confirmed core action continues.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum UserConfirmationReview {
+    /// Sign a SCALE payload with a product or legacy account.
+    SignPayload(SignPayloadReview),
+    /// Sign raw bytes with a product or legacy account.
+    SignRaw(SignRawReview),
+    /// Create a transaction with a product or legacy account.
+    CreateTransaction(CreateTransactionReview),
+    /// Allow a product to request another product account alias.
+    AccountAlias(AccountAliasReview),
+    /// Allocate resources for the requesting product.
+    ResourceAllocation(v01::HostRequestResourceAllocationRequest),
+    /// Submit a preimage to the host-selected backend.
+    PreimageSubmit(PreimageSubmitReview),
 }
 
 /// Local user confirmation UI for session-channel operations.
 pub trait UserConfirmation: Send + Sync {
-    /// Confirm a sign-payload request before the core asks the SSO peer.
-    fn confirm_sign_payload(
+    /// Confirm a reviewed action before the core asks the SSO peer.
+    fn confirm_user_action(
         &self,
-        review: Vec<u8>,
-    ) -> impl Future<Output = Result<bool, GenericError>> + Send;
-
-    /// Confirm a sign-raw request before the core asks the SSO peer.
-    fn confirm_sign_raw(
-        &self,
-        review: Vec<u8>,
-    ) -> impl Future<Output = Result<bool, GenericError>> + Send;
-
-    /// Confirm a create-transaction request before the core asks the SSO peer.
-    fn confirm_create_transaction(
-        &self,
-        review: Vec<u8>,
-    ) -> impl Future<Output = Result<bool, GenericError>> + Send;
-
-    /// Confirm a cross-domain account-alias request before the core asks the
-    /// SSO peer.
-    fn confirm_account_alias(
-        &self,
-        review: Vec<u8>,
-    ) -> impl Future<Output = Result<bool, GenericError>> + Send;
-
-    /// Confirm resource allocation before the core asks the SSO peer.
-    fn confirm_resource_allocation(
-        &self,
-        review: Vec<u8>,
+        review: UserConfirmationReview,
     ) -> impl Future<Output = Result<bool, GenericError>> + Send;
 }
 
@@ -361,12 +394,6 @@ pub trait ThemeHost: Send + Sync {
 /// Host preimage backend. The core owns wire mapping and subscription
 /// lifecycle; the host owns the selected backend.
 pub trait PreimageHost: Send + Sync {
-    /// Prompt before submitting a preimage.
-    fn confirm_preimage_submit(
-        &self,
-        size: u64,
-    ) -> impl Future<Output = Result<(), PreimageSubmitError>> + Send;
-
     /// Submit the preimage and return its key.
     fn submit_preimage(
         &self,

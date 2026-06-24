@@ -17,6 +17,7 @@ interface WasmCore {
   receiveFrame(frame: Uint8Array): Promise<void>;
   disconnectSession(): Promise<void>;
   cancelPairing(): void;
+  notifySessionStoreChanged(): void;
   dispose(): void;
   free(): void;
 }
@@ -148,18 +149,8 @@ const optionalRawCallbacks: Record<OptionalCallbackName, RawCallbackFn> = {
   writeStoredSession: (value: Uint8Array) =>
     callbackRequest("writeStoredSession", [value]),
   clearStoredSession: () => callbackRequest("clearStoredSession", []),
-  confirmSignPayload: (payload: Uint8Array) =>
-    callbackRequest("confirmSignPayload", [payload]) as Promise<boolean>,
-  confirmSignRaw: (payload: Uint8Array) =>
-    callbackRequest("confirmSignRaw", [payload]) as Promise<boolean>,
-  confirmCreateTransaction: (payload: Uint8Array) =>
-    callbackRequest("confirmCreateTransaction", [payload]) as Promise<boolean>,
-  confirmAccountAlias: (payload: Uint8Array) =>
-    callbackRequest("confirmAccountAlias", [payload]) as Promise<boolean>,
-  confirmResourceAllocation: (payload: Uint8Array) =>
-    callbackRequest("confirmResourceAllocation", [payload]) as Promise<boolean>,
-  confirmPreimageSubmit: (size: number) =>
-    callbackRequest("confirmPreimageSubmit", [size]) as Promise<void>,
+  confirmUserAction: (payload: Uint8Array) =>
+    callbackRequest("confirmUserAction", [payload]) as Promise<boolean>,
   submitPreimage: (value: Uint8Array) =>
     callbackRequest("submitPreimage", [value]) as Promise<Uint8Array>,
 };
@@ -170,10 +161,6 @@ function buildRawCallbacks(msg: Extract<MainToWorker, { kind: "init" }>) {
     callbacks[name] = optionalRawCallbacks[name];
   }
   const optionalSubscriptions = new Set(msg.optionalSubscriptions ?? []);
-  if (optionalSubscriptions.has("subscribeStoredSession")) {
-    callbacks.subscribeStoredSession = (sendItem: (value: unknown) => void) =>
-      startSubscription("subscribeStoredSession", null, sendItem);
-  }
   if (optionalSubscriptions.has("subscribeTheme")) {
     callbacks.subscribeTheme = (sendItem: (value: unknown) => void) =>
       startSubscription("subscribeTheme", null, sendItem);
@@ -246,6 +233,9 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
       break;
     case "cancelPairing":
       core?.cancelPairing();
+      break;
+    case "notifySessionStoreChanged":
+      core?.notifySessionStoreChanged();
       break;
     case "callbackResponse": {
       const cb = pendingCallbacks.get(msg.requestId);

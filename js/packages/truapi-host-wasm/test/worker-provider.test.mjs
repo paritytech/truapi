@@ -132,19 +132,10 @@ test("createWebWorkerProvider advertises the full optional callback surface", as
       "readStoredSession",
       "writeStoredSession",
       "clearStoredSession",
-      "confirmSignPayload",
-      "confirmSignRaw",
-      "confirmCreateTransaction",
-      "confirmAccountAlias",
-      "confirmResourceAllocation",
-      "confirmPreimageSubmit",
+      "confirmUserAction",
       "submitPreimage",
     ],
-    optionalSubscriptions: [
-      "subscribeStoredSession",
-      "subscribeTheme",
-      "lookupPreimage",
-    ],
+    optionalSubscriptions: ["subscribeTheme", "lookupPreimage"],
     chainConnect: true,
   });
 
@@ -152,6 +143,7 @@ test("createWebWorkerProvider advertises the full optional callback surface", as
   const provider = await providerPromise;
   assert.equal(typeof provider.disconnectSession, "function");
   assert.equal(typeof provider.cancelPairing, "function");
+  assert.equal(typeof provider.notifySessionStoreChanged, "function");
 
   provider.dispose();
 });
@@ -375,6 +367,18 @@ test("worker provider posts cancelPairing to the worker", async () => {
   provider.dispose();
 });
 
+test("worker provider posts notifySessionStoreChanged to the worker", async () => {
+  const worker = new FakeWorker();
+  const provider = await readyProvider(worker);
+
+  provider.notifySessionStoreChanged();
+
+  assert.deepEqual(worker.messages.at(-1), {
+    kind: "notifySessionStoreChanged",
+  });
+  provider.dispose();
+});
+
 test("worker fault terminates the worker and runs the full teardown", async () => {
   const worker = new FakeWorker();
   let subscriptionDisposes = 0;
@@ -384,7 +388,7 @@ test("worker fault terminates the worker and runs the full teardown", async () =
     makeCallbacks({
       // Manual async iterables whose `return()` records disposal; the provider
       // disposes subscriptions and closes chain connections on a worker fault.
-      subscribeStoredSession: () => ({
+      subscribeTheme: () => ({
         [Symbol.asyncIterator]() {
           return this;
         },
@@ -417,7 +421,7 @@ test("worker fault terminates the worker and runs the full teardown", async () =
   worker.emit({
     kind: "subscriptionStart",
     subId: 1,
-    name: "subscribeStoredSession",
+    name: "subscribeTheme",
     payload: null,
   });
   worker.emit({ kind: "chainConnectStart", connId: 1, genesisHash: "0xab" });

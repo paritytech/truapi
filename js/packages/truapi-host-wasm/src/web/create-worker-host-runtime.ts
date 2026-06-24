@@ -73,12 +73,7 @@ const OPTIONAL_CALLBACK_NAMES: readonly OptionalCallbackName[] = [
   "readStoredSession",
   "writeStoredSession",
   "clearStoredSession",
-  "confirmSignPayload",
-  "confirmSignRaw",
-  "confirmCreateTransaction",
-  "confirmAccountAlias",
-  "confirmResourceAllocation",
-  "confirmPreimageSubmit",
+  "confirmUserAction",
   "submitPreimage",
 ];
 
@@ -99,9 +94,6 @@ function optionalSubscriptions(
   callbacks: Omit<WasmRawCallbacks, "emitFrame">,
 ): SubscriptionName[] {
   const names: SubscriptionName[] = [];
-  if (typeof callbacks.subscribeStoredSession === "function") {
-    names.push("subscribeStoredSession");
-  }
   if (typeof callbacks.subscribeTheme === "function") {
     names.push("subscribeTheme");
   }
@@ -183,9 +175,6 @@ function handleSubscriptionStart(
   let dispose: (() => void) | void = undefined;
   try {
     switch (msg.name) {
-      case "subscribeStoredSession":
-        dispose = state.rawCallbacks.subscribeStoredSession?.(sendItem);
-        break;
       case "subscribeTheme":
         dispose = state.rawCallbacks.subscribeTheme?.(sendItem);
         break;
@@ -611,6 +600,11 @@ function buildProvider(state: WorkerProviderState): TrUApiHostCoreProvider {
     cancelPairing(): void {
       if (state.disposed) return;
       const post: MainToWorker = { kind: "cancelPairing" };
+      state.worker.postMessage(post);
+    },
+    notifySessionStoreChanged(): void {
+      if (state.disposed) return;
+      const post: MainToWorker = { kind: "notifySessionStoreChanged" };
       state.worker.postMessage(post);
     },
     setLogLevel(level: LogLevel): void {

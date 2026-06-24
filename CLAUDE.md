@@ -15,7 +15,8 @@ rust/crates/
   truapi-server/         Rust runtime hosts implement; ships as WASM (browser/node)
 js/packages/
   truapi/                  @parity/truapi TS package; generated TS lives under ignored paths
-  truapi-host/             @parity/truapi-host host-side codegen + dispatcher (no shared core)
+  truapi-host/             @parity/truapi-host host-side codegen + dispatcher (no shared core).
+                           `/callbacks` exposes typed HostCallbacks and callback DTO codecs.
   truapi-host-wasm/        @parity/truapi-host-wasm: WASM-backed host runtime. Subpath entries:
 	                           `.` (core Provider + dispatcher), `/web` (iframe + Web
 	                           Worker), `/electron` (MessagePortMain), `/worker-runtime` (Worker entry).
@@ -53,6 +54,15 @@ scripts/codegen.sh         regenerate the TS client from the Rust crate
 - After any code change, update `README.md` (and CLAUDE.md if the layout changed) so the top-level docs reflect what the repo actually contains. Stale docs are a regression.
 - In codegen emitters, prefer `indoc::writedoc!` / `formatdoc!` over chains of `writeln!`. A single `writedoc!` with a multi-line raw string keeps the emitted shape visible in source instead of fragmenting it across one-line `writeln!` calls. Reserve `writeln!` for the genuinely-one-line case (a single import, a single statement inside a loop).
 - In PR descriptions, issue comments, and other artifacts that outlive the conversation: describe the resulting state, not the transition between commits. Avoid "previously X, now Y", "we removed", "the old shim is gone", "this PR replaces", those read as ephemeral history once the PR is squash-merged. Write what the system _does_ after the change, not what each commit _changed_ on the way there. (Commit messages are the place for transition narrative; they survive in `git log` even after the squash.)
+
+## Explanation style
+
+- For architecture, event-flow, and debugging explanations, start with a short
+  direct summary of the model before diving into long details. Prefer simple
+  statements like "the host sends a dirty signal; the core re-reads and derives
+  auth state" before listing each hop.
+- Use diagrams only when they clarify ownership or message flow. Keep them
+  layered and label what is per-tab, shared, host-owned, and core-owned.
 
 ## First-time setup
 
@@ -166,6 +176,9 @@ pairs through the signer-bot service. It requires `SIGNER_BOT_SVC_TOKEN`;
 `https://signing-bot-dev.novasama-tech.org/` and `paseo-next-v2`. Without the
 token, do not treat the full suite as locally runnable. Use
 `E2E_DOTLI_SMOKE=1 make e2e-dotli` for the no-phone QR smoke path.
+If those signer-bot variables are not available in a worktree, check for a
+repo-root `.env` and load or copy the values from there before falling back to
+smoke mode. Prefer the current worktree's `.env` when it exists.
 
 For a fully automated local playground diagnosis run, use:
 

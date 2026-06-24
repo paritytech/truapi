@@ -25,13 +25,17 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./callbacks": {
+      "types": "./dist/generated/host-callbacks.d.ts",
+      "import": "./dist/generated/host-callbacks.js"
     }
   },
   "scripts": {
     "ensure-generated": "./scripts/ensure-generated.sh",
     "build": "tsc -b",
     "prebuild": "npm run ensure-generated",
-    "codegen": "cargo run -p truapi-codegen -- --input ../../../target/doc/truapi.json --output ../truapi/src/generated --host-output src/generated",
+    "codegen": "cargo run -p truapi-codegen -- --input ../../../target/doc/truapi.json --output ../truapi/src/generated --host-output src/generated --platform-input ../../../target/doc/truapi_platform.json --platform-ts-output src/generated",
     "typecheck": "npm run build",
     "pretest": "npm run ensure-generated",
     "test": "for f in test/*.test.mjs; do echo \"=== $f ===\" && bun \"$f\" || exit 1; done"

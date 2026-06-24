@@ -29,6 +29,7 @@ use crate::host_logic::product_account::{
 use crate::host_logic::session::{
     SessionInfo, SessionState, decode_persisted_session, encode_persisted_session,
 };
+use crate::host_logic::session_store::SessionStoreChangeNotifier;
 use crate::host_logic::sso_messages::SsoSessionStatement;
 use crate::host_logic::sso_messages::{
     OnExistingAllowancePolicy, SsoAllocationOutcome, SsoRemoteResponse, alias_request_message,
@@ -48,6 +49,7 @@ use sso_remote::{
 
 use futures::future::{AbortHandle, Abortable};
 use futures::{FutureExt, StreamExt};
+#[cfg(test)]
 use parity_scale_codec::Encode;
 use tracing::{debug, info, instrument};
 use truapi::api::{
@@ -130,10 +132,12 @@ use truapi::versioned::system::{
 use truapi::versioned::theme::HostThemeSubscribeItem;
 use truapi::{CallContext, CallError, Subscription};
 use truapi_platform::{
-    ChainProvider as PlatformChainProvider, JsonRpcConnection, Navigation as PlatformNavigation,
-    Notifications as PlatformNotifications, Platform, PreimageHost as PlatformPreimageHost,
-    RuntimeConfig, SessionStore as PlatformSessionStore, SessionUiInfo, Storage as PlatformStorage,
-    ThemeHost as PlatformThemeHost, UserConfirmation as PlatformUserConfirmation,
+    AccountAliasReview, ChainProvider as PlatformChainProvider, CreateTransactionReview,
+    JsonRpcConnection, Navigation as PlatformNavigation, Notifications as PlatformNotifications,
+    Platform, PreimageHost as PlatformPreimageHost, PreimageSubmitReview, RuntimeConfig,
+    SessionStore as PlatformSessionStore, SessionUiInfo, SignPayloadReview, SignRawReview,
+    Storage as PlatformStorage, ThemeHost as PlatformThemeHost,
+    UserConfirmation as PlatformUserConfirmation, UserConfirmationReview,
 };
 
 /// Adapter that exposes a [`truapi_platform::Platform`] through the
@@ -148,6 +152,7 @@ pub struct PlatformRuntimeHost<P> {
     /// Account-management subscriptions read from this in lieu of round-tripping
     /// a callback on every connection-status query.
     session_state: Arc<SessionState>,
+    session_store_changes: Arc<SessionStoreChangeNotifier>,
     session_disconnects: Arc<SessionDisconnects>,
     sso_disconnect_monitor: Arc<Mutex<Option<SsoDisconnectMonitor>>>,
     spawner: Spawner,
@@ -182,6 +187,7 @@ impl<P> PlatformRuntimeHost<P> {
             runtime_config,
             chain: ChainRuntime::new(chain_provider, spawner.clone()),
             session_state: SessionState::new(),
+            session_store_changes: SessionStoreChangeNotifier::new(),
             session_disconnects: Arc::new(SessionDisconnects::default()),
             sso_disconnect_monitor: Arc::new(Mutex::new(None)),
             spawner,
@@ -242,6 +248,10 @@ impl<P> PlatformRuntimeHost<P> {
         self.session_state.clone()
     }
 
+    pub fn session_store_changes(&self) -> Arc<SessionStoreChangeNotifier> {
+        self.session_store_changes.clone()
+    }
+
     fn start_sso_disconnect_monitor(&self, session: &SessionInfo)
     where
         P: Platform + 'static,
@@ -274,16 +284,14 @@ impl<P> PlatformRuntimeHost<P> {
         let session_disconnects = self.session_disconnects.clone();
         let sso_disconnect_monitor = self.sso_disconnect_monitor.clone();
         let spawner_for_monitor = self.spawner.clone();
+        let session_store_changes = self.session_store_changes.clone();
         spawner(Box::pin(async move {
-            let mut ticks = PlatformSessionStore::subscribe_stored_session(platform.as_ref());
+            let mut ticks = session_store_changes.subscribe();
             // Clearing the store can itself notify this subscription; clear at
             // most once per read-error streak so a persistently failing read
             // cannot spin the loop through its own clear notifications.
             let mut cleared_after_read_error = false;
-            while let Some(tick) = ticks.next().await {
-                if tick.is_err() {
-                    continue;
-                }
+            while ticks.next().await.is_some() {
                 match PlatformSessionStore::read_stored_session(platform.as_ref()).await {
                     Ok(Some(blob)) => {
                         cleared_after_read_error = false;
@@ -885,13 +893,12 @@ where
 
         let product_id = self.product_id();
         if product_account_id.dot_ns_identifier != product_id {
-            let confirmed = PlatformUserConfirmation::confirm_account_alias(
+            let confirmed = PlatformUserConfirmation::confirm_user_action(
                 self.platform.as_ref(),
-                (
-                    product_id.clone(),
-                    product_account_id.dot_ns_identifier.clone(),
-                )
-                    .encode(),
+                UserConfirmationReview::AccountAlias(AccountAliasReview {
+                    requesting_product_id: product_id.clone(),
+                    target_product_id: product_account_id.dot_ns_identifier.clone(),
+                }),
             )
             .await
             .map_err(|err| CallError::HostFailure {
@@ -1081,9 +1088,9 @@ where
                 v01::HostSignPayloadError::Rejected,
             )));
         };
-        let confirmed = PlatformUserConfirmation::confirm_sign_payload(
+        let confirmed = PlatformUserConfirmation::confirm_user_action(
             self.platform.as_ref(),
-            inner.clone().encode(),
+            UserConfirmationReview::SignPayload(SignPayloadReview::Product(inner.clone())),
         )
         .await
         .map_err(|err| CallError::HostFailure {
@@ -1140,9 +1147,9 @@ where
                 v01::HostSignPayloadError::Rejected,
             )));
         };
-        let confirmed = PlatformUserConfirmation::confirm_sign_raw(
+        let confirmed = PlatformUserConfirmation::confirm_user_action(
             self.platform.as_ref(),
-            inner.clone().encode(),
+            UserConfirmationReview::SignRaw(SignRawReview::Product(inner.clone())),
         )
         .await
         .map_err(|err| CallError::HostFailure {
@@ -1199,9 +1206,11 @@ where
                 v01::HostCreateTransactionError::Rejected,
             )));
         };
-        let confirmed = PlatformUserConfirmation::confirm_create_transaction(
+        let confirmed = PlatformUserConfirmation::confirm_user_action(
             self.platform.as_ref(),
-            inner.clone().encode(),
+            UserConfirmationReview::CreateTransaction(CreateTransactionReview::Product(
+                inner.clone(),
+            )),
         )
         .await
         .map_err(|err| CallError::HostFailure {
@@ -1259,9 +1268,9 @@ where
             v01::HostSignPayloadError::PermissionDenied,
         ))
         .await?;
-        let confirmed = PlatformUserConfirmation::confirm_sign_payload(
+        let confirmed = PlatformUserConfirmation::confirm_user_action(
             self.platform.as_ref(),
-            inner.clone().encode(),
+            UserConfirmationReview::SignPayload(SignPayloadReview::LegacyAccount(inner.clone())),
         )
         .await
         .map_err(|err| CallError::HostFailure {
@@ -1327,9 +1336,9 @@ where
             v01::HostSignPayloadError::PermissionDenied,
         ))
         .await?;
-        let confirmed = PlatformUserConfirmation::confirm_sign_raw(
+        let confirmed = PlatformUserConfirmation::confirm_user_action(
             self.platform.as_ref(),
-            inner.clone().encode(),
+            UserConfirmationReview::SignRaw(SignRawReview::LegacyAccount(inner.clone())),
         )
         .await
         .map_err(|err| CallError::HostFailure {
@@ -1401,9 +1410,11 @@ where
             v01::HostCreateTransactionError::PermissionDenied,
         ))
         .await?;
-        let confirmed = PlatformUserConfirmation::confirm_create_transaction(
+        let confirmed = PlatformUserConfirmation::confirm_user_action(
             self.platform.as_ref(),
-            inner.clone().encode(),
+            UserConfirmationReview::CreateTransaction(CreateTransactionReview::LegacyAccount(
+                inner.clone(),
+            )),
         )
         .await
         .map_err(|err| CallError::HostFailure {
@@ -1760,9 +1771,9 @@ where
             )));
         };
 
-        let confirmed = PlatformUserConfirmation::confirm_resource_allocation(
+        let confirmed = PlatformUserConfirmation::confirm_user_action(
             self.platform.as_ref(),
-            inner.clone().encode(),
+            UserConfirmationReview::ResourceAllocation(inner.clone()),
         )
         .await
         .map_err(|err| CallError::HostFailure {
@@ -1906,9 +1917,25 @@ where
         request: RemotePreimageSubmitRequest,
     ) -> Result<RemotePreimageSubmitResponse, CallError<RemotePreimageSubmitError>> {
         let RemotePreimageSubmitRequest::V1(value) = request;
-        PlatformPreimageHost::confirm_preimage_submit(self.platform.as_ref(), value.len() as u64)
-            .await
-            .map_err(|err| CallError::Domain(RemotePreimageSubmitError::V1(err)))?;
+        let confirmed = PlatformUserConfirmation::confirm_user_action(
+            self.platform.as_ref(),
+            UserConfirmationReview::PreimageSubmit(PreimageSubmitReview {
+                size: value.len() as u64,
+            }),
+        )
+        .await
+        .map_err(|err| {
+            CallError::Domain(RemotePreimageSubmitError::V1(
+                v01::PreimageSubmitError::Unknown { reason: err.reason },
+            ))
+        })?;
+        if !confirmed {
+            return Err(CallError::Domain(RemotePreimageSubmitError::V1(
+                v01::PreimageSubmitError::Unknown {
+                    reason: "User rejected preimage submission".to_string(),
+                },
+            )));
+        }
         PlatformPreimageHost::submit_preimage(self.platform.as_ref(), value)
             .await
             .map(RemotePreimageSubmitResponse::V1)
@@ -1991,6 +2018,14 @@ mod tests {
     use truapi_platform::AuthState;
 
     use super::sso_remote::SSO_PEER_DISCONNECT_REASON;
+
+    fn wait_until(mut condition: impl FnMut() -> bool, message: &str) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
+        while !condition() {
+            assert!(std::time::Instant::now() < deadline, "{message}");
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+    }
 
     #[test]
     fn feature_supported_round_trips_through_runtime() {
@@ -3176,7 +3211,11 @@ mod tests {
         });
         let host = PlatformRuntimeHost::new_compat(platform.clone(), test_spawner());
 
-        host.start_session_store_sync(immediate_spawner());
+        host.start_session_store_sync(test_spawner());
+        wait_until(
+            || host.session_state().current() == Some(stored.clone()),
+            "session store sync did not restore valid blob",
+        );
 
         assert_eq!(host.session_state().current(), Some(stored.clone()));
         assert_eq!(
@@ -3205,15 +3244,15 @@ mod tests {
         let mut statuses = host.session_state().subscribe();
         let _ = futures::executor::block_on(statuses.next());
 
-        host.start_session_store_sync(immediate_spawner());
+        host.start_session_store_sync(test_spawner());
 
-        assert_eq!(host.session_state().current(), Some(replacement));
         assert_eq!(
             futures::executor::block_on(statuses.next()).unwrap(),
             HostAccountConnectionStatusSubscribeItem::V1(
                 v01::HostAccountConnectionStatusSubscribeItem::Connected
             )
         );
+        assert_eq!(host.session_state().current(), Some(replacement));
     }
 
     #[test]
@@ -3225,7 +3264,11 @@ mod tests {
         let host = PlatformRuntimeHost::new_compat(platform.clone(), test_spawner());
         host.session_state().set_session(sso_session_info());
 
-        host.start_session_store_sync(immediate_spawner());
+        host.start_session_store_sync(test_spawner());
+        wait_until(
+            || host.session_state().current().is_none(),
+            "session store sync did not clear invalid blob",
+        );
 
         assert!(host.session_state().current().is_none());
         // `set_session` bypasses the auth state cell, so the cell never left
@@ -3252,26 +3295,25 @@ mod tests {
         );
         host.session_state().set_session(sso_session_info());
 
-        host.start_session_store_sync(immediate_spawner());
+        host.start_session_store_sync(test_spawner());
+        wait_until(
+            || *session_clears.lock().unwrap() == 1,
+            "session store sync did not clear unreadable blob",
+        );
 
         assert!(host.session_state().current().is_none());
         assert_eq!(*session_clears.lock().unwrap(), 1);
     }
 
-    /// A persistently failing read must not spin the sync loop through its
-    /// own clear notifications: the store is cleared at most once per error
-    /// streak.
+    /// A persistently failing read clears the backing store once for the
+    /// initial sync tick. Further clears require explicit host notifications.
     #[test]
-    fn session_store_sync_clears_at_most_once_on_persistent_read_error() {
+    fn session_store_sync_clears_once_on_initial_persistent_read_error() {
         let session_clears = Arc::new(Mutex::new(0));
-        let (tick_tx, tick_rx) = futures::channel::mpsc::unbounded();
-        tick_tx.unbounded_send(Ok(())).unwrap();
         let host = PlatformRuntimeHost::new_compat(
             Arc::new(StubPlatform {
                 session_error: Some("storage unavailable"),
                 session_clears: session_clears.clone(),
-                session_store_tick_tx: Some(tick_tx),
-                session_store_ticks: Arc::new(Mutex::new(Some(tick_rx))),
                 ..Default::default()
             }),
             test_spawner(),
@@ -3280,17 +3322,10 @@ mod tests {
 
         host.start_session_store_sync(test_spawner());
 
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(2);
-        while *session_clears.lock().unwrap() == 0 {
-            assert!(
-                std::time::Instant::now() < deadline,
-                "clear_stored_session was never called"
-            );
-            std::thread::sleep(std::time::Duration::from_millis(5));
-        }
-        // Give the loop time to mis-fire if the clear notification were to
-        // re-trigger another clear.
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        wait_until(
+            || *session_clears.lock().unwrap() == 1,
+            "clear_stored_session was never called",
+        );
         assert_eq!(*session_clears.lock().unwrap(), 1);
         assert!(host.session_state().current().is_none());
     }
@@ -3386,7 +3421,18 @@ mod tests {
             ..Default::default()
         });
         let host = PlatformRuntimeHost::new_compat(platform.clone(), test_spawner());
-        host.start_session_store_sync(immediate_spawner());
+        host.start_session_store_sync(test_spawner());
+        wait_until(
+            || {
+                platform
+                    .auth_states
+                    .lock()
+                    .expect("auth state list mutex poisoned")
+                    .len()
+                    == 1
+            },
+            "session store sync did not emit connected auth state",
+        );
 
         futures::executor::block_on(host.disconnect());
 

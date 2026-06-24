@@ -2975,6 +2975,7 @@ name = "truapi-platform"
 version = "0.1.0"
 dependencies = [
  "futures",
+ "parity-scale-codec",
  "truapi",
  "url",
 ]

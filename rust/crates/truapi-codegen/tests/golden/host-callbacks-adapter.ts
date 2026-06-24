@@ -19,7 +19,10 @@ import {
 import type {
   NotificationId,
 } from "@parity/truapi";
-import type { AuthState, HostCallbacks } from "./host-callbacks.js";
+import {
+  UserConfirmationReview,
+} from "@parity/truapi-host/callbacks";
+import type { AuthState, HostCallbacks } from "@parity/truapi-host/callbacks";
 import type { ChainConnect } from "../runtime.js";
 import {
   chainConnectAdapter,
@@ -35,22 +38,16 @@ export interface RawCallbacks {
   cancelNotification(id: NotificationId): Promise<void>;
   devicePermission(request: Uint8Array): Promise<Uint8Array>;
   remotePermission(request: Uint8Array): Promise<Uint8Array>;
-  confirmPreimageSubmit(size: number): Promise<void>;
   submitPreimage(value: Uint8Array): Promise<Uint8Array>;
   lookupPreimage(key: Uint8Array, sendItem: (item?: Uint8Array) => void): (() => void) | void;
   readStoredSession(): Promise<Uint8Array | null | undefined>;
   writeStoredSession(value: Uint8Array): Promise<void>;
   clearStoredSession(): Promise<void>;
-  subscribeStoredSession(sendItem: (item?: Uint8Array) => void): (() => void) | void;
   read(key: string): Promise<Uint8Array | null | undefined>;
   write(key: string, value: Uint8Array): Promise<void>;
   clear(key: string): Promise<void>;
   subscribeTheme(sendItem: (item?: Uint8Array) => void): (() => void) | void;
-  confirmSignPayload(review: Uint8Array): Promise<boolean>;
-  confirmSignRaw(review: Uint8Array): Promise<boolean>;
-  confirmCreateTransaction(review: Uint8Array): Promise<boolean>;
-  confirmAccountAlias(review: Uint8Array): Promise<boolean>;
-  confirmResourceAllocation(review: Uint8Array): Promise<boolean>;
+  confirmUserAction(review: Uint8Array): Promise<boolean>;
   chainConnect?: ChainConnect;
 }
 /** Adapt typed host callbacks into the raw SCALE callback surface the
@@ -69,21 +66,15 @@ export function createWasmRawCallbacks(
     cancelNotification: host.cancelNotification ? async (id) => await host.cancelNotification!(id) : unavailable.cancelNotification,
     devicePermission: host.devicePermission ? async (request) => HostDevicePermissionResponse.enc(await host.devicePermission!(HostDevicePermissionRequest.dec(request))) : unavailable.devicePermission,
     remotePermission: host.remotePermission ? async (request) => RemotePermissionResponse.enc(await host.remotePermission!(RemotePermissionRequest.dec(request))) : unavailable.remotePermission,
-    confirmPreimageSubmit: host.confirmPreimageSubmit ? async (size) => await host.confirmPreimageSubmit!(BigInt(size)) : unavailable.confirmPreimageSubmit,
     submitPreimage: host.submitPreimage ? async (value) => await host.submitPreimage!(value) : unavailable.submitPreimage,
     lookupPreimage: host.lookupPreimage ? (key, sendItem) => driveResultStream(host.lookupPreimage!(key), sendItem) : unavailable.lookupPreimage,
     readStoredSession: host.readStoredSession ? async () => await host.readStoredSession!() : unavailable.readStoredSession,
     writeStoredSession: host.writeStoredSession ? async (value) => await host.writeStoredSession!(value) : unavailable.writeStoredSession,
     clearStoredSession: host.clearStoredSession ? async () => await host.clearStoredSession!() : unavailable.clearStoredSession,
-    subscribeStoredSession: host.subscribeStoredSession ? (sendItem) => driveResultStream(host.subscribeStoredSession!(), () => sendItem()) : unavailable.subscribeStoredSession,
     read: host.read ? async (key) => await host.read!(key) : unavailable.read,
     write: host.write ? async (key, value) => await host.write!(key, value) : unavailable.write,
     clear: host.clear ? async (key) => await host.clear!(key) : unavailable.clear,
     subscribeTheme: host.subscribeTheme ? (sendItem) => driveResultStream(host.subscribeTheme!(), (item) => sendItem(ThemeVariant.enc(item))) : unavailable.subscribeTheme,
-    confirmSignPayload: host.confirmSignPayload ? async (review) => await host.confirmSignPayload!(review) : unavailable.confirmSignPayload,
-    confirmSignRaw: host.confirmSignRaw ? async (review) => await host.confirmSignRaw!(review) : unavailable.confirmSignRaw,
-    confirmCreateTransaction: host.confirmCreateTransaction ? async (review) => await host.confirmCreateTransaction!(review) : unavailable.confirmCreateTransaction,
-    confirmAccountAlias: host.confirmAccountAlias ? async (review) => await host.confirmAccountAlias!(review) : unavailable.confirmAccountAlias,
-    confirmResourceAllocation: host.confirmResourceAllocation ? async (review) => await host.confirmResourceAllocation!(review) : unavailable.confirmResourceAllocation,
+    confirmUserAction: host.confirmUserAction ? async (review) => await host.confirmUserAction!(UserConfirmationReview.dec(review)) : unavailable.confirmUserAction,
   };
 }

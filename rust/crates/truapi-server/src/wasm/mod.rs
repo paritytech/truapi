@@ -25,7 +25,7 @@ use truapi_platform::{
     AuthPresenter, AuthState, ChainProvider, Features, JsonRpcConnection, Navigation,
     Notifications, PairingDeeplinkScheme, Permissions, PreimageHost, RuntimeConfig,
     RuntimeConfigValidationError, SessionStore, SessionUiInfo, Storage, ThemeHost,
-    UserConfirmation,
+    UserConfirmation, UserConfirmationReview,
 };
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -45,12 +45,7 @@ struct JsBridge {
     local_storage_read: Function,
     local_storage_write: Function,
     local_storage_clear: Function,
-    confirm_sign_payload: Option<Function>,
-    confirm_sign_raw: Option<Function>,
-    confirm_create_transaction: Option<Function>,
-    confirm_account_alias: Option<Function>,
-    confirm_resource_allocation: Option<Function>,
-    confirm_preimage_submit: Option<Function>,
+    confirm_user_action: Option<Function>,
     submit_preimage: Option<Function>,
     lookup_preimage: Option<Function>,
     subscribe_theme: Option<Function>,
@@ -58,7 +53,6 @@ struct JsBridge {
     read_stored_session: Option<Function>,
     write_stored_session: Option<Function>,
     clear_stored_session: Option<Function>,
-    subscribe_stored_session: Option<Function>,
     /// Optional. Hosts that own JSON-RPC connections (e.g. dotli with its
     /// "smoldot vs RPC node" toggle) provide this; otherwise chain calls
     /// fail with an "unavailable" reason.
@@ -79,18 +73,7 @@ impl JsBridge {
             local_storage_read: get_function(callbacks, "read")?,
             local_storage_write: get_function(callbacks, "write")?,
             local_storage_clear: get_function(callbacks, "clear")?,
-            confirm_sign_payload: get_optional_function(callbacks, "confirmSignPayload")?,
-            confirm_sign_raw: get_optional_function(callbacks, "confirmSignRaw")?,
-            confirm_create_transaction: get_optional_function(
-                callbacks,
-                "confirmCreateTransaction",
-            )?,
-            confirm_account_alias: get_optional_function(callbacks, "confirmAccountAlias")?,
-            confirm_resource_allocation: get_optional_function(
-                callbacks,
-                "confirmResourceAllocation",
-            )?,
-            confirm_preimage_submit: get_optional_function(callbacks, "confirmPreimageSubmit")?,
+            confirm_user_action: get_optional_function(callbacks, "confirmUserAction")?,
             submit_preimage: get_optional_function(callbacks, "submitPreimage")?,
             lookup_preimage: get_optional_function(callbacks, "lookupPreimage")?,
             subscribe_theme: get_optional_function(callbacks, "subscribeTheme")?,
@@ -98,7 +81,6 @@ impl JsBridge {
             read_stored_session: get_optional_function(callbacks, "readStoredSession")?,
             write_stored_session: get_optional_function(callbacks, "writeStoredSession")?,
             clear_stored_session: get_optional_function(callbacks, "clearStoredSession")?,
-            subscribe_stored_session: get_optional_function(callbacks, "subscribeStoredSession")?,
             chain_connect: get_optional_function(callbacks, "chainConnect")?,
             emit_frame: get_function(callbacks, "emitFrame")?,
             dispose: get_optional_function(callbacks, "dispose")?.unwrap_or_else(noop_function),
@@ -318,52 +300,17 @@ impl SessionStore for WasmPlatform {
         };
         invoke_no_args_unit(fn_).await.map_err(generic)
     }
-
-    fn subscribe_stored_session(&self) -> BoxStream<'static, Result<(), v01::GenericError>> {
-        let Some(fn_) = self.bridge.subscribe_stored_session.as_ref() else {
-            return stream::once(async { Ok(()) }).boxed();
-        };
-        invoke_js_subscription(fn_, None, parse_session_store_tick).boxed()
-    }
 }
 
 impl UserConfirmation for WasmPlatform {
-    async fn confirm_sign_payload(&self, review: Vec<u8>) -> Result<bool, v01::GenericError> {
-        let Some(fn_) = self.bridge.confirm_sign_payload.as_ref() else {
-            return Ok(false);
-        };
-        invoke_bool(fn_, review).await.map_err(generic)
-    }
-
-    async fn confirm_sign_raw(&self, review: Vec<u8>) -> Result<bool, v01::GenericError> {
-        let Some(fn_) = self.bridge.confirm_sign_raw.as_ref() else {
-            return Ok(false);
-        };
-        invoke_bool(fn_, review).await.map_err(generic)
-    }
-
-    async fn confirm_create_transaction(&self, review: Vec<u8>) -> Result<bool, v01::GenericError> {
-        let Some(fn_) = self.bridge.confirm_create_transaction.as_ref() else {
-            return Ok(false);
-        };
-        invoke_bool(fn_, review).await.map_err(generic)
-    }
-
-    async fn confirm_account_alias(&self, review: Vec<u8>) -> Result<bool, v01::GenericError> {
-        let Some(fn_) = self.bridge.confirm_account_alias.as_ref() else {
-            return Ok(false);
-        };
-        invoke_bool(fn_, review).await.map_err(generic)
-    }
-
-    async fn confirm_resource_allocation(
+    async fn confirm_user_action(
         &self,
-        review: Vec<u8>,
+        review: UserConfirmationReview,
     ) -> Result<bool, v01::GenericError> {
-        let Some(fn_) = self.bridge.confirm_resource_allocation.as_ref() else {
+        let Some(fn_) = self.bridge.confirm_user_action.as_ref() else {
             return Ok(false);
         };
-        invoke_bool(fn_, review).await.map_err(generic)
+        invoke_bool(fn_, review.encode()).await.map_err(generic)
     }
 }
 
@@ -377,17 +324,6 @@ impl ThemeHost for WasmPlatform {
 }
 
 impl PreimageHost for WasmPlatform {
-    async fn confirm_preimage_submit(&self, size: u64) -> Result<(), v01::PreimageSubmitError> {
-        let Some(fn_) = self.bridge.confirm_preimage_submit.as_ref() else {
-            return Err(v01::PreimageSubmitError::Unknown {
-                reason: "confirmPreimageSubmit callback not provided by host".to_string(),
-            });
-        };
-        invoke_u64_unit(fn_, size)
-            .await
-            .map_err(|reason| v01::PreimageSubmitError::Unknown { reason })
-    }
-
     async fn submit_preimage(&self, value: Vec<u8>) -> Result<Vec<u8>, v01::PreimageSubmitError> {
         let Some(fn_) = self.bridge.submit_preimage.as_ref() else {
             return Err(v01::PreimageSubmitError::Unknown {
@@ -660,10 +596,6 @@ fn parse_theme_item(value: JsValue) -> Result<v01::ThemeVariant, String> {
             v01::ThemeVariant::decode(&mut array.to_vec().as_slice())
                 .map_err(|_| "encoded ThemeVariant item did not decode".to_string())
         })
-}
-
-fn parse_session_store_tick(_value: JsValue) -> Result<(), String> {
-    Ok(())
 }
 
 /// Plain JS object mirroring the generated `AuthState` TS tagged union:
@@ -1106,5 +1038,14 @@ impl WasmHostCore {
     #[wasm_bindgen(js_name = cancelPairing)]
     pub fn cancel_pairing(&self) {
         self.inner.core.cancel_pairing();
+    }
+
+    /// Notify the core that the host-global session store may have changed.
+    #[wasm_bindgen(js_name = notifySessionStoreChanged)]
+    pub fn notify_session_store_changed(&self) {
+        if self.inner.disposed.get() {
+            return;
+        }
+        self.inner.core.notify_session_store_changed();
     }
 }

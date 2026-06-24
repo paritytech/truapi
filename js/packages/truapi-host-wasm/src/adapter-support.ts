@@ -17,8 +17,8 @@ import { hexToBytes } from "@parity/truapi/scale";
 import type {
   ChainConnect,
   ChainConnection,
-  HostCallbacks,
 } from "./runtime.js";
+import type { HostCallbacks } from "@parity/truapi-host/callbacks";
 import type { RawCallbacks } from "./generated/host-callbacks-adapter.js";
 
 type WireResult<T, E> =
@@ -157,15 +157,7 @@ export function createUnavailableCallbacks(): Omit<
     readStoredSession: async () => undefined,
     writeStoredSession: async () => {},
     clearStoredSession: async () => {},
-    subscribeStoredSession: (sendItem) => {
-      sendItem();
-    },
-    confirmSignPayload: async () => false,
-    confirmSignRaw: async () => false,
-    confirmCreateTransaction: async () => false,
-    confirmAccountAlias: async () => false,
-    confirmResourceAllocation: async () => false,
-    confirmPreimageSubmit: unavailable("confirmPreimageSubmit"),
+    confirmUserAction: async () => false,
     submitPreimage: unavailable("submitPreimage"),
     subscribeTheme: (sendItem) => {
       sendItem(ThemeVariant.enc("Dark"));

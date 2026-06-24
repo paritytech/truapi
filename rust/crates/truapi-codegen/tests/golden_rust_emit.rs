@@ -169,7 +169,9 @@ fn golden_host_callbacks_ts() {
             "--platform-input",
             platform_json.to_str().unwrap(),
             "--platform-ts-output",
-            tempdir.path().join("platform").to_str().unwrap(),
+            tempdir.path().join("host").to_str().unwrap(),
+            "--platform-wasm-adapter-output",
+            tempdir.path().join("wasm").to_str().unwrap(),
         ])
         .output()
         .expect("run truapi-codegen");
@@ -183,7 +185,7 @@ fn golden_host_callbacks_ts() {
     let golden_path = manifest_dir.join("tests/golden/host-callbacks.ts");
     let golden =
         fs::read_to_string(&golden_path).unwrap_or_else(|e| panic!("read host-callbacks.ts: {e}"));
-    let actual = fs::read_to_string(tempdir.path().join("platform/host-callbacks.ts"))
+    let actual = fs::read_to_string(tempdir.path().join("host/host-callbacks.ts"))
         .expect("read generated host-callbacks.ts");
     if golden != actual {
         let dump = manifest_dir.join("tests/golden/host-callbacks.ts.actual");
@@ -195,9 +197,8 @@ fn golden_host_callbacks_ts() {
     }
 
     let adapter_golden_path = manifest_dir.join("tests/golden/host-callbacks-adapter.ts");
-    let adapter_actual =
-        fs::read_to_string(tempdir.path().join("platform/host-callbacks-adapter.ts"))
-            .expect("read generated host-callbacks-adapter.ts");
+    let adapter_actual = fs::read_to_string(tempdir.path().join("wasm/host-callbacks-adapter.ts"))
+        .expect("read generated host-callbacks-adapter.ts");
     let adapter_golden = fs::read_to_string(&adapter_golden_path).unwrap_or_default();
     if adapter_golden != adapter_actual {
         let dump = manifest_dir.join("tests/golden/host-callbacks-adapter.ts.actual");

@@ -21,8 +21,8 @@ export type {
   SessionUiInfo,
   HostStorage,
   ThemeHost,
-} from "./generated/host-callbacks.js";
-import type { HostCallbacks } from "./generated/host-callbacks.js";
+} from "@parity/truapi-host/callbacks";
+import type { HostCallbacks } from "@parity/truapi-host/callbacks";
 import type { RawCallbacks } from "./generated/host-callbacks-adapter.js";
 import { createWasmRawCallbacks } from "./generated/host-callbacks-adapter.js";
 
@@ -112,6 +112,7 @@ export interface HostCoreLike {
   receiveFrame(frame: Uint8Array): Promise<void>;
   disconnectSession?(): Promise<void>;
   cancelPairing?(): void;
+  notifySessionStoreChanged?(): void;
   dispose(): void;
   free(): void;
 }
@@ -130,6 +131,13 @@ export interface TrUApiHostCoreProvider extends Provider {
    * the pending login as `Rejected`. A no-op when no login is in progress.
    */
   cancelPairing(): void;
+
+  /**
+   * Notify the core that the host-global session store may have changed. The
+   * core will re-read the stored blob and emit any resulting auth/session
+   * state updates.
+   */
+  notifySessionStoreChanged(): void;
 
   /**
    * Re-tune the wasm core's log level at runtime. Present on runtimes that
@@ -215,6 +223,10 @@ export function createHostCoreProvider(
     cancelPairing() {
       if (disposed || closedError) return;
       core.cancelPairing?.();
+    },
+    notifySessionStoreChanged() {
+      if (disposed || closedError) return;
+      core.notifySessionStoreChanged?.();
     },
     dispose() {
       if (disposed) return;

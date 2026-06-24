@@ -17,6 +17,9 @@ import {
   createUnavailableCallbacks,
   createWasmRawCallbacks,
 } from "../dist/index.js";
+import {
+  UserConfirmationReview,
+} from "@parity/truapi-host/callbacks";
 
 // The generated `createWasmRawCallbacks` adapter speaks the symmetric SCALE
 // byte boundary: codec-typed requests arrive as `Uint8Array` and are decoded
@@ -25,6 +28,26 @@ import {
 // through unchanged.
 
 const GENESIS = `0x${"11".repeat(32)}`;
+const PRODUCT_ACCOUNT = {
+  dotNsIdentifier: "playground.dot",
+  derivationIndex: 0,
+};
+const SIGN_PAYLOAD = {
+  blockHash: GENESIS,
+  blockNumber: "0x01",
+  era: "0x00",
+  genesisHash: GENESIS,
+  method: "0x0102",
+  nonce: "0x00",
+  specVersion: "0x01",
+  tip: "0x00",
+  transactionVersion: "0x01",
+  signedExtensions: [],
+  version: 4,
+  assetId: undefined,
+  metadataHash: undefined,
+  mode: undefined,
+};
 
 function settle() {
   return new Promise((resolve) => setImmediate(resolve));
@@ -122,10 +145,6 @@ test("createWasmRawCallbacks decodes requests and encodes typed responses", asyn
 
 test("createWasmRawCallbacks bridges lifecycle, confirmations, and preimage callbacks", async () => {
   const calls = [];
-  async function* sessionTicks() {
-    yield { success: true, value: undefined };
-    yield { success: true, value: undefined };
-  }
   async function* preimages() {
     yield { success: true, value: undefined };
     yield { success: true, value: new Uint8Array([4, 5, 6]) };
@@ -142,14 +161,37 @@ test("createWasmRawCallbacks bridges lifecycle, confirmations, and preimage call
     clearStoredSession: async () => {
       calls.push(["clearStoredSession"]);
     },
-    subscribeStoredSession: () => sessionTicks(),
-    confirmSignPayload: async (payload) => payload[0] === 1,
-    confirmSignRaw: async (payload) => payload[0] === 2,
-    confirmCreateTransaction: async (payload) => payload[0] === 3,
-    confirmAccountAlias: async (payload) => payload[0] === 4,
-    confirmResourceAllocation: async (payload) => payload[0] === 5,
-    confirmPreimageSubmit: async (size) => {
-      calls.push(["confirmPreimageSubmit", size]);
+    confirmUserAction: async (review) => {
+      switch (review.tag) {
+        case "SignPayload":
+          return (
+            review.value.tag === "Product" &&
+            review.value.value.account.dotNsIdentifier === "playground.dot" &&
+            review.value.value.payload.method === "0x0102"
+          );
+        case "SignRaw":
+          return (
+            review.value.tag === "Product" &&
+            review.value.value.payload.tag === "Bytes" &&
+            review.value.value.payload.value.bytes === "0x0304"
+          );
+        case "CreateTransaction":
+          return (
+            review.value.tag === "Product" &&
+            review.value.value.signer.derivationIndex === 0 &&
+            review.value.value.callData === "0x0506"
+          );
+        case "AccountAlias":
+          return (
+            review.value.requestingProductId === "playground.dot" &&
+            review.value.targetProductId === "wallet.dot"
+          );
+        case "ResourceAllocation":
+          return review.value.resources[0]?.tag === "StatementStoreAllowance";
+        case "PreimageSubmit":
+          calls.push(["confirmUserAction:PreimageSubmit", review.value.size]);
+          return review.value.size === 42n;
+      }
     },
     submitPreimage: async (value) => {
       calls.push(["submitPreimage", [...value]]);
@@ -161,10 +203,6 @@ test("createWasmRawCallbacks bridges lifecycle, confirmations, and preimage call
     },
   });
 
-  const sessionEvents = [];
-  const disposeSession = raw.subscribeStoredSession?.(() =>
-    sessionEvents.push("tick"),
-  );
   const preimageEvents = [];
   const disposePreimages = raw.lookupPreimage(new Uint8Array([9]), (value) =>
     preimageEvents.push(value ? [...value] : null),
@@ -177,15 +215,86 @@ test("createWasmRawCallbacks bridges lifecycle, confirmations, and preimage call
   assert.deepEqual(await raw.readStoredSession?.(), new Uint8Array([1, 2, 3]));
   await raw.writeStoredSession?.(new Uint8Array([3, 2, 1]));
   await raw.clearStoredSession?.();
-  assert.equal(await raw.confirmSignPayload?.(new Uint8Array([1])), true);
-  assert.equal(await raw.confirmSignRaw?.(new Uint8Array([2])), true);
-  assert.equal(await raw.confirmCreateTransaction?.(new Uint8Array([3])), true);
-  assert.equal(await raw.confirmAccountAlias?.(new Uint8Array([4])), true);
   assert.equal(
-    await raw.confirmResourceAllocation?.(new Uint8Array([5])),
+    await raw.confirmUserAction?.(
+      UserConfirmationReview.enc({
+        tag: "SignPayload",
+        value: {
+          tag: "Product",
+          value: {
+            account: PRODUCT_ACCOUNT,
+            payload: SIGN_PAYLOAD,
+          },
+        },
+      }),
+    ),
     true,
   );
-  await raw.confirmPreimageSubmit(42);
+  assert.equal(
+    await raw.confirmUserAction?.(
+      UserConfirmationReview.enc({
+        tag: "SignRaw",
+        value: {
+          tag: "Product",
+          value: {
+            account: PRODUCT_ACCOUNT,
+            payload: { tag: "Bytes", value: { bytes: "0x0304" } },
+          },
+        },
+      }),
+    ),
+    true,
+  );
+  assert.equal(
+    await raw.confirmUserAction?.(
+      UserConfirmationReview.enc({
+        tag: "CreateTransaction",
+        value: {
+          tag: "Product",
+          value: {
+            signer: PRODUCT_ACCOUNT,
+            genesisHash: GENESIS,
+            callData: "0x0506",
+            extensions: [],
+            txExtVersion: 0,
+          },
+        },
+      }),
+    ),
+    true,
+  );
+  assert.equal(
+    await raw.confirmUserAction?.(
+      UserConfirmationReview.enc({
+        tag: "AccountAlias",
+        value: {
+          requestingProductId: "playground.dot",
+          targetProductId: "wallet.dot",
+        },
+      }),
+    ),
+    true,
+  );
+  assert.equal(
+    await raw.confirmUserAction?.(
+      UserConfirmationReview.enc({
+        tag: "ResourceAllocation",
+        value: {
+          resources: [{ tag: "StatementStoreAllowance" }],
+        },
+      }),
+    ),
+    true,
+  );
+  assert.equal(
+    await raw.confirmUserAction?.(
+      UserConfirmationReview.enc({
+        tag: "PreimageSubmit",
+        value: { size: 42n },
+      }),
+    ),
+    true,
+  );
   assert.deepEqual(
     await raw.submitPreimage(new Uint8Array([6])),
     new Uint8Array([7, 8, 9]),
@@ -194,7 +303,6 @@ test("createWasmRawCallbacks bridges lifecycle, confirmations, and preimage call
   await settle();
   await settle();
 
-  assert.deepEqual(sessionEvents, ["tick", "tick"]);
   assert.deepEqual(preimageEvents, [null, [4, 5, 6]]);
   assert.deepEqual(calls, [
     ["lookupPreimage", [9]],
@@ -204,19 +312,11 @@ test("createWasmRawCallbacks bridges lifecycle, confirmations, and preimage call
     ],
     ["writeStoredSession", [3, 2, 1]],
     ["clearStoredSession"],
-    ["confirmPreimageSubmit", 42n],
+    ["confirmUserAction:PreimageSubmit", 42n],
     ["submitPreimage", [6]],
   ]);
 
-  disposeSession?.();
   disposePreimages?.();
-});
-
-test("createWasmRawCallbacks default session-store subscription emits current tick", () => {
-  const raw = createWasmRawCallbacks({});
-  const ticks = [];
-  raw.subscribeStoredSession?.(() => ticks.push("tick"));
-  assert.deepEqual(ticks, ["tick"]);
 });
 
 test("createWasmRawCallbacks default theme and preimage subscriptions emit current values", () => {

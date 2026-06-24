@@ -12,7 +12,8 @@
 #                                     --host-output js/packages/truapi-host/src/generated
 #                                     --rust-output rust/crates/truapi-server/src/generated
 #                                     --platform-input target/doc/truapi_platform.json
-#                                     --platform-ts-output js/packages/truapi-host-wasm/src/generated
+#                                     --platform-ts-output js/packages/truapi-host/src/generated
+#                                     --platform-wasm-adapter-output js/packages/truapi-host-wasm/src/generated
 #                                     --explorer-output js/packages/truapi/src/explorer
 #                                     --codec-version 1
 #
@@ -67,9 +68,12 @@ cargo run -p truapi-codegen -- \
   --host-output js/packages/truapi-host/src/generated \
   --rust-output rust/crates/truapi-server/src/generated \
   --platform-input target/doc/truapi_platform.json \
-  --platform-ts-output js/packages/truapi-host-wasm/src/generated \
+  --platform-ts-output js/packages/truapi-host/src/generated \
+  --platform-wasm-adapter-output js/packages/truapi-host-wasm/src/generated \
   --explorer-output js/packages/truapi/src/explorer \
   --codec-version 1
+
+rm -f js/packages/truapi-host-wasm/src/generated/host-callbacks.ts
 
 rustfmt --edition 2024 rust/crates/truapi-server/src/generated/*.rs
 
@@ -109,4 +113,5 @@ echo "Generated playground metadata at js/packages/truapi/src/playground/codegen
 echo "Generated client examples at playground/test/generated/examples/"
 echo "Generated host package at js/packages/truapi-host/src/generated/"
 echo "Generated Rust dispatcher at rust/crates/truapi-server/src/generated/"
-echo "Generated host-callbacks at js/packages/truapi-host-wasm/src/generated/"
+echo "Generated host-callbacks at js/packages/truapi-host/src/generated/"
+echo "Generated host-callbacks WASM adapter at js/packages/truapi-host-wasm/src/generated/"

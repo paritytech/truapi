@@ -15,6 +15,7 @@ use crate::dispatcher::Dispatcher;
 use crate::frame::ProtocolMessage;
 use crate::generated::dispatcher;
 use crate::host_logic::session::SessionState;
+use crate::host_logic::session_store::SessionStoreChangeNotifier;
 use crate::runtime::PlatformRuntimeHost;
 use crate::subscription::Spawner;
 use crate::transport::Transport;
@@ -29,6 +30,7 @@ pub struct TrUApiCore {
     /// Always present; empty for [`Self::new`] (direct host path), connected
     /// to a [`PlatformRuntimeHost`] for [`Self::from_platform_with_config`].
     session_state: Arc<SessionState>,
+    session_store_changes: Arc<SessionStoreChangeNotifier>,
     disconnect: DisconnectFn,
     cancel_login: CancelLoginFn,
 }
@@ -46,10 +48,12 @@ impl TrUApiCore {
         let mut dispatcher = Dispatcher::new(spawner);
         dispatcher::register(&mut dispatcher, host);
         let session_state = SessionState::new();
+        let session_store_changes = SessionStoreChangeNotifier::new();
         let disconnect_state = session_state.clone();
         Self {
             dispatcher,
             session_state,
+            session_store_changes,
             disconnect: Arc::new(move || {
                 let state = disconnect_state.clone();
                 Box::pin(async move {
@@ -78,6 +82,7 @@ impl TrUApiCore {
         ));
         runtime.start_session_store_sync(spawner.clone());
         let session_state = runtime.session_state();
+        let session_store_changes = runtime.session_store_changes();
         let disconnect_runtime = runtime.clone();
         let cancel_login_runtime = runtime.clone();
         let mut dispatcher = Dispatcher::new(spawner);
@@ -85,6 +90,7 @@ impl TrUApiCore {
         Self {
             dispatcher,
             session_state,
+            session_store_changes,
             disconnect: Arc::new(move || {
                 let runtime = disconnect_runtime.clone();
                 Box::pin(async move {
@@ -100,6 +106,13 @@ impl TrUApiCore {
     /// `disconnect`.
     pub fn session_state(&self) -> Arc<SessionState> {
         self.session_state.clone()
+    }
+
+    /// Notify the platform-backed session sync loop that the host-global
+    /// session store may have changed.
+    #[instrument(skip_all, fields(runtime.method = "core.notify_session_store_changed"))]
+    pub fn notify_session_store_changed(&self) {
+        self.session_store_changes.notify();
     }
 
     /// Core-owned logout/disconnect. Platform-backed cores best-effort notify
