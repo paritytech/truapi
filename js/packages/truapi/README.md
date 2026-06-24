@@ -98,7 +98,6 @@ const unsubscribe = subscribeConnectionStatus((status) => {
 | -------------------------------------------- | --------------------------------------------------- |
 | `isCorrectEnvironment(): boolean`            | Synchronous host-environment detection.             |
 | `getClientSync(): TrUApiClient \| null`      | Cached client, no handshake; `null` outside a host. |
-| `getClientOrThrow(): TrUApiClient`           | Cached client, no handshake; throws outside a host. |
 | `getClient(): Promise<TrUApiClient \| null>` | Cached client; runs `system.handshake` once.        |
 | `isReady(): Promise<boolean>`                | Whether the handshake has succeeded.                |
 | `subscribeConnectionStatus(cb): () => void`  | Status-listener lifecycle; kicks off the handshake. |

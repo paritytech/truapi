@@ -154,21 +154,6 @@ export function getClientSync(): TrUApiClient | null {
 }
 
 /**
- * Build (or return the cached) {@link TrUApiClient} without running the
- * handshake, throwing when called outside a host container. Convenience over
- * {@link getClientSync} for call sites that treat "no host" as an error.
- */
-export function getClientOrThrow(): TrUApiClient {
-  const client = getClientSync();
-  if (!client) {
-    throw new Error(
-      "App must be opened inside a TrUAPI host (iframe or webview).",
-    );
-  }
-  return client;
-}
-
-/**
  * Get the {@link TrUApiClient}, running `system.handshake` once and caching the
  * result. The handshake is best-effort (5s timeout): the client is returned
  * regardless of whether the handshake reports success. Returns `null` outside a
