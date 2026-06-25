@@ -2,7 +2,7 @@
  * Sandbox bootstrap for browser-embedded hosts.
  *
  * Detects whether the app runs inside a TrUAPI host (iframe or webview), builds
- * the matching {@link Provider}, and exposes a lazily-created, cached
+ * the matching {@link WireProvider}, and exposes a lazily-created, cached
  * {@link TrUApiClient} via {@link getClientSync} so embedders don't
  * re-implement the wiring. {@link subscribeConnectionStatus} surfaces a
  * connected / disconnected signal over the same cached client.
@@ -13,7 +13,7 @@
 import {
   createIframeProvider,
   createMessagePortProvider,
-  type Provider,
+  type WireProvider,
 } from "./transport.js";
 import { createTransport } from "./client.js";
 import { createClient, type TrUApiClient } from "./generated/index.js";
@@ -107,8 +107,8 @@ async function waitForWebviewPort(
   );
 }
 
-/** Build the {@link Provider} matching the detected environment (iframe or webview). */
-function createSandboxProvider(): Provider {
+/** Build the {@link WireProvider} matching the detected environment (iframe or webview). */
+function createSandboxProvider(): WireProvider {
   if (isIframe()) {
     const hostOrigin = resolveHostOrigin();
     if (!hostOrigin) {
