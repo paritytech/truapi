@@ -18,10 +18,15 @@ type StreamResult<T, E> = Result<T, E> | WireResult<T, E>;
 
 type MaybeAsyncIterable<T> = AsyncIterable<T> | Iterable<T>;
 
+/** Extract the stable Rust-side error reason from a generated `GenericError`. */
 function errorReason(error: GenericError): string {
   return error.reason;
 }
 
+/**
+ * Normalize both generated `Result<T, GenericError>` values and the plain
+ * `{ success, value }` envelope used by some JS fixtures into a raw item.
+ */
 function unwrapStreamResult<T>(item: StreamResult<T, GenericError>): T {
   if ("success" in item) {
     if (item.success === false) {
@@ -35,6 +40,11 @@ function unwrapStreamResult<T>(item: StreamResult<T, GenericError>): T {
   return item.value;
 }
 
+/**
+ * Accept sync and async host streams behind one async-iterator interface.
+ * Host callbacks often use async iterables in production, while tests can use
+ * small synchronous fixtures without a custom wrapper.
+ */
 function toAsyncIterator<T>(stream: MaybeAsyncIterable<T>): AsyncIterator<T> {
   const asyncIterable = stream as AsyncIterable<T>;
   if (typeof asyncIterable[Symbol.asyncIterator] === "function") {
@@ -50,6 +60,11 @@ function toAsyncIterator<T>(stream: MaybeAsyncIterable<T>): AsyncIterator<T> {
   return asyncIterator;
 }
 
+/**
+ * Drain an async iterator into a sink until disposed. This is used for
+ * callback streams where the Rust core owns cancellation but JS owns the
+ * iterator and any transport cleanup behind `return()`.
+ */
 function pumpIterator<T>(
   iterator: AsyncIterator<T>,
   onItem: (value: T) => void,

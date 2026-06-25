@@ -13,7 +13,6 @@ import type {
   SubscriptionName,
   WorkerToMain,
 } from "../worker-protocol.js";
-import { errorMessage } from "../error-message.js";
 import { bytesToHex } from "@parity/truapi/scale";
 import {
   implementedOptionalCallbacks,
@@ -39,6 +38,12 @@ interface WorkerProviderState {
 
 function debugLoggingEnabled(state: WorkerProviderState): boolean {
   return state.logLevel === "debug" || state.logLevel === "trace";
+}
+
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  return JSON.stringify(err) ?? String(err);
 }
 
 let nextDisconnectRequestId = 0;

@@ -1,4 +1,4 @@
-export type { Payload, ProtocolMessage, WireProvider } from "./types.js";
+export type { Payload, ProtocolMessage, WireProvider } from "@parity/truapi";
 
 export type {
   AuthState,

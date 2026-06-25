@@ -9,7 +9,6 @@ import type {
   SubscriptionName,
   WorkerToMain,
 } from "./worker-protocol.js";
-import { errorMessage } from "./error-message.js";
 import {
   createWorkerRawCallbacks,
   type CallbackName,
@@ -46,6 +45,12 @@ const ctx = self as unknown as DedicatedWorkerGlobalScope;
 
 function postToMain(msg: WorkerToMain): void {
   ctx.postMessage(msg);
+}
+
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "string") return err;
+  return JSON.stringify(err) ?? String(err);
 }
 
 let nextRequestId = 0;
