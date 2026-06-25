@@ -49,6 +49,7 @@ pub(crate) fn test_spawner() -> Spawner {
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn immediate_spawner() -> Spawner {
     Arc::new(futures::executor::block_on)
 }

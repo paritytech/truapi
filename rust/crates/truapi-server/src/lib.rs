@@ -26,9 +26,6 @@ pub(crate) mod test_support;
 
 pub mod generated;
 
-#[cfg(feature = "smoldot")]
-pub mod smoldot_provider;
-
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
 

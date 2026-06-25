@@ -383,6 +383,7 @@ pub struct PreimageSubmitReview {
 }
 
 /// Review shown before a user-confirmed core action continues.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
 pub enum UserConfirmationReview {
     /// Sign a SCALE payload with a product or legacy account.

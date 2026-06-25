@@ -592,9 +592,6 @@ mod tests {
             service.check_or_prompt_device(HostDevicePermissionRequest::Camera),
         )
         .expect_err("read failure must surface");
-        assert!(matches!(
-            err,
-            v01::GenericError { .. }
-        ));
+        assert!(matches!(err, v01::GenericError { .. }));
     }
 }

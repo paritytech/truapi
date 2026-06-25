@@ -67,6 +67,13 @@ async function runOne({
   const timeoutMs =
     METHOD_TIMEOUT_MS.get(id) ??
     (LONG_TIMEOUT_METHODS.has(id) ? SIGNING_TIMEOUT_MS : UNARY_TIMEOUT_MS);
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(
+      () => reject(new Error(`timed out after ${timeoutMs / 1000}s`)),
+      timeoutMs,
+    );
+  });
 
   // The example decides pass/fail explicitly: it resolves on success and throws
   // (via `assert(...)` or any uncaught error) on failure. `console.*` is pure
@@ -79,16 +86,11 @@ async function runOne({
         "App must be opened inside a TrUAPI host (iframe or webview).",
       );
     }
-    run = await runExample({ source, client, onLog });
-    await Promise.race([
-      run.promise,
-      new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error(`timed out after ${timeoutMs / 1000}s`)),
-          timeoutMs,
-        ),
-      ),
+    run = await Promise.race([
+      runExample({ source, client, onLog }),
+      timeoutPromise,
     ]);
+    await Promise.race([run.promise, timeoutPromise]);
     onUpdate(id, {
       status: "pass",
       request: source,
@@ -103,6 +105,7 @@ async function runOne({
       output: log ? `${log}\n${message}` : message,
     });
   } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
     run?.cancel();
   }
 }

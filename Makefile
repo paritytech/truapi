@@ -116,8 +116,7 @@ e2e-dotli: ## Fully automated dotli + playground diagnosis e2e. Requires SIGNER_
 	if [ -n "$$SIGNER_BOT_NETWORK_ENV" ]; then SIGNER_BOT_NETWORK="$$SIGNER_BOT_NETWORK_ENV"; export SIGNER_BOT_NETWORK; fi; \
 	if [ "$$E2E_DOTLI_SMOKE" != "1" ]; then test -n "$$SIGNER_BOT_SVC_TOKEN" || (echo "Missing SIGNER_BOT_SVC_TOKEN. e2e-dotli requires signer-bot; without it a human phone scan is required."; exit 1); fi; \
 	$(MAKE) dev-bootstrap; \
-	cd $(DOTLI) && bun run build; \
-	cd apps/host && bun run test:e2e
+	cd $(DOTLI)/apps/host && bun tests/e2e/playground-diagnosis.ts
 
 matrix: ## Regenerate the host compatibility matrix from explorer/diagnosis-reports.
 	cd $(EXPLORER) && npm run generate-matrix

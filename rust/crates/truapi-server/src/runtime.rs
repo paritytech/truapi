@@ -131,12 +131,11 @@ use truapi::versioned::system::{
 use truapi::versioned::theme::HostThemeSubscribeItem;
 use truapi::{CallContext, CallError, Subscription};
 use truapi_platform::{
-    AccountAliasReview, ChainProvider as PlatformChainProvider, CreateTransactionReview,
-    CoreStorage as PlatformCoreStorage, CoreStorageKey, JsonRpcConnection,
-    Navigation as PlatformNavigation, Notifications as PlatformNotifications, Platform,
-    PreimageHost as PlatformPreimageHost, PreimageSubmitReview,
-    ProductStorage as PlatformProductStorage, RuntimeConfig, SessionUiInfo, SignPayloadReview,
-    SignRawReview, ThemeHost as PlatformThemeHost,
+    AccountAliasReview, ChainProvider as PlatformChainProvider, CoreStorage as PlatformCoreStorage,
+    CoreStorageKey, CreateTransactionReview, JsonRpcConnection, Navigation as PlatformNavigation,
+    Notifications as PlatformNotifications, Platform, PreimageHost as PlatformPreimageHost,
+    PreimageSubmitReview, ProductStorage as PlatformProductStorage, RuntimeConfig, SessionUiInfo,
+    SignPayloadReview, SignRawReview, ThemeHost as PlatformThemeHost,
     UserConfirmation as PlatformUserConfirmation, UserConfirmationReview,
 };
 
@@ -217,28 +216,13 @@ impl<P> PlatformRuntimeHost<P> {
         )
     }
 
-    /// Chain provider backing the chainHead-v1 runtime. Without the `smoldot`
-    /// feature, chain access routes through the platform's `ChainProvider`.
-    #[cfg(not(feature = "smoldot"))]
+    /// Chain provider backing the chainHead-v1 runtime. Chain access routes
+    /// through the platform's host-owned `ChainProvider`.
     fn chain_provider(platform: Arc<P>) -> Arc<dyn RuntimeChainProvider>
     where
         P: Platform + 'static,
     {
-        Arc::new(PlatformChainRuntimeProvider { platform })
-    }
-
-    /// With the `smoldot` feature, the embedded light client owns chain
-    /// access, falling back to the platform's `ChainProvider` only if the
-    /// client fails to start.
-    #[cfg(feature = "smoldot")]
-    fn chain_provider(platform: Arc<P>) -> Arc<dyn RuntimeChainProvider>
-    where
-        P: Platform + 'static,
-    {
-        match crate::smoldot_provider::SmoldotChainProvider::with_bundled_specs() {
-            Ok(provider) => Arc::new(provider),
-            Err(_err) => Arc::new(PlatformChainRuntimeProvider { platform }),
-        }
+        Arc::new(HostChainProvider { platform })
     }
 
     /// Clone of the shared session-state holder used by core subscriptions
@@ -397,6 +381,7 @@ impl<P> PlatformRuntimeHost<P> {
     }
 
     /// Static product/host configuration for this runtime instance.
+    #[allow(dead_code)]
     pub fn runtime_config(&self) -> &RuntimeConfig {
         &self.runtime_config
     }
@@ -458,6 +443,7 @@ fn stop_sso_disconnect_monitor(monitor: &Arc<Mutex<Option<SsoDisconnectMonitor>>
         .take();
 }
 
+#[allow(clippy::too_many_arguments)]
 fn start_sso_disconnect_monitor<P>(
     platform: Arc<P>,
     runtime_config: RuntimeConfig,
@@ -659,12 +645,12 @@ where
 /// [`RuntimeChainProvider`] surface the chain runtime expects.
 /// Reuses the platform-supplied json-rpc connection and converts the
 /// platform `GenericError` into a `RuntimeFailure::Unavailable`.
-struct PlatformChainRuntimeProvider<P> {
+struct HostChainProvider<P> {
     platform: Arc<P>,
 }
 
 #[async_trait::async_trait]
-impl<P> RuntimeChainProvider for PlatformChainRuntimeProvider<P>
+impl<P> RuntimeChainProvider for HostChainProvider<P>
 where
     P: Platform + 'static,
 {
@@ -3411,7 +3397,9 @@ mod tests {
                 .local_storage
                 .lock()
                 .expect("local storage mutex poisoned")
-                .contains_key(&core_storage_test_key(CoreStorageKey::PairingDeviceIdentity)),
+                .contains_key(&core_storage_test_key(
+                    CoreStorageKey::PairingDeviceIdentity
+                )),
             "logout must rotate the pairing device identity so stale statement-store responses cannot be replayed on the next login"
         );
         assert_eq!(

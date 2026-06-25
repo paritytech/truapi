@@ -32,7 +32,7 @@ export type Awaitable<T> = T | Promise<T>;
 
 /**
  * Open a JSON-RPC connection for `genesisHash`. The wasm bridge passes
- * `onResponse` so the host can push smoldot replies back asynchronously.
+ * `onResponse` so the host can push JSON-RPC replies back asynchronously.
  * Returning `null` (or throwing) tells the core no provider is available.
  */
 export type ChainConnect = (

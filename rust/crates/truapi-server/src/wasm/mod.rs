@@ -23,9 +23,9 @@ use truapi::v01;
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use truapi_platform::{
     AuthPresenter, AuthState, ChainProvider, CoreStorage, CoreStorageKey, Features,
-    JsonRpcConnection, Navigation, Notifications, PairingDeeplinkScheme, Permissions,
-    PreimageHost, ProductStorage, RuntimeConfig, RuntimeConfigValidationError, SessionUiInfo,
-    ThemeHost, UserConfirmation, UserConfirmationReview,
+    JsonRpcConnection, Navigation, Notifications, PairingDeeplinkScheme, Permissions, PreimageHost,
+    ProductStorage, RuntimeConfig, RuntimeConfigValidationError, SessionUiInfo, ThemeHost,
+    UserConfirmation, UserConfirmationReview,
 };
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -53,9 +53,8 @@ struct JsBridge {
     lookup_preimage: Option<Function>,
     subscribe_theme: Option<Function>,
     auth_state_changed: Option<Function>,
-    /// Optional. Hosts that own JSON-RPC connections (e.g. dotli with its
-    /// "smoldot vs RPC node" toggle) provide this; otherwise chain calls
-    /// fail with an "unavailable" reason.
+    /// Optional. Hosts that own JSON-RPC connections provide this; otherwise
+    /// chain calls fail with an "unavailable" reason.
     chain_connect: Option<Function>,
     emit_frame: Function,
     dispose: Function,
@@ -702,9 +701,9 @@ fn invoke_core_storage_read(
         if resolved.is_null() || resolved.is_undefined() {
             return Ok(None);
         }
-        let array = resolved
-            .dyn_into::<Uint8Array>()
-            .map_err(|_| "readCoreStorage must resolve to Uint8Array, null or undefined".to_string())?;
+        let array = resolved.dyn_into::<Uint8Array>().map_err(|_| {
+            "readCoreStorage must resolve to Uint8Array, null or undefined".to_string()
+        })?;
         Ok(Some(array.to_vec()))
     })
 }

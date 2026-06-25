@@ -1,8 +1,8 @@
 /// <reference lib="webworker" />
 // Worker entrypoint. Loads the web-targeted truapi-server WASM bundle and
 // bridges every host callback over postMessage. The main thread keeps the
-// state that needs DOM access (localStorage, prompts) while the CPU-heavy
-// smoldot/dispatcher work runs here off the page main thread.
+// state that needs DOM access (localStorage, prompts) while the core dispatcher
+// runs here off the page main thread.
 
 import type {
   MainToWorker,
@@ -100,6 +100,33 @@ interface WorkerChainConnection {
   close(): void;
 }
 
+/**
+ * Worker-side half of the host chain-connect bridge.
+ *
+ * The Rust core runs in this worker but owns no socket. When it needs chain
+ * access (chainHead v1 for People-chain identity / statement-store SSO) it
+ * calls this; the actual transport lives on the host main thread and is reached
+ * over postMessage. The data crossing here is JSON-RPC strings, not SCALE: only
+ * the product<->core wire is SCALE.
+ *
+ *   per-tab / sandboxed          core-owned (this Web Worker)       host-owned (main thread)
+ *   +-------------------+  SCALE  +--------------------------+      +--------------------------------+
+ *   | Product (iframe)  |<------->| truapi-server WASM core  |      | host.connect() (ChainProvider) |
+ *   | speaks TrUAPI     |  frames | chainHead v1, SSO,       |      | host-owned JSON-RPC transport  |
+ *   | never sees chains |         | People-chain identity    |      | remote RPC, native client, ... |
+ *   +-------------------+         +--------------------------+      +--------------------------------+
+ *                                      |   ^  JSON-RPC strings (not SCALE)        ^   |
+ *                       chainConnect() |   | onResponse(json)           connect   |   | responses()
+ *                         (this fn)    v   |                                      |   v
+ *                 worker-runtime.ts  <======== postMessage ========>  create-worker-host-runtime.ts
+ *                 chainConnectStart / chainSend / chainClose   -->   handleChainConnect* -> host.connect()
+ *                 chainConnectAck   / chainResponse            <--   (pumped from connection.responses())
+ *
+ * Allocates a `connId`, posts `chainConnectStart`, and resolves a
+ * `{ send, close }` handle once the main thread acks. `send` posts `chainSend`,
+ * `close` posts `chainClose`, and every `chainResponse` for this `connId` is
+ * delivered to `onResponse`.
+ */
 function chainConnect(
   genesisHash: string,
   onResponse: (json: string) => void,

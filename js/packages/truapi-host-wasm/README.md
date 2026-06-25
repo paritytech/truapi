@@ -17,10 +17,10 @@ The package exposes tree-shakeable subpath exports — import only what your env
 
 ## Generated WASM artefacts
 
-The ignored bundle under `dist/wasm/web/` is built without smoldot
-(`wasm-pack build --no-default-features`). Hosts that already manage chain access through their own
-JSON-RPC provider wire `chainConnect` into the callbacks and never touch smoldot. The bundled WASM
-is about 1 MB (release build with `wasm-opt`).
+The ignored bundle under `dist/wasm/web/` is built with host-owned chain access.
+Hosts wire their JSON-RPC provider through `chainConnect`; if they omit it,
+chain calls fail with the core's standard unavailable error. The bundled WASM is
+about 1 MB (release build with `wasm-opt`).
 
 Build them after editing `rust/crates/truapi-server` and before packaging, publishing, or running
 tests that load the raw WASM bundle (requires `wasm-pack` on PATH):

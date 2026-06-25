@@ -541,9 +541,8 @@ fn decode_v2_pairing_statement(
 mod tests {
     use super::*;
     use crate::test_support::{
-        StubPlatform, core_storage_test_key, pairing_device_from_deeplink,
-        peer_statement_keypair, runtime_config, session_info, signed_test_statement,
-        stub_platform, test_spawner,
+        StubPlatform, core_storage_test_key, pairing_device_from_deeplink, peer_statement_keypair,
+        runtime_config, session_info, signed_test_statement, stub_platform, test_spawner,
     };
     use p256::elliptic_curve::sec1::ToEncodedPoint;
     use truapi::CallContext;
@@ -649,7 +648,9 @@ mod tests {
                 .local_storage
                 .lock()
                 .expect("local storage mutex poisoned")
-                .contains_key(&core_storage_test_key(CoreStorageKey::PairingDeviceIdentity))
+                .contains_key(&core_storage_test_key(
+                    CoreStorageKey::PairingDeviceIdentity
+                ))
         );
     }
 
