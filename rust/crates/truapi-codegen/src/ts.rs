@@ -2561,8 +2561,8 @@ fn generate_host_server(api: &ApiDefinition) -> Result<String> {
           HexString,
           ObservableLike,
           Observer,
-          Provider,
           Subscription,
+          WireProvider,
         }} from '@parity/truapi';
         import {{
           createHostServer,
@@ -2632,11 +2632,11 @@ fn generate_host_server(api: &ApiDefinition) -> Result<String> {
         r#"
         }}
 
-        /** Attach a host server to a `Provider`. Inbound request and
+        /** Attach a host server to a `WireProvider`. Inbound request and
          * subscription frames are routed to the supplied typed handlers.
          */
         export function createTrUApiServer(
-          provider: Provider,
+          provider: WireProvider,
           handlers: TrUApiHostHandlers,
           hooks?: HostServerHooks,
         ): TrUApiHostServer {{
