@@ -1,9 +1,5 @@
-import {
-  runExample,
-  type LogEntry,
-  type RunResult,
-} from "./example-runner";
-import { getClient } from "./transport";
+import { runExample, type LogEntry, type RunResult } from "./example-runner";
+import { getClientSync } from "@parity/truapi/sandbox";
 import type { MethodInfo, ServiceInfo } from "./services";
 
 export const DIAGNOSIS_ID = "__diagnosis__";
@@ -72,7 +68,13 @@ async function runOne({
   // output, captured into `logs` for the report but with no bearing on status.
   let run: RunResult | undefined;
   try {
-    run = await runExample({ source, client: getClient(), onLog });
+    const client = getClientSync();
+    if (!client) {
+      throw new Error(
+        "App must be opened inside a TrUAPI host (iframe or webview).",
+      );
+    }
+    run = await runExample({ source, client, onLog });
     await Promise.race([
       run.promise,
       new Promise<never>((_, reject) =>

@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { stringify } from "@/src/lib/host-api-bridge";
 import { ExampleEditor } from "@/src/components/ExampleEditor";
 import { runExample, type LogEntry } from "@/src/lib/example-runner";
-import { getClient } from "@/src/lib/transport";
+import { getClientSync } from "@parity/truapi/sandbox";
 import { methodTestId, revealInRail, serviceTestId } from "@/src/lib/rail";
 import { services } from "@/src/lib/services";
 import type { MethodInfo, ServiceInfo } from "@/src/lib/services";
@@ -121,14 +121,22 @@ export function MethodView({
     setLogs([]);
     setTab("output");
     try {
-      const run = await runExample({ source, client: getClient(), onLog });
+      const client = getClientSync();
+      if (!client) {
+        throw new Error(
+          "App must be opened inside a TrUAPI host (iframe or webview).",
+        );
+      }
+      const run = await runExample({ source, client, onLog });
       cancelRunRef.current = run.cancel;
       let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
       const abortPromise = new Promise<never>((_, reject) => {
         callAbortRef.current = (reason: string) => reject(new Error(reason));
         timeoutHandle = setTimeout(
           () =>
-            reject(new Error(`Call timed out after ${CALL_TIMEOUT_MS / 1000}s`)),
+            reject(
+              new Error(`Call timed out after ${CALL_TIMEOUT_MS / 1000}s`),
+            ),
           CALL_TIMEOUT_MS,
         );
       });
@@ -368,7 +376,9 @@ export function MethodView({
                         <span className="console__entry-i">
                           {String(i + 1).padStart(2, "0")}
                         </span>
-                        <span className="console__entry-body">{entry.text}</span>
+                        <span className="console__entry-body">
+                          {entry.text}
+                        </span>
                       </div>
                     ))}
                   </div>
