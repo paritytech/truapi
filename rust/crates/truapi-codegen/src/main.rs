@@ -22,10 +22,7 @@ struct Cli {
     /// TrUAPI protocol version the **client** package is built against.
     ///
     /// Only affects the `@parity/truapi` client surface (and the playground
-    /// and client-examples derived from it). The `@parity/truapi-host`
-    /// output always covers every wire version a wrapper has shipped: a
-    /// host must be able to dispatch frames from any client version it has
-    /// shipped to.
+    /// and client-examples derived from it).
     ///
     /// Defaults to the highest version any versioned wrapper in the Rust
     /// trait surface exposes, so an unconfigured run produces a client
@@ -45,10 +42,6 @@ struct Cli {
     /// Output directory for generated TypeScript client example snippets (optional).
     #[arg(long)]
     client_examples_output: Option<String>,
-
-    /// Output directory for the generated `@parity/truapi-host` TypeScript surface (optional).
-    #[arg(long)]
-    host_output: Option<String>,
 
     /// Output directory for generated explorer metadata (optional). When set,
     /// writes `codegen/types.ts` with the DataType list consumed by the
@@ -117,10 +110,6 @@ fn main() -> Result<()> {
         ts::generate_client_examples(&api, path, client_version)
             .with_context(|| format!("writing client examples to {path}"))?;
         println!("Generated client examples in {path}");
-    }
-    if let Some(path) = &cli.host_output {
-        ts::generate_host(&api, path).with_context(|| format!("writing host package to {path}"))?;
-        println!("Generated host package in {path}");
     }
     if let Some(path) = &cli.explorer_output {
         ts::generate_explorer(&api, path, client_version)
