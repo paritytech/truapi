@@ -1,1 +1,1 @@
-export type { Payload, ProtocolMessage, Provider } from "@parity/truapi";
+export type { Payload, ProtocolMessage, WireProvider } from "@parity/truapi";

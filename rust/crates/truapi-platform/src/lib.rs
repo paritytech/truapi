@@ -199,7 +199,10 @@ pub trait Notifications: Send + Sync {
     fn cancel_notification(
         &self,
         id: NotificationId,
-    ) -> impl Future<Output = Result<(), GenericError>> + Send;
+    ) -> impl Future<Output = Result<(), GenericError>> + Send {
+        let _ = id;
+        async { Ok(()) }
+    }
 }
 
 /// Permission prompts. v0.1 keeps device permissions (camera, mic, NFC, ...)
@@ -402,7 +405,10 @@ pub trait UserConfirmation: Send + Sync {
     fn confirm_user_action(
         &self,
         review: UserConfirmationReview,
-    ) -> impl Future<Output = Result<bool, GenericError>> + Send;
+    ) -> impl Future<Output = Result<bool, GenericError>> + Send {
+        let _ = review;
+        async { Ok(false) }
+    }
 }
 
 /// Host theme source.
@@ -418,7 +424,14 @@ pub trait PreimageHost: Send + Sync {
     fn submit_preimage(
         &self,
         value: Vec<u8>,
-    ) -> impl Future<Output = Result<Vec<u8>, PreimageSubmitError>> + Send;
+    ) -> impl Future<Output = Result<Vec<u8>, PreimageSubmitError>> + Send {
+        let _ = value;
+        async {
+            Err(PreimageSubmitError::Unknown {
+                reason: "submitPreimage callback not provided by host".to_string(),
+            })
+        }
+    }
 
     /// Emits current value/miss immediately, then future updates.
     fn lookup_preimage(

@@ -614,7 +614,7 @@ function sendWebSocketBytes(socket: WebSocket, message: Uint8Array) {
 export function createWebSocketProvider(
   url: string,
   options: WebSocketProviderOptions = {},
-): Provider {
+): WireProvider {
   const WebSocketCtor = options.WebSocket ?? globalThis.WebSocket;
   if (!WebSocketCtor) {
     throw new Error("WebSocket constructor not available in this environment");

@@ -5,9 +5,9 @@ import {
   HostPushNotificationRequest,
   HostPushNotificationResponse,
 } from "../../truapi/dist/index.js";
-import { createWasmRawCallbacks } from "../dist/index.js";
+import { createWasmRawCallbacks } from "../dist/generated/host-callbacks-adapter.js";
 import { createWebWorkerProvider } from "../dist/web/index.js";
-import { CoreStorageKey } from "@parity/truapi-host/callbacks";
+import { CoreStorageKey } from "../dist/generated/host-callbacks.js";
 
 class FakeWorker {
   constructor() {
@@ -100,10 +100,10 @@ async function readyProvider(worker, options = {}) {
   return providerPromise;
 }
 
-test("createWebWorkerProvider advertises the full optional callback surface", async () => {
-  // The generated adapter fills every optional callback with a default, so the
-  // provider advertises the complete optional surface; `chainConnect` reflects
-  // whether the host supplied a `connect` capability.
+test("createWebWorkerProvider advertises only implemented optional callbacks", async () => {
+  // Optional callbacks are detected from the typed host surface, not the raw
+  // adapter defaults, so absent callbacks remain absent and the core can apply
+  // its own fallback behavior.
   const worker = new FakeWorker();
   const config = runtimeConfig();
   const providerPromise = createWebWorkerProvider(
@@ -127,13 +127,8 @@ test("createWebWorkerProvider advertises the full optional callback surface", as
     kind: "init",
     logLevel: "debug",
     runtimeConfig: config,
-    optionalCallbacks: [
-      "cancelNotification",
-      "authStateChanged",
-      "confirmUserAction",
-      "submitPreimage",
-    ],
-    optionalSubscriptions: ["subscribeTheme", "lookupPreimage"],
+    optionalCallbacks: [],
+    optionalSubscriptions: [],
     chainConnect: true,
   });
 
@@ -143,6 +138,45 @@ test("createWebWorkerProvider advertises the full optional callback surface", as
   assert.equal(typeof provider.cancelPairing, "function");
   assert.equal(typeof provider.notifySessionStoreChanged, "function");
 
+  provider.dispose();
+});
+
+test("createWebWorkerProvider advertises implemented optional surface", async () => {
+  const worker = new FakeWorker();
+  const config = runtimeConfig();
+  const providerPromise = createWebWorkerProvider(
+    worker,
+    makeCallbacks({
+      cancelNotification: async () => {},
+      authStateChanged: () => {},
+      confirmUserAction: async () => true,
+      submitPreimage: async () => new Uint8Array([1]),
+      subscribeTheme: async function* () {},
+      lookupPreimage: async function* () {},
+    }),
+    {
+      logLevel: "debug",
+      runtimeConfig: config,
+    },
+  );
+
+  worker.emit({ kind: "loaded" });
+  assert.deepEqual(worker.messages[0], {
+    kind: "init",
+    logLevel: "debug",
+    runtimeConfig: config,
+    optionalCallbacks: [
+      "authStateChanged",
+      "cancelNotification",
+      "submitPreimage",
+      "confirmUserAction",
+    ],
+    optionalSubscriptions: ["lookupPreimage", "subscribeTheme"],
+    chainConnect: false,
+  });
+
+  worker.emit({ kind: "ready" });
+  const provider = await providerPromise;
   provider.dispose();
 });
 
@@ -299,6 +333,37 @@ test("worker provider dispatches optional callback requests to host hooks", asyn
     requestId: 7,
     ok: true,
     value: undefined,
+  });
+
+  provider.dispose();
+});
+
+test("worker provider reports missing required callback requests", async () => {
+  const worker = new FakeWorker();
+  const providerPromise = createWebWorkerProvider(
+    worker,
+    makeCallbacks({ pushNotification: undefined }),
+    {
+      runtimeConfig: runtimeConfig(),
+    },
+  );
+  worker.emit({ kind: "loaded" });
+  worker.emit({ kind: "ready" });
+  const provider = await providerPromise;
+
+  worker.emit({
+    kind: "callbackRequest",
+    requestId: 11,
+    name: "pushNotification",
+    args: [new Uint8Array([1, 2, 3])],
+  });
+  await settle();
+
+  assert.deepEqual(worker.messages.at(-1), {
+    kind: "callbackResponse",
+    requestId: 11,
+    ok: false,
+    error: "unknown callback: pushNotification",
   });
 
   provider.dispose();

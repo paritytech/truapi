@@ -327,7 +327,7 @@ export interface Notifications {
    * Cancel a notification by id. Idempotent: cancelling an already-fired or
    * unknown id still returns `success`.
    */
-  cancelNotification(id: NotificationId): Promise<void>;
+  cancelNotification?(id: NotificationId): Promise<void>;
 }
 
 /**
@@ -355,7 +355,7 @@ export interface PreimageHost {
   /**
    * Submit the preimage and return its key.
    */
-  submitPreimage(value: Uint8Array): Promise<Uint8Array>;
+  submitPreimage?(value: Uint8Array): Promise<Uint8Array>;
 
   /**
    * Emits current value/miss immediately, then future updates.
@@ -401,7 +401,7 @@ export interface UserConfirmation {
   /**
    * Confirm a reviewed action before the core asks the SSO peer.
    */
-  confirmUserAction(review: UserConfirmationReview): Promise<boolean>;
+  confirmUserAction?(review: UserConfirmationReview): Promise<boolean>;
 }
 
 /**

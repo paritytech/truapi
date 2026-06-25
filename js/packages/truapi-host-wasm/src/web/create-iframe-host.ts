@@ -8,9 +8,8 @@ export interface IframeHostOptions {
   container: HTMLElement;
   /**
    * Called with one end of the MessageChannel once the iframe has loaded.
-   * Hosts typically pipe this into a `Provider` (e.g. via
-   * `createMessagePortProvider` from `@parity/truapi`) and hand the
-   * provider to `createHostServer`.
+   * Hosts typically pipe this into a `WireProvider` (e.g. via
+   * `createMessagePortProvider` from `@parity/truapi`).
    */
   onPort: (port: MessagePort) => void;
   /**
@@ -60,7 +59,7 @@ function resolveAllowedOrigin(
 
 /**
  * Embed a product iframe and transfer a `MessagePort` into it. The host
- * keeps the other end and passes it to a `Provider` (typically via
+ * keeps the other end and passes it to a `WireProvider` (typically via
  * `createMessagePortProvider`). All product traffic flows over the
  * MessageChannel.
  */
@@ -139,4 +138,4 @@ export function createIframeHost(options: IframeHostOptions): IframeHost {
   };
 }
 
-export type { Provider } from "@parity/truapi";
+export type { WireProvider } from "@parity/truapi";

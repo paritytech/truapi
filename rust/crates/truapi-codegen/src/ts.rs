@@ -13,10 +13,12 @@ use crate::rustdoc::*;
 
 mod examples;
 mod explorer;
+mod host_callbacks;
 mod playground;
 
 pub use examples::generate_client_examples;
 pub use explorer::generate_explorer;
+pub use host_callbacks::generate as generate_host_callbacks;
 pub use playground::generate_playground_services;
 
 #[derive(Default)]

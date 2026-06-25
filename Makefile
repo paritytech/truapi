@@ -11,16 +11,18 @@ JS_PACKAGES := js/packages
 EXPLORER := explorer
 DOTLI := hosts/dotli
 HOST_WASM_PKG := $(JS_PACKAGES)/truapi-host-wasm
-HOST_PKG := $(JS_PACKAGES)/truapi-host
-HOST_CALLBACKS_GENERATED := $(HOST_PKG)/src/generated/host-callbacks.ts
+HOST_CALLBACKS_GENERATED := $(HOST_WASM_PKG)/src/generated/host-callbacks.ts
 HOST_WASM_ADAPTER_GENERATED := $(HOST_WASM_PKG)/src/generated/host-callbacks-adapter.ts
+HOST_WASM_WORKER_CALLBACKS_GENERATED := $(HOST_WASM_PKG)/src/generated/worker-callbacks.ts
 HOST_WASM_WEB := $(HOST_WASM_PKG)/dist/wasm/web/truapi_server.js
 DOTLI_UI := $(DOTLI)/packages/ui
 DOTLI_HOST_WASM_LINK := $(DOTLI_UI)/node_modules/@parity/truapi-host-wasm
 SIGNER_BOT_BASE_URL ?= https://signing-bot-dev.novasama-tech.org/
 SIGNER_BOT_NETWORK ?= paseo-next-v2
+VITE_NETWORKS ?= paseo-next-v2,previewnet
 export SIGNER_BOT_BASE_URL
 export SIGNER_BOT_NETWORK
+export VITE_NETWORKS
 
 # `make dev DEBUG=1` runs dotli with VITE_APP_DEBUG=true to log every wire frame.
 DOTLI_PREVIEW := preview
@@ -80,7 +82,7 @@ dev-bootstrap: ## Prepare ignored generated/build artifacts needed by dotli prev
 	# --ignore-scripts: the workspace `prepare` builds need generated sources
 	# that only exist after codegen.sh, which also builds the packages.
 	if [ ! -d node_modules ]; then npm ci --ignore-scripts; fi
-	if [ ! -f "$(HOST_CALLBACKS_GENERATED)" ] || [ ! -f "$(HOST_WASM_ADAPTER_GENERATED)" ]; then ./scripts/codegen.sh; fi
+	if [ ! -f "$(HOST_CALLBACKS_GENERATED)" ] || [ ! -f "$(HOST_WASM_ADAPTER_GENERATED)" ] || [ ! -f "$(HOST_WASM_WORKER_CALLBACKS_GENERATED)" ]; then ./scripts/codegen.sh; fi
 	cd $(HOST_WASM_PKG) && npm run build
 	TRUAPI_WASM_PROFILE=dev $(MAKE) wasm
 	cd $(PLAYGROUND) && yarn install --frozen-lockfile
@@ -90,6 +92,7 @@ dev-bootstrap: ## Prepare ignored generated/build artifacts needed by dotli prev
 dev-link-check: ## Verify dotli can resolve the local @parity/truapi-host-wasm package.
 	@test -f "$(HOST_CALLBACKS_GENERATED)" || (echo "Missing generated host callbacks. Run: make codegen"; exit 1)
 	@test -f "$(HOST_WASM_ADAPTER_GENERATED)" || (echo "Missing generated host callbacks WASM adapter. Run: make codegen"; exit 1)
+	@test -f "$(HOST_WASM_WORKER_CALLBACKS_GENERATED)" || (echo "Missing generated host callbacks worker bridge. Run: make codegen"; exit 1)
 	@test -f "$(HOST_WASM_PKG)/dist/index.js" || (echo "Missing @parity/truapi-host-wasm dist. Run: npm run build --prefix $(HOST_WASM_PKG)"; exit 1)
 	@test -f "$(HOST_WASM_WEB)" || (echo "Missing @parity/truapi-host-wasm web WASM glue. Run: make wasm"; exit 1)
 	@test -e "$(DOTLI_HOST_WASM_LINK)/package.json" || (echo "dotli cannot resolve @parity/truapi-host-wasm. Run top-level: make dev"; exit 1)
@@ -113,7 +116,8 @@ e2e-dotli: ## Fully automated dotli + playground diagnosis e2e. Requires SIGNER_
 	if [ -n "$$SIGNER_BOT_NETWORK_ENV" ]; then SIGNER_BOT_NETWORK="$$SIGNER_BOT_NETWORK_ENV"; export SIGNER_BOT_NETWORK; fi; \
 	if [ "$$E2E_DOTLI_SMOKE" != "1" ]; then test -n "$$SIGNER_BOT_SVC_TOKEN" || (echo "Missing SIGNER_BOT_SVC_TOKEN. e2e-dotli requires signer-bot; without it a human phone scan is required."; exit 1); fi; \
 	$(MAKE) dev-bootstrap; \
-	cd $(DOTLI)/apps/host && bun tests/e2e/playground-diagnosis.ts
+	cd $(DOTLI) && bun run build; \
+	cd apps/host && bun run test:e2e
 
 matrix: ## Regenerate the host compatibility matrix from explorer/diagnosis-reports.
 	cd $(EXPLORER) && npm run generate-matrix

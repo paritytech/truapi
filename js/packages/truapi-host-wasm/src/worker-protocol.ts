@@ -11,37 +11,16 @@
 // safe choice.
 
 import type { LogLevel } from "./runtime.js";
-
-export type CallbackName =
-  | "navigateTo"
-  | "pushNotification"
-  | "cancelNotification"
-  | "devicePermission"
-  | "remotePermission"
-  | "featureSupported"
-  | "read"
-  | "write"
-  | "clear"
-  | "readCoreStorage"
-  | "writeCoreStorage"
-  | "clearCoreStorage"
-  | "authStateChanged"
-  | "confirmUserAction"
-  | "submitPreimage";
-
-export type OptionalCallbackName =
-  | "cancelNotification"
-  | "authStateChanged"
-  | "confirmUserAction"
-  | "submitPreimage";
-
-/**
- * Names of every subscription host callback. Each has the shape
- * `(payload?, sendItem) => dispose | void`.
- */
-export type SubscriptionName =
-  | "lookupPreimage"
-  | "subscribeTheme";
+import type {
+  CallbackName,
+  OptionalCallbackName,
+  SubscriptionName,
+} from "./generated/worker-callbacks.js";
+export type {
+  CallbackName,
+  OptionalCallbackName,
+  SubscriptionName,
+} from "./generated/worker-callbacks.js";
 
 /**
  * Positional arguments for a callback. The wasm core calls each callback

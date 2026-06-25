@@ -5,15 +5,17 @@
 // smoldot/dispatcher work runs here off the page main thread.
 
 import type {
-  CallbackName,
   MainToWorker,
-  OptionalCallbackName,
   SubscriptionName,
   WorkerToMain,
 } from "./worker-protocol.js";
 import { errorMessage } from "./error-message.js";
+import {
+  createWorkerRawCallbacks,
+  type CallbackName,
+} from "./generated/worker-callbacks.js";
 
-interface WasmCore {
+interface WorkerHostCore {
   receiveFrame(frame: Uint8Array): Promise<void>;
   disconnectSession(): Promise<void>;
   cancelPairing(): void;
@@ -24,7 +26,10 @@ interface WasmCore {
 
 interface WasmModuleShape {
   default: (input?: unknown) => Promise<unknown>;
-  WasmHostCore: new (callbacks: unknown, runtimeConfig: unknown) => WasmCore;
+  WasmHostCore: new (
+    callbacks: unknown,
+    runtimeConfig: unknown,
+  ) => WorkerHostCore;
   setLogLevel?: (level: string) => void;
 }
 
@@ -117,64 +122,14 @@ function chainConnect(
   });
 }
 
-type RawCallbackFn = (...args: never[]) => unknown;
-
-const requiredRawCallbacks: Record<string, RawCallbackFn> = {
-  navigateTo: (url: string) => callbackRequest("navigateTo", [url]),
-  pushNotification: (payload: Uint8Array) =>
-    callbackRequest("pushNotification", [payload]),
-  devicePermission: (payload: Uint8Array) =>
-    callbackRequest("devicePermission", [payload]) as Promise<boolean>,
-  remotePermission: (payload: Uint8Array) =>
-    callbackRequest("remotePermission", [payload]) as Promise<boolean>,
-  featureSupported: (payload: Uint8Array) =>
-    callbackRequest("featureSupported", [payload]) as Promise<boolean>,
-  read: (key: string) =>
-    callbackRequest("read", [key]) as Promise<Uint8Array | null | undefined>,
-  write: (key: string, value: Uint8Array) =>
-    callbackRequest("write", [key, value]),
-  clear: (key: string) => callbackRequest("clear", [key]),
-  readCoreStorage: (key: Uint8Array) =>
-    callbackRequest("readCoreStorage", [key]) as Promise<
-      Uint8Array | null | undefined
-    >,
-  writeCoreStorage: (key: Uint8Array, value: Uint8Array) =>
-    callbackRequest("writeCoreStorage", [key, value]),
-  clearCoreStorage: (key: Uint8Array) =>
-    callbackRequest("clearCoreStorage", [key]),
-};
-
-const optionalRawCallbacks: Record<OptionalCallbackName, RawCallbackFn> = {
-  cancelNotification: (id: number) =>
-    callbackRequest("cancelNotification", [id]),
-  // Fire-and-forget notification: the wasm core ignores the returned promise.
-  authStateChanged: (state: unknown) =>
-    void callbackRequest("authStateChanged", [state]).catch(() => {}),
-  confirmUserAction: (payload: Uint8Array) =>
-    callbackRequest("confirmUserAction", [payload]) as Promise<boolean>,
-  submitPreimage: (value: Uint8Array) =>
-    callbackRequest("submitPreimage", [value]) as Promise<Uint8Array>,
-};
-
 function buildRawCallbacks(msg: Extract<MainToWorker, { kind: "init" }>) {
-  const callbacks: Record<string, unknown> = { ...requiredRawCallbacks };
-  for (const name of msg.optionalCallbacks ?? []) {
-    callbacks[name] = optionalRawCallbacks[name];
-  }
-  const optionalSubscriptions = new Set(msg.optionalSubscriptions ?? []);
-  if (optionalSubscriptions.has("subscribeTheme")) {
-    callbacks.subscribeTheme = (sendItem: (value: unknown) => void) =>
-      startSubscription("subscribeTheme", null, sendItem);
-  }
-  if (optionalSubscriptions.has("lookupPreimage")) {
-    callbacks.lookupPreimage = (
-      payload: Uint8Array,
-      sendItem: (value: unknown) => void,
-    ) => startSubscription("lookupPreimage", payload, sendItem);
-  }
-  if (msg.chainConnect) {
-    callbacks.chainConnect = chainConnect;
-  }
+  const callbacks = createWorkerRawCallbacks({
+    callbackRequest,
+    startSubscription,
+    ...(msg.chainConnect ? { chainConnect } : {}),
+    optionalCallbacks: msg.optionalCallbacks,
+    optionalSubscriptions: msg.optionalSubscriptions,
+  });
   callbacks.emitFrame = (frame: Uint8Array): void => {
     postToMain({ kind: "frame", bytes: frame });
   };
@@ -184,7 +139,7 @@ function buildRawCallbacks(msg: Extract<MainToWorker, { kind: "init" }>) {
   return callbacks;
 }
 
-let core: WasmCore | null = null;
+let core: WorkerHostCore | null = null;
 let wasm: WasmModuleShape | null = null;
 
 (async () => {

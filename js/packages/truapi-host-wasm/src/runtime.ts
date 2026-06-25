@@ -1,13 +1,11 @@
-import type { Provider } from "@parity/truapi";
+import type { WireProvider } from "@parity/truapi";
 
 // The typed capability interfaces below come straight from the
 // `truapi-platform` Rust crate via `truapi-codegen --platform-ts-output`.
 // They are the host-author-facing surface: each method takes/returns
 // typed wrappers (`HostDevicePermissionRequest`, etc.) rather than raw
-// SCALE bytes. The `WasmRawCallbacks` interface declared further down
-// is the byte-oriented wire surface the WASM core invokes; use
-// `createWasmRawCallbacks` to adapt this typed surface into the raw
-// callback surface consumed by `createHostCoreProvider`.
+// SCALE bytes. `createWebWorkerProvider` adapts this typed surface into
+// the byte-oriented callback bridge consumed by the WASM core.
 export type {
   AuthState,
   ChainProvider,
@@ -23,10 +21,7 @@ export type {
   ProductStorage,
   SessionUiInfo,
   ThemeHost,
-} from "@parity/truapi-host/callbacks";
-import type { HostCallbacks } from "@parity/truapi-host/callbacks";
-import type { RawCallbacks } from "./generated/host-callbacks-adapter.js";
-import { createWasmRawCallbacks } from "./generated/host-callbacks-adapter.js";
+} from "./generated/host-callbacks.js";
 
 /**
  * Async-or-sync return. Synchronous hosts (e.g. the dotli main-thread
@@ -87,39 +82,7 @@ export interface HostCoreRuntimeConfig {
   };
 }
 
-/**
- * Raw byte-oriented callbacks the WASM core invokes. Names match the
- * camelCase property keys the Rust `JsBridge::from_js` extracts. Request
- * callbacks return `Promise<Uint8Array>` (or `Promise<bool>` for the
- * permission prompts); subscription callbacks accept a `sendItem` sink
- * and return an optional `dispose` function.
- *
- * This interface is the SCALE-byte-level wire surface between the WASM
- * core and JS; the typed `HostCallbacks` interface above is the
- * host-author surface. They overlap on the capability methods covered by
- * `truapi-platform`; account, signing, and statement-store methods are owned
- * by the Rust core and do not cross this callback boundary.
- */
-export type WasmRawCallbacks = RawCallbacks & {
-  emitFrame(frame: Uint8Array): void;
-  dispose?(): void;
-};
-
-/**
- * Shape exposed by the wasm-pack output's `WasmHostCore`. Kept local
- * so the package does not have a hard dependency on the generated `.d.ts`
- * file path.
- */
-export interface HostCoreLike {
-  receiveFrame(frame: Uint8Array): Promise<void>;
-  disconnectSession?(): Promise<void>;
-  cancelPairing?(): void;
-  notifySessionStoreChanged?(): void;
-  dispose(): void;
-  free(): void;
-}
-
-export interface TrUApiHostCoreProvider extends Provider {
+export interface TrUApiHostCoreProvider extends WireProvider {
   /**
    * Core-owned logout/disconnect. This best-effort notifies the SSO peer,
    * clears the in-memory session, clears CoreStorage auth state, and broadcasts
@@ -147,103 +110,4 @@ export interface TrUApiHostCoreProvider extends Provider {
    * one-shot constructions that only accept `logLevel` up front.
    */
   setLogLevel?(level: LogLevel): void;
-}
-
-/**
- * Wraps a WASM core in a `Provider`, the byte transport abstraction
- * exposed by `@parity/truapi`. The provider can be handed to
- * `createHostServer` from `@parity/truapi-host` so the dispatcher dispatches
- * inbound frames into the WASM core and forwards core-emitted frames back
- * to the listener registered through `provider.subscribe`.
- */
-export function createHostCoreProvider(
-  createCore: (rawCallbacks: WasmRawCallbacks) => HostCoreLike,
-  host: Partial<HostCallbacks>,
-): TrUApiHostCoreProvider {
-  const partial = createWasmRawCallbacks(host);
-  const listeners = new Set<(message: Uint8Array) => void>();
-  const closeListeners = new Set<(error: Error) => void>();
-  let disposed = false;
-  let closedError: Error | null = null;
-
-  // Terminal close-once transition, matching `createBaseProvider` in
-  // @parity/truapi: notify close listeners exactly once, then drop all
-  // listeners so the provider stops delivering.
-  const close = (error: Error): void => {
-    if (closedError) return;
-    closedError = error;
-    for (const listener of [...closeListeners]) listener(error);
-    listeners.clear();
-    closeListeners.clear();
-  };
-
-  const raw: WasmRawCallbacks = {
-    ...partial,
-    emitFrame(frame: Uint8Array) {
-      if (disposed || closedError) return;
-      // Copy out of the WASM-owned buffer so retained references stay
-      // valid once the core reuses the underlying memory.
-      const copy = new Uint8Array(frame.length);
-      copy.set(frame);
-      for (const listener of [...listeners]) listener(copy);
-    },
-  };
-
-  const core = createCore(raw);
-
-  return {
-    postMessage(bytes: Uint8Array): void {
-      if (disposed || closedError) return;
-      void core.receiveFrame(bytes).catch((err: unknown) => {
-        close(err instanceof Error ? err : new Error(String(err)));
-      });
-    },
-    subscribe(callback) {
-      if (closedError) return () => {};
-      listeners.add(callback);
-      return () => {
-        listeners.delete(callback);
-      };
-    },
-    subscribeClose(callback) {
-      if (closedError) {
-        callback(closedError);
-        return () => {};
-      }
-      closeListeners.add(callback);
-      return () => {
-        closeListeners.delete(callback);
-      };
-    },
-    async disconnectSession() {
-      if (disposed || closedError) return;
-      if (!core.disconnectSession) {
-        throw new Error("disconnectSession unavailable on this WASM core");
-      }
-      await core.disconnectSession();
-    },
-    cancelPairing() {
-      if (disposed || closedError) return;
-      core.cancelPairing?.();
-    },
-    notifySessionStoreChanged() {
-      if (disposed || closedError) return;
-      core.notifySessionStoreChanged?.();
-    },
-    dispose() {
-      if (disposed) return;
-      disposed = true;
-      try {
-        core.dispose();
-      } catch {
-        // host dispose threw, swallow during teardown
-      }
-      try {
-        core.free();
-      } catch {
-        // already freed
-      }
-      close(new Error("wasm provider disposed"));
-    },
-  };
 }

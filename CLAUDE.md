@@ -15,11 +15,9 @@ rust/crates/
   truapi-server/         Rust runtime hosts implement; ships as WASM (browser/node)
 js/packages/
   truapi/                  @parity/truapi TS package; generated TS lives under ignored paths
-  truapi-host/             @parity/truapi-host host-side codegen + dispatcher (no shared core).
-                           `/callbacks` exposes typed HostCallbacks and callback DTO codecs.
   truapi-host-wasm/        @parity/truapi-host-wasm: WASM-backed host runtime. Subpath entries:
-	                           `.` (core Provider + dispatcher), `/web` (iframe + Web
-	                           Worker), `/electron` (MessagePortMain), `/worker-runtime` (Worker entry).
+	                           `.` (shared host types), `/web` (iframe + Web
+	                           Worker), `/worker-runtime` (Worker entry).
 	                           WASM bundle (gitignored) under dist/wasm/web/, built via `make wasm`
 playground/                Next.js interactive playground; deploys to truapi-playground.dot
 hosts/dotli/               dotli submodule

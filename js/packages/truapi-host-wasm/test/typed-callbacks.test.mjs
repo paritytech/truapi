@@ -13,14 +13,11 @@ import {
   ThemeVariant,
 } from "@parity/truapi";
 
-import {
-  createUnavailableCallbacks,
-  createWasmRawCallbacks,
-} from "../dist/index.js";
+import { createWasmRawCallbacks } from "../dist/generated/host-callbacks-adapter.js";
 import {
   CoreStorageKey,
   UserConfirmationReview,
-} from "@parity/truapi-host/callbacks";
+} from "../dist/generated/host-callbacks.js";
 
 // The generated `createWasmRawCallbacks` adapter speaks the symmetric SCALE
 // byte boundary: codec-typed requests arrive as `Uint8Array` and are decoded
@@ -53,17 +50,6 @@ const SIGN_PAYLOAD = {
 function settle() {
   return new Promise((resolve) => setImmediate(resolve));
 }
-
-test("createUnavailableCallbacks rejects storage write paths", async () => {
-  const callbacks = createUnavailableCallbacks();
-
-  await assert.rejects(
-    () => callbacks.write("key", new Uint8Array([1])),
-    /write unavailable/,
-  );
-  await assert.rejects(() => callbacks.clear("key"), /clear unavailable/);
-  assert.equal(await callbacks.read("key"), undefined);
-});
 
 test("createWasmRawCallbacks decodes requests and encodes typed responses", async () => {
   const writes = [];
@@ -325,15 +311,15 @@ test("createWasmRawCallbacks bridges lifecycle, confirmations, and preimage call
   disposePreimages?.();
 });
 
-test("createWasmRawCallbacks default theme and preimage subscriptions emit current values", () => {
+test("createWasmRawCallbacks omits absent host callbacks", () => {
   const raw = createWasmRawCallbacks({});
-  const themes = [];
-  raw.subscribeTheme?.((theme) => themes.push(ThemeVariant.dec(theme)));
-  assert.deepEqual(themes, ["Dark"]);
-
-  const preimages = [];
-  raw.lookupPreimage(new Uint8Array([1]), (value) => preimages.push(value));
-  assert.deepEqual(preimages, [undefined]);
+  assert.equal(raw.subscribeTheme, undefined);
+  assert.equal(raw.lookupPreimage, undefined);
+  assert.equal(raw.confirmUserAction, undefined);
+  assert.equal(raw.submitPreimage, undefined);
+  assert.equal(raw.cancelNotification, undefined);
+  assert.equal(raw.pushNotification, undefined);
+  assert.equal(raw.read, undefined);
 });
 
 test("createWasmRawCallbacks adapts typed result subscriptions", async () => {

@@ -4,22 +4,11 @@
 // here are the genuinely bespoke runtime plumbing it leans on: stream driving
 // and the chain-connection handle.
 
-import {
-  HostDevicePermissionResponse,
-  HostPushNotificationResponse,
-  RemotePermissionResponse,
-  ThemeVariant,
-  type GenericError,
-  type Result,
-} from "@parity/truapi";
+import { type GenericError, type Result } from "@parity/truapi";
 import { hexToBytes } from "@parity/truapi/scale";
 
-import type {
-  ChainConnect,
-  ChainConnection,
-} from "./runtime.js";
-import type { HostCallbacks } from "@parity/truapi-host/callbacks";
-import type { RawCallbacks } from "./generated/host-callbacks-adapter.js";
+import type { ChainConnect, ChainConnection } from "./runtime.js";
+import type { HostCallbacks } from "./generated/host-callbacks.js";
 
 type WireResult<T, E> =
   | { success: true; value: T }
@@ -61,6 +50,29 @@ function toAsyncIterator<T>(stream: MaybeAsyncIterable<T>): AsyncIterator<T> {
   return asyncIterator;
 }
 
+function pumpIterator<T>(
+  iterator: AsyncIterator<T>,
+  onItem: (value: T) => void,
+  label: string,
+): () => void {
+  let stopped = false;
+  void (async () => {
+    try {
+      while (!stopped) {
+        const next = await iterator.next();
+        if (next.done) return;
+        onItem(next.value);
+      }
+    } catch (err) {
+      console.error(`[truapi host callbacks] ${label} failed:`, err);
+    }
+  })();
+  return () => {
+    stopped = true;
+    void iterator.return?.();
+  };
+}
+
 /**
  * Drive a typed host stream of `Result` items into the core's `sendItem`
  * sink, unwrapping each `Result` (or throwing on its error). Returns a
@@ -70,23 +82,11 @@ export function driveResultStream<T>(
   stream: MaybeAsyncIterable<StreamResult<T, GenericError>>,
   sendItem: (value: T) => void,
 ): () => void {
-  const iterator = toAsyncIterator(stream);
-  let stopped = false;
-  void (async () => {
-    try {
-      while (!stopped) {
-        const next = await iterator.next();
-        if (next.done) return;
-        sendItem(unwrapStreamResult(next.value));
-      }
-    } catch (err) {
-      console.error("[truapi host callbacks] subscription failed:", err);
-    }
-  })();
-  return () => {
-    stopped = true;
-    void iterator.return?.();
-  };
+  return pumpIterator(
+    toAsyncIterator(stream),
+    (value) => sendItem(unwrapStreamResult(value)),
+    "subscription",
+  );
 }
 
 /**
@@ -102,68 +102,14 @@ export function chainConnectAdapter(
   return async (genesisHash, onResponse): Promise<ChainConnection | null> => {
     const connection = await host.connect!(hexToBytes(genesisHash));
     const iterator = connection.responses()[Symbol.asyncIterator]();
-    let closed = false;
-    void (async () => {
-      try {
-        while (!closed) {
-          const next = await iterator.next();
-          if (next.done) return;
-          onResponse(next.value);
-        }
-      } catch (err) {
-        console.error("[truapi host callbacks] chain responses failed:", err);
-      }
-    })();
+    const stopResponses = pumpIterator(iterator, onResponse, "chain responses");
     return {
       send(request: string): void {
         connection.send(request);
       },
       close(): void {
-        closed = true;
-        void iterator.return?.();
+        stopResponses();
       },
     };
-  };
-}
-
-/**
- * Defaults for every callback, used by the generated adapter when the host
- * does not implement one. These reproduce the core's absent-callback
- * semantics: permissions deny, notifications no-op, storage/session read
- * empty, confirmations deny, required capabilities throw, and subscriptions
- * emit a single current default. Codec-typed results are SCALE-encoded to
- * match the symmetric callback boundary.
- */
-export function createUnavailableCallbacks(): Omit<
-  RawCallbacks,
-  "chainConnect"
-> {
-  const unavailable = (method: string) => async (): Promise<never> => {
-    throw new Error(`${method} unavailable on this host`);
-  };
-  return {
-    navigateTo: unavailable("navigateTo"),
-    pushNotification: async () => HostPushNotificationResponse.enc({ id: 0 }),
-    cancelNotification: async () => {},
-    devicePermission: async () =>
-      HostDevicePermissionResponse.enc({ granted: false }),
-    remotePermission: async () =>
-      RemotePermissionResponse.enc({ granted: false }),
-    featureSupported: unavailable("featureSupported"),
-    read: async () => undefined,
-    write: unavailable("write"),
-    clear: unavailable("clear"),
-    readCoreStorage: async () => undefined,
-    writeCoreStorage: async () => {},
-    clearCoreStorage: async () => {},
-    authStateChanged: () => {},
-    confirmUserAction: async () => false,
-    submitPreimage: unavailable("submitPreimage"),
-    subscribeTheme: (sendItem) => {
-      sendItem(ThemeVariant.enc("Dark"));
-    },
-    lookupPreimage: (_key, sendItem) => {
-      sendItem(undefined);
-    },
   };
 }

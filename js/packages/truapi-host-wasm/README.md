@@ -1,11 +1,8 @@
 # @parity/truapi-host-wasm
 
-WASM-backed TrUAPI host runtime. It embeds the `truapi-server` Rust core (compiled to WASM) and
-provides the `Provider` factories that drive it, plus per-environment integration entry points.
-It is the counterpart to the native Android/iOS host shells.
-
-> This is distinct from [`@parity/truapi-host`](../truapi-host), which is the host-side codegen +
-> dispatcher for hosts that bring their **own** runtime and do not embed the shared Rust core.
+WASM-backed TrUAPI host runtime. It embeds the `truapi-server` Rust core (compiled to WASM)
+behind a Web Worker provider, plus per-environment integration entry points. It is the
+counterpart to the native Android/iOS host shells.
 
 ## Entry points
 
@@ -13,7 +10,7 @@ The package exposes tree-shakeable subpath exports — import only what your env
 
 | Import                                    | Provides                                                                                                            |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
-| `@parity/truapi-host-wasm`                | Core: `createHostCoreProvider`, `createHostServer`, and the dispatcher adapter. Typed callback contracts come from `@parity/truapi-host/callbacks`. |
+| `@parity/truapi-host-wasm`                | Shared runtime types plus generated typed host callback contracts.                                            |
 | `@parity/truapi-host-wasm/web`            | Browser host: `createIframeHost` (iframe MessageChannel handshake) and `createWebWorkerProvider`.                   |
 | `@parity/truapi-host-wasm/worker-runtime` | Web Worker entrypoint (import with your bundler's `?worker` suffix) so the WASM core runs off the page main thread. |
 | `@parity/truapi-host-wasm/wasm/web`       | The raw browser `wasm-bindgen` glue, if you need to instantiate the core yourself.                                  |
@@ -57,13 +54,10 @@ publish job to `.github/workflows/`. Until then, consumers depend on the package
 ```text
 JS host code
   protocol handlers / typed callbacks
-  (types from @parity/truapi-host/callbacks)
+  (types from @parity/truapi-host-wasm)
        |
        v
-createHostServer (re-exported from @parity/truapi-host) <-- bytes --> Provider
-                                                                        |
-                                                                        v
-                                                   createHostCoreProvider / Worker
+createWebWorkerProvider
                                                                         |
                                                                         v
                                                             truapi-server WASM core

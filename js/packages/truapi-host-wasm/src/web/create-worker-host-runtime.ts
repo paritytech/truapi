@@ -4,22 +4,26 @@ import type {
   LogLevel,
   TrUApiHostCoreProvider,
   HostCoreRuntimeConfig,
-  WasmRawCallbacks,
 } from "../index.js";
 import { createWasmRawCallbacks } from "../generated/host-callbacks-adapter.js";
+import type { RawCallbacks } from "../generated/host-callbacks-adapter.js";
 import type {
   CallbackName,
   MainToWorker,
-  OptionalCallbackName,
   SubscriptionName,
   WorkerToMain,
 } from "../worker-protocol.js";
 import { errorMessage } from "../error-message.js";
 import { bytesToHex } from "@parity/truapi/scale";
+import {
+  implementedOptionalCallbacks,
+  implementedOptionalSubscriptions,
+  startRawSubscription,
+} from "../generated/worker-callbacks.js";
 
 interface WorkerProviderState {
   worker: Worker;
-  rawCallbacks: WasmRawCallbacks;
+  rawCallbacks: RawCallbacks;
   listeners: Set<(message: Uint8Array) => void>;
   closeListeners: Set<(error: Error) => void>;
   subscriptionDisposers: Map<number, () => void>;
@@ -67,37 +71,9 @@ function persistLogLevel(level: LogLevel): void {
 
 let devLogLevelOverride: LogLevel | null = readPersistedLogLevel();
 const devGlobalProviders = new Set<TrUApiHostCoreProvider>();
-const OPTIONAL_CALLBACK_NAMES: readonly OptionalCallbackName[] = [
-  "cancelNotification",
-  "authStateChanged",
-  "confirmUserAction",
-  "submitPreimage",
-];
-
 interface TrUApiDevConsole {
   setLogLevel(level: LogLevel): void;
   getLogLevel(): LogLevel | null;
-}
-
-function optionalCallbacks(
-  callbacks: Omit<WasmRawCallbacks, "emitFrame">,
-): OptionalCallbackName[] {
-  return OPTIONAL_CALLBACK_NAMES.filter(
-    (name) => typeof callbacks[name] === "function",
-  );
-}
-
-function optionalSubscriptions(
-  callbacks: Omit<WasmRawCallbacks, "emitFrame">,
-): SubscriptionName[] {
-  const names: SubscriptionName[] = [];
-  if (typeof callbacks.subscribeTheme === "function") {
-    names.push("subscribeTheme");
-  }
-  if (typeof callbacks.lookupPreimage === "function") {
-    names.push("lookupPreimage");
-  }
-  return names;
 }
 
 function handleCallbackRequest(
@@ -171,18 +147,12 @@ function handleSubscriptionStart(
   };
   let dispose: (() => void) | void = undefined;
   try {
-    switch (msg.name) {
-      case "subscribeTheme":
-        dispose = state.rawCallbacks.subscribeTheme?.(sendItem);
-        break;
-      case "lookupPreimage":
-        if (msg.payload === null) {
-          console.warn("[truapi worker] lookupPreimage requires payload");
-          return;
-        }
-        dispose = state.rawCallbacks.lookupPreimage(msg.payload, sendItem);
-        break;
-    }
+    dispose = startRawSubscription(
+      state.rawCallbacks,
+      msg.name,
+      msg.payload,
+      sendItem,
+    );
   } catch (err) {
     console.error(`[truapi worker] ${msg.name} threw on start:`, err);
     return;
@@ -377,8 +347,7 @@ export interface CreateWebWorkerProviderOptions {
 
 /**
  * Spawn the truapi-server WASM in `worker` and bridge it into a
- * `Provider`. The provider can be handed to `createHostServer` from
- * `@parity/truapi-host`.
+ * `WireProvider`.
  *
  * The caller is responsible for instantiating the Worker, Vite users
  * typically import the worker entry-point with `?worker`:
@@ -404,12 +373,7 @@ export function createWebWorkerProvider(
   return new Promise((resolve, reject) => {
     const state: WorkerProviderState = {
       worker,
-      // `emitFrame` is satisfied by the worker side; main thread never
-      // calls it. Fill in a no-op so the typed callback set is complete.
-      rawCallbacks: {
-        ...(callbacks as WasmRawCallbacks),
-        emitFrame: () => {},
-      },
+      rawCallbacks: callbacks,
       listeners: new Set(),
       closeListeners: new Set(),
       subscriptionDisposers: new Map(),
@@ -512,8 +476,8 @@ export function createWebWorkerProvider(
           kind: "init",
           logLevel: devLogLevelOverride ?? options.logLevel ?? "off",
           runtimeConfig: options.runtimeConfig,
-          optionalCallbacks: optionalCallbacks(callbacks),
-          optionalSubscriptions: optionalSubscriptions(callbacks),
+          optionalCallbacks: implementedOptionalCallbacks(host),
+          optionalSubscriptions: implementedOptionalSubscriptions(host),
           chainConnect: typeof callbacks.chainConnect === "function",
         };
         worker.postMessage(init);

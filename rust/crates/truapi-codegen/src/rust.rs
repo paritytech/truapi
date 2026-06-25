@@ -79,6 +79,7 @@ pub(crate) fn const_name(wire_method: &str) -> String {
 /// Const name for a trait/method pair's wire ids. The single naming
 /// algorithm shared by the Rust and TS wire-table emitters, so both
 /// generated surfaces agree on const names.
+#[cfg(test)]
 pub(crate) fn wire_const_name(trait_name: &str, method_name: &str) -> String {
     const_name(&wire_method_name(trait_name, method_name))
 }
