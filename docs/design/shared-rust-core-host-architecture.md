@@ -11,11 +11,13 @@ The shared Rust core host architecture aims to:
 - **Run the same core on every platform.** The identical core embeds as WASM on the web and over UniFFI on native, so dotli, Desktop, iOS, and Android behave the same way.
 - **Generate bindings from one source.** The product client and the dispatcher are generated from the one protocol definition, so wire formats cannot drift between hosts.
 
+The payoff is one versioned, tested implementation instead of one per host: behavior stays consistent across Web, Desktop, iOS, and Android, and shared tooling (structured logs, analytics, ...) can be built once on the core rather than per host.
+
 ## 1. Background
 
-A **Triangle Host** is a Polkadot application ([Web/dot.li](https://github.com/paritytech/dotli), [Desktop](https://github.com/paritytech/polkadot-desktop), [iOS](https://github.com/paritytech/polkadot-app-ios-v2), [Android](https://github.com/paritytech/polkadot-app-android-v2)) that embeds and runs **products**. A product is a single-page web application that the host loads in a sandbox. The product shares no memory with the host and speaks to it only over **TrUAPI**, the host-to-product protocol (specified in [host-spec](https://github.com/paritytech/host-spec)).
+A **Triangle Host** is a Polkadot application ([Web/dot.li](https://github.com/paritytech/dotli), [Desktop](https://github.com/paritytech/polkadot-desktop), [iOS](https://github.com/paritytech/polkadot-app-ios-v2), [Android](https://github.com/paritytech/polkadot-app-android-v2)) that embeds and runs **products**. A product is a single-page web application that the host loads in a sandbox. The product shares no memory with the host and speaks to it only over **TrUAPI**.
 
-TrUAPI is defined canonically in the [`truapi` Rust crate](https://github.com/paritytech/truapi/tree/main/rust/crates/truapi): its methods, payload and error types, and append-only wire ids, carried on the wire as SCALE-encoded byte frames.
+TrUAPI is defined canonically in the [`truapi` Rust crate](https://github.com/paritytech/truapi/tree/main/rust/crates/truapi): its methods, payload and error types, and wire ids, carried on the wire as SCALE-encoded byte frames.
 
 ### Platforms
 
@@ -28,7 +30,7 @@ The platform decides how the core is loaded and how products reach it, not what 
 
 ## 2. The architecture (high level)
 
-A product emits wire frames, a thin host adapter shuttles those frames to the shared core.
+A product emits wire frames, a thin host transport bridge shuttles those frames to the shared core.
 The core executes all protocol logic, and when the core needs an OS capability it calls back out through the platform trait set.
 Everything protocol-shaped lives in the core, everything OS-shaped lives in the host.
 
@@ -44,14 +46,14 @@ Everything protocol-shaped lives in the core, everything OS-shaped lives in the 
        |  up:   response and subscription-item frames (SCALE)
        v
 +--------------------------------------------------------------+
-| Host adapter / transport bridge          (host-owned, thin)  |
+| Host transport bridge                    (host-owned, thin)  |
 | moves frames in and out, holds no protocol logic             |
 +--------------------------------------------------------------+
-       |  in:  receive_frame(bytes)
-       |  out: emit_frame(bytes)  via FrameSink
+       |  down: product frames
+       |  up:   response and subscription frames
        v
 +--------------------------------------------------------------+
-| Shared Rust core  (truapi-server)            (core-owned)    |
+| Embedded shared runtime  (truapi-server)     (core-owned)    |
 | framing, dispatch, subscriptions, permission gating,         |
 | auth/SSO state machine, session interpretation,              |
 | signing orchestration, chainHead runtime                     |
@@ -71,14 +73,14 @@ Everything protocol-shaped lives in the core, everything OS-shaped lives in the 
 A product calls a method, for example `storage_read`, and the request makes one round trip across the four participants:
 
 ```
-  PRODUCT            ADAPTER            CORE               HOST
+  PRODUCT            BRIDGE             CORE               HOST
   (iframe /          (transport         (truapi-           (storage
    WebView)           bridge)            server)            capability)
      |                  |                  |                  |
      | request frame    |                  |                  |
      | (SCALE)          |                  |                  |
      |----------------->|                  |                  |
-     |                  | receive_frame    |                  |
+     |                  | runtime ingress  |                  |
      |                  | (bytes)          |                  |
      |                  |----------------->|                  |
      |                  |          decode frame, route by     |
@@ -92,7 +94,7 @@ A product calls a method, for example `storage_read`, and the request makes one 
      |                  |          encode response            |
      |                  |          (success or typed error)   |
      |                  |                  |                  |
-     |                  | emit_frame(bytes)|                  |
+     |                  | response bytes   |                  |
      |                  |<-----------------|                  |
      | response frame   |                  |                  |
      |<-----------------|                  |                  |
@@ -103,47 +105,48 @@ A product calls a method, for example `storage_read`, and the request makes one 
 The only sideways step is the `capability call` out to the host and its `value` reply.
 Subscriptions follow the same path, expanding into start, receive, interrupt, and stop frames.
 
-### The core's entry point (`HostCore`)
+### Runtime ownership
 
-`HostCore` is the core's single entry point: the host pushes the product's frames in and gets the core's frames back out.
-This entry point is identical on every platform, so only the transport that carries the frames differs: a web host bridges the product's iframe over a `MessageChannel`, a native host bridges its WebView over a loopback WebSocket.
+Each host embeds the shared runtime implementation and creates one isolated
+runtime instance per product context. Each runtime instance owns that product's
+dispatch, permissions, subscriptions, and lifecycle, while shared host services
+stay behind the platform layer.
 
-Both reach the same entry point:
+The runtime implementation is shared across hosts. Each host defines its own
+transport bridge and platform capability implementation around it, but the
+protocol behavior inside the runtime remains the same.
 
-```
-  iframe in a web host      --[ MessageChannel ]----.
-                                                     \
-  WebView in a native host  --[ loopback WebSocket ]--+
-                       two transports, one interface  |
-                                                      v
-            +---------------------------------------------+
-            | HostCore                                    |
-            |   frames in:  receive_frame(bytes)          |
-            |   frames out: emit_frame(bytes)             |
-            +---------------------------------------------+
-                                  v
-            +---------------------------------------------+
-            | shared core                                 |
-            +---------------------------------------------+
-```
-
-Beyond carrying frames, the host raises a couple of lifecycle signals the core reacts to:
-
-- **session/auth lifecycle:** the host can cancel an in-progress login, log out, or signal that the stored session changed (including from another tab or process). In every case the core re-derives auth state and the host re-renders it.
-- **dispose:** tear the core down when the product or tab goes away.
-
-The core is created from the host's `Platform` implementation plus a small runtime config (the product identity and the host's pairing metadata).
+- **Host-owned:** transport bridge, platform services, and runtime
+  configuration such as product identity and pairing metadata.
+- **Core-owned:** product protocol state, account/session state,
+  subscriptions, lifecycle decisions, and all protocol behavior.
+- **Target-specific:** transport and platform capabilities can differ by host;
+  the runtime contract stays the same. For example, a web host may show a
+  browser modal and relay signing to an external SSO wallet, while a native
+  signing host may show native confirmation UI and sign on device.
 
 ### What the host provides (platform capabilities)
 
-A host implements one capability surface ([`truapi-platform`](https://github.com/paritytech/truapi/tree/main/rust/crates/truapi-platform)), a syscall layer for OS primitives only. Account management, signing orchestration, and statement-store flows are not here; they live in the core. The capabilities a host supplies fall into a few groups:
+A host implements one capability surface ([`truapi-platform`](https://github.com/paritytech/truapi/tree/main/rust/crates/truapi-platform)), a syscall layer for OS primitives only. That surface is:
 
-- **OS primitives:** scoped key-value storage, opening URLs, notifications, the current theme, and feature probes.
-- **Data backends:** a chain connection (JSON-RPC, with the core running chainHead on top) and a content-addressed preimage store (off-chain blobs addressed by hash). The host supplies the transport and picks the backend; the core owns the wire mapping and subscription lifecycle.
-- **Auth and session:** rendering the core-owned auth state, and persisting an opaque session blob the core interprets.
-- **Consent UI:** permission prompts, and local accept/reject confirmation before the core signs or asks the SSO peer to sign.
+- `Storage`: product-scoped key-value storage.
+- `Navigation`: opening URLs after core-side normalization.
+- `Notifications`: scheduling and cancelling host notifications.
+- `Permissions`: device and remote permission prompts.
+- `Features`: feature-support probing.
+- `ChainProvider` and `JsonRpcConnection`: JSON-RPC transport; the core runs chainHead on top.
+- `AuthPresenter`: rendering core-owned auth state transitions.
+- `SessionStore`: persisting the opaque core session blob.
+- `UserConfirmation`: local accept/reject review before core-owned user actions continue.
+- `ThemeHost`: current host theme and future theme changes.
+- `PreimageHost`: host-selected preimage submit and lookup backend.
 
-That is the whole host job.
+`RuntimeConfig` is supplied alongside those traits and carries product identity, host/pairing metadata, the People-chain genesis hash, and the pairing deeplink scheme. This is the semantic boundary for both web and native hosts.
+
+This boundary can move over time. As a host responsibility becomes common
+across targets and stops needing target-specific primitives, it should move
+from host callbacks into the core so the reusable cross-platform surface grows
+and host code stays thin.
 
 ### Who owns what
 
@@ -159,158 +162,57 @@ That is the whole host job.
 | The cryptographic signature itself                         | No                     | Non-signing host: no (remote SSO-peer wallet signs). Signing host: yes (on-device signer) |
 | Product-account public key derivation                      | Yes                    | No                                                                                        |
 | chainHead v1 runtime                                       | Yes                    | Supplies JSON-RPC transport                                                               |
-| Storage, navigation, notifications, theme                  | No                     | Yes                                                                                       |
-| Task spawning, frame transport                             | No                     | Yes (spawner, frame sink)                                                                 |
 
-## 3. Non-signing host: dotli (web)
+## 3. Web and native embeddings
 
-[dotli](https://github.com/paritytech/dotli) holds no keys. It runs the WASM core in a Web Worker, connects each product to it, renders a QR/deeplink for an external Polkadot Mobile wallet to scan, and lets that wallet sign over SSO. The host implements only browser-facing platform callbacks.
-
-**Contrast with today:** dotli currently hand-maintains the full host-side protocol in TypeScript (its own `container.ts` on top of the Novasama `@novasamatech/host-*` packages). In this architecture that whole layer is a set of thin browser callbacks, and the protocol logic lives in the WASM core. Section 5 details the contrast.
+The web and native hosts embed the same runtime, but cross different host/runtime boundaries. On web, the runtime is WASM and host callbacks stay in TypeScript. On native, the runtime is linked through UniFFI and host callbacks are Swift/Kotlin.
 
 ### Topology
 
 ```
-            per product (one core provider per product iframe)
-+------------------------------------------------------------------+
-| Product iframe (sandboxed)                                       |
-| @parity/truapi client, emits SCALE frames                        |
-+------------------------------------------------------------------+
-       |  SCALE frames over a MessageChannel (port to port)
-       v
-+------------------------------------------------------------------+
-| Host page main thread  (DOM-bound, host-owned)                   |
-| MessagePort provider -> host dispatcher -> Web Worker provider   |
-| typed callbacks: localStorage, modals, topbar, chain RPC         |
-+------------------------------------------------------------------+
-       |  postMessage across the worker boundary:
-       |  frames in/out, callback request/response, sub items
-       v
-+------------------------------------------------------------------+
-| Web Worker thread  (core-owned)                                  |
-| worker runtime -> WasmHostCore -> HostCore -> the shared core    |
-| WASM core; core-initiated callbacks forwarded to the main thread |
-+------------------------------------------------------------------+
-       core callbacks resolve, on the main thread, to browser and
-       dotli primitives: shared auth storage, localStorage, DOM
-       modals, smoldot light client or a curated RPC gateway
+                         per product runtime instance
++--------------------------------+  +--------------------------------+
+| Web host                       |  | Native host                    |
+| Product iframe                 |  | Product WebView                |
+| @parity/truapi frames          |  | @parity/truapi frames          |
++--------------------------------+  +--------------------------------+
+       | MessageChannel                    | ws://127.0.0.1:<port>
+       v                                   v
++--------------------------------+  +--------------------------------+
+| TS host page / bridge          |  | Loopback WebSocket bridge      |
+| browser callbacks on main      |  | token-gated native transport   |
++--------------------------------+  +--------------------------------+
+       | postMessage to worker             | UniFFI binding
+       v                                   v
++--------------------------------+  +--------------------------------+
+| Web Worker                     |  | Native core binding            |
+| truapi-server WASM runtime     |  | truapi-server native runtime   |
++--------------------------------+  +--------------------------------+
+       | callbacks to TS                   | callbacks to Swift/Kotlin
+       v                                   v
++--------------------------------+  +--------------------------------+
+| TS platform services           |  | Swift/Kotlin platform services |
+| storage, RPC, auth UI          |  | storage, signer, RPC, UI       |
++--------------------------------+  +--------------------------------+
 ```
 
-The WASM core runs in a dedicated Web Worker, so heavy work stays off the page's main thread; frames and callbacks cross the worker boundary by `postMessage`.
-dotli's `Platform` implementation is plain JavaScript that maps each core callback onto a browser primitive: `localStorage`, DOM modals, shared auth storage, and an RPC gateway or light client for chain access.
+The shared runtime runs as WASM in a dedicated Web Worker, so heavy work stays off the page's main thread. dotli's `Platform` implementation stays on the main thread and resolves core-initiated callbacks to browser primitives.
+A product in a native WebView has no shared JavaScript realm with the host, so the host exposes a token-gated loopback WebSocket for SCALE frames. From there the path mirrors the web host: native callbacks implement `truapi-platform`, and the same shared runtime owns protocol behavior.
 
-### Signing and auth are core-owned
-
-Because dotli holds no keys, the core runs the SSO pairing with the user's external wallet and then relays every signing request to it; dotli only shows a local accept/reject prompt and never signs. The auth and session state machine is core-owned as well: the core emits an ordered auth-state stream that the topbar renders, and it persists the session only as an opaque blob that dotli stores and never decodes. The host renders and stores; the core decides.
-
-## 4. Signing host: iOS and Android (native)
-
-A mobile host embeds the same core over UniFFI and exposes the same `HostCore` entry point to Swift/Kotlin callbacks.
-The difference from the web host is the signing role.
-The device holds the user's keys and signs locally, so there is no external wallet to pair with.
-The native confirmation UI is the consent step, and a host signer produces the signature in-process.
-
-### Topology
-
-```
-                              per product
-+------------------------------------------------------------------+
-| Product JS in a native WebView (WKWebView / Android WebView)     |
-| @parity/truapi client, emits SCALE frames                        |
-+------------------------------------------------------------------+
-       |  ws://127.0.0.1:<port>/?t=<token>  (SCALE frames)
-       v
-+------------------------------------------------------------------+
-| Loopback WebSocket bridge  (host-owned, inside the core lib)     |
-| token-gated; the WebView shares no JS realm with the host        |
-+------------------------------------------------------------------+
-       |  in:  receive_frame(bytes)
-       |  out: emit_frame(bytes)
-       v
-+------------------------------------------------------------------+
-| Native core binding (UniFFI)  ->  HostCore  (the same core)      |
-+------------------------------------------------------------------+
-       |  down: capability call (UniFFI callback interface)
-       |  up:   result or stream item
-       v
-+------------------------------------------------------------------+
-| Swift / Kotlin host bridge  (native platform primitives)         |
-| storage, navigation, permissions, confirmation UI, chain RPC,    |
-| theme, session store, on-device signer and key custody           |
-+------------------------------------------------------------------+
-```
-
-A product in a native WebView has no shared JavaScript realm with the host, so there is no `MessageChannel`.
-The host runs a loopback WebSocket server on `127.0.0.1`, and the WebView dials in with a one-time token in the query string as the auth gate.
-From there the path mirrors the web host: a native callback interface implements every `truapi-platform` trait, and the core is created the same way as on web.
-Web and native differ in the transport and the callback language, not in the core.
-
-### Signing flow
-
-Because the device holds the keys, the signing path resolves locally instead of pairing with a remote wallet:
-
-```
-  PRODUCT               CORE                  HOST
-  (WebView)             (truapi-server)       (consent UI +
-                                               on-device signer)
-     |                     |                     |
-     | sign request frame  |                     |
-     |-------------------->|                     |
-     |            validate, gate permission,     |
-     |            prepare the review             |
-     |                     |                     |
-     |                     | show consent UI     |
-     |                     |-------------------->|
-     |                     |            accept / reject
-     |                     |                     |
-     |                     |          on accept: on-device
-     |                     |          signer + key custody
-     |                     |          produce the signature
-     |                     |                     |
-     |                     | signature           |
-     |                     |<--------------------|
-     |            assemble the signed response   |
-     |                     |                     |
-     | response frame      |                     |
-     |<--------------------|                     |
-     |                     |                     |
-     v                     v                     v
-```
-
-This is the contrast with the web host.
-A non-signing host relays the prepared request to a remote wallet over SSO and returns the wallet's signature.
-A signing host resolves consent and signs in-process behind its own signer capability.
-Both use the same core, the same dispatch, and the same consent step, and differ only in where the signature is produced.
-
-## 5. What changed vs the current architecture
+## 4. What changed vs the current architecture
 
 Today each host re-implements TrUAPI protocol semantics in hand-maintained, per-language glue.
 On the new core those semantics live once in the shared core, and each host is reduced to platform-primitive callbacks.
 
-### The current "glue" layer (triangle-js-sdks)
+At the package level, generated [`@parity/truapi`](https://github.com/paritytech/truapi/tree/main/js/packages/truapi) replaces `host-api-wrapper`, [`truapi-codegen`](https://github.com/paritytech/truapi/tree/main/rust/crates/truapi-codegen) replaces the hand-written method table and SCALE codecs, and the embedded runtime replaces the `host-container` and `host-papp` protocol orchestration.
 
-The glue layer, [`triangle-js-sdks`](https://github.com/paritytech/triangle-js-sdks), is the `@novasamatech/host-*` package family.
+### Transport bridge
 
-- **Shared protocol and transport:** `@novasamatech/host-api`. It hand-writes the SCALE codecs and the method table (around 57 `versionedRequest`/`versionedSubscription` entries) plus the transport and provider interface.
-- **Host-side implementation:** `@novasamatech/host-container` (message routing, iframe/webview providers, permission gating around each handler) and `@novasamatech/host-papp` (Polkadot Mobile pairing, SSO, sessions, secrets).
+The transport bridge becomes a byte pipe, not a protocol layer.
 
-On the new model the product-facing surface swaps to the generated [`@parity/truapi`](https://github.com/paritytech/truapi/tree/main/js/packages/truapi) client (products still emit the same SCALE frames), and the host-side glue (`host-api`, `host-container`, `host-papp`, and each host's own handlers) collapses into the shared Rust core. The codecs and method table are generated from the `truapi` crate by [`truapi-codegen`](https://github.com/paritytech/truapi/tree/main/rust/crates/truapi-codegen) rather than transcribed by hand.
-
-### Current dotli (web)
-
-dotli hosts products with a hand-written TypeScript host on top of the Novasama packages above. The shape today:
-
-- Every protocol method is a bespoke handler in dotli's own `container.ts`, hand-wiring permission gating, modals, account derivation, error mapping, rate limiting, and statement-store/preimage behavior.
-- The codecs and the method table are hand-written TypeScript in `@novasamatech/host-api`.
-- Signing and SSO are delegated to the paired Polkadot Mobile wallet, but the orchestration around them is JavaScript that dotli maintains and version-pins against the Novasama packages.
-
-The new model deletes that per-host implementation layer in favor of core callbacks.
-
-### Current iOS (native)
-
-[iOS](https://github.com/paritytech/polkadot-app-ios-v2) runs a parallel, hand-written Swift host implementing the same method surface. A `ContainerBridge` actor parses JSON messages from the WebView and routes roughly forty named methods, each hand-mapping JSON to Swift DTOs and SCALE, with a bundled in-page JavaScript shim.
-
-iOS today is a true device-as-wallet signer: keys are HD-derived from a local root entropy, and `signPayload`/`signRaw`/`createTransaction` build a signing model, present a native confirmation UI, and sign in-process. There is no shared core; the entire dispatch, codec, subscription, and signing layer is Swift.
+- **Web:** product frames cross the `MessageChannel` to the host page and are forwarded to the Web Worker. The page main thread does not decode or interpret TrUAPI frames; the WASM runtime does that in the worker.
+- **Native:** product frames go over the token-gated loopback WebSocket to the native runtime. The WebView no longer needs `container.js` to decode SCALE and translate into an ad-hoc container-to-native protocol.
+- **Versioning:** products use the latest `@parity/truapi` API cut available when the npm package is published. Each method is versioned independently; the Rust runtime can understand supported versions and answer in the requested API version. Breaking changes add a new request/response variant, while untouched APIs stay stable.
 
 ### Before / after
 
@@ -318,19 +220,16 @@ iOS today is a true device-as-wallet signer: keys are HD-derived from a local ro
 | -------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
 | Protocol dispatch          | Hand-written per host (`container.ts` TS, `ContainerBridge` Swift) | One Rust dispatcher in `truapi-server`                                           |
 | Wire codecs / method table | Hand-written TS (`@novasamatech/host-api`) and Swift DTOs          | Generated from the `truapi` crate by `truapi-codegen`                            |
+| Transport bridge           | Decodes or routes host protocol in JS/container layers             | Forwards SCALE frames to the runtime                                             |
+| API versioning             | Host/package versions can drift by implementation                  | Method-level versioning in `@parity/truapi` and the Rust runtime                 |
 | Permission gating          | Re-coded per host                                                  | Core permission state machine                                                    |
 | Auth/SSO orchestration     | `host-papp` JS, or the Swift signing stack                         | Core auth state machine and SSO protocol                                         |
 | Session interpretation     | Per host                                                           | Core decode/projection; host stores an opaque blob                               |
 | Host responsibility        | Full protocol implementation plus platform glue                    | Thin `truapi-platform` callbacks only                                            |
-| Web signing                | External wallet over SSO (JS-orchestrated)                         | External wallet over SSO (core-orchestrated)                                     |
-| iOS signing                | Device holds keys, signs locally (bespoke Swift stack)             | Device holds keys, signs locally behind the core's consent and signer capability |
 
-The takeaway: protocol semantics are re-implemented per host in hand-maintained glue, in two different languages, and drift from each other. On the new core they live once, generated from a single canonical definition, and each host becomes a thin adapter over its own platform primitives.
+The result is one generated, versioned protocol implementation, with host-specific code limited to transport and platform capabilities.
 
-## 6. Why this matters
+## References
 
-One versioned, tested implementation of the protocol stands in for many hand-maintained ones. Behavior is consistent across Web, iOS, Android, and Desktop because they execute the same bytes through the same logic, rather than each host's interpretation of a spec. The codecs and the method table have a single source (the `truapi` crate), so there is no wire drift between hosts to reconcile.
-
-Owning the semantics once also makes capabilities practical that are not worth maintaining per host: shared structured logs and correlation ids that follow a request through the core on any host, a headless host (the core with no UI, for automation and CI), and a simulation host for deterministic testing of product behavior at scale. These build on the single implementation instead of being patched into each host.
-
-This is the direction the shared core enables: it becomes the default TrUAPI implementation across dotli (web), iOS, Android, and Desktop, plus the headless and simulation hosts, with one protocol definition behind all of them.
+- Shared core and dotli web port: https://github.com/paritytech/truapi/pull/104
+- Native/mobile scaffolding: https://github.com/paritytech/truapi/pull/215
