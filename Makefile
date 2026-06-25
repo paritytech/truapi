@@ -24,11 +24,11 @@ export SIGNER_BOT_BASE_URL
 export SIGNER_BOT_NETWORK
 export VITE_NETWORKS
 
-# `make dev DEBUG=1` runs dotli with VITE_APP_DEBUG=true to log every wire frame.
-DOTLI_PREVIEW := preview
-ifdef DEBUG
-DOTLI_PREVIEW := preview:debug
-endif
+# Local product URLs (`http://localhost:5173/localhost:3000`) are intentionally
+# gated behind dotli's debug build flag, so the dev target must run the debug
+# preview by default. Override with `DOTLI_PREVIEW=preview` to test production
+# preview behavior.
+DOTLI_PREVIEW ?= preview:debug
 
 help: ## Show this help.
 	@awk 'BEGIN { FS = ":.*##"; printf "Usage: make <target>\n\nTargets:\n" } \

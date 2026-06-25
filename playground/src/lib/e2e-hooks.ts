@@ -2,7 +2,7 @@ import type {
   HostAccountConnectionStatusSubscribeItem,
   Subscription,
 } from "@parity/truapi";
-import { getClient } from "./transport";
+import { getClientSync } from "@parity/truapi/sandbox";
 
 type AccountStatus = HostAccountConnectionStatusSubscribeItem;
 
@@ -67,18 +67,20 @@ function notifyAccountStatus(status: AccountStatus): void {
 function startAccountConnectionStatusProbe(): AccountStatus[] {
   stopAccountConnectionStatusProbe();
   accountStatuses = [];
-  accountStatusSub = getClient()
-    .account.connectionStatusSubscribe()
-    .subscribe({
-      next: notifyAccountStatus,
-      error: (error) => {
-        for (const waiter of waiters) {
-          clearTimeout(waiter.timer);
-          waiter.reject(error);
-        }
-        waiters.clear();
-      },
-    });
+  const client = getClientSync();
+  if (!client) {
+    throw new Error("App must be opened inside a TrUAPI host.");
+  }
+  accountStatusSub = client.account.connectionStatusSubscribe().subscribe({
+    next: notifyAccountStatus,
+    error: (error) => {
+      for (const waiter of waiters) {
+        clearTimeout(waiter.timer);
+        waiter.reject(error);
+      }
+      waiters.clear();
+    },
+  });
   return [...accountStatuses];
 }
 
