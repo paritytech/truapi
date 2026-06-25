@@ -83,7 +83,7 @@ For methods declared as `ResultSubscription` on the Rust side, the returned `Obs
 
 ## What's in the package
 
-- **`createTrUApiServer(provider, handlers)` factory** that attaches a typed dispatcher to a `Provider` from `@parity/truapi`.
+- **`createTrUApiServer(provider, handlers)` factory** that attaches a typed dispatcher to a `WireProvider` from `@parity/truapi`.
 - **Generated handler interfaces**, one per service trait (`AccountHostHandlers`, `ChainHostHandlers`, `ChatHostHandlers`, …), composed into `TrUApiHostHandlers`.
 - **`@parity/truapi-host/callbacks` subpath** with the typed `HostCallbacks` interface and callback DTO codecs used by hosts that embed the shared Rust core through `@parity/truapi-host-wasm`.
 - **`CallContext` and `HostServerHooks` types** plus `ObservableLike` / `Observer` / `Subscription` re-exported from `@parity/truapi` for handler signatures, per-call state, and protocol-drift visibility.

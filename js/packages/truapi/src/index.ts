@@ -2,7 +2,6 @@ export type {
   ObservableLike,
   Observer,
   Payload,
-  Provider,
   ProtocolMessage,
   RequestFrameIds,
   RequestParams,
@@ -10,6 +9,7 @@ export type {
   Subscription,
   SubscribeRawParams,
   TrUApiTransport,
+  WireProvider,
 } from "./transport.js";
 export type { CreateTransportOptions } from "./client.js";
 export type { WebSocketProviderOptions } from "./transport.js";

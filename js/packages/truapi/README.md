@@ -68,6 +68,38 @@ sub.unsubscribe();
 - **TrUAPI transport** that handles request, response, subscription, and handshake framing.
 - **Generated domain clients and types** produced from the Rust API contract.
 - **SCALE codec helpers** used by the generated code, also re-exported for direct use.
+- **Sandbox bootstrap** (`@parity/truapi/sandbox`) that detects the host environment, builds the
+  matching provider, and exposes a cached client — see below.
+
+## Sandbox bootstrap
+
+`@parity/truapi/sandbox` wires up a client for browser-embedded hosts: it detects whether the app
+runs inside a TrUAPI host (iframe or webview), builds the matching provider, and caches the
+resulting client. Use it instead of assembling `createTransport` / `createClient` by hand.
+
+```ts
+import {
+  getClientSync,
+  isCorrectEnvironment,
+  subscribeConnectionStatus,
+} from "@parity/truapi/sandbox";
+
+const client = getClientSync(); // null outside a host container
+if (client) {
+  // …make host calls
+}
+
+// Or drive UI off connection status:
+const unsubscribe = subscribeConnectionStatus((status) => {
+  // "disconnected" | "connected"
+});
+```
+
+| Export                                      | Purpose                                         |
+| ------------------------------------------- | ----------------------------------------------- |
+| `isCorrectEnvironment(): boolean`           | Synchronous host-environment detection.         |
+| `getClientSync(): TrUApiClient \| null`     | Cached client; `null` outside a host container. |
+| `subscribeConnectionStatus(cb): () => void` | Connected / disconnected status listener.       |
 
 ## Wire format
 

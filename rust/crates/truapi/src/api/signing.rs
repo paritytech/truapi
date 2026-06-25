@@ -49,8 +49,12 @@ pub trait Signing: Send + Sync {
     /// ```ts
     /// import { PASEO_NEXT_V2_ASSET_HUB } from "@parity/truapi";
     ///
+    /// const signerResult = await accountIdForDotNsUsername();
+    /// assert(signerResult.isOk(), "accountIdForDotNsUsername failed:", signerResult);
+    /// console.log("fetched user account:", signerResult.value);
+    ///
     /// const result = await truapi.signing.createTransactionWithLegacyAccount({
-    ///   signer: "0x0000000000000000000000000000000000000000000000000000000000000000",
+    ///   signer: signerResult.value,
     ///   genesisHash: PASEO_NEXT_V2_ASSET_HUB.genesis,
     ///   callData: "0x0000",
     ///   extensions: [],

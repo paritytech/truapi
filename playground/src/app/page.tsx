@@ -10,7 +10,7 @@ import {
 import {
   subscribeConnectionStatus,
   type ConnectionStatus,
-} from "@/src/lib/transport";
+} from "@parity/truapi/sandbox";
 import { ServiceTable } from "@/src/components/ServiceTable";
 import { MethodView } from "@/src/components/MethodView";
 import { DiagnosisView } from "@/src/components/DiagnosisView";

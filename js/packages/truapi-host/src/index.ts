@@ -3,9 +3,9 @@ import type { Result } from "neverthrow";
 import {
   decodeWireMessage,
   encodeWireMessage,
-  type Provider,
   type RequestFrameIds,
   type SubscriptionFrameIds,
+  type WireProvider,
 } from "@parity/truapi";
 
 /**
@@ -184,7 +184,7 @@ export interface HostServerHooks {
 export interface TrUApiHostServer {
   /**
    * Detach all provider listeners, drop pending subscription state, and
-   * release resources. Does not dispose the underlying `Provider`; the
+   * release resources. Does not dispose the underlying `WireProvider`; the
    * caller decides whether to also dispose it.
    **/
   dispose(): void;
@@ -260,12 +260,12 @@ interface ActiveSubscription {
 type SubscriptionSlot = PendingSubscription | ActiveSubscription;
 
 /**
- * Wire a host server to a `Provider`. The server subscribes to inbound
+ * Wire a host server to a `WireProvider`. The server subscribes to inbound
  * frames, routes by wire id, and emits responses, receive items, and
  * interrupts back through the same provider. Idempotent disposal.
  **/
 export function createHostServer(
-  provider: Provider,
+  provider: WireProvider,
   entries: HostDispatchEntry[],
   hooks: HostServerHooks = {},
 ): TrUApiHostServer {

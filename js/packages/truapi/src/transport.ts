@@ -221,7 +221,7 @@ export interface TrUApiTransport {
 
   /**
    * Tear down the transport and release the listeners it registered on the
-   * underlying `Provider`. Pending requests reject and live subscriptions
+   * underlying `WireProvider`. Pending requests reject and live subscriptions
    * receive `onClose`. Idempotent.
    *
    * The provider itself is left alone; the caller decides whether to also
@@ -262,9 +262,11 @@ export interface ProtocolMessage {
 }
 
 /**
- * Raw message pipe abstraction used by the transport.
+ * Raw SCALE-wire-frame pipe abstraction used by the transport. A `WireProvider`
+ * is the low-level channel (a `MessagePort` or iframe `postMessage` link) that
+ * carries encoded frames between the product and the host.
  **/
-export interface Provider {
+export interface WireProvider {
   /**
    * Send a complete SCALE-encoded wire frame to the peer.
    **/
@@ -396,7 +398,7 @@ function scanStrEnd(bytes: Uint8Array): Result<number, Error> {
 
 /**
  * Internal listener bookkeeping and close-once state machine shared by the
- * built-in `Provider` implementations. Transport-specific code wires its
+ * built-in `WireProvider` implementations. Transport-specific code wires its
  * inbound source to `deliver`, registers cleanup via `onClose`, and exposes
  * `subscribe`/`subscribeClose` to callers.
  **/
@@ -484,7 +486,7 @@ function createBaseProvider() {
 export function createIframeProvider(options: {
   target: Window;
   hostOrigin: string;
-}): Provider {
+}): WireProvider {
   const base = createBaseProvider();
   const { target, hostOrigin } = options;
 
@@ -521,7 +523,7 @@ export function createIframeProvider(options: {
  **/
 export function createMessagePortProvider(
   port: MessagePort | Promise<MessagePort>,
-): Provider {
+): WireProvider {
   const base = createBaseProvider();
   let resolvedPort: MessagePort | null = null;
   const pending: Uint8Array[] = [];
