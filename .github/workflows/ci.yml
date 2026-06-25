@@ -100,7 +100,6 @@ jobs:
             js/packages/truapi/src/playground/codegen
             js/packages/truapi/src/explorer/codegen
             js/packages/truapi/src/explorer/versions.ts
-            js/packages/truapi-host/src/generated
             playground/test/generated
 
   ts-client:
