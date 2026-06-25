@@ -151,9 +151,9 @@ pub enum PairingDeeplinkScheme {
     PolkadotAppDev,
 }
 
-/// Scoped key-value storage. The platform namespaces keys so different products
-/// cannot read each other's data.
-pub trait Storage: Send + Sync {
+/// Product-scoped key-value storage. The platform namespaces keys so different
+/// products cannot read each other's data.
+pub trait ProductStorage: Send + Sync {
     /// Read a value by key.
     fn read(
         &self,
@@ -251,8 +251,45 @@ pub trait JsonRpcConnection: Send + Sync {
     fn responses(&self) -> BoxStream<'static, String>;
 }
 
+/// Core-owned host-private storage slots. Products never address these slots;
+/// the host chooses the backing store for each slot.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum CoreStorageKey {
+    /// Opaque SSO/auth session blob.
+    AuthSession,
+    /// Pairing device identity used during SSO flows.
+    PairingDeviceIdentity,
+    /// Persisted decision for a canonical core permission key.
+    PermissionDecision {
+        /// Core-generated permission storage key.
+        storage_key: String,
+    },
+}
+
+/// Host-private persistence for core-owned state.
+pub trait CoreStorage: Send + Sync {
+    /// Read a core-owned value by typed slot.
+    fn read_core_storage(
+        &self,
+        key: CoreStorageKey,
+    ) -> impl Future<Output = Result<Option<Vec<u8>>, GenericError>> + Send;
+
+    /// Write a core-owned value by typed slot.
+    fn write_core_storage(
+        &self,
+        key: CoreStorageKey,
+        value: Vec<u8>,
+    ) -> impl Future<Output = Result<(), GenericError>> + Send;
+
+    /// Clear a core-owned value by typed slot.
+    fn clear_core_storage(
+        &self,
+        key: CoreStorageKey,
+    ) -> impl Future<Output = Result<(), GenericError>> + Send;
+}
+
 /// Decoded session fields a host shell needs to render account UI without
-/// parsing the opaque session blob the core persists through [`SessionStore`].
+/// parsing the opaque session blob the core persists through [`CoreStorage`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SessionUiInfo {
     /// 32-byte sr25519 root public key of the active session.
@@ -297,23 +334,6 @@ pub trait AuthPresenter: Send + Sync {
     fn auth_state_changed(&self, state: AuthState) {
         let _ = state;
     }
-}
-
-/// Host-global opaque session persistence for core-owned SSO state.
-pub trait SessionStore: Send + Sync {
-    /// Read the currently persisted core session blob.
-    fn read_stored_session(
-        &self,
-    ) -> impl Future<Output = Result<Option<Vec<u8>>, GenericError>> + Send;
-
-    /// Persist the core session blob.
-    fn write_stored_session(
-        &self,
-        value: Vec<u8>,
-    ) -> impl Future<Output = Result<(), GenericError>> + Send;
-
-    /// Clear the persisted core session blob.
-    fn clear_stored_session(&self) -> impl Future<Output = Result<(), GenericError>> + Send;
 }
 
 /// Review shown before a sign-payload request is sent to the paired wallet.
@@ -413,10 +433,10 @@ pub trait Platform:
     + Notifications
     + Permissions
     + Features
-    + Storage
+    + ProductStorage
+    + CoreStorage
     + ChainProvider
     + AuthPresenter
-    + SessionStore
     + UserConfirmation
     + ThemeHost
     + PreimageHost
@@ -428,10 +448,10 @@ impl<T> Platform for T where
         + Notifications
         + Permissions
         + Features
-        + Storage
+        + ProductStorage
+        + CoreStorage
         + ChainProvider
         + AuthPresenter
-        + SessionStore
         + UserConfirmation
         + ThemeHost
         + PreimageHost

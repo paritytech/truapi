@@ -153,10 +153,10 @@ export function createUnavailableCallbacks(): Omit<
     read: async () => undefined,
     write: unavailable("write"),
     clear: unavailable("clear"),
+    readCoreStorage: async () => undefined,
+    writeCoreStorage: async () => {},
+    clearCoreStorage: async () => {},
     authStateChanged: () => {},
-    readStoredSession: async () => undefined,
-    writeStoredSession: async () => {},
-    clearStoredSession: async () => {},
     confirmUserAction: async () => false,
     submitPreimage: unavailable("submitPreimage"),
     subscribeTheme: (sendItem) => {

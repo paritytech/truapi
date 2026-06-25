@@ -18,6 +18,7 @@ import {
   createWasmRawCallbacks,
 } from "../dist/index.js";
 import {
+  CoreStorageKey,
   UserConfirmationReview,
 } from "@parity/truapi-host/callbacks";
 
@@ -154,12 +155,13 @@ test("createWasmRawCallbacks bridges lifecycle, confirmations, and preimage call
     authStateChanged: (state) => {
       calls.push(["authStateChanged", state]);
     },
-    readStoredSession: async () => new Uint8Array([1, 2, 3]),
-    writeStoredSession: async (value) => {
-      calls.push(["writeStoredSession", [...value]]);
+    readCoreStorage: async (key) =>
+      key.tag === "AuthSession" ? new Uint8Array([1, 2, 3]) : undefined,
+    writeCoreStorage: async (key, value) => {
+      calls.push(["writeCoreStorage", key, [...value]]);
     },
-    clearStoredSession: async () => {
-      calls.push(["clearStoredSession"]);
+    clearCoreStorage: async (key) => {
+      calls.push(["clearCoreStorage", key]);
     },
     confirmUserAction: async (review) => {
       switch (review.tag) {
@@ -212,9 +214,13 @@ test("createWasmRawCallbacks bridges lifecycle, confirmations, and preimage call
     tag: "Pairing",
     value: { deeplink: "polkadotapp://example" },
   });
-  assert.deepEqual(await raw.readStoredSession?.(), new Uint8Array([1, 2, 3]));
-  await raw.writeStoredSession?.(new Uint8Array([3, 2, 1]));
-  await raw.clearStoredSession?.();
+  const authSessionKey = CoreStorageKey.enc({ tag: "AuthSession" });
+  assert.deepEqual(
+    await raw.readCoreStorage(authSessionKey),
+    new Uint8Array([1, 2, 3]),
+  );
+  await raw.writeCoreStorage(authSessionKey, new Uint8Array([3, 2, 1]));
+  await raw.clearCoreStorage(authSessionKey);
   assert.equal(
     await raw.confirmUserAction?.(
       UserConfirmationReview.enc({
@@ -310,8 +316,8 @@ test("createWasmRawCallbacks bridges lifecycle, confirmations, and preimage call
       "authStateChanged",
       { tag: "Pairing", value: { deeplink: "polkadotapp://example" } },
     ],
-    ["writeStoredSession", [3, 2, 1]],
-    ["clearStoredSession"],
+    ["writeCoreStorage", { tag: "AuthSession", value: undefined }, [3, 2, 1]],
+    ["clearCoreStorage", { tag: "AuthSession", value: undefined }],
     ["confirmUserAction:PreimageSubmit", 42n],
     ["submitPreimage", [6]],
   ]);

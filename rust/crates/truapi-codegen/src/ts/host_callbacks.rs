@@ -667,9 +667,6 @@ fn collect_local_async_payload_types(definition: &PlatformDefinition) -> BTreeSe
     let local: BTreeSet<String> = definition.types.iter().map(|ty| ty.name.clone()).collect();
     let mut out = BTreeSet::new();
     for trait_def in &definition.traits {
-        if trait_def.name != "UserConfirmation" {
-            continue;
-        }
         for method in &trait_def.methods {
             if !method.return_shape.is_async {
                 continue;
@@ -1267,10 +1264,7 @@ fn ts_type(ty: &TypeRef) -> Result<String> {
 }
 
 fn ts_local_name(name: &str) -> String {
-    match name {
-        "Storage" => "HostStorage".to_string(),
-        _ => name.to_string(),
-    }
+    name.to_string()
 }
 
 fn render_jsdoc(indent: &str, docs: Option<&str>) -> String {

@@ -72,6 +72,24 @@ export type AuthState =
   | { tag: "LoginFailed"; value: { reason: string } };
 
 /**
+ * Core-owned host-private storage slots. Products never address these slots;
+ * the host chooses the backing store for each slot.
+ */
+export type CoreStorageKey =
+  /**
+   * Opaque SSO/auth session blob.
+   */
+  | { tag: "AuthSession"; value?: undefined }
+  /**
+   * Pairing device identity used during SSO flows.
+   */
+  | { tag: "PairingDeviceIdentity"; value?: undefined }
+  /**
+   * Persisted decision for a canonical core permission key.
+   */
+  | { tag: "PermissionDecision"; value: { storageKey: string } };
+
+/**
  * Review shown before a transaction-creation request is sent to the paired wallet.
  */
 export type CreateTransactionReview =
@@ -96,7 +114,7 @@ export interface PreimageSubmitReview {
 
 /**
  * Decoded session fields a host shell needs to render account UI without
- * parsing the opaque session blob the core persists through `SessionStore`.
+ * parsing the opaque session blob the core persists through `CoreStorage`.
  */
 export interface SessionUiInfo {
   /**
@@ -181,6 +199,12 @@ export type UserConfirmationReview =
 export const AccountAliasReview: S.Codec<AccountAliasReview> = S.lazy((): S.Codec<AccountAliasReview> => S.Struct({requestingProductId: S.str, targetProductId: S.str}) as S.Codec<AccountAliasReview>);
 
 /**
+ * Core-owned host-private storage slots. Products never address these slots;
+ * the host chooses the backing store for each slot.
+ */
+export const CoreStorageKey: S.Codec<CoreStorageKey> = S.lazy((): S.Codec<CoreStorageKey> => S.TaggedUnion({AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionDecision: S.Struct({storageKey: S.str}) as S.Codec<{ storageKey: string }>}));
+
+/**
  * Review shown before a transaction-creation request is sent to the paired wallet.
  */
 export const CreateTransactionReview: S.Codec<CreateTransactionReview> = S.lazy((): S.Codec<CreateTransactionReview> => S.TaggedUnion({Product: ProductAccountTxPayload, LegacyAccount: LegacyAccountTxPayload}));
@@ -229,6 +253,26 @@ export interface ChainProvider {
    * Drop the returned connection to disconnect.
    */
   connect(genesisHash: Uint8Array): Promise<JsonRpcConnection>;
+}
+
+/**
+ * Host-private persistence for core-owned state.
+ */
+export interface CoreStorage {
+  /**
+   * Read a core-owned value by typed slot.
+   */
+  readCoreStorage(key: CoreStorageKey): Promise<Uint8Array | undefined>;
+
+  /**
+   * Write a core-owned value by typed slot.
+   */
+  writeCoreStorage(key: CoreStorageKey, value: Uint8Array): Promise<void>;
+
+  /**
+   * Clear a core-owned value by typed slot.
+   */
+  clearCoreStorage(key: CoreStorageKey): Promise<void>;
 }
 
 /**
@@ -320,30 +364,10 @@ export interface PreimageHost {
 }
 
 /**
- * Host-global opaque session persistence for core-owned SSO state.
+ * Product-scoped key-value storage. The platform namespaces keys so different
+ * products cannot read each other's data.
  */
-export interface SessionStore {
-  /**
-   * Read the currently persisted core session blob.
-   */
-  readStoredSession(): Promise<Uint8Array | undefined>;
-
-  /**
-   * Persist the core session blob.
-   */
-  writeStoredSession(value: Uint8Array): Promise<void>;
-
-  /**
-   * Clear the persisted core session blob.
-   */
-  clearStoredSession(): Promise<void>;
-}
-
-/**
- * Scoped key-value storage. The platform namespaces keys so different products
- * cannot read each other's data.
- */
-export interface HostStorage {
+export interface ProductStorage {
   /**
    * Read a value by key.
    */
@@ -383,4 +407,4 @@ export interface UserConfirmation {
 /**
  * Combined platform interface. A host must provide all capability traits.
  */
-export interface HostCallbacks extends Navigation, Notifications, Permissions, Features, HostStorage, ChainProvider, AuthPresenter, SessionStore, UserConfirmation, ThemeHost, PreimageHost {}
+export interface HostCallbacks extends Navigation, Notifications, Permissions, Features, ProductStorage, CoreStorage, ChainProvider, AuthPresenter, UserConfirmation, ThemeHost, PreimageHost {}

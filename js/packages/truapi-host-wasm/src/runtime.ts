@@ -11,6 +11,8 @@ import type { Provider } from "@parity/truapi";
 export type {
   AuthState,
   ChainProvider,
+  CoreStorage,
+  CoreStorageKey,
   Features,
   HostCallbacks,
   JsonRpcConnection as PlatformJsonRpcConnection,
@@ -18,8 +20,8 @@ export type {
   Notifications,
   Permissions,
   PreimageHost,
+  ProductStorage,
   SessionUiInfo,
-  HostStorage,
   ThemeHost,
 } from "@parity/truapi-host/callbacks";
 import type { HostCallbacks } from "@parity/truapi-host/callbacks";
@@ -120,7 +122,7 @@ export interface HostCoreLike {
 export interface TrUApiHostCoreProvider extends Provider {
   /**
    * Core-owned logout/disconnect. This best-effort notifies the SSO peer,
-   * clears the in-memory session, clears SessionStore, and broadcasts
+   * clears the in-memory session, clears CoreStorage auth state, and broadcasts
    * Disconnected from the Rust core.
    */
   disconnectSession(): Promise<void>;
@@ -133,7 +135,7 @@ export interface TrUApiHostCoreProvider extends Provider {
   cancelPairing(): void;
 
   /**
-   * Notify the core that the host-global session store may have changed. The
+   * Notify the core that the host-global auth session may have changed. The
    * core will re-read the stored blob and emit any resulting auth/session
    * state updates.
    */

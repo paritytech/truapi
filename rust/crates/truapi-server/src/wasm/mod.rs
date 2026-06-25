@@ -22,10 +22,10 @@ use send_wrapper::SendWrapper;
 use truapi::v01;
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use truapi_platform::{
-    AuthPresenter, AuthState, ChainProvider, Features, JsonRpcConnection, Navigation,
-    Notifications, PairingDeeplinkScheme, Permissions, PreimageHost, RuntimeConfig,
-    RuntimeConfigValidationError, SessionStore, SessionUiInfo, Storage, ThemeHost,
-    UserConfirmation, UserConfirmationReview,
+    AuthPresenter, AuthState, ChainProvider, CoreStorage, CoreStorageKey, Features,
+    JsonRpcConnection, Navigation, Notifications, PairingDeeplinkScheme, Permissions,
+    PreimageHost, ProductStorage, RuntimeConfig, RuntimeConfigValidationError, SessionUiInfo,
+    ThemeHost, UserConfirmation, UserConfirmationReview,
 };
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -45,14 +45,14 @@ struct JsBridge {
     local_storage_read: Function,
     local_storage_write: Function,
     local_storage_clear: Function,
+    core_storage_read: Function,
+    core_storage_write: Function,
+    core_storage_clear: Function,
     confirm_user_action: Option<Function>,
     submit_preimage: Option<Function>,
     lookup_preimage: Option<Function>,
     subscribe_theme: Option<Function>,
     auth_state_changed: Option<Function>,
-    read_stored_session: Option<Function>,
-    write_stored_session: Option<Function>,
-    clear_stored_session: Option<Function>,
     /// Optional. Hosts that own JSON-RPC connections (e.g. dotli with its
     /// "smoldot vs RPC node" toggle) provide this; otherwise chain calls
     /// fail with an "unavailable" reason.
@@ -73,14 +73,14 @@ impl JsBridge {
             local_storage_read: get_function(callbacks, "read")?,
             local_storage_write: get_function(callbacks, "write")?,
             local_storage_clear: get_function(callbacks, "clear")?,
+            core_storage_read: get_function(callbacks, "readCoreStorage")?,
+            core_storage_write: get_function(callbacks, "writeCoreStorage")?,
+            core_storage_clear: get_function(callbacks, "clearCoreStorage")?,
             confirm_user_action: get_optional_function(callbacks, "confirmUserAction")?,
             submit_preimage: get_optional_function(callbacks, "submitPreimage")?,
             lookup_preimage: get_optional_function(callbacks, "lookupPreimage")?,
             subscribe_theme: get_optional_function(callbacks, "subscribeTheme")?,
             auth_state_changed: get_optional_function(callbacks, "authStateChanged")?,
-            read_stored_session: get_optional_function(callbacks, "readStoredSession")?,
-            write_stored_session: get_optional_function(callbacks, "writeStoredSession")?,
-            clear_stored_session: get_optional_function(callbacks, "clearStoredSession")?,
             chain_connect: get_optional_function(callbacks, "chainConnect")?,
             emit_frame: get_function(callbacks, "emitFrame")?,
             dispose: get_optional_function(callbacks, "dispose")?.unwrap_or_else(noop_function),
@@ -182,7 +182,7 @@ impl Features for WasmPlatform {
     }
 }
 
-impl Storage for WasmPlatform {
+impl ProductStorage for WasmPlatform {
     async fn read(&self, key: String) -> Result<Option<Vec<u8>>, v01::HostLocalStorageReadError> {
         invoke_local_storage_read(&self.bridge, &key)
             .await
@@ -279,26 +279,30 @@ impl AuthPresenter for WasmPlatform {
     }
 }
 
-impl SessionStore for WasmPlatform {
-    async fn read_stored_session(&self) -> Result<Option<Vec<u8>>, v01::GenericError> {
-        let Some(fn_) = self.bridge.read_stored_session.as_ref() else {
-            return Ok(None);
-        };
-        invoke_optional_bytes(fn_).await.map_err(generic)
+impl CoreStorage for WasmPlatform {
+    async fn read_core_storage(
+        &self,
+        key: CoreStorageKey,
+    ) -> Result<Option<Vec<u8>>, v01::GenericError> {
+        invoke_core_storage_read(&self.bridge, key)
+            .await
+            .map_err(generic)
     }
 
-    async fn write_stored_session(&self, value: Vec<u8>) -> Result<(), v01::GenericError> {
-        let Some(fn_) = self.bridge.write_stored_session.as_ref() else {
-            return Ok(());
-        };
-        invoke_bytes_unit(fn_, value).await.map_err(generic)
+    async fn write_core_storage(
+        &self,
+        key: CoreStorageKey,
+        value: Vec<u8>,
+    ) -> Result<(), v01::GenericError> {
+        invoke_core_storage_write(&self.bridge, key, value)
+            .await
+            .map_err(generic)
     }
 
-    async fn clear_stored_session(&self) -> Result<(), v01::GenericError> {
-        let Some(fn_) = self.bridge.clear_stored_session.as_ref() else {
-            return Ok(());
-        };
-        invoke_no_args_unit(fn_).await.map_err(generic)
+    async fn clear_core_storage(&self, key: CoreStorageKey) -> Result<(), v01::GenericError> {
+        invoke_core_storage_clear(&self.bridge, key)
+            .await
+            .map_err(generic)
     }
 }
 
@@ -686,6 +690,53 @@ fn invoke_optional_bytes(
     })
 }
 
+fn invoke_core_storage_read(
+    bridge: &JsBridge,
+    key: CoreStorageKey,
+) -> impl std::future::Future<Output = Result<Option<Vec<u8>>, String>> + Send {
+    let fn_ = bridge.core_storage_read.clone();
+    SendWrapper::new(async move {
+        let key_arg = Uint8Array::from(key.encode().as_slice());
+        let returned = fn_.call1(&JsValue::NULL, &key_arg).map_err(js_to_string)?;
+        let resolved = await_optional_promise(returned).await?;
+        if resolved.is_null() || resolved.is_undefined() {
+            return Ok(None);
+        }
+        let array = resolved
+            .dyn_into::<Uint8Array>()
+            .map_err(|_| "readCoreStorage must resolve to Uint8Array, null or undefined".to_string())?;
+        Ok(Some(array.to_vec()))
+    })
+}
+
+fn invoke_core_storage_write(
+    bridge: &JsBridge,
+    key: CoreStorageKey,
+    value: Vec<u8>,
+) -> impl std::future::Future<Output = Result<(), String>> + Send {
+    let fn_ = bridge.core_storage_write.clone();
+    SendWrapper::new(async move {
+        let key_arg = Uint8Array::from(key.encode().as_slice());
+        let value_arg = Uint8Array::from(value.as_slice());
+        let returned = fn_
+            .call2(&JsValue::NULL, &key_arg, &value_arg)
+            .map_err(js_to_string)?;
+        await_optional_promise(returned).await.map(|_| ())
+    })
+}
+
+fn invoke_core_storage_clear(
+    bridge: &JsBridge,
+    key: CoreStorageKey,
+) -> impl std::future::Future<Output = Result<(), String>> + Send {
+    let fn_ = bridge.core_storage_clear.clone();
+    SendWrapper::new(async move {
+        let key_arg = Uint8Array::from(key.encode().as_slice());
+        let returned = fn_.call1(&JsValue::NULL, &key_arg).map_err(js_to_string)?;
+        await_optional_promise(returned).await.map(|_| ())
+    })
+}
+
 fn invoke_local_storage_read(
     bridge: &JsBridge,
     key: &str,
@@ -1040,7 +1091,7 @@ impl WasmHostCore {
         self.inner.core.cancel_pairing();
     }
 
-    /// Notify the core that the host-global session store may have changed.
+    /// Notify the core that the host-global auth session slot may have changed.
     #[wasm_bindgen(js_name = notifySessionStoreChanged)]
     pub fn notify_session_store_changed(&self) {
         if self.inner.disposed.get() {

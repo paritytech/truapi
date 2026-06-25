@@ -70,9 +70,6 @@ const devGlobalProviders = new Set<TrUApiHostCoreProvider>();
 const OPTIONAL_CALLBACK_NAMES: readonly OptionalCallbackName[] = [
   "cancelNotification",
   "authStateChanged",
-  "readStoredSession",
-  "writeStoredSession",
-  "clearStoredSession",
   "confirmUserAction",
   "submitPreimage",
 ];

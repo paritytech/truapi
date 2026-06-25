@@ -1,5 +1,5 @@
 //! Permission state machine (ask -> granted | denied), backed by the platform
-//! [`Storage`] trait with a reserved `truapi:permissions:` key prefix.
+//! [`CoreStorage`] trait with a reserved `truapi:permissions:` key prefix.
 //!
 //! The v0.1 wire protocol keeps device permissions (camera, mic, NFC, ...)
 //! separate from remote permissions (domain access, chain submit, ...), so
@@ -10,11 +10,12 @@
 
 use parity_scale_codec::{Decode, Encode};
 
+use truapi::v01;
 use truapi::v01::{
-    HostDevicePermissionRequest, HostDevicePermissionResponse, HostLocalStorageReadError,
-    RemotePermission, RemotePermissionRequest, RemotePermissionResponse,
+    HostDevicePermissionRequest, HostDevicePermissionResponse, RemotePermission,
+    RemotePermissionRequest, RemotePermissionResponse,
 };
-use truapi_platform::{Permissions, Storage};
+use truapi_platform::{CoreStorage, CoreStorageKey, Permissions};
 
 /// Reserved key prefix for permission state. Hosts must not use keys under
 /// this prefix for anything else so core can own the namespace.
@@ -31,14 +32,14 @@ pub enum Decision {
 
 /// Coordinator that inspects persisted state first, falls back to the
 /// platform's prompt callback, and writes the decision back so future calls
-/// short-circuit. Generic over the concrete `Storage` + `Permissions` impls
+/// short-circuit. Generic over the concrete `CoreStorage` + `Permissions` impls
 /// so callers (e.g. `PlatformRuntimeHost<P>`) can stay non-`dyn`.
-pub struct PermissionsService<'a, S: Storage, P: Permissions> {
+pub struct PermissionsService<'a, S: CoreStorage, P: Permissions> {
     storage: &'a S,
     prompt: &'a P,
 }
 
-impl<'a, S: Storage, P: Permissions> PermissionsService<'a, S, P> {
+impl<'a, S: CoreStorage, P: Permissions> PermissionsService<'a, S, P> {
     /// Construct a service backed by the given storage + prompt callbacks.
     pub fn new(storage: &'a S, prompt: &'a P) -> Self {
         Self { storage, prompt }
@@ -48,7 +49,7 @@ impl<'a, S: Storage, P: Permissions> PermissionsService<'a, S, P> {
     pub async fn peek_device(
         &self,
         permission: &HostDevicePermissionRequest,
-    ) -> Result<Option<Decision>, HostLocalStorageReadError> {
+    ) -> Result<Option<Decision>, v01::GenericError> {
         peek(self.storage, &device_storage_key(permission)).await
     }
 
@@ -57,7 +58,7 @@ impl<'a, S: Storage, P: Permissions> PermissionsService<'a, S, P> {
     pub async fn peek_remote(
         &self,
         request: &RemotePermissionRequest,
-    ) -> Result<Option<Decision>, HostLocalStorageReadError> {
+    ) -> Result<Option<Decision>, v01::GenericError> {
         peek(self.storage, &remote_storage_key(request)).await
     }
 
@@ -66,7 +67,7 @@ impl<'a, S: Storage, P: Permissions> PermissionsService<'a, S, P> {
     pub async fn check_or_prompt_device(
         &self,
         permission: HostDevicePermissionRequest,
-    ) -> Result<Decision, HostLocalStorageReadError> {
+    ) -> Result<Decision, v01::GenericError> {
         let key = device_storage_key(&permission);
         if let Some(cached) = peek(self.storage, &key).await? {
             return Ok(cached);
@@ -84,7 +85,12 @@ impl<'a, S: Storage, P: Permissions> PermissionsService<'a, S, P> {
         } else {
             Decision::Denied
         };
-        self.storage.write(key, decision.encode()).await?;
+        self.storage
+            .write_core_storage(
+                CoreStorageKey::PermissionDecision { storage_key: key },
+                decision.encode(),
+            )
+            .await?;
         Ok(decision)
     }
 
@@ -93,7 +99,7 @@ impl<'a, S: Storage, P: Permissions> PermissionsService<'a, S, P> {
     pub async fn check_or_prompt_remote(
         &self,
         request: RemotePermissionRequest,
-    ) -> Result<Decision, HostLocalStorageReadError> {
+    ) -> Result<Decision, v01::GenericError> {
         let key = remote_storage_key(&request);
         if let Some(cached) = peek(self.storage, &key).await? {
             return Ok(cached);
@@ -109,16 +115,26 @@ impl<'a, S: Storage, P: Permissions> PermissionsService<'a, S, P> {
         } else {
             Decision::Denied
         };
-        self.storage.write(key, decision.encode()).await?;
+        self.storage
+            .write_core_storage(
+                CoreStorageKey::PermissionDecision { storage_key: key },
+                decision.encode(),
+            )
+            .await?;
         Ok(decision)
     }
 }
 
-async fn peek<S: Storage>(
+async fn peek<S: CoreStorage>(
     storage: &S,
     key: &str,
-) -> Result<Option<Decision>, HostLocalStorageReadError> {
-    let Some(raw) = storage.read(key.to_string()).await? else {
+) -> Result<Option<Decision>, v01::GenericError> {
+    let Some(raw) = storage
+        .read_core_storage(CoreStorageKey::PermissionDecision {
+            storage_key: key.to_string(),
+        })
+        .await?
+    else {
         return Ok(None);
     };
     Ok(Decision::decode(&mut &*raw).ok())
@@ -187,21 +203,32 @@ mod tests {
         inner: Mutex<HashMap<String, Vec<u8>>>,
     }
 
-    impl Storage for MemStorage {
-        async fn read(&self, key: String) -> Result<Option<Vec<u8>>, HostLocalStorageReadError> {
-            Ok(self.inner.lock().await.get(&key).cloned())
-        }
-        async fn write(
+    impl CoreStorage for MemStorage {
+        async fn read_core_storage(
             &self,
-            key: String,
+            key: CoreStorageKey,
+        ) -> Result<Option<Vec<u8>>, v01::GenericError> {
+            Ok(self.inner.lock().await.get(&test_key(key)).cloned())
+        }
+        async fn write_core_storage(
+            &self,
+            key: CoreStorageKey,
             value: Vec<u8>,
-        ) -> Result<(), HostLocalStorageReadError> {
-            self.inner.lock().await.insert(key, value);
+        ) -> Result<(), v01::GenericError> {
+            self.inner.lock().await.insert(test_key(key), value);
             Ok(())
         }
-        async fn clear(&self, key: String) -> Result<(), HostLocalStorageReadError> {
-            self.inner.lock().await.remove(&key);
+        async fn clear_core_storage(&self, key: CoreStorageKey) -> Result<(), v01::GenericError> {
+            self.inner.lock().await.remove(&test_key(key));
             Ok(())
+        }
+    }
+
+    fn test_key(key: CoreStorageKey) -> String {
+        match key {
+            CoreStorageKey::PermissionDecision { storage_key } => storage_key,
+            CoreStorageKey::AuthSession => "auth-session".to_string(),
+            CoreStorageKey::PairingDeviceIdentity => "pairing-device-identity".to_string(),
         }
     }
 
@@ -508,8 +535,10 @@ mod tests {
     fn corrupt_cache_entry_returns_none() {
         let storage = MemStorage::default();
         // Write garbage bytes under the canonical key.
-        futures::executor::block_on(storage.write(
-            device_storage_key(&HostDevicePermissionRequest::Camera),
+        futures::executor::block_on(storage.write_core_storage(
+            CoreStorageKey::PermissionDecision {
+                storage_key: device_storage_key(&HostDevicePermissionRequest::Camera),
+            },
             vec![0xff, 0xfe, 0xfd],
         ))
         .unwrap();
@@ -528,23 +557,26 @@ mod tests {
     #[derive(Default)]
     struct FailingStorage;
 
-    impl Storage for FailingStorage {
-        async fn read(&self, _key: String) -> Result<Option<Vec<u8>>, HostLocalStorageReadError> {
-            Err(v01::HostLocalStorageReadError::Unknown {
+    impl CoreStorage for FailingStorage {
+        async fn read_core_storage(
+            &self,
+            _key: CoreStorageKey,
+        ) -> Result<Option<Vec<u8>>, v01::GenericError> {
+            Err(v01::GenericError {
                 reason: "read failed".into(),
             })
         }
-        async fn write(
+        async fn write_core_storage(
             &self,
-            _key: String,
+            _key: CoreStorageKey,
             _value: Vec<u8>,
-        ) -> Result<(), HostLocalStorageReadError> {
-            Err(v01::HostLocalStorageReadError::Unknown {
+        ) -> Result<(), v01::GenericError> {
+            Err(v01::GenericError {
                 reason: "write failed".into(),
             })
         }
-        async fn clear(&self, _key: String) -> Result<(), HostLocalStorageReadError> {
-            Err(v01::HostLocalStorageReadError::Unknown {
+        async fn clear_core_storage(&self, _key: CoreStorageKey) -> Result<(), v01::GenericError> {
+            Err(v01::GenericError {
                 reason: "clear failed".into(),
             })
         }
@@ -562,7 +594,7 @@ mod tests {
         .expect_err("read failure must surface");
         assert!(matches!(
             err,
-            v01::HostLocalStorageReadError::Unknown { .. }
+            v01::GenericError { .. }
         ));
     }
 }

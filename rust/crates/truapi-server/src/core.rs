@@ -102,21 +102,21 @@ impl TrUApiCore {
     }
 
     /// Handle to the shared session-state holder used by subscriptions and
-    /// tests. Real host lifecycle flows through `SessionStore` and
+    /// tests. Real host lifecycle flows through CoreStorage session sync and
     /// `disconnect`.
     pub fn session_state(&self) -> Arc<SessionState> {
         self.session_state.clone()
     }
 
-    /// Notify the platform-backed session sync loop that the host-global
-    /// session store may have changed.
+    /// Notify the platform-backed session sync loop that the host-global auth
+    /// session slot may have changed.
     #[instrument(skip_all, fields(runtime.method = "core.notify_session_store_changed"))]
     pub fn notify_session_store_changed(&self) {
         self.session_store_changes.notify();
     }
 
     /// Core-owned logout/disconnect. Platform-backed cores best-effort notify
-    /// the SSO peer and clear the host-global session store; direct cores only
+    /// the SSO peer and clear the host-global auth session; direct cores only
     /// clear their in-memory session state.
     #[instrument(skip_all, fields(runtime.method = "core.disconnect"))]
     pub async fn disconnect_async(&self) {

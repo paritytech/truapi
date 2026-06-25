@@ -31,10 +31,11 @@ use truapi::versioned::account::HostAccountGetAliasRequest;
 use truapi::versioned::resource_allocation::HostRequestResourceAllocationRequest;
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use truapi_platform::{
-    AuthPresenter, AuthState, ChainProvider, Features as PlatformFeatures, JsonRpcConnection,
-    Navigation as PlatformNavigation, Notifications as PlatformNotifications,
-    Permissions as PlatformPermissions, PreimageHost, RuntimeConfig, SessionStore,
-    Storage as PlatformStorage, ThemeHost, UserConfirmation, UserConfirmationReview,
+    AuthPresenter, AuthState, ChainProvider, CoreStorage as PlatformCoreStorage, CoreStorageKey,
+    Features as PlatformFeatures, JsonRpcConnection, Navigation as PlatformNavigation,
+    Notifications as PlatformNotifications, Permissions as PlatformPermissions, PreimageHost,
+    ProductStorage as PlatformProductStorage, RuntimeConfig, ThemeHost, UserConfirmation,
+    UserConfirmationReview,
 };
 
 pub(crate) fn test_spawner() -> Spawner {
@@ -98,7 +99,7 @@ pub(crate) struct StubPlatform {
     pub(crate) chain_connect_error: Option<&'static str>,
     pub(crate) chain_connect_pending: bool,
     pub(crate) local_storage: Arc<Mutex<std::collections::HashMap<String, Vec<u8>>>>,
-    /// When set, `Storage::read` fails with this reason.
+    /// When set, product/core storage reads fail with this reason.
     pub(crate) local_storage_error: Option<&'static str>,
 }
 
@@ -613,7 +614,7 @@ pub(crate) fn signed_statement(topic: [u8; 32]) -> v01::SignedStatement {
     }
 }
 
-impl PlatformStorage for StubPlatform {
+impl PlatformProductStorage for StubPlatform {
     async fn read(&self, key: String) -> Result<Option<Vec<u8>>, v01::HostLocalStorageReadError> {
         if let Some(reason) = self.local_storage_error {
             return Err(v01::HostLocalStorageReadError::Unknown {
@@ -654,6 +655,87 @@ impl PlatformStorage for StubPlatform {
             .expect("local storage mutex poisoned")
             .remove(&key);
         Ok(())
+    }
+}
+
+impl PlatformCoreStorage for StubPlatform {
+    async fn read_core_storage(
+        &self,
+        key: CoreStorageKey,
+    ) -> Result<Option<Vec<u8>>, v01::GenericError> {
+        if let CoreStorageKey::AuthSession = key {
+            if let Some(reason) = self.session_error {
+                return Err(v01::GenericError {
+                    reason: reason.to_string(),
+                });
+            }
+            return Ok(self.session_blob.clone());
+        }
+        if let Some(reason) = self.local_storage_error {
+            return Err(v01::GenericError {
+                reason: reason.to_string(),
+            });
+        }
+        Ok(self
+            .local_storage
+            .lock()
+            .expect("local storage mutex poisoned")
+            .get(&core_storage_test_key(key))
+            .cloned())
+    }
+
+    async fn write_core_storage(
+        &self,
+        key: CoreStorageKey,
+        value: Vec<u8>,
+    ) -> Result<(), v01::GenericError> {
+        if let CoreStorageKey::AuthSession = key {
+            self.session_writes
+                .lock()
+                .expect("session write list mutex poisoned")
+                .push(value);
+            return Ok(());
+        }
+        if let Some(reason) = self.local_storage_error {
+            return Err(v01::GenericError {
+                reason: reason.to_string(),
+            });
+        }
+        self.local_storage
+            .lock()
+            .expect("local storage mutex poisoned")
+            .insert(core_storage_test_key(key), value);
+        Ok(())
+    }
+
+    async fn clear_core_storage(&self, key: CoreStorageKey) -> Result<(), v01::GenericError> {
+        if let CoreStorageKey::AuthSession = key {
+            *self
+                .session_clears
+                .lock()
+                .expect("session clear counter mutex poisoned") += 1;
+            return Ok(());
+        }
+        if let Some(reason) = self.local_storage_error {
+            return Err(v01::GenericError {
+                reason: reason.to_string(),
+            });
+        }
+        self.local_storage
+            .lock()
+            .expect("local storage mutex poisoned")
+            .remove(&core_storage_test_key(key));
+        Ok(())
+    }
+}
+
+pub(crate) fn core_storage_test_key(key: CoreStorageKey) -> String {
+    match key {
+        CoreStorageKey::AuthSession => "core:auth-session".to_string(),
+        CoreStorageKey::PairingDeviceIdentity => "core:pairing-device-identity".to_string(),
+        CoreStorageKey::PermissionDecision { storage_key } => {
+            format!("core:permission:{storage_key}")
+        }
     }
 }
 
@@ -859,32 +941,6 @@ impl AuthPresenter for StubPlatform {
         if let Some(hook) = hook {
             hook(&state);
         }
-    }
-}
-
-impl SessionStore for StubPlatform {
-    async fn read_stored_session(&self) -> Result<Option<Vec<u8>>, v01::GenericError> {
-        if let Some(reason) = self.session_error {
-            Err(v01::GenericError {
-                reason: reason.to_string(),
-            })
-        } else {
-            Ok(self.session_blob.clone())
-        }
-    }
-    async fn write_stored_session(&self, value: Vec<u8>) -> Result<(), v01::GenericError> {
-        self.session_writes
-            .lock()
-            .expect("session write list mutex poisoned")
-            .push(value);
-        Ok(())
-    }
-    async fn clear_stored_session(&self) -> Result<(), v01::GenericError> {
-        *self
-            .session_clears
-            .lock()
-            .expect("session clear counter mutex poisoned") += 1;
-        Ok(())
     }
 }
 

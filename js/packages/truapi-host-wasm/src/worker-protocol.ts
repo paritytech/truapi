@@ -22,19 +22,16 @@ export type CallbackName =
   | "read"
   | "write"
   | "clear"
+  | "readCoreStorage"
+  | "writeCoreStorage"
+  | "clearCoreStorage"
   | "authStateChanged"
-  | "readStoredSession"
-  | "writeStoredSession"
-  | "clearStoredSession"
   | "confirmUserAction"
   | "submitPreimage";
 
 export type OptionalCallbackName =
   | "cancelNotification"
   | "authStateChanged"
-  | "readStoredSession"
-  | "writeStoredSession"
-  | "clearStoredSession"
   | "confirmUserAction"
   | "submitPreimage";
 

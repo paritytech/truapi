@@ -129,7 +129,7 @@ impl HostCore {
         self.core.cancel_login();
     }
 
-    /// Notify the core that the host-global session store may have changed.
+    /// Notify the core that the host-global auth session slot may have changed.
     /// The core re-reads the persisted blob and emits any resulting
     /// session/auth state changes.
     #[instrument(skip_all, fields(runtime.method = "host_core.notify_session_store_changed"))]

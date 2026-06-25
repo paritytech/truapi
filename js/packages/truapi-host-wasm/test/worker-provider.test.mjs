@@ -7,6 +7,7 @@ import {
 } from "../../truapi/dist/index.js";
 import { createWasmRawCallbacks } from "../dist/index.js";
 import { createWebWorkerProvider } from "../dist/web/index.js";
+import { CoreStorageKey } from "@parity/truapi-host/callbacks";
 
 class FakeWorker {
   constructor() {
@@ -129,9 +130,6 @@ test("createWebWorkerProvider advertises the full optional callback surface", as
     optionalCallbacks: [
       "cancelNotification",
       "authStateChanged",
-      "readStoredSession",
-      "writeStoredSession",
-      "clearStoredSession",
       "confirmUserAction",
       "submitPreimage",
     ],
@@ -270,10 +268,12 @@ test("worker provider resolves disconnect responses", async () => {
 test("worker provider dispatches optional callback requests to host hooks", async () => {
   const worker = new FakeWorker();
   let clears = 0;
+  const authSessionKey = CoreStorageKey.enc({ tag: "AuthSession" });
   const providerPromise = createWebWorkerProvider(
     worker,
     makeCallbacks({
-      clearStoredSession: async () => {
+      clearCoreStorage: async (key) => {
+        assert.deepEqual(key, { tag: "AuthSession", value: undefined });
         clears += 1;
       },
     }),
@@ -288,8 +288,8 @@ test("worker provider dispatches optional callback requests to host hooks", asyn
   worker.emit({
     kind: "callbackRequest",
     requestId: 7,
-    name: "clearStoredSession",
-    args: [],
+    name: "clearCoreStorage",
+    args: [authSessionKey],
   });
   await settle();
 

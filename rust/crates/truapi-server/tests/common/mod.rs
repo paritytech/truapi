@@ -5,9 +5,9 @@ use futures::stream::{self, BoxStream};
 use truapi::v01;
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use truapi_platform::{
-    AuthPresenter, ChainProvider, Features, JsonRpcConnection, Navigation, Notifications,
-    PairingDeeplinkScheme, Permissions, PreimageHost, RuntimeConfig, SessionStore, Storage,
-    ThemeHost, UserConfirmation, UserConfirmationReview,
+    AuthPresenter, ChainProvider, CoreStorage, CoreStorageKey, Features, JsonRpcConnection,
+    Navigation, Notifications, PairingDeeplinkScheme, Permissions, PreimageHost, ProductStorage,
+    RuntimeConfig, ThemeHost, UserConfirmation, UserConfirmationReview,
 };
 
 pub fn test_spawner() -> truapi_server::subscription::Spawner {
@@ -36,7 +36,7 @@ pub fn test_runtime_config() -> RuntimeConfig {
 
 pub struct WireShapePlatform;
 
-impl Storage for WireShapePlatform {
+impl ProductStorage for WireShapePlatform {
     async fn read(&self, _key: String) -> Result<Option<Vec<u8>>, v01::HostLocalStorageReadError> {
         Err(v01::HostLocalStorageReadError::Full)
     }
@@ -117,14 +117,21 @@ impl ChainProvider for WireShapePlatform {
 
 impl AuthPresenter for WireShapePlatform {}
 
-impl SessionStore for WireShapePlatform {
-    async fn read_stored_session(&self) -> Result<Option<Vec<u8>>, v01::GenericError> {
+impl CoreStorage for WireShapePlatform {
+    async fn read_core_storage(
+        &self,
+        _key: CoreStorageKey,
+    ) -> Result<Option<Vec<u8>>, v01::GenericError> {
         Ok(None)
     }
-    async fn write_stored_session(&self, _value: Vec<u8>) -> Result<(), v01::GenericError> {
+    async fn write_core_storage(
+        &self,
+        _key: CoreStorageKey,
+        _value: Vec<u8>,
+    ) -> Result<(), v01::GenericError> {
         Ok(())
     }
-    async fn clear_stored_session(&self) -> Result<(), v01::GenericError> {
+    async fn clear_core_storage(&self, _key: CoreStorageKey) -> Result<(), v01::GenericError> {
         Ok(())
     }
 }

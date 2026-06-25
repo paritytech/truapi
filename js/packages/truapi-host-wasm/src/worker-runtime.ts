@@ -134,6 +134,14 @@ const requiredRawCallbacks: Record<string, RawCallbackFn> = {
   write: (key: string, value: Uint8Array) =>
     callbackRequest("write", [key, value]),
   clear: (key: string) => callbackRequest("clear", [key]),
+  readCoreStorage: (key: Uint8Array) =>
+    callbackRequest("readCoreStorage", [key]) as Promise<
+      Uint8Array | null | undefined
+    >,
+  writeCoreStorage: (key: Uint8Array, value: Uint8Array) =>
+    callbackRequest("writeCoreStorage", [key, value]),
+  clearCoreStorage: (key: Uint8Array) =>
+    callbackRequest("clearCoreStorage", [key]),
 };
 
 const optionalRawCallbacks: Record<OptionalCallbackName, RawCallbackFn> = {
@@ -142,13 +150,6 @@ const optionalRawCallbacks: Record<OptionalCallbackName, RawCallbackFn> = {
   // Fire-and-forget notification: the wasm core ignores the returned promise.
   authStateChanged: (state: unknown) =>
     void callbackRequest("authStateChanged", [state]).catch(() => {}),
-  readStoredSession: () =>
-    callbackRequest("readStoredSession", []) as Promise<
-      Uint8Array | null | undefined
-    >,
-  writeStoredSession: (value: Uint8Array) =>
-    callbackRequest("writeStoredSession", [value]),
-  clearStoredSession: () => callbackRequest("clearStoredSession", []),
   confirmUserAction: (payload: Uint8Array) =>
     callbackRequest("confirmUserAction", [payload]) as Promise<boolean>,
   submitPreimage: (value: Uint8Array) =>

@@ -20,6 +20,7 @@ import type {
   NotificationId,
 } from "@parity/truapi";
 import {
+  CoreStorageKey,
   UserConfirmationReview,
 } from "@parity/truapi-host/callbacks";
 import type { AuthState, HostCallbacks } from "@parity/truapi-host/callbacks";
@@ -32,6 +33,9 @@ import {
 
 export interface RawCallbacks {
   authStateChanged(state: AuthState): void;
+  readCoreStorage(key: Uint8Array): Promise<Uint8Array | null | undefined>;
+  writeCoreStorage(key: Uint8Array, value: Uint8Array): Promise<void>;
+  clearCoreStorage(key: Uint8Array): Promise<void>;
   featureSupported(request: Uint8Array): Promise<Uint8Array>;
   navigateTo(url: string): Promise<void>;
   pushNotification(notification: Uint8Array): Promise<Uint8Array>;
@@ -40,9 +44,6 @@ export interface RawCallbacks {
   remotePermission(request: Uint8Array): Promise<Uint8Array>;
   submitPreimage(value: Uint8Array): Promise<Uint8Array>;
   lookupPreimage(key: Uint8Array, sendItem: (item?: Uint8Array) => void): (() => void) | void;
-  readStoredSession(): Promise<Uint8Array | null | undefined>;
-  writeStoredSession(value: Uint8Array): Promise<void>;
-  clearStoredSession(): Promise<void>;
   read(key: string): Promise<Uint8Array | null | undefined>;
   write(key: string, value: Uint8Array): Promise<void>;
   clear(key: string): Promise<void>;
@@ -60,6 +61,9 @@ export function createWasmRawCallbacks(
     ...unavailable,
     authStateChanged: host.authStateChanged ? async (state) => await host.authStateChanged!(state) : unavailable.authStateChanged,
     chainConnect: chainConnectAdapter(host),
+    readCoreStorage: host.readCoreStorage ? async (key) => await host.readCoreStorage!(CoreStorageKey.dec(key)) : unavailable.readCoreStorage,
+    writeCoreStorage: host.writeCoreStorage ? async (key, value) => await host.writeCoreStorage!(CoreStorageKey.dec(key), value) : unavailable.writeCoreStorage,
+    clearCoreStorage: host.clearCoreStorage ? async (key) => await host.clearCoreStorage!(CoreStorageKey.dec(key)) : unavailable.clearCoreStorage,
     featureSupported: host.featureSupported ? async (request) => HostFeatureSupportedResponse.enc(await host.featureSupported!(HostFeatureSupportedRequest.dec(request))) : unavailable.featureSupported,
     navigateTo: host.navigateTo ? async (url) => await host.navigateTo!(url) : unavailable.navigateTo,
     pushNotification: host.pushNotification ? async (notification) => HostPushNotificationResponse.enc(await host.pushNotification!(HostPushNotificationRequest.dec(notification))) : unavailable.pushNotification,
@@ -68,9 +72,6 @@ export function createWasmRawCallbacks(
     remotePermission: host.remotePermission ? async (request) => RemotePermissionResponse.enc(await host.remotePermission!(RemotePermissionRequest.dec(request))) : unavailable.remotePermission,
     submitPreimage: host.submitPreimage ? async (value) => await host.submitPreimage!(value) : unavailable.submitPreimage,
     lookupPreimage: host.lookupPreimage ? (key, sendItem) => driveResultStream(host.lookupPreimage!(key), sendItem) : unavailable.lookupPreimage,
-    readStoredSession: host.readStoredSession ? async () => await host.readStoredSession!() : unavailable.readStoredSession,
-    writeStoredSession: host.writeStoredSession ? async (value) => await host.writeStoredSession!(value) : unavailable.writeStoredSession,
-    clearStoredSession: host.clearStoredSession ? async () => await host.clearStoredSession!() : unavailable.clearStoredSession,
     read: host.read ? async (key) => await host.read!(key) : unavailable.read,
     write: host.write ? async (key, value) => await host.write!(key, value) : unavailable.write,
     clear: host.clear ? async (key) => await host.clear!(key) : unavailable.clear,

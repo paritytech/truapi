@@ -42,7 +42,6 @@ use crate::host_logic::statement_store::{
 use crate::subscription::Spawner;
 use auth_state::AuthStateMachine;
 use identity::resolve_session_identity_with_chain;
-use sso_pairing::PAIRING_DEVICE_IDENTITY_STORAGE_KEY;
 use sso_remote::{
     SSO_LOCAL_DISCONNECT_REASON, SSO_PEER_DISCONNECT_REASON, SessionDisconnects, sso_message_id,
 };
@@ -133,10 +132,11 @@ use truapi::versioned::theme::HostThemeSubscribeItem;
 use truapi::{CallContext, CallError, Subscription};
 use truapi_platform::{
     AccountAliasReview, ChainProvider as PlatformChainProvider, CreateTransactionReview,
-    JsonRpcConnection, Navigation as PlatformNavigation, Notifications as PlatformNotifications,
-    Platform, PreimageHost as PlatformPreimageHost, PreimageSubmitReview, RuntimeConfig,
-    SessionStore as PlatformSessionStore, SessionUiInfo, SignPayloadReview, SignRawReview,
-    Storage as PlatformStorage, ThemeHost as PlatformThemeHost,
+    CoreStorage as PlatformCoreStorage, CoreStorageKey, JsonRpcConnection,
+    Navigation as PlatformNavigation, Notifications as PlatformNotifications, Platform,
+    PreimageHost as PlatformPreimageHost, PreimageSubmitReview,
+    ProductStorage as PlatformProductStorage, RuntimeConfig, SessionUiInfo, SignPayloadReview,
+    SignRawReview, ThemeHost as PlatformThemeHost,
     UserConfirmation as PlatformUserConfirmation, UserConfirmationReview,
 };
 
@@ -242,8 +242,8 @@ impl<P> PlatformRuntimeHost<P> {
     }
 
     /// Clone of the shared session-state holder used by core subscriptions
-    /// and tests. Real host lifecycle flows through `SessionStore` and
-    /// `disconnect`.
+    /// and tests. Real host lifecycle flows through CoreStorage session sync
+    /// and `disconnect`.
     pub fn session_state(&self) -> Arc<SessionState> {
         self.session_state.clone()
     }
@@ -268,7 +268,8 @@ impl<P> PlatformRuntimeHost<P> {
         );
     }
 
-    /// Start syncing the in-memory session from the host-global session store.
+    /// Start syncing the in-memory session from the host-global auth session
+    /// slot.
     /// The store emits coarse ticks; each tick triggers a fresh read so same-
     /// runtime writes and cross-runtime logout/re-pair take the same path.
     #[instrument(skip_all, fields(runtime.method = "session_store.sync"))]
@@ -292,7 +293,12 @@ impl<P> PlatformRuntimeHost<P> {
             // cannot spin the loop through its own clear notifications.
             let mut cleared_after_read_error = false;
             while ticks.next().await.is_some() {
-                match PlatformSessionStore::read_stored_session(platform.as_ref()).await {
+                match PlatformCoreStorage::read_core_storage(
+                    platform.as_ref(),
+                    CoreStorageKey::AuthSession,
+                )
+                .await
+                {
                     Ok(Some(blob)) => {
                         cleared_after_read_error = false;
                         match decode_persisted_session(&blob) {
@@ -304,8 +310,9 @@ impl<P> PlatformRuntimeHost<P> {
                                 )
                                 .await;
                                 if encode_persisted_session(&resolved) != blob {
-                                    let _ = PlatformSessionStore::write_stored_session(
+                                    let _ = PlatformCoreStorage::write_core_storage(
                                         platform.as_ref(),
+                                        CoreStorageKey::AuthSession,
                                         encode_persisted_session(&resolved),
                                     )
                                     .await;
@@ -328,9 +335,11 @@ impl<P> PlatformRuntimeHost<P> {
                             Err(_) => {
                                 session_state.clear_session();
                                 stop_sso_disconnect_monitor(&sso_disconnect_monitor);
-                                let _ =
-                                    PlatformSessionStore::clear_stored_session(platform.as_ref())
-                                        .await;
+                                let _ = PlatformCoreStorage::clear_core_storage(
+                                    platform.as_ref(),
+                                    CoreStorageKey::AuthSession,
+                                )
+                                .await;
                                 auth_state.store_disconnected();
                             }
                         }
@@ -347,8 +356,11 @@ impl<P> PlatformRuntimeHost<P> {
                         auth_state.store_disconnected();
                         if !cleared_after_read_error {
                             cleared_after_read_error = true;
-                            let _ =
-                                PlatformSessionStore::clear_stored_session(platform.as_ref()).await;
+                            let _ = PlatformCoreStorage::clear_core_storage(
+                                platform.as_ref(),
+                                CoreStorageKey::AuthSession,
+                            )
+                            .await;
                         }
                     }
                 }
@@ -425,11 +437,15 @@ impl<P> PlatformRuntimeHost<P> {
         debug!("clearing disconnected SSO session state");
         stop_sso_disconnect_monitor(&self.sso_disconnect_monitor);
         self.session_state.clear_session();
-        let _ = PlatformSessionStore::clear_stored_session(self.platform.as_ref()).await;
-        self.auth_state.store_disconnected();
-        let _ = PlatformStorage::clear(
+        let _ = PlatformCoreStorage::clear_core_storage(
             self.platform.as_ref(),
-            PAIRING_DEVICE_IDENTITY_STORAGE_KEY.to_string(),
+            CoreStorageKey::AuthSession,
+        )
+        .await;
+        self.auth_state.store_disconnected();
+        let _ = PlatformCoreStorage::clear_core_storage(
+            self.platform.as_ref(),
+            CoreStorageKey::PairingDeviceIdentity,
         )
         .await;
     }
@@ -506,11 +522,15 @@ fn start_sso_disconnect_monitor<P>(
             if should_clear {
                 session_disconnects.notify(SSO_PEER_DISCONNECT_REASON);
                 session_state.clear_session();
-                let _ = PlatformSessionStore::clear_stored_session(platform.as_ref()).await;
-                auth_state.store_disconnected();
-                let _ = PlatformStorage::clear(
+                let _ = PlatformCoreStorage::clear_core_storage(
                     platform.as_ref(),
-                    PAIRING_DEVICE_IDENTITY_STORAGE_KEY.to_string(),
+                    CoreStorageKey::AuthSession,
+                )
+                .await;
+                auth_state.store_disconnected();
+                let _ = PlatformCoreStorage::clear_core_storage(
+                    platform.as_ref(),
+                    CoreStorageKey::PairingDeviceIdentity,
                 )
                 .await;
             }
@@ -783,7 +803,7 @@ where
         request: HostLocalStorageReadRequest,
     ) -> Result<HostLocalStorageReadResponse, CallError<HostLocalStorageReadError>> {
         let HostLocalStorageReadRequest::V1(v01::HostLocalStorageReadRequest { key }) = request;
-        PlatformStorage::read(self.platform.as_ref(), key)
+        PlatformProductStorage::read(self.platform.as_ref(), key)
             .await
             .map(|value| {
                 HostLocalStorageReadResponse::V1(v01::HostLocalStorageReadResponse { value })
@@ -799,7 +819,7 @@ where
     ) -> Result<HostLocalStorageWriteResponse, CallError<HostLocalStorageWriteError>> {
         let HostLocalStorageWriteRequest::V1(v01::HostLocalStorageWriteRequest { key, value }) =
             request;
-        PlatformStorage::write(self.platform.as_ref(), key, value)
+        PlatformProductStorage::write(self.platform.as_ref(), key, value)
             .await
             .map(|()| HostLocalStorageWriteResponse::V1)
             .map_err(|err| CallError::Domain(HostLocalStorageWriteError::V1(err)))
@@ -812,7 +832,7 @@ where
         request: HostLocalStorageClearRequest,
     ) -> Result<HostLocalStorageClearResponse, CallError<HostLocalStorageClearError>> {
         let HostLocalStorageClearRequest::V1(v01::HostLocalStorageClearRequest { key }) = request;
-        PlatformStorage::clear(self.platform.as_ref(), key)
+        PlatformProductStorage::clear(self.platform.as_ref(), key)
             .await
             .map(|()| HostLocalStorageClearResponse::V1)
             .map_err(|err| CallError::Domain(HostLocalStorageClearError::V1(err)))
@@ -2015,7 +2035,7 @@ mod tests {
     use crate::host_logic::sso_messages::{RemoteMessageData, RemoteMessageV1};
     use crate::test_support::*;
     use std::sync::Mutex;
-    use truapi_platform::AuthState;
+    use truapi_platform::{AuthState, CoreStorageKey};
 
     use super::sso_remote::SSO_PEER_DISCONNECT_REASON;
 
@@ -3365,7 +3385,7 @@ mod tests {
             .lock()
             .expect("local storage mutex poisoned")
             .insert(
-                PAIRING_DEVICE_IDENTITY_STORAGE_KEY.to_string(),
+                core_storage_test_key(CoreStorageKey::PairingDeviceIdentity),
                 vec![1, 2, 3],
             );
         let mut statuses = host.session_state().subscribe();
@@ -3391,7 +3411,7 @@ mod tests {
                 .local_storage
                 .lock()
                 .expect("local storage mutex poisoned")
-                .contains_key(PAIRING_DEVICE_IDENTITY_STORAGE_KEY),
+                .contains_key(&core_storage_test_key(CoreStorageKey::PairingDeviceIdentity)),
             "logout must rotate the pairing device identity so stale statement-store responses cannot be replayed on the next login"
         );
         assert_eq!(
