@@ -85,6 +85,11 @@ const WEBVIEW_PORT_TIMEOUT_MS = 20_000;
 /**
  * Resolve the host-injected `MessagePort`, polling `window.__HOST_API_PORT__`
  * until it appears or the timeout elapses. Rejects on timeout or abort.
+ *
+ * TODO(cleanup): this polling is defensive against the port not being injected
+ * yet. Once hosts guarantee the iframe / `__HOST_API_PORT__` is wired before any
+ * product code runs, read `window.__HOST_API_PORT__` directly and drop the
+ * poll loop + timeout.
  */
 async function waitForWebviewPort(
   signal?: AbortSignal,
