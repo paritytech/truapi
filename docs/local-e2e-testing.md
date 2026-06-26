@@ -119,11 +119,11 @@ npm test
 
 Expected:
 
-- `tsc` exits cleanly with no diagnostics.
-- `wire-equality.test.mjs`: `all 6 wire-equality tests passed`.
-- `wire-table-loop.test.mjs`: `programmatic wire-table loop: <N> (id, tag) pairs round-tripped`
-  — `<N>` should match the size of `WIRE_TABLE`. When you add a method,
-  `<N>` grows by 2 (request + response) or 4 (subscribe).
+- `tsc` (the `build` step) exits cleanly with no diagnostics.
+- `bun test` reports `N pass` / `0 fail` across the `src/**/*.test.ts` files.
+- `src/wire-table.test.ts` emits one `round-trips <method>.<kind>` case per
+  generated frame id; the count tracks `WIRE_TABLE`. When you add a method,
+  it grows by 2 (request + response) or 4 (subscribe).
 
 `tsc` errors here usually mean the codegen was skipped or out of sync.
 If a wire-equality test fails (golden hex mismatch) the wire format

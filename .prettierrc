@@ -7,5 +7,14 @@
   "useTabs": false,
   "bracketSpacing": true,
   "arrowParens": "always",
-  "endOfLine": "lf"
+  "endOfLine": "lf",
+  "overrides": [
+    {
+      "files": "js/packages/truapi/src/**/*.test.ts",
+      "options": {
+        "tabWidth": 4,
+        "printWidth": 100
+      }
+    }
+  ]
 }
