@@ -12,12 +12,10 @@ export type {
   WireProvider,
 } from "./transport.js";
 export type { CreateTransportOptions } from "./client.js";
-export type { WebSocketProviderOptions } from "./transport.js";
 export {
   SubscriptionError,
   createIframeProvider,
   createMessagePortProvider,
-  createWebSocketProvider,
   decodeWireMessage,
   encodeWireMessage,
 } from "./transport.js";
