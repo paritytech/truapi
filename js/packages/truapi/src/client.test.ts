@@ -2,7 +2,7 @@ import type { Result } from "neverthrow";
 import { describe, expect, it } from "bun:test";
 
 import { createTransport } from "./client.js";
-import { indexedTaggedUnion, Result as ScaleResult, str, _void } from "./scale.js";
+import { CallError, Result as ScaleResult, str, _void } from "./scale.js";
 import { createClient, SubscriptionError } from "./generated/client.js";
 import * as T from "./generated/types.js";
 import * as W from "./generated/wire-table.js";
@@ -56,9 +56,34 @@ function providerFixture() {
 
 /** Encode a V1 host-handshake response result payload. */
 function handshakeResponsePayload(value: { success: true; value: undefined }): Uint8Array {
-    return indexedTaggedUnion({
-        V1: [0, ScaleResult(_void, T.HostHandshakeError)],
-    }).enc({ tag: "V1", value });
+    return ScaleResult(
+        T.VersionedHostHandshakeResponse,
+        CallError(T.VersionedHostHandshakeError),
+    ).enc({
+        success: true,
+        value: { tag: "V1", value: value.value },
+    });
+}
+
+function accountGetResponsePayload(
+    value:
+        | {
+              success: true;
+              value: T.HostAccountGetResponse;
+          }
+        | {
+              success: false;
+              value: T.HostAccountGetError;
+          },
+): Uint8Array {
+    return ScaleResult(
+        T.VersionedHostAccountGetResponse,
+        CallError(T.VersionedHostAccountGetError),
+    ).enc(
+        value.success
+            ? { success: true, value: { tag: "V1", value: value.value } }
+            : { success: false, value: { tag: "V1", value: value.value } },
+    );
 }
 
 describe("generated client transport", () => {
@@ -109,7 +134,7 @@ describe("generated client transport", () => {
         expect(toHex(fixture.sent[0])).toBe(toHex(expectedFrame));
     });
 
-    it("resolves a request from its versioned response envelope", async () => {
+    it("resolves a request from its dispatcher response envelope", async () => {
         const fixture = providerFixture();
         const transport = createTransport(fixture.provider);
         const client = createClient(transport);
@@ -131,7 +156,36 @@ describe("generated client transport", () => {
         expect(result.isOk()).toBe(true);
     });
 
-    it("auto-responds to an inbound handshake with the versioned-result shape", () => {
+    it("decodes request domain errors from the dispatcher response envelope", async () => {
+        const fixture = providerFixture();
+        const transport = createTransport(fixture.provider);
+        const client = createClient(transport);
+
+        const response = client.account.getAccount({
+            productAccountId: { dotNsIdentifier: "foo", derivationIndex: 0 },
+        });
+        const reason = { tag: "NotConnected", value: undefined } as const;
+        const frame = unwrap(
+            encodeWireMessage({
+                requestId: "p:1",
+                payload: {
+                    id: W.ACCOUNT_GET_ACCOUNT.response,
+                    value: accountGetResponsePayload({
+                        success: false,
+                        value: reason,
+                    }),
+                },
+            }),
+            "encode account_get error response",
+        );
+        fixture.receive(frame);
+
+        const result = await response;
+        expect(result.isErr()).toBe(true);
+        expect(result._unsafeUnwrapErr()).toEqual(reason);
+    });
+
+    it("auto-responds to an inbound handshake with the dispatcher response envelope", () => {
         const fixture = providerFixture();
         createTransport(fixture.provider);
 
@@ -232,7 +286,7 @@ describe("generated client transport", () => {
                 requestId: sub.subscriptionId,
                 payload: {
                     id: W.PAYMENT_BALANCE_SUBSCRIBE.interrupt,
-                    value: T.VersionedHostPaymentBalanceSubscribeError.enc({
+                    value: CallError(T.VersionedHostPaymentBalanceSubscribeError).enc({
                         tag: "V1",
                         value: reason,
                     }),
@@ -265,7 +319,7 @@ describe("generated client transport", () => {
                 requestId: sub.subscriptionId,
                 payload: {
                     id: W.COIN_PAYMENT_REBALANCE_PURSE.interrupt,
-                    value: T.VersionedHostCoinPaymentRebalancePurseError.enc({
+                    value: CallError(T.VersionedHostCoinPaymentRebalancePurseError).enc({
                         tag: "V1",
                         value: reason,
                     }),
