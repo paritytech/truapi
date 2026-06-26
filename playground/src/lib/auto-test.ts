@@ -14,6 +14,7 @@ export interface TestEntry {
 
 const UNARY_TIMEOUT_MS = 10_000;
 const SIGNING_TIMEOUT_MS = 30_000;
+const SSO_TIMEOUT_MS = 60_000;
 
 // Services skipped wholesale in the diagnosis until hosts wire them up.
 const SKIPPED_SERVICES = new Set(["Coin Payment"]);
@@ -30,6 +31,10 @@ const LONG_TIMEOUT_METHODS = new Set([
   "Signing/create_transaction",
   "Signing/create_transaction_with_legacy_account",
   "Preimage/submit",
+]);
+
+const METHOD_TIMEOUT_MS = new Map<string, number>([
+  ["Account/get_account_alias", SSO_TIMEOUT_MS],
 ]);
 
 type RunOneOpts = {
@@ -59,9 +64,16 @@ async function runOne({
   const source = method.exampleSource;
   const logs: LogEntry[] = [];
   const onLog = (entry: LogEntry) => logs.push(entry);
-  const timeoutMs = LONG_TIMEOUT_METHODS.has(id)
-    ? SIGNING_TIMEOUT_MS
-    : UNARY_TIMEOUT_MS;
+  const timeoutMs =
+    METHOD_TIMEOUT_MS.get(id) ??
+    (LONG_TIMEOUT_METHODS.has(id) ? SIGNING_TIMEOUT_MS : UNARY_TIMEOUT_MS);
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(
+      () => reject(new Error(`timed out after ${timeoutMs / 1000}s`)),
+      timeoutMs,
+    );
+  });
 
   // The example decides pass/fail explicitly: it resolves on success and throws
   // (via `assert(...)` or any uncaught error) on failure. `console.*` is pure
@@ -74,16 +86,11 @@ async function runOne({
         "App must be opened inside a TrUAPI host (iframe or webview).",
       );
     }
-    run = await runExample({ source, client, onLog });
-    await Promise.race([
-      run.promise,
-      new Promise<never>((_, reject) =>
-        setTimeout(
-          () => reject(new Error(`timed out after ${timeoutMs / 1000}s`)),
-          timeoutMs,
-        ),
-      ),
+    run = await Promise.race([
+      runExample({ source, client, onLog }),
+      timeoutPromise,
     ]);
+    await Promise.race([run.promise, timeoutPromise]);
     onUpdate(id, {
       status: "pass",
       request: source,
@@ -98,6 +105,7 @@ async function runOne({
       output: log ? `${log}\n${message}` : message,
     });
   } finally {
+    if (timeout !== undefined) clearTimeout(timeout);
     run?.cancel();
   }
 }

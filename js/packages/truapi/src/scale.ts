@@ -8,17 +8,25 @@
 import {
   Bytes,
   Enum,
+  Struct,
+  _void,
   createCodec,
   createDecoder,
   enhanceCodec,
+  str as scaleStr,
   u8,
   type Codec,
 } from "scale-ts";
+import {
+  bytesToHex as encodeHex,
+  hexToBytes as decodeHex,
+} from "@noble/hashes/utils.js";
 
 export type { Codec };
 export type { ResultPayload } from "scale-ts";
 
 export {
+  Bytes,
   Enum,
   Option,
   Result,
@@ -59,7 +67,9 @@ export const OptionBool: Codec<boolean | undefined> = enhanceCodec(
       case 2:
         return false;
       default:
-        throw new Error(`Unknown OptionBool byte: ${byte}. Expected 0, 1, or 2.`);
+        throw new Error(
+          `Unknown OptionBool byte: ${byte}. Expected 0, 1, or 2.`,
+        );
     }
   },
 );
@@ -79,22 +89,12 @@ export function toHexString(value: string): HexString {
 
 /** Encode a byte array as a lower-case hex string with a `0x` prefix. */
 export function bytesToHex(bytes: Uint8Array): HexString {
-  let hex = "0x";
-  for (let i = 0; i < bytes.length; i++) {
-    hex += bytes[i]!.toString(16).padStart(2, "0");
-  }
-  return hex as HexString;
+  return `0x${encodeHex(bytes)}`;
 }
 
 /** Decode a hex string into a byte array. Tolerates a missing `0x` prefix. */
 export function hexToBytes(hex: string): Uint8Array {
-  const start = hex.startsWith("0x") ? 2 : 0;
-  const length = (hex.length - start) >> 1;
-  const bytes = new Uint8Array(length);
-  for (let i = 0; i < length; i++) {
-    bytes[i] = parseInt(hex.substring(start + i * 2, start + i * 2 + 2), 16);
-  }
-  return bytes;
+  return decodeHex(hex.startsWith("0x") ? hex.slice(2) : hex);
 }
 
 /**
@@ -121,6 +121,51 @@ export function TaggedUnion<O extends TaggedUnionCodecs>(
   inner: O,
 ): Codec<TaggedUnionValue<O>> {
   return Enum(inner) as unknown as Codec<TaggedUnionValue<O>>;
+}
+
+/**
+ * Wire codec for Rust `CallError<D>`, projected to the public domain error `D`.
+ *
+ * Generated TypeScript APIs expose only the domain error union in
+ * `ResultAsync<Ok, D>`. The Rust host still wraps that value in
+ * `CallError::Domain` on the wire so framework errors can share the response
+ * channel. Encoding always emits `Domain`; decoding returns the inner domain
+ * value and throws for framework-level failures that have no public `D` shape.
+ */
+export function CallError<D>(domain: Codec<D>): Codec<D> {
+  type WireCallError =
+    | { tag: "Domain"; value: D }
+    | { tag: "Denied"; value?: undefined }
+    | { tag: "Unsupported"; value?: undefined }
+    | { tag: "MalformedFrame"; value: { reason: string } }
+    | { tag: "HostFailure"; value: { reason: string } };
+
+  const wire = Enum({
+    Domain: domain,
+    Denied: _void,
+    Unsupported: _void,
+    MalformedFrame: Struct({ reason: scaleStr }),
+    HostFailure: Struct({ reason: scaleStr }),
+  }) as unknown as Codec<WireCallError>;
+
+  return enhanceCodec(
+    wire,
+    (value: D): WireCallError => ({ tag: "Domain", value }),
+    (value: WireCallError): D => {
+      switch (value.tag) {
+        case "Domain":
+          return value.value;
+        case "Denied":
+          throw new Error("Host denied the request");
+        case "Unsupported":
+          throw new Error("Host does not support this request");
+        case "MalformedFrame":
+          throw new Error(`Malformed request frame: ${value.value.reason}`);
+        case "HostFailure":
+          throw new Error(`Host failure: ${value.value.reason}`);
+      }
+    },
+  );
 }
 
 type TaggedUnionCodecs = {

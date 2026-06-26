@@ -1,3 +1,4 @@
+import { concatBytes } from "@noble/hashes/utils.js";
 import { err, ok, type Result, type ResultAsync } from "neverthrow";
 
 import { str, u8, type ResultPayload } from "./scale.js";
@@ -279,6 +280,10 @@ export interface WireProvider {
 
   /**
    * Register a callback for provider-level close or failure events.
+   *
+   * Providers keep a terminal close reason. The callback fires at most once
+   * for an active subscription, and fires immediately when registered after
+   * the provider has already closed.
    **/
   subscribeClose?(callback: (error: Error) => void): () => void;
 
@@ -286,21 +291,6 @@ export interface WireProvider {
    * Release provider resources and close the underlying pipe.
    **/
   dispose(): void;
-}
-
-/**
- * Concatenate byte arrays without mutating the source arrays.
- **/
-function concatBytes(parts: Uint8Array[]): Uint8Array {
-  let total = 0;
-  for (const p of parts) total += p.length;
-  const out = new Uint8Array(total);
-  let off = 0;
-  for (const p of parts) {
-    out.set(p, off);
-    off += p.length;
-  }
-  return out;
 }
 
 /**
@@ -314,11 +304,7 @@ export function encodeWireMessage(
     return err(new Error(`Invalid wire discriminant: ${id}`));
   }
   return ok(
-    concatBytes([
-      str.enc(message.requestId),
-      u8.enc(id),
-      message.payload.value,
-    ]),
+    concatBytes(str.enc(message.requestId), u8.enc(id), message.payload.value),
   );
 }
 
