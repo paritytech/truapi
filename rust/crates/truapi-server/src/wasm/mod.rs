@@ -31,7 +31,7 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 use crate::subscription::Spawner;
-use crate::{FrameSink, HostCore};
+use crate::{FrameSink, HostCore, PermissionAuthorizationRequest, PermissionAuthorizationStatus};
 
 /// Bundle of JS-side callbacks the bridge invokes. Names map to camelCase
 /// keys on the JS object passed to the constructor.
@@ -976,6 +976,41 @@ fn parse_hex32(value: &str) -> Result<[u8; 32], String> {
         .map_err(|bytes: Vec<u8>| format!("expected 32 bytes, got {}", bytes.len()))
 }
 
+fn decode_permission_authorization_request(
+    payload: &[u8],
+) -> Result<PermissionAuthorizationRequest, JsValue> {
+    PermissionAuthorizationRequest::decode(&mut &*payload).map_err(|err| {
+        JsValue::from_str(&format!(
+            "permission authorization request did not decode: {err}"
+        ))
+    })
+}
+
+fn permission_authorization_status_to_js(status: PermissionAuthorizationStatus) -> JsValue {
+    JsValue::from_str(match status {
+        PermissionAuthorizationStatus::NotDetermined => "NotDetermined",
+        PermissionAuthorizationStatus::Denied => "Denied",
+        PermissionAuthorizationStatus::Authorized => "Authorized",
+    })
+}
+
+fn permission_authorization_status_from_js(
+    status: &str,
+) -> Result<PermissionAuthorizationStatus, JsValue> {
+    match status {
+        "NotDetermined" => Ok(PermissionAuthorizationStatus::NotDetermined),
+        "Denied" => Ok(PermissionAuthorizationStatus::Denied),
+        "Authorized" => Ok(PermissionAuthorizationStatus::Authorized),
+        other => Err(JsValue::from_str(&format!(
+            "unknown permission authorization status: {other}"
+        ))),
+    }
+}
+
+fn generic_error_to_js(err: v01::GenericError) -> JsValue {
+    JsValue::from_str(&err.reason)
+}
+
 struct WasmCoreInner {
     core: HostCore,
     dispose_fn: SendWrapper<Function>,
@@ -1043,6 +1078,42 @@ impl WasmHostCore {
             .receive_frame(frame)
             .await
             .map_err(|err| JsValue::from_str(&err.to_string()))
+    }
+
+    /// Read a stored permission authorization status without prompting.
+    ///
+    /// `payload` is a SCALE-encoded `PermissionAuthorizationRequest`.
+    #[wasm_bindgen(js_name = permissionAuthorizationStatus)]
+    pub async fn permission_authorization_status(
+        &self,
+        payload: Vec<u8>,
+    ) -> Result<JsValue, JsValue> {
+        let request = decode_permission_authorization_request(&payload)?;
+        let status = self
+            .inner
+            .core
+            .permission_authorization_status(request)
+            .await
+            .map_err(generic_error_to_js)?;
+        Ok(permission_authorization_status_to_js(status))
+    }
+
+    /// Update a stored permission authorization status. Passing
+    /// `"NotDetermined"` clears the stored value so the next product request
+    /// prompts again.
+    #[wasm_bindgen(js_name = setPermissionAuthorizationStatus)]
+    pub async fn set_permission_authorization_status(
+        &self,
+        payload: Vec<u8>,
+        status: String,
+    ) -> Result<(), JsValue> {
+        let request = decode_permission_authorization_request(&payload)?;
+        let status = permission_authorization_status_from_js(&status)?;
+        self.inner
+            .core
+            .set_permission_authorization_status(request, status)
+            .await
+            .map_err(generic_error_to_js)
     }
 
     /// Tear down the bridge. Invokes the JS-side `dispose` callback so the

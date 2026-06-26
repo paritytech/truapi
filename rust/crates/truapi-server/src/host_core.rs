@@ -14,7 +14,10 @@ use futures::future::{AbortHandle, Abortable};
 use parity_scale_codec::{Decode, Encode};
 use thiserror::Error;
 use tracing::instrument;
-use truapi_platform::{Platform, RuntimeConfig};
+use truapi::v01;
+use truapi_platform::{
+    PermissionAuthorizationRequest, PermissionAuthorizationStatus, Platform, RuntimeConfig,
+};
 
 use crate::core::TrUApiCore;
 use crate::frame::ProtocolMessage;
@@ -138,6 +141,28 @@ impl HostCore {
             return;
         }
         self.core.notify_session_store_changed();
+    }
+
+    /// Read a stored permission authorization status without prompting.
+    #[instrument(skip_all, fields(runtime.method = "host_core.permission_authorization_status"))]
+    pub async fn permission_authorization_status(
+        &self,
+        request: PermissionAuthorizationRequest,
+    ) -> Result<PermissionAuthorizationStatus, v01::GenericError> {
+        self.core.permission_authorization_status(request).await
+    }
+
+    /// Update a stored permission authorization status. `NotDetermined`
+    /// clears the stored value so the next product request prompts again.
+    #[instrument(skip_all, fields(runtime.method = "host_core.set_permission_authorization_status"))]
+    pub async fn set_permission_authorization_status(
+        &self,
+        request: PermissionAuthorizationRequest,
+        status: PermissionAuthorizationStatus,
+    ) -> Result<(), v01::GenericError> {
+        self.core
+            .set_permission_authorization_status(request, status)
+            .await
     }
 
     /// Dispose this host core. Idempotent.

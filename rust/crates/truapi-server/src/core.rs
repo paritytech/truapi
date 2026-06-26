@@ -9,6 +9,7 @@ use futures::future::BoxFuture;
 use parity_scale_codec::{Decode, Encode};
 use tracing::instrument;
 use truapi::api::TrUApi;
+use truapi::v01;
 use truapi_platform::{Platform, RuntimeConfig};
 
 use crate::dispatcher::Dispatcher;
@@ -19,9 +20,25 @@ use crate::host_logic::session_store::SessionStoreChangeNotifier;
 use crate::runtime::PlatformRuntimeHost;
 use crate::subscription::Spawner;
 use crate::transport::Transport;
+use truapi_platform::{PermissionAuthorizationRequest, PermissionAuthorizationStatus};
 
 type DisconnectFn = Arc<dyn Fn() -> BoxFuture<'static, ()> + Send + Sync>;
 type CancelLoginFn = Arc<dyn Fn() + Send + Sync>;
+type PermissionAuthorizationStatusFn = Arc<
+    dyn Fn(
+            PermissionAuthorizationRequest,
+        ) -> BoxFuture<'static, Result<PermissionAuthorizationStatus, v01::GenericError>>
+        + Send
+        + Sync,
+>;
+type SetPermissionAuthorizationStatusFn = Arc<
+    dyn Fn(
+            PermissionAuthorizationRequest,
+            PermissionAuthorizationStatus,
+        ) -> BoxFuture<'static, Result<(), v01::GenericError>>
+        + Send
+        + Sync,
+>;
 
 /// Top-level core. Owns the dispatcher and, on the platform path, the shared
 /// session-state holder.
@@ -33,6 +50,8 @@ pub struct TrUApiCore {
     session_store_changes: Arc<SessionStoreChangeNotifier>,
     disconnect: DisconnectFn,
     cancel_login: CancelLoginFn,
+    permission_authorization_status: PermissionAuthorizationStatusFn,
+    set_permission_authorization_status: SetPermissionAuthorizationStatusFn,
 }
 
 impl TrUApiCore {
@@ -61,6 +80,24 @@ impl TrUApiCore {
                 })
             }),
             cancel_login: Arc::new(|| {}),
+            permission_authorization_status: Arc::new(|_| {
+                Box::pin(async {
+                    Err(v01::GenericError {
+                        reason:
+                            "permission authorization is only available on platform-backed cores"
+                                .into(),
+                    })
+                })
+            }),
+            set_permission_authorization_status: Arc::new(|_, _| {
+                Box::pin(async {
+                    Err(v01::GenericError {
+                        reason:
+                            "permission authorization is only available on platform-backed cores"
+                                .into(),
+                    })
+                })
+            }),
         }
     }
 
@@ -85,6 +122,8 @@ impl TrUApiCore {
         let session_store_changes = runtime.session_store_changes();
         let disconnect_runtime = runtime.clone();
         let cancel_login_runtime = runtime.clone();
+        let permission_status_runtime = runtime.clone();
+        let set_permission_status_runtime = runtime.clone();
         let mut dispatcher = Dispatcher::new(spawner);
         dispatcher::register(&mut dispatcher, runtime);
         Self {
@@ -98,6 +137,18 @@ impl TrUApiCore {
                 })
             }),
             cancel_login: Arc::new(move || cancel_login_runtime.cancel_login()),
+            permission_authorization_status: Arc::new(move |request| {
+                let runtime = permission_status_runtime.clone();
+                Box::pin(async move { runtime.permission_authorization_status(request).await })
+            }),
+            set_permission_authorization_status: Arc::new(move |request, status| {
+                let runtime = set_permission_status_runtime.clone();
+                Box::pin(async move {
+                    runtime
+                        .set_permission_authorization_status(request, status)
+                        .await
+                })
+            }),
         }
     }
 
@@ -136,6 +187,26 @@ impl TrUApiCore {
     #[instrument(skip_all, fields(runtime.method = "core.cancel_login"))]
     pub fn cancel_login(&self) {
         (self.cancel_login)();
+    }
+
+    /// Read a stored permission authorization status without prompting.
+    #[instrument(skip_all, fields(runtime.method = "core.permission_authorization_status"))]
+    pub async fn permission_authorization_status(
+        &self,
+        request: PermissionAuthorizationRequest,
+    ) -> Result<PermissionAuthorizationStatus, v01::GenericError> {
+        (self.permission_authorization_status)(request).await
+    }
+
+    /// Update a stored permission authorization status. `NotDetermined`
+    /// clears the stored value so the next product request prompts again.
+    #[instrument(skip_all, fields(runtime.method = "core.set_permission_authorization_status"))]
+    pub async fn set_permission_authorization_status(
+        &self,
+        request: PermissionAuthorizationRequest,
+        status: PermissionAuthorizationStatus,
+    ) -> Result<(), v01::GenericError> {
+        (self.set_permission_authorization_status)(request, status).await
     }
 
     /// Asynchronous form of [`Self::receive_from_product`]. Decodes the

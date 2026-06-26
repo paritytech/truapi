@@ -21,7 +21,7 @@ use crate::chain_runtime::{
 use crate::host_logic::dotns::{NavigateDecision, parse_navigate};
 use crate::host_logic::entropy::derive_product_entropy_from_source;
 use crate::host_logic::features::feature_supported;
-use crate::host_logic::permissions::{Decision, PermissionsService};
+use crate::host_logic::permissions::PermissionsService;
 use crate::host_logic::product_account::{
     derive_product_public_key, is_product_identifier, normalize_product_identifier,
     product_public_key_to_address,
@@ -133,7 +133,8 @@ use truapi::{CallContext, CallError, Subscription};
 use truapi_platform::{
     AccountAliasReview, ChainProvider as PlatformChainProvider, CoreStorage as PlatformCoreStorage,
     CoreStorageKey, CreateTransactionReview, JsonRpcConnection, Navigation as PlatformNavigation,
-    Notifications as PlatformNotifications, Platform, PreimageHost as PlatformPreimageHost,
+    Notifications as PlatformNotifications, PermissionAuthorizationRequest,
+    PermissionAuthorizationStatus, Platform, PreimageHost as PlatformPreimageHost,
     PreimageSubmitReview, ProductStorage as PlatformProductStorage, RuntimeConfig, SessionUiInfo,
     SignPayloadReview, SignRawReview, ThemeHost as PlatformThemeHost,
     UserConfirmation as PlatformUserConfirmation, UserConfirmationReview,
@@ -586,9 +587,43 @@ impl<P> PlatformRuntimeHost<P>
 where
     P: Platform + 'static,
 {
-    #[instrument(skip_all, fields(runtime.method = "permissions.chain_submit_decision"))]
-    async fn chain_submit_decision(&self) -> Result<Decision, String> {
-        let service = PermissionsService::new(self.platform.as_ref(), self.platform.as_ref());
+    /// Read a stored permission authorization status without prompting.
+    #[instrument(skip_all, fields(runtime.method = "permissions.authorization_status"))]
+    pub(crate) async fn permission_authorization_status(
+        &self,
+        request: PermissionAuthorizationRequest,
+    ) -> Result<PermissionAuthorizationStatus, v01::GenericError> {
+        let service = PermissionsService::new(
+            self.platform.as_ref(),
+            self.platform.as_ref(),
+            &self.runtime_config.product_id,
+        );
+        service.authorization_status(&request).await
+    }
+
+    /// Update a stored permission authorization status. `NotDetermined`
+    /// clears the stored value so the next product request prompts again.
+    #[instrument(skip_all, fields(runtime.method = "permissions.set_authorization_status"))]
+    pub(crate) async fn set_permission_authorization_status(
+        &self,
+        request: PermissionAuthorizationRequest,
+        status: PermissionAuthorizationStatus,
+    ) -> Result<(), v01::GenericError> {
+        let service = PermissionsService::new(
+            self.platform.as_ref(),
+            self.platform.as_ref(),
+            &self.runtime_config.product_id,
+        );
+        service.set_authorization_status(&request, status).await
+    }
+
+    #[instrument(skip_all, fields(runtime.method = "permissions.chain_submit_authorization"))]
+    async fn chain_submit_authorization(&self) -> Result<PermissionAuthorizationStatus, String> {
+        let service = PermissionsService::new(
+            self.platform.as_ref(),
+            self.platform.as_ref(),
+            &self.runtime_config.product_id,
+        );
         service
             .check_or_prompt_remote(v01::RemotePermissionRequest {
                 permission: v01::RemotePermission::ChainSubmit,
@@ -598,9 +633,12 @@ where
     }
 
     async fn require_chain_submit<E>(&self, denied_error: E) -> Result<(), CallError<E>> {
-        match self.chain_submit_decision().await {
-            Ok(Decision::Granted) => Ok(()),
-            Ok(Decision::Denied) => Err(CallError::Domain(denied_error)),
+        match self.chain_submit_authorization().await {
+            Ok(PermissionAuthorizationStatus::Authorized) => Ok(()),
+            Ok(
+                PermissionAuthorizationStatus::Denied
+                | PermissionAuthorizationStatus::NotDetermined,
+            ) => Err(CallError::Domain(denied_error)),
             Err(reason) => Err(CallError::HostFailure { reason }),
         }
     }
@@ -740,11 +778,15 @@ where
         request: HostDevicePermissionRequest,
     ) -> Result<HostDevicePermissionResponse, CallError<HostDevicePermissionError>> {
         let HostDevicePermissionRequest::V1(inner) = request;
-        let service = PermissionsService::new(self.platform.as_ref(), self.platform.as_ref());
+        let service = PermissionsService::new(
+            self.platform.as_ref(),
+            self.platform.as_ref(),
+            &self.runtime_config.product_id,
+        );
         match service.check_or_prompt_device(inner).await {
             Ok(decision) => Ok(HostDevicePermissionResponse::V1(
                 v01::HostDevicePermissionResponse {
-                    granted: decision == Decision::Granted,
+                    granted: decision == PermissionAuthorizationStatus::Authorized,
                 },
             )),
             Err(err) => Err(CallError::HostFailure {
@@ -760,11 +802,15 @@ where
         request: RemotePermissionRequest,
     ) -> Result<RemotePermissionResponse, CallError<RemotePermissionError>> {
         let RemotePermissionRequest::V1(inner) = request;
-        let service = PermissionsService::new(self.platform.as_ref(), self.platform.as_ref());
+        let service = PermissionsService::new(
+            self.platform.as_ref(),
+            self.platform.as_ref(),
+            &self.runtime_config.product_id,
+        );
         match service.check_or_prompt_remote(inner).await {
             Ok(decision) => Ok(RemotePermissionResponse::V1(
                 v01::RemotePermissionResponse {
-                    granted: decision == Decision::Granted,
+                    granted: decision == PermissionAuthorizationStatus::Authorized,
                 },
             )),
             Err(err) => Err(CallError::HostFailure {

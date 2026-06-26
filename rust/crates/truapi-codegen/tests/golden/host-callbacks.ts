@@ -7,6 +7,7 @@
 import * as S from "@parity/truapi/scale";
 
 import {
+  HostDevicePermissionRequest,
   HostRequestResourceAllocationRequest,
   HostSignPayloadRequest,
   HostSignPayloadWithLegacyAccountRequest,
@@ -14,18 +15,17 @@ import {
   HostSignRawWithLegacyAccountRequest,
   LegacyAccountTxPayload,
   ProductAccountTxPayload,
+  RemotePermissionRequest,
 } from "@parity/truapi";
 
 import type {
   GenericError,
-  HostDevicePermissionRequest,
   HostDevicePermissionResponse,
   HostFeatureSupportedRequest,
   HostFeatureSupportedResponse,
   HostPushNotificationRequest,
   HostPushNotificationResponse,
   NotificationId,
-  RemotePermissionRequest,
   RemotePermissionResponse,
   Result,
   ThemeVariant,
@@ -85,9 +85,9 @@ export type CoreStorageKey =
    */
   | { tag: "PairingDeviceIdentity"; value?: undefined }
   /**
-   * Persisted decision for a canonical core permission key.
+   * Persisted authorization for a canonical core permission key.
    */
-  | { tag: "PermissionDecision"; value: { storageKey: string } };
+  | { tag: "PermissionAuthorization"; value: { storageKey: string } };
 
 /**
  * Review shown before a transaction-creation request is sent to the paired wallet.
@@ -101,6 +101,28 @@ export type CreateTransactionReview =
    * Legacy-account transaction request.
    */
   | { tag: "LegacyAccount"; value: LegacyAccountTxPayload };
+
+/**
+ * Permission request whose authorization status can be inspected or updated
+ * by host administration UI.
+ */
+export type PermissionAuthorizationRequest =
+  /**
+   * Device-level permission such as camera, microphone, or location.
+   */
+  | { tag: "Device"; value: HostDevicePermissionRequest }
+  /**
+   * Remote/product-scoped permission such as chain submit or HTTP access.
+   */
+  | { tag: "Remote"; value: RemotePermissionRequest };
+
+/**
+ * Authorization status for a permission request.
+ *
+ * `NotDetermined` means the core has no persisted answer and will prompt the
+ * host the next time the product requests this permission.
+ */
+export type PermissionAuthorizationStatus = "NotDetermined" | "Denied" | "Authorized";
 
 /**
  * Review shown before a preimage is submitted.
@@ -202,12 +224,26 @@ export const AccountAliasReview: S.Codec<AccountAliasReview> = S.lazy((): S.Code
  * Core-owned host-private storage slots. Products never address these slots;
  * the host chooses the backing store for each slot.
  */
-export const CoreStorageKey: S.Codec<CoreStorageKey> = S.lazy((): S.Codec<CoreStorageKey> => S.TaggedUnion({AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionDecision: S.Struct({storageKey: S.str}) as S.Codec<{ storageKey: string }>}));
+export const CoreStorageKey: S.Codec<CoreStorageKey> = S.lazy((): S.Codec<CoreStorageKey> => S.TaggedUnion({AuthSession: S._void, PairingDeviceIdentity: S._void, PermissionAuthorization: S.Struct({storageKey: S.str}) as S.Codec<{ storageKey: string }>}));
 
 /**
  * Review shown before a transaction-creation request is sent to the paired wallet.
  */
 export const CreateTransactionReview: S.Codec<CreateTransactionReview> = S.lazy((): S.Codec<CreateTransactionReview> => S.TaggedUnion({Product: ProductAccountTxPayload, LegacyAccount: LegacyAccountTxPayload}));
+
+/**
+ * Permission request whose authorization status can be inspected or updated
+ * by host administration UI.
+ */
+export const PermissionAuthorizationRequest: S.Codec<PermissionAuthorizationRequest> = S.lazy((): S.Codec<PermissionAuthorizationRequest> => S.TaggedUnion({Device: HostDevicePermissionRequest, Remote: RemotePermissionRequest}));
+
+/**
+ * Authorization status for a permission request.
+ *
+ * `NotDetermined` means the core has no persisted answer and will prompt the
+ * host the next time the product requests this permission.
+ */
+export const PermissionAuthorizationStatus: S.Codec<PermissionAuthorizationStatus> = S.lazy((): S.Codec<PermissionAuthorizationStatus> => S.Status("NotDetermined", "Denied", "Authorized"));
 
 /**
  * Review shown before a preimage is submitted.
@@ -253,6 +289,42 @@ export interface ChainProvider {
    * Drop the returned connection to disconnect.
    */
   connect(genesisHash: Uint8Array): Promise<JsonRpcConnection>;
+}
+
+/**
+ * Core-owned administration API exposed to host UI.
+ *
+ * Hosts call this surface to drive global runtime actions or inspect/update
+ * core-owned state without going through a product-scoped TrUAPI request.
+ */
+export interface CoreAdmin {
+  /**
+   * Best-effort logout/disconnect. Clears the active session and emits the
+   * resulting auth state transition.
+   */
+  disconnectSession(): Promise<void>;
+
+  /**
+   * Cancel any in-flight pairing request.
+   */
+  cancelPairing(): void;
+
+  /**
+   * Notify the core that the host-global auth session slot may have
+   * changed. The core re-reads storage and emits any resulting auth state.
+   */
+  notifySessionStoreChanged(): void;
+
+  /**
+   * Read a stored permission authorization status without prompting.
+   */
+  getPermissionAuthorizationStatus(request: PermissionAuthorizationRequest): Promise<PermissionAuthorizationStatus>;
+
+  /**
+   * Update a stored permission authorization status. `NotDetermined` clears
+   * the stored value so the next product request prompts again.
+   */
+  setPermissionAuthorizationStatus(request: PermissionAuthorizationRequest, status: PermissionAuthorizationStatus): Promise<void>;
 }
 
 /**

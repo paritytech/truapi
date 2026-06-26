@@ -10,7 +10,7 @@
 // views into WASM memory) and frames are small, so the copy is the simpler
 // safe choice.
 
-import type { LogLevel } from "./runtime.js";
+import type { LogLevel, PermissionAuthorizationStatus } from "./runtime.js";
 import type {
   CallbackName,
   OptionalCallbackName,
@@ -42,6 +42,17 @@ export type MainToWorker =
   | { kind: "disconnectSession"; requestId: number }
   | { kind: "cancelPairing" }
   | { kind: "notifySessionStoreChanged" }
+  | {
+      kind: "getPermissionAuthorizationStatus";
+      requestId: number;
+      request: Uint8Array;
+    }
+  | {
+      kind: "setPermissionAuthorizationStatus";
+      requestId: number;
+      request: Uint8Array;
+      status: PermissionAuthorizationStatus;
+    }
   | { kind: "callbackResponse"; requestId: number; ok: true; value: unknown }
   | { kind: "callbackResponse"; requestId: number; ok: false; error: string }
   | { kind: "subscriptionItem"; subId: number; value: unknown }
@@ -60,6 +71,29 @@ export type WorkerToMain =
   | { kind: "disconnectSessionResponse"; requestId: number; ok: true }
   | {
       kind: "disconnectSessionResponse";
+      requestId: number;
+      ok: false;
+      error: string;
+    }
+  | {
+      kind: "permissionAuthorizationStatusResponse";
+      requestId: number;
+      ok: true;
+      status: PermissionAuthorizationStatus;
+    }
+  | {
+      kind: "permissionAuthorizationStatusResponse";
+      requestId: number;
+      ok: false;
+      error: string;
+    }
+  | {
+      kind: "setPermissionAuthorizationStatusResponse";
+      requestId: number;
+      ok: true;
+    }
+  | {
+      kind: "setPermissionAuthorizationStatusResponse";
       requestId: number;
       ok: false;
       error: string;

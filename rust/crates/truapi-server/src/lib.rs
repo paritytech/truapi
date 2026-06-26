@@ -30,7 +30,9 @@ pub mod generated;
 pub mod wasm;
 
 pub use host_core::{FrameSink, HostCore, HostCoreError};
-pub use truapi_platform::{Platform, RuntimeConfig};
+pub use truapi_platform::{
+    PermissionAuthorizationRequest, PermissionAuthorizationStatus, Platform, RuntimeConfig,
+};
 
 #[cfg(target_arch = "wasm32")]
 pub use wasm::*;

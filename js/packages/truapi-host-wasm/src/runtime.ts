@@ -1,4 +1,5 @@
 import type { WireProvider } from "@parity/truapi";
+import type { CoreAdmin } from "./generated/host-callbacks.js";
 
 // The typed capability interfaces below come straight from the
 // `truapi-platform` Rust crate via `truapi-codegen --platform-ts-output`.
@@ -9,6 +10,7 @@ import type { WireProvider } from "@parity/truapi";
 export type {
   AuthState,
   ChainProvider,
+  CoreAdmin,
   CoreStorage,
   CoreStorageKey,
   Features,
@@ -16,6 +18,8 @@ export type {
   JsonRpcConnection as PlatformJsonRpcConnection,
   Navigation,
   Notifications,
+  PermissionAuthorizationRequest,
+  PermissionAuthorizationStatus,
   Permissions,
   PreimageHost,
   ProductStorage,
@@ -75,28 +79,7 @@ export interface HostCoreRuntimeConfig {
   };
 }
 
-export interface TrUApiHostCoreProvider extends WireProvider {
-  /**
-   * Core-owned logout/disconnect. This best-effort notifies the SSO peer,
-   * clears the in-memory session, clears CoreStorage auth state, and broadcasts
-   * Disconnected from the Rust core.
-   */
-  disconnectSession(): Promise<void>;
-
-  /**
-   * Cancel any in-flight `requestLogin` pairing (e.g. the user closed the
-   * pairing UI). The core emits a `Disconnected` auth state and resolves
-   * the pending login as `Rejected`. A no-op when no login is in progress.
-   */
-  cancelPairing(): void;
-
-  /**
-   * Notify the core that the host-global auth session may have changed. The
-   * core will re-read the stored blob and emit any resulting auth/session
-   * state updates.
-   */
-  notifySessionStoreChanged(): void;
-
+export interface TrUApiHostCoreProvider extends WireProvider, CoreAdmin {
   /**
    * Re-tune the wasm core's log level at runtime. Present on runtimes that
    * keep a live channel to the core (e.g. the Web Worker provider); absent on

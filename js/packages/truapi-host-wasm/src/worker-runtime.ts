@@ -19,6 +19,11 @@ interface WorkerHostCore {
   disconnectSession(): Promise<void>;
   cancelPairing(): void;
   notifySessionStoreChanged(): void;
+  permissionAuthorizationStatus(request: Uint8Array): Promise<string>;
+  setPermissionAuthorizationStatus(
+    request: Uint8Array,
+    status: string,
+  ): Promise<void>;
   dispose(): void;
   free(): void;
 }
@@ -225,6 +230,16 @@ ctx.addEventListener("message", (ev: MessageEvent<MainToWorker>) => {
     case "notifySessionStoreChanged":
       core?.notifySessionStoreChanged();
       break;
+    case "getPermissionAuthorizationStatus":
+      void handleGetPermissionAuthorizationStatus(msg.requestId, msg.request);
+      break;
+    case "setPermissionAuthorizationStatus":
+      void handleSetPermissionAuthorizationStatus(
+        msg.requestId,
+        msg.request,
+        msg.status,
+      );
+      break;
     case "callbackResponse": {
       const cb = pendingCallbacks.get(msg.requestId);
       if (cb) {
@@ -289,6 +304,68 @@ async function handleDisconnectSession(requestId: number): Promise<void> {
   } catch (err) {
     postToMain({
       kind: "disconnectSessionResponse",
+      requestId,
+      ok: false,
+      error: errorMessage(err),
+    });
+  }
+}
+
+async function handleGetPermissionAuthorizationStatus(
+  requestId: number,
+  request: Uint8Array,
+): Promise<void> {
+  if (!core) {
+    postToMain({
+      kind: "permissionAuthorizationStatusResponse",
+      requestId,
+      ok: false,
+      error: "permissionAuthorizationStatus received before core is ready",
+    });
+    return;
+  }
+  try {
+    const status = await core.permissionAuthorizationStatus(request);
+    postToMain({
+      kind: "permissionAuthorizationStatusResponse",
+      requestId,
+      ok: true,
+      status: status as "NotDetermined" | "Denied" | "Authorized",
+    });
+  } catch (err) {
+    postToMain({
+      kind: "permissionAuthorizationStatusResponse",
+      requestId,
+      ok: false,
+      error: errorMessage(err),
+    });
+  }
+}
+
+async function handleSetPermissionAuthorizationStatus(
+  requestId: number,
+  request: Uint8Array,
+  status: "NotDetermined" | "Denied" | "Authorized",
+): Promise<void> {
+  if (!core) {
+    postToMain({
+      kind: "setPermissionAuthorizationStatusResponse",
+      requestId,
+      ok: false,
+      error: "setPermissionAuthorizationStatus received before core is ready",
+    });
+    return;
+  }
+  try {
+    await core.setPermissionAuthorizationStatus(request, status);
+    postToMain({
+      kind: "setPermissionAuthorizationStatusResponse",
+      requestId,
+      ok: true,
+    });
+  } catch (err) {
+    postToMain({
+      kind: "setPermissionAuthorizationStatusResponse",
       requestId,
       ok: false,
       error: errorMessage(err),

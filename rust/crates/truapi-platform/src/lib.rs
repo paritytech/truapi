@@ -230,6 +230,61 @@ pub trait Permissions: Send + Sync {
     ) -> impl Future<Output = Result<RemotePermissionResponse, GenericError>> + Send;
 }
 
+/// Permission request whose authorization status can be inspected or updated
+/// by host administration UI.
+#[derive(Debug, Clone, PartialEq, Eq, Encode, Decode)]
+pub enum PermissionAuthorizationRequest {
+    /// Device-level permission such as camera, microphone, or location.
+    Device(HostDevicePermissionRequest),
+    /// Remote/product-scoped permission such as chain submit or HTTP access.
+    Remote(RemotePermissionRequest),
+}
+
+/// Authorization status for a permission request.
+///
+/// `NotDetermined` means the core has no persisted answer and will prompt the
+/// host the next time the product requests this permission.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Encode, Decode)]
+pub enum PermissionAuthorizationStatus {
+    /// No persisted authorization exists.
+    NotDetermined,
+    /// Access is denied.
+    Denied,
+    /// Access is authorized.
+    Authorized,
+}
+
+/// Core-owned administration API exposed to host UI.
+///
+/// Hosts call this surface to drive global runtime actions or inspect/update
+/// core-owned state without going through a product-scoped TrUAPI request.
+pub trait CoreAdmin: Send + Sync {
+    /// Best-effort logout/disconnect. Clears the active session and emits the
+    /// resulting auth state transition.
+    fn disconnect_session(&self) -> impl Future<Output = Result<(), GenericError>> + Send;
+
+    /// Cancel any in-flight pairing request.
+    fn cancel_pairing(&self);
+
+    /// Notify the core that the host-global auth session slot may have
+    /// changed. The core re-reads storage and emits any resulting auth state.
+    fn notify_session_store_changed(&self);
+
+    /// Read a stored permission authorization status without prompting.
+    fn get_permission_authorization_status(
+        &self,
+        request: PermissionAuthorizationRequest,
+    ) -> impl Future<Output = Result<PermissionAuthorizationStatus, GenericError>> + Send;
+
+    /// Update a stored permission authorization status. `NotDetermined` clears
+    /// the stored value so the next product request prompts again.
+    fn set_permission_authorization_status(
+        &self,
+        request: PermissionAuthorizationRequest,
+        status: PermissionAuthorizationStatus,
+    ) -> impl Future<Output = Result<(), GenericError>> + Send;
+}
+
 /// Feature-support probing. The host answers whether it can service a given
 /// capability (currently scoped to per-chain support).
 pub trait Features: Send + Sync {
@@ -270,8 +325,8 @@ pub enum CoreStorageKey {
     AuthSession,
     /// Pairing device identity used during SSO flows.
     PairingDeviceIdentity,
-    /// Persisted decision for a canonical core permission key.
-    PermissionDecision {
+    /// Persisted authorization for a canonical core permission key.
+    PermissionAuthorization {
         /// Core-generated permission storage key.
         storage_key: String,
     },

@@ -2,9 +2,12 @@ import type {
   ChainConnection,
   HostCallbacks,
   LogLevel,
+  PermissionAuthorizationRequest,
+  PermissionAuthorizationStatus,
   TrUApiHostCoreProvider,
   HostCoreRuntimeConfig,
 } from "../index.js";
+import { PermissionAuthorizationRequest as PermissionAuthorizationRequestCodec } from "../generated/host-callbacks.js";
 import { createWasmRawCallbacks } from "../generated/host-callbacks-adapter.js";
 import type { RawCallbacks } from "../generated/host-callbacks-adapter.js";
 import type {
@@ -31,6 +34,17 @@ interface WorkerProviderState {
     number,
     { resolve: () => void; reject: (error: Error) => void }
   >;
+  pendingPermissionAuthorizationStatuses: Map<
+    number,
+    {
+      resolve: (status: PermissionAuthorizationStatus) => void;
+      reject: (error: Error) => void;
+    }
+  >;
+  pendingSetPermissionAuthorizationStatuses: Map<
+    number,
+    { resolve: () => void; reject: (error: Error) => void }
+  >;
   closedError: Error | null;
   logLevel: LogLevel;
   disposed: boolean;
@@ -47,6 +61,13 @@ function errorMessage(err: unknown): string {
 }
 
 let nextDisconnectRequestId = 0;
+let nextPermissionAuthorizationRequestId = 0;
+
+function encodePermissionAuthorizationRequest(
+  request: PermissionAuthorizationRequest,
+): Uint8Array {
+  return PermissionAuthorizationRequestCodec.enc(request);
+}
 
 /** localStorage key the dev log level is persisted under, so it survives reloads. */
 const DEV_LOG_LEVEL_KEY = "truapi:logLevel";
@@ -276,6 +297,46 @@ function handleDisconnectResponse(
   }
 }
 
+function handlePermissionAuthorizationStatusResponse(
+  state: WorkerProviderState,
+  msg:
+    | {
+        requestId: number;
+        ok: true;
+        status: PermissionAuthorizationStatus;
+      }
+    | { requestId: number; ok: false; error: string },
+): void {
+  const pending = state.pendingPermissionAuthorizationStatuses.get(
+    msg.requestId,
+  );
+  if (!pending) return;
+  state.pendingPermissionAuthorizationStatuses.delete(msg.requestId);
+  if (msg.ok) {
+    pending.resolve(msg.status);
+  } else {
+    pending.reject(new Error(msg.error));
+  }
+}
+
+function handleSetPermissionAuthorizationStatusResponse(
+  state: WorkerProviderState,
+  msg:
+    | { requestId: number; ok: true }
+    | { requestId: number; ok: false; error: string },
+): void {
+  const pending = state.pendingSetPermissionAuthorizationStatuses.get(
+    msg.requestId,
+  );
+  if (!pending) return;
+  state.pendingSetPermissionAuthorizationStatuses.delete(msg.requestId);
+  if (msg.ok) {
+    pending.resolve();
+  } else {
+    pending.reject(new Error(msg.error));
+  }
+}
+
 function rejectPendingDisconnects(
   state: WorkerProviderState,
   error: Error,
@@ -284,6 +345,20 @@ function rejectPendingDisconnects(
     pending.reject(error);
   }
   state.pendingDisconnects.clear();
+}
+
+function rejectPendingPermissionAuthorizationRequests(
+  state: WorkerProviderState,
+  error: Error,
+): void {
+  for (const pending of state.pendingPermissionAuthorizationStatuses.values()) {
+    pending.reject(error);
+  }
+  state.pendingPermissionAuthorizationStatuses.clear();
+  for (const pending of state.pendingSetPermissionAuthorizationStatuses.values()) {
+    pending.reject(error);
+  }
+  state.pendingSetPermissionAuthorizationStatuses.clear();
 }
 
 /**
@@ -300,6 +375,7 @@ function teardown(
   state.disposed = true;
   state.closedError = error;
   rejectPendingDisconnects(state, error);
+  rejectPendingPermissionAuthorizationRequests(state, error);
   for (const fn of state.subscriptionDisposers.values()) {
     try {
       fn();
@@ -379,6 +455,8 @@ export function createWebWorkerProvider(
       subscriptionDisposers: new Map(),
       chainConnections: new Map(),
       pendingDisconnects: new Map(),
+      pendingPermissionAuthorizationStatuses: new Map(),
+      pendingSetPermissionAuthorizationStatuses: new Map(),
       closedError: null,
       logLevel: devLogLevelOverride ?? options.logLevel ?? "off",
       disposed: false,
@@ -410,6 +488,12 @@ export function createWebWorkerProvider(
           break;
         case "disconnectSessionResponse":
           handleDisconnectResponse(state, msg);
+          break;
+        case "permissionAuthorizationStatusResponse":
+          handlePermissionAuthorizationStatusResponse(state, msg);
+          break;
+        case "setPermissionAuthorizationStatusResponse":
+          handleSetPermissionAuthorizationStatusResponse(state, msg);
           break;
         case "callbackRequest":
           if (debugLoggingEnabled(state)) {
@@ -567,6 +651,54 @@ function buildProvider(state: WorkerProviderState): TrUApiHostCoreProvider {
       if (state.disposed) return;
       const post: MainToWorker = { kind: "notifySessionStoreChanged" };
       state.worker.postMessage(post);
+    },
+    getPermissionAuthorizationStatus(
+      request: PermissionAuthorizationRequest,
+    ): Promise<PermissionAuthorizationStatus> {
+      if (state.disposed) return Promise.resolve("NotDetermined");
+      return new Promise((resolve, reject) => {
+        const requestId = ++nextPermissionAuthorizationRequestId;
+        state.pendingPermissionAuthorizationStatuses.set(requestId, {
+          resolve,
+          reject,
+        });
+        try {
+          const post: MainToWorker = {
+            kind: "getPermissionAuthorizationStatus",
+            requestId,
+            request: encodePermissionAuthorizationRequest(request),
+          };
+          state.worker.postMessage(post);
+        } catch (err) {
+          state.pendingPermissionAuthorizationStatuses.delete(requestId);
+          reject(err instanceof Error ? err : new Error(String(err)));
+        }
+      });
+    },
+    setPermissionAuthorizationStatus(
+      request: PermissionAuthorizationRequest,
+      status: PermissionAuthorizationStatus,
+    ): Promise<void> {
+      if (state.disposed) return Promise.resolve();
+      return new Promise((resolve, reject) => {
+        const requestId = ++nextPermissionAuthorizationRequestId;
+        state.pendingSetPermissionAuthorizationStatuses.set(requestId, {
+          resolve,
+          reject,
+        });
+        try {
+          const post: MainToWorker = {
+            kind: "setPermissionAuthorizationStatus",
+            requestId,
+            request: encodePermissionAuthorizationRequest(request),
+            status,
+          };
+          state.worker.postMessage(post);
+        } catch (err) {
+          state.pendingSetPermissionAuthorizationStatuses.delete(requestId);
+          reject(err instanceof Error ? err : new Error(String(err)));
+        }
+      });
     },
     setLogLevel(level: LogLevel): void {
       if (state.disposed) return;

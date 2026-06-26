@@ -734,7 +734,7 @@ pub(crate) fn core_storage_test_key(key: CoreStorageKey) -> String {
     match key {
         CoreStorageKey::AuthSession => "core:auth-session".to_string(),
         CoreStorageKey::PairingDeviceIdentity => "core:pairing-device-identity".to_string(),
-        CoreStorageKey::PermissionDecision { storage_key } => {
+        CoreStorageKey::PermissionAuthorization { storage_key } => {
             format!("core:permission:{storage_key}")
         }
     }

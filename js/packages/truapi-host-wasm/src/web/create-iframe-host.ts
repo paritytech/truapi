@@ -17,6 +17,8 @@ export interface IframeHostOptions {
    * `iframeUrl`. Throws if it disagrees with the iframe URL's origin.
    */
   allowedOrigin?: string;
+  /** Optional iframe Permissions Policy allow attribute. */
+  allow?: string;
   /** Override the default iframe sandbox attribute. */
   sandbox?: string;
 }
@@ -69,6 +71,7 @@ export function createIframeHost(options: IframeHostOptions): IframeHost {
     container,
     onPort,
     allowedOrigin,
+    allow,
     sandbox = DEFAULT_IFRAME_SANDBOX,
   } = options;
 
@@ -90,6 +93,9 @@ export function createIframeHost(options: IframeHostOptions): IframeHost {
   // does not serve matching embedder headers.
   const credentiallessIframe = iframe as CredentiallessIframe;
   credentiallessIframe.credentialless = true;
+  if (allow !== undefined) {
+    iframe.allow = allow;
+  }
   iframe.setAttribute("sandbox", sandbox);
   iframe.referrerPolicy = "no-referrer";
   iframe.src = iframeUrl;
