@@ -10,7 +10,7 @@ on:  # zizmor: ignore[dangerous-triggers]
   workflow_run:
     workflows: ["CI"]
     types: [completed]
-    branches: [main, release/v0.3.0]
+    branches: [main, release/v0.3.2]
 
 permissions:
   contents: read
