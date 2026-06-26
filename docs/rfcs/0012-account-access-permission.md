@@ -37,12 +37,12 @@ The permission key is the full `ProductAccountId` tuple `(DotNsIdentifier, Deriv
 1. **First call** — When a product calls a `ProductAccountId`-bearing method for the first time with a given `ProductAccountId`, the host presents an approval dialog to the user. The dialog MUST identify the requesting product and the target `ProductAccountId` (at minimum the `DotNsIdentifier`).
 2. **Approved** — The host caches the grant and proceeds with the method. Subsequent calls from the same product with the same `ProductAccountId` resolve immediately without prompting.
 3. **Denied** — The method returns its domain-specific rejection error:
-   - `host_account_get`, `host_account_get_alias`: `RequestCredentialsErr::Rejected`
-   - `host_account_create_proof`: `CreateProofErr::Rejected`
-   - `host_sign_raw`, `host_sign_payload`: `SigningErr::PermissionDenied`
-   - `host_create_transaction`: `CreateTransactionErr::PermissionDenied`
-   - `remote_statement_store_create_proof`: `StatementProofErr::Rejected`
-   - `host_payment_top_up` (with `PaymentTopUpSource::ProductAccount`): `PaymentTopUpErr::Rejected`
+   - `host_account_get`, `host_account_get_alias`: `HostAccountGetError::Rejected`
+   - `host_account_create_proof`: `HostAccountCreateProofError::Rejected`
+   - `host_sign_raw`, `host_sign_payload`: `HostSignPayloadError::PermissionDenied`
+   - `host_create_transaction`: `HostCreateTransactionError::PermissionDenied`
+   - `remote_statement_store_create_proof`: `RemoteStatementStoreCreateProofError::Rejected`
+   - `host_payment_top_up` (with `PaymentTopUpSource::ProductAccount`): `HostPaymentTopUpError::Rejected`
 4. **Grant persistence** — The host SHOULD persist grants across sessions for the same product identity. Session-scoped grants are acceptable as a minimum conforming implementation.
 
 ### Same-domain optimization
@@ -55,18 +55,31 @@ Hosts that cannot reliably determine the calling product's identity (e.g. during
 
 | Method | `ProductAccountId` location | Rejection error |
 |--------|---------------------------|-----------------|
-| `host_account_get` | Direct parameter | `RequestCredentialsErr::Rejected` |
-| `host_account_get_alias` | Direct parameter | `RequestCredentialsErr::Rejected` |
-| `host_account_create_proof` | First element of tuple parameter | `CreateProofErr::Rejected` |
-| `host_sign_raw` | `SigningPayloadRaw.account` field | `SigningErr::PermissionDenied` |
-| `host_sign_payload` | `SigningPayload.account` field | `SigningErr::PermissionDenied` |
-| `host_create_transaction` | First element of tuple parameter | `CreateTransactionErr::PermissionDenied` |
-| `remote_statement_store_create_proof` | First element of tuple parameter | `StatementProofErr::Rejected` |
-| `host_payment_top_up` | `PaymentTopUpSource::ProductAccount` variant | `PaymentTopUpErr::Rejected` |
+| `host_account_get` | `HostAccountGetRequest.product_account_id` | `HostAccountGetError::Rejected` |
+| `host_account_get_alias` | `HostAccountGetAliasRequest.product_account_id` | `HostAccountGetError::Rejected` |
+| `host_account_create_proof` | `HostAccountCreateProofRequest.product_account_id` | `HostAccountCreateProofError::Rejected` |
+| `host_sign_raw` | `HostSignRawRequest.account` | `HostSignPayloadError::PermissionDenied` |
+| `host_sign_payload` | `HostSignPayloadRequest.account` | `HostSignPayloadError::PermissionDenied` |
+| `host_create_transaction` | `ProductAccountTxPayload.signer` | `HostCreateTransactionError::PermissionDenied` |
+| `remote_statement_store_create_proof` | `RemoteStatementStoreCreateProofRequest.product_account_id` | `RemoteStatementStoreCreateProofError::Rejected` |
+| `host_payment_top_up` | `PaymentTopUpSource::ProductAccount` variant | `HostPaymentTopUpError::Rejected` |
 
 ### API changes
 
-No new methods or types are introduced. The existing error variants (`Rejected`, `PermissionDenied`) already cover the denial case. The change is purely behavioral: the host MUST perform the permission check before dispatching to the handler.
+No new methods are introduced. Two error enums gain a `Rejected` variant to
+cover the denial case:
+
+- `RemoteStatementStoreCreateProofError::Rejected`
+- `HostPaymentTopUpError::Rejected`
+
+All other affected methods already have a suitable rejection variant
+(`Rejected` or `PermissionDenied`).
+
+`CallContext` gains `caller_product_id: Option<String>`, set by the host to
+the calling product's DotNS identifier. Handlers use it for the same-domain
+optimization (skip the prompt when the caller's domain matches the requested
+`ProductAccountId`). Hosts that cannot determine the caller identity leave it
+`None`, which forces the prompt for all requests.
 
 ### Interaction with existing permission systems
 

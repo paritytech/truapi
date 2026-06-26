@@ -133,6 +133,8 @@ pub enum HostPaymentTopUpError {
         /// Amount that was successfully credited.
         credited: Balance,
     },
+    /// User or host rejected account access (RFC 0012).
+    Rejected,
     /// Catch-all.
     Unknown { reason: String },
 }

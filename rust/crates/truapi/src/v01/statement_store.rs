@@ -78,6 +78,8 @@ pub enum RemoteStatementStoreCreateProofError {
     UnableToSign,
     /// Account not recognized.
     UnknownAccount,
+    /// User or host rejected account access (RFC 0012).
+    Rejected,
     /// Catch-all.
     Unknown { reason: String },
 }
