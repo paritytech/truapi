@@ -1,0 +1,44 @@
+name: Check RFC
+
+on:
+  pull_request:
+    paths:
+      - 'docs/rfcs/**'
+      - '!docs/rfcs/_index.md'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-rfc:
+    if: github.event.pull_request.user.login != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # ── Check that the RFC document exists ──
+      - name: Require RFC document
+        run: |
+          BASE=${{ github.event.pull_request.base.sha }}
+          RFC_CHANGED=$(git diff --name-only "$BASE"...HEAD -- docs/rfcs/)
+          if [ -z "$RFC_CHANGED" ]; then
+            echo "::error::RFC PRs must include an RFC document in docs/rfcs/."
+            exit 1
+          fi
+          echo "RFC changes detected:"
+          echo "$RFC_CHANGED"
+
+      # ── Check that truapi interfaces are updated ──
+      - name: Require truapi interface changes
+        run: |
+          BASE=${{ github.event.pull_request.base.sha }}
+          API_CHANGED=$(git diff --name-only "$BASE"...HEAD -- rust/crates/truapi/)
+          if [ -z "$API_CHANGED" ]; then
+            echo "::error::RFC PRs must include corresponding changes to the truapi interfaces in rust/crates/truapi/."
+            exit 1
+          fi
+          echo "API changes detected:"
+          echo "$API_CHANGED"

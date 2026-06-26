@@ -3,7 +3,7 @@
 ## Reporting Issues
 
 If you have found what you think is a bug,
-please [file an issue](https://github.com/paritytech/host-api/issues/new/choose).
+please [file an issue](https://github.com/paritytech/truapi/issues/new/choose).
 
 ## Suggesting New Features
 
@@ -19,11 +19,19 @@ Feature proposals live as markdown files in `docs/features/`. To propose a new f
 
 For larger changes that need cross-team discussion, use the RFC process:
 
-1. Create a branch and add a new file to `docs/rfcs/` using the next available number (e.g., `docs/rfcs/0002-my-proposal.md`)
+1. Create a branch and add a new file to `docs/rfcs/<slug>.md` (e.g., `docs/rfcs/my-proposal.md`) — do **not** assign a number
 2. Use `docs/rfcs/0001-template.md` as a reference for the expected structure and frontmatter
-3. Update `docs/rfcs/_index.md` with a link to your RFC
-4. Open a PR using the **rfc** template (`?template=rfc.md`) and add the `rfc` and `proposal` labels
-5. The PR will be auto-added to the project board for tracking and review
+3. Open a PR using the **rfc** template (`?template=rfc.md`) and add the `rfc` label
+4. The PR will be auto-added to the project board for tracking and review
+5. When the PR is approved and merged, CI automatically assigns the next sequential number, renames the file, and appends it to `docs/rfcs/_index.md`
+
+**Important:** RFC PRs must include corresponding changes to the TrUAPI Rust
+interfaces in `rust/crates/truapi/`. A CI check (`check-rfc.yml`) enforces
+this — PRs that touch `docs/rfcs/` without also modifying `rust/crates/truapi/`
+will fail. This ensures every RFC ships with a concrete API change, not just
+prose.
+
+If you use Claude Code, the [`rfc`](.claude/skills/rfc/SKILL.md) skill is highly recommended for drafting RFCs — invoke it with `/rfc` to turn your notes into a well-structured document that follows the template above.
 
 ## Design Documents
 
@@ -35,38 +43,52 @@ Canonical design documentation lives in `docs/design/`. To propose updates or ad
 
 ## Development
 
-If you have been assigned to fix an issue or develop a new feature, please follow these steps to get started:
+### Prerequisites
 
-- Fork this repository.
-- Install dependencies
+- Rust toolchain (stable + nightly for `cargo fmt`)
+- Node.js and npm (for the TypeScript client)
+- Yarn 1.x (for the playground)
 
-  ```shell
-  npm install
-  ```
+### Repository layout
 
-  - We use [nvm](https://github.com/nvm-sh/nvm) to manage node versions - please make sure to use the version mentioned
-    in `.nvmrc`
+```
+rust/crates/
+  truapi/              Rust trait + type definitions (source of truth)
+  truapi-codegen/      rustdoc JSON → TypeScript client generator
+  truapi-macros/       #[wire(id = N)] proc-macro
+js/packages/
+  truapi/              @parity/truapi TypeScript package (generated TS is auto-generated and git-ignored)
+playground/            Next.js interactive playground
+hosts/dotli/           dotli host (git submodule)
+scripts/codegen.sh     regenerate the TS client from the Rust crate
+```
 
-    ```shell
-    nvm use
-    ```
+Common tasks are wrapped in the top-level `Makefile`. Run `make help` to see
+the full list of targets.
 
-- Build all packages.
+### Getting started
 
-  ```shell
-  npm run build
-  ```
+```bash
+make setup    # submodules + JS dependencies
+make build    # Rust workspace + TypeScript client
+```
 
-- Run development server.
+### Making changes to the API
 
-  ```shell
-  npm run build:watch
-  ```
+The Rust crate in `rust/crates/truapi/` is the single source of truth for the
+TrUAPI protocol. When you modify traits or types there:
 
-- Implement your changes and tests in files in the `packages/` and `__tests__` directories.
-- Document your changes in the appropriate doc page.
-- Git stage your required changes and commit (see below commit guidelines).
-- Submit PR for review.
+```bash
+make codegen      # regenerate the TS client and refresh the playground snapshot
+make playground   # rebuild the playground against the refreshed snapshot
+```
+
+### Verification
+
+```bash
+make test     # Rust + TypeScript client tests
+make check    # full suite: build, fmt, clippy, test, TS tests, playground build + lint
+```
 
 ## Pull requests
 
@@ -74,3 +96,7 @@ Maintainers merge pull requests by squashing all commits and editing the commit 
 user interface.
 
 Use an appropriate commit type. Be especially careful with breaking changes.
+
+## Releasing
+
+See [`docs/RELEASE_PROCESS.md`](docs/RELEASE_PROCESS.md) for the `@parity/truapi` npm publishing flow.

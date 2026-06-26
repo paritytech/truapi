@@ -82,9 +82,7 @@ export const StatementStoreSubscribeV1_receive = SignedStatementsPage;
 The `StatementStoreAdapter` interface in `packages/statement-store/src/adapter/types.ts` is updated:
 
 ```typescript
-type TopicFilter =
-  | { matchAll: Uint8Array[] }
-  | { matchAny: Uint8Array[] };
+type TopicFilter = { matchAll: Uint8Array[] } | { matchAny: Uint8Array[] };
 
 type StatementsPage = {
   statements: Statement[];
@@ -92,8 +90,14 @@ type StatementsPage = {
 };
 
 type StatementStoreAdapter = {
-  queryStatements(filter: TopicFilter, destination?: Uint8Array): ResultAsync<Statement[], Error>;
-  subscribeStatements(filter: TopicFilter, callback: (page: StatementsPage) => unknown): VoidFunction;
+  queryStatements(
+    filter: TopicFilter,
+    destination?: Uint8Array,
+  ): ResultAsync<Statement[], Error>;
+  subscribeStatements(
+    filter: TopicFilter,
+    callback: (page: StatementsPage) => unknown,
+  ): VoidFunction;
   submitStatement(statement: SignedStatement): ResultAsync<void, Error>; // error variants unchanged
 };
 ```
