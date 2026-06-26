@@ -80,7 +80,7 @@ cargo test --workspace
 ```bash
 cd js/packages/truapi
 npm run build
-npm test                # wire-equality + wire-table-loop smoke tests
+npm test                # Vitest suite (src/**/*.test.ts)
 ```
 
 ### Explorer

@@ -71,10 +71,12 @@
     "codegen": "cargo run -p truapi-codegen -- --input ../../../target/doc/truapi.json --output src/generated --playground-output src/playground --explorer-output src/explorer",
     "typecheck": "npm run build",
     "pretest": "npm run ensure-generated",
-    "test": "for f in test/*.test.mjs; do echo \"=== $f ===\" && bun \"$f\" || exit 1; done"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "devDependencies": {
-    "typescript": "^6.0"
+    "typescript": "^6.0",
+    "vitest": "^3.2.0"
   },
   "dependencies": {
     "neverthrow": "^8.2.0",
