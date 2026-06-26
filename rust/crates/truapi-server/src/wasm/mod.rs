@@ -23,9 +23,9 @@ use truapi::v01;
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use truapi_platform::{
     AuthPresenter, AuthState, ChainProvider, CoreStorage, CoreStorageKey, Features,
-    JsonRpcConnection, Navigation, Notifications, PairingDeeplinkScheme, Permissions, PreimageHost,
-    ProductStorage, RuntimeConfig, RuntimeConfigValidationError, SessionUiInfo, ThemeHost,
-    UserConfirmation, UserConfirmationReview,
+    JsonRpcConnection, Navigation, Notifications, Permissions, PreimageHost, ProductStorage,
+    RuntimeConfig, RuntimeConfigValidationError, SessionUiInfo, ThemeHost, UserConfirmation,
+    UserConfirmationReview,
 };
 use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
@@ -848,24 +848,11 @@ fn runtime_config_from_js(value: &JsValue) -> Result<RuntimeConfig, JsValue> {
             None => None,
         },
         get_required_bytes32_at(&people, "genesisHash", "runtimeConfig.people.genesisHash")?,
-        {
-            let scheme = get_required_string_at(
-                &pairing,
-                "deeplinkScheme",
-                "runtimeConfig.pairing.deeplinkScheme",
-            )?;
-            match scheme.as_str() {
-                "polkadotapp" | "polkadotApp" | "PolkadotApp" => PairingDeeplinkScheme::PolkadotApp,
-                "polkadotappdev" | "polkadotAppDev" | "PolkadotAppDev" => {
-                    PairingDeeplinkScheme::PolkadotAppDev
-                }
-                other => {
-                    return Err(JsValue::from_str(&format!(
-                        "runtimeConfig.pairing.deeplinkScheme has unsupported value {other:?}"
-                    )));
-                }
-            }
-        },
+        get_required_string_at(
+            &pairing,
+            "deeplinkScheme",
+            "runtimeConfig.pairing.deeplinkScheme",
+        )?,
     )
     .map_err(runtime_config_validation_to_js)
 }
@@ -882,6 +869,9 @@ fn runtime_config_validation_to_js(err: RuntimeConfigValidationError) -> JsValue
         RuntimeConfigValidationError::InsecureHostIcon { scheme } => JsValue::from_str(&format!(
             "runtimeConfig.host.icon must use https scheme, got {scheme:?}"
         )),
+        RuntimeConfigValidationError::InvalidDeeplinkScheme { scheme } => JsValue::from_str(
+            &format!("runtimeConfig.pairing.deeplinkScheme must not include ://, got {scheme:?}"),
+        ),
     }
 }
 
@@ -889,6 +879,7 @@ fn runtime_config_field_to_js(field: &str) -> &str {
     match field {
         "product_id" => "productId",
         "host_name" => "host.name",
+        "pairing_deeplink_scheme" => "pairing.deeplinkScheme",
         "people_chain_genesis_hash" => "people.genesisHash",
         other => other,
     }
@@ -993,8 +984,8 @@ struct WasmCoreInner {
 }
 
 /// Set the live log level (`off`/`error`/`warn`/`info`/`debug`/`trace`).
-/// Hosts read their `truapi:logLevel` flag (web: localStorage) and call this
-/// during boot, or again at any time to re-tune verbosity.
+/// Hosts may call this during boot, or again at any time to re-tune verbosity.
+/// Unknown values are parsed as `off`.
 #[wasm_bindgen(js_name = setLogLevel)]
 pub fn set_log_level(level: &str) {
     crate::logging::set_level_from_str(level);

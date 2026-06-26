@@ -331,8 +331,8 @@ fn emit_wasm_adapter(
 ///
 /// The lifecycle/transport pieces stay hand-written in `worker-runtime.ts` and
 /// `create-worker-host-runtime.ts`; this file owns the mechanical callback
-/// name, arity, optionality and subscription metadata that already exists in
-/// the parsed `truapi-platform` trait surface.
+/// name, arity, host-hook installation and subscription metadata that already
+/// exists in the parsed `truapi-platform` trait surface.
 fn emit_worker_callbacks(
     definition: &PlatformDefinition,
     _codec_types: &BTreeSet<String>,
@@ -364,8 +364,8 @@ fn emit_worker_callbacks(
         //
         // Worker-side metadata and proxy functions for the raw WASM callback
         // surface. The worker transport/lifecycle remains hand-written; this
-        // file owns the callback names, optionality, arity, and subscription
-        // payload shape derived from `truapi-platform`.
+        // file owns the callback names, installed host hooks, arity, and
+        // subscription payload shape derived from `truapi-platform`.
 
         import type {{ HostCallbacks, ChainConnect }} from "../runtime.js";
         import type {{ RawCallbacks }} from "./host-callbacks-adapter.js";

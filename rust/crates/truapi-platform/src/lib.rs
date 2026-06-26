@@ -47,8 +47,8 @@ pub struct RuntimeConfig {
     pub platform_version: Option<String>,
     /// People-chain genesis hash used for statement-store SSO.
     pub people_chain_genesis_hash: [u8; 32],
-    /// Deeplink scheme used in pairing QR payloads.
-    pub pairing_deeplink_scheme: PairingDeeplinkScheme,
+    /// Deeplink URI scheme used in pairing QR payloads, without `://`.
+    pub pairing_deeplink_scheme: String,
 }
 
 impl RuntimeConfig {
@@ -63,7 +63,7 @@ impl RuntimeConfig {
         platform_type: Option<String>,
         platform_version: Option<String>,
         people_chain_genesis_hash: [u8; 32],
-        pairing_deeplink_scheme: PairingDeeplinkScheme,
+        pairing_deeplink_scheme: String,
     ) -> Result<Self, RuntimeConfigValidationError> {
         let config = Self {
             product_id,
@@ -82,6 +82,12 @@ impl RuntimeConfig {
     fn validate(&self) -> Result<(), RuntimeConfigValidationError> {
         require_non_empty("product_id", &self.product_id)?;
         require_non_empty("host_name", &self.host_name)?;
+        require_non_empty("pairing_deeplink_scheme", &self.pairing_deeplink_scheme)?;
+        if self.pairing_deeplink_scheme.contains("://") {
+            return Err(RuntimeConfigValidationError::InvalidDeeplinkScheme {
+                scheme: self.pairing_deeplink_scheme.clone(),
+            });
+        }
         if let Some(icon) = &self.host_icon {
             let parsed =
                 Url::parse(icon).map_err(|err| RuntimeConfigValidationError::InvalidHostIcon {
@@ -122,6 +128,11 @@ pub enum RuntimeConfigValidationError {
         /// Actual URL scheme.
         scheme: String,
     },
+    /// Pairing deeplink scheme included a URL separator.
+    InvalidDeeplinkScheme {
+        /// Actual deeplink scheme value.
+        scheme: String,
+    },
 }
 
 impl std::fmt::Display for RuntimeConfigValidationError {
@@ -136,20 +147,17 @@ impl std::fmt::Display for RuntimeConfigValidationError {
             RuntimeConfigValidationError::InsecureHostIcon { scheme } => {
                 write!(f, "host_icon must use https scheme, got {scheme:?}")
             }
+            RuntimeConfigValidationError::InvalidDeeplinkScheme { scheme } => {
+                write!(
+                    f,
+                    "pairing_deeplink_scheme must not include ://, got {scheme:?}"
+                )
+            }
         }
     }
 }
 
 impl std::error::Error for RuntimeConfigValidationError {}
-
-/// SSO wallet deeplink scheme.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PairingDeeplinkScheme {
-    /// Production Polkadot app.
-    PolkadotApp,
-    /// Development Polkadot app.
-    PolkadotAppDev,
-}
 
 /// Product-scoped key-value storage. The platform namespaces keys so different
 /// products cannot read each other's data.

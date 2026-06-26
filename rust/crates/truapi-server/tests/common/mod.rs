@@ -6,8 +6,8 @@ use truapi::v01;
 use truapi::versioned::system::{HostFeatureSupportedRequest, HostFeatureSupportedResponse};
 use truapi_platform::{
     AuthPresenter, ChainProvider, CoreStorage, CoreStorageKey, Features, JsonRpcConnection,
-    Navigation, Notifications, PairingDeeplinkScheme, Permissions, PreimageHost, ProductStorage,
-    RuntimeConfig, ThemeHost, UserConfirmation, UserConfirmationReview,
+    Navigation, Notifications, Permissions, PreimageHost, ProductStorage, RuntimeConfig, ThemeHost,
+    UserConfirmation, UserConfirmationReview,
 };
 
 pub fn test_spawner() -> truapi_server::subscription::Spawner {
@@ -30,7 +30,7 @@ pub fn test_runtime_config() -> RuntimeConfig {
         platform_type: None,
         platform_version: None,
         people_chain_genesis_hash: [0xa2; 32],
-        pairing_deeplink_scheme: PairingDeeplinkScheme::PolkadotApp,
+        pairing_deeplink_scheme: "polkadotapp".to_string(),
     }
 }
 

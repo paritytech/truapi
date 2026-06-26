@@ -50,28 +50,23 @@ let nextDisconnectRequestId = 0;
 
 /** localStorage key the dev log level is persisted under, so it survives reloads. */
 const DEV_LOG_LEVEL_KEY = "truapi:logLevel";
-const LOG_LEVELS: readonly LogLevel[] = [
-  "off",
-  "error",
-  "warn",
-  "info",
-  "debug",
-  "trace",
-];
-
-function isLogLevel(value: string | null): value is LogLevel {
-  return value !== null && (LOG_LEVELS as readonly string[]).includes(value);
-}
 
 /** Read the persisted dev log level. Returns null when unset or unavailable. */
 function readPersistedLogLevel(): LogLevel | null {
-  const stored = globalThis.localStorage?.getItem(DEV_LOG_LEVEL_KEY) ?? null;
-  return isLogLevel(stored) ? stored : null;
+  try {
+    return globalThis.localStorage?.getItem(DEV_LOG_LEVEL_KEY) ?? null;
+  } catch {
+    return null;
+  }
 }
 
 /** Persist the dev log level so it re-applies on the next reload. */
 function persistLogLevel(level: LogLevel): void {
-  globalThis.localStorage?.setItem(DEV_LOG_LEVEL_KEY, level);
+  try {
+    globalThis.localStorage?.setItem(DEV_LOG_LEVEL_KEY, level);
+  } catch {
+    // ignore storage access errors
+  }
 }
 
 let devLogLevelOverride: LogLevel | null = readPersistedLogLevel();

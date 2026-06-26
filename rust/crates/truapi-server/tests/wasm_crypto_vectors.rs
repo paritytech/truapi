@@ -9,7 +9,7 @@ use p256::elliptic_curve::sec1::ToEncodedPoint;
 use parity_scale_codec::{Decode, Encode};
 use schnorrkel::{ExpansionMode, MiniSecretKey};
 use sha2::Sha256;
-use truapi_platform::{PairingDeeplinkScheme, RuntimeConfig};
+use truapi_platform::RuntimeConfig;
 use truapi_server::host_logic::entropy::derive_product_entropy;
 use truapi_server::host_logic::product_account::{
     derive_product_public_key, product_public_key_to_address,
@@ -62,7 +62,7 @@ fn runtime_config() -> RuntimeConfig {
         platform_type: Some("Firefox".to_string()),
         platform_version: Some("192.32".to_string()),
         people_chain_genesis_hash: [0xa2; 32],
-        pairing_deeplink_scheme: PairingDeeplinkScheme::PolkadotApp,
+        pairing_deeplink_scheme: "polkadotapp".to_string(),
     }
 }
 
@@ -127,12 +127,7 @@ fn product_account_and_entropy_vectors_match_dotli() {
 #[wasm_bindgen_test]
 fn pairing_deeplink_topic_and_scale_vectors_match_dotli() {
     let config = runtime_config();
-    let deeplink = build_pairing_deeplink(
-        PairingDeeplinkScheme::PolkadotApp,
-        SS_PUBLIC,
-        ENC_PUBLIC,
-        &config,
-    );
+    let deeplink = build_pairing_deeplink("polkadotapp", SS_PUBLIC, ENC_PUBLIC, &config);
     assert!(deeplink.starts_with("polkadotapp://pair?handshake=01"));
     let encoded = hex::decode(deeplink.split("handshake=").nth(1).unwrap()).unwrap();
     let decoded = VersionedHandshakeProposal::decode(&mut &encoded[..]).unwrap();

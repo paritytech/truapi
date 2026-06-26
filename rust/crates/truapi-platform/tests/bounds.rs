@@ -4,9 +4,7 @@
 //! `impl Future`); the runtime consumes implementors via generics, not
 //! `dyn Trait`.
 
-use truapi_platform::{
-    PairingDeeplinkScheme, Platform, RuntimeConfig, RuntimeConfigValidationError,
-};
+use truapi_platform::{Platform, RuntimeConfig, RuntimeConfigValidationError};
 
 fn _assert_platform_bounds<T: Platform + Send + Sync + 'static>() {}
 
@@ -32,7 +30,7 @@ fn runtime_config(
         None,
         None,
         [0xa2; 32],
-        PairingDeeplinkScheme::PolkadotApp,
+        "polkadotapp".to_string(),
     )
 }
 
@@ -73,6 +71,27 @@ fn runtime_config_rejects_non_https_host_icon() {
         ),
         Err(RuntimeConfigValidationError::InsecureHostIcon {
             scheme: "http".to_string(),
+        })
+    );
+}
+
+#[test]
+fn runtime_config_rejects_malformed_deeplink_scheme() {
+    let err = RuntimeConfig::new(
+        "dotli.dot".to_string(),
+        "Polkadot Web".to_string(),
+        Some("https://dot.li/dotli.png".to_string()),
+        None,
+        None,
+        None,
+        [0xa2; 32],
+        "polkadotapp://".to_string(),
+    );
+
+    assert_eq!(
+        err,
+        Err(RuntimeConfigValidationError::InvalidDeeplinkScheme {
+            scheme: "polkadotapp://".to_string(),
         })
     );
 }

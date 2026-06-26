@@ -50,12 +50,11 @@ export interface ChainConnection {
 }
 
 /**
- * Verbosity threshold for the wasm core's `tracing` output. `off` silences
- * it; the rest map to the matching browser `console` method (`debug`/`trace`
- * land on `console.debug`, hidden in Chrome unless the console level dropdown
- * includes "Verbose").
+ * Verbosity threshold for the wasm core's `tracing` output. The Rust core
+ * parses the string; known values are `off`, `error`, `warn`, `info`, `debug`,
+ * and `trace`.
  */
-export type LogLevel = "off" | "error" | "warn" | "info" | "debug" | "trace";
+export type LogLevel = string;
 
 export interface HostCoreRuntimeConfig {
   productId: string;
@@ -72,13 +71,7 @@ export interface HostCoreRuntimeConfig {
     genesisHash: string | Uint8Array;
   };
   pairing: {
-    deeplinkScheme:
-      | "polkadotapp"
-      | "polkadotApp"
-      | "PolkadotApp"
-      | "polkadotappdev"
-      | "polkadotAppDev"
-      | "PolkadotAppDev";
+    deeplinkScheme: string;
   };
 }
 

@@ -210,7 +210,7 @@ impl<P> PlatformRuntimeHost<P> {
                 platform_type: None,
                 platform_version: None,
                 people_chain_genesis_hash: [0; 32],
-                pairing_deeplink_scheme: truapi_platform::PairingDeeplinkScheme::PolkadotApp,
+                pairing_deeplink_scheme: "polkadotapp".to_string(),
             },
             spawner,
         )
