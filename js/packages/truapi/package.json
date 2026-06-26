@@ -1,6 +1,6 @@
 {
   "name": "@parity/truapi",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "TrUAPI TypeScript transport, SCALE codecs, and generated API client",
   "license": "MIT",
   "author": "Parity Technologies <admin@parity.io>",
@@ -26,6 +26,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./sandbox": {
+      "types": "./dist/sandbox.d.ts",
+      "import": "./dist/sandbox.js"
     },
     "./scale": {
       "types": "./dist/scale.d.ts",
@@ -67,12 +71,15 @@
     "codegen": "cargo run -p truapi-codegen -- --input ../../../target/doc/truapi.json --output src/generated --playground-output src/playground --explorer-output src/explorer",
     "typecheck": "npm run build",
     "pretest": "npm run ensure-generated",
-    "test": "for f in test/*.test.mjs; do echo \"=== $f ===\" && bun \"$f\" || exit 1; done"
+    "test": "bun test",
+    "test:watch": "bun test --watch"
   },
   "devDependencies": {
+    "@types/bun": "^1.3.0",
     "typescript": "^6.0"
   },
   "dependencies": {
+    "@noble/hashes": "^2.2.0",
     "neverthrow": "^8.2.0",
     "scale-ts": "^1.6.1"
   }
