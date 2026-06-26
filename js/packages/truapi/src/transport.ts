@@ -1,3 +1,4 @@
+import { concatBytes } from "@noble/hashes/utils.js";
 import { err, ok, type Result, type ResultAsync } from "neverthrow";
 
 import { str, u8, type ResultPayload } from "./scale.js";
@@ -293,21 +294,6 @@ export interface WireProvider {
 }
 
 /**
- * Concatenate byte arrays without mutating the source arrays.
- **/
-function concatBytes(parts: Uint8Array[]): Uint8Array {
-  let total = 0;
-  for (const p of parts) total += p.length;
-  const out = new Uint8Array(total);
-  let off = 0;
-  for (const p of parts) {
-    out.set(p, off);
-    off += p.length;
-  }
-  return out;
-}
-
-/**
  * Encode a `ProtocolMessage` into a SCALE wire frame.
  **/
 export function encodeWireMessage(
@@ -318,11 +304,7 @@ export function encodeWireMessage(
     return err(new Error(`Invalid wire discriminant: ${id}`));
   }
   return ok(
-    concatBytes([
-      str.enc(message.requestId),
-      u8.enc(id),
-      message.payload.value,
-    ]),
+    concatBytes(str.enc(message.requestId), u8.enc(id), message.payload.value),
   );
 }
 
