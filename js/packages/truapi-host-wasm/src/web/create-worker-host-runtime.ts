@@ -74,12 +74,12 @@ const DEV_LOG_LEVEL_KEY = "truapi:logLevel";
 
 /** Read the persisted dev log level. Returns null when unset. */
 function readPersistedLogLevel(): LogLevel | null {
-  return localStorage.getItem(DEV_LOG_LEVEL_KEY);
+  return globalThis.localStorage?.getItem(DEV_LOG_LEVEL_KEY) ?? null;
 }
 
 /** Persist the dev log level so it re-applies on the next reload. */
 function persistLogLevel(level: LogLevel): void {
-  localStorage.setItem(DEV_LOG_LEVEL_KEY, level);
+  globalThis.localStorage?.setItem(DEV_LOG_LEVEL_KEY, level);
 }
 
 let devLogLevelOverride: LogLevel | null = readPersistedLogLevel();
