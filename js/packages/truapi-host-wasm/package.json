@@ -36,7 +36,6 @@
   "scripts": {
     "build": "tsc -b",
     "build:wasm": "node scripts/build-wasm.mjs",
-    "prepare": "npm run build",
     "test": "bun test"
   },
   "dependencies": {
